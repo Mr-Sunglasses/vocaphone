@@ -111,10 +111,16 @@ final class AudioRecorder: NSObject {
         stopEngine(deactivateAudioSession: false)
 
         let audioSession = AVAudioSession.sharedInstance()
+        var categoryOptions: AVAudioSession.CategoryOptions = [.mixWithOthers]
+#if compiler(>=6.2)
+        categoryOptions.insert(.allowBluetoothHFP)
+#else
+        categoryOptions.insert(.allowBluetooth)
+#endif
         try audioSession.setCategory(
             .playAndRecord,
             mode: .default,
-            options: [.allowBluetoothHFP, .mixWithOthers]
+            options: categoryOptions
         )
         try audioSession.setActive(true)
 
