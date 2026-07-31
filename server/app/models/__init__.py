@@ -1,0 +1,1 @@
+"""Local transcription engine adapters."""

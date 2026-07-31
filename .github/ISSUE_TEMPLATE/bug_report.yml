@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible Local Flow problem without including private data.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include recordings, transcripts, access tokens, signing files, or private tailnet hostnames. Report security issues privately using SECURITY.md.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - iOS containing app
+        - Custom keyboard
+        - Mac gateway
+        - Handy or whisper.cpp adapter
+        - Documentation or setup
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the observed and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: iPhone/iOS or macOS/Xcode/Python versions, as applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted diagnostics
+      description: Remove tokens, transcripts, recordings, URLs, and other personal data.
+      render: shell
