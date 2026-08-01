@@ -31,6 +31,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let undoButton = UIButton(type: .system)
     private let globeButton = UIButton(type: .system)
     private let languageLabel = UILabel()
+    private let styleButton = UIButton(type: .system)
     private let dictationCard = UIView()
     private let recordingDot = UIView()
 
@@ -175,7 +176,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             state: .idle,
             sourceDocumentID: currentDocumentID,
             language: "auto",
-            style: "raw"
+            style: KeyboardPreferences.writingStyle.rawValue
         )
         do {
             try record.transition(to: .launchingApp)
@@ -339,9 +340,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func render(_ record: SessionRecord?) {
+        let selectedStyle = record.flatMap { WritingStyle(rawValue: $0.style) }
+            ?? KeyboardPreferences.writingStyle
         guard hasFullAccess else {
             meterView.progress = 0
             languageLabel.text = "FULL ACCESS REQUIRED"
+            configureStyleButton(selected: selectedStyle, enabled: false)
             retryButton.isHidden = true
             cancelButton.isHidden = true
             undoButton.isEnabled = false
@@ -358,7 +362,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
         let state = record?.state ?? .idle
         meterView.progress = record?.meterLevel ?? 0
-        languageLabel.text = "\(record?.language.uppercased() ?? "AUTO") · \(record?.style ?? "raw")"
+        languageLabel.text = record?.language.uppercased() ?? "AUTO"
+        configureStyleButton(
+            selected: selectedStyle,
+            enabled: record == nil || state.isTerminal
+        )
         retryButton.isHidden = record?.canRetry != true
         cancelButton.isHidden = ![.launchingApp, .recording, .uploading].contains(state)
         undoButton.isEnabled = lastInsertedText != nil
@@ -468,6 +476,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         languageLabel.textColor = .secondaryLabel
         languageLabel.textAlignment = .left
 
+        styleButton.showsMenuAsPrimaryAction = true
+        styleButton.accessibilityLabel = "Writing style"
+
         recordingDot.layer.cornerRadius = 5
         recordingDot.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -491,7 +502,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         titleRow.axis = .horizontal
         titleRow.alignment = .center
         titleRow.spacing = 8
-        let statusStack = UIStackView(arrangedSubviews: [titleRow, languageLabel, meterView])
+        let metadataRow = UIStackView(arrangedSubviews: [languageLabel, styleButton])
+        metadataRow.axis = .horizontal
+        metadataRow.alignment = .center
+        metadataRow.spacing = 6
+        languageLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        styleButton.setContentHuggingPriority(.required, for: .horizontal)
+        let statusStack = UIStackView(arrangedSubviews: [titleRow, metadataRow, meterView])
         statusStack.axis = .vertical
         statusStack.spacing = 5
         let cardRow = UIStackView(arrangedSubviews: [statusStack, primaryButton])
@@ -699,6 +716,36 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         configuration.cornerStyle = .capsule
         configuration.baseForegroundColor = .label
         button.configuration = configuration
+    }
+
+    private func configureStyleButton(selected: WritingStyle, enabled: Bool) {
+        let actions = WritingStyle.allCases.map { style in
+            UIAction(
+                title: style.displayName,
+                image: UIImage(systemName: style.symbolName),
+                state: style == selected ? .on : .off
+            ) { [weak self] _ in
+                KeyboardPreferences.writingStyle = style
+                self?.refresh()
+            }
+        }
+        styleButton.menu = UIMenu(title: "Writing style", children: actions)
+
+        var configuration = UIButton.Configuration.tinted()
+        configuration.title = selected.displayName
+        configuration.image = UIImage(systemName: selected.symbolName)
+        configuration.imagePadding = 4
+        configuration.cornerStyle = .capsule
+        configuration.contentInsets = NSDirectionalEdgeInsets(
+            top: 2,
+            leading: 7,
+            bottom: 2,
+            trailing: 7
+        )
+        configuration.baseForegroundColor = .systemBlue
+        styleButton.configuration = configuration
+        styleButton.isEnabled = enabled
+        styleButton.accessibilityValue = selected.displayName
     }
 
     private func setPrimaryButton(

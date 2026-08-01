@@ -1,11 +1,12 @@
 [project]
 name = "localflow-gateway"
-version = "0.1.0"
+version = "0.2.0"
 description = "Tailnet-only transcription gateway for the Local Flow iPhone keyboard"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.116,<1",
+  "python-multipart>=0.0.9,<1",
   "uvicorn[standard]>=0.35,<1",
 ]
 

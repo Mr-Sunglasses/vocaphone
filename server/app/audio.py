@@ -16,6 +16,8 @@ ALLOWED_AUDIO_TYPES = {
     "audio/x-caf": ".caf",
     "audio/wav": ".wav",
     "audio/wave": ".wav",
+    "audio/webm": ".webm",
+    "audio/ogg": ".ogg",
 }
 
 

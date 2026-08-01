@@ -87,4 +87,12 @@ struct SessionRecordTests {
         try store.clearQuickDictationAvailability()
         #expect(try store.loadQuickDictationAvailability() == nil)
     }
+
+    @Test func writingStylesHaveStableGatewayValues() {
+        #expect(WritingStyle.formal.rawValue == "formal")
+        #expect(WritingStyle.casual.rawValue == "casual")
+        #expect(WritingStyle.veryCasual.rawValue == "very_casual")
+        #expect(WritingStyle.excited.rawValue == "excited")
+        #expect(SessionRecord().style == WritingStyle.casual.rawValue)
+    }
 }

@@ -9,6 +9,7 @@ import uvicorn
 
 from app.audio import FFmpegNormalizer
 from app.config import Settings
+from app.engines import StaticEngineProvider
 from app.main import create_app, select_engine
 from app.service import TranscriptionService
 from app.storage import SessionRepository
@@ -16,12 +17,24 @@ from app.storage import SessionRepository
 
 def serve() -> None:
     settings = Settings.from_env()
+    host = settings.bind_host
+    display_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    token_source = "(from LOCALFLOW_TOKEN)" if _token_from_env() else "~/.config/localflow/token"
+    print(f"Local Flow gateway listening on http://{display_host}:{settings.port}")
+    print(f"WebUI:  http://{display_host}:{settings.port}/")
+    print(f"Token:  {token_source}")
     uvicorn.run(
         create_app(settings),
-        host=settings.bind_host,
+        host=host,
         port=settings.port,
         access_log=False,
     )
+
+
+def _token_from_env() -> bool:
+    import os
+
+    return bool(os.environ.get("LOCALFLOW_TOKEN"))
 
 
 def status() -> None:
@@ -44,7 +57,7 @@ def cleanup() -> None:
     service = TranscriptionService(
         settings,
         repository,
-        select_engine(settings),
+        StaticEngineProvider(select_engine(settings)),
         FFmpegNormalizer(),
     )
     print(f"removed {service.cleanup_expired()} expired session(s)")

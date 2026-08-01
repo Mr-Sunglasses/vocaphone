@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import hmac
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Header, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi import Depends, FastAPI, Form, Header, Query, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.audio import (
     ALLOWED_AUDIO_TYPES,
@@ -14,22 +17,56 @@ from app.audio import (
     atomic_upload_path,
     complete_atomic_upload,
 )
+from app.catalog import recommended_ids
 from app.config import Settings
+from app.engines import EngineManager, EngineProvider, StaticEngineProvider, build_engine
 from app.errors import APIProblem
+from app.fragments import (
+    engine_pill_fragment,
+    engine_pill_oob,
+    engine_update_fragment,
+    models_fragment,
+    models_list_fragment,
+    overview_fragment,
+    settings_fragment,
+    test_fragment,
+)
+from app.model_manager import (
+    DownloadInProgressError,
+    ModelManager,
+    UnknownModelError,
+)
 from app.models.base import AudioNormalizer, TranscriptionEngine
-from app.models.handy import HandyEngine
-from app.models.whisper_cpp import WhisperCppEngine
+from app.runtime_config import RuntimeConfig
 from app.schemas import (
+    AdminModelEntry,
+    AdminStatusResponse,
+    ConfigResponse,
+    ConfigUpdateRequest,
     CreateSessionRequest,
+    CustomDownloadRequest,
     DeleteResponse,
+    DependencyStatus,
+    DownloadResponse,
+    EngineStatus,
     ErrorDetail,
     ErrorEnvelope,
     HealthResponse,
     ModelResponse,
+    PathStatus,
+    SelectModelResponse,
     SessionResponse,
+    SetupChecklist,
+    SystemStatus,
+    TestTranscriptionResponse,
 )
 from app.service import TranscriptionService
 from app.storage import SessionRepository, StoredSession
+from app.system import detect_system
+
+VERSION = "0.2.0"
+WEBUI_DIR = Path(__file__).parent / "webui"
+TOKEN_FILE_HINT = "~/.config/localflow/token"
 
 
 def create_app(
@@ -37,15 +74,29 @@ def create_app(
     *,
     engine: TranscriptionEngine | None = None,
     normalizer: AudioNormalizer | None = None,
+    model_manager: ModelManager | None = None,
+    runtime_config: RuntimeConfig | None = None,
 ) -> FastAPI:
     configured = settings or Settings.from_env()
     repository = SessionRepository(configured.data_dir / "sessions.sqlite3")
     repository.initialize()
-    selected_engine = engine or select_engine(configured)
+    manager = model_manager or ModelManager(configured.resolved_models_dir())
+    config_path = configured.config_path
+    if engine is not None:
+        engine_provider: EngineProvider = StaticEngineProvider(engine)
+        engine_manager: EngineManager | None = None
+    else:
+        engine_manager = EngineManager(
+            configured,
+            runtime_config or RuntimeConfig.load(config_path),
+            config_path,
+            manager,
+        )
+        engine_provider = engine_manager
     service = TranscriptionService(
         configured,
         repository,
-        selected_engine,
+        engine_provider,
         normalizer or FFmpegNormalizer(),
     )
 
@@ -56,14 +107,14 @@ def create_app(
 
     app = FastAPI(
         title="Local Flow Gateway",
-        version="0.1.0",
+        version=VERSION,
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
     )
     app.state.settings = configured
     app.state.service = service
-    app.state.engine = selected_engine
+    app.state.model_manager = manager
 
     @app.exception_handler(APIProblem)
     async def api_problem_handler(_: Request, problem: APIProblem) -> JSONResponse:
@@ -86,9 +137,20 @@ def create_app(
         if not hmac.compare_digest(supplied, configured.token):
             raise APIProblem(401, "unauthorized", "A valid bearer token is required.")
 
+    # ---------------------------------------------------------------- WebUI
+
+    @app.get("/", include_in_schema=False)
+    async def webui_index() -> FileResponse:
+        return FileResponse(WEBUI_DIR / "index.html")
+
+    if WEBUI_DIR.is_dir():
+        app.mount("/assets", StaticFiles(directory=WEBUI_DIR), name="webui-assets")
+
+    # -------------------------------------------------------------- iOS API
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
-        state = await selected_engine.health()
+        state = await engine_provider.current().health()
         return HealthResponse(engine_ready=state.ready, engine=state.name)
 
     @app.get(
@@ -97,7 +159,7 @@ def create_app(
         dependencies=[Depends(require_token)],
     )
     async def models() -> list[ModelResponse]:
-        state = await selected_engine.health()
+        state = await engine_provider.current().health()
         return [ModelResponse(id=state.name, ready=state.ready, local=True)]
 
     @app.post(
@@ -195,21 +257,524 @@ def create_app(
             response.status_code = 404
         return DeleteResponse(deleted=deleted)
 
+    # ------------------------------------------------------------ admin API
+
+    def _engine_id() -> str:
+        if engine_manager is not None:
+            return engine_manager.runtime_config.engine
+        return "custom"
+
+    async def _status_payload() -> AdminStatusResponse:
+        system = detect_system(
+            whisper_binary=configured.whisper_binary,
+            whisperkit_binary=configured.whisperkit_binary,
+            handy_binary=configured.handy_binary,
+        )
+        dependencies = [
+            DependencyStatus(
+                name="FFmpeg",
+                available=system.ffmpeg_path is not None,
+                path=system.ffmpeg_path,
+                install_hint="brew install ffmpeg",
+            ),
+            DependencyStatus(
+                name="whisper.cpp CLI",
+                available=system.whisper_cpp_path is not None,
+                path=system.whisper_cpp_path,
+                install_hint="brew install whisper-cpp",
+            ),
+            DependencyStatus(
+                name="WhisperKit CLI",
+                available=system.whisperkit_cli_path is not None,
+                path=system.whisperkit_cli_path,
+                install_hint="brew install whisperkit-cli",
+            ),
+            DependencyStatus(
+                name="Handy app",
+                available=system.handy_installed,
+                path=str(configured.handy_binary) if system.handy_installed else None,
+                install_hint="https://handy.computer",
+            ),
+        ]
+        state = await engine_provider.current().health()
+        return AdminStatusResponse(
+            version=VERSION,
+            engine=EngineStatus(id=_engine_id(), name=state.name, ready=state.ready),
+            system=SystemStatus(
+                os=f"{system.os_name} {system.os_version}",
+                arch=system.arch,
+                chip=system.chip,
+                ram_gb=system.ram_gb,
+                is_apple_silicon=system.is_apple_silicon,
+            ),
+            dependencies=dependencies,
+            paths=PathStatus(
+                data_dir=str(configured.data_dir),
+                models_dir=str(manager.models_dir),
+                config_file=str(config_path),
+                token_file=TOKEN_FILE_HINT,
+            ),
+            bind_host=configured.bind_host,
+            port=configured.port,
+            setup=SetupChecklist(
+                token_configured=True,
+                ffmpeg_available=system.ffmpeg_path is not None,
+                engine_binary_available=any(
+                    dependency.available for dependency in dependencies[1:]
+                ),
+                model_installed=bool(manager.installed()),
+                engine_ready=state.ready,
+            ),
+        )
+
+    def _model_entries() -> list[AdminModelEntry]:
+        system = detect_system(
+            whisper_binary=configured.whisper_binary,
+            whisperkit_binary=configured.whisperkit_binary,
+            handy_binary=configured.handy_binary,
+        )
+        recommended = recommended_ids(system)
+        installed = {model.id: model for model in manager.installed()}
+        active_path = _active_model_path()
+        entries: list[AdminModelEntry] = []
+        for model in manager.catalog:
+            download = manager.download_state(model.id)
+            installed_model = installed.get(model.id)
+            state = "not_installed"
+            progress: float | None = None
+            error: str | None = None
+            if download is not None and download.status == "downloading":
+                state = "downloading"
+                if download.total_bytes:
+                    progress = round(download.downloaded_bytes / download.total_bytes, 4)
+            elif installed_model is not None:
+                state = "installed"
+            elif download is not None and download.status == "failed":
+                error = download.error
+            entries.append(
+                AdminModelEntry(
+                    id=model.id,
+                    engine=model.engine,
+                    label=model.label,
+                    size_bytes=(
+                        installed_model.size_bytes if installed_model else model.size_bytes
+                    ),
+                    languages=model.languages,
+                    quality=model.quality,
+                    state=state,
+                    active=bool(installed_model and installed_model.path == active_path),
+                    recommended=model.id in recommended,
+                    progress=progress,
+                    downloaded_bytes=download.downloaded_bytes if download else None,
+                    total_bytes=(download.total_bytes if download else None),
+                    error=error,
+                )
+            )
+        for custom in manager.installed():
+            if custom.id.startswith("custom:"):
+                entries.append(
+                    AdminModelEntry(
+                        id=custom.id,
+                        engine=custom.engine,
+                        label=f"Custom: {custom.key}",
+                        size_bytes=custom.size_bytes,
+                        languages="Unknown",
+                        quality="Custom",
+                        state="installed",
+                        active=custom.path == active_path,
+                        recommended=False,
+                    )
+                )
+        return entries
+
+    @app.get(
+        "/v1/admin/status",
+        response_model=AdminStatusResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def get_admin_status() -> AdminStatusResponse:
+        return await _status_payload()
+
+    @app.get(
+        "/v1/admin/models",
+        response_model=list[AdminModelEntry],
+        dependencies=[Depends(require_token)],
+    )
+    async def get_admin_models() -> list[AdminModelEntry]:
+        return _model_entries()
+
+    def _active_model_path() -> Path | None:
+        if engine_manager is None:
+            return None
+        config = engine_manager.runtime_config
+        if config.whisper_model:
+            return Path(config.whisper_model)
+        if config.whisperkit_model:
+            return Path(config.whisperkit_model)
+        return None
+
+    @app.post(
+        "/v1/admin/models/{model_id}/download",
+        response_model=DownloadResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def start_model_download(model_id: str) -> DownloadResponse:
+        try:
+            state = manager.start_download(model_id)
+        except UnknownModelError as error:
+            raise APIProblem(404, "unknown_model", "This model is not in the catalog.") from error
+        except DownloadInProgressError as error:
+            raise APIProblem(
+                409, "download_in_progress", "This model is already downloading."
+            ) from error
+        return DownloadResponse(model_id=model_id, status=state.status)
+
+    @app.post(
+        "/v1/admin/models/custom",
+        response_model=DownloadResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def start_custom_download(body: CustomDownloadRequest) -> DownloadResponse:
+        try:
+            state = manager.start_custom_download(body.url)
+        except ValueError as error:
+            raise APIProblem(422, "invalid_model_url", str(error)) from error
+        except DownloadInProgressError as error:
+            raise APIProblem(409, "download_in_progress", str(error)) from error
+        return DownloadResponse(model_id=state.model_id, status=state.status)
+
+    @app.post(
+        "/v1/admin/models/{model_id}/cancel",
+        response_model=DownloadResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def cancel_model_download(model_id: str) -> DownloadResponse:
+        if not manager.cancel_download(model_id):
+            raise APIProblem(
+                409, "download_not_active", "This model is not currently downloading."
+            )
+        return DownloadResponse(model_id=model_id, status="cancelling")
+
+    @app.delete(
+        "/v1/admin/models/{model_id}",
+        response_model=DeleteResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def delete_model(model_id: str, response: Response) -> DeleteResponse:
+        try:
+            if engine_manager is not None:
+                engine_manager.forget_if_active(model_id)
+            deleted = manager.delete(model_id)
+        except DownloadInProgressError as error:
+            raise APIProblem(
+                409, "download_in_progress", "Cancel the download before deleting."
+            ) from error
+        if not deleted:
+            response.status_code = 404
+        return DeleteResponse(deleted=deleted)
+
+    @app.post(
+        "/v1/admin/models/{model_id}/select",
+        response_model=SelectModelResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def select_model(model_id: str) -> SelectModelResponse:
+        if engine_manager is None:
+            raise APIProblem(
+                409, "engine_locked", "The engine was fixed at startup and cannot switch."
+            )
+        try:
+            engine_manager.select_model(model_id)
+        except KeyError as error:
+            raise APIProblem(
+                404, "model_not_installed", "Download this model before selecting it."
+            ) from error
+        state = await engine_manager.health()
+        return SelectModelResponse(
+            engine=EngineStatus(id=engine_manager.runtime_config.engine, name=state.name,
+                                ready=state.ready)
+        )
+
+    @app.get(
+        "/v1/admin/config",
+        response_model=ConfigResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def get_config() -> ConfigResponse:
+        engine_value = (
+            engine_manager.runtime_config.engine if engine_manager is not None else "custom"
+        )
+        return ConfigResponse(
+            engine=engine_value,
+            available_engines=["auto", "handy", "whisper.cpp", "whisperkit"],
+            whisper_model=(
+                engine_manager.runtime_config.whisper_model if engine_manager else None
+            ),
+            whisperkit_model=(
+                engine_manager.runtime_config.whisperkit_model if engine_manager else None
+            ),
+        )
+
+    @app.put(
+        "/v1/admin/config",
+        response_model=SelectModelResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def update_config(body: ConfigUpdateRequest) -> SelectModelResponse:
+        if engine_manager is None:
+            raise APIProblem(
+                409, "engine_locked", "The engine was fixed at startup and cannot switch."
+            )
+        engine_manager.set_engine(body.engine)
+        state = await engine_manager.health()
+        return SelectModelResponse(
+            engine=EngineStatus(id=body.engine, name=state.name, ready=state.ready)
+        )
+
+    @app.post(
+        "/v1/admin/test-transcription",
+        response_model=TestTranscriptionResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def test_transcription(
+        request: Request,
+        language: str = Query(default="auto", pattern=r"^[A-Za-z-]+$|^auto$"),
+        content_type: str | None = Header(default=None),
+        content_length: int | None = Header(default=None),
+    ) -> TestTranscriptionResponse:
+        normalized_type = (content_type or "").split(";", maxsplit=1)[0].lower()
+        suffix = ALLOWED_AUDIO_TYPES.get(normalized_type)
+        if suffix is None:
+            raise APIProblem(415, "unsupported_audio_type", "This audio type is not supported.")
+        if content_length is not None and content_length > configured.maximum_upload_bytes:
+            raise APIProblem(413, "audio_too_large", "The recording exceeds the upload limit.")
+        upload_dir = configured.data_dir / "test-uploads"
+        temporary, final = atomic_upload_path(upload_dir, f"test-{int(time.time() * 1000)}", suffix)
+        received = 0
+        try:
+            with temporary.open("wb") as output:
+                async for chunk in request.stream():
+                    received += len(chunk)
+                    if received > configured.maximum_upload_bytes:
+                        raise APIProblem(
+                            413, "audio_too_large", "The recording exceeds the upload limit."
+                        )
+                    output.write(chunk)
+            if received < 128:
+                raise APIProblem(422, "audio_empty", "The recording is empty.")
+            complete_atomic_upload(temporary, final)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+        try:
+            transcript, engine_name, duration_ms = await service.transcribe_adhoc(
+                final, language
+            )
+        finally:
+            final.unlink(missing_ok=True)
+        return TestTranscriptionResponse(
+            transcript=transcript, engine=engine_name, duration_ms=duration_ms
+        )
+
+    # ------------------------------------------------- WebUI partials (HTMX)
+
+    def _html(content: str) -> HTMLResponse:
+        return HTMLResponse(content)
+
+    def _models_list_html() -> HTMLResponse:
+        return _html(models_list_fragment(_model_entries()))
+
+    @app.get(
+        "/ui/partials/overview",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_overview() -> HTMLResponse:
+        return _html(overview_fragment(await _status_payload()))
+
+    @app.get(
+        "/ui/partials/engine-pill",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_engine_pill() -> HTMLResponse:
+        state = await engine_provider.current().health()
+        return _html(
+            engine_pill_fragment(EngineStatus(id=_engine_id(), name=state.name,
+                                              ready=state.ready))
+        )
+
+    @app.get(
+        "/ui/partials/models",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_models() -> HTMLResponse:
+        return _html(models_fragment(_model_entries()))
+
+    @app.get(
+        "/ui/partials/models-list",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_models_list() -> HTMLResponse:
+        return _models_list_html()
+
+    @app.post(
+        "/ui/partials/models/{model_id}/download",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_start_download(model_id: str) -> HTMLResponse:
+        try:
+            manager.start_download(model_id)
+        except UnknownModelError as error:
+            raise APIProblem(404, "unknown_model", "This model is not in the catalog.") from error
+        except DownloadInProgressError as error:
+            raise APIProblem(
+                409, "download_in_progress", "This model is already downloading."
+            ) from error
+        return _models_list_html()
+
+    @app.post(
+        "/ui/partials/models/custom",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_custom_download(url: str = Form(...)) -> HTMLResponse:
+        try:
+            manager.start_custom_download(url)
+        except ValueError as error:
+            raise APIProblem(422, "invalid_model_url", str(error)) from error
+        except DownloadInProgressError as error:
+            raise APIProblem(409, "download_in_progress", str(error)) from error
+        return _models_list_html()
+
+    @app.post(
+        "/ui/partials/models/{model_id}/cancel",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_cancel_download(model_id: str) -> HTMLResponse:
+        manager.cancel_download(model_id)
+        return _models_list_html()
+
+    @app.delete(
+        "/ui/partials/models/{model_id}",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_delete_model(model_id: str) -> HTMLResponse:
+        try:
+            if engine_manager is not None:
+                engine_manager.forget_if_active(model_id)
+            manager.delete(model_id)
+        except DownloadInProgressError as error:
+            raise APIProblem(
+                409, "download_in_progress", "Cancel the download before deleting."
+            ) from error
+        return _models_list_html()
+
+    @app.post(
+        "/ui/partials/models/{model_id}/select",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_select_model(model_id: str) -> HTMLResponse:
+        if engine_manager is None:
+            raise APIProblem(
+                409, "engine_locked", "The engine was fixed at startup and cannot switch."
+            )
+        try:
+            engine_manager.select_model(model_id)
+        except KeyError as error:
+            raise APIProblem(
+                404, "model_not_installed", "Download this model before selecting it."
+            ) from error
+        state = await engine_manager.health()
+        return _html(
+            models_list_fragment(_model_entries())
+            + engine_pill_oob(
+                EngineStatus(id=engine_manager.runtime_config.engine, name=state.name,
+                             ready=state.ready)
+            )
+        )
+
+    @app.get(
+        "/ui/partials/settings",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_settings() -> HTMLResponse:
+        engine_value = (
+            engine_manager.runtime_config.engine if engine_manager is not None else "custom"
+        )
+        config = ConfigResponse(
+            engine=engine_value,
+            available_engines=["auto", "handy", "whisper.cpp", "whisperkit"],
+        )
+        paths = [
+            ("Data directory", str(configured.data_dir)),
+            ("Models directory", str(manager.models_dir)),
+            ("WebUI config file", str(config_path)),
+            ("Token file", TOKEN_FILE_HINT),
+            ("Listening on", f"http://{configured.bind_host}:{configured.port}"),
+        ]
+        return _html(settings_fragment(config, paths))
+
+    @app.put(
+        "/ui/partials/config",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_update_config(engine: str = Form(...)) -> HTMLResponse:
+        if engine_manager is None:
+            raise APIProblem(
+                409, "engine_locked", "The engine was fixed at startup and cannot switch."
+            )
+        try:
+            engine_manager.set_engine(engine)
+        except ValueError as error:
+            raise APIProblem(422, "invalid_engine", str(error)) from error
+        state = await engine_manager.health()
+        return _html(
+            engine_update_fragment(
+                EngineStatus(id=engine, name=state.name, ready=state.ready),
+                "Engine preference saved.",
+            )
+        )
+
+    @app.get(
+        "/ui/partials/test",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_test() -> HTMLResponse:
+        return _html(test_fragment())
+
     return app
 
 
 def select_engine(settings: Settings) -> TranscriptionEngine:
-    if settings.engine not in {"auto", "handy", "whisper.cpp"}:
-        raise RuntimeError("LOCALFLOW_ENGINE must be auto, handy, or whisper.cpp.")
-    if settings.engine == "handy" or (
-        settings.engine == "auto" and settings.handy_binary.is_file()
-    ):
-        return HandyEngine(
-            settings.handy_binary,
-            settings.handy_model,
-            fallback_model=settings.handy_fallback_model,
+    """Resolve an engine purely from environment settings (CLI usage)."""
+    if settings.engine not in {"auto", "handy", "whisper.cpp", "whisperkit"}:
+        raise RuntimeError(
+            "LOCALFLOW_ENGINE must be auto, handy, whisper.cpp, or whisperkit."
         )
-    return WhisperCppEngine(settings.whisper_binary, settings.whisper_model)
+    manager = ModelManager(settings.resolved_models_dir())
+    if settings.engine == "auto":
+        from app.models.whisper_cpp import WhisperCppEngine
+
+        if settings.handy_binary.is_file():
+            from app.models.handy import HandyEngine
+
+            return HandyEngine(
+                settings.handy_binary,
+                settings.handy_model,
+                fallback_model=settings.handy_fallback_model,
+            )
+        return WhisperCppEngine(settings.whisper_binary, settings.whisper_model)
+    return build_engine(settings, RuntimeConfig(engine=settings.engine), manager)
 
 
 def _response(stored: StoredSession) -> SessionResponse:

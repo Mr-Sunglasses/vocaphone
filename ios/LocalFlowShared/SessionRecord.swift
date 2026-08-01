@@ -62,7 +62,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         state: SessionState = .idle,
         sourceDocumentID: String? = nil,
         language: String = "auto",
-        style: String = "raw",
+        style: String = WritingStyle.casual.rawValue,
         now: Date = Date()
     ) {
         let timestamp = Self.normalizedTimestamp(now)

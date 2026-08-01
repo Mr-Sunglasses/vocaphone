@@ -16,6 +16,9 @@ been exercised on a physical iPhone 14 Pro.
 - UIKit custom keyboard with a compact QWERTY typing surface, Start, Finish,
   Cancel, Retry, Undo, language/style status, next-keyboard control, optional
   automatic insertion, and direct `UITextDocumentProxy` insertion
+- Four persistent, fully local writing styles: Formal, Casual, Very Casual, and
+  Excited. The selected style is applied after transcription without sending text
+  to a third-party service or changing the dictated words
 - Persistent return-gesture guidance plus a Live Activity/Dynamic Island timer
   and Finish control while the containing app records in the background
 - A 10-minute Quick Dictation window that keeps the containing app's microphone
@@ -26,7 +29,9 @@ been exercised on a physical iPhone 14 Pro.
 - Bearer token stored in the iOS Keychain, never in shared session JSON
 - FastAPI gateway bound to loopback with bounded uploads, SQLite persistence,
   FFmpeg normalization, silence detection, and a model-independent adapter
-- Handy and `whisper.cpp` adapters, private health/model endpoints, retry,
+- HTMX WebUI with setup checks, hardware-aware model recommendations, background
+  model downloads, engine selection, and a microphone test flow
+- Handy, `whisper.cpp`, and WhisperKit adapters, private health/model endpoints, retry,
   retention cleanup, and stable machine-readable errors
 - Unit and integration tests for Swift state/storage/spacing and Python API,
   auth, idempotency, upload limits, FFmpeg, silence detection, and cleanup
@@ -82,9 +87,16 @@ and start the gateway:
 
 ```sh
 cd server
-./scripts/setup-token.sh
 uv run localflow-server
 ```
+
+The server creates `~/.config/localflow/token` automatically on first run. Open
+`http://127.0.0.1:8765/`, paste that token into the WebUI, and follow the setup
+checklist. The Models tab downloads compatible WhisperKit CoreML folders and
+whisper.cpp `.bin` models without manual path configuration.
+
+The legacy `./scripts/setup-token.sh` command remains available if you want to
+create the token before starting the server.
 
 To force a specific Handy model:
 

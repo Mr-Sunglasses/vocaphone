@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Local Flow Gateway</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+  <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'&gt;&lt;text y='.9em' font-size='90'&gt;&#127908;&lt;/text&gt;&lt;/svg&gt;" />
+</head>
+<body>
+  <div id="token-overlay" class="overlay hidden">
+    <div class="modal">
+      <h2>Connect to your gateway</h2>
+      <p class="muted">
+        Paste the gateway bearer token. You can find it on your Mac with:
+      </p>
+      <code class="block">cat ~/.config/localflow/token</code>
+      <input id="token-input" type="password" placeholder="Bearer token" autocomplete="off" />
+      <p id="token-error" class="error hidden"></p>
+      <button id="token-save" class="primary">Connect</button>
+    </div>
+  </div>
+
+  <header>
+    <div class="brand">
+      <span class="logo">&#127908;</span>
+      <div>
+        <h1>Local Flow</h1>
+        <span class="muted">Mac transcription gateway</span>
+      </div>
+    </div>
+    <div id="engine-pill" class="pill unknown"
+         hx-get="/ui/partials/engine-pill" hx-trigger="load, every 5s" hx-swap="outerHTML">
+      connecting&hellip;
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="overview"
+            hx-get="/ui/partials/overview" hx-target="#panel" hx-swap="innerHTML">Overview</button>
+    <button class="tab" data-tab="models"
+            hx-get="/ui/partials/models" hx-target="#panel" hx-swap="innerHTML">Models</button>
+    <button class="tab" data-tab="test"
+            hx-get="/ui/partials/test" hx-target="#panel" hx-swap="innerHTML">Test</button>
+    <button class="tab" data-tab="settings"
+            hx-get="/ui/partials/settings" hx-target="#panel" hx-swap="innerHTML">Settings</button>
+  </nav>
+
+  <main>
+    <div id="panel"
+         hx-get="/ui/partials/overview" hx-trigger="load" hx-swap="innerHTML">
+      <p class="muted loading">Loading&hellip;</p>
+    </div>
+  </main>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/assets/htmx.min.js"></script>
+  <script src="/assets/app.js"></script>
+</body>
+</html>

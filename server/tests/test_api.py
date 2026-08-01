@@ -57,6 +57,50 @@ async def test_complete_flow_is_idempotent_and_deletes_successful_audio(
     assert finished_again.json()["job_id"] == finished.json()["job_id"]
 
 
+async def test_session_accepts_writing_styles_and_rejects_unknown_values(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+) -> None:
+    for style in ("formal", "casual", "very_casual", "excited"):
+        response = await client.post(
+            "/v1/sessions",
+            headers=authorization,
+            json={"client_session_id": str(uuid4()), "style": style},
+        )
+        assert response.status_code == 200
+        assert response.json()["style"] == style
+
+    invalid = await client.post(
+        "/v1/sessions",
+        headers=authorization,
+        json={"client_session_id": str(uuid4()), "style": "pirate"},
+    )
+    assert invalid.status_code == 422
+
+
+async def test_writing_style_is_applied_to_the_local_transcript(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    audio_bytes: bytes,
+) -> None:
+    session_id = uuid4()
+    await client.post(
+        "/v1/sessions",
+        headers=authorization,
+        json={"client_session_id": str(session_id), "style": "formal"},
+    )
+    await client.put(
+        f"/v1/sessions/{session_id}/audio",
+        headers={**authorization, "Content-Type": "audio/wav"},
+        content=audio_bytes,
+    )
+
+    finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
+
+    assert finished.status_code == 200
+    assert finished.json()["transcript"] == "Hello from the local model."
+
+
 async def test_upload_rejects_unsupported_empty_and_oversized_audio(
     client: httpx.AsyncClient,
     authorization: dict[str, str],

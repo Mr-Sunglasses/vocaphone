@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
-import re
+import time
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from app.config import Settings
+from app.engines import EngineProvider
 from app.errors import (
     APIProblem,
     EngineUnavailableError,
@@ -13,8 +14,9 @@ from app.errors import (
     SilentAudioError,
     TranscriptionProcessError,
 )
-from app.models.base import AudioNormalizer, TranscriptionEngine, TranscriptionOptions
+from app.models.base import AudioNormalizer, TranscriptionOptions
 from app.storage import SessionRepository, StoredSession
+from app.text_styles import apply_writing_style
 
 
 class TranscriptionService:
@@ -22,12 +24,12 @@ class TranscriptionService:
         self,
         settings: Settings,
         repository: SessionRepository,
-        engine: TranscriptionEngine,
+        engine_provider: EngineProvider,
         normalizer: AudioNormalizer,
     ) -> None:
         self.settings = settings
         self.repository = repository
-        self.engine = engine
+        self.engine_provider = engine_provider
         self.normalizer = normalizer
         self.upload_dir = settings.data_dir / "audio"
         self.normalized_dir = settings.data_dir / "normalized"
@@ -63,11 +65,11 @@ class TranscriptionService:
             await self.normalizer.normalize(
                 source, normalized, self.settings.maximum_duration_seconds
             )
-            raw = await self.engine.transcribe(
+            raw = await self.engine_provider.current().transcribe(
                 normalized,
                 TranscriptionOptions(language=stored.language, style=stored.style),
             )
-            transcript = conservative_cleanup(raw) if stored.style == "clean" else raw.strip()
+            transcript = apply_writing_style(raw, stored.style)
             completed = self.repository.update(
                 session_id,
                 state="completed",
@@ -90,6 +92,41 @@ class TranscriptionService:
             raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
         except TranscriptionProcessError as error:
             self.repository.update(session_id, state="failed", error_code="transcription_failed")
+            raise APIProblem(502, "transcription_failed", str(error), recoverable=True) from error
+        finally:
+            normalized.unlink(missing_ok=True)
+            self._transcription_slots.release()
+
+    async def transcribe_adhoc(self, source: Path, language: str) -> tuple[str, str, int]:
+        """One-shot transcription for the WebUI test recorder (no session stored)."""
+        try:
+            await asyncio.wait_for(self._transcription_slots.acquire(), timeout=0.05)
+        except TimeoutError as error:
+            raise APIProblem(
+                503,
+                "engine_overloaded",
+                "The local transcription engine is busy.",
+                recoverable=True,
+            ) from error
+        normalized = self.normalized_dir / f"adhoc-{uuid4()}.wav"
+        started = time.monotonic()
+        try:
+            await self.normalizer.normalize(
+                source, normalized, self.settings.maximum_duration_seconds
+            )
+            engine = self.engine_provider.current()
+            raw = await engine.transcribe(
+                normalized, TranscriptionOptions(language=language, style="raw")
+            )
+            name = (await engine.health()).name
+            return raw.strip(), name, int((time.monotonic() - started) * 1000)
+        except SilentAudioError as error:
+            raise APIProblem(422, "silent_audio", str(error)) from error
+        except InvalidAudioError as error:
+            raise APIProblem(422, "invalid_audio", str(error)) from error
+        except EngineUnavailableError as error:
+            raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
+        except TranscriptionProcessError as error:
             raise APIProblem(502, "transcription_failed", str(error), recoverable=True) from error
         finally:
             normalized.unlink(missing_ok=True)
@@ -123,8 +160,5 @@ class TranscriptionService:
 
 
 def conservative_cleanup(text: str) -> str:
-    result = re.sub(r"[ \t]+", " ", text).strip()
-    result = re.sub(r"\s+([,.;:!?])", r"\1", result)
-    if result and result[-1] not in ".!?":
-        result += "."
-    return result
+    """Backward-compatible name for the original clean transcript mode."""
+    return apply_writing_style(text, "clean")

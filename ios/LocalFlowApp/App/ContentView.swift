@@ -13,6 +13,10 @@ struct ContentView: View {
         KeyboardPreferences.quickDictationKey,
         store: KeyboardPreferences.defaults
     ) private var quickDictationEnabled = true
+    @AppStorage(
+        KeyboardPreferences.writingStyleKey,
+        store: KeyboardPreferences.defaults
+    ) private var writingStyleRawValue = WritingStyle.casual.rawValue
     @State private var token = ""
     @State private var testText = ""
 
@@ -20,6 +24,7 @@ struct ContentView: View {
         NavigationStack {
             List {
                 statusSection
+                writingStyleSection
                 setupSection
                 testSection
                 privacySection
@@ -43,6 +48,25 @@ struct ContentView: View {
             }
         }
         .animation(.easeInOut(duration: 0.2), value: showsKeyboardReturnGuide)
+    }
+
+    private var writingStyleSection: some View {
+        Section("Writing style") {
+            Picker("Transcript style", selection: $writingStyleRawValue) {
+                ForEach(WritingStyle.allCases) { style in
+                    Label(style.displayName, systemImage: style.symbolName)
+                        .tag(style.rawValue)
+                }
+            }
+
+            Text(selectedWritingStyle.detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var selectedWritingStyle: WritingStyle {
+        WritingStyle(rawValue: writingStyleRawValue) ?? .casual
     }
 
     private var showsKeyboardReturnGuide: Bool {

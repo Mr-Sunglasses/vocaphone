@@ -120,7 +120,7 @@ final class RecordingCoordinator: ObservableObject {
             state: .idle,
             sourceDocumentID: "in-app-test",
             language: "auto",
-            style: "raw"
+            style: KeyboardPreferences.writingStyle.rawValue
         )
         do {
             try record.transition(to: .launchingApp)
