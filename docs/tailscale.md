@@ -1,5 +1,9 @@
 # Private Tailscale connectivity
 
+Tailscale is the recommended private transport for a personal deployment, but
+it is optional. Local Flow can also use a trusted LAN HTTP URL or an HTTPS VPS as
+described in [deployment](deployment.md).
+
 For private HTTPS, bind the gateway to `127.0.0.1:8765` and let Tailscale Serve
 add tailnet-only ingress in front of it. This overrides the gateway's
 all-interface default and avoids exposing port 8765 directly to the local

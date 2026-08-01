@@ -7,11 +7,12 @@ import threading
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from app.catalog import (
     DEFAULT_CATALOG,
+    ENGINE_MOONSHINE,
     ENGINE_WHISPER_CPP,
     ENGINE_WHISPERKIT,
     CatalogModel,
@@ -78,9 +79,7 @@ class ModelManager:
     # ------------------------------------------------------------------ paths
 
     def model_path(self, model: CatalogModel) -> Path:
-        if model.engine == ENGINE_WHISPERKIT:
-            return self.models_dir / ENGINE_WHISPERKIT / model.key
-        return self.models_dir / ENGINE_WHISPER_CPP / model.key
+        return self.models_dir / model.engine / model.key
 
     def installed_path(self, model_id: str) -> Path | None:
         installed = {model.id: model for model in self.installed()}
@@ -91,10 +90,27 @@ class ModelManager:
 
     def installed(self) -> list[InstalledModel]:
         results: list[InstalledModel] = []
+        catalog_paths: set[Path] = set()
+        for model in self.catalog:
+            path = self.model_path(model)
+            marker = path / model.marker_file if model.marker_file else path
+            if marker.exists():
+                catalog_paths.add(path)
+                results.append(
+                    InstalledModel(
+                        id=model.id,
+                        engine=model.engine,
+                        key=model.key,
+                        path=path,
+                        size_bytes=_directory_size(path) if path.is_dir() else path.stat().st_size,
+                    )
+                )
         whisper_cpp_dir = self.models_dir / ENGINE_WHISPER_CPP
         if whisper_cpp_dir.is_dir():
             for file in sorted(whisper_cpp_dir.iterdir()):
                 if not file.is_file() or file.suffix not in {".bin", ".gguf"}:
+                    continue
+                if file in catalog_paths:
                     continue
                 catalog_model = self._by_key(file.name, ENGINE_WHISPER_CPP)
                 model_id = catalog_model.id if catalog_model else f"custom:{file.name}"
@@ -112,6 +128,8 @@ class ModelManager:
         if whisperkit_dir.is_dir():
             for folder in sorted(whisperkit_dir.iterdir()):
                 if not folder.is_dir() or not (folder / "config.json").is_file():
+                    continue
+                if folder in catalog_paths:
                     continue
                 catalog_model = self._by_key(folder.name, ENGINE_WHISPERKIT)
                 model_id = catalog_model.id if catalog_model else f"custom:{folder.name}"
@@ -199,12 +217,46 @@ class ModelManager:
             handle.state.error = str(error)[:300]
 
     async def _run_catalog_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
-        if model.engine == ENGINE_WHISPERKIT:
-            await self._run_whisperkit_download(model, handle)
+        if model.engine == ENGINE_MOONSHINE:
+            await self._run_moonshine_download(model, handle)
+            return
+        if model.huggingface_repo is not None:
+            await self._run_huggingface_download(model, handle)
             return
         if model.download_url is None:
             raise UnknownModelError(model.id)
         await self._run_single_file(model.download_url, self.model_path(model), handle)
+
+    async def _run_moonshine_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
+        final_dir = self.model_path(model)
+        partial_dir = final_dir.with_name(final_dir.name + ".partial")
+        shutil.rmtree(partial_dir, ignore_errors=True)
+        partial_dir.mkdir(parents=True, exist_ok=True)
+        handle.state.total_bytes = model.size_bytes
+        handle.state.current_file = "Moonshine model assets"
+        try:
+            model_path, model_arch = await asyncio.to_thread(
+                _download_moonshine_model, model.key, partial_dir
+            )
+            if handle.cancel.is_set():
+                raise DownloadCancelled
+            relative_path = Path(model_path).resolve().relative_to(partial_dir.resolve())
+            metadata = {
+                "language": model.key,
+                "model_path": str(relative_path),
+                "model_arch": int(model_arch),
+            }
+            (partial_dir / ".localflow-model.json").write_text(
+                json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+            )
+            handle.state.downloaded_bytes = _directory_size(partial_dir)
+            final_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.rmtree(final_dir, ignore_errors=True)
+            partial_dir.replace(final_dir)
+            handle.state.status = "completed"
+        finally:
+            if handle.state.status != "completed":
+                shutil.rmtree(partial_dir, ignore_errors=True)
 
     async def _run_single_file(self, url: str, destination: Path, handle: _DownloadHandle) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -219,14 +271,14 @@ class ModelManager:
             if handle.state.status != "completed":
                 partial.unlink(missing_ok=True)
 
-    async def _run_whisperkit_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
-        if not model.huggingface_repo or not model.huggingface_folder:
+    async def _run_huggingface_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
+        if not model.huggingface_repo or model.huggingface_folder is None:
             raise UnknownModelError(model.id)
         files = await asyncio.to_thread(
             _list_repo_folder, model.huggingface_repo, model.huggingface_folder
         )
         if not files:
-            raise UnknownModelError(f"No files found for {model.huggingface_folder}.")
+            raise UnknownModelError(f"No model files found in {model.huggingface_repo}.")
         handle.state.total_bytes = sum(size for _, size in files)
         final_dir = self.model_path(model)
         partial_dir = final_dir.with_name(final_dir.name + ".partial")
@@ -238,7 +290,7 @@ class ModelManager:
                     raise DownloadCancelled
                 url = (
                     f"{HF_BASE_URL}/{model.huggingface_repo}"
-                    f"/resolve/main/{model.huggingface_folder}/{relative}"
+                    f"/resolve/main/{_repo_path(model.huggingface_folder, relative)}"
                 )
                 await asyncio.to_thread(
                     _download_file,
@@ -289,12 +341,13 @@ def _validate_custom_url(url: str) -> str:
 
 
 def _list_repo_folder(repo: str, folder: str) -> list[tuple[str, int]]:
-    url = f"{HF_BASE_URL}/api/models/{repo}/tree/main/{folder}?recursive=true"
+    tree_path = f"/{folder}" if folder else ""
+    url = f"{HF_BASE_URL}/api/models/{repo}/tree/main{tree_path}?recursive=true&expand=false"
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=30) as response:
         payload: list[dict[str, Any]] = json.load(response)
     files: list[tuple[str, int]] = []
-    prefix = f"{folder}/"
+    prefix = f"{folder}/" if folder else ""
     for entry in payload:
         if entry.get("type") != "file":
             continue
@@ -303,6 +356,10 @@ def _list_repo_folder(repo: str, folder: str) -> list[tuple[str, int]]:
             continue
         files.append((path[len(prefix) :], int(entry.get("size") or 0)))
     return files
+
+
+def _repo_path(folder: str, relative: str) -> str:
+    return f"{folder}/{relative}" if folder else relative
 
 
 def _download_file(
@@ -332,3 +389,13 @@ def _download_file(
 
 def _directory_size(path: Path) -> int:
     return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+
+
+def _download_moonshine_model(language: str, cache_root: Path) -> tuple[str, Any]:
+    try:
+        from moonshine_voice import get_model_for_language  # type: ignore[import-not-found]
+    except ImportError as error:
+        raise RuntimeError(
+            "Moonshine support is not installed. Install localflow-gateway[engines]."
+        ) from error
+    return cast(tuple[str, Any], get_model_for_language(language, cache_root=cache_root))

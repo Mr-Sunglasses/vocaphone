@@ -3,9 +3,10 @@
 ## Data flow
 
 The containing iPhone app records only after an explicit Start action. It keeps
-recoverable audio in the App Group container, sends it to the user's
-bearer-authenticated Mac gateway through tailnet-only HTTPS, and deletes the
-iPhone copy after a transcript is safely stored.
+recoverable audio in the App Group container, sends it to the configured
+bearer-authenticated gateway over HTTP or HTTPS, and deletes the iPhone copy
+after a transcript is safely stored. HTTPS or an encrypted private network is
+recommended so the recording and token are protected in transit.
 
 When Quick Dictation is enabled, the containing app may keep microphone input
 active for up to 10 minutes so later keyboard actions do not need another app
@@ -14,8 +15,8 @@ captured while waiting are discarded in memory: they are not written to disk,
 placed in shared state, or uploaded. Only audio after an explicit Dictate action
 is saved for transcription. The user can turn Quick Dictation off in the app.
 
-The Mac stores randomized audio names under its private data directory. On
-success, original and normalized audio are deleted by default. Failed and
+The gateway host stores randomized audio names under its private data directory.
+On success, original and normalized audio are deleted by default. Failed and
 abandoned sessions remain for the retry window (24 hours by default), after
 which `localflow-cleanup` removes them. SQLite stores lifecycle metadata and the
 result needed for idempotent retry.
@@ -31,14 +32,40 @@ result needed for idempotent retry.
 - Opaque file references and canonical server-owned paths
 - No analytics or third-party transcription
 - No ordinary logging of audio, transcripts, tokens, or private endpoint values
-- In-memory operational metrics contain only counts, timings, queue activity, and
-  process uptime; they reset on restart and include no transcript or session data
+- In-memory operational metrics contain only counts, queue activity, stage
+  timings, real-time factor, peak process memory, and process uptime; they reset
+  on restart and include no transcript or session data
 - Docker Compose mounts the bearer token as a secret instead of a container
   environment variable; `/data` is the only persistent application volume
 
 The Compose source token is normally stored in the host-only `server/.env` file
 before Docker mounts it at `/run/secrets/localflow_token`. Keep that file at mode
 `600`, exclude it from backups shared with other people, and never commit it.
+
+Moonshine streaming uses the same bearer token and configured HTTP/HTTPS host as
+the batch API (`ws://` on trusted HTTP networks, `wss://` with HTTPS). The iPhone
+continues writing the bounded WAV while streaming so a socket interruption can
+fall back without losing the dictation. Partial transcripts are not persisted by
+the gateway or written to ordinary logs.
+
+On Apple silicon, the managed WhisperKit service binds to a random
+`127.0.0.1` port and is never published to the LAN or tailnet. Only the
+authenticated Local Flow gateway is externally reachable; the sidecar receives
+the already-local normalized WAV and does not add a cloud hop.
+
+## Network transport choices
+
+Tailscale is recommended but not required. The iPhone app accepts both HTTP and
+HTTPS gateway URLs so it can reach a local hostname, another private VPN, or a
+VPS. The bearer token authenticates requests but does not encrypt them.
+
+- Use HTTP only on a trusted private LAN or encrypted VPN. Anyone able to inspect
+  that traffic could read the bearer token and uploaded recording.
+- Use HTTPS with a valid trusted certificate for a VPS, public DNS name, or any
+  untrusted network.
+- Never expose the gateway's plain HTTP port directly to the public internet.
+- A self-signed HTTPS certificate must be explicitly trusted by iOS; a publicly
+  trusted certificate is simpler and safer for a VPS.
 
 ## Full Access
 

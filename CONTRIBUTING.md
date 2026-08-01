@@ -17,7 +17,7 @@ Run the gateway checks:
 
 ```sh
 cd server
-uv sync --all-groups
+uv sync --all-groups --extra engines
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy app

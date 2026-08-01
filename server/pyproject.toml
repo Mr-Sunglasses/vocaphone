@@ -10,6 +10,12 @@ dependencies = [
   "uvicorn[standard]>=0.35,<1",
 ]
 
+[project.optional-dependencies]
+engines = [
+  "faster-whisper>=1.2,<2",
+  "moonshine-voice>=0.1,<0.2",
+]
+
 [project.scripts]
 localflow-server = "app.cli:serve"
 localflow-status = "app.cli:status"

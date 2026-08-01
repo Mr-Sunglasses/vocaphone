@@ -76,6 +76,11 @@ class SystemStatus(BaseModel):
     chip: str
     ram_gb: float
     is_apple_silicon: bool
+    logical_cpus: int
+    effective_cpus: float
+    containerized: bool
+    accelerators: list[str]
+    cpu_features: list[str]
 
 
 class EngineStatus(BaseModel):
@@ -109,6 +114,12 @@ class OperationalMetricsStatus(BaseModel):
     rejected_transcriptions: int
     average_latency_ms: int | None
     last_latency_ms: int | None
+    normalization_ms: int | None = None
+    model_load_ms: int | None = None
+    inference_ms: int | None = None
+    audio_duration_ms: int | None = None
+    real_time_factor: float | None = None
+    peak_memory_mb: float | None = None
 
 
 class ReadinessStatus(BaseModel):
@@ -166,12 +177,20 @@ class ConfigResponse(BaseModel):
     available_engines: list[str]
     whisper_model: str | None = None
     whisperkit_model: str | None = None
+    faster_whisper_model: str | None = None
+    moonshine_language: str = "en"
+    compute_device: str = "auto"
+    compute_type: str = "auto"
+    cpu_threads: int = 0
 
 
 class ConfigUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    engine: Literal["auto", "handy", "whisper.cpp", "whisperkit"]
+    engine: Literal["auto", "handy", "whisper.cpp", "whisperkit", "faster-whisper", "moonshine"]
+    compute_device: Literal["auto", "cpu", "cuda"] = "auto"
+    compute_type: Literal["auto", "int8", "int8_float16", "float16", "float32"] = "auto"
+    cpu_threads: int = Field(default=0, ge=0, le=256)
 
 
 class SelectModelResponse(BaseModel):
@@ -182,6 +201,12 @@ class TestTranscriptionResponse(BaseModel):
     transcript: str
     engine: str
     duration_ms: int
+    normalization_ms: int
+    model_load_ms: int
+    inference_ms: int
+    audio_duration_ms: int
+    real_time_factor: float | None
+    peak_memory_mb: float | None
 
 
 class ErrorDetail(BaseModel):

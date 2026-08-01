@@ -1,14 +1,12 @@
 # syntax=docker/dockerfile:1.7
 
 ARG WHISPER_CPP_VERSION=v1.9.1
-ARG GGML_NATIVE=OFF
 
-FROM debian:bookworm-slim AS whisper-builder
+FROM ubuntu:24.04 AS whisper-builder
 ARG WHISPER_CPP_VERSION
-ARG GGML_NATIVE
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
-      build-essential ca-certificates cmake curl libopenblas-dev pkg-config \
+      build-essential ca-certificates cmake curl glslc libvulkan-dev spirv-headers \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 RUN curl --fail --location --show-error \
@@ -16,25 +14,24 @@ RUN curl --fail --location --show-error \
       | tar --extract --gzip --strip-components=1
 RUN cmake -S . -B build \
       -DCMAKE_BUILD_TYPE=Release \
-      -DGGML_NATIVE=${GGML_NATIVE} \
-      -DGGML_BLAS=ON \
-      -DGGML_BLAS_VENDOR=OpenBLAS \
+      -DGGML_VULKAN=ON \
       -DWHISPER_BUILD_TESTS=OFF \
       -DWHISPER_BUILD_EXAMPLES=ON \
     && cmake --build build --config Release --target whisper-cli --parallel
 
 FROM ghcr.io/astral-sh/uv:0.8.0 AS uv
 
-FROM python:3.12-slim-bookworm AS runtime
+FROM ubuntu:24.04 AS runtime
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
-      ca-certificates ffmpeg libgomp1 libopenblas0-pthread libportaudio2 \
-    && rm -rf /var/lib/apt/lists/*
+      ca-certificates ffmpeg libgomp1 libportaudio2 libvulkan1 mesa-vulkan-drivers \
+      python3.12 python3.12-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/python3.12 /usr/local/bin/python
 COPY --from=uv /uv /uvx /bin/
 COPY --from=whisper-builder /src/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY --from=whisper-builder /src/build/bin/*.so* /usr/local/lib/
 RUN ldconfig
-
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --extra engines --no-install-project
@@ -45,7 +42,6 @@ RUN uv sync --frozen --no-dev --extra engines \
       --home-dir /app --shell /usr/sbin/nologin localflow \
     && mkdir --parents /data \
     && chown --recursive localflow:localflow /data /app
-
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     LOCALFLOW_BIND_HOST=0.0.0.0 \
@@ -56,10 +52,9 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     LOCALFLOW_TOKEN_FILE=/run/secrets/localflow_token \
     LOCALFLOW_WHISPER_BINARY=/usr/local/bin/whisper-cli \
     LOCALFLOW_ENGINE=auto
-
 USER localflow
 EXPOSE 8765
 VOLUME ["/data"]
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health/live', timeout=3)"]
 ENTRYPOINT ["localflow-server"]

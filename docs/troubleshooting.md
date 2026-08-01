@@ -70,8 +70,39 @@ uv run localflow-status
 With `LOCALFLOW_ENGINE=whisper.cpp`, also check
 `$LOCALFLOW_WHISPER_BINARY` and `$LOCALFLOW_WHISPER_MODEL`.
 
-For Docker, open the Models tab and download/select a `whisper.cpp` model. The
-container cannot run WhisperKit folders or Handy's ONNX-only model families.
+For Docker, open Models and download/select `faster-whisper Base EN` (English)
+or Base (multilingual). In Settings choose CPU + INT8. The container cannot run
+WhisperKit folders or Handy's ONNX-only model families.
+
+## Native Apple silicon transcription is slow
+
+Overview should report `Metal/Core ML`, and the active model should start with
+`whisperkit:`. Current WhisperKit builds stay resident behind a random
+loopback-only service; after gateway startup, `ps` should show a
+`whisperkit-cli serve` child process. Restart the gateway after upgrading
+WhisperKit so warmup can start the service. If `serve` is unavailable, Local
+Flow deliberately falls back to the slower compatible one-shot CLI.
+
+Use the Test tab's three-run benchmark. It reports warm runs 2 and 3 separately
+from the first model-load run. If normalization is small but inference is slow,
+try a smaller WhisperKit model before changing network or iPhone settings.
+
+## Linux transcription is still slow
+
+Use the Test tab's three-run benchmark, which reports the warm second/third run.
+Model load should be zero after the first persistent-engine request. Check:
+
+- the active engine is `faster-whisper`, not the per-request `whisper.cpp` CLI
+- Precision is INT8 and CPU threads is 0 or no higher than the effective CPU
+  allocation shown on Overview
+- the container has not been assigned a fractional CPU quota
+- Tiny/Base is used before Small/Medium on low-power servers
+- for capable hardware, the `native`, `cuda`, or `vulkan` Compose profile is
+  running instead of the portable default
+
+Do not run multiple profile services together: they share port 8765 and the
+model volume. Moonshine is another fast English option, but its live stream is
+experimental and automatically falls back to batch transcription.
 
 ## Docker service does not start
 
@@ -91,13 +122,32 @@ not ready until a model is selected; the Docker healthcheck measures liveness.
 If port 8765 is already in use, change `LOCALFLOW_PUBLISH_PORT` in `.env` and
 recreate the service. Tailscale Serve must then point to that same host port.
 
-## Mac unavailable
+## Gateway unavailable
 
-Check that the Mac is awake, Tailscale is connected, Serve is active, and the
-gateway process is running. The recording should remain on the iPhone for Retry.
+Check that the gateway host is awake, reachable, and running. For a Tailscale
+deployment, also confirm Tailscale is connected and Serve is active. The
+recording should remain on the iPhone for Retry.
 
 For a container deployment, also check `docker compose ps` from `server/` and
 confirm the `localflow_localflow-data` volume is still mounted.
+
+## A LAN hostname such as homelabone does not connect
+
+Confirm the app URL includes the scheme and port, for example
+`http://homelabone:8765/`, and approve Local Network access in iOS Settings.
+Then verify the hostname from another LAN device and check that the gateway is
+actually listening beyond loopback.
+
+For Docker, `LOCALFLOW_PUBLISH_HOST` must be `0.0.0.0` rather than the secure
+loopback default. Recreate the service after changing `server/.env`:
+
+```sh
+cd server
+docker compose up --detach
+```
+
+Keep the host firewall enabled. Do not use this LAN configuration to expose port
+8765 directly to the internet; use an HTTPS reverse proxy for a VPS.
 
 ## 401 unauthorized
 

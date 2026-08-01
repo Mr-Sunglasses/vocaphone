@@ -133,7 +133,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 24px 60px; }
 .probe-age { color: var(--muted); font-size: 0.76rem; white-space: nowrap; }
 .operations-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 .metric-card {
@@ -383,6 +383,14 @@ input, select {
   border-radius: 8px;
   padding: 8px 12px;
 }
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 8px;
+}
+.settings-grid label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.settings-grid input, .settings-grid select { width: 100%; color: var(--text); }
 input:focus, select:focus { border-color: var(--accent); }
 .row { display: flex; gap: 10px; align-items: center; margin: 10px 0; }
 .row input { flex: 1; }
@@ -408,6 +416,17 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .result p { margin: 6px 0; }
 #test-transcript { font-size: 17px; }
+.benchmark-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid var(--panel-border);
+  margin-top: 14px;
+  padding-top: 14px;
+}
+.benchmark-grid div { display: grid; gap: 2px; }
+.benchmark-grid span { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.benchmark-grid strong { font-variant-numeric: tabular-nums; }
 .result-header { display: flex; align-items: center; justify-content: space-between; }
 .result-header h3 { margin: 0; }
 .record-timer {
@@ -479,6 +498,7 @@ input:focus, select:focus { border-color: var(--accent); }
   .connection-facts { min-width: 0; width: 100%; }
   .callout { flex-direction: column; gap: 4px; }
   .row { align-items: stretch; flex-direction: column; }
+  .settings-grid, .benchmark-grid { grid-template-columns: 1fr 1fr; }
   .row button, .row select { width: 100%; }
 }
 

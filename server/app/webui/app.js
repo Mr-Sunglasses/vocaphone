@@ -253,19 +253,41 @@
       const blob = new Blob(chunks, { type: mimeType.split(";")[0] });
       try {
         const language = document.getElementById("test-language").value;
-        const response = await fetch(`/v1/admin/test-transcription?language=${language}`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${getToken()}`,
-            "Content-Type": blob.type,
-          },
-          body: blob,
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error?.message || "Transcription failed.");
+        const runs = Number(document.getElementById("test-runs").value) || 1;
+        const payloads = [];
+        for (let run = 0; run < runs; run += 1) {
+          status.textContent = runs > 1 ? `Benchmarking… run ${run + 1} of ${runs}` : "Transcribing…";
+          const response = await fetch(`/v1/admin/test-transcription?language=${language}`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${getToken()}`,
+              "Content-Type": blob.type,
+            },
+            body: blob,
+          });
+          const payload = await response.json();
+          if (!response.ok) throw new Error(payload.error?.message || "Transcription failed.");
+          payloads.push(payload);
+        }
+        const payload = payloads[payloads.length - 1];
+        const measuredPayloads = payloads.length > 1 ? payloads.slice(1) : payloads;
+        const average = (field) => measuredPayloads.reduce(
+          (sum, item) => sum + (item[field] || 0), 0,
+        ) / measuredPayloads.length;
+        const formatMs = (value) => value >= 1000 ? `${(value / 1000).toFixed(2)}s` : `${Math.round(value)}ms`;
         document.getElementById("test-transcript").textContent = payload.transcript;
         document.getElementById("test-meta").textContent =
-          `${payload.engine} · ${(payload.duration_ms / 1000).toFixed(1)}s`;
+          runs > 1
+            ? `${payload.engine} · warm average of runs 2–${runs}; model load is run 1`
+            : `${payload.engine} · 1-run result`;
+        document.getElementById("benchmark-total").textContent = formatMs(average("duration_ms"));
+        document.getElementById("benchmark-normalize").textContent = formatMs(average("normalization_ms"));
+        document.getElementById("benchmark-load").textContent = formatMs(payloads[0].model_load_ms);
+        document.getElementById("benchmark-inference").textContent = formatMs(average("inference_ms"));
+        document.getElementById("benchmark-rtf").textContent =
+          payload.real_time_factor == null ? "—" : `${average("real_time_factor").toFixed(2)}×`;
+        document.getElementById("benchmark-memory").textContent =
+          payload.peak_memory_mb == null ? "—" : `${Math.max(...payloads.map((item) => item.peak_memory_mb || 0)).toFixed(0)} MB`;
         result.classList.remove("hidden");
         errorBox.classList.add("hidden");
         status.textContent = "";

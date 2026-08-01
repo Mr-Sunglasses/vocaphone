@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-VALID_ENGINES = ("auto", "handy", "whisper.cpp", "whisperkit")
+VALID_ENGINES = ("auto", "handy", "whisper.cpp", "whisperkit", "faster-whisper", "moonshine")
 
 
 @dataclass(slots=True)
@@ -17,6 +17,11 @@ class RuntimeConfig:
     engine: str = "auto"
     whisper_model: str | None = None
     whisperkit_model: str | None = None
+    faster_whisper_model: str | None = None
+    moonshine_language: str = "en"
+    compute_device: str = "auto"
+    compute_type: str = "auto"
+    cpu_threads: int = 0
 
     @classmethod
     def load(cls, path: Path) -> RuntimeConfig:
@@ -27,10 +32,30 @@ class RuntimeConfig:
         engine = payload.get("engine")
         whisper_model = payload.get("whisper_model")
         whisperkit_model = payload.get("whisperkit_model")
+        faster_whisper_model = payload.get("faster_whisper_model")
+        moonshine_language = payload.get("moonshine_language")
+        compute_device = payload.get("compute_device")
+        compute_type = payload.get("compute_type")
+        cpu_threads = payload.get("cpu_threads")
         return cls(
             engine=engine if engine in VALID_ENGINES else "auto",
             whisper_model=whisper_model if isinstance(whisper_model, str) else None,
             whisperkit_model=whisperkit_model if isinstance(whisperkit_model, str) else None,
+            faster_whisper_model=(
+                faster_whisper_model if isinstance(faster_whisper_model, str) else None
+            ),
+            moonshine_language=(
+                moonshine_language if isinstance(moonshine_language, str) else "en"
+            ),
+            compute_device=compute_device if compute_device in {"auto", "cpu", "cuda"} else "auto",
+            compute_type=(
+                compute_type
+                if compute_type in {"auto", "int8", "int8_float16", "float16", "float32"}
+                else "auto"
+            ),
+            cpu_threads=(
+                cpu_threads if isinstance(cpu_threads, int) and 0 <= cpu_threads <= 256 else 0
+            ),
         )
 
     def save(self, path: Path) -> None:
@@ -39,6 +64,11 @@ class RuntimeConfig:
             "engine": self.engine,
             "whisper_model": self.whisper_model,
             "whisperkit_model": self.whisperkit_model,
+            "faster_whisper_model": self.faster_whisper_model,
+            "moonshine_language": self.moonshine_language,
+            "compute_device": self.compute_device,
+            "compute_type": self.compute_type,
+            "cpu_threads": self.cpu_threads,
         }
         descriptor, temporary_name = tempfile.mkstemp(
             dir=path.parent, prefix=".config-", suffix=".tmp"

@@ -39,6 +39,20 @@ TINY_FOLDER = CatalogModel(
     huggingface_folder="openai_whisper-tiny",
 )
 
+TINY_CTRANSLATE = CatalogModel(
+    id="faster-whisper:tiny.en",
+    engine="faster-whisper",
+    key="tiny.en",
+    label="Test faster-whisper Tiny EN",
+    size_bytes=30,
+    languages="English only",
+    quality="Fastest",
+    minimum_ram_gb=2,
+    huggingface_repo="example/faster-repo",
+    huggingface_folder="",
+    marker_file="model.bin",
+)
+
 
 def test_catalog_includes_standalone_handy_compatible_models() -> None:
     entries = {model.key: model for model in DEFAULT_CATALOG}
@@ -46,6 +60,19 @@ def test_catalog_includes_standalone_handy_compatible_models() -> None:
     assert entries["whisper-medium-q4_1.bin"].engine == "whisper.cpp"
     assert entries["ggml-large-v3-q5_0.bin"].source == "Handy-compatible"
     assert entries["breeze-asr-q5_k.bin"].family == "Breeze ASR"
+
+
+def test_distilled_faster_whisper_uses_published_repository_names() -> None:
+    entries = {model.id: model for model in DEFAULT_CATALOG}
+
+    assert (
+        entries["faster-whisper:distil-small.en"].huggingface_repo
+        == "Systran/faster-distil-whisper-small.en"
+    )
+    assert (
+        entries["faster-whisper:distil-medium.en"].huggingface_repo
+        == "Systran/faster-distil-whisper-medium.en"
+    )
 
 
 @pytest.fixture
@@ -57,7 +84,9 @@ def tiny_file_model(tmp_path: Path) -> CatalogModel:
 
 @pytest.fixture
 def manager(tmp_path: Path, tiny_file_model: CatalogModel) -> ModelManager:
-    return ModelManager(tmp_path / "models", catalog=(tiny_file_model, TINY_FOLDER))
+    return ModelManager(
+        tmp_path / "models", catalog=(tiny_file_model, TINY_FOLDER, TINY_CTRANSLATE)
+    )
 
 
 def test_installed_scans_both_engines(manager: ModelManager) -> None:
@@ -131,6 +160,30 @@ async def test_whisperkit_folder_download(
     assert (installed / "config.json").is_file()
     assert (installed / "AudioEncoder.mlmodelc" / "model.mil").is_file()
     assert not (manager.models_dir / "whisperkit" / "openai_whisper-tiny.partial").exists()
+
+
+async def test_root_huggingface_folder_download(
+    manager: ModelManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mirror = tmp_path / "mirror"
+    folder = mirror / "example/faster-repo/resolve/main"
+    folder.mkdir(parents=True)
+    (folder / "config.json").write_text("{}")
+    (folder / "model.bin").write_bytes(b"model")
+    monkeypatch.setattr(model_manager, "HF_BASE_URL", mirror.as_uri())
+    monkeypatch.setattr(
+        model_manager,
+        "_list_repo_folder",
+        lambda repo, name: [("config.json", 2), ("model.bin", 5)],
+    )
+
+    state = manager.start_download("faster-whisper:tiny.en")
+    await asyncio.wait_for(_wait_finished(manager, "faster-whisper:tiny.en"), timeout=5)
+
+    assert state.status == "completed"
+    installed = manager.installed_path("faster-whisper:tiny.en")
+    assert installed is not None
+    assert (installed / "model.bin").read_bytes() == b"model"
 
 
 async def test_custom_download_validates_url(manager: ModelManager) -> None:

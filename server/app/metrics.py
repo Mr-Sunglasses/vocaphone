@@ -6,6 +6,18 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True, slots=True)
+class PipelineTiming:
+    total_ms: int
+    normalization_ms: int
+    model_load_ms: int
+    inference_ms: int
+    audio_duration_ms: int
+    real_time_factor: float | None
+    engine: str
+    peak_memory_mb: float | None
+
+
+@dataclass(frozen=True, slots=True)
 class MetricsSnapshot:
     uptime_seconds: int
     queue_depth: int
@@ -16,6 +28,7 @@ class MetricsSnapshot:
     rejected_transcriptions: int
     average_latency_ms: int | None
     last_latency_ms: int | None
+    last_pipeline: PipelineTiming | None
 
 
 class RuntimeMetrics:
@@ -32,6 +45,7 @@ class RuntimeMetrics:
         self._rejected_transcriptions = 0
         self._total_latency_ms = 0
         self._last_latency_ms: int | None = None
+        self._last_pipeline: PipelineTiming | None = None
 
     def queued(self) -> None:
         with self._lock:
@@ -51,10 +65,11 @@ class RuntimeMetrics:
         with self._lock:
             self._queue_depth = max(0, self._queue_depth - 1)
 
-    def succeeded(self, latency_ms: int) -> None:
+    def succeeded(self, latency_ms: int, timing: PipelineTiming | None = None) -> None:
         with self._lock:
             self._successful_transcriptions += 1
             self._record_latency(latency_ms)
+            self._last_pipeline = timing
 
     def failed(self, latency_ms: int) -> None:
         with self._lock:
@@ -79,6 +94,7 @@ class RuntimeMetrics:
                 rejected_transcriptions=self._rejected_transcriptions,
                 average_latency_ms=average,
                 last_latency_ms=self._last_latency_ms,
+                last_pipeline=self._last_pipeline,
             )
 
     def _record_latency(self, latency_ms: int) -> None:

@@ -17,10 +17,19 @@ class TranscriptionOptions:
     style: str
 
 
+@dataclass(frozen=True, slots=True)
+class EngineTranscription:
+    text: str
+    model_load_ms: int = 0
+    inference_ms: int = 0
+
+
 class TranscriptionEngine(Protocol):
     async def health(self) -> EngineHealth: ...
 
-    async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str: ...
+    async def transcribe(
+        self, audio_path: Path, options: TranscriptionOptions
+    ) -> str | EngineTranscription: ...
 
 
 class AudioNormalizer(Protocol):

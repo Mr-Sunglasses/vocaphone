@@ -1,20 +1,42 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import secrets
 import shutil
+import socket
+import subprocess
+import time
+import urllib.error
+import urllib.request
+from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from app.errors import EngineUnavailableError, TranscriptionProcessError
-from app.models.base import EngineHealth, TranscriptionOptions
-from app.models.warmup import prefetch_model_paths
+from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
+
+
+@dataclass(slots=True)
+class _WhisperKitServer:
+    process: subprocess.Popen[bytes]
+    port: int
+
+
+class _PersistentServerUnavailable(Exception):
+    """The installed CLI cannot start or reach its persistent local server."""
 
 
 class WhisperKitEngine:
-    """Adapter for the WhisperKit command line tool (`brew install whisperkit-cli`)."""
+    """Persistent Apple-silicon WhisperKit adapter with a legacy CLI fallback."""
 
     def __init__(self, binary: str, model_path: Path | None) -> None:
         self.binary = binary
         self.model_path = model_path
+        self._server: _WhisperKitServer | None = None
+        self._load_lock = asyncio.Lock()
+        self._inference_lock = asyncio.Lock()
 
     async def health(self) -> EngineHealth:
         resolved = self._resolved_binary()
@@ -26,11 +48,18 @@ class WhisperKitEngine:
         )
 
     async def warmup(self) -> int:
-        if self.model_path is None or not (await self.health()).ready:
+        if not (await self.health()).ready or self.model_path is None:
             return 0
-        return await asyncio.to_thread(prefetch_model_paths, [self.model_path])
+        try:
+            await self._ensure_server()
+        except _PersistentServerUnavailable:
+            # Older WhisperKit CLIs remain usable through the one-shot fallback.
+            return 0
+        return _directory_size(self.model_path)
 
-    async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
+    async def transcribe(
+        self, audio_path: Path, options: TranscriptionOptions
+    ) -> EngineTranscription:
         resolved = self._resolved_binary()
         health = await self.health()
         if resolved is None or not health.ready or self.model_path is None:
@@ -38,6 +67,78 @@ class WhisperKitEngine:
                 "The WhisperKit CLI or the selected model is unavailable. "
                 "Install it with `brew install whisperkit-cli` and download a model."
             )
+
+        async with self._inference_lock:
+            load_started = time.monotonic()
+            try:
+                server, loaded_now = await self._ensure_server()
+            except _PersistentServerUnavailable:
+                return await self._transcribe_with_cli(resolved, audio_path, options)
+            model_load_ms = _elapsed_ms(load_started) if loaded_now else 0
+
+            for attempt in range(2):
+                inference_started = time.monotonic()
+                try:
+                    transcript = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            _server_transcription,
+                            server,
+                            self.model_path,
+                            audio_path,
+                            options.language,
+                        ),
+                        timeout=180,
+                    )
+                except TimeoutError as error:
+                    raise TranscriptionProcessError(
+                        "WhisperKit transcription timed out."
+                    ) from error
+                except _PersistentServerUnavailable:
+                    await asyncio.to_thread(self._discard_server, server)
+                    if attempt == 0:
+                        try:
+                            reload_started = time.monotonic()
+                            server, reloaded = await self._ensure_server()
+                            if reloaded:
+                                model_load_ms += _elapsed_ms(reload_started)
+                            continue
+                        except _PersistentServerUnavailable:
+                            pass
+                    return await self._transcribe_with_cli(resolved, audio_path, options)
+                if not transcript:
+                    raise TranscriptionProcessError("WhisperKit returned an empty transcript.")
+                return EngineTranscription(
+                    text=transcript,
+                    model_load_ms=model_load_ms,
+                    inference_ms=_elapsed_ms(inference_started),
+                )
+
+        raise TranscriptionProcessError("WhisperKit transcription failed.")
+
+    async def _ensure_server(self) -> tuple[_WhisperKitServer, bool]:
+        if self._server is not None and self._server.process.poll() is None:
+            return self._server, False
+        async with self._load_lock:
+            if self._server is not None and self._server.process.poll() is None:
+                return self._server, False
+            self.close()
+            resolved = self._resolved_binary()
+            if resolved is None or self.model_path is None:
+                raise _PersistentServerUnavailable("WhisperKit is unavailable.")
+            self._server = await asyncio.to_thread(
+                _start_server,
+                resolved,
+                self.model_path,
+            )
+            return self._server, True
+
+    async def _transcribe_with_cli(
+        self,
+        resolved: str,
+        audio_path: Path,
+        options: TranscriptionOptions,
+    ) -> EngineTranscription:
+        inference_started = time.monotonic()
         arguments = [
             resolved,
             "transcribe",
@@ -66,7 +167,26 @@ class WhisperKitEngine:
         transcript = _extract_transcript(stdout.decode("utf-8", errors="replace"))
         if not transcript:
             raise TranscriptionProcessError("WhisperKit returned an empty transcript.")
-        return transcript
+        return EngineTranscription(
+            text=transcript,
+            inference_ms=_elapsed_ms(inference_started),
+        )
+
+    def close(self) -> None:
+        server = self._server
+        self._server = None
+        if server is None or server.process.poll() is not None:
+            return
+        server.process.terminate()
+        try:
+            server.process.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            server.process.kill()
+            server.process.wait(timeout=3)
+
+    def _discard_server(self, server: _WhisperKitServer) -> None:
+        if self._server is server:
+            self.close()
 
     def _resolved_binary(self) -> str | None:
         candidate = Path(self.binary).expanduser()
@@ -74,9 +194,131 @@ class WhisperKitEngine:
             return str(candidate)
         return shutil.which(self.binary)
 
+    def __del__(self) -> None:
+        with suppress(Exception):
+            self.close()
+
+
+def _start_server(binary: str, model_path: Path) -> _WhisperKitServer:
+    port = _available_loopback_port()
+    process = subprocess.Popen(
+        [
+            binary,
+            "serve",
+            "--model-path",
+            str(model_path),
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    server = _WhisperKitServer(process=process, port=port)
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise _PersistentServerUnavailable(
+                "The installed WhisperKit CLI does not support persistent serving."
+            )
+        try:
+            with urllib.request.urlopen(_health_url(server), timeout=1) as response:
+                if response.status == 200:
+                    return server
+        except (OSError, urllib.error.URLError):
+            time.sleep(0.1)
+    process.terminate()
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        process.kill()
+    raise _PersistentServerUnavailable("WhisperKit's local server did not become ready.")
+
+
+def _server_transcription(
+    server: _WhisperKitServer,
+    model_path: Path,
+    audio_path: Path,
+    language: str,
+) -> str:
+    if server.process.poll() is not None:
+        raise _PersistentServerUnavailable("WhisperKit's local server stopped.")
+    boundary = f"localflow-{secrets.token_hex(12)}"
+    fields = [("model", model_path.name)]
+    if language != "auto":
+        fields.append(("language", language))
+    body = _multipart_body(boundary, fields, audio_path)
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{server.port}/v1/audio/transcriptions",
+        data=body,
+        method="POST",
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response:
+            payload: dict[str, Any] = json.load(response)
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="replace")[-240:]
+        raise TranscriptionProcessError(
+            f"WhisperKit server rejected the audio: {detail or error.reason}"
+        ) from error
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        raise TranscriptionProcessError("WhisperKit returned invalid JSON.") from error
+    except (OSError, urllib.error.URLError) as error:
+        raise _PersistentServerUnavailable("WhisperKit's local server is unreachable.") from error
+    transcript = payload.get("text") if isinstance(payload, dict) else None
+    if not isinstance(transcript, str):
+        raise TranscriptionProcessError("WhisperKit returned an invalid server response.")
+    return transcript.strip()
+
+
+def _multipart_body(
+    boundary: str,
+    fields: list[tuple[str, str]],
+    audio_path: Path,
+) -> bytes:
+    chunks: list[bytes] = []
+    for name, value in fields:
+        chunks.append(
+            (
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'
+            ).encode()
+        )
+    safe_name = audio_path.name.replace('"', "")
+    chunks.append(
+        (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="{safe_name}"\r\n'
+            "Content-Type: audio/wav\r\n\r\n"
+        ).encode()
+    )
+    chunks.append(audio_path.read_bytes())
+    chunks.append(f"\r\n--{boundary}--\r\n".encode())
+    return b"".join(chunks)
+
+
+def _health_url(server: _WhisperKitServer) -> str:
+    return f"http://127.0.0.1:{server.port}/health"
+
+
+def _available_loopback_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        return int(listener.getsockname()[1])
+
 
 def _extract_transcript(output: str) -> str:
-    """The CLI prints the transcript on stdout, possibly alongside log lines."""
+    """The legacy CLI prints the transcript on stdout, possibly with log lines."""
     lines = [line.strip() for line in output.strip().splitlines()]
     text_lines = [line for line in lines if line and not line.startswith("[")]
     return " ".join(text_lines).strip()
+
+
+def _directory_size(path: Path) -> int:
+    return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.monotonic() - started) * 1000))

@@ -18,6 +18,8 @@ ENGINE_LABELS = {
     "handy": "Handy app",
     "whisper.cpp": "whisper.cpp",
     "whisperkit": "WhisperKit",
+    "faster-whisper": "faster-whisper",
+    "moonshine": "Moonshine (experimental)",
 }
 
 ENGINE_HINTS = {
@@ -25,6 +27,8 @@ ENGINE_HINTS = {
     "handy": "Reuses the Handy app and its downloaded models. No download needed.",
     "whisper.cpp": "Runs local GGML models with the whisper-cli binary.",
     "whisperkit": "Runs Core ML models with whisperkit-cli on Apple Silicon Macs.",
+    "faster-whisper": "Keeps a CTranslate2 model loaded; CPU INT8 is the Linux default.",
+    "moonshine": "Low-latency English transcription with an experimental streaming path.",
 }
 
 
@@ -86,7 +90,15 @@ def overview_fragment(status: AdminStatusResponse) -> str:
     facts = _facts(
         [
             ("Chip", status.system.chip),
+            (
+                "CPU allocation",
+                f"{status.system.effective_cpus:g} effective / "
+                f"{status.system.logical_cpus} logical",
+            ),
             ("Memory", f"{status.system.ram_gb:g} GB"),
+            ("Accelerators", ", ".join(status.system.accelerators)),
+            ("CPU features", ", ".join(status.system.cpu_features) or "standard"),
+            ("Runtime", "container" if status.system.containerized else "host"),
             ("OS", f"{status.system.os} ({status.system.arch})"),
             ("Version", status.version),
         ]
@@ -180,7 +192,7 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
         "warming": ("Warming", "The selected model is being primed."),
         "complete": (
             "Warm",
-            f"{_format_bytes(readiness.warmed_bytes)} primed in the OS cache.",
+            f"{_format_bytes(readiness.warmed_bytes)} of model data prepared.",
         ),
         "unsupported": ("Ready", "This engine does not expose model prefetching."),
         "unavailable": ("Waiting", "Install or select a model to warm it."),
@@ -209,6 +221,22 @@ def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessS
             ),
             _metric_card("Average latency", average_latency, f"Last {last_latency}"),
             _metric_card("Model cache", warmup_label, warmup_detail, readiness.warmup_state),
+            _metric_card(
+                "Last inference",
+                _format_latency(metrics.inference_ms),
+                f"Normalize {_format_latency(metrics.normalization_ms)} · "
+                f"load {_format_latency(metrics.model_load_ms)}",
+            ),
+            _metric_card(
+                "Real-time factor",
+                f"{metrics.real_time_factor:.2f}×" if metrics.real_time_factor is not None else "—",
+                (
+                    f"{_format_latency(metrics.audio_duration_ms)} audio · "
+                    f"{metrics.peak_memory_mb:g} MB peak"
+                    if metrics.peak_memory_mb is not None
+                    else "Run a test to measure"
+                ),
+            ),
         ]
     )
     return f"""
@@ -385,6 +413,20 @@ def settings_fragment(
     facts = _facts(paths)
     listener = escape(format_host_port(bind_host, port))
     local_url = escape(local_webui_url(bind_host, port))
+    device_options = _select_options(
+        [("auto", "Auto"), ("cpu", "CPU"), ("cuda", "NVIDIA CUDA")],
+        config.compute_device,
+    )
+    precision_options = _select_options(
+        [
+            ("auto", "Auto (INT8 CPU / FP16 CUDA)"),
+            ("int8", "INT8"),
+            ("int8_float16", "INT8 + FP16"),
+            ("float16", "FP16"),
+            ("float32", "FP32"),
+        ],
+        config.compute_type,
+    )
     exposure_notice = ""
     if bind_host in WILDCARD_BIND_HOSTS:
         exposure_notice = """
@@ -400,8 +442,29 @@ def settings_fragment(
         <p class="muted">Choose which local engine transcribes incoming audio.
           Selecting a model in the Models tab sets this automatically.</p>
         <form hx-put="/ui/partials/config" hx-target="#engine-result" hx-swap="innerHTML">
-          <div class="row">
+          <div class="settings-grid">
+            <label><span>Engine</span>
             <select name="engine">{options}</select>
+            </label>
+            <label><span>Compute device</span>
+              <select name="compute_device">
+                {device_options}
+              </select>
+            </label>
+            <label><span>Precision</span>
+              <select name="compute_type">
+                {precision_options}
+              </select>
+            </label>
+            <label><span>CPU threads</span>
+              <input name="cpu_threads" type="number" min="0" max="256"
+                     value="{config.cpu_threads}" aria-describedby="threads-hint" />
+            </label>
+          </div>
+          <p id="threads-hint" class="muted small">
+            Use 0 for an automatic, conservative thread count.
+            INT8 is normally fastest on Linux CPUs.</p>
+          <div class="row">
             <button type="submit" class="primary">Apply</button>
           </div>
         </form>
@@ -457,6 +520,10 @@ def test_fragment(maximum_duration_seconds: int) -> str:
             <option value="ja">Japanese</option>
             <option value="zh">Chinese</option>
           </select>
+          <select id="test-runs" aria-label="Benchmark repetitions">
+            <option value="1">1 run</option>
+            <option value="3">3-run benchmark</option>
+          </select>
           <button id="record-toggle" type="button" class="primary">Start recording</button>
           <span id="record-timer" class="record-timer hidden">0:00</span>
         </div>
@@ -468,6 +535,14 @@ def test_fragment(maximum_duration_seconds: int) -> str:
           </div>
           <p id="test-transcript"></p>
           <p id="test-meta" class="muted"></p>
+          <div id="benchmark-metrics" class="benchmark-grid" aria-label="Pipeline benchmark">
+            <div><span>Total</span><strong id="benchmark-total">—</strong></div>
+            <div><span>Normalize</span><strong id="benchmark-normalize">—</strong></div>
+            <div><span>Model load</span><strong id="benchmark-load">—</strong></div>
+            <div><span>Inference</span><strong id="benchmark-inference">—</strong></div>
+            <div><span>RTF</span><strong id="benchmark-rtf">—</strong></div>
+            <div><span>Peak memory</span><strong id="benchmark-memory">—</strong></div>
+          </div>
         </div>
         <p id="test-error" class="error hidden" role="alert"></p>
       </div>
@@ -480,6 +555,14 @@ def error_fragment(message: str) -> str:
 
 def _facts(items: list[tuple[str, str]]) -> str:
     return "".join(f"<dt>{escape(label)}</dt><dd>{escape(value)}</dd>" for label, value in items)
+
+
+def _select_options(items: list[tuple[str, str]], selected: str) -> str:
+    return "".join(
+        f'<option value="{escape(value)}"{" selected" if value == selected else ""}>'
+        f"{escape(label)}</option>"
+        for value, label in items
+    )
 
 
 def _format_bytes(size: int) -> str:

@@ -2,14 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import importlib.util
+import json
+import sys
+import threading
 import time
+from array import array
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Form, Header, Query, Request, Response
+from fastapi import (
+    Depends,
+    FastAPI,
+    Form,
+    Header,
+    Query,
+    Request,
+    Response,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -21,7 +36,13 @@ from app.audio import (
 )
 from app.catalog import recommended_ids
 from app.config import Settings
-from app.engines import EngineManager, EngineProvider, StaticEngineProvider, build_engine
+from app.engines import (
+    EngineManager,
+    EngineProvider,
+    StaticEngineProvider,
+    build_engine,
+    close_engine,
+)
 from app.errors import APIProblem
 from app.fragments import (
     engine_pill_fragment,
@@ -40,6 +61,7 @@ from app.model_manager import (
     UnknownModelError,
 )
 from app.models.base import AudioNormalizer, TranscriptionEngine
+from app.models.moonshine import MoonshineEngine
 from app.readiness import ReadinessMonitor
 from app.runtime_config import RuntimeConfig
 from app.schemas import (
@@ -71,6 +93,7 @@ from app.schemas import (
 from app.service import TranscriptionService
 from app.storage import SessionRepository, StoredSession
 from app.system import detect_system
+from app.text_styles import apply_writing_style
 
 VERSION = "0.2.0"
 WEBUI_DIR = Path(__file__).parent / "webui"
@@ -121,6 +144,7 @@ def create_app(
                 warmup_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await warmup_task
+            await asyncio.to_thread(close_engine, engine_provider.current())
 
     app = FastAPI(
         title="Local Flow Gateway",
@@ -175,6 +199,15 @@ def create_app(
         )
         if not hmac.compare_digest(supplied, configured.token):
             raise APIProblem(401, "unauthorized", "A valid bearer token is required.")
+
+    def token_is_valid(authorization: str | None) -> bool:
+        prefix = "Bearer "
+        supplied = (
+            authorization[len(prefix) :]
+            if authorization and authorization.startswith(prefix)
+            else ""
+        )
+        return hmac.compare_digest(supplied, configured.token)
 
     # ---------------------------------------------------------------- WebUI
 
@@ -313,6 +346,97 @@ def create_app(
             response.status_code = 404
         return DeleteResponse(deleted=deleted)
 
+    @app.websocket("/v1/stream")
+    async def stream_transcription(websocket: WebSocket) -> None:
+        """Experimental float32 PCM stream for a selected Moonshine engine."""
+        if not token_is_valid(websocket.headers.get("authorization")):
+            await websocket.close(code=4401, reason="Unauthorized")
+            return
+        selected_engine = engine_provider.current()
+        if not isinstance(selected_engine, MoonshineEngine):
+            await websocket.close(code=4409, reason="Streaming requires Moonshine")
+            return
+        await websocket.accept()
+        stream: Any | None = None
+        lines: dict[int, str] = {}
+        lines_lock = threading.Lock()
+        sample_rate = 0
+        style = "casual"
+        received_samples = 0
+        try:
+            start = await websocket.receive_json()
+            if start.get("type") != "start":
+                raise ValueError("The first stream message must be start.")
+            sample_rate = int(start.get("sample_rate", 0))
+            if not 8_000 <= sample_rate <= 96_000:
+                raise ValueError("Sample rate must be between 8000 and 96000 Hz.")
+            style = str(start.get("style", "casual"))
+            if style not in {"raw", "clean", "formal", "casual", "very_casual", "excited"}:
+                raise ValueError("Unsupported writing style.")
+            async with selected_engine.streaming_lock:
+                stream = await selected_engine.create_stream()
+
+                def receive_event(event: object) -> None:
+                    line = getattr(event, "line", None)
+                    text_value = getattr(line, "text", "") if line is not None else ""
+                    line_id = getattr(line, "line_id", None) if line is not None else None
+                    if isinstance(line_id, int) and text_value:
+                        with lines_lock:
+                            lines[line_id] = str(text_value).strip()
+
+                await asyncio.to_thread(stream.add_listener, receive_event)
+                await websocket.send_json({"type": "ready", "engine": "moonshine"})
+                while True:
+                    message = await websocket.receive()
+                    if message.get("type") == "websocket.disconnect":
+                        break
+                    chunk = message.get("bytes")
+                    if chunk is not None:
+                        if len(chunk) % 4:
+                            raise ValueError("PCM chunks must contain float32 samples.")
+                        samples = array("f")
+                        samples.frombytes(chunk)
+                        if sys.byteorder != "little":
+                            samples.byteswap()
+                        received_samples += len(samples)
+                        if received_samples > sample_rate * configured.maximum_duration_seconds:
+                            raise ValueError("The stream exceeds the recording duration limit.")
+                        await asyncio.to_thread(stream.add_audio, samples.tolist(), sample_rate)
+                        with lines_lock:
+                            partial = _joined_stream_lines(lines)
+                        if partial:
+                            await websocket.send_json({"type": "partial", "transcript": partial})
+                        continue
+                    text_message = message.get("text")
+                    if text_message:
+                        command = json.loads(text_message)
+                        if command.get("type") == "finish":
+                            final_result = await asyncio.to_thread(stream.stop)
+                            with lines_lock:
+                                for line in getattr(final_result, "lines", []) or []:
+                                    if getattr(line, "text", ""):
+                                        lines[int(line.line_id)] = str(line.text).strip()
+                                transcript = apply_writing_style(_joined_stream_lines(lines), style)
+                            if not transcript:
+                                raise ValueError("Moonshine returned an empty transcript.")
+                            await websocket.send_json(
+                                {"type": "complete", "transcript": transcript}
+                            )
+                            await websocket.close(code=1000)
+                            return
+        except WebSocketDisconnect:
+            pass
+        except Exception as error:  # noqa: BLE001 - sanitized protocol error
+            with suppress(RuntimeError):
+                await websocket.send_json(
+                    {"type": "error", "message": str(error)[-200:] or "Streaming failed."}
+                )
+                await websocket.close(code=1011)
+        finally:
+            if stream is not None:
+                with suppress(Exception):
+                    await asyncio.to_thread(stream.close)
+
     # ------------------------------------------------------------ admin API
 
     def _engine_id() -> str:
@@ -328,7 +452,7 @@ def create_app(
             whisperkit_binary=configured.whisperkit_binary,
             handy_binary=configured.handy_binary,
         )
-        engines = ["auto", "whisper.cpp"]
+        engines = ["auto", "faster-whisper", "moonshine", "whisper.cpp"]
         if system.os_name == "Darwin":
             engines.extend(["handy", "whisperkit"])
         return engines
@@ -362,6 +486,18 @@ def create_app(
                 ),
             ),
             DependencyStatus(
+                name="faster-whisper",
+                available=importlib.util.find_spec("faster_whisper") is not None,
+                path="Python package" if importlib.util.find_spec("faster_whisper") else None,
+                install_hint="Install localflow-gateway[engines] or use the Docker image",
+            ),
+            DependencyStatus(
+                name="Moonshine Voice",
+                available=importlib.util.find_spec("moonshine_voice") is not None,
+                path="Python package" if importlib.util.find_spec("moonshine_voice") else None,
+                install_hint="Install localflow-gateway[engines] or use the Docker image",
+            ),
+            DependencyStatus(
                 name="WhisperKit CLI",
                 available=system.whisperkit_cli_path is not None,
                 path=system.whisperkit_cli_path,
@@ -388,6 +524,11 @@ def create_app(
                 chip=system.chip,
                 ram_gb=system.ram_gb,
                 is_apple_silicon=system.is_apple_silicon,
+                logical_cpus=system.logical_cpus,
+                effective_cpus=system.effective_cpus,
+                containerized=system.containerized,
+                accelerators=list(system.accelerators),
+                cpu_features=list(system.cpu_features),
             ),
             dependencies=dependencies,
             paths=PathStatus(
@@ -408,17 +549,7 @@ def create_app(
                 or (engine_manager is not None and state.ready),
                 engine_ready=state.ready,
             ),
-            metrics=OperationalMetricsStatus(
-                uptime_seconds=metrics.uptime_seconds,
-                queue_depth=metrics.queue_depth,
-                active_transcriptions=metrics.active_transcriptions,
-                concurrency_limit=metrics.concurrency_limit,
-                successful_transcriptions=metrics.successful_transcriptions,
-                failed_transcriptions=metrics.failed_transcriptions,
-                rejected_transcriptions=metrics.rejected_transcriptions,
-                average_latency_ms=metrics.average_latency_ms,
-                last_latency_ms=metrics.last_latency_ms,
-            ),
+            metrics=_metrics_status(metrics),
             readiness=ReadinessStatus(
                 probe_age_seconds=round(readiness_details.checked_age_seconds, 3),
                 warmup_state=readiness_details.warmup_state,
@@ -521,6 +652,10 @@ def create_app(
             return Path(config.whisper_model)
         if config.whisperkit_model:
             return Path(config.whisperkit_model)
+        if config.faster_whisper_model:
+            return Path(config.faster_whisper_model)
+        if config.engine == "moonshine":
+            return manager.installed_path(f"moonshine:{config.moonshine_language}")
         return None
 
     @app.post(
@@ -621,6 +756,17 @@ def create_app(
             whisperkit_model=(
                 engine_manager.runtime_config.whisperkit_model if engine_manager else None
             ),
+            faster_whisper_model=(
+                engine_manager.runtime_config.faster_whisper_model if engine_manager else None
+            ),
+            moonshine_language=(
+                engine_manager.runtime_config.moonshine_language if engine_manager else "en"
+            ),
+            compute_device=(
+                engine_manager.runtime_config.compute_device if engine_manager else "auto"
+            ),
+            compute_type=(engine_manager.runtime_config.compute_type if engine_manager else "auto"),
+            cpu_threads=(engine_manager.runtime_config.cpu_threads if engine_manager else 0),
         )
 
     @app.put(
@@ -633,7 +779,12 @@ def create_app(
             raise APIProblem(
                 409, "engine_locked", "The engine was fixed at startup and cannot switch."
             )
-        engine_manager.set_engine(body.engine)
+        engine_manager.configure(
+            body.engine,
+            body.compute_device,
+            body.compute_type,
+            body.cpu_threads,
+        )
         await readiness.warmup()
         state = await readiness.probe()
         return SelectModelResponse(
@@ -676,11 +827,19 @@ def create_app(
             temporary.unlink(missing_ok=True)
             raise
         try:
-            transcript, engine_name, duration_ms = await service.transcribe_adhoc(final, language)
+            result = await service.transcribe_adhoc(final, language)
         finally:
             final.unlink(missing_ok=True)
         return TestTranscriptionResponse(
-            transcript=transcript, engine=engine_name, duration_ms=duration_ms
+            transcript=result.transcript,
+            engine=result.engine,
+            duration_ms=result.timing.total_ms,
+            normalization_ms=result.timing.normalization_ms,
+            model_load_ms=result.timing.model_load_ms,
+            inference_ms=result.timing.inference_ms,
+            audio_duration_ms=result.timing.audio_duration_ms,
+            real_time_factor=result.timing.real_time_factor,
+            peak_memory_mb=result.timing.peak_memory_mb,
         )
 
     # ------------------------------------------------- WebUI partials (HTMX)
@@ -709,17 +868,7 @@ def create_app(
         readiness_details = await readiness.details()
         return _html(
             operations_fragment(
-                OperationalMetricsStatus(
-                    uptime_seconds=metrics.uptime_seconds,
-                    queue_depth=metrics.queue_depth,
-                    active_transcriptions=metrics.active_transcriptions,
-                    concurrency_limit=metrics.concurrency_limit,
-                    successful_transcriptions=metrics.successful_transcriptions,
-                    failed_transcriptions=metrics.failed_transcriptions,
-                    rejected_transcriptions=metrics.rejected_transcriptions,
-                    average_latency_ms=metrics.average_latency_ms,
-                    last_latency_ms=metrics.last_latency_ms,
-                ),
+                _metrics_status(metrics),
                 ReadinessStatus(
                     probe_age_seconds=round(readiness_details.checked_age_seconds, 3),
                     warmup_state=readiness_details.warmup_state,
@@ -849,6 +998,11 @@ def create_app(
         config = ConfigResponse(
             engine=engine_value,
             available_engines=_available_engines(),
+            compute_device=(
+                engine_manager.runtime_config.compute_device if engine_manager else "auto"
+            ),
+            compute_type=(engine_manager.runtime_config.compute_type if engine_manager else "auto"),
+            cpu_threads=(engine_manager.runtime_config.cpu_threads if engine_manager else 0),
         )
         paths = [
             ("Data directory", str(configured.data_dir)),
@@ -863,13 +1017,18 @@ def create_app(
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_update_config(engine: str = Form(...)) -> HTMLResponse:
+    async def ui_update_config(
+        engine: str = Form(...),
+        compute_device: str = Form("auto"),
+        compute_type: str = Form("auto"),
+        cpu_threads: int = Form(0),
+    ) -> HTMLResponse:
         if engine_manager is None:
             raise APIProblem(
                 409, "engine_locked", "The engine was fixed at startup and cannot switch."
             )
         try:
-            engine_manager.set_engine(engine)
+            engine_manager.configure(engine, compute_device, compute_type, cpu_threads)
         except ValueError as error:
             raise APIProblem(422, "invalid_engine", str(error)) from error
         await readiness.warmup()
@@ -894,8 +1053,15 @@ def create_app(
 
 def select_engine(settings: Settings) -> TranscriptionEngine:
     """Resolve an engine purely from environment settings (CLI usage)."""
-    if settings.engine not in {"auto", "handy", "whisper.cpp", "whisperkit"}:
-        raise RuntimeError("LOCALFLOW_ENGINE must be auto, handy, whisper.cpp, or whisperkit.")
+    if settings.engine not in {
+        "auto",
+        "handy",
+        "whisper.cpp",
+        "whisperkit",
+        "faster-whisper",
+        "moonshine",
+    }:
+        raise RuntimeError("LOCALFLOW_ENGINE is not a supported engine.")
     manager = ModelManager(settings.resolved_models_dir())
     if settings.engine == "auto":
         from app.models.whisper_cpp import WhisperCppEngine
@@ -924,3 +1090,28 @@ def _response(stored: StoredSession) -> SessionResponse:
         created_at=stored.created_at,
         updated_at=stored.updated_at,
     )
+
+
+def _metrics_status(metrics: object) -> OperationalMetricsStatus:
+    pipeline = metrics.last_pipeline  # type: ignore[attr-defined]
+    return OperationalMetricsStatus(
+        uptime_seconds=metrics.uptime_seconds,  # type: ignore[attr-defined]
+        queue_depth=metrics.queue_depth,  # type: ignore[attr-defined]
+        active_transcriptions=metrics.active_transcriptions,  # type: ignore[attr-defined]
+        concurrency_limit=metrics.concurrency_limit,  # type: ignore[attr-defined]
+        successful_transcriptions=metrics.successful_transcriptions,  # type: ignore[attr-defined]
+        failed_transcriptions=metrics.failed_transcriptions,  # type: ignore[attr-defined]
+        rejected_transcriptions=metrics.rejected_transcriptions,  # type: ignore[attr-defined]
+        average_latency_ms=metrics.average_latency_ms,  # type: ignore[attr-defined]
+        last_latency_ms=metrics.last_latency_ms,  # type: ignore[attr-defined]
+        normalization_ms=pipeline.normalization_ms if pipeline else None,
+        model_load_ms=pipeline.model_load_ms if pipeline else None,
+        inference_ms=pipeline.inference_ms if pipeline else None,
+        audio_duration_ms=pipeline.audio_duration_ms if pipeline else None,
+        real_time_factor=pipeline.real_time_factor if pipeline else None,
+        peak_memory_mb=pipeline.peak_memory_mb if pipeline else None,
+    )
+
+
+def _joined_stream_lines(lines: dict[int, str]) -> str:
+    return " ".join(lines[key] for key in sorted(lines) if lines[key]).strip()

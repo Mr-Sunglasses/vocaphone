@@ -23,7 +23,9 @@ and on-device installation have been exercised with the current checkout.
 1. Open Local Flow and grant microphone permission.
 2. Leave “Keep Quick Dictation ready for 10 minutes” enabled. Confirm the app
    shows Quick Dictation as Ready and iOS displays its microphone indicator.
-3. Enter the tailnet HTTPS gateway URL and the token from the Mac.
+3. Enter the configured HTTP/HTTPS gateway URL and bearer token. This may be a
+   trusted LAN URL such as `http://homelabone:8765/`, a Tailscale Serve URL, or
+   an HTTPS VPS/reverse-proxy URL. Approve Local Network access for LAN hosts.
 4. Confirm that Save and test reports both gateway and model ready and shows the
    expected active model.
 5. Choose Automatic microphone routing or iPhone Microphone, connect any AirPods

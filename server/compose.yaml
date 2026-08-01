@@ -17,6 +17,57 @@ services:
     volumes:
       - localflow-data:/data
 
+  gateway-native:
+    profiles: ["native"]
+    image: localflow-gateway:native
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        GGML_NATIVE: "ON"
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
+    environment:
+      LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
+    secrets: [localflow_token]
+    volumes: [localflow-data:/data]
+
+  gateway-cuda:
+    profiles: ["cuda"]
+    image: localflow-gateway:cuda
+    build:
+      context: .
+      dockerfile: Dockerfile.cuda
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
+    environment:
+      LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
+      NVIDIA_VISIBLE_DEVICES: all
+    gpus: all
+    secrets: [localflow_token]
+    volumes: [localflow-data:/data]
+
+  gateway-vulkan:
+    profiles: ["vulkan"]
+    image: localflow-gateway:vulkan
+    build:
+      context: .
+      dockerfile: Dockerfile.vulkan
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
+    environment:
+      LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
+    devices:
+      - /dev/dri:/dev/dri
+    secrets: [localflow_token]
+    volumes: [localflow-data:/data]
+
 secrets:
   localflow_token:
     environment: LOCALFLOW_TOKEN

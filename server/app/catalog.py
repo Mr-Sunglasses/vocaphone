@@ -6,6 +6,8 @@ from app.system import SystemInfo
 
 ENGINE_WHISPER_CPP = "whisper.cpp"
 ENGINE_WHISPERKIT = "whisperkit"
+ENGINE_FASTER_WHISPER = "faster-whisper"
+ENGINE_MOONSHINE = "moonshine"
 
 WHISPER_CPP_REPO = "ggerganov/whisper.cpp"
 WHISPERKIT_REPO = "argmaxinc/whisperkit-coreml"
@@ -32,6 +34,7 @@ class CatalogModel:
     family: str = "Whisper"
     description: str = "Local speech recognition model."
     source: str = "whisper.cpp"
+    marker_file: str | None = None
 
 
 def _whisper_cpp(
@@ -89,7 +92,87 @@ def _whisperkit(
     )
 
 
+def _faster_whisper(
+    key: str,
+    label: str,
+    size_bytes: int,
+    languages: str,
+    quality: str,
+    minimum_ram_gb: float,
+) -> CatalogModel:
+    repository = (
+        f"Systran/faster-distil-whisper-{key.removeprefix('distil-')}"
+        if key.startswith("distil-")
+        else f"Systran/faster-whisper-{key}"
+    )
+    return CatalogModel(
+        id=f"{ENGINE_FASTER_WHISPER}:{key}",
+        engine=ENGINE_FASTER_WHISPER,
+        key=key,
+        label=label,
+        size_bytes=size_bytes,
+        languages=languages,
+        quality=quality,
+        minimum_ram_gb=minimum_ram_gb,
+        huggingface_repo=repository,
+        huggingface_folder="",
+        family="Whisper / CTranslate2",
+        description=(
+            "Persistent CTranslate2 model with CPU INT8 inference; optimized for Linux servers."
+        ),
+        source="faster-whisper",
+        marker_file="model.bin",
+    )
+
+
+def _moonshine(
+    language: str,
+    label: str,
+    size_bytes: int,
+    languages: str,
+) -> CatalogModel:
+    return CatalogModel(
+        id=f"{ENGINE_MOONSHINE}:{language}",
+        engine=ENGINE_MOONSHINE,
+        key=language,
+        label=label,
+        size_bytes=size_bytes,
+        languages=languages,
+        quality="Low-latency streaming",
+        minimum_ram_gb=4,
+        family="Moonshine",
+        description=(
+            "Experimental model designed for real-time local dictation and incremental audio."
+        ),
+        source="Moonshine Voice",
+        marker_file=".localflow-model.json",
+    )
+
+
 DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
+    _moonshine("en", "Moonshine English", 245 * MB, "English only"),
+    _faster_whisper("tiny.en", "faster-whisper Tiny EN", 75 * MB, "English only", "Fastest", 2),
+    _faster_whisper("tiny", "faster-whisper Tiny", 75 * MB, "Multilingual", "Fastest", 2),
+    _faster_whisper("base.en", "faster-whisper Base EN", 145 * MB, "English only", "Fast", 3),
+    _faster_whisper("base", "faster-whisper Base", 145 * MB, "Multilingual", "Fast", 3),
+    _faster_whisper("small.en", "faster-whisper Small EN", 484 * MB, "English only", "Balanced", 6),
+    _faster_whisper("small", "faster-whisper Small", 484 * MB, "Multilingual", "Balanced", 6),
+    _faster_whisper(
+        "distil-small.en",
+        "Distil-Whisper Small EN",
+        332 * MB,
+        "English only",
+        "Fast · distilled",
+        5,
+    ),
+    _faster_whisper(
+        "distil-medium.en",
+        "Distil-Whisper Medium EN",
+        789 * MB,
+        "English only",
+        "Accurate · distilled",
+        8,
+    ),
     _whisperkit("openai_whisper-tiny", "WhisperKit Tiny", 66 * MB, "Multilingual", "Fastest", 4),
     _whisperkit(
         "openai_whisper-tiny.en", "WhisperKit Tiny EN", 66 * MB, "English only", "Fastest", 4
@@ -193,7 +276,7 @@ def catalog_by_id(catalog: tuple[CatalogModel, ...] = DEFAULT_CATALOG) -> dict[s
 
 def recommended_ids(system: SystemInfo) -> set[str]:
     """Pick the models that best fit this machine."""
-    preferred_engine = ENGINE_WHISPERKIT if system.is_apple_silicon else ENGINE_WHISPER_CPP
+    preferred_engine = ENGINE_WHISPERKIT if system.is_apple_silicon else ENGINE_FASTER_WHISPER
     ram = system.ram_gb or 8.0
     if ram >= 16:
         if preferred_engine == ENGINE_WHISPERKIT:
@@ -201,11 +284,17 @@ def recommended_ids(system: SystemInfo) -> set[str]:
                 f"{ENGINE_WHISPERKIT}:openai_whisper-large-v3-v20240930_626MB",
                 f"{ENGINE_WHISPERKIT}:openai_whisper-large-v3-v20240930_turbo",
             }
-        return {f"{ENGINE_WHISPER_CPP}:ggml-large-v3-turbo.bin"}
+        return {
+            f"{ENGINE_FASTER_WHISPER}:small",
+            f"{ENGINE_FASTER_WHISPER}:distil-medium.en",
+        }
     if ram >= 8:
         if preferred_engine == ENGINE_WHISPERKIT:
             return {f"{ENGINE_WHISPERKIT}:openai_whisper-small_216MB"}
-        return {f"{ENGINE_WHISPER_CPP}:ggml-small.bin"}
+        return {
+            f"{ENGINE_FASTER_WHISPER}:base",
+            f"{ENGINE_FASTER_WHISPER}:distil-small.en",
+        }
     if preferred_engine == ENGINE_WHISPERKIT:
         return {f"{ENGINE_WHISPERKIT}:openai_whisper-base"}
-    return {f"{ENGINE_WHISPER_CPP}:ggml-base.bin"}
+    return {f"{ENGINE_FASTER_WHISPER}:tiny"}

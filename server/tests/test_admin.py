@@ -96,6 +96,8 @@ async def test_status_reports_system_and_setup(
         "whisper.cpp CLI",
         "WhisperKit CLI",
         "Handy app",
+        "faster-whisper",
+        "Moonshine Voice",
     }
     assert payload["setup"]["token_configured"] is True
     assert payload["setup"]["model_installed"] is False
@@ -111,6 +113,12 @@ async def test_status_reports_system_and_setup(
         "rejected_transcriptions": 0,
         "average_latency_ms": None,
         "last_latency_ms": None,
+        "normalization_ms": None,
+        "model_load_ms": None,
+        "inference_ms": None,
+        "audio_duration_ms": None,
+        "real_time_factor": None,
+        "peak_memory_mb": None,
     }
     assert payload["readiness"]["warmup_state"] == "pending"
 
@@ -284,6 +292,10 @@ async def test_test_transcription_endpoint(
     assert payload["transcript"] == "hello from the local model"
     assert payload["engine"] == "fake-local-model"
     assert payload["duration_ms"] >= 0
+    assert payload["normalization_ms"] >= 0
+    assert payload["inference_ms"] >= 0
+    assert "real_time_factor" in payload
+    assert payload["peak_memory_mb"] > 0
 
     status = await client.get("/v1/admin/status", headers=authorization)
     metrics = status.json()["metrics"]

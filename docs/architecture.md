@@ -8,10 +8,10 @@ target app text field
 Local Flow keyboard extension
   ↕ atomic App Group JSON + revision numbers
 Local Flow containing app
-  ↕ bearer-authenticated HTTPS through Tailscale Serve
+  ↕ bearer-authenticated HTTP/HTTPS through LAN, VPN, or reverse proxy
 FastAPI gateway on macOS or Linux (native or multi-architecture container)
   → bounded temporary audio → FFmpeg mono 16 kHz WAV
-  → TranscriptionEngine adapter → Handy, WhisperKit, or whisper.cpp
+  → TranscriptionEngine adapter → Handy, WhisperKit, faster-whisper, Moonshine, or whisper.cpp
 ```
 
 The App Group record is the source of truth. Polling is a wake-up strategy, not
@@ -29,9 +29,10 @@ absolute paths are never written to ordinary logs.
    bounded meter updates. The audio graph is not rebuilt between dictations.
 4. The user manually returns to the original app.
 5. Finish changes shared state to `finalizing`.
-6. The still-recording containing app notices the revision, stops, creates an
-   idempotent server session, uploads audio, and asks the gateway to finish.
-7. The gateway normalizes and transcribes behind the stable engine adapter.
+6. With Moonshine selected, copied float32 buffers are already reaching the
+   authenticated streaming endpoint. The app still writes the complete WAV.
+7. The app stops recording and uses the stream result when available. Otherwise
+   it creates the idempotent session and runs the normal upload/batch flow.
 8. The app writes `readyToInsert` and deletes its audio only after success.
 9. The keyboard verifies its session context, persists `inserting`, calls
    `insertText`, then persists `inserted` and `completed`.
@@ -58,19 +59,23 @@ session creation or finishing a completed session returns the same job/result.
 `TranscriptionEngine` exposes `health()` and `transcribe(path, options)`, while
 engines that can identify model files also expose best-effort warmup.
 `HandyEngine` can reuse Handy's selected downloaded model, `WhisperKitEngine`
-runs compatible Core ML folders on Apple silicon, and `WhisperCppEngine` is the
-portable standalone fallback. No engine-specific field is part of the session
-API response.
+runs Core ML folders through one managed loopback-only WhisperKit service on
+Apple silicon, and `WhisperCppEngine` is the portable CLI fallback. The service
+keeps the selected model resident and falls back to the one-shot CLI when an
+older WhisperKit build cannot serve. `FasterWhisperEngine` owns one persistent
+CTranslate2 model and uses CPU INT8 by default. `MoonshineEngine` owns one
+persistent transcriber and also exposes the guarded incremental stream used by
+`/v1/stream`. No engine-specific field is part of the stable session API
+response.
 
-The Docker image uses the same `WhisperCppEngine` adapter and persists `/data`
-as a volume. WhisperKit and Handy remain optional macOS integrations. Catalog
-entries are exposed only on platforms that can execute their engine; adding
-Handy's ONNX families requires a separate portable ONNX adapter rather than
-presenting downloads that the server cannot run.
+The default Docker image includes OpenBLAS `whisper.cpp`, faster-whisper, and
+Moonshine and persists `/data` as a volume. Compose also provides host-native
+CPU, NVIDIA CUDA, and Vulkan images. WhisperKit and Handy remain macOS-only.
 
 The gateway keeps privacy-safe operational counters in process memory: uptime,
-active and queued transcriptions, completed/failed/rejected counts, and aggregate
-end-to-end latency. These counters reset on restart and never contain audio,
+active and queued transcriptions, completed/failed/rejected counts, stage-level
+latency, real-time factor, and peak process memory. These counters reset on
+restart and never contain audio,
 transcripts, session identifiers, or model input text.
 
 Liveness (`/health/live`) is independent of the transcription engine. Readiness
@@ -81,8 +86,9 @@ prefetch for the selected model while the HTTP process remains available.
 ## Deployment boundary
 
 The native macOS gateway can use Apple-platform engines. The container is a
-Linux process built around CPU-only `whisper.cpp`; Docker Desktop cannot pass the
-macOS WhisperKit/Core ML runtime into that container. Both deployments expose
+Linux process with persistent CPU engines and optional GPU-specific images;
+Docker Desktop cannot pass the macOS WhisperKit/Core ML runtime into that
+container. Both deployments expose
 the same API, WebUI, health semantics, and persistent model-selection behavior.
 
 The canonical container project is `server/compose.yaml`. It publishes host

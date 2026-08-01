@@ -10,7 +10,7 @@ management, engine selection, microphone testing, and operational status.
 | Mode | Engines | Recommended use |
 | --- | --- | --- |
 | Native macOS | Handy, WhisperKit, `whisper.cpp` | Best performance on Apple silicon |
-| Docker Compose | CPU-only `whisper.cpp` | Linux `amd64`/`arm64` home servers |
+| Docker Compose | faster-whisper INT8, Moonshine, `whisper.cpp` | Linux `amd64`/`arm64` home servers |
 
 Native WhisperKit is normally the fastest choice on an Apple silicon Mac.
 Docker Desktop runs the portable Linux image in a VM, so it cannot use the
@@ -22,7 +22,7 @@ performance explanation, operational commands, and persistence details.
 ```sh
 brew install ffmpeg whisperkit-cli
 cd server
-uv sync --all-groups
+uv sync --all-groups --extra engines
 uv run localflow-server
 ```
 
@@ -69,7 +69,7 @@ variable. Models, configuration, and the SQLite database persist in the
 
 The container is live before a model is installed, so `/health/ready` initially
 returns `503`. Open the WebUI, enter the token from `.env`, download/select a
-`whisper.cpp` model, and check again:
+recommended `faster-whisper` model, and check again:
 
 ```sh
 curl --fail http://127.0.0.1:8765/health/ready
@@ -85,36 +85,54 @@ firewall. Never expose port 8765 to the public internet.
 The authenticated WebUI provides:
 
 - dependency, storage, model, and engine setup checks
-- process uptime, active/queued work, outcomes, rejections, and latency
+- process uptime, active/queued work, outcomes, rejections, and stage-level latency
+- detected CPU allocation/features, container state, and available accelerators
 - hardware-aware model recommendations and disk-size/RAM guidance
 - background downloads with scoped progress polling and cancellation
 - model selection/deletion and persistent engine settings
 - custom `.bin`/`.gguf` model downloads from HTTPS URLs
-- microphone recording and real gateway transcription testing
+- one-run or three-run microphone benchmarks with normalization, model-load,
+  inference, real-time-factor, and peak-memory results
 - selected engine/model and readiness/warmup status
 
 Operational counters stay in process memory, contain no audio or transcript
 content, and reset when the gateway process restarts.
 
-The catalog contains WhisperKit Core ML folders for Apple silicon and portable
-`whisper.cpp` models. It also includes compact Whisper Medium, Whisper Large v3,
-and Breeze ASR builds from
+The catalog contains WhisperKit Core ML folders for Apple silicon, persistent
+CTranslate2 `faster-whisper` models for Linux, experimental Moonshine English,
+and portable `whisper.cpp` models. It also includes compact Whisper Medium,
+Whisper Large v3, and Breeze ASR builds from
 [Handy's documented model family](https://handy.computer/docs/models) that run
 directly through `whisper.cpp`; Handy does not need to be installed.
-Handy's Parakeet, Moonshine, SenseVoice, GigaAM, and Canary models use a different
-ONNX path and are not presented as runnable until Local Flow gains a compatible
-adapter.
+Handy's Parakeet, SenseVoice, GigaAM, and Canary models use other runtimes and
+are not presented as runnable until Local Flow gains compatible adapters.
 
 ## Engine selection
 
 The `auto` engine preference uses the first runnable option in this order:
 
 1. Handy when its macOS application binary is present
-2. a downloaded WhisperKit model
-3. a downloaded/configured `whisper.cpp` model
+2. a downloaded WhisperKit model kept resident in a managed loopback service
+3. a downloaded `faster-whisper` model kept resident in the gateway process
+4. a downloaded/configured `whisper.cpp` model
+
+On a CPU-only Linux host, start with `faster-whisper Base EN` for English or
+`faster-whisper Base` for multilingual dictation, Compute device **CPU**, and
+Precision **INT8**. Tiny is the latency-first option; Small trades speed and RAM
+for accuracy. Use the Test tab's three-run benchmark after the first warm run.
+
+Moonshine is an experimental English path. When selected, the iPhone sends
+float32 PCM over an authenticated WebSocket while it records. The ordinary WAV
+is still retained during the request and automatically used by the batch API if
+streaming is unavailable or interrupted.
 
 The WebUI can explicitly select an engine or installed model and persists that
 choice in the runtime configuration file.
+
+On Apple silicon, current WhisperKit CLIs expose a local `serve` mode. Local
+Flow starts it on a random `127.0.0.1` port during warmup and reuses the loaded
+Core ML model. If an older CLI does not support `serve`, transcription falls
+back to the compatible one-shot command rather than becoming unavailable.
 
 To force Handy from the environment:
 
@@ -145,7 +163,7 @@ uv run localflow-server
 | `LOCALFLOW_DATA_DIR` | `~/.local/share/localflow` | `/data` | Sessions and application data |
 | `LOCALFLOW_MODELS_DIR` | `<data>/models` | `/data/models` | Downloaded models |
 | `LOCALFLOW_CONFIG_FILE` | `~/.config/localflow/config.json` | `/data/config/config.json` | WebUI engine/model choice |
-| `LOCALFLOW_ENGINE` | `auto` | `auto` | `auto`, `handy`, `whisperkit`, or `whisper.cpp` |
+| `LOCALFLOW_ENGINE` | `auto` | `auto` | `auto`, `handy`, `whisperkit`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
 | `LOCALFLOW_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
 | `LOCALFLOW_WHISPER_MODEL` | base model path | base model path | Fallback `whisper.cpp` model |
 | `LOCALFLOW_WHISPERKIT_BINARY` | `whisperkit-cli` | unavailable | WhisperKit executable |
@@ -163,13 +181,25 @@ Compose-specific variables live in `server/.env`:
 Use [`.env.example`](.env.example) as a template and never commit the populated
 `.env` file.
 
-## Listener and private HTTPS
+## Listener and network access
 
 The native default listener is `0.0.0.0:8765`; the startup banner and WebUI show
 that listener separately from the local browser URL. An all-interface listener
 is reachable from connected networks, so keep the host firewall enabled.
 
-For the smallest exposure, bind/publish on host loopback and use Tailscale Serve:
+The iPhone app accepts ordinary HTTP and HTTPS gateway URLs; a Tailscale hostname
+is not mandatory. Supported arrangements include:
+
+- a trusted LAN hostname such as `http://homelabone:8765/`; for Docker, set
+  `LOCALFLOW_PUBLISH_HOST=0.0.0.0` and protect the port with the host firewall
+- a loopback listener exposed privately through Tailscale Serve
+- a VPS loopback listener behind an HTTPS reverse proxy and trusted certificate
+
+HTTP does not encrypt the bearer token or recording. Use it only on a trusted
+LAN or encrypted VPN, never over the public internet.
+
+For the smallest private exposure, bind/publish on host loopback and use
+Tailscale Serve:
 
 ```sh
 tailscale serve --bg 8765
@@ -177,7 +207,8 @@ tailscale serve status
 ```
 
 Use the reported private HTTPS URL in the iPhone app. Do not use Funnel. See
-[tailscale.md](../docs/tailscale.md).
+[deployment.md](../docs/deployment.md) for LAN/VPS alternatives and
+[tailscale.md](../docs/tailscale.md) for the private Serve setup.
 
 ## Health and readiness
 
@@ -189,10 +220,33 @@ Use the reported private HTTPS URL in the iPhone app. Do not use Funnel. See
 - Authenticated `/v1/admin/status` exposes setup, metrics, and readiness details
   used by the WebUI.
 
-Engine probes are cached for five seconds. At startup and after an engine/model
-change, the gateway performs a fresh probe and asks the operating system to
-prefetch up to 256 MiB of the selected model. This reduces cold disk reads; it
-does not promise that the entire model remains resident in process memory.
+Engine probes are cached for five seconds. `faster-whisper` and Moonshine load
+their selected model once and keep it resident. WhisperKit warmup starts its
+managed loopback service and keeps the Core ML model resident there. Handy and
+`whisper.cpp` retain the filesystem-prefetch warmup behavior.
+
+## Docker performance profiles
+
+Only run one gateway service at a time; every profile publishes the same port
+and shares the same model volume.
+
+```sh
+# Portable CPU + OpenBLAS (default; amd64 and arm64)
+docker compose up --detach --build gateway
+
+# Build CPU kernels for this exact host (fastest CPU image, not portable)
+docker compose --profile native up --detach --build gateway-native
+
+# NVIDIA host with Container Toolkit
+docker compose --profile cuda up --detach --build gateway-cuda
+
+# Intel/AMD Vulkan device exposed as /dev/dri
+docker compose --profile vulkan up --detach --build gateway-vulkan
+```
+
+The CUDA profile supports both faster-whisper CUDA and the CUDA `whisper.cpp`
+binary. The Vulkan profile accelerates `whisper.cpp`; faster-whisper remains on
+CPU there. The dashboard reports what devices the container can actually see.
 
 ## CLI and routine operations
 
@@ -222,7 +276,7 @@ model, configuration file, and stored session is intentional.
 ## Development checks
 
 ```sh
-uv sync --all-groups
+uv sync --all-groups --extra engines
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy app

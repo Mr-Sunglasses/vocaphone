@@ -9,8 +9,8 @@ engines, acceleration, isolation, and operational portability.
 | Consideration | Native macOS | Docker Compose |
 | --- | --- | --- |
 | Recommended host | Apple silicon Mac | Linux `amd64` or `arm64` home server |
-| Engines | WhisperKit, Handy, `whisper.cpp` | `whisper.cpp` |
-| Acceleration | Apple-native WhisperKit/Core ML path | Portable CPU backend |
+| Engines | WhisperKit, Handy, `whisper.cpp` | faster-whisper, Moonshine, `whisper.cpp` |
+| Acceleration | Apple-native WhisperKit/Core ML path | OpenBLAS CPU; native CPU, CUDA, or Vulkan profiles |
 | Mac performance | Recommended; no Linux VM | Usually slower and uses Docker Desktop resources |
 | Portability | macOS-specific service setup | Reproducible across supported Linux architectures |
 | Persistence | Files below `~/.local/share/localflow` | Named volume mounted at `/data` |
@@ -20,16 +20,20 @@ engines, acceleration, isolation, and operational portability.
 
 - On an Apple silicon Mac, run natively and select a WhisperKit model. This
   avoids Docker Desktop's Linux VM and lets the gateway use the Apple-native
-  engine path.
-- On a Linux home server, use Docker Compose. The current image is intentionally
-  CPU-first so the same build works on both `amd64` and `arm64`.
+  engine path. The gateway warms one loopback-only WhisperKit service and keeps
+  its Core ML model resident between dictations.
+- On a Linux home server, use Docker Compose with faster-whisper CPU INT8. The
+  default OpenBLAS build works on `amd64` and `arm64`; select a hardware profile
+  only when that host exposes the matching device.
 - Use Docker on a Mac when reproducibility and isolation matter more than the
   lowest transcription latency.
 
 There is no honest fixed speed multiplier: model size, audio length, thermals,
 and host hardware all matter. For an apples-to-apples comparison, dictate the
 same saved recording several times with equivalent model sizes and compare the
-dashboard's average and last transcription latency after the first warm run.
+Test tab's three-run benchmark. It treats run 1 as model warmup/load and reports
+the warm average of runs 2 and 3. Compare inference time and real-time factor,
+not only end-to-end time.
 
 ## Native macOS deployment
 
@@ -38,7 +42,7 @@ dashboard's average and last transcription latency after the first warm run.
 ```sh
 brew install ffmpeg whisperkit-cli
 cd server
-uv sync --all-groups
+uv sync --all-groups --extra engines
 uv run localflow-server
 ```
 
@@ -94,7 +98,7 @@ host firewall. Never forward the port from the public internet.
 ### First model
 
 The container starts before a model is installed. Confirm process liveness,
-then open the WebUI and download/select a `whisper.cpp` model:
+then open the WebUI and download/select a recommended `faster-whisper` model:
 
 ```sh
 docker compose ps
@@ -137,9 +141,32 @@ and model directory are captured consistently. A Docker or host-native backup
 tool can then archive the volume shown by `docker volume inspect`. Keep backups
 private because failed recordings may remain for the configured retry period.
 
-WhisperKit model folders cannot run in the CPU-only container. Download a
-compatible `whisper.cpp` model from the container WebUI instead of copying the
-native macOS model directory blindly.
+WhisperKit model folders cannot run in a Linux container. Download a compatible
+faster-whisper, Moonshine, or `whisper.cpp` model from the container WebUI
+instead of copying the native macOS model directory blindly.
+
+### Performance profiles
+
+The default `gateway` is the portable CPU/OpenBLAS service. Stop it before
+starting another profile because all services publish the same port and share
+the named volume.
+
+```sh
+docker compose down
+
+# Optimize CPU code for exactly this build host.
+docker compose --profile native up --detach --build gateway-native
+
+# NVIDIA Container Toolkit and a supported NVIDIA GPU are required.
+docker compose --profile cuda up --detach --build gateway-cuda
+
+# A working host Vulkan driver and /dev/dri are required.
+docker compose --profile vulkan up --detach --build gateway-vulkan
+```
+
+The native CPU image is not a portable registry artifact; build it on the
+machine that will run it. The CUDA and Vulkan images should be published only
+for architectures supported by their base images and host drivers.
 
 ## Multi-architecture image
 
@@ -157,9 +184,30 @@ local build definition; use `docker compose pull` followed by
 `docker compose up --detach --no-build` when you explicitly want the registry
 image.
 
-## Private Tailscale ingress
+## Gateway URL and network placement
 
-Both deployments can remain on host loopback:
+The iPhone app accepts any gateway URL with an explicit `http://` or `https://`
+scheme and a valid hostname. Tailscale is one option rather than a requirement.
+
+### Trusted local network
+
+The native gateway already listens on all interfaces by default. For Docker,
+set the Compose publication in `server/.env`:
+
+```dotenv
+LOCALFLOW_PUBLISH_HOST=0.0.0.0
+LOCALFLOW_PUBLISH_PORT=8765
+```
+
+Protect port 8765 with the host firewall, ensure the hostname resolves from the
+iPhone, and use a URL such as `http://homelabone:8765/`. Approve Local Network
+access when iOS asks. Plain HTTP exposes recordings and the bearer token to
+anyone who can inspect the network, so use it only on a trusted LAN or encrypted
+VPN and never forward it from a router.
+
+### Tailscale Serve
+
+Both native and Compose deployments can remain on host loopback:
 
 ```sh
 tailscale serve --bg 8765
@@ -169,3 +217,13 @@ tailscale serve status
 Enter the reported private HTTPS URL in the iPhone app. Tailscale identity is an
 additional network boundary; the Local Flow bearer token remains required. See
 [Private Tailscale connectivity](tailscale.md) for the complete setup.
+
+### VPS or public DNS
+
+Keep the gateway published on `127.0.0.1`, place an HTTPS reverse proxy such as
+Caddy or nginx in front of it, and use a trusted certificate for the public
+hostname. Enter a URL such as `https://dictation.example.com/` in the app.
+
+Keep bearer authentication enabled at the gateway even if the reverse proxy has
+its own access control. Do not expose port 8765 directly or use unencrypted HTTP
+over the public internet.
