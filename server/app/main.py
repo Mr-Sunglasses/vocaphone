@@ -223,7 +223,13 @@ def create_app(
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         state = await readiness.probe()
-        return HealthResponse(engine_ready=state.ready, engine=state.name)
+        return HealthResponse(
+            engine_ready=state.ready,
+            engine=state.name,
+            streaming_supported=(
+                state.ready and isinstance(engine_provider.current(), MoonshineEngine)
+            ),
+        )
 
     @app.get("/health/live", response_model=LivenessResponse)
     async def liveness() -> LivenessResponse:
@@ -354,7 +360,28 @@ def create_app(
             return
         selected_engine = engine_provider.current()
         if not isinstance(selected_engine, MoonshineEngine):
-            await websocket.close(code=4409, reason="Streaming requires Moonshine")
+            selected_health = await selected_engine.health()
+            await websocket.accept()
+            await websocket.send_json(
+                {
+                    "type": "unsupported",
+                    "reason": "active_engine",
+                    "engine": selected_health.name,
+                }
+            )
+            await websocket.close(code=4409, reason="Active engine does not support streaming")
+            return
+        selected_health = await selected_engine.health()
+        if not selected_health.ready:
+            await websocket.accept()
+            await websocket.send_json(
+                {
+                    "type": "unavailable",
+                    "reason": "engine_not_ready",
+                    "engine": selected_health.name,
+                }
+            )
+            await websocket.close(code=4410, reason="Streaming engine is not ready")
             return
         await websocket.accept()
         stream: Any | None = None

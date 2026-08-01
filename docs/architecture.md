@@ -29,8 +29,10 @@ absolute paths are never written to ordinary logs.
    bounded meter updates. The audio graph is not rebuilt between dictations.
 4. The user manually returns to the original app.
 5. Finish changes shared state to `finalizing`.
-6. With Moonshine selected, copied float32 buffers are already reaching the
-   authenticated streaming endpoint. The app still writes the complete WAV.
+6. The app checks `streaming_supported` in gateway health. With a ready
+   Moonshine engine, copied float32 buffers reach the authenticated streaming
+   endpoint while the app still writes the complete WAV. Batch-only engines
+   skip the socket entirely.
 7. The app stops recording and uses the stream result when available. Otherwise
    it creates the idempotent session and runs the normal upload/batch flow.
 8. The app writes `readyToInsert` and deletes its audio only after success.

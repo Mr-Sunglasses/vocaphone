@@ -4,11 +4,14 @@ struct GatewayHealth: Decodable, Sendable {
     let status: String
     let engineReady: Bool
     let engine: String
+    /// Optional so an updated app remains compatible with older gateways.
+    let streamingSupported: Bool?
 
     enum CodingKeys: String, CodingKey {
         case status
         case engineReady = "engine_ready"
         case engine
+        case streamingSupported = "streaming_supported"
     }
 }
 
@@ -112,6 +115,10 @@ struct GatewayClient: Sendable {
         style: String,
         sampleRate: Int
     ) async throws -> GatewayAudioStream {
+        let health = try await health()
+        guard health.streamingSupported == true else {
+            throw GatewayStreamError.unsupported
+        }
         let stream = GatewayAudioStream(
             url: websocketEndpoint("v1/stream"),
             token: token,
@@ -245,6 +252,7 @@ private struct GatewayStreamEvent: Decodable {
 }
 
 private enum GatewayStreamError: Error {
+    case unsupported
     case handshakeFailed
     case emptyTranscript
     case serverRejected

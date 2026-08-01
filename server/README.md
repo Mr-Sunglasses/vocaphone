@@ -124,7 +124,8 @@ for accuracy. Use the Test tab's three-run benchmark after the first warm run.
 Moonshine is an experimental English path. When selected, the iPhone sends
 float32 PCM over an authenticated WebSocket while it records. The ordinary WAV
 is still retained during the request and automatically used by the batch API if
-streaming is unavailable or interrupted.
+streaming is unavailable or interrupted. Batch-only engines such as WhisperKit
+and faster-whisper no longer trigger a WebSocket attempt.
 
 The WebUI can explicitly select an engine or installed model and persists that
 choice in the runtime configuration file.
@@ -216,7 +217,8 @@ Use the reported private HTTPS URL in the iPhone app. Do not use Funnel. See
   selected engine.
 - `GET /health/ready` returns `200` only when the engine/model can transcribe and
   returns `503` otherwise.
-- `GET /health` is the backward-compatible iPhone health response.
+- `GET /health` is the backward-compatible iPhone health response and includes
+  `streaming_supported`; clients open `/v1/stream` only when it is true.
 - Authenticated `/v1/admin/status` exposes setup, metrics, and readiness details
   used by the WebUI.
 

@@ -24,6 +24,7 @@ async def test_health_is_public_and_separates_engine_readiness(
         "status": "ok",
         "engine_ready": True,
         "engine": "fake-local-model",
+        "streaming_supported": False,
     }
 
     liveness = await client.get("/health/live")

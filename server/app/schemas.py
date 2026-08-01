@@ -38,6 +38,7 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     engine_ready: bool
     engine: str
+    streaming_supported: bool
 
 
 class LivenessResponse(BaseModel):
