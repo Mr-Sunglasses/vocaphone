@@ -3,11 +3,14 @@ from __future__ import annotations
 from html import escape
 from urllib.parse import quote
 
+from app.config import WILDCARD_BIND_HOSTS, format_host_port, local_webui_url
 from app.schemas import (
     AdminModelEntry,
     AdminStatusResponse,
     ConfigResponse,
     EngineStatus,
+    OperationalMetricsStatus,
+    ReadinessStatus,
 )
 
 ENGINE_LABELS = {
@@ -20,8 +23,8 @@ ENGINE_LABELS = {
 ENGINE_HINTS = {
     "auto": "Uses Handy when installed, then downloaded WhisperKit or whisper.cpp models.",
     "handy": "Reuses the Handy app and its downloaded models. No download needed.",
-    "whisper.cpp": "Runs ggml models with the whisper-cli binary (brew install whisper-cpp).",
-    "whisperkit": "Runs CoreML models with whisperkit-cli (brew install whisperkit-cli).",
+    "whisper.cpp": "Runs local GGML models with the whisper-cli binary.",
+    "whisperkit": "Runs Core ML models with whisperkit-cli on Apple Silicon Macs.",
 }
 
 
@@ -46,17 +49,32 @@ def engine_pill_oob(engine: EngineStatus) -> str:
 
 
 def overview_fragment(status: AdminStatusResponse) -> str:
+    is_mac = status.system.os.startswith("Darwin")
+    machine_label = "Mac" if is_mac else "server"
+    ffmpeg_hint = "brew install ffmpeg" if is_mac else "Install FFmpeg with your package manager"
+    engine_hint = (
+        "brew install whisper-cpp or whisperkit-cli"
+        if is_mac
+        else "Use the Docker image or install whisper.cpp"
+    )
     checks = [
         ("Gateway token configured", status.setup.token_configured, ""),
-        ("FFmpeg installed", status.setup.ffmpeg_available, "brew install ffmpeg"),
+        ("FFmpeg installed", status.setup.ffmpeg_available, ffmpeg_hint),
         (
             "Speech engine CLI installed",
             status.setup.engine_binary_available,
-            "brew install whisperkit-cli",
+            engine_hint,
         ),
-        ("Speech model downloaded", status.setup.model_installed, "Open the Models tab"),
+        ("Speech model available", status.setup.model_installed, "Open the Models tab"),
         ("Engine ready to transcribe", status.setup.engine_ready, "Select a downloaded model"),
     ]
+    ready = (
+        status.setup.token_configured
+        and status.setup.ffmpeg_available
+        and status.setup.engine_ready
+    )
+    listener = format_host_port(status.bind_host, status.port)
+    local_url = local_webui_url(status.bind_host, status.port)
     checklist = "".join(
         "<li>"
         f'<span class="check {"ok" if ok else "missing"}">{"✓" if ok else "✗"}</span>'
@@ -70,70 +88,189 @@ def overview_fragment(status: AdminStatusResponse) -> str:
             ("Chip", status.system.chip),
             ("Memory", f"{status.system.ram_gb:g} GB"),
             ("OS", f"{status.system.os} ({status.system.arch})"),
-            ("Gateway", f"http://{status.bind_host}:{status.port} · v{status.version}"),
+            ("Version", status.version),
         ]
     )
     rows = "".join(
         "<tr>"
         f"<td>{escape(dependency.name)}</td>"
         f'<td><span class="badge {"ok" if dependency.available else "missing"}">'
-        f'{"installed" if dependency.available else "missing"}</span></td>'
+        f"{'installed' if dependency.available else 'missing'}</span></td>"
         f"<td><code>{escape(dependency.path or dependency.install_hint or '—')}</code></td>"
         "</tr>"
         for dependency in status.dependencies
     )
+    if ready:
+        next_steps = """
+          <div class="ready-message">
+            <span class="ready-icon" aria-hidden="true">✓</span>
+            <div><strong>The gateway is ready for dictation.</strong>
+              <p class="muted">Use the Test tab for a quick microphone check, then connect
+                the iPhone using this server's Tailscale address.</p></div>
+          </div>
+        """
+    else:
+        pending_steps = []
+        if not status.setup.ffmpeg_available:
+            pending_steps.append(f"{escape(ffmpeg_hint)}.")
+        if not status.setup.engine_binary_available:
+            pending_steps.append(f"{escape(engine_hint)}.")
+        if not status.setup.model_installed:
+            pending_steps.append("Open Models and download a model recommended for this Mac.")
+        if not status.setup.engine_ready:
+            pending_steps.append("Select an installed model and confirm that the engine is ready.")
+        next_steps = (
+            '<ol class="steps">' + "".join(f"<li>{step}</li>" for step in pending_steps) + "</ol>"
+        )
+    exposure_notice = ""
+    if status.bind_host in WILDCARD_BIND_HOSTS:
+        exposure_notice = """
+          <div class="callout warning">
+            <strong>Available on every network interface</strong>
+            <span>The private API still requires the bearer token. Keep macOS Firewall on,
+              use Tailscale for remote access, and do not expose this port to the internet.</span>
+          </div>
+        """
     return f"""
+      <section class="status-hero {"ready" if ready else "attention"}">
+        <div>
+          <span class="eyebrow">Gateway status</span>
+          <h2>{"Ready for dictation" if ready else "Setup needs attention"}</h2>
+          <p>{escape(status.engine.name)} ·
+            {"engine ready" if status.engine.ready else "engine unavailable"}</p>
+        </div>
+        <dl class="connection-facts">
+          <div><dt>Listener</dt><dd>{escape(listener)}</dd></div>
+          <div><dt>Open on this Mac</dt><dd>{escape(local_url)}</dd></div>
+        </dl>
+      </section>
+      {exposure_notice}
+      {operations_fragment(status.metrics, status.readiness)}
       <div class="grid two">
         <div class="card">
           <h2>Setup checklist</h2>
           <ul class="checklist">{checklist}</ul>
         </div>
         <div class="card">
-          <h2>This Mac</h2>
+          <h2>This {machine_label}</h2>
           <dl class="facts">{facts}</dl>
         </div>
       </div>
       <div class="card">
         <h2>Dependencies</h2>
-        <table class="table">
-          <thead><tr><th>Tool</th><th>Status</th><th>Path / install</th></tr></thead>
-          <tbody>{rows}</tbody>
-        </table>
+        <div class="table-scroll">
+          <table class="table">
+            <thead><tr><th>Tool</th><th>Status</th><th>Path / install</th></tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>
       </div>
       <div class="card">
         <h2>Next steps</h2>
-        <ol class="steps">
-          <li>Install a speech engine: <code>brew install whisperkit-cli</code>
-            (recommended on Apple&nbsp;silicon) or <code>brew install whisper-cpp</code>.</li>
-          <li>Open the <strong>Models</strong> tab and download a recommended model.</li>
-          <li>Press <strong>Select</strong> on the model to make it active.</li>
-          <li>Verify everything in the <strong>Test</strong> tab with your microphone.</li>
-          <li>Expose the gateway privately with <code>tailscale serve</code> and pair the
-            iPhone app.</li>
-        </ol>
+        {next_steps}
       </div>
     """
 
 
-def models_fragment(entries: list[AdminModelEntry]) -> str:
+def operations_fragment(metrics: OperationalMetricsStatus, readiness: ReadinessStatus) -> str:
+    average_latency = _format_latency(metrics.average_latency_ms)
+    last_latency = _format_latency(metrics.last_latency_ms)
+    warmup_labels = {
+        "pending": ("Pending", "The startup warm-up has not run yet."),
+        "warming": ("Warming", "The selected model is being primed."),
+        "complete": (
+            "Warm",
+            f"{_format_bytes(readiness.warmed_bytes)} primed in the OS cache.",
+        ),
+        "unsupported": ("Ready", "This engine does not expose model prefetching."),
+        "unavailable": ("Waiting", "Install or select a model to warm it."),
+        "failed": ("Needs retry", "Warm-up failed; transcription can still retry."),
+    }
+    warmup_label, warmup_detail = warmup_labels[readiness.warmup_state]
+    cards = "".join(
+        [
+            _metric_card("Uptime", _format_uptime(metrics.uptime_seconds), "Current process"),
+            _metric_card(
+                "Workload",
+                f"{metrics.queue_depth} queued",
+                f"{metrics.active_transcriptions} of {metrics.concurrency_limit} active",
+            ),
+            _metric_card(
+                "Successful",
+                str(metrics.successful_transcriptions),
+                "Completed transcriptions",
+                "success",
+            ),
+            _metric_card(
+                "Failed",
+                str(metrics.failed_transcriptions),
+                f"{metrics.rejected_transcriptions} overload rejections",
+                "failure" if metrics.failed_transcriptions else "",
+            ),
+            _metric_card("Average latency", average_latency, f"Last {last_latency}"),
+            _metric_card("Model cache", warmup_label, warmup_detail, readiness.warmup_state),
+        ]
+    )
     return f"""
-      <div class="card">
-        <div class="card-header">
-          <h2>Model library</h2>
+      <section id="operations" class="operations"
+               hx-get="/ui/partials/operations" hx-trigger="every 5s"
+               hx-swap="outerHTML" aria-label="Gateway operations">
+        <div class="section-heading compact">
+          <div>
+            <span class="eyebrow">Live operations</span>
+            <h2>Since this server started</h2>
+          </div>
+          <span class="probe-age">Engine checked {readiness.probe_age_seconds:.1f}s ago</span>
         </div>
-        <p class="muted">Models are downloaded from Hugging Face and stay on this Mac.
-          Recommended picks match your hardware.</p>
-        <div id="models-list"
-             hx-get="/ui/partials/models-list"
-             hx-trigger="every 1500ms"
-             hx-swap="innerHTML">
+        <div class="operations-grid">
+          {cards}
+        </div>
+      </section>
+    """
+
+
+def _metric_card(label: str, value: str, detail: str, css: str = "") -> str:
+    class_name = f"metric-card {css}".strip()
+    return (
+        f'<article class="{class_name}"><span class="metric-label">{escape(label)}</span>'
+        f'<strong class="metric-value">{escape(value)}</strong>'
+        f'<span class="metric-detail">{escape(detail)}</span></article>'
+    )
+
+
+def models_fragment(entries: list[AdminModelEntry]) -> str:
+    installed = sum(entry.state == "installed" for entry in entries)
+    return f"""
+      <div class="models-hero">
+        <div>
+          <span class="eyebrow">Private model library</span>
+          <h2>Choose the voice engine for this server</h2>
+          <p>Models stay on this machine. Standalone models work without the Handy app
+            and can move with the Docker data volume.</p>
+        </div>
+        <div class="model-stats" aria-label="Model library summary">
+          <span><strong>{installed}</strong> installed</span>
+          <span><strong>{len(entries)}</strong> available</span>
+        </div>
+      </div>
+      <div class="card models-library">
+        <div class="card-header models-toolbar">
+          <div>
+            <h2>Available models</h2>
+            <p class="muted">Recommendations are matched to this server's hardware.</p>
+          </div>
+          <button type="button" class="ghost small no-margin"
+                  hx-get="/ui/partials/models-list"
+                  hx-target="#models-list" hx-swap="innerHTML">Refresh</button>
+        </div>
+        <div id="models-list" aria-live="polite">
           {models_list_fragment(entries)}
         </div>
       </div>
       <div class="card">
-        <h2>Custom whisper.cpp model</h2>
-        <p class="muted">Paste a direct HTTPS link to a <code>.bin</code> / <code>.gguf</code>
-          file, e.g. from your own Hugging Face repo.</p>
+        <h2>Bring your own Whisper model</h2>
+        <p class="muted">Paste a direct HTTPS link to a compatible <code>.bin</code> or
+          <code>.gguf</code> file. It will run through the standalone engine.</p>
         <form hx-post="/ui/partials/models/custom" hx-target="#models-list" hx-swap="innerHTML">
           <div class="row">
             <input name="url" type="url" required
@@ -152,15 +289,16 @@ def models_list_fragment(entries: list[AdminModelEntry]) -> str:
     parts: list[str] = []
     for engine, items in groups.items():
         title = "Custom models" if engine == "custom" else escape(ENGINE_LABELS.get(engine, engine))
-        rows = "".join(_model_row(item) for item in items)
+        cards = "".join(_model_card(item) for item in items)
         parts.append(
-            f"<h3 class='group-title'>{title}</h3>"
-            f'<table class="table models"><tbody>{rows}</tbody></table>'
+            f'<section class="model-group"><div class="model-group-heading">'
+            f"<h3>{title}</h3><span>{len(items)} models</span></div>"
+            f'<div class="model-grid">{cards}</div></section>'
         )
-    return "".join(parts)
+    return "".join(parts) or '<p class="empty-state">No models are available.</p>'
 
 
-def _model_row(entry: AdminModelEntry) -> str:
+def _model_card(entry: AdminModelEntry) -> str:
     encoded_id = quote(entry.id, safe="")
     badges = ""
     if entry.recommended:
@@ -173,8 +311,10 @@ def _model_row(entry: AdminModelEntry) -> str:
         downloaded = _format_bytes(entry.downloaded_bytes or 0)
         total = _format_bytes(entry.total_bytes or 0)
         action = (
-            f'<div class="progress"><div class="bar" style="width:{percent}%"></div></div>'
-            f'<span class="muted small">{percent}% · {downloaded} / {total}</span>'
+            f'<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"'
+            f' aria-valuenow="{percent}"><div class="bar" style="width:{percent}%"></div></div>'
+            f'<span class="muted small progress-copy">'
+            f"{percent}% · {downloaded} / {total}</span>"
             f'<button class="ghost small" hx-post="/ui/partials/models/{encoded_id}/cancel"'
             f' hx-target="#models-list" hx-swap="innerHTML">Cancel</button>'
         )
@@ -192,7 +332,7 @@ def _model_row(entry: AdminModelEntry) -> str:
             f"{select_button}"
             f'<button class="ghost small danger"'
             f' hx-delete="/ui/partials/models/{encoded_id}"'
-            f' hx-confirm="Delete {escape(entry.label)} from this Mac?"'
+            f' hx-confirm="Delete {escape(entry.label)} from this server?"'
             f' hx-target="#models-list" hx-swap="innerHTML">Delete</button>'
         )
     else:
@@ -208,17 +348,34 @@ def _model_row(entry: AdminModelEntry) -> str:
             f' hx-target="#models-list" hx-swap="innerHTML">Download</button>'
         )
 
-    return (
-        "<tr>"
-        f"<td class='model-name'>{escape(entry.label)} {badges}"
-        f"<span class='muted small'>{escape(entry.languages)} · {escape(entry.quality)}</span></td>"
-        f"<td class='size'>{_format_bytes(entry.size_bytes)}</td>"
-        f"<td class='actions'>{action}</td>"
-        "</tr>"
-    )
+    return f"""
+      <article class="model-card" data-model-id="{escape(entry.id, quote=True)}"
+               data-state="{entry.state}">
+        <div class="model-card-top">
+          <span class="model-family">{escape(entry.family)}</span>
+          <div class="model-badges">{badges}</div>
+        </div>
+        <h4>{escape(entry.label)}</h4>
+        <p class="model-description">{escape(entry.description)}</p>
+        <div class="model-meta">
+          <span>{_format_bytes(entry.size_bytes)}</span>
+          <span>{escape(entry.languages)}</span>
+          <span>{escape(entry.quality)}</span>
+        </div>
+        <div class="model-card-footer">
+          <span class="model-source">{escape(entry.source)}</span>
+          <div class="actions">{action}</div>
+        </div>
+      </article>
+    """
 
 
-def settings_fragment(config: ConfigResponse, paths: list[tuple[str, str]]) -> str:
+def settings_fragment(
+    config: ConfigResponse,
+    paths: list[tuple[str, str]],
+    bind_host: str,
+    port: int,
+) -> str:
     options = "".join(
         f'<option value="{escape(value)}"{" selected" if value == config.engine else ""}>'
         f"{escape(ENGINE_LABELS.get(value, value))}</option>"
@@ -226,6 +383,17 @@ def settings_fragment(config: ConfigResponse, paths: list[tuple[str, str]]) -> s
     )
     hint = escape(ENGINE_HINTS.get(config.engine, ""))
     facts = _facts(paths)
+    listener = escape(format_host_port(bind_host, port))
+    local_url = escape(local_webui_url(bind_host, port))
+    exposure_notice = ""
+    if bind_host in WILDCARD_BIND_HOSTS:
+        exposure_notice = """
+          <div class="callout warning compact">
+            <strong>All-interface listener</strong>
+            <span>Devices on reachable networks can contact the gateway. They still need
+              the bearer token for transcription and administration.</span>
+          </div>
+        """
     return f"""
       <div class="card">
         <h2>Speech engine</h2>
@@ -240,7 +408,15 @@ def settings_fragment(config: ConfigResponse, paths: list[tuple[str, str]]) -> s
         <p id="engine-result" class="muted">{hint}</p>
       </div>
       <div class="card">
-        <h2>Paths</h2>
+        <h2>Network</h2>
+        <dl class="facts">
+          <dt>Listener</dt><dd>{listener}</dd>
+          <dt>Open on this Mac</dt><dd>{local_url}</dd>
+        </dl>
+        {exposure_notice}
+      </div>
+      <div class="card">
+        <h2>Storage &amp; configuration</h2>
         <dl class="facts">{facts}</dl>
       </div>
       <div class="card danger-zone">
@@ -255,19 +431,20 @@ def engine_update_fragment(engine: EngineStatus, message: str) -> str:
     css = "ok" if engine.ready else "missing"
     return (
         f'<span class="badge {css}">{escape(engine.name or engine.id)}'
-        f'{" ready" if engine.ready else " not ready"}</span> '
+        f"{' ready' if engine.ready else ' not ready'}</span> "
         f"{escape(message)}{engine_pill_oob(engine)}"
     )
 
 
-def test_fragment() -> str:
-    return """
+def test_fragment(maximum_duration_seconds: int) -> str:
+    return f"""
       <div class="card">
         <h2>Try your pipeline</h2>
-        <p class="muted">Record a short clip with this Mac's microphone. The audio is
+        <p class="muted">Record a short clip with this browser's microphone. The audio is
           normalized with FFmpeg and transcribed by the active engine &mdash; exactly like
           an iPhone dictation.</p>
-        <div class="row">
+        <div class="row" id="recorder-controls"
+             data-maximum-seconds="{maximum_duration_seconds}">
           <select id="test-language">
             <option value="auto">Detect language</option>
             <option value="en">English</option>
@@ -280,15 +457,19 @@ def test_fragment() -> str:
             <option value="ja">Japanese</option>
             <option value="zh">Chinese</option>
           </select>
-          <button id="record-toggle" class="primary">Start recording</button>
+          <button id="record-toggle" type="button" class="primary">Start recording</button>
+          <span id="record-timer" class="record-timer hidden">0:00</span>
         </div>
-        <p id="record-status" class="muted"></p>
+        <p id="record-status" class="muted" aria-live="polite"></p>
         <div id="test-result" class="result hidden">
-          <h3>Transcript</h3>
+          <div class="result-header">
+            <h3>Transcript</h3>
+            <button id="copy-transcript" type="button" class="ghost small">Copy</button>
+          </div>
           <p id="test-transcript"></p>
           <p id="test-meta" class="muted"></p>
         </div>
-        <p id="test-error" class="error hidden"></p>
+        <p id="test-error" class="error hidden" role="alert"></p>
       </div>
     """
 
@@ -298,9 +479,7 @@ def error_fragment(message: str) -> str:
 
 
 def _facts(items: list[tuple[str, str]]) -> str:
-    return "".join(
-        f"<dt>{escape(label)}</dt><dd>{escape(value)}</dd>" for label, value in items
-    )
+    return "".join(f"<dt>{escape(label)}</dt><dd>{escape(value)}</dd>" for label, value in items)
 
 
 def _format_bytes(size: int) -> str:
@@ -311,3 +490,24 @@ def _format_bytes(size: int) -> str:
     if size >= 1_000:
         return f"{size / 1_000:.0f} KB"
     return f"{size} B"
+
+
+def _format_uptime(seconds: int) -> str:
+    days, remainder = divmod(max(0, seconds), 86_400)
+    hours, remainder = divmod(remainder, 3_600)
+    minutes, remaining_seconds = divmod(remainder, 60)
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m {remaining_seconds}s"
+    return f"{remaining_seconds}s"
+
+
+def _format_latency(milliseconds: int | None) -> str:
+    if milliseconds is None:
+        return "—"
+    if milliseconds >= 1_000:
+        return f"{milliseconds / 1_000:.1f}s"
+    return f"{milliseconds}ms"

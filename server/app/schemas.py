@@ -40,6 +40,19 @@ class HealthResponse(BaseModel):
     engine: str
 
 
+class LivenessResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    uptime_seconds: int
+
+
+class ReadinessResponse(BaseModel):
+    status: Literal["ready", "not_ready"]
+    engine_ready: bool
+    engine: str
+    probe_age_seconds: float
+    warmup_state: Literal["pending", "warming", "complete", "unsupported", "unavailable", "failed"]
+
+
 class ModelResponse(BaseModel):
     id: str
     ready: bool
@@ -86,6 +99,24 @@ class SetupChecklist(BaseModel):
     engine_ready: bool
 
 
+class OperationalMetricsStatus(BaseModel):
+    uptime_seconds: int
+    queue_depth: int
+    active_transcriptions: int
+    concurrency_limit: int
+    successful_transcriptions: int
+    failed_transcriptions: int
+    rejected_transcriptions: int
+    average_latency_ms: int | None
+    last_latency_ms: int | None
+
+
+class ReadinessStatus(BaseModel):
+    probe_age_seconds: float
+    warmup_state: Literal["pending", "warming", "complete", "unsupported", "unavailable", "failed"]
+    warmed_bytes: int
+
+
 class AdminStatusResponse(BaseModel):
     status: Literal["ok"] = "ok"
     version: str
@@ -96,6 +127,8 @@ class AdminStatusResponse(BaseModel):
     bind_host: str
     port: int
     setup: SetupChecklist
+    metrics: OperationalMetricsStatus
+    readiness: ReadinessStatus
 
 
 class AdminModelEntry(BaseModel):
@@ -105,6 +138,9 @@ class AdminModelEntry(BaseModel):
     size_bytes: int
     languages: str
     quality: str
+    family: str
+    description: str
+    source: str
     state: Literal["installed", "downloading", "not_installed"]
     active: bool
     recommended: bool

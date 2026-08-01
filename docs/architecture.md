@@ -9,9 +9,9 @@ Local Flow keyboard extension
   ↕ atomic App Group JSON + revision numbers
 Local Flow containing app
   ↕ bearer-authenticated HTTPS through Tailscale Serve
-FastAPI gateway on Mac (127.0.0.1)
+FastAPI gateway on macOS or Linux (native or multi-architecture container)
   → bounded temporary audio → FFmpeg mono 16 kHz WAV
-  → TranscriptionEngine adapter → Handy CLI or whisper.cpp
+  → TranscriptionEngine adapter → Handy, WhisperKit, or whisper.cpp
 ```
 
 The App Group record is the source of truth. Polling is a wake-up strategy, not
@@ -55,7 +55,36 @@ session creation or finishing a completed session returns the same job/result.
 
 ## Engine boundary
 
-`TranscriptionEngine` exposes `health()` and `transcribe(path, options)`.
-`HandyEngine` is selected automatically when Handy is installed and reuses its
-selected downloaded model. `WhisperCppEngine` remains the standalone fallback.
-No engine-specific field is part of the session API response.
+`TranscriptionEngine` exposes `health()` and `transcribe(path, options)`, while
+engines that can identify model files also expose best-effort warmup.
+`HandyEngine` can reuse Handy's selected downloaded model, `WhisperKitEngine`
+runs compatible Core ML folders on Apple silicon, and `WhisperCppEngine` is the
+portable standalone fallback. No engine-specific field is part of the session
+API response.
+
+The Docker image uses the same `WhisperCppEngine` adapter and persists `/data`
+as a volume. WhisperKit and Handy remain optional macOS integrations. Catalog
+entries are exposed only on platforms that can execute their engine; adding
+Handy's ONNX families requires a separate portable ONNX adapter rather than
+presenting downloads that the server cannot run.
+
+The gateway keeps privacy-safe operational counters in process memory: uptime,
+active and queued transcriptions, completed/failed/rejected counts, and aggregate
+end-to-end latency. These counters reset on restart and never contain audio,
+transcripts, session identifiers, or model input text.
+
+Liveness (`/health/live`) is independent of the transcription engine. Readiness
+(`/health/ready`) uses a five-second cached engine probe and returns `503` when
+the selected model cannot transcribe. Startup schedules a best-effort filesystem
+prefetch for the selected model while the HTTP process remains available.
+
+## Deployment boundary
+
+The native macOS gateway can use Apple-platform engines. The container is a
+Linux process built around CPU-only `whisper.cpp`; Docker Desktop cannot pass the
+macOS WhisperKit/Core ML runtime into that container. Both deployments expose
+the same API, WebUI, health semantics, and persistent model-selection behavior.
+
+The canonical container project is `server/compose.yaml`. It publishes host
+loopback by default, mounts `/data` as the only persistent application volume,
+and supplies the bearer token through a Compose secret.

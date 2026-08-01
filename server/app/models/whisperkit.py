@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, TranscriptionOptions
+from app.models.warmup import prefetch_model_paths
 
 
 class WhisperKitEngine:
@@ -23,6 +24,11 @@ class WhisperKitEngine:
             ready=resolved is not None and model_ready,
             name=f"whisperkit:{model_name}",
         )
+
+    async def warmup(self) -> int:
+        if self.model_path is None or not (await self.health()).ready:
+            return 0
+        return await asyncio.to_thread(prefetch_model_paths, [self.model_path])
 
     async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
         resolved = self._resolved_binary()

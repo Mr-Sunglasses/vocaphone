@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from app import model_manager
-from app.catalog import CatalogModel
+from app.catalog import DEFAULT_CATALOG, CatalogModel
 from app.model_manager import (
     DownloadInProgressError,
     ModelManager,
@@ -38,6 +38,14 @@ TINY_FOLDER = CatalogModel(
     huggingface_repo="example/repo",
     huggingface_folder="openai_whisper-tiny",
 )
+
+
+def test_catalog_includes_standalone_handy_compatible_models() -> None:
+    entries = {model.key: model for model in DEFAULT_CATALOG}
+
+    assert entries["whisper-medium-q4_1.bin"].engine == "whisper.cpp"
+    assert entries["ggml-large-v3-q5_0.bin"].source == "Handy-compatible"
+    assert entries["breeze-asr-q5_k.bin"].family == "Breeze ASR"
 
 
 @pytest.fixture
@@ -95,9 +103,7 @@ async def test_double_download_rejected(manager: ModelManager) -> None:
     manager.start_download("whisper.cpp:ggml-tiny.bin")
     with pytest.raises(DownloadInProgressError):
         manager.start_download("whisper.cpp:ggml-tiny.bin")
-    await asyncio.wait_for(
-        _wait_finished(manager, "whisper.cpp:ggml-tiny.bin"), timeout=5
-    )
+    await asyncio.wait_for(_wait_finished(manager, "whisper.cpp:ggml-tiny.bin"), timeout=5)
 
 
 async def test_whisperkit_folder_download(

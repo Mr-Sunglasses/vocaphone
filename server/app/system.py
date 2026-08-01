@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import platform
 import shutil
 import subprocess
@@ -30,7 +31,7 @@ def detect_system(
     arch = platform.machine()
     is_mac = platform.system() == "Darwin"
     chip = _sysctl("machdep.cpu.brand_string") if is_mac else platform.processor()
-    ram_gb = _ram_gb() if is_mac else 0.0
+    ram_gb = _ram_gb(is_mac)
     return SystemInfo(
         os_name=platform.system(),
         os_version=platform.release(),
@@ -68,8 +69,15 @@ def _sysctl(key: str) -> str:
     return result.stdout.strip() if result.returncode == 0 else ""
 
 
-def _ram_gb() -> float:
-    raw = _sysctl("hw.memsize")
-    if not raw.isdigit():
+def _ram_gb(is_mac: bool) -> float:
+    if is_mac:
+        raw = _sysctl("hw.memsize")
+        return round(int(raw) / (1024**3), 1) if raw.isdigit() else 0.0
+    try:
+        pages = os.sysconf("SC_PHYS_PAGES")
+        page_size = os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError):
         return 0.0
-    return round(int(raw) / (1024**3), 1)
+    if not isinstance(pages, int) or not isinstance(page_size, int):
+        return 0.0
+    return round((pages * page_size) / (1024**3), 1)

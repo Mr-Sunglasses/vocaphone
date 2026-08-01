@@ -1,0 +1,25 @@
+name: localflow
+
+services:
+  gateway:
+    image: ${LOCALFLOW_IMAGE:-localflow-gateway:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
+    environment:
+      LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
+    secrets:
+      - localflow_token
+    volumes:
+      - localflow-data:/data
+
+secrets:
+  localflow_token:
+    environment: LOCALFLOW_TOKEN
+
+volumes:
+  localflow-data:

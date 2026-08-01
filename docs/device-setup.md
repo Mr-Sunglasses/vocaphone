@@ -24,10 +24,13 @@ and on-device installation have been exercised with the current checkout.
 2. Leave “Keep Quick Dictation ready for 10 minutes” enabled. Confirm the app
    shows Quick Dictation as Ready and iOS displays its microphone indicator.
 3. Enter the tailnet HTTPS gateway URL and the token from the Mac.
-4. Confirm that Save and test reports both gateway and model ready.
-5. Open Settings from Local Flow.
-6. Under General → Keyboard → Keyboards, add Local Flow.
-7. Enable Full Access. It is used for the app's shared state and private Mac
+4. Confirm that Save and test reports both gateway and model ready and shows the
+   expected active model.
+5. Choose Automatic microphone routing or iPhone Microphone, connect any AirPods
+   or Bluetooth headset used in normal operation, and confirm **Input in use**.
+6. Open Settings from Local Flow.
+7. Under General → Keyboard → Keyboards, add Local Flow.
+8. Enable Full Access. It is used for the app's shared state and private Mac
    workflow, not to collect unrelated typing.
 
 ## Required Phase 1 gate
@@ -59,7 +62,12 @@ Verify that:
 - text is inserted directly, never via clipboard;
 - one session never inserts twice;
 - Cancel removes local audio;
-- an offline Mac produces a recoverable error and Retry reuses the recording.
+- an offline Mac produces a recoverable error and Retry reuses the recording;
+- Formal, Casual, Very Casual, and Excited produce the documented capitalization
+  and punctuation behavior without changing dictated words;
+- Automatic and iPhone Microphone preferences select the expected input;
+- after recording stops, ordinary video/music audio returns to the speaker or
+  connected output instead of remaining on the receiver.
 
 Also test Messages, Mail, Safari, WhatsApp, Slack, and ChatGPT where installed.
 Secure fields and apps that disable third-party keyboards are expected platform

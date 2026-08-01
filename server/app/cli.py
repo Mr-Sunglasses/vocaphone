@@ -8,7 +8,7 @@ import urllib.request
 import uvicorn
 
 from app.audio import FFmpegNormalizer
-from app.config import Settings
+from app.config import WILDCARD_BIND_HOSTS, Settings, format_host_port, local_webui_url
 from app.engines import StaticEngineProvider
 from app.main import create_app, select_engine
 from app.service import TranscriptionService
@@ -18,11 +18,12 @@ from app.storage import SessionRepository
 def serve() -> None:
     settings = Settings.from_env()
     host = settings.bind_host
-    display_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
     token_source = "(from LOCALFLOW_TOKEN)" if _token_from_env() else "~/.config/localflow/token"
-    print(f"Local Flow gateway listening on http://{display_host}:{settings.port}")
-    print(f"WebUI:  http://{display_host}:{settings.port}/")
-    print(f"Token:  {token_source}")
+    print(f"Local Flow gateway listening on {format_host_port(host, settings.port)}")
+    print(f"WebUI (this Mac): {local_webui_url(host, settings.port)}")
+    if host in WILDCARD_BIND_HOSTS:
+        print("Network access: use this Mac's LAN or Tailscale IP with the same port")
+    print(f"Token: {token_source}")
     uvicorn.run(
         create_app(settings),
         host=host,
@@ -40,9 +41,8 @@ def _token_from_env() -> bool:
 def status() -> None:
     settings = Settings.from_env()
     try:
-        with urllib.request.urlopen(
-            f"http://127.0.0.1:{settings.port}/health", timeout=2
-        ) as response:
+        health_url = f"{local_webui_url(settings.bind_host, settings.port)}health"
+        with urllib.request.urlopen(health_url, timeout=2) as response:
             data = json.load(response)
     except Exception as error:
         print(f"gateway unreachable: {error}", file=sys.stderr)

@@ -8,6 +8,7 @@ from typing import Any
 
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, TranscriptionOptions
+from app.models.warmup import prefetch_model_paths
 
 
 class HandyEngine:
@@ -41,6 +42,12 @@ class HandyEngine:
             ready=ready,
             name=f"handy:{selected_model}",
         )
+
+    async def warmup(self) -> int:
+        paths = [path for model in self._downloaded_models() if (path := self._model_path(model))]
+        if not paths or not (await self.health()).ready:
+            return 0
+        return await asyncio.to_thread(prefetch_model_paths, paths)
 
     async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
         health = await self.health()
@@ -108,11 +115,17 @@ class HandyEngine:
         return selected if isinstance(selected, str) and selected else None
 
     def _model_is_downloaded(self, model: str) -> bool:
+        return self._model_path(model) is not None
+
+    def _model_path(self, model: str) -> Path | None:
         components = model.split("/")
         if len(components) < 3:
-            return False
+            return None
         repository = "/".join(components[:-1])
         filename = components[-1]
         cache_name = "models--" + repository.replace("/", "--")
         snapshots = self.huggingface_cache / cache_name / "snapshots"
-        return any(candidate.is_file() for candidate in snapshots.glob(f"*/{filename}"))
+        return next(
+            (candidate for candidate in snapshots.glob(f"*/{filename}") if candidate.is_file()),
+            None,
+        )

@@ -7,6 +7,7 @@ final class RecordingCoordinator: ObservableObject {
     @Published private(set) var activeRecord: SessionRecord?
     @Published private(set) var message: String?
     @Published private(set) var quickDictationExpiresAt: Date?
+    @Published private(set) var currentMicrophoneName: String?
 
     private let recorder = AudioRecorder()
     private let store = SharedStore.shared
@@ -16,6 +17,7 @@ final class RecordingCoordinator: ObservableObject {
     private var quickDictationWatcherTask: Task<Void, Never>?
     private var startingSessionID: UUID?
     private var gatewayClient: GatewayClient?
+    private var lastMicrophoneName: String?
     private let liveActivity = LiveActivityManager.shared
 
     var stateLabel: String { activeRecord?.state.rawValue ?? "idle" }
@@ -30,13 +32,32 @@ final class RecordingCoordinator: ObservableObject {
     var isKeyboardRecording: Bool {
         isRecording && activeRecord?.sourceDocumentID != "in-app-test"
     }
+    var canChangeMicrophone: Bool {
+        !recorder.isRecording && startingSessionID == nil
+    }
+    var microphoneStatusLabel: String {
+        if let currentMicrophoneName { return currentMicrophoneName }
+        if let lastMicrophoneName { return "Last used: \(lastMicrophoneName)" }
+        switch KeyboardPreferences.microphonePreference {
+        case .automatic: return "Selected when recording starts"
+        case .iPhone: return "iPhone Microphone"
+        }
+    }
 
     init() {
         // A process exit can leave an otherwise valid-looking availability
         // marker behind. The new app process is not warm until it arms audio.
         try? store.clearQuickDictationAvailability()
+        recorder.microphonePreference = KeyboardPreferences.microphonePreference
         recorder.onMeter = { [weak self] level in self?.persistMeter(level) }
         recorder.onMaximumDuration = { [weak self] in self?.requestFinish() }
+        recorder.onInputRouteChanged = { [weak self] inputName in
+            guard let self else { return }
+            self.currentMicrophoneName = inputName
+            if let inputName {
+                self.lastMicrophoneName = inputName
+            }
+        }
         loadGatewaySettings()
     }
 
@@ -112,6 +133,26 @@ final class RecordingCoordinator: ObservableObject {
 
     func updateGateway(baseURL: URL, token: String) {
         gatewayClient = GatewayClient(baseURL: baseURL, token: token)
+    }
+
+    func setMicrophonePreference(_ preference: MicrophonePreference) {
+        guard !recorder.isRecording, startingSessionID == nil else {
+            message = "Finish the current recording before changing microphones."
+            return
+        }
+        let shouldRearmQuickDictation = recorder.isStandbyActive
+        if shouldRearmQuickDictation {
+            clearQuickDictationReadiness(deactivateAudioSession: true)
+        }
+        KeyboardPreferences.microphonePreference = preference
+        recorder.microphonePreference = preference
+        currentMicrophoneName = nil
+        lastMicrophoneName = nil
+        if shouldRearmQuickDictation {
+            armQuickDictation()
+        } else {
+            message = "Microphone set to \(preference.displayName)."
+        }
     }
 
     func startInAppTest() {
@@ -373,7 +414,7 @@ final class RecordingCoordinator: ObservableObject {
             activeRecord = record
             UserDefaults.standard.set(
                 "Gateway and model are ready.",
-                forKey: "gatewayHealthMessage"
+                forKey: GatewayStatusPreferences.healthMessageKey
             )
             try? FileManager.default.removeItem(at: output)
             message = "Transcript ready. Return to the keyboard to insert it."

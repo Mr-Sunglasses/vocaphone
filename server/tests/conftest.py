@@ -20,8 +20,10 @@ class FakeEngine:
     def __init__(self, transcript: str = "hello from the local model") -> None:
         self.transcript = transcript
         self.calls = 0
+        self.health_calls = 0
 
     async def health(self) -> EngineHealth:
+        self.health_calls += 1
         return EngineHealth(ready=True, name="fake-local-model")
 
     async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
@@ -50,8 +52,13 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
-    app = create_app(settings, engine=FakeEngine(), normalizer=FakeNormalizer())
+def fake_engine() -> FakeEngine:
+    return FakeEngine()
+
+
+@pytest.fixture
+async def client(settings: Settings, fake_engine: FakeEngine) -> AsyncIterator[httpx.AsyncClient]:
+    app = create_app(settings, engine=fake_engine, normalizer=FakeNormalizer())
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://test",

@@ -95,9 +95,9 @@
 		3B6FBCD6D0BA52C87B1D6F01 /* LocalFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFlowApp.swift; sourceTree = "<group>"; };
 		3D5D36117A0F57109452184B /* KeyboardURLLauncher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KeyboardURLLauncher.m; sourceTree = "<group>"; };
 		47D89402A128DB78CAA390D8 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
-		5B71284AEFECD863402492DB /* LocalFlowLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LocalFlowLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		5B71284AEFECD863402492DB /* LocalFlowLiveActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = LocalFlowLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		608A526CA60F83A070052A01 /* KeyboardURLLauncher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyboardURLLauncher.h; sourceTree = "<group>"; };
-		6CBCE898A23F47628C1183DA /* LocalFlowKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = LocalFlowKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		6CBCE898A23F47628C1183DA /* LocalFlowKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = LocalFlowKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		703439CBBE8F06E5A7449339 /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
 		7149F16802909BA09B07B761 /* SessionRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecordTests.swift; sourceTree = "<group>"; };
 		714EAEF5499752246C9E5FBA /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -105,7 +105,7 @@
 		7BB93D3AEE8AC75CF9783740 /* RecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinator.swift; sourceTree = "<group>"; };
 		7E5A612D9FCE236CFDF42011 /* FinishRecordingIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinishRecordingIntent.swift; sourceTree = "<group>"; };
 		9119E8C9BE1BEB7517D444CD /* QuickDictationAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickDictationAvailability.swift; sourceTree = "<group>"; };
-		9197D7860D1EDCAEBF2FF893 /* LocalFlowApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LocalFlowApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9197D7860D1EDCAEBF2FF893 /* LocalFlowApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LocalFlowApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		95CB0C8B98437D563967E3A0 /* LocalFlowApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LocalFlowApp.entitlements; sourceTree = "<group>"; };
 		9BA93B9361CE2B8110A782AA /* LocalFlowKeyboard-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "LocalFlowKeyboard-Bridging-Header.h"; sourceTree = "<group>"; };
 		A360AC1ABD0B65D97947A185 /* KeyboardPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardPreferences.swift; sourceTree = "<group>"; };
@@ -450,7 +450,6 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = LocalFlowLiveActivity/LocalFlowLiveActivity.entitlements;
-				DEVELOPMENT_TEAM = A83WCPTTT9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LocalFlowLiveActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -471,7 +470,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = LocalFlowApp/LocalFlowApp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = A83WCPTTT9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LocalFlowApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -489,7 +487,6 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = LocalFlowKeyboard/LocalFlowKeyboard.entitlements;
-				DEVELOPMENT_TEAM = A83WCPTTT9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LocalFlowKeyboard/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -587,7 +584,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = LocalFlowApp/LocalFlowApp.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = A83WCPTTT9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LocalFlowApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -688,7 +684,6 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = LocalFlowKeyboard/LocalFlowKeyboard.entitlements;
-				DEVELOPMENT_TEAM = A83WCPTTT9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LocalFlowKeyboard/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -709,7 +704,6 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = LocalFlowLiveActivity/LocalFlowLiveActivity.entitlements;
-				DEVELOPMENT_TEAM = A83WCPTTT9;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = LocalFlowLiveActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -17,18 +17,19 @@ These are changeable implementation defaults, not confirmed product decisions:
 | Output mode | Raw | Avoids unconfirmed cleanup by default |
 | Audio retention | Delete on success; keep failures 24 hours | Privacy with retry recovery |
 | Transcript history | Shared session records only | Full product history remains a later choice |
-| Gateway port | Loopback TCP 8765 | Private Tailscale Serve ingress |
-| Initial engine | Handy CLI, auto-detected | Reuses the installed Canary model and Metal runtime |
+| Native listener | `0.0.0.0:8765` by default; loopback recommended with Serve | Supports LAN setup while allowing a smaller Tailscale-only exposure |
+| Container publication | Host loopback port 8765 by default | Keeps Docker private behind Tailscale Serve unless LAN access is intentional |
+| Initial engine | `auto`: Handy, downloaded WhisperKit, then `whisper.cpp` | Uses what is actually runnable while preserving an explicit WebUI choice |
+| Docker engine | CPU-only `whisper.cpp` | Portable across Linux `amd64` and `arm64` without host-specific GPU assumptions |
 
 ## Must be confirmed before physical-device acceptance
 
 - Final product name, bundle identifiers, Apple team, and App Group
-- Physical iPhone model and iOS version
 - Whether iOS 17.0 is the desired minimum
 - Mac availability and sleep policy
 - First-release languages and mixed Hindi/English requirements
-- Default Handy/Whisper model after representative benchmarks; Canary currently
-  covers English, German, Spanish, and French, not Hindi
+- Default native and container models after representative latency, accuracy,
+  memory, and disk benchmarks
 - Transcript history policy
 - Failed-audio retry window
 - Whether local cleanup should remain opt-in

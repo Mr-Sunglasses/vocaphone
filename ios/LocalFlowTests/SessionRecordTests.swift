@@ -95,4 +95,9 @@ struct SessionRecordTests {
         #expect(WritingStyle.excited.rawValue == "excited")
         #expect(SessionRecord().style == WritingStyle.casual.rawValue)
     }
+
+    @Test func microphonePreferencesHaveStableStoredValues() {
+        #expect(MicrophonePreference.automatic.rawValue == "automatic")
+        #expect(MicrophonePreference.iPhone.rawValue == "iphone")
+    }
 }

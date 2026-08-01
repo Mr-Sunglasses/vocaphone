@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, TranscriptionOptions
+from app.models.warmup import prefetch_model_paths
 
 
 class WhisperCppEngine:
@@ -16,6 +17,11 @@ class WhisperCppEngine:
     async def health(self) -> EngineHealth:
         ready = self.binary.is_file() and self.model.is_file()
         return EngineHealth(ready=ready, name=f"whisper.cpp:{self.model.name}")
+
+    async def warmup(self) -> int:
+        if not (await self.health()).ready:
+            return 0
+        return await asyncio.to_thread(prefetch_model_paths, [self.model])
 
     async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
         health = await self.health()

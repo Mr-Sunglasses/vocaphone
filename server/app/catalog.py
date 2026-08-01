@@ -29,6 +29,9 @@ class CatalogModel:
     download_url: str | None = None
     huggingface_repo: str | None = None
     huggingface_folder: str | None = None
+    family: str = "Whisper"
+    description: str = "Local speech recognition model."
+    source: str = "whisper.cpp"
 
 
 def _whisper_cpp(
@@ -38,6 +41,11 @@ def _whisper_cpp(
     languages: str,
     quality: str,
     minimum_ram_gb: float,
+    *,
+    download_url: str | None = None,
+    family: str = "Whisper",
+    description: str = "OpenAI Whisper converted for the standalone whisper.cpp engine.",
+    source: str = "whisper.cpp",
 ) -> CatalogModel:
     return CatalogModel(
         id=f"{ENGINE_WHISPER_CPP}:{key}",
@@ -48,7 +56,11 @@ def _whisper_cpp(
         languages=languages,
         quality=quality,
         minimum_ram_gb=minimum_ram_gb,
-        download_url=f"https://huggingface.co/{WHISPER_CPP_REPO}/resolve/main/{key}",
+        download_url=download_url
+        or f"https://huggingface.co/{WHISPER_CPP_REPO}/resolve/main/{key}",
+        family=family,
+        description=description,
+        source=source,
     )
 
 
@@ -71,19 +83,18 @@ def _whisperkit(
         minimum_ram_gb=minimum_ram_gb,
         huggingface_repo=WHISPERKIT_REPO,
         huggingface_folder=folder,
+        family="Whisper",
+        description="Core ML Whisper model optimized for Apple silicon.",
+        source="WhisperKit",
     )
 
 
 DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
-    _whisperkit(
-        "openai_whisper-tiny", "WhisperKit Tiny", 66 * MB, "Multilingual", "Fastest", 4
-    ),
+    _whisperkit("openai_whisper-tiny", "WhisperKit Tiny", 66 * MB, "Multilingual", "Fastest", 4),
     _whisperkit(
         "openai_whisper-tiny.en", "WhisperKit Tiny EN", 66 * MB, "English only", "Fastest", 4
     ),
-    _whisperkit(
-        "openai_whisper-base", "WhisperKit Base", 145 * MB, "Multilingual", "Fast", 4
-    ),
+    _whisperkit("openai_whisper-base", "WhisperKit Base", 145 * MB, "Multilingual", "Fast", 4),
     _whisperkit(
         "openai_whisper-base.en", "WhisperKit Base EN", 145 * MB, "English only", "Fast", 4
     ),
@@ -129,12 +140,46 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         "ggml-medium.bin", "whisper.cpp Medium", 1500 * MB, "Multilingual", "Accurate", 12
     ),
     _whisper_cpp(
+        "whisper-medium-q4_1.bin",
+        "Whisper Medium Q4",
+        492 * MB,
+        "Multilingual",
+        "Accurate · compact",
+        8,
+        download_url="https://blob.handy.computer/whisper-medium-q4_1.bin",
+        description="Handy's compact Whisper Medium build, usable without the Handy app.",
+        source="Handy-compatible",
+    ),
+    _whisper_cpp(
         "ggml-large-v3-turbo.bin",
         "whisper.cpp Large v3 Turbo",
         1620 * MB,
         "Multilingual",
         "Most accurate",
         16,
+    ),
+    _whisper_cpp(
+        "ggml-large-v3-q5_0.bin",
+        "Whisper Large v3 Q5",
+        1081 * MB,
+        "Multilingual",
+        "Most accurate · compact",
+        16,
+        download_url="https://blob.handy.computer/ggml-large-v3-q5_0.bin",
+        description="Quantized Whisper Large v3 from Handy's standalone model catalog.",
+        source="Handy-compatible",
+    ),
+    _whisper_cpp(
+        "breeze-asr-q5_k.bin",
+        "Breeze ASR Q5",
+        1081 * MB,
+        "Taiwanese Mandarin + English",
+        "Specialized",
+        16,
+        download_url="https://blob.handy.computer/breeze-asr-q5_k.bin",
+        family="Breeze ASR",
+        description="Whisper variant tuned for Taiwanese Mandarin and code-switching.",
+        source="Handy-compatible",
     ),
     _whisper_cpp(
         "ggml-large-v3.bin", "whisper.cpp Large v3", 3 * GB, "Multilingual", "Most accurate", 24

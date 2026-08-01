@@ -1,58 +1,159 @@
 # Local Flow
 
-Local Flow is a privacy-first iPhone dictation keyboard backed by a speech model
-running on your own Mac. The keyboard coordinates recording through its
-containing iOS app, sends recoverable audio over a private Tailscale connection,
-and inserts the final transcript directly at the active cursor.
+Local Flow is a privacy-first iPhone dictation keyboard backed by speech models
+running on hardware you control. The keyboard coordinates recording through its
+containing iOS app, sends recoverable audio to a private gateway, and inserts the
+final transcript directly at the active cursor.
 
-The iOS app and Mac gateway are implemented. The complete keyboard handoff,
-background recording, private tailnet transcription, and text insertion flow has
-been exercised on a physical iPhone 14 Pro.
+The complete keyboard handoff, background recording, private Tailscale
+transcription, and direct text-insertion flow has been exercised on a physical
+iPhone 14 Pro.
 
-## What is included
+> [!IMPORTANT]
+> iOS keyboard extensions cannot access the microphone. Local Flow records in
+> the containing app, shares only versioned session state with the keyboard, and
+> then inserts through `UITextDocumentProxy`. Quick Dictation can keep that app
+> ready for up to 10 minutes so most later dictations do not require another app
+> switch.
 
-- SwiftUI containing app with onboarding, microphone permission, gateway pairing,
-  health checks, persistent background audio, WAV recording, metering, and recovery
-- UIKit custom keyboard with a compact QWERTY typing surface, Start, Finish,
-  Cancel, Retry, Undo, language/style status, next-keyboard control, optional
-  automatic insertion, and direct `UITextDocumentProxy` insertion
-- Four persistent, fully local writing styles: Formal, Casual, Very Casual, and
-  Excited. The selected style is applied after transcription without sending text
-  to a third-party service or changing the dictated words
-- Persistent return-gesture guidance plus a Live Activity/Dynamic Island timer
-  and Finish control while the containing app records in the background
-- A 10-minute Quick Dictation window that keeps the containing app's microphone
-  input ready, discards standby buffers, and lets later keyboard taps start
-  without leaving the current app
-- Atomic, versioned App Group session records with validated transitions and
-  duplicate-insertion protection
-- Bearer token stored in the iOS Keychain, never in shared session JSON
-- FastAPI gateway bound to loopback with bounded uploads, SQLite persistence,
-  FFmpeg normalization, silence detection, and a model-independent adapter
-- HTMX WebUI with setup checks, hardware-aware model recommendations, background
-  model downloads, engine selection, and a microphone test flow
-- Handy, `whisper.cpp`, and WhisperKit adapters, private health/model endpoints, retry,
-  retention cleanup, and stable machine-readable errors
-- Unit and integration tests for Swift state/storage/spacing and Python API,
-  auth, idempotency, upload limits, FFmpeg, silence detection, and cleanup
+## Highlights
 
-## Confirmed local environment
+- Native SwiftUI app and UIKit keyboard with Start, Finish, Cancel, Retry, Undo,
+  language/style status, next-keyboard control, and direct insertion
+- Four local writing styles: Formal, Casual, Very Casual, and Excited
+- Automatic microphone routing or an explicit iPhone Microphone preference,
+  with the input currently in use shown in the app
+- A bounded Quick Dictation window with persistent background input, a Live
+  Activity/Dynamic Island timer, and standby buffers that are discarded
+- FastAPI gateway with bounded uploads, SQLite idempotency, FFmpeg normalization,
+  silence detection, retention cleanup, and stable error responses
+- Handy, WhisperKit, and `whisper.cpp` engine adapters with downloadable local
+  models and hardware-aware recommendations
+- Operational dashboard with uptime, queue depth, success/failure counts,
+  transcription latency, readiness, and model-cache warmup state
+- CPU-first Docker image and Compose setup for Linux `amd64` and `arm64`
+- Bearer authentication, iOS Keychain storage, private Tailscale HTTPS, and no
+  analytics or third-party transcription
 
-Recorded on 2026-07-31:
+## Choose a gateway deployment
 
-- macOS 26.5.2 on a 16 GB Apple M1 Pro MacBook Pro
-- Xcode 26.6, Swift 6.3.3, and iOS 26.5 Simulator
-- Python 3.13.5 managed by `uv` 0.8.0
-- FFmpeg 8.1.2
-- XcodeGen 2.46.0
+| Deployment | Best for | Speech engine | Expected performance |
+| --- | --- | --- | --- |
+| Native macOS | Daily use on an Apple silicon Mac | WhisperKit, Handy, or `whisper.cpp` | Best on Apple silicon with WhisperKit |
+| Docker Compose | Linux home servers and reproducible deployment | CPU-only `whisper.cpp` | Portable, but slower on a Mac than native WhisperKit |
 
-A physical iPhone 14 Pro on iOS 26.6 is connected. Automatic Apple development
-signing, App Group provisioning, the private Tailscale gateway, and Handy's local
-model have all been exercised on-device.
+On an Apple silicon Mac, use the native gateway with WhisperKit for the lowest
+latency and lowest virtualization overhead. The current container deliberately
+uses a portable Linux CPU backend and cannot use macOS Core ML from inside Docker
+Desktop. Docker remains the recommended deployment for Linux home servers.
+Precise speed depends on the model, audio duration, and hardware; compare the
+same recording and model class before drawing benchmark conclusions.
+
+See [deployment choices](docs/deployment.md) for the complete comparison and
+operational commands.
+
+## Quick start
+
+### 1. Start the gateway natively on macOS
+
+Install the tools and launch the server:
+
+```sh
+brew install ffmpeg whisperkit-cli
+cd server
+uv sync --all-groups
+uv run localflow-server
+```
+
+The first run creates a private bearer token at
+`~/.config/localflow/token`. Open `http://127.0.0.1:8765/`, enter that token,
+download a recommended model from **Models**, select it, and confirm the Overview
+shows **Ready for dictation**.
+
+To keep the gateway running after the terminal closes and restart it after login:
+
+```sh
+cd server
+./scripts/install-launch-agent.sh
+```
+
+### 2. Or start it with Docker Compose
+
+The canonical Compose file is [server/compose.yaml](server/compose.yaml). It
+publishes the gateway only on host loopback by default and stores models,
+configuration, and the session database in a named volume.
+
+```sh
+cd server
+umask 077
+printf 'LOCALFLOW_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
+printf 'LOCALFLOW_PUBLISH_HOST=127.0.0.1\n' >> .env
+printf 'LOCALFLOW_PUBLISH_PORT=8765\n' >> .env
+docker compose up --detach --build
+docker compose ps
+curl --fail http://127.0.0.1:8765/health/live
+```
+
+Open the WebUI, enter the token from `server/.env`, and download/select a
+`whisper.cpp` model. Readiness returns `503` until a runnable model is selected:
+
+```sh
+curl --fail http://127.0.0.1:8765/health/ready
+```
+
+Copy [server/.env.example](server/.env.example) if you prefer an editable
+template. Never commit the resulting `.env` file.
+
+### 3. Add private Tailscale HTTPS
+
+Keep the gateway on loopback and let Tailscale Serve provide tailnet-only HTTPS:
+
+```sh
+tailscale serve --bg 8765
+tailscale serve status
+```
+
+Use the private HTTPS URL printed by `tailscale serve status` in the iPhone app.
+Do not use Tailscale Funnel or expose port 8765 to the public internet. Follow
+the full [Tailscale guide](docs/tailscale.md), including its access-policy advice.
+
+### 4. Configure and install the iPhone app
+
+Before signing under your own Apple account, replace these placeholders
+consistently in the Xcode project configuration and entitlements:
+
+- `com.example.localflow`
+- `com.example.localflow.keyboard`
+- `com.example.localflow.liveactivity`
+- `group.com.example.localflow`
+
+Then:
+
+1. Generate/open `ios/LocalFlow.xcodeproj` and select your Apple development team.
+2. Register the same App Group for the app, keyboard, and Live Activity targets.
+3. Install the containing app on the iPhone and grant microphone permission.
+4. Add Local Flow under **Settings → General → Keyboard → Keyboards** and enable
+   Full Access.
+5. In Local Flow, enter the Tailscale HTTPS URL and bearer token, then use
+   **Save and test**.
+
+Complete the physical-device checklist in [device setup](docs/device-setup.md).
 
 ## Build and test
 
-These commands were run successfully in this checkout:
+Gateway checks:
+
+```sh
+cd server
+uv sync --all-groups
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy app
+uv run pytest
+LOCALFLOW_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config --quiet
+```
+
+iOS checks:
 
 ```sh
 cd ios
@@ -61,107 +162,61 @@ xcodebuild \
   -project LocalFlow.xcodeproj \
   -scheme LocalFlow \
   -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
   CODE_SIGNING_ALLOWED=NO \
-  build
+  test
 ```
 
-```sh
-cd server
-uv sync --all-groups
-uv run ruff check .
-uv run mypy app
-uv run pytest
+The generated Xcode project is checked in. Regenerate it after changing
+`ios/project.yml`. Keyboard, microphone, background audio, and insertion changes
+still require physical-device verification.
+
+## Project layout
+
+```text
+ios/                    Swift app, keyboard, Live Activity, shared state, tests
+server/app/             FastAPI gateway, engines, model manager, WebUI
+server/tests/           Gateway unit and integration tests
+server/compose.yaml     Canonical container deployment
+server/Dockerfile       Multi-architecture CPU image
+docs/                   Architecture, setup, operations, privacy, decisions
+Plan.md                 Original implementation plan and acceptance criteria
 ```
 
-The generated [Xcode project](ios/LocalFlow.xcodeproj/project.pbxproj) is checked
-in. Regenerate it after changing `ios/project.yml`.
+## Documentation
 
-## Configure the Mac gateway
+| Guide | Covers |
+| --- | --- |
+| [Gateway reference](server/README.md) | Native service, Compose, models, configuration, health, and CLI commands |
+| [Deployment](docs/deployment.md) | Native-vs-Docker performance, startup, upgrades, persistence, and backups |
+| [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
+| [Tailscale](docs/tailscale.md) | Private HTTPS ingress and iPhone connectivity |
+| [Architecture](docs/architecture.md) | Components, state transitions, engine boundary, and observability |
+| [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
+| [Troubleshooting](docs/troubleshooting.md) | Keyboard, microphone, model, network, and Docker failures |
+| [Decisions](docs/decisions.md) | Current assumptions and choices still requiring confirmation |
+| [Contributing](CONTRIBUTING.md) | Development workflow and required checks |
+| [Security](SECURITY.md) | Private vulnerability-reporting process |
 
-Handy is detected automatically when installed. The gateway reuses Handy's
-selected, already-downloaded model through its headless file-transcription
-interface. If that model errors or returns an empty result, the gateway retries
-with Handy's downloaded multilingual Whisper Base model. Create a private token
-and start the gateway:
+## Privacy and platform boundaries
 
-```sh
-cd server
-uv run localflow-server
-```
+- The keyboard never records audio and never uses clipboard insertion.
+- Quick Dictation standby buffers are discarded rather than saved or uploaded.
+- Successful audio is deleted by default; failed sessions expire after the
+  configured retry window.
+- Operational metrics contain counts and timings only and reset when the gateway
+  restarts.
+- iOS does not provide a public API to reopen an arbitrary previously active app.
+  If Quick Dictation expires, Local Flow must open and the user returns manually.
+- Secure fields and apps that disable third-party keyboards remain iOS platform
+  limitations.
 
-The server creates `~/.config/localflow/token` automatically on first run. Open
-`http://127.0.0.1:8765/`, paste that token into the WebUI, and follow the setup
-checklist. The Models tab downloads compatible WhisperKit CoreML folders and
-whisper.cpp `.bin` models without manual path configuration.
+## Contributing, security, and license
 
-The legacy `./scripts/setup-token.sh` command remains available if you want to
-create the token before starting the server.
+Follow [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report
+suspected microphone, recording, token, gateway, or tailnet vulnerabilities
+through the private process in [SECURITY.md](SECURITY.md), not a public issue.
 
-To force a specific Handy model:
-
-```sh
-export LOCALFLOW_ENGINE=handy
-export LOCALFLOW_HANDY_MODEL='owner/repository/model.gguf'
-export LOCALFLOW_HANDY_FALLBACK_MODEL='owner/repository/fallback-model.gguf'
-```
-
-To use standalone `whisper.cpp` instead:
-
-```sh
-export LOCALFLOW_ENGINE=whisper.cpp
-export LOCALFLOW_WHISPER_BINARY=/absolute/path/to/whisper-cli
-export LOCALFLOW_WHISPER_MODEL=/absolute/path/to/ggml-model.bin
-```
-
-The server listens only on `127.0.0.1:8765`. A local health check does not require
-the token:
-
-```sh
-curl --fail --silent http://127.0.0.1:8765/health
-```
-
-Keep this loopback binding and use Tailscale Serve for private HTTPS. Do not use
-Funnel. See [Tailscale setup](docs/tailscale.md) and [privacy](docs/privacy.md).
-
-## Configure the iPhone project
-
-Before distributing under your own identity, replace all four placeholders
-consistently:
-
-- `com.example.localflow`
-- `com.example.localflow.keyboard`
-- `com.example.localflow.liveactivity`
-- `group.com.example.localflow`
-
-Sign in to an Apple account in Xcode, set its Personal or Developer Team,
-register the App Group for the app, keyboard, and Live Activity targets, and
-follow [device setup](docs/device-setup.md). The minimum iOS version is currently
-an assumption set to iOS 17.0.
-
-## Product truth
-
-iOS keyboard extensions cannot access the microphone. The containing Local Flow
-app therefore owns microphone permission and recording. With Quick Dictation
-enabled, opening Local Flow once arms a clearly indicated background microphone
-input for up to 10 minutes. Standby buffers are discarded and are never saved or
-uploaded. During that window, later Dictate taps signal the already-running app
-through the App Group and stay in the current app. If the window expires or iOS
-stops the audio session, the keyboard automatically falls back to opening Local
-Flow. iOS does not provide a public API for reopening an arbitrary previous app,
-so that fallback still asks the user to return manually. Clipboard insertion is
-not used.
-
-See [architecture](docs/architecture.md), [troubleshooting](docs/troubleshooting.md),
-and the [decision log](docs/decisions.md).
-
-## Contributing and security
-
-Before opening a pull request, follow [CONTRIBUTING.md](CONTRIBUTING.md) and run
-the iOS and gateway checks documented above. Please report suspected security or
-privacy vulnerabilities through the private process in [SECURITY.md](SECURITY.md),
-not through a public issue.
-
-No open-source license has been selected yet. Unless a license is added later,
-the repository is source-available for review but does not grant permission to
-copy, modify, or redistribute the code.
+No open-source license has been selected. Unless a license is added later, the
+repository is source-available for review but does not grant permission to copy,
+modify, or redistribute the code.

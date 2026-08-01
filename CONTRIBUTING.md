@@ -1,7 +1,7 @@
 # Contributing
 
-Thanks for helping improve Local Flow. Changes should preserve its privacy-first,
-tailnet-only architecture and the documented iOS keyboard constraints.
+Thanks for helping improve Local Flow. Changes should preserve its privacy-first
+architecture, documented network-exposure controls, and iOS keyboard constraints.
 
 ## Development setup
 
@@ -23,6 +23,18 @@ uv run ruff format --check .
 uv run mypy app
 uv run pytest
 ```
+
+For container changes, also run:
+
+```sh
+cd server
+LOCALFLOW_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config
+docker build --tag localflow-gateway:test .
+```
+
+When changing documentation, check local links and commands against the current
+repository layout, then run `git diff --check`. Do not publish machine-specific
+paths, real tailnet hostnames, tokens, recordings, or transcript samples.
 
 Then build and test the iOS project on an installed simulator:
 

@@ -9,11 +9,37 @@ final class AudioRecorder: NSObject {
     private var outputURL: URL?
     private var meterTimer: Timer?
     private var limitTimer: Timer?
+    nonisolated(unsafe) private var routeChangeObserver: (any NSObjectProtocol)?
     var onMeter: ((Float) -> Void)?
     var onMaximumDuration: (() -> Void)?
+    var onInputRouteChanged: ((String?) -> Void)?
+    var microphonePreference: MicrophonePreference = .automatic
+
+    override init() {
+        super.init()
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.publishCurrentInput()
+            }
+        }
+    }
+
+    deinit {
+        if let routeChangeObserver {
+            NotificationCenter.default.removeObserver(routeChangeObserver)
+        }
+    }
 
     var isRecording: Bool { outputURL != nil && captureSink.isWriting }
     var isStandbyActive: Bool { engine?.isRunning == true && !isRecording }
+    var currentInputName: String? {
+        guard engine?.isRunning == true else { return nil }
+        return AVAudioSession.sharedInstance().currentRoute.inputs.first?.portName
+    }
     var recordPermission: AVAudioApplication.recordPermission {
         AVAudioApplication.shared.recordPermission
     }
@@ -107,11 +133,25 @@ final class AudioRecorder: NSObject {
     }
 
     private func ensureEngineRunning() throws {
-        if engine?.isRunning == true { return }
+        if engine?.isRunning == true {
+            let currentInput = AVAudioSession.sharedInstance().currentRoute.inputs.first
+            if microphonePreference != .iPhone || currentInput?.portType == .builtInMic {
+                return
+            }
+            // An external route can override the preference while Quick Dictation
+            // is standing by. Rebuild the graph before recording so the selected
+            // built-in input and its hardware format are both applied.
+        }
         stopEngine(deactivateAudioSession: false)
 
         let audioSession = AVAudioSession.sharedInstance()
-        var categoryOptions: AVAudioSession.CategoryOptions = [.mixWithOthers]
+        // playAndRecord otherwise defaults media output to the receiver. Make
+        // the built-in speaker the default without forcing a port override, so
+        // connected headphones and Bluetooth routes can still be selected.
+        var categoryOptions: AVAudioSession.CategoryOptions = [
+            .mixWithOthers,
+            .defaultToSpeaker,
+        ]
 #if compiler(>=6.2)
         categoryOptions.insert(.allowBluetoothHFP)
 #else
@@ -122,7 +162,13 @@ final class AudioRecorder: NSObject {
             mode: .default,
             options: categoryOptions
         )
-        try audioSession.setActive(true)
+        do {
+            try audioSession.setActive(true)
+            try selectPreferredInput(in: audioSession)
+        } catch {
+            deactivateAudioSession()
+            throw error
+        }
 
         let newEngine = AVAudioEngine()
         let input = newEngine.inputNode
@@ -141,6 +187,7 @@ final class AudioRecorder: NSObject {
             try newEngine.start()
             engine = newEngine
             captureFormat = format
+            publishCurrentInput()
         } catch {
             input.removeTap(onBus: 0)
             deactivateAudioSession()
@@ -158,6 +205,7 @@ final class AudioRecorder: NSObject {
         if deactivateAudioSession {
             self.deactivateAudioSession()
         }
+        publishCurrentInput()
     }
 
     private func sampleMeter() {
@@ -177,6 +225,24 @@ final class AudioRecorder: NSObject {
             false,
             options: .notifyOthersOnDeactivation
         )
+    }
+
+    private func selectPreferredInput(in audioSession: AVAudioSession) throws {
+        switch microphonePreference {
+        case .automatic:
+            try audioSession.setPreferredInput(nil)
+        case .iPhone:
+            guard let builtInMicrophone = audioSession.availableInputs?.first(where: {
+                $0.portType == .builtInMic
+            }) else {
+                throw RecordingError.iPhoneMicrophoneUnavailable
+            }
+            try audioSession.setPreferredInput(builtInMicrophone)
+        }
+    }
+
+    private func publishCurrentInput() {
+        onInputRouteChanged?(currentInputName)
     }
 }
 
@@ -244,6 +310,7 @@ private final class AudioCaptureSink: @unchecked Sendable {
 enum RecordingError: LocalizedError {
     case alreadyRecording
     case inputUnavailable
+    case iPhoneMicrophoneUnavailable
 
     var errorDescription: String? {
         switch self {
@@ -251,6 +318,8 @@ enum RecordingError: LocalizedError {
             "Another recording is already active."
         case .inputUnavailable:
             "The microphone input is unavailable."
+        case .iPhoneMicrophoneUnavailable:
+            "The iPhone microphone is not currently available."
         }
     }
 }

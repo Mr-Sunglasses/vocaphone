@@ -206,15 +206,11 @@ class ModelManager:
             raise UnknownModelError(model.id)
         await self._run_single_file(model.download_url, self.model_path(model), handle)
 
-    async def _run_single_file(
-        self, url: str, destination: Path, handle: _DownloadHandle
-    ) -> None:
+    async def _run_single_file(self, url: str, destination: Path, handle: _DownloadHandle) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         partial = destination.with_name(destination.name + ".partial")
         try:
-            await asyncio.to_thread(
-                _download_file, url, partial, handle.state, handle.cancel, ""
-            )
+            await asyncio.to_thread(_download_file, url, partial, handle.state, handle.cancel, "")
             if handle.cancel.is_set():
                 raise DownloadCancelled
             partial.replace(destination)
@@ -223,9 +219,7 @@ class ModelManager:
             if handle.state.status != "completed":
                 partial.unlink(missing_ok=True)
 
-    async def _run_whisperkit_download(
-        self, model: CatalogModel, handle: _DownloadHandle
-    ) -> None:
+    async def _run_whisperkit_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
         if not model.huggingface_repo or not model.huggingface_folder:
             raise UnknownModelError(model.id)
         files = await asyncio.to_thread(

@@ -3,11 +3,20 @@ from __future__ import annotations
 from uuid import uuid4
 
 import httpx
-from conftest import TOKEN
+from conftest import TOKEN, FakeEngine, FakeNormalizer
+
+from app.config import Settings
+from app.main import create_app
+from app.models.base import EngineHealth
+
+
+class UnreadyEngine:
+    async def health(self) -> EngineHealth:
+        return EngineHealth(ready=False, name="missing-model")
 
 
 async def test_health_is_public_and_separates_engine_readiness(
-    client: httpx.AsyncClient,
+    client: httpx.AsyncClient, fake_engine: FakeEngine
 ) -> None:
     response = await client.get("/health")
     assert response.status_code == 200
@@ -17,12 +26,45 @@ async def test_health_is_public_and_separates_engine_readiness(
         "engine": "fake-local-model",
     }
 
+    liveness = await client.get("/health/live")
+    readiness = await client.get("/health/ready")
+    repeated = await client.get("/health")
+
+    assert liveness.status_code == 200
+    assert liveness.json()["status"] == "ok"
+    assert liveness.json()["uptime_seconds"] >= 0
+    assert readiness.status_code == 200
+    assert readiness.json()["status"] == "ready"
+    assert readiness.json()["engine"] == "fake-local-model"
+    assert repeated.status_code == 200
+    assert fake_engine.health_calls == 1
+
 
 async def test_private_endpoints_require_bearer_token(client: httpx.AsyncClient) -> None:
     response = await client.get("/v1/models")
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthorized"
     assert TOKEN not in response.text
+
+
+async def test_readiness_can_fail_without_failing_liveness(tmp_path) -> None:
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "missing-whisper",
+        whisper_model=tmp_path / "missing-model",
+    )
+    app = create_app(settings, engine=UnreadyEngine(), normalizer=FakeNormalizer())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as test_client:
+        liveness = await test_client.get("/health/live")
+        readiness = await test_client.get("/health/ready")
+
+    assert liveness.status_code == 200
+    assert readiness.status_code == 503
+    assert readiness.json()["status"] == "not_ready"
+    assert readiness.json()["engine"] == "missing-model"
 
 
 async def test_complete_flow_is_idempotent_and_deletes_successful_audio(

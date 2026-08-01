@@ -3,11 +3,19 @@ import Foundation
 struct GatewayHealth: Decodable, Sendable {
     let status: String
     let engineReady: Bool
+    let engine: String
 
     enum CodingKeys: String, CodingKey {
         case status
         case engineReady = "engine_ready"
+        case engine
     }
+}
+
+enum GatewayStatusPreferences {
+    static let healthMessageKey = "gatewayHealthMessage"
+    static let engineKey = "gatewayEngine"
+    static let engineReadyKey = "gatewayEngineReady"
 }
 
 struct GatewaySession: Decodable, Sendable {

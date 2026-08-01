@@ -1,17 +1,37 @@
 # Private Tailscale connectivity
 
-The gateway must remain bound to `127.0.0.1:8765`. Tailscale Serve should add
-tailnet-only HTTPS in front of that loopback service. Never use Funnel for this
-project.
+For private HTTPS, bind the gateway to `127.0.0.1:8765` and let Tailscale Serve
+add tailnet-only ingress in front of it. This overrides the gateway's
+all-interface default and avoids exposing port 8765 directly to the local
+network. Never use Funnel for this project.
 
 ## Prerequisites
 
 - Install and sign in to Tailscale on both the Mac and iPhone.
 - Confirm both devices appear in the same tailnet.
-- Start the gateway and verify `http://127.0.0.1:8765/health` locally first.
+- Start or publish the gateway on host loopback and verify liveness locally.
 
-The Tailscale CLI was not installed in the build environment, so the following
-commands are setup instructions and remain unverified in this checkout:
+For a native macOS process:
+
+```sh
+cd server
+LOCALFLOW_BIND_HOST=127.0.0.1 uv run localflow-server
+```
+
+For Docker, keep the Compose default in `server/.env`:
+
+```dotenv
+LOCALFLOW_PUBLISH_HOST=127.0.0.1
+LOCALFLOW_PUBLISH_PORT=8765
+```
+
+Then verify the process before configuring Serve:
+
+```sh
+curl --fail http://127.0.0.1:8765/health/live
+```
+
+Create or inspect the tailnet-only HTTPS proxy with:
 
 ```sh
 tailscale serve --bg 8765
@@ -20,6 +40,14 @@ tailscale serve status
 
 Use the private HTTPS URL shown by `tailscale serve status` in the iPhone app.
 Do not use the local HTTP address from the phone.
+
+The HTTPS endpoint can be live while transcription readiness is still `503`.
+After downloading/selecting a model in the WebUI, verify both paths:
+
+```sh
+curl --fail http://127.0.0.1:8765/health/ready
+curl --fail https://your-device.your-tailnet.ts.net/health/ready
+```
 
 To reverse the Serve configuration:
 

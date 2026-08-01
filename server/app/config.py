@@ -6,6 +6,22 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_HANDY_FALLBACK_MODEL = "handy-computer/whisper-base-gguf/whisper-base-Q8_0.gguf"
+WILDCARD_BIND_HOSTS = frozenset({"0.0.0.0", "::"})
+
+
+def format_host_port(host: str, port: int) -> str:
+    """Format a listener address without pretending it is a browsable URL."""
+    display_host = f"[{host}]" if ":" in host else host
+    return f"{display_host}:{port}"
+
+
+def local_webui_url(host: str, port: int) -> str:
+    """Return the loopback URL that opens a listener from the same Mac."""
+    if host == "0.0.0.0":
+        host = "127.0.0.1"
+    elif host == "::":
+        host = "::1"
+    return f"http://{format_host_port(host, port)}/"
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +104,7 @@ class Settings:
                     "~/.config/localflow/config.json",
                 )
             ).expanduser(),
-            bind_host=os.environ.get("LOCALFLOW_BIND_HOST", "127.0.0.1"),
+            bind_host=os.environ.get("LOCALFLOW_BIND_HOST", "0.0.0.0"),
             port=int(os.environ.get("LOCALFLOW_PORT", "8765")),
             retention_hours=int(os.environ.get("LOCALFLOW_RETENTION_HOURS", "24")),
             delete_successful_audio=os.environ.get(

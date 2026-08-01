@@ -3,8 +3,13 @@ import UIKit
 
 struct ContentView: View {
     @EnvironmentObject private var coordinator: RecordingCoordinator
+    @Environment(\.scenePhase) private var scenePhase
     @AppStorage("gatewayURL") private var gatewayURL = ""
-    @AppStorage("gatewayHealthMessage") private var healthMessage = "Not tested"
+    @AppStorage(GatewayStatusPreferences.healthMessageKey)
+    private var healthMessage = "Not tested"
+    @AppStorage(GatewayStatusPreferences.engineKey) private var gatewayEngine = ""
+    @AppStorage(GatewayStatusPreferences.engineReadyKey)
+    private var gatewayEngineReady = false
     @AppStorage(
         KeyboardPreferences.autoInsertKey,
         store: KeyboardPreferences.defaults
@@ -17,14 +22,20 @@ struct ContentView: View {
         KeyboardPreferences.writingStyleKey,
         store: KeyboardPreferences.defaults
     ) private var writingStyleRawValue = WritingStyle.casual.rawValue
+    @AppStorage(
+        KeyboardPreferences.microphonePreferenceKey,
+        store: KeyboardPreferences.defaults
+    ) private var microphonePreferenceRawValue = MicrophonePreference.automatic.rawValue
     @State private var token = ""
     @State private var testText = ""
+    @State private var isTestingGateway = false
 
     var body: some View {
         NavigationStack {
             List {
                 statusSection
                 writingStyleSection
+                microphoneSection
                 setupSection
                 testSection
                 privacySection
@@ -34,6 +45,16 @@ struct ContentView: View {
                 token = (try? KeychainStore.loadToken()) ?? ""
                 await coordinator.recoverRecentSession()
                 coordinator.prepareQuickDictationIfEnabled()
+                await refreshGatewayHealth()
+            }
+            .onChange(of: scenePhase) { previousPhase, currentPhase in
+                guard previousPhase != .active, currentPhase == .active else { return }
+                Task { await refreshGatewayHealth() }
+            }
+            .onChange(of: gatewayURL) {
+                healthMessage = "Not tested"
+                gatewayEngine = ""
+                gatewayEngineReady = false
             }
         }
         .overlay {
@@ -67,6 +88,39 @@ struct ContentView: View {
 
     private var selectedWritingStyle: WritingStyle {
         WritingStyle(rawValue: writingStyleRawValue) ?? .casual
+    }
+
+    private var microphoneSection: some View {
+        Section("Microphone") {
+            Picker("Input selection", selection: $microphonePreferenceRawValue) {
+                ForEach(MicrophonePreference.allCases) { preference in
+                    Text(preference.displayName)
+                        .tag(preference.rawValue)
+                }
+            }
+            .disabled(!coordinator.canChangeMicrophone)
+            .onChange(of: microphonePreferenceRawValue) { _, rawValue in
+                guard let preference = MicrophonePreference(rawValue: rawValue) else { return }
+                coordinator.setMicrophonePreference(preference)
+            }
+
+            LabeledContent("Input in use", value: coordinator.microphoneStatusLabel)
+
+            Text(selectedMicrophonePreference.detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            Text(
+                "Bluetooth input and output routes are linked by iOS, so choosing a "
+                    + "microphone can also change the playback route while recording."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private var selectedMicrophonePreference: MicrophonePreference {
+        MicrophonePreference(rawValue: microphonePreferenceRawValue) ?? .automatic
     }
 
     private var showsKeyboardReturnGuide: Bool {
@@ -131,11 +185,44 @@ struct ContentView: View {
                 .keyboardType(.URL)
             SecureField("Pairing token", text: $token)
                 .textInputAutocapitalization(.never)
-            Button("Save and test") {
+            Button {
                 Task { await saveAndTestGateway() }
+            } label: {
+                HStack(spacing: 8) {
+                    if isTestingGateway {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Text(isTestingGateway ? "Testing gateway…" : "Save and test")
+                }
             }
+            .disabled(isTestingGateway)
             Text(healthMessage)
                 .font(.footnote)
+                .foregroundStyle(gatewayEngineReady ? .green : .secondary)
+
+            if !gatewayEngine.isEmpty {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Label("Transcription model", systemImage: "cpu")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Label(
+                            gatewayEngineReady ? "Ready" : "Not ready",
+                            systemImage: gatewayEngineReady
+                                ? "checkmark.circle.fill"
+                                : "exclamationmark.circle.fill"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(gatewayEngineReady ? .green : .orange)
+                    }
+                    Text(gatewayEngine)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .accessibilityElement(children: .combine)
+            }
 
             Toggle("Insert transcript automatically", isOn: $autoInsertTranscripts)
             Text(
@@ -205,24 +292,54 @@ struct ContentView: View {
 
     @MainActor
     private func saveAndTestGateway() async {
+        guard let url = validatedGatewayURL else {
+            healthMessage = "Enter a valid tailnet HTTPS URL."
+            gatewayEngine = ""
+            gatewayEngineReady = false
+            return
+        }
         do {
-            guard let url = URL(string: gatewayURL),
-                  url.scheme == "https"
-                    || (url.scheme == "http" && url.host == "127.0.0.1")
-            else {
-                healthMessage = "Enter a valid tailnet HTTPS URL."
-                return
-            }
             try KeychainStore.saveToken(token)
+        } catch {
+            healthMessage = "Could not save the pairing token: \(error.localizedDescription)"
+            return
+        }
+        await testGateway(at: url)
+    }
+
+    @MainActor
+    private func refreshGatewayHealth() async {
+        guard let url = validatedGatewayURL else { return }
+        await testGateway(at: url)
+    }
+
+    @MainActor
+    private func testGateway(at url: URL) async {
+        guard !isTestingGateway else { return }
+        isTestingGateway = true
+        defer { isTestingGateway = false }
+        do {
             let client = GatewayClient(baseURL: url, token: token)
             let health = try await client.health()
             healthMessage = health.engineReady
                 ? "Gateway and model are ready."
                 : "Gateway reachable; model is not ready."
+            gatewayEngine = health.engine.trimmingCharacters(in: .whitespacesAndNewlines)
+            gatewayEngineReady = health.engineReady
             coordinator.updateGateway(baseURL: url, token: token)
         } catch {
             healthMessage = "Health check failed: \(error.localizedDescription)"
+            gatewayEngine = ""
+            gatewayEngineReady = false
         }
+    }
+
+    private var validatedGatewayURL: URL? {
+        guard let url = URL(string: gatewayURL),
+              url.scheme == "https"
+                || (url.scheme == "http" && url.host == "127.0.0.1")
+        else { return nil }
+        return url
     }
 }
 

@@ -139,9 +139,7 @@ def _whisper_cpp_model_path(
 ) -> Path:
     if runtime_config.whisper_model:
         return Path(runtime_config.whisper_model)
-    installed = [
-        model for model in model_manager.installed() if model.engine == ENGINE_WHISPER_CPP
-    ]
+    installed = [model for model in model_manager.installed() if model.engine == ENGINE_WHISPER_CPP]
     if installed:
         return max(installed, key=lambda model: model.size_bytes).path
     return settings.whisper_model
@@ -153,9 +151,7 @@ def _whisperkit_model_path(
 ) -> Path | None:
     if runtime_config.whisperkit_model:
         return Path(runtime_config.whisperkit_model)
-    installed = [
-        model for model in model_manager.installed() if model.engine == ENGINE_WHISPERKIT
-    ]
+    installed = [model for model in model_manager.installed() if model.engine == ENGINE_WHISPERKIT]
     if installed:
         return max(installed, key=lambda model: model.size_bytes).path
     return None

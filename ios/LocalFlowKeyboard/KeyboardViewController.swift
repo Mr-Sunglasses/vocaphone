@@ -9,6 +9,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var isShifted = true
     private var isPerformingInsertion = false
     private var letterButtons: [UIButton] = []
+    private var shiftButton: UIButton?
 
     private var currentDocumentID: String? {
         // On iOS 26 the proxy can temporarily return nil during viewDidLoad even
@@ -24,7 +25,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private let statusLabel = UILabel()
-    private let meterView = UIProgressView(progressViewStyle: .default)
+    private let meterView = VoiceMeterView()
     private let primaryButton = UIButton(type: .system)
     private let cancelButton = UIButton(type: .system)
     private let retryButton = UIButton(type: .system)
@@ -34,6 +35,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let styleButton = UIButton(type: .system)
     private let dictationCard = UIView()
     private let recordingDot = UIView()
+    private let toolbarStack = UIStackView()
 
     var enableInputClicksWhenVisible: Bool { true }
 
@@ -41,6 +43,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         super.viewDidLoad()
         inputView?.allowsSelfSizing = true
         configureUI()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
+            (controller: KeyboardViewController, _) in
+            controller.applyTheme()
+        }
         render(nil)
         beginPolling()
     }
@@ -119,6 +125,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         inserted.forEach { _ in textDocumentProxy.deleteBackward() }
         lastInsertedText = nil
         undoButton.isEnabled = false
+        undoButton.isHidden = true
         statusLabel.text = "Last insertion removed."
     }
 
@@ -165,6 +172,40 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         playKeyClick()
         textDocumentProxy.insertText("\n")
         setShifted(true)
+    }
+
+    @objc private func keyTouchDown(_ sender: UIButton) {
+        let changes = {
+            sender.transform = CGAffineTransform(scaleX: 0.97, y: 0.97)
+            sender.alpha = 0.78
+        }
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            changes()
+            return
+        }
+        UIView.animate(
+            withDuration: 0.055,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction],
+            animations: changes
+        )
+    }
+
+    @objc private func keyTouchEnded(_ sender: UIButton) {
+        let changes = {
+            sender.transform = .identity
+            sender.alpha = 1
+        }
+        guard !UIAccessibility.isReduceMotionEnabled else {
+            changes()
+            return
+        }
+        UIView.animate(
+            withDuration: 0.1,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction],
+            animations: changes
+        )
     }
 
     private func startSession() {
@@ -343,16 +384,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let selectedStyle = record.flatMap { WritingStyle(rawValue: $0.style) }
             ?? KeyboardPreferences.writingStyle
         guard hasFullAccess else {
-            meterView.progress = 0
-            languageLabel.text = "FULL ACCESS REQUIRED"
+            meterView.level = 0
+            meterView.isActive = false
+            languageLabel.text = "Full Access required"
             configureStyleButton(selected: selectedStyle, enabled: false)
             retryButton.isHidden = true
             cancelButton.isHidden = true
             undoButton.isEnabled = false
-            statusLabel.text = "Enable Full Access for Local Flow in Keyboard Settings."
+            undoButton.isHidden = true
+            statusLabel.text = "Keyboard access needed"
             recordingDot.backgroundColor = .systemGray
+            updateRecordingPulse(active: false)
             setPrimaryButton(
-                title: "Access needed",
+                title: "Locked",
                 symbol: "lock.fill",
                 color: .systemGray,
                 enabled: false
@@ -361,20 +405,28 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
 
         let state = record?.state ?? .idle
-        meterView.progress = record?.meterLevel ?? 0
-        languageLabel.text = record?.language.uppercased() ?? "AUTO"
+        meterView.level = record?.meterLevel ?? 0
+        meterView.isActive = state == .recording
         configureStyleButton(
             selected: selectedStyle,
             enabled: record == nil || state.isTerminal
         )
         retryButton.isHidden = record?.canRetry != true
-        cancelButton.isHidden = ![.launchingApp, .recording, .uploading].contains(state)
+        cancelButton.isHidden = ![
+            .launchingApp, .awaitingReturn, .recording, .finalizing, .uploading,
+        ].contains(state)
         undoButton.isEnabled = lastInsertedText != nil
+        undoButton.isHidden = lastInsertedText == nil || (record != nil && !state.isTerminal)
+        updateRecordingPulse(active: state == .recording)
 
         switch state {
         case .idle, .completed, .canceled, .expired:
-            statusLabel.text = state == .completed ? "Transcript inserted" : "Ready to dictate"
+            statusLabel.text = state == .completed ? "Text inserted" : "Ready"
+            languageLabel.text = state == .completed
+                ? "Undo is available below"
+                : "Auto language · private model"
             recordingDot.backgroundColor = state == .completed ? .systemGreen : .systemBlue
+            meterView.activeColor = state == .completed ? .systemGreen : .systemBlue
             setPrimaryButton(
                 title: "Dictate",
                 symbol: "mic.fill",
@@ -383,7 +435,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             )
         case .launchingApp, .awaitingReturn:
             statusLabel.text = "Opening Local Flow…"
+            languageLabel.text = "Get ready to speak"
             recordingDot.backgroundColor = .systemIndigo
+            meterView.activeColor = .systemIndigo
             setPrimaryButton(
                 title: "Open app",
                 symbol: "arrow.up.forward.app.fill",
@@ -391,8 +445,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 enabled: true
             )
         case .recording:
-            statusLabel.text = "Listening in Local Flow"
+            statusLabel.text = "Listening…"
+            languageLabel.text = "Tap Finish when you’re done"
             recordingDot.backgroundColor = .systemRed
+            meterView.activeColor = .systemRed
             setPrimaryButton(
                 title: "Finish",
                 symbol: "stop.fill",
@@ -401,7 +457,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             )
         case .finalizing, .uploading, .transcribing:
             statusLabel.text = state == .transcribing ? "Transcribing on Mac…" : "Sending to Mac…"
+            languageLabel.text = state == .transcribing
+                ? "Using your private local model"
+                : "Your recording stays private"
             recordingDot.backgroundColor = .systemOrange
+            meterView.activeColor = .systemOrange
             setPrimaryButton(
                 title: "Working…",
                 symbol: "waveform",
@@ -410,7 +470,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             )
         case .readyToInsert:
             statusLabel.text = "Transcript ready"
+            languageLabel.text = KeyboardPreferences.autoInsertTranscripts
+                ? "Inserting automatically…"
+                : "Tap Insert to place the text"
             recordingDot.backgroundColor = .systemGreen
+            meterView.activeColor = .systemGreen
             setPrimaryButton(
                 title: "Insert",
                 symbol: "text.badge.plus",
@@ -418,17 +482,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 enabled: true
             )
         case .serverUnavailable, .uploadFailedRecoverable, .transcriptionFailedRecoverable:
-            statusLabel.text = record?.error?.message ?? "Recording preserved; retry when ready."
+            statusLabel.text = state == .serverUnavailable
+                ? "Mac unavailable"
+                : "Transcription paused"
+            languageLabel.text = "Recording preserved · Retry when ready"
             recordingDot.backgroundColor = .systemOrange
+            meterView.activeColor = .systemOrange
             setPrimaryButton(
-                title: "New recording",
+                title: "New",
                 symbol: "mic.fill",
                 color: .systemBlue,
                 enabled: true
             )
         case .permissionDenied:
-            statusLabel.text = "Allow microphone access in Local Flow Settings."
+            statusLabel.text = "Microphone access needed"
+            languageLabel.text = "Allow access in Local Flow Settings"
             recordingDot.backgroundColor = .systemRed
+            meterView.activeColor = .systemRed
             setPrimaryButton(
                 title: "Open app",
                 symbol: "gear",
@@ -436,8 +506,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 enabled: true
             )
         case .targetContextChanged:
-            statusLabel.text = "Return to the original field to insert."
+            statusLabel.text = "Original field changed"
+            languageLabel.text = "Return to the original field to insert"
             recordingDot.backgroundColor = .systemOrange
+            meterView.activeColor = .systemOrange
             setPrimaryButton(
                 title: "Dictate",
                 symbol: "mic.fill",
@@ -446,7 +518,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             )
         case .inserting, .inserted:
             statusLabel.text = "Finishing insertion…"
+            languageLabel.text = "Placing the transcript at the cursor"
             recordingDot.backgroundColor = .systemGreen
+            meterView.activeColor = .systemGreen
             setPrimaryButton(
                 title: "Inserting…",
                 symbol: "text.badge.checkmark",
@@ -454,8 +528,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 enabled: false
             )
         case .transcriptionFailedPermanent:
-            statusLabel.text = record?.error?.message ?? "This recording could not be transcribed."
+            statusLabel.text = "Transcription failed"
+            languageLabel.text = record?.error?.message ?? "Please make a new recording"
             recordingDot.backgroundColor = .systemRed
+            meterView.activeColor = .systemRed
             setPrimaryButton(
                 title: "Try again",
                 symbol: "arrow.clockwise",
@@ -466,15 +542,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func configureUI() {
-        view.backgroundColor = .systemGray5
-        statusLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        statusLabel.font = .systemFont(ofSize: 17, weight: .semibold)
         statusLabel.textAlignment = .left
-        statusLabel.numberOfLines = 2
+        statusLabel.numberOfLines = 1
         statusLabel.adjustsFontSizeToFitWidth = true
-        statusLabel.minimumScaleFactor = 0.82
-        languageLabel.font = .systemFont(ofSize: 11, weight: .medium)
+        statusLabel.minimumScaleFactor = 0.78
+        statusLabel.lineBreakMode = .byTruncatingTail
+        languageLabel.font = .systemFont(ofSize: 12, weight: .regular)
         languageLabel.textColor = .secondaryLabel
         languageLabel.textAlignment = .left
+        languageLabel.adjustsFontSizeToFitWidth = true
+        languageLabel.minimumScaleFactor = 0.82
 
         styleButton.showsMenuAsPrimaryAction = true
         styleButton.accessibilityLabel = "Writing style"
@@ -486,8 +564,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             recordingDot.heightAnchor.constraint(equalToConstant: 10),
         ])
 
-        meterView.trackTintColor = .systemGray5
-        meterView.progressTintColor = .systemRed
+        meterView.translatesAutoresizingMaskIntoConstraints = false
+        meterView.heightAnchor.constraint(equalToConstant: 9).isActive = true
 
         primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
         primaryButton.accessibilityLabel = "Start or finish private dictation"
@@ -502,61 +580,68 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         titleRow.axis = .horizontal
         titleRow.alignment = .center
         titleRow.spacing = 8
-        let metadataRow = UIStackView(arrangedSubviews: [languageLabel, styleButton])
-        metadataRow.axis = .horizontal
-        metadataRow.alignment = .center
-        metadataRow.spacing = 6
         languageLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        styleButton.setContentHuggingPriority(.required, for: .horizontal)
-        let statusStack = UIStackView(arrangedSubviews: [titleRow, metadataRow, meterView])
+        let statusStack = UIStackView(arrangedSubviews: [titleRow, languageLabel, meterView])
         statusStack.axis = .vertical
-        statusStack.spacing = 5
+        statusStack.spacing = 4
         let cardRow = UIStackView(arrangedSubviews: [statusStack, primaryButton])
         cardRow.axis = .horizontal
         cardRow.alignment = .center
-        cardRow.spacing = 12
+        cardRow.spacing = 10
         cardRow.translatesAutoresizingMaskIntoConstraints = false
 
-        dictationCard.backgroundColor = .systemBackground
         dictationCard.layer.cornerRadius = 18
         dictationCard.layer.cornerCurve = .continuous
         dictationCard.layer.shadowColor = UIColor.black.cgColor
-        dictationCard.layer.shadowOpacity = 0.10
-        dictationCard.layer.shadowRadius = 2
-        dictationCard.layer.shadowOffset = CGSize(width: 0, height: 1)
+        dictationCard.layer.shadowOpacity = 0.08
+        dictationCard.layer.shadowRadius = 3
+        dictationCard.layer.shadowOffset = CGSize(width: 0, height: 1.5)
+        dictationCard.layer.borderWidth = 0.5
         dictationCard.addSubview(cardRow)
         NSLayoutConstraint.activate([
             cardRow.leadingAnchor.constraint(equalTo: dictationCard.leadingAnchor, constant: 14),
-            cardRow.trailingAnchor.constraint(equalTo: dictationCard.trailingAnchor, constant: -10),
-            cardRow.topAnchor.constraint(equalTo: dictationCard.topAnchor, constant: 9),
-            cardRow.bottomAnchor.constraint(equalTo: dictationCard.bottomAnchor, constant: -9),
-            dictationCard.heightAnchor.constraint(equalToConstant: 70),
-            primaryButton.widthAnchor.constraint(equalToConstant: 122),
+            cardRow.trailingAnchor.constraint(equalTo: dictationCard.trailingAnchor, constant: -11),
+            cardRow.topAnchor.constraint(equalTo: dictationCard.topAnchor, constant: 10),
+            cardRow.bottomAnchor.constraint(equalTo: dictationCard.bottomAnchor, constant: -10),
+            dictationCard.heightAnchor.constraint(equalToConstant: 76),
+            primaryButton.widthAnchor.constraint(equalToConstant: 112),
             primaryButton.heightAnchor.constraint(equalToConstant: 48),
         ])
 
-        let actions = UIStackView(arrangedSubviews: [cancelButton, retryButton, undoButton])
-        actions.axis = .horizontal
-        actions.distribution = .fillEqually
-        actions.spacing = 6
+        let toolbarSpacer = UIView()
+        toolbarSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        toolbarStack.addArrangedSubview(styleButton)
+        toolbarStack.addArrangedSubview(toolbarSpacer)
+        toolbarStack.addArrangedSubview(cancelButton)
+        toolbarStack.addArrangedSubview(retryButton)
+        toolbarStack.addArrangedSubview(undoButton)
+        toolbarStack.axis = .horizontal
+        toolbarStack.alignment = .center
+        toolbarStack.spacing = 6
+        styleButton.setContentHuggingPriority(.required, for: .horizontal)
+        cancelButton.isHidden = true
+        retryButton.isHidden = true
+        undoButton.isHidden = true
+
         let typingStack = makeTypingStack()
         let stack = UIStackView(arrangedSubviews: [
-            dictationCard, actions, typingStack,
+            dictationCard, toolbarStack, typingStack,
         ])
         stack.axis = .vertical
-        stack.spacing = 6
+        stack.spacing = 7
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
-        let preferredHeight = view.heightAnchor.constraint(equalToConstant: 310)
+        let preferredHeight = view.heightAnchor.constraint(equalToConstant: 326)
         preferredHeight.priority = UILayoutPriority(999)
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
             stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -6),
-            actions.heightAnchor.constraint(equalToConstant: 30),
+            toolbarStack.heightAnchor.constraint(equalToConstant: 34),
             preferredHeight,
         ])
+        applyTheme()
         updateAutomaticShift()
     }
 
@@ -567,22 +652,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         )
 
         let shift = makeKeyButton(
-            title: "⇧",
+            title: nil,
+            symbol: "shift",
             accessibilityLabel: "Shift",
             action: #selector(shiftTapped),
             style: .function
         )
+        shiftButton = shift
         let thirdRowLetters = "zxcvbnm".map { makeLetterButton(String($0)) }
         let delete = makeKeyButton(
-            title: "⌫",
+            title: nil,
+            symbol: "delete.left",
             accessibilityLabel: "Delete",
             action: #selector(deleteTapped),
             style: .function
         )
         let thirdRow = makeKeyRow([shift] + thirdRowLetters + [delete], distribution: .fill)
         NSLayoutConstraint.activate([
-            shift.widthAnchor.constraint(equalToConstant: 44),
-            delete.widthAnchor.constraint(equalToConstant: 44),
+            shift.widthAnchor.constraint(equalToConstant: 46),
+            delete.widthAnchor.constraint(equalToConstant: 46),
         ])
         for button in thirdRowLetters.dropFirst() {
             button.widthAnchor.constraint(equalTo: thirdRowLetters[0].widthAnchor).isActive = true
@@ -593,14 +681,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         globeConfiguration.cornerStyle = .medium
         globeConfiguration.baseBackgroundColor = KeyStyle.function.backgroundColor
         globeConfiguration.baseForegroundColor = KeyStyle.function.foregroundColor
+        globeConfiguration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+            pointSize: 17,
+            weight: .medium
+        )
         globeButton.configuration = globeConfiguration
         globeButton.accessibilityLabel = "Next keyboard"
         globeButton.addTarget(self, action: #selector(globeTapped), for: .touchUpInside)
+        addKeyTouchFeedback(to: globeButton)
         globeButton.layer.shadowColor = UIColor.black.cgColor
-        globeButton.layer.shadowOpacity = 0.14
-        globeButton.layer.shadowRadius = 0.5
-        globeButton.layer.shadowOffset = CGSize(width: 0, height: 1)
-        globeButton.heightAnchor.constraint(equalToConstant: 40).isActive = true
+        globeButton.layer.shadowOpacity = 0.16
+        globeButton.layer.shadowRadius = 0.75
+        globeButton.layer.shadowOffset = CGSize(width: 0, height: 1.25)
+        globeButton.heightAnchor.constraint(equalToConstant: 43).isActive = true
         let comma = makeKeyButton(
             title: ",",
             accessibilityLabel: "Comma",
@@ -626,18 +719,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             arrangedSubviews: [globeButton, comma, space, period, returnKey]
         )
         bottomRow.axis = .horizontal
-        bottomRow.spacing = 5
+        bottomRow.spacing = 6
         bottomRow.distribution = .fill
         NSLayoutConstraint.activate([
-            globeButton.widthAnchor.constraint(equalToConstant: 42),
-            comma.widthAnchor.constraint(equalToConstant: 38),
-            period.widthAnchor.constraint(equalToConstant: 38),
-            returnKey.widthAnchor.constraint(equalToConstant: 74),
+            globeButton.widthAnchor.constraint(equalToConstant: 46),
+            comma.widthAnchor.constraint(equalToConstant: 40),
+            period.widthAnchor.constraint(equalToConstant: 40),
+            returnKey.widthAnchor.constraint(equalToConstant: 76),
         ])
 
         let stack = UIStackView(arrangedSubviews: [firstRow, secondRow, thirdRow, bottomRow])
         stack.axis = .vertical
-        stack.spacing = 5
+        stack.spacing = 6
         stack.distribution = .fillEqually
         return stack
     }
@@ -654,7 +747,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func makeKeyButton(
-        title: String,
+        title: String?,
+        symbol: String? = nil,
         accessibilityLabel: String,
         action: Selector,
         style: KeyStyle = .standard
@@ -662,24 +756,39 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let button = UIButton(type: .system)
         var configuration = UIButton.Configuration.filled()
         configuration.title = title
+        configuration.image = symbol.flatMap { UIImage(systemName: $0) }
         configuration.cornerStyle = .medium
         configuration.baseBackgroundColor = style.backgroundColor
         configuration.baseForegroundColor = style.foregroundColor
+        configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
+            pointSize: 17,
+            weight: .medium
+        )
         configuration.contentInsets = NSDirectionalEdgeInsets(
             top: 0,
             leading: 4,
             bottom: 0,
             trailing: 4
         )
+        let isCharacterKey = title?.count == 1 && title?.first?.isLetter == true
+        let font = isCharacterKey
+            ? UIFont.systemFont(ofSize: 20, weight: .regular)
+            : UIFont.systemFont(ofSize: 16, weight: .medium)
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            incoming in
+            var outgoing = incoming
+            outgoing.font = font
+            return outgoing
+        }
         button.configuration = configuration
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
         button.accessibilityLabel = accessibilityLabel
         button.addTarget(self, action: action, for: .touchUpInside)
+        addKeyTouchFeedback(to: button)
         button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.14
-        button.layer.shadowRadius = 0.5
-        button.layer.shadowOffset = CGSize(width: 0, height: 1)
-        button.heightAnchor.constraint(equalToConstant: 40).isActive = true
+        button.layer.shadowOpacity = 0.16
+        button.layer.shadowRadius = 0.75
+        button.layer.shadowOffset = CGSize(width: 0, height: 1.25)
+        button.heightAnchor.constraint(equalToConstant: 43).isActive = true
         return button
     }
 
@@ -689,7 +798,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     ) -> UIStackView {
         let row = UIStackView(arrangedSubviews: buttons)
         row.axis = .horizontal
-        row.spacing = 5
+        row.spacing = 6
         row.distribution = distribution
         return row
     }
@@ -709,13 +818,27 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func configureUtilityButton(_ button: UIButton, title: String, symbol: String) {
-        var configuration = UIButton.Configuration.tinted()
+        var configuration = UIButton.Configuration.filled()
         configuration.title = title
         configuration.image = UIImage(systemName: symbol)
         configuration.imagePadding = 5
         configuration.cornerStyle = .capsule
+        configuration.contentInsets = NSDirectionalEdgeInsets(
+            top: 5,
+            leading: 10,
+            bottom: 5,
+            trailing: 10
+        )
+        configuration.baseBackgroundColor = KeyboardPalette.toolbarControl
         configuration.baseForegroundColor = .label
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            incoming in
+            var outgoing = incoming
+            outgoing.font = .systemFont(ofSize: 13, weight: .semibold)
+            return outgoing
+        }
         button.configuration = configuration
+        button.heightAnchor.constraint(equalToConstant: 34).isActive = true
     }
 
     private func configureStyleButton(selected: WritingStyle, enabled: Bool) {
@@ -731,18 +854,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         styleButton.menu = UIMenu(title: "Writing style", children: actions)
 
-        var configuration = UIButton.Configuration.tinted()
+        var configuration = UIButton.Configuration.filled()
         configuration.title = selected.displayName
         configuration.image = UIImage(systemName: selected.symbolName)
-        configuration.imagePadding = 4
+        configuration.imagePadding = 5
         configuration.cornerStyle = .capsule
         configuration.contentInsets = NSDirectionalEdgeInsets(
-            top: 2,
-            leading: 7,
-            bottom: 2,
-            trailing: 7
+            top: 5,
+            leading: 10,
+            bottom: 5,
+            trailing: 10
         )
+        configuration.baseBackgroundColor = KeyboardPalette.toolbarControl
         configuration.baseForegroundColor = .systemBlue
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            incoming in
+            var outgoing = incoming
+            outgoing.font = .systemFont(ofSize: 13, weight: .semibold)
+            return outgoing
+        }
         styleButton.configuration = configuration
         styleButton.isEnabled = enabled
         styleButton.accessibilityValue = selected.displayName
@@ -761,8 +891,59 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         configuration.cornerStyle = .capsule
         configuration.baseBackgroundColor = color
         configuration.baseForegroundColor = .white
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            incoming in
+            var outgoing = incoming
+            outgoing.font = .systemFont(ofSize: 15, weight: .semibold)
+            return outgoing
+        }
         primaryButton.configuration = configuration
         primaryButton.isEnabled = enabled
+        primaryButton.accessibilityLabel = title
+        primaryButton.accessibilityValue = statusLabel.text
+        primaryButton.accessibilityHint = switch title {
+        case "Dictate": "Opens Local Flow and starts private dictation."
+        case "Finish": "Stops recording and starts transcription."
+        case "Insert": "Inserts the transcript at the cursor."
+        case "Open app": "Opens Local Flow to continue."
+        default: nil
+        }
+    }
+
+    private func addKeyTouchFeedback(to button: UIButton) {
+        button.addTarget(self, action: #selector(keyTouchDown(_:)), for: .touchDown)
+        button.addTarget(
+            self,
+            action: #selector(keyTouchEnded(_:)),
+            for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit]
+        )
+    }
+
+    private func applyTheme() {
+        view.backgroundColor = KeyboardPalette.background
+        inputView?.backgroundColor = KeyboardPalette.background
+        dictationCard.backgroundColor = KeyboardPalette.card
+        dictationCard.layer.borderColor = KeyboardPalette.cardBorder.resolvedColor(
+            with: traitCollection
+        ).cgColor
+    }
+
+    private func updateRecordingPulse(active: Bool) {
+        let animationKey = "localflow.recordingPulse"
+        guard active else {
+            recordingDot.layer.removeAnimation(forKey: animationKey)
+            recordingDot.layer.opacity = 1
+            return
+        }
+        guard recordingDot.layer.animation(forKey: animationKey) == nil else { return }
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1
+        pulse.toValue = 0.32
+        pulse.duration = 0.78
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        recordingDot.layer.add(pulse, forKey: animationKey)
     }
 
     private func playKeyClick() {
@@ -774,6 +955,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         for button in letterButtons {
             guard let letter = button.accessibilityIdentifier else { continue }
             button.configuration?.title = shifted ? letter.uppercased() : letter
+        }
+        if let shiftButton, var configuration = shiftButton.configuration {
+            configuration.image = UIImage(systemName: shifted ? "shift.fill" : "shift")
+            configuration.baseBackgroundColor = shifted
+                ? KeyboardPalette.shiftKeyActive
+                : KeyStyle.function.backgroundColor
+            configuration.baseForegroundColor = shifted ? .white : .label
+            shiftButton.configuration = configuration
+            shiftButton.accessibilityValue = shifted ? "On" : "Off"
         }
     }
 
@@ -795,8 +985,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
         var backgroundColor: UIColor {
             switch self {
-            case .standard: .systemBackground
-            case .function: .systemGray3
+            case .standard: KeyboardPalette.standardKey
+            case .function: KeyboardPalette.functionKey
             case .accent: .systemBlue
             }
         }
@@ -804,5 +994,118 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         var foregroundColor: UIColor {
             self == .accent ? .white : .label
         }
+    }
+
+    private enum KeyboardPalette {
+        static let background = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.075, green: 0.082, blue: 0.095, alpha: 1)
+                : UIColor(red: 0.82, green: 0.835, blue: 0.86, alpha: 1)
+        }
+
+        static let card = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.145, green: 0.155, blue: 0.18, alpha: 1)
+                : UIColor(red: 0.97, green: 0.975, blue: 0.985, alpha: 1)
+        }
+
+        static let cardBorder = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor.white.withAlphaComponent(0.08)
+                : UIColor.black.withAlphaComponent(0.07)
+        }
+
+        static let standardKey = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.275, green: 0.29, blue: 0.325, alpha: 1)
+                : .white
+        }
+
+        static let functionKey = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.17, green: 0.18, blue: 0.205, alpha: 1)
+                : UIColor(red: 0.66, green: 0.685, blue: 0.72, alpha: 1)
+        }
+
+        static let toolbarControl = UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.2, green: 0.215, blue: 0.245, alpha: 1)
+                : UIColor(white: 0.95, alpha: 1)
+        }
+
+        static let shiftKeyActive = UIColor.systemBlue
+    }
+}
+
+private final class VoiceMeterView: UIView {
+    var level: Float = 0 {
+        didSet {
+            updateAccessibilityValue()
+            setNeedsDisplay()
+        }
+    }
+
+    var isActive = false {
+        didSet {
+            updateAccessibilityValue()
+            setNeedsDisplay()
+        }
+    }
+
+    var activeColor: UIColor = .systemBlue {
+        didSet { setNeedsDisplay() }
+    }
+
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: 120, height: 9)
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        isOpaque = false
+        isAccessibilityElement = true
+        accessibilityLabel = "Voice level"
+        accessibilityTraits = [.updatesFrequently]
+        updateAccessibilityValue()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func draw(_ rect: CGRect) {
+        let pattern: [CGFloat] = [
+            0.28, 0.46, 0.72, 0.42, 0.86, 0.58, 1, 0.7, 0.48,
+            0.9, 0.62, 0.38, 0.76, 0.52, 0.88, 0.44, 0.66, 0.3,
+        ]
+        let gap: CGFloat = 2.2
+        let totalGaps = gap * CGFloat(pattern.count - 1)
+        let barWidth = max(1.5, (bounds.width - totalGaps) / CGFloat(pattern.count))
+        let normalizedLevel = min(max(CGFloat(level), 0), 1)
+        let energy = isActive ? max(0.16, normalizedLevel) : 0.09
+        let color = activeColor.withAlphaComponent(isActive ? 0.88 : 0.22)
+        color.setFill()
+
+        for (index, value) in pattern.enumerated() {
+            let scaledEnergy = min(1, energy * (0.55 + value * 0.85))
+            let height = max(2, bounds.height * scaledEnergy)
+            let x = CGFloat(index) * (barWidth + gap)
+            let bar = CGRect(
+                x: x,
+                y: bounds.midY - height / 2,
+                width: barWidth,
+                height: height
+            )
+            UIBezierPath(roundedRect: bar, cornerRadius: barWidth / 2).fill()
+        }
+    }
+
+    private func updateAccessibilityValue() {
+        let normalizedLevel = min(max(level, 0), 1)
+        accessibilityValue = isActive
+            ? "\(Int(normalizedLevel * 100)) percent"
+            : "Not recording"
     }
 }

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hmac
 import time
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Form, Header, Query, Request, Response
@@ -27,6 +29,7 @@ from app.fragments import (
     engine_update_fragment,
     models_fragment,
     models_list_fragment,
+    operations_fragment,
     overview_fragment,
     settings_fragment,
     test_fragment,
@@ -37,6 +40,7 @@ from app.model_manager import (
     UnknownModelError,
 )
 from app.models.base import AudioNormalizer, TranscriptionEngine
+from app.readiness import ReadinessMonitor
 from app.runtime_config import RuntimeConfig
 from app.schemas import (
     AdminModelEntry,
@@ -52,8 +56,12 @@ from app.schemas import (
     ErrorDetail,
     ErrorEnvelope,
     HealthResponse,
+    LivenessResponse,
     ModelResponse,
+    OperationalMetricsStatus,
     PathStatus,
+    ReadinessResponse,
+    ReadinessStatus,
     SelectModelResponse,
     SessionResponse,
     SetupChecklist,
@@ -99,11 +107,20 @@ def create_app(
         engine_provider,
         normalizer or FFmpegNormalizer(),
     )
+    readiness = ReadinessMonitor(engine_provider)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         service.cleanup_expired()
-        yield
+        warmup_task = asyncio.create_task(readiness.warmup())
+        app.state.warmup_task = warmup_task
+        try:
+            yield
+        finally:
+            if not warmup_task.done():
+                warmup_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await warmup_task
 
     app = FastAPI(
         title="Local Flow Gateway",
@@ -115,6 +132,28 @@ def create_app(
     app.state.settings = configured
     app.state.service = service
     app.state.model_manager = manager
+    app.state.metrics = service.metrics
+    app.state.readiness = readiness
+
+    @app.middleware("http")
+    async def add_browser_security_headers(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "microphone=(self)"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; connect-src 'self'; media-src 'self' blob:; "
+            "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+            "form-action 'self'"
+        )
+        if request.url.path == "/" or request.url.path.startswith(("/ui/", "/v1/")):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.exception_handler(APIProblem)
     async def api_problem_handler(_: Request, problem: APIProblem) -> JSONResponse:
@@ -150,8 +189,25 @@ def create_app(
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
-        state = await engine_provider.current().health()
+        state = await readiness.probe()
         return HealthResponse(engine_ready=state.ready, engine=state.name)
+
+    @app.get("/health/live", response_model=LivenessResponse)
+    async def liveness() -> LivenessResponse:
+        return LivenessResponse(uptime_seconds=service.metrics.snapshot().uptime_seconds)
+
+    @app.get("/health/ready", response_model=ReadinessResponse)
+    async def ready(response: Response) -> ReadinessResponse:
+        details = await readiness.details()
+        if not details.health.ready:
+            response.status_code = 503
+        return ReadinessResponse(
+            status="ready" if details.health.ready else "not_ready",
+            engine_ready=details.health.ready,
+            engine=details.health.name,
+            probe_age_seconds=round(details.checked_age_seconds, 3),
+            warmup_state=details.warmup_state,
+        )
 
     @app.get(
         "/v1/models",
@@ -159,7 +215,7 @@ def create_app(
         dependencies=[Depends(require_token)],
     )
     async def models() -> list[ModelResponse]:
-        state = await engine_provider.current().health()
+        state = await readiness.probe()
         return [ModelResponse(id=state.name, ready=state.ready, local=True)]
 
     @app.post(
@@ -264,39 +320,65 @@ def create_app(
             return engine_manager.runtime_config.engine
         return "custom"
 
+    def _available_engines() -> list[str]:
+        if engine_manager is None:
+            return ["custom"]
+        system = detect_system(
+            whisper_binary=configured.whisper_binary,
+            whisperkit_binary=configured.whisperkit_binary,
+            handy_binary=configured.handy_binary,
+        )
+        engines = ["auto", "whisper.cpp"]
+        if system.os_name == "Darwin":
+            engines.extend(["handy", "whisperkit"])
+        return engines
+
     async def _status_payload() -> AdminStatusResponse:
         system = detect_system(
             whisper_binary=configured.whisper_binary,
             whisperkit_binary=configured.whisperkit_binary,
             handy_binary=configured.handy_binary,
         )
+        is_mac = system.os_name == "Darwin"
         dependencies = [
             DependencyStatus(
                 name="FFmpeg",
                 available=system.ffmpeg_path is not None,
                 path=system.ffmpeg_path,
-                install_hint="brew install ffmpeg",
+                install_hint=(
+                    "brew install ffmpeg"
+                    if is_mac
+                    else "Install FFmpeg with your Linux package manager"
+                ),
             ),
             DependencyStatus(
                 name="whisper.cpp CLI",
                 available=system.whisper_cpp_path is not None,
                 path=system.whisper_cpp_path,
-                install_hint="brew install whisper-cpp",
+                install_hint=(
+                    "brew install whisper-cpp"
+                    if is_mac
+                    else "Included in Docker or build whisper.cpp from source"
+                ),
             ),
             DependencyStatus(
                 name="WhisperKit CLI",
                 available=system.whisperkit_cli_path is not None,
                 path=system.whisperkit_cli_path,
-                install_hint="brew install whisperkit-cli",
+                install_hint=(
+                    "brew install whisperkit-cli" if is_mac else "Available only on Apple platforms"
+                ),
             ),
             DependencyStatus(
                 name="Handy app",
                 available=system.handy_installed,
                 path=str(configured.handy_binary) if system.handy_installed else None,
-                install_hint="https://handy.computer",
+                install_hint=("https://handy.computer" if is_mac else "Available only on macOS"),
             ),
         ]
-        state = await engine_provider.current().health()
+        readiness_details = await readiness.details()
+        state = readiness_details.health
+        metrics = service.metrics.snapshot()
         return AdminStatusResponse(
             version=VERSION,
             engine=EngineStatus(id=_engine_id(), name=state.name, ready=state.ready),
@@ -322,8 +404,25 @@ def create_app(
                 engine_binary_available=any(
                     dependency.available for dependency in dependencies[1:]
                 ),
-                model_installed=bool(manager.installed()),
+                model_installed=bool(manager.installed())
+                or (engine_manager is not None and state.ready),
                 engine_ready=state.ready,
+            ),
+            metrics=OperationalMetricsStatus(
+                uptime_seconds=metrics.uptime_seconds,
+                queue_depth=metrics.queue_depth,
+                active_transcriptions=metrics.active_transcriptions,
+                concurrency_limit=metrics.concurrency_limit,
+                successful_transcriptions=metrics.successful_transcriptions,
+                failed_transcriptions=metrics.failed_transcriptions,
+                rejected_transcriptions=metrics.rejected_transcriptions,
+                average_latency_ms=metrics.average_latency_ms,
+                last_latency_ms=metrics.last_latency_ms,
+            ),
+            readiness=ReadinessStatus(
+                probe_age_seconds=round(readiness_details.checked_age_seconds, 3),
+                warmup_state=readiness_details.warmup_state,
+                warmed_bytes=readiness_details.warmed_bytes,
             ),
         )
 
@@ -337,10 +436,15 @@ def create_app(
         installed = {model.id: model for model in manager.installed()}
         active_path = _active_model_path()
         entries: list[AdminModelEntry] = []
-        for model in manager.catalog:
+        visible_catalog = (
+            model
+            for model in manager.catalog
+            if model.engine != "whisperkit" or system.is_apple_silicon
+        )
+        for model in visible_catalog:
             download = manager.download_state(model.id)
             installed_model = installed.get(model.id)
-            state = "not_installed"
+            state: Literal["installed", "downloading", "not_installed"] = "not_installed"
             progress: float | None = None
             error: str | None = None
             if download is not None and download.status == "downloading":
@@ -361,6 +465,9 @@ def create_app(
                     ),
                     languages=model.languages,
                     quality=model.quality,
+                    family=model.family,
+                    description=model.description,
+                    source=model.source,
                     state=state,
                     active=bool(installed_model and installed_model.path == active_path),
                     recommended=model.id in recommended,
@@ -380,6 +487,9 @@ def create_app(
                         size_bytes=custom.size_bytes,
                         languages="Unknown",
                         quality="Custom",
+                        family="Custom Whisper",
+                        description="User-provided local model.",
+                        source="Local file",
                         state="installed",
                         active=custom.path == active_path,
                         recommended=False,
@@ -450,9 +560,7 @@ def create_app(
     )
     async def cancel_model_download(model_id: str) -> DownloadResponse:
         if not manager.cancel_download(model_id):
-            raise APIProblem(
-                409, "download_not_active", "This model is not currently downloading."
-            )
+            raise APIProblem(409, "download_not_active", "This model is not currently downloading.")
         return DownloadResponse(model_id=model_id, status="cancelling")
 
     @app.delete(
@@ -489,10 +597,12 @@ def create_app(
             raise APIProblem(
                 404, "model_not_installed", "Download this model before selecting it."
             ) from error
-        state = await engine_manager.health()
+        await readiness.warmup()
+        state = await readiness.probe()
         return SelectModelResponse(
-            engine=EngineStatus(id=engine_manager.runtime_config.engine, name=state.name,
-                                ready=state.ready)
+            engine=EngineStatus(
+                id=engine_manager.runtime_config.engine, name=state.name, ready=state.ready
+            )
         )
 
     @app.get(
@@ -506,10 +616,8 @@ def create_app(
         )
         return ConfigResponse(
             engine=engine_value,
-            available_engines=["auto", "handy", "whisper.cpp", "whisperkit"],
-            whisper_model=(
-                engine_manager.runtime_config.whisper_model if engine_manager else None
-            ),
+            available_engines=_available_engines(),
+            whisper_model=(engine_manager.runtime_config.whisper_model if engine_manager else None),
             whisperkit_model=(
                 engine_manager.runtime_config.whisperkit_model if engine_manager else None
             ),
@@ -526,7 +634,8 @@ def create_app(
                 409, "engine_locked", "The engine was fixed at startup and cannot switch."
             )
         engine_manager.set_engine(body.engine)
-        state = await engine_manager.health()
+        await readiness.warmup()
+        state = await readiness.probe()
         return SelectModelResponse(
             engine=EngineStatus(id=body.engine, name=state.name, ready=state.ready)
         )
@@ -567,9 +676,7 @@ def create_app(
             temporary.unlink(missing_ok=True)
             raise
         try:
-            transcript, engine_name, duration_ms = await service.transcribe_adhoc(
-                final, language
-            )
+            transcript, engine_name, duration_ms = await service.transcribe_adhoc(final, language)
         finally:
             final.unlink(missing_ok=True)
         return TestTranscriptionResponse(
@@ -593,15 +700,43 @@ def create_app(
         return _html(overview_fragment(await _status_payload()))
 
     @app.get(
+        "/ui/partials/operations",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_operations() -> HTMLResponse:
+        metrics = service.metrics.snapshot()
+        readiness_details = await readiness.details()
+        return _html(
+            operations_fragment(
+                OperationalMetricsStatus(
+                    uptime_seconds=metrics.uptime_seconds,
+                    queue_depth=metrics.queue_depth,
+                    active_transcriptions=metrics.active_transcriptions,
+                    concurrency_limit=metrics.concurrency_limit,
+                    successful_transcriptions=metrics.successful_transcriptions,
+                    failed_transcriptions=metrics.failed_transcriptions,
+                    rejected_transcriptions=metrics.rejected_transcriptions,
+                    average_latency_ms=metrics.average_latency_ms,
+                    last_latency_ms=metrics.last_latency_ms,
+                ),
+                ReadinessStatus(
+                    probe_age_seconds=round(readiness_details.checked_age_seconds, 3),
+                    warmup_state=readiness_details.warmup_state,
+                    warmed_bytes=readiness_details.warmed_bytes,
+                ),
+            )
+        )
+
+    @app.get(
         "/ui/partials/engine-pill",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
     async def ui_engine_pill() -> HTMLResponse:
-        state = await engine_provider.current().health()
+        state = await readiness.probe()
         return _html(
-            engine_pill_fragment(EngineStatus(id=_engine_id(), name=state.name,
-                                              ready=state.ready))
+            engine_pill_fragment(EngineStatus(id=_engine_id(), name=state.name, ready=state.ready))
         )
 
     @app.get(
@@ -691,12 +826,14 @@ def create_app(
             raise APIProblem(
                 404, "model_not_installed", "Download this model before selecting it."
             ) from error
-        state = await engine_manager.health()
+        await readiness.warmup()
+        state = await readiness.probe()
         return _html(
             models_list_fragment(_model_entries())
             + engine_pill_oob(
-                EngineStatus(id=engine_manager.runtime_config.engine, name=state.name,
-                             ready=state.ready)
+                EngineStatus(
+                    id=engine_manager.runtime_config.engine, name=state.name, ready=state.ready
+                )
             )
         )
 
@@ -711,16 +848,15 @@ def create_app(
         )
         config = ConfigResponse(
             engine=engine_value,
-            available_engines=["auto", "handy", "whisper.cpp", "whisperkit"],
+            available_engines=_available_engines(),
         )
         paths = [
             ("Data directory", str(configured.data_dir)),
             ("Models directory", str(manager.models_dir)),
             ("WebUI config file", str(config_path)),
             ("Token file", TOKEN_FILE_HINT),
-            ("Listening on", f"http://{configured.bind_host}:{configured.port}"),
         ]
-        return _html(settings_fragment(config, paths))
+        return _html(settings_fragment(config, paths, configured.bind_host, configured.port))
 
     @app.put(
         "/ui/partials/config",
@@ -736,7 +872,8 @@ def create_app(
             engine_manager.set_engine(engine)
         except ValueError as error:
             raise APIProblem(422, "invalid_engine", str(error)) from error
-        state = await engine_manager.health()
+        await readiness.warmup()
+        state = await readiness.probe()
         return _html(
             engine_update_fragment(
                 EngineStatus(id=engine, name=state.name, ready=state.ready),
@@ -750,7 +887,7 @@ def create_app(
         dependencies=[Depends(require_token)],
     )
     async def ui_test() -> HTMLResponse:
-        return _html(test_fragment())
+        return _html(test_fragment(configured.maximum_duration_seconds))
 
     return app
 
@@ -758,9 +895,7 @@ def create_app(
 def select_engine(settings: Settings) -> TranscriptionEngine:
     """Resolve an engine purely from environment settings (CLI usage)."""
     if settings.engine not in {"auto", "handy", "whisper.cpp", "whisperkit"}:
-        raise RuntimeError(
-            "LOCALFLOW_ENGINE must be auto, handy, whisper.cpp, or whisperkit."
-        )
+        raise RuntimeError("LOCALFLOW_ENGINE must be auto, handy, whisper.cpp, or whisperkit.")
     manager = ModelManager(settings.resolved_models_dir())
     if settings.engine == "auto":
         from app.models.whisper_cpp import WhisperCppEngine

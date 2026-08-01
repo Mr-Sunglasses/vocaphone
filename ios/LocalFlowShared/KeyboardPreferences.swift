@@ -36,10 +36,34 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum MicrophonePreference: String, Codable, CaseIterable, Identifiable, Sendable {
+    case automatic
+    case iPhone = "iphone"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .automatic: "Automatic"
+        case .iPhone: "iPhone Microphone"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .automatic:
+            "iOS chooses the input and may use an AirPods microphone when connected."
+        case .iPhone:
+            "Always request the microphone built into this iPhone."
+        }
+    }
+}
+
 enum KeyboardPreferences {
     static let autoInsertKey = "autoInsertTranscripts"
     static let quickDictationKey = "quickDictationEnabled"
     static let writingStyleKey = "writingStyle"
+    static let microphonePreferenceKey = "microphonePreference"
 
     nonisolated(unsafe) static let defaults = UserDefaults(
         suiteName: AppConfiguration.appGroupIdentifier
@@ -76,6 +100,18 @@ enum KeyboardPreferences {
         }
         set {
             defaults?.set(newValue.rawValue, forKey: writingStyleKey)
+        }
+    }
+
+    static var microphonePreference: MicrophonePreference {
+        get {
+            guard let rawValue = defaults?.string(forKey: microphonePreferenceKey),
+                  let preference = MicrophonePreference(rawValue: rawValue)
+            else { return .automatic }
+            return preference
+        }
+        set {
+            defaults?.set(newValue.rawValue, forKey: microphonePreferenceKey)
         }
     }
 }

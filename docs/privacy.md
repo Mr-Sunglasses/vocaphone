@@ -22,8 +22,8 @@ result needed for idempotent retry.
 
 ## Security controls
 
-- Loopback-only gateway binding
-- Tailscale Serve private ingress; no Funnel
+- Configurable gateway binding, with loopback recommended for private deployments
+- Tailscale Serve private ingress over a loopback listener; no Funnel
 - Independent high-entropy bearer token
 - Token stored in an iPhone Keychain item and a mode-600 Mac file
 - Strict upload types, byte limits, duration limits, and one transcription slot
@@ -31,6 +31,14 @@ result needed for idempotent retry.
 - Opaque file references and canonical server-owned paths
 - No analytics or third-party transcription
 - No ordinary logging of audio, transcripts, tokens, or private endpoint values
+- In-memory operational metrics contain only counts, timings, queue activity, and
+  process uptime; they reset on restart and include no transcript or session data
+- Docker Compose mounts the bearer token as a secret instead of a container
+  environment variable; `/data` is the only persistent application volume
+
+The Compose source token is normally stored in the host-only `server/.env` file
+before Docker mounts it at `/run/secrets/localflow_token`. Keep that file at mode
+`600`, exclude it from backups shared with other people, and never commit it.
 
 ## Full Access
 
