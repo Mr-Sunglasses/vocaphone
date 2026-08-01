@@ -10,7 +10,9 @@ struct LocalFlowApp: App {
             ContentView()
                 .environmentObject(coordinator)
                 .onOpenURL { coordinator.handleDeepLink($0) }
+                .onAppear { KeyboardPreferences.containingAppIsForeground = true }
                 .onChange(of: scenePhase) { _, phase in
+                    KeyboardPreferences.containingAppIsForeground = phase == .active
                     guard phase == .active else { return }
                     Task {
                         await coordinator.recoverRecentSession()

@@ -13,6 +13,9 @@ final class AudioRecorder: NSObject {
     var onMeter: ((Float) -> Void)?
     var onMaximumDuration: (() -> Void)?
     var onInputRouteChanged: ((String?) -> Void)?
+    var onPCMChunk: (@Sendable (Data, UInt64) -> Void)? {
+        didSet { captureSink.onPCMChunk = onPCMChunk }
+    }
     var microphonePreference: MicrophonePreference = .automatic
 
     override init() {
@@ -43,6 +46,8 @@ final class AudioRecorder: NSObject {
     var recordPermission: AVAudioApplication.recordPermission {
         AVAudioApplication.shared.recordPermission
     }
+    var recordingSampleRate: Double? { captureFormat?.sampleRate }
+    private(set) var lastFinishedChunkCount: UInt64 = 0
 
     func requestPermission(
         _ completion: @escaping @MainActor @Sendable (Bool) -> Void
@@ -70,6 +75,7 @@ final class AudioRecorder: NSObject {
             interleaved: captureFormat.isInterleaved
         )
         captureSink.beginWriting(to: file)
+        lastFinishedChunkCount = 0
         outputURL = output
 
         meterTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) {
@@ -91,7 +97,7 @@ final class AudioRecorder: NSObject {
     /// transcript.
     func stopSession(keepAudioSessionActive: Bool = false) -> URL? {
         let finishedOutput = outputURL
-        captureSink.finishWriting()
+        lastFinishedChunkCount = captureSink.finishWriting()
         outputURL = nil
         stopTimers()
         if !keepAudioSessionActive {
@@ -102,7 +108,7 @@ final class AudioRecorder: NSObject {
 
     func cancelSession(keepAudioSessionActive: Bool = false) {
         let canceledOutput = outputURL
-        captureSink.finishWriting()
+        _ = captureSink.finishWriting()
         outputURL = nil
         stopTimers()
         if let canceledOutput {
@@ -253,6 +259,8 @@ private final class AudioCaptureSink: @unchecked Sendable {
     private let lock = NSLock()
     private var file: AVAudioFile?
     private var latestMeterLevel: Float = 0
+    var onPCMChunk: (@Sendable (Data, UInt64) -> Void)?
+    private var nextSequence: UInt64 = 0
 
     var isWriting: Bool {
         lock.withLock { file != nil }
@@ -266,13 +274,16 @@ private final class AudioCaptureSink: @unchecked Sendable {
         lock.withLock {
             self.file = file
             latestMeterLevel = 0
+            nextSequence = 0
         }
     }
 
-    func finishWriting() {
+    func finishWriting() -> UInt64 {
         lock.withLock {
+            let chunkCount = nextSequence
             file = nil
             latestMeterLevel = 0
+            return chunkCount
         }
     }
 
@@ -282,6 +293,15 @@ private final class AudioCaptureSink: @unchecked Sendable {
             do {
                 try file.write(from: buffer)
                 latestMeterLevel = Self.normalizedMeterLevel(buffer)
+                if let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 {
+                    let data = Data(
+                        bytes: samples,
+                        count: Int(buffer.frameLength) * MemoryLayout<Float>.size
+                    )
+                    let sequence = nextSequence
+                    nextSequence += 1
+                    onPCMChunk?(data, sequence)
+                }
             } catch {
                 // The coordinator detects a missing/invalid output during
                 // finalization and preserves a recoverable session state.

@@ -16,6 +16,15 @@ enum GatewayStatusPreferences {
     static let healthMessageKey = "gatewayHealthMessage"
     static let engineKey = "gatewayEngine"
     static let engineReadyKey = "gatewayEngineReady"
+
+    /// Both the setup checklist and the settings screen read this state, so the
+    /// writes live in one place rather than being duplicated per view.
+    static func store(message: String, engine: String, ready: Bool) {
+        let defaults = UserDefaults.standard
+        defaults.set(message, forKey: healthMessageKey)
+        defaults.set(engine, forKey: engineKey)
+        defaults.set(ready, forKey: engineReadyKey)
+    }
 }
 
 struct GatewaySession: Decodable, Sendable {
@@ -34,6 +43,12 @@ struct GatewaySession: Decodable, Sendable {
     }
 }
 
+private struct GatewayModel: Decodable, Sendable {
+    let id: String
+    let ready: Bool
+    let local: Bool
+}
+
 struct GatewayClient: Sendable {
     let baseURL: URL
     private let token: String
@@ -49,6 +64,12 @@ struct GatewayClient: Sendable {
         var request = URLRequest(url: endpoint("health"))
         request.timeoutInterval = 2
         return try await perform(request, as: GatewayHealth.self, authenticated: false)
+    }
+
+    func verifyAuthentication() async throws {
+        var request = URLRequest(url: endpoint("v1/models"))
+        request.timeoutInterval = 5
+        _ = try await perform(request, as: [GatewayModel].self)
     }
 
     func createSession(id: UUID, language: String, style: String) async throws -> GatewaySession {
@@ -85,10 +106,36 @@ struct GatewayClient: Sendable {
         _ = try await perform(request, as: EmptyResponse.self)
     }
 
+    func startAudioStream(
+        sessionID: UUID,
+        language: String,
+        style: String,
+        sampleRate: Int
+    ) async throws -> GatewayAudioStream {
+        let stream = GatewayAudioStream(
+            url: websocketEndpoint("v1/stream"),
+            token: token,
+            sessionID: sessionID,
+            language: language,
+            style: style,
+            sampleRate: sampleRate,
+            session: session
+        )
+        try await stream.connect()
+        return stream
+    }
+
     private func endpoint(_ path: String) -> URL {
         path.split(separator: "/").reduce(baseURL) { url, component in
             url.appendingPathComponent(String(component))
         }
+    }
+
+    private func websocketEndpoint(_ path: String) -> URL {
+        let httpURL = endpoint(path)
+        var components = URLComponents(url: httpURL, resolvingAgainstBaseURL: false)!
+        components.scheme = httpURL.scheme == "https" ? "wss" : "ws"
+        return components.url!
     }
 
     private func contentType(for fileURL: URL) -> String {
@@ -118,6 +165,92 @@ struct GatewayClient: Sendable {
     }
 }
 
+final class GatewayAudioStream: @unchecked Sendable {
+    private let task: URLSessionWebSocketTask
+    private let startPayload: [String: Any]
+
+    init(
+        url: URL,
+        token: String,
+        sessionID: UUID,
+        language: String,
+        style: String,
+        sampleRate: Int,
+        session: URLSession
+    ) {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        task = session.webSocketTask(with: request)
+        startPayload = [
+            "type": "start",
+            "session_id": sessionID.uuidString.lowercased(),
+            "language": language,
+            "style": style,
+            "sample_rate": sampleRate,
+        ]
+    }
+
+    func connect() async throws {
+        task.resume()
+        let data = try JSONSerialization.data(withJSONObject: startPayload)
+        try await task.send(.string(String(decoding: data, as: UTF8.self)))
+        let event = try await receiveEvent()
+        guard event.type == "ready" else { throw GatewayStreamError.handshakeFailed }
+    }
+
+    func send(_ pcmFloat32: Data) async throws {
+        try await task.send(.data(pcmFloat32))
+    }
+
+    func finish() async throws -> String {
+        let finish = try JSONSerialization.data(withJSONObject: ["type": "finish"])
+        try await task.send(.string(String(decoding: finish, as: UTF8.self)))
+        while true {
+            let event = try await receiveEvent()
+            switch event.type {
+            case "complete":
+                guard let transcript = event.transcript, !transcript.isEmpty else {
+                    throw GatewayStreamError.emptyTranscript
+                }
+                task.cancel(with: .normalClosure, reason: nil)
+                return transcript
+            case "error":
+                throw GatewayStreamError.serverRejected
+            default:
+                continue
+            }
+        }
+    }
+
+    func cancel() {
+        task.cancel(with: .goingAway, reason: nil)
+    }
+
+    private func receiveEvent() async throws -> GatewayStreamEvent {
+        let message = try await task.receive()
+        let data: Data
+        switch message {
+        case let .data(value): data = value
+        case let .string(value): data = Data(value.utf8)
+        @unknown default: throw GatewayStreamError.invalidMessage
+        }
+        return try JSONDecoder().decode(GatewayStreamEvent.self, from: data)
+    }
+}
+
+private struct GatewayStreamEvent: Decodable {
+    let type: String
+    let transcript: String?
+}
+
+private enum GatewayStreamError: Error {
+    case handshakeFailed
+    case emptyTranscript
+    case serverRejected
+    case invalidMessage
+}
+
 private struct APIErrorEnvelope: Decodable {
     struct Detail: Decodable { let code: String }
     let error: Detail
@@ -132,7 +265,7 @@ enum GatewayError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            "The Mac returned an invalid response."
+            "The gateway returned an invalid response."
         case let .api(status, code):
             "Gateway error \(status): \(code)"
         }

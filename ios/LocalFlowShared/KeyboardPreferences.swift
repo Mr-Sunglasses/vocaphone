@@ -64,6 +64,7 @@ enum KeyboardPreferences {
     static let quickDictationKey = "quickDictationEnabled"
     static let writingStyleKey = "writingStyle"
     static let microphonePreferenceKey = "microphonePreference"
+    static let containingAppForegroundKey = "containingAppForeground"
 
     nonisolated(unsafe) static let defaults = UserDefaults(
         suiteName: AppConfiguration.appGroupIdentifier
@@ -101,6 +102,14 @@ enum KeyboardPreferences {
         set {
             defaults?.set(newValue.rawValue, forKey: writingStyleKey)
         }
+    }
+
+    /// Maintained by the containing app across foreground transitions. A custom
+    /// keyboard only runs inside the frontmost app, so finding Local Flow in the
+    /// foreground tells the keyboard that Local Flow is its own host.
+    static var containingAppIsForeground: Bool {
+        get { defaults?.bool(forKey: containingAppForegroundKey) ?? false }
+        set { defaults?.set(newValue, forKey: containingAppForegroundKey) }
     }
 
     static var microphonePreference: MicrophonePreference {

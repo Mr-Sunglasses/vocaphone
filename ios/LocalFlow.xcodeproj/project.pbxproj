@@ -8,12 +8,17 @@
 
 /* Begin PBXBuildFile section */
 		0145D55B523EB13827B27AC4 /* TextInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0799A203DEDA091866FFBA4E /* TextInsertion.swift */; };
+		058BC439CA6C261AE5922069 /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4D700966610E77B503A6E8 /* KeyboardStatus.swift */; };
 		06B3991D6C5E2AD404A8D3A6 /* GatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E50ACD74CADDD0BB62D1222 /* GatewayClient.swift */; };
 		09F4AAAEDA5288F98A21F5BB /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9119E8C9BE1BEB7517D444CD /* QuickDictationAvailability.swift */; };
 		167F067DE708255E6CC96F90 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04F29134B8035F91ACA991D5 /* AudioRecorder.swift */; };
+		18AB100760A33EAD802AF6C5 /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37BD648DCFB7D3452241CE1 /* GatewayEndpoint.swift */; };
 		191C781D0F219B2787D8923D /* FinishRecordingIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E5A612D9FCE236CFDF42011 /* FinishRecordingIntent.swift */; };
 		21ADF5A5E85E3736552E28B0 /* TextInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0799A203DEDA091866FFBA4E /* TextInsertion.swift */; };
+		26C0719CEC4DDCB0BA08AAC4 /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4D700966610E77B503A6E8 /* KeyboardStatus.swift */; };
 		2B31542654F871DCD77744DA /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13384D76D40D7BBB5882E472 /* SessionRecord.swift */; };
+		2D56C9A5CE35FF4853A3219E /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4D700966610E77B503A6E8 /* KeyboardStatus.swift */; };
+		2DD59385E1E2FE40DA6D12B5 /* KeyGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD7CA27F30AE6D9A5375898 /* KeyGridView.swift */; };
 		2EFD17B37B8F0B12A4D02D71 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0971907F8807AF4111357EAA /* LiveActivityManager.swift */; };
 		36D030A4745EC041A8576C57 /* KeyboardPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A360AC1ABD0B65D97947A185 /* KeyboardPreferences.swift */; };
 		40F7DEDC700B2C334FC86C17 /* LocalFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B6FBCD6D0BA52C87B1D6F01 /* LocalFlowApp.swift */; };
@@ -21,8 +26,12 @@
 		438B7DBF85706EAA0D4FAB47 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47D89402A128DB78CAA390D8 /* SharedStore.swift */; };
 		465471C98F093574D3D9E064 /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13384D76D40D7BBB5882E472 /* SessionRecord.swift */; };
 		4CA5ACE8C47B723822AAEAD9 /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9119E8C9BE1BEB7517D444CD /* QuickDictationAvailability.swift */; };
+		5337C61ADB62FF8D06454585 /* KeyLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE771351D7769E816A9351D /* KeyLayout.swift */; };
 		5337F224DF24B3587A6BD5C0 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3527B7F09F5339E5E0D465D7 /* KeyboardViewController.swift */; };
 		5481E85AFB3FB78892EA4594 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703439CBBE8F06E5A7449339 /* AppConfiguration.swift */; };
+		558EBF1861328F42ED3B5C07 /* KeyLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBE771351D7769E816A9351D /* KeyLayout.swift */; };
+		55A87E5D7B3D89547BAFE49E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B29431D5C04702EAC4660679 /* SettingsView.swift */; };
+		6483777493E40A89BE5D96EF /* KeyGridLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2D93BC8D9A8F925C00A507 /* KeyGridLayoutTests.swift */; };
 		6A657FBECD134398B05227AE /* LocalFlowKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6CBCE898A23F47628C1183DA /* LocalFlowKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		6B69DBBB69638883C42042CC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 714EAEF5499752246C9E5FBA /* ContentView.swift */; };
 		7100CDA1673010769D5E7CF5 /* LocalFlowLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5B71284AEFECD863402492DB /* LocalFlowLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -33,6 +42,9 @@
 		84871365FA21E67F105B0593 /* SessionRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7149F16802909BA09B07B761 /* SessionRecordTests.swift */; };
 		88E09EC724D66A3D8B62D866 /* LocalFlowActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEB8F53F67E6A3A30BFBB99B /* LocalFlowActivityAttributes.swift */; };
 		8935C8C429A3303A979A1C55 /* FinishRecordingIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E5A612D9FCE236CFDF42011 /* FinishRecordingIntent.swift */; };
+		91503CDBB6A4272818E3FAA6 /* TranscriptHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 547EF78AB18AB0C5D0561123 /* TranscriptHistoryView.swift */; };
+		A39BD12BBDBA5AE380F363B0 /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4D700966610E77B503A6E8 /* KeyboardStatus.swift */; };
+		A51E936B352F336F6DC3E5C4 /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37BD648DCFB7D3452241CE1 /* GatewayEndpoint.swift */; };
 		A85EC9BE7705E8D58222B60A /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703439CBBE8F06E5A7449339 /* AppConfiguration.swift */; };
 		A907BA2F465E61A41742F991 /* TextInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0799A203DEDA091866FFBA4E /* TextInsertion.swift */; };
 		ADEF8CAFC4B716BE8AA943D9 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703439CBBE8F06E5A7449339 /* AppConfiguration.swift */; };
@@ -42,12 +54,18 @@
 		C2E67FA8A3749C07F7B066E8 /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13384D76D40D7BBB5882E472 /* SessionRecord.swift */; };
 		CADE84CFE603159DE75478D3 /* KeyboardPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A360AC1ABD0B65D97947A185 /* KeyboardPreferences.swift */; };
 		CADEEDDCC7655AADD5A941CF /* LocalFlowLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 764115ED713E3CD2933B2E9E /* LocalFlowLiveActivity.swift */; };
+		CBE8836AA904870938B18FE0 /* KeyGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD7CA27F30AE6D9A5375898 /* KeyGridView.swift */; };
 		D0CB76085C400240A5C35E97 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47D89402A128DB78CAA390D8 /* SharedStore.swift */; };
+		D3878F197D933401251E56DA /* KeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D98CCDF1DA1FD5C8C4213DEB /* KeyView.swift */; };
 		D86C0451167701407A48DBCB /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47D89402A128DB78CAA390D8 /* SharedStore.swift */; };
 		DEA1AA9E14DB93DBC2951D89 /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9119E8C9BE1BEB7517D444CD /* QuickDictationAvailability.swift */; };
 		E53E4617EAC4024DE1C82257 /* LocalFlowActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEB8F53F67E6A3A30BFBB99B /* LocalFlowActivityAttributes.swift */; };
 		E6D3025060DEDF10EC45635D /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 703439CBBE8F06E5A7449339 /* AppConfiguration.swift */; };
+		E988413867B75066073B32E4 /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37BD648DCFB7D3452241CE1 /* GatewayEndpoint.swift */; };
+		EA6504A14AD3928A969FC631 /* SetupChecklist.swift in Sources */ = {isa = PBXBuildFile; fileRef = C521D43922FDDC9DE93B9117 /* SetupChecklist.swift */; };
 		EBAC4D63FB9EFE4E2920FEF6 /* RecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB93D3AEE8AC75CF9783740 /* RecordingCoordinator.swift */; };
+		F1757844C110E137D8959C4A /* KeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D98CCDF1DA1FD5C8C4213DEB /* KeyView.swift */; };
+		F9FA851C5711B43FF64B0C2D /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37BD648DCFB7D3452241CE1 /* GatewayEndpoint.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -89,12 +107,14 @@
 		0971907F8807AF4111357EAA /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
 		13384D76D40D7BBB5882E472 /* SessionRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecord.swift; sourceTree = "<group>"; };
 		1E50ACD74CADDD0BB62D1222 /* GatewayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayClient.swift; sourceTree = "<group>"; };
+		2AD7CA27F30AE6D9A5375898 /* KeyGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyGridView.swift; sourceTree = "<group>"; };
 		2C43220C98C2F3DADD48D714 /* LocalFlowKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LocalFlowKeyboard.entitlements; sourceTree = "<group>"; };
 		2EE35659190071F646E5F538 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3527B7F09F5339E5E0D465D7 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		3B6FBCD6D0BA52C87B1D6F01 /* LocalFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFlowApp.swift; sourceTree = "<group>"; };
 		3D5D36117A0F57109452184B /* KeyboardURLLauncher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KeyboardURLLauncher.m; sourceTree = "<group>"; };
 		47D89402A128DB78CAA390D8 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
+		547EF78AB18AB0C5D0561123 /* TranscriptHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptHistoryView.swift; sourceTree = "<group>"; };
 		5B71284AEFECD863402492DB /* LocalFlowLiveActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = LocalFlowLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		608A526CA60F83A070052A01 /* KeyboardURLLauncher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyboardURLLauncher.h; sourceTree = "<group>"; };
 		6CBCE898A23F47628C1183DA /* LocalFlowKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = LocalFlowKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -104,6 +124,7 @@
 		764115ED713E3CD2933B2E9E /* LocalFlowLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFlowLiveActivity.swift; sourceTree = "<group>"; };
 		7BB93D3AEE8AC75CF9783740 /* RecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinator.swift; sourceTree = "<group>"; };
 		7E5A612D9FCE236CFDF42011 /* FinishRecordingIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinishRecordingIntent.swift; sourceTree = "<group>"; };
+		8B4D700966610E77B503A6E8 /* KeyboardStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardStatus.swift; sourceTree = "<group>"; };
 		9119E8C9BE1BEB7517D444CD /* QuickDictationAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickDictationAvailability.swift; sourceTree = "<group>"; };
 		9197D7860D1EDCAEBF2FF893 /* LocalFlowApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = LocalFlowApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		95CB0C8B98437D563967E3A0 /* LocalFlowApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LocalFlowApp.entitlements; sourceTree = "<group>"; };
@@ -111,9 +132,15 @@
 		A360AC1ABD0B65D97947A185 /* KeyboardPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardPreferences.swift; sourceTree = "<group>"; };
 		A6FDBFE79701D7096F59E9B7 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		B1C36285B8875EB38D290483 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		B29431D5C04702EAC4660679 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		BEB8F53F67E6A3A30BFBB99B /* LocalFlowActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFlowActivityAttributes.swift; sourceTree = "<group>"; };
+		C521D43922FDDC9DE93B9117 /* SetupChecklist.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupChecklist.swift; sourceTree = "<group>"; };
 		D43B3D04FBB29DBBD85F1544 /* LocalFlowTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = LocalFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D61154C673CC42F46B10E76D /* LocalFlowLiveActivity.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = LocalFlowLiveActivity.entitlements; sourceTree = "<group>"; };
+		D98CCDF1DA1FD5C8C4213DEB /* KeyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyView.swift; sourceTree = "<group>"; };
+		DBE771351D7769E816A9351D /* KeyLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyLayout.swift; sourceTree = "<group>"; };
+		F37BD648DCFB7D3452241CE1 /* GatewayEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEndpoint.swift; sourceTree = "<group>"; };
+		FB2D93BC8D9A8F925C00A507 /* KeyGridLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyGridLayoutTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -161,6 +188,9 @@
 			children = (
 				714EAEF5499752246C9E5FBA /* ContentView.swift */,
 				3B6FBCD6D0BA52C87B1D6F01 /* LocalFlowApp.swift */,
+				B29431D5C04702EAC4660679 /* SettingsView.swift */,
+				C521D43922FDDC9DE93B9117 /* SetupChecklist.swift */,
+				547EF78AB18AB0C5D0561123 /* TranscriptHistoryView.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -178,6 +208,7 @@
 		B98B46157E904144FC35D536 /* LocalFlowTests */ = {
 			isa = PBXGroup;
 			children = (
+				FB2D93BC8D9A8F925C00A507 /* KeyGridLayoutTests.swift */,
 				7149F16802909BA09B07B761 /* SessionRecordTests.swift */,
 			);
 			path = LocalFlowTests;
@@ -187,7 +218,9 @@
 			isa = PBXGroup;
 			children = (
 				703439CBBE8F06E5A7449339 /* AppConfiguration.swift */,
+				F37BD648DCFB7D3452241CE1 /* GatewayEndpoint.swift */,
 				A360AC1ABD0B65D97947A185 /* KeyboardPreferences.swift */,
+				8B4D700966610E77B503A6E8 /* KeyboardStatus.swift */,
 				9119E8C9BE1BEB7517D444CD /* QuickDictationAvailability.swift */,
 				13384D76D40D7BBB5882E472 /* SessionRecord.swift */,
 				47D89402A128DB78CAA390D8 /* SharedStore.swift */,
@@ -203,6 +236,9 @@
 				608A526CA60F83A070052A01 /* KeyboardURLLauncher.h */,
 				3D5D36117A0F57109452184B /* KeyboardURLLauncher.m */,
 				3527B7F09F5339E5E0D465D7 /* KeyboardViewController.swift */,
+				2AD7CA27F30AE6D9A5375898 /* KeyGridView.swift */,
+				DBE771351D7769E816A9351D /* KeyLayout.swift */,
+				D98CCDF1DA1FD5C8C4213DEB /* KeyView.swift */,
 				9BA93B9361CE2B8110A782AA /* LocalFlowKeyboard-Bridging-Header.h */,
 				2C43220C98C2F3DADD48D714 /* LocalFlowKeyboard.entitlements */,
 			);
@@ -326,15 +362,19 @@
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					0F596725A29D302C5838ABF5 = {
+						DevelopmentTeam = A83WCPTTT9;
 						ProvisioningStyle = Automatic;
 					};
 					2D4AD01D0E58C9A520EE45B3 = {
+						DevelopmentTeam = A83WCPTTT9;
 						ProvisioningStyle = Automatic;
 					};
 					607D9372F324E8148268C450 = {
+						DevelopmentTeam = A83WCPTTT9;
 						ProvisioningStyle = Automatic;
 					};
 					EB6E37F53A0BDF72D2C904DE = {
+						DevelopmentTeam = A83WCPTTT9;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -368,7 +408,9 @@
 			files = (
 				E6D3025060DEDF10EC45635D /* AppConfiguration.swift in Sources */,
 				8935C8C429A3303A979A1C55 /* FinishRecordingIntent.swift in Sources */,
+				A51E936B352F336F6DC3E5C4 /* GatewayEndpoint.swift in Sources */,
 				36D030A4745EC041A8576C57 /* KeyboardPreferences.swift in Sources */,
+				058BC439CA6C261AE5922069 /* KeyboardStatus.swift in Sources */,
 				E53E4617EAC4024DE1C82257 /* LocalFlowActivityAttributes.swift in Sources */,
 				CADEEDDCC7655AADD5A941CF /* LocalFlowLiveActivity.swift in Sources */,
 				4CA5ACE8C47B723822AAEAD9 /* QuickDictationAvailability.swift in Sources */,
@@ -383,7 +425,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				ADEF8CAFC4B716BE8AA943D9 /* AppConfiguration.swift in Sources */,
+				F9FA851C5711B43FF64B0C2D /* GatewayEndpoint.swift in Sources */,
+				CBE8836AA904870938B18FE0 /* KeyGridView.swift in Sources */,
+				558EBF1861328F42ED3B5C07 /* KeyLayout.swift in Sources */,
+				D3878F197D933401251E56DA /* KeyView.swift in Sources */,
 				7244C4C2BE3D7591D5BDB287 /* KeyboardPreferences.swift in Sources */,
+				A39BD12BBDBA5AE380F363B0 /* KeyboardStatus.swift in Sources */,
 				7FC7AE9008AF75BBD234A5F2 /* KeyboardURLLauncher.m in Sources */,
 				5337F224DF24B3587A6BD5C0 /* KeyboardViewController.swift in Sources */,
 				B1E3C93E42A9D6EA60E6D71F /* QuickDictationAvailability.swift in Sources */,
@@ -398,7 +445,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				5481E85AFB3FB78892EA4594 /* AppConfiguration.swift in Sources */,
+				E988413867B75066073B32E4 /* GatewayEndpoint.swift in Sources */,
+				6483777493E40A89BE5D96EF /* KeyGridLayoutTests.swift in Sources */,
+				2DD59385E1E2FE40DA6D12B5 /* KeyGridView.swift in Sources */,
+				5337C61ADB62FF8D06454585 /* KeyLayout.swift in Sources */,
+				F1757844C110E137D8959C4A /* KeyView.swift in Sources */,
 				7B2D2D7DA7C685DC1BBA898B /* KeyboardPreferences.swift in Sources */,
+				26C0719CEC4DDCB0BA08AAC4 /* KeyboardStatus.swift in Sources */,
 				DEA1AA9E14DB93DBC2951D89 /* QuickDictationAvailability.swift in Sources */,
 				465471C98F093574D3D9E064 /* SessionRecord.swift in Sources */,
 				84871365FA21E67F105B0593 /* SessionRecordTests.swift in Sources */,
@@ -416,7 +469,9 @@
 				6B69DBBB69638883C42042CC /* ContentView.swift in Sources */,
 				191C781D0F219B2787D8923D /* FinishRecordingIntent.swift in Sources */,
 				06B3991D6C5E2AD404A8D3A6 /* GatewayClient.swift in Sources */,
+				18AB100760A33EAD802AF6C5 /* GatewayEndpoint.swift in Sources */,
 				CADE84CFE603159DE75478D3 /* KeyboardPreferences.swift in Sources */,
+				2D56C9A5CE35FF4853A3219E /* KeyboardStatus.swift in Sources */,
 				BB67C1C32DDD3B3CD47BE69D /* KeychainStore.swift in Sources */,
 				2EFD17B37B8F0B12A4D02D71 /* LiveActivityManager.swift in Sources */,
 				88E09EC724D66A3D8B62D866 /* LocalFlowActivityAttributes.swift in Sources */,
@@ -424,8 +479,11 @@
 				09F4AAAEDA5288F98A21F5BB /* QuickDictationAvailability.swift in Sources */,
 				EBAC4D63FB9EFE4E2920FEF6 /* RecordingCoordinator.swift in Sources */,
 				2B31542654F871DCD77744DA /* SessionRecord.swift in Sources */,
+				55A87E5D7B3D89547BAFE49E /* SettingsView.swift in Sources */,
+				EA6504A14AD3928A969FC631 /* SetupChecklist.swift in Sources */,
 				D86C0451167701407A48DBCB /* SharedStore.swift in Sources */,
 				A907BA2F465E61A41742F991 /* TextInsertion.swift in Sources */,
+				91503CDBB6A4272818E3FAA6 /* TranscriptHistoryView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -537,8 +595,9 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = A83WCPTTT9;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -631,8 +690,9 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				CODE_SIGN_STYLE = Automatic;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 16;
+				CURRENT_PROJECT_VERSION = 17;
 				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = A83WCPTTT9;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;

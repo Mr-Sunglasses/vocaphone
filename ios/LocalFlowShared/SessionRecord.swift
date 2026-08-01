@@ -24,7 +24,7 @@ enum SessionState: String, Codable, CaseIterable, Sendable {
     var isTerminal: Bool {
         switch self {
         case .completed, .canceled, .permissionDenied, .transcriptionFailedPermanent,
-             .targetContextChanged, .expired:
+             .expired:
             true
         default:
             false
@@ -56,6 +56,10 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     var serverJobID: String?
     var transcript: String?
     var error: SessionFailure?
+    /// Set when the keyboard was hosted by Local Flow itself. Such a session has
+    /// no other app to return to, so the hand-off guidance must be suppressed.
+    /// Optional so records written before this field still decode.
+    var startedInContainingApp: Bool?
 
     init(
         sessionID: UUID = UUID(),
@@ -76,6 +80,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         self.language = language
         self.style = style
         meterLevel = 0
+        startedInContainingApp = nil
     }
 
     mutating func transition(to next: SessionState, now: Date = Date()) throws {
@@ -112,7 +117,11 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
             .readyToInsert, .transcriptionFailedRecoverable,
             .transcriptionFailedPermanent, .serverUnavailable,
         ],
-        .readyToInsert: [.inserting, .targetContextChanged, .expired],
+        .readyToInsert: [.inserting, .targetContextChanged, .canceled, .expired],
+        // The transcript survives a detour into another text field. Returning to
+        // the originating document restores the pending insertion instead of
+        // discarding work the user already spoke.
+        .targetContextChanged: [.readyToInsert, .canceled, .expired],
         .inserting: [.inserted, .readyToInsert],
         .inserted: [.completed],
         .serverUnavailable: [.uploading, .canceled, .expired],

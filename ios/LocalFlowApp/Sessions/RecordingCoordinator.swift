@@ -19,6 +19,7 @@ final class RecordingCoordinator: ObservableObject {
     private var gatewayClient: GatewayClient?
     private var lastMicrophoneName: String?
     private let liveActivity = LiveActivityManager.shared
+    private let streamingBridge = StreamingAudioBridge()
 
     var stateLabel: String { activeRecord?.state.rawValue ?? "idle" }
     var isRecording: Bool { activeRecord?.state == .recording && recorder.isRecording }
@@ -29,11 +30,35 @@ final class RecordingCoordinator: ObservableObject {
         guard let quickDictationExpiresAt else { return false }
         return recorder.isStandbyActive && quickDictationExpiresAt > Date()
     }
+    /// Only true for a dictation started from another app, which is the only
+    /// case where the user has somewhere to swipe back to.
     var isKeyboardRecording: Bool {
-        isRecording && activeRecord?.sourceDocumentID != "in-app-test"
+        isRecording
+            && activeRecord?.sourceDocumentID != "in-app-test"
+            && activeRecord?.startedInContainingApp != true
+    }
+
+    /// Dictation aimed at Local Flow's own text field. The keyboard stays on
+    /// screen, so the transcript lands without any app switch.
+    var isDictatingIntoContainingApp: Bool {
+        isRecording && activeRecord?.startedInContainingApp == true
     }
     var canChangeMicrophone: Bool {
         !recorder.isRecording && startingSessionID == nil
+    }
+    var microphonePermissionGranted: Bool {
+        recorder.recordPermission == .granted
+    }
+
+    /// Setup progress the app cannot otherwise observe: iOS exposes no API for
+    /// whether a keyboard extension is installed.
+    func keyboardStatus() -> KeyboardStatus? {
+        try? store.loadKeyboardStatus()
+    }
+
+    func recentTranscripts(limit: Int = 50) -> [SessionRecord] {
+        ((try? store.recent(limit: limit)) ?? [])
+            .filter { !($0.transcript ?? "").isEmpty }
     }
     var microphoneStatusLabel: String {
         if let currentMicrophoneName { return currentMicrophoneName }
@@ -57,6 +82,10 @@ final class RecordingCoordinator: ObservableObject {
             if let inputName {
                 self.lastMicrophoneName = inputName
             }
+        }
+        let streamingBridge = streamingBridge
+        recorder.onPCMChunk = { data, sequence in
+            Task { await streamingBridge.send(data, sequence: sequence) }
         }
         loadGatewaySettings()
     }
@@ -135,6 +164,48 @@ final class RecordingCoordinator: ObservableObject {
         gatewayClient = GatewayClient(baseURL: baseURL, token: token)
     }
 
+    /// A gateway configured last week may be unreachable today, so the setup
+    /// checklist re-verifies rather than trusting the stored result.
+    func refreshGatewayHealth() async {
+        guard let value = UserDefaults.standard.string(forKey: "gatewayURL"),
+              let baseURL = GatewayEndpoint.validatedURL(from: value),
+              let token = try? KeychainStore.loadToken(),
+              !token.isEmpty
+        else {
+            GatewayStatusPreferences.store(
+                message: "Not tested",
+                engine: "",
+                ready: false
+            )
+            return
+        }
+        let client = GatewayClient(baseURL: baseURL, token: token)
+        do {
+            try await client.verifyAuthentication()
+            let health = try await client.health()
+            gatewayClient = client
+            GatewayStatusPreferences.store(
+                message: health.engineReady
+                    ? "Gateway, token, and model are ready."
+                    : "Gateway reachable; model is not ready.",
+                engine: health.engine.trimmingCharacters(in: .whitespacesAndNewlines),
+                ready: health.engineReady
+            )
+        } catch let GatewayError.api(status, _) where status == 401 {
+            GatewayStatusPreferences.store(
+                message: "Gateway reachable, but the pairing token was rejected.",
+                engine: "",
+                ready: false
+            )
+        } catch {
+            GatewayStatusPreferences.store(
+                message: "Gateway test failed: \(error.localizedDescription)",
+                engine: "",
+                ready: false
+            )
+        }
+    }
+
     func setMicrophonePreference(_ preference: MicrophonePreference) {
         guard !recorder.isRecording, startingSessionID == nil else {
             message = "Finish the current recording before changing microphones."
@@ -190,6 +261,7 @@ final class RecordingCoordinator: ObservableObject {
     func cancel() {
         pipelineTask?.cancel()
         cancellationMonitorTask?.cancel()
+        Task { await streamingBridge.cancel() }
         guard var record = activeRecord else { return }
         let shouldRemainReady = shouldKeepQuickDictationReady(after: record)
         recorder.cancelSession(keepAudioSessionActive: shouldRemainReady)
@@ -213,8 +285,19 @@ final class RecordingCoordinator: ObservableObject {
         pollingTask?.cancel()
     }
 
+    /// Housekeeping runs in the containing app rather than the extension, which
+    /// has far less headroom for file work.
+    nonisolated func pruneSharedStorage() {
+        let store = SharedStore.shared
+        Task.detached(priority: .utility) {
+            try? store.pruneSessions()
+            try? store.pruneOrphanedAudio()
+        }
+    }
+
     func recoverRecentSession() async {
-        guard let record = try? store.recent(limit: 1).first else {
+        pruneSharedStorage()
+        guard let record = try? store.mostRecent() else {
             activeRecord = nil
             message = nil
             return
@@ -236,6 +319,10 @@ final class RecordingCoordinator: ObservableObject {
         {
             message = "Starting the recording requested by the keyboard…"
             await startSession(id: record.sessionID)
+            return
+        }
+        if record.state == .targetContextChanged {
+            message = "A transcript is waiting. Return to the field you dictated for."
             return
         }
         if record.canRetry {
@@ -274,6 +361,15 @@ final class RecordingCoordinator: ObservableObject {
 
             let directory = try localAudioDirectory()
             let audioURL = try recorder.start(sessionID: record.sessionID, directory: directory)
+            if let client = gatewayClient, let sampleRate = recorder.recordingSampleRate {
+                await streamingBridge.start(
+                    client: client,
+                    sessionID: record.sessionID,
+                    language: record.language,
+                    style: record.style,
+                    sampleRate: Int(sampleRate.rounded())
+                )
+            }
             if record.state == .launchingApp {
                 try record.transition(to: .recording)
             } else if record.state == .awaitingReturn {
@@ -282,7 +378,9 @@ final class RecordingCoordinator: ObservableObject {
             record.localAudioReference = audioURL.lastPathComponent
             try store.save(record)
             activeRecord = record
-            message = "Recording. Swipe back to the app where you want to type."
+            message = record.startedInContainingApp == true
+                ? "Recording. Tap Finish on the keyboard when you are done."
+                : "Recording. Swipe back to the app where you want to type."
             if record.sourceDocumentID != "in-app-test" {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 liveActivity.start(sessionID: record.sessionID)
@@ -372,11 +470,12 @@ final class RecordingCoordinator: ObservableObject {
             return
         }
         guard let client = gatewayClient else {
+            await streamingBridge.cancel()
             await fail(
                 &record,
                 state: .serverUnavailable,
                 code: "gateway_not_configured",
-                message: "Configure and test the private Mac gateway in Local Flow."
+                message: "Configure and test the transcription gateway in Local Flow."
             )
             return
         }
@@ -387,8 +486,29 @@ final class RecordingCoordinator: ObservableObject {
             }
             try store.save(record)
             activeRecord = record
-            message = "Uploading to your Mac…"
-            liveActivity.update(status: "Sending to Mac", canFinish: false)
+            message = "Finishing on your gateway…"
+            liveActivity.update(status: "Finishing transcript", canFinish: false)
+
+            if let transcript = await streamingBridge.finish(
+                expectedChunks: recorder.lastFinishedChunkCount
+            ) {
+                record.transcript = transcript
+                record.error = nil
+                try record.transition(to: .readyToInsert)
+                try store.save(record)
+                activeRecord = record
+                UserDefaults.standard.set(
+                    "Gateway and streaming model are ready.",
+                    forKey: GatewayStatusPreferences.healthMessageKey
+                )
+                try? FileManager.default.removeItem(at: output)
+                message = "Transcript ready. Return to the keyboard to insert it."
+                liveActivity.end(status: "Transcript ready")
+                return
+            }
+
+            message = "Uploading to your gateway…"
+            liveActivity.update(status: "Sending to gateway", canFinish: false)
 
             let created = try await client.createSession(
                 id: record.sessionID,
@@ -400,7 +520,7 @@ final class RecordingCoordinator: ObservableObject {
             try record.transition(to: .transcribing)
             try store.save(record)
             activeRecord = record
-            message = "Transcribing on your Mac…"
+            message = "Transcribing on your gateway…"
             liveActivity.update(status: "Transcribing", canFinish: false)
 
             let finished = try await client.finish(sessionID: record.sessionID)
@@ -569,7 +689,7 @@ final class RecordingCoordinator: ObservableObject {
 
     private func loadGatewaySettings() {
         guard let value = UserDefaults.standard.string(forKey: "gatewayURL"),
-              let baseURL = URL(string: value),
+              let baseURL = GatewayEndpoint.validatedURL(from: value),
               let token = try? KeychainStore.loadToken(),
               !token.isEmpty
         else { return }
@@ -591,5 +711,88 @@ final class RecordingCoordinator: ObservableObject {
 #if DEBUG
         print("[QuickDictation] \(value)")
 #endif
+    }
+}
+
+private actor StreamingAudioBridge {
+    private var stream: GatewayAudioStream?
+    private var pending: [UInt64: Data] = [:]
+    private var nextSequence: UInt64 = 0
+    private var acceptingAudio = false
+
+    func start(
+        client: GatewayClient,
+        sessionID: UUID,
+        language: String,
+        style: String,
+        sampleRate: Int
+    ) async {
+        stream?.cancel()
+        pending.removeAll(keepingCapacity: true)
+        nextSequence = 0
+        acceptingAudio = true
+        stream = try? await client.startAudioStream(
+            sessionID: sessionID,
+            language: language,
+            style: style,
+            sampleRate: sampleRate
+        )
+        if stream == nil {
+            acceptingAudio = false
+            pending.removeAll()
+        } else {
+            await drainPending()
+        }
+    }
+
+    func send(_ data: Data, sequence: UInt64) async {
+        guard acceptingAudio else { return }
+        pending[sequence] = data
+        await drainPending()
+    }
+
+    func finish(expectedChunks: UInt64) async -> String? {
+        for _ in 0..<100 where nextSequence < expectedChunks && acceptingAudio {
+            await drainPending()
+            if nextSequence < expectedChunks {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+        }
+        guard nextSequence == expectedChunks else {
+            cancel()
+            return nil
+        }
+        guard let stream else { return nil }
+        acceptingAudio = false
+        self.stream = nil
+        do {
+            return try await stream.finish()
+        } catch {
+            stream.cancel()
+            return nil
+        }
+    }
+
+    func cancel() {
+        stream?.cancel()
+        stream = nil
+        acceptingAudio = false
+        pending.removeAll()
+    }
+
+    private func drainPending() async {
+        guard let stream else { return }
+        while let data = pending.removeValue(forKey: nextSequence) {
+            do {
+                try await stream.send(data)
+                nextSequence += 1
+            } catch {
+                stream.cancel()
+                self.stream = nil
+                acceptingAudio = false
+                pending.removeAll()
+                return
+            }
+        }
     }
 }

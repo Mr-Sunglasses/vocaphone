@@ -5,56 +5,46 @@ struct ContentView: View {
     @EnvironmentObject private var coordinator: RecordingCoordinator
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("gatewayURL") private var gatewayURL = ""
-    @AppStorage(GatewayStatusPreferences.healthMessageKey)
-    private var healthMessage = "Not tested"
-    @AppStorage(GatewayStatusPreferences.engineKey) private var gatewayEngine = ""
     @AppStorage(GatewayStatusPreferences.engineReadyKey)
     private var gatewayEngineReady = false
-    @AppStorage(
-        KeyboardPreferences.autoInsertKey,
-        store: KeyboardPreferences.defaults
-    ) private var autoInsertTranscripts = true
     @AppStorage(
         KeyboardPreferences.quickDictationKey,
         store: KeyboardPreferences.defaults
     ) private var quickDictationEnabled = true
-    @AppStorage(
-        KeyboardPreferences.writingStyleKey,
-        store: KeyboardPreferences.defaults
-    ) private var writingStyleRawValue = WritingStyle.casual.rawValue
-    @AppStorage(
-        KeyboardPreferences.microphonePreferenceKey,
-        store: KeyboardPreferences.defaults
-    ) private var microphonePreferenceRawValue = MicrophonePreference.automatic.rawValue
-    @State private var token = ""
+    @State private var keyboardStatus: KeyboardStatus?
     @State private var testText = ""
-    @State private var isTestingGateway = false
 
     var body: some View {
         NavigationStack {
             List {
-                statusSection
-                writingStyleSection
-                microphoneSection
-                setupSection
-                testSection
-                privacySection
+                if !isSetupComplete {
+                    SetupChecklistView(steps: setupSteps, recheck: reloadKeyboardStatus)
+                }
+                sessionSection
+                transcriptSection
+                practiceSection
             }
             .navigationTitle("Local Flow")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        SettingsView()
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
             .task {
-                token = (try? KeychainStore.loadToken()) ?? ""
+                reloadKeyboardStatus()
                 await coordinator.recoverRecentSession()
                 coordinator.prepareQuickDictationIfEnabled()
-                await refreshGatewayHealth()
+                await coordinator.refreshGatewayHealth()
             }
             .onChange(of: scenePhase) { previousPhase, currentPhase in
                 guard previousPhase != .active, currentPhase == .active else { return }
-                Task { await refreshGatewayHealth() }
-            }
-            .onChange(of: gatewayURL) {
-                healthMessage = "Not tested"
-                gatewayEngine = ""
-                gatewayEngineReady = false
+                reloadKeyboardStatus()
+                Task { await coordinator.refreshGatewayHealth() }
             }
         }
         .overlay {
@@ -71,56 +61,159 @@ struct ContentView: View {
         .animation(.easeInOut(duration: 0.2), value: showsKeyboardReturnGuide)
     }
 
-    private var writingStyleSection: some View {
-        Section("Writing style") {
-            Picker("Transcript style", selection: $writingStyleRawValue) {
-                ForEach(WritingStyle.allCases) { style in
-                    Label(style.displayName, systemImage: style.symbolName)
-                        .tag(style.rawValue)
+    // MARK: - Setup
+
+    private var setupSteps: [SetupStep] {
+        [
+            SetupStep(
+                id: "gateway",
+                title: "Connect your transcription gateway",
+                detail: gatewayEngineReady
+                    ? "Gateway, token, and model are ready."
+                    : "Add the gateway URL and pairing token in Settings, then tap Save and test.",
+                isComplete: gatewayEngineReady
+            ),
+            SetupStep(
+                id: "microphone",
+                title: "Allow microphone access",
+                detail: coordinator.microphonePermissionGranted
+                    ? "Local Flow can record on this iPhone."
+                    : "Recording happens in this app; the keyboard only receives the transcript.",
+                isComplete: coordinator.microphonePermissionGranted
+            ),
+            SetupStep(
+                id: "keyboard",
+                title: "Add the keyboard with Full Access",
+                detail: keyboardStepDetail,
+                isComplete: keyboardStatus?.hasFullAccess == true
+            ),
+        ]
+    }
+
+    private var keyboardStepDetail: String {
+        guard let keyboardStatus else {
+            return "Enable Local Flow under Settings › General › Keyboards and allow Full "
+                + "Access. This confirms itself the first time the keyboard runs."
+        }
+        let seen = keyboardStatus.lastSeenAt.formatted(date: .abbreviated, time: .shortened)
+        return "Keyboard last active \(seen)."
+    }
+
+    private var isSetupComplete: Bool {
+        setupSteps.allSatisfy(\.isComplete)
+    }
+
+    private func reloadKeyboardStatus() {
+        keyboardStatus = coordinator.keyboardStatus()
+    }
+
+    // MARK: - Sections
+
+    private var sessionSection: some View {
+        Section("Current session") {
+            LabeledContent("State", value: coordinator.stateLabel)
+
+            if coordinator.isRecording {
+                ProgressView(value: Double(coordinator.meterLevel))
+                    .tint(.red)
+                Text("Recording continues while you return to the previous app.")
+                    .font(.footnote)
+            }
+
+            if coordinator.isQuickDictationReady,
+               let expiresAt = coordinator.quickDictationExpiresAt
+            {
+                LabeledContent("Quick Dictation", value: "Ready")
+                Text(
+                    "Microphone ready until "
+                        + expiresAt.formatted(date: .omitted, time: .shortened)
+                        + ". Later Dictate taps stay in the current app."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                Button("Turn off Quick Dictation", role: .destructive) {
+                    quickDictationEnabled = false
                 }
             }
 
-            Text(selectedWritingStyle.detail)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+            if let message = coordinator.message {
+                Text(message)
+                    .foregroundStyle(coordinator.hasError ? .red : .secondary)
+            }
+
+            if coordinator.isRecording {
+                Button("Finish recording") { coordinator.requestFinish() }
+                    .buttonStyle(.borderedProminent)
+                Button("Cancel", role: .destructive) { coordinator.cancel() }
+            } else {
+                Button("Start microphone test") { coordinator.startInAppTest() }
+                    .buttonStyle(.borderedProminent)
+            }
         }
     }
 
-    private var selectedWritingStyle: WritingStyle {
-        WritingStyle(rawValue: writingStyleRawValue) ?? .casual
-    }
-
-    private var microphoneSection: some View {
-        Section("Microphone") {
-            Picker("Input selection", selection: $microphonePreferenceRawValue) {
-                ForEach(MicrophonePreference.allCases) { preference in
-                    Text(preference.displayName)
-                        .tag(preference.rawValue)
+    private var transcriptSection: some View {
+        Section("Transcripts") {
+            if let transcript = coordinator.transcript, !transcript.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Latest")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(transcript)
+                        .textSelection(.enabled)
+                }
+                Button {
+                    UIPasteboard.general.string = transcript
+                } label: {
+                    Label("Copy latest transcript", systemImage: "doc.on.doc")
                 }
             }
-            .disabled(!coordinator.canChangeMicrophone)
-            .onChange(of: microphonePreferenceRawValue) { _, rawValue in
-                guard let preference = MicrophonePreference(rawValue: rawValue) else { return }
-                coordinator.setMicrophonePreference(preference)
+            NavigationLink {
+                TranscriptHistoryView()
+            } label: {
+                Label("All transcripts", systemImage: "clock.arrow.circlepath")
             }
-
-            LabeledContent("Input in use", value: coordinator.microphoneStatusLabel)
-
-            Text(selectedMicrophonePreference.detail)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-            Text(
-                "Bluetooth input and output routes are linked by iOS, so choosing a "
-                    + "microphone can also change the playback route while recording."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
         }
     }
 
-    private var selectedMicrophonePreference: MicrophonePreference {
-        MicrophonePreference(rawValue: microphonePreferenceRawValue) ?? .automatic
+    private var practiceSection: some View {
+        Section("Try the keyboard") {
+            TextField("Switch to the Local Flow keyboard here", text: $testText, axis: .vertical)
+                .lineLimit(3...6)
+
+            if coordinator.isDictatingIntoContainingApp {
+                // Dictating into this field needs no app switch, so the flow is
+                // explained inline instead of behind a full-screen hand-off.
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(.red)
+                        .frame(width: 10, height: 10)
+                    Text("Listening")
+                        .font(.subheadline.weight(.semibold))
+                    Spacer()
+                    ProgressView(value: Double(coordinator.meterLevel))
+                        .tint(.red)
+                        .frame(width: 90)
+                }
+                .accessibilityElement(children: .combine)
+
+                Text("Tap Finish on the keyboard and the transcript drops into this field.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Button("Finish recording") { coordinator.requestFinish() }
+                    .buttonStyle(.borderedProminent)
+                Button("Cancel", role: .destructive) { coordinator.cancel() }
+            } else {
+                Text(
+                    "Dictating here keeps you in Local Flow. From another app, the "
+                        + "keyboard opens Local Flow to record — swipe back once recording "
+                        + "begins, then tap Finish in the keyboard."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var showsKeyboardReturnGuide: Bool {
@@ -130,216 +223,6 @@ struct ContentView: View {
 #else
         return false
 #endif
-    }
-
-    private var statusSection: some View {
-        Section("Current session") {
-            LabeledContent("State", value: coordinator.stateLabel)
-            if coordinator.isRecording {
-                ProgressView(value: Double(coordinator.meterLevel))
-                    .tint(.red)
-                Text("Recording continues while you return to the previous app.")
-                    .font(.footnote)
-            }
-            if coordinator.isQuickDictationReady,
-               let expiresAt = coordinator.quickDictationExpiresAt
-            {
-                LabeledContent("Quick Dictation", value: "Ready")
-                Text("Microphone ready until \(expiresAt.formatted(date: .omitted, time: .shortened)). Later Dictate taps stay in the current app.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                Button("Turn off Quick Dictation", role: .destructive) {
-                    quickDictationEnabled = false
-                }
-            }
-            if let message = coordinator.message {
-                Text(message)
-                    .foregroundStyle(coordinator.hasError ? .red : .secondary)
-            }
-            if let transcript = coordinator.transcript, !transcript.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Latest transcript")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(transcript)
-                        .textSelection(.enabled)
-                }
-            }
-            if coordinator.isRecording {
-                Button("Finish recording") { coordinator.requestFinish() }
-                    .buttonStyle(.borderedProminent)
-                Button("Cancel", role: .destructive) { coordinator.cancel() }
-            } else {
-                Button("Start microphone test") {
-                    coordinator.startInAppTest()
-                }
-                .buttonStyle(.borderedProminent)
-            }
-        }
-    }
-
-    private var setupSection: some View {
-        Section("Private Mac gateway") {
-            TextField("https://your-mac.tailnet-name.ts.net", text: $gatewayURL)
-                .textInputAutocapitalization(.never)
-                .keyboardType(.URL)
-            SecureField("Pairing token", text: $token)
-                .textInputAutocapitalization(.never)
-            Button {
-                Task { await saveAndTestGateway() }
-            } label: {
-                HStack(spacing: 8) {
-                    if isTestingGateway {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    Text(isTestingGateway ? "Testing gateway…" : "Save and test")
-                }
-            }
-            .disabled(isTestingGateway)
-            Text(healthMessage)
-                .font(.footnote)
-                .foregroundStyle(gatewayEngineReady ? .green : .secondary)
-
-            if !gatewayEngine.isEmpty {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack {
-                        Label("Transcription model", systemImage: "cpu")
-                            .font(.subheadline.weight(.semibold))
-                        Spacer()
-                        Label(
-                            gatewayEngineReady ? "Ready" : "Not ready",
-                            systemImage: gatewayEngineReady
-                                ? "checkmark.circle.fill"
-                                : "exclamationmark.circle.fill"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(gatewayEngineReady ? .green : .orange)
-                    }
-                    Text(gatewayEngine)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .accessibilityElement(children: .combine)
-            }
-
-            Toggle("Insert transcript automatically", isOn: $autoInsertTranscripts)
-            Text(
-                autoInsertTranscripts
-                    ? "The keyboard inserts text as soon as transcription finishes."
-                    : "The keyboard waits for you to tap Insert."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
-            Toggle("Keep Quick Dictation ready for 10 minutes", isOn: $quickDictationEnabled)
-                .onChange(of: quickDictationEnabled) { _, enabled in
-                    coordinator.setQuickDictationEnabled(enabled)
-                }
-            Text(
-                "After Local Flow gets microphone access, it keeps an active background "
-                    + "input for up to 10 minutes. Standby audio is discarded and never "
-                    + "saved or uploaded. The orange microphone indicator remains visible."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
-            Button("Request microphone permission") {
-                coordinator.requestMicrophonePermission()
-            }
-            Button("Open Keyboard Settings") {
-                UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)
-            }
-            Text(
-                "Enable Local Flow under Keyboards and allow Full Access. "
-                    + "Full Access is used only for shared session state and communication "
-                    + "with your own Mac."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-    }
-
-    private var testSection: some View {
-        Section("Insertion test") {
-            Text(
-                "Use Start microphone test above to verify capture and transcription "
-                    + "without involving the keyboard."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            TextField("Switch to the Local Flow keyboard here", text: $testText, axis: .vertical)
-                .lineLimit(3...6)
-            Text(
-                "The keyboard opens this app to start recording. Once recording begins, "
-                    + "swipe back to the original app, then tap Finish in the keyboard."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
-    }
-
-    private var privacySection: some View {
-        Section("Privacy") {
-            Text(
-                "Audio stays on this phone until upload succeeds. The Mac gateway deletes "
-                    + "successful audio by default. No third-party transcription or analytics "
-                    + "service is used."
-            )
-        }
-    }
-
-    @MainActor
-    private func saveAndTestGateway() async {
-        guard let url = validatedGatewayURL else {
-            healthMessage = "Enter a valid tailnet HTTPS URL."
-            gatewayEngine = ""
-            gatewayEngineReady = false
-            return
-        }
-        do {
-            try KeychainStore.saveToken(token)
-        } catch {
-            healthMessage = "Could not save the pairing token: \(error.localizedDescription)"
-            return
-        }
-        await testGateway(at: url)
-    }
-
-    @MainActor
-    private func refreshGatewayHealth() async {
-        guard let url = validatedGatewayURL else { return }
-        await testGateway(at: url)
-    }
-
-    @MainActor
-    private func testGateway(at url: URL) async {
-        guard !isTestingGateway else { return }
-        isTestingGateway = true
-        defer { isTestingGateway = false }
-        do {
-            let client = GatewayClient(baseURL: url, token: token)
-            let health = try await client.health()
-            healthMessage = health.engineReady
-                ? "Gateway and model are ready."
-                : "Gateway reachable; model is not ready."
-            gatewayEngine = health.engine.trimmingCharacters(in: .whitespacesAndNewlines)
-            gatewayEngineReady = health.engineReady
-            coordinator.updateGateway(baseURL: url, token: token)
-        } catch {
-            healthMessage = "Health check failed: \(error.localizedDescription)"
-            gatewayEngine = ""
-            gatewayEngineReady = false
-        }
-    }
-
-    private var validatedGatewayURL: URL? {
-        guard let url = URL(string: gatewayURL),
-              url.scheme == "https"
-                || (url.scheme == "http" && url.host == "127.0.0.1")
-        else { return nil }
-        return url
     }
 }
 
@@ -360,7 +243,7 @@ private struct KeyboardReturnGuide: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-                .ignoresSafeArea()
+            .ignoresSafeArea()
 
             VStack(spacing: 18) {
                 HStack(spacing: 8) {

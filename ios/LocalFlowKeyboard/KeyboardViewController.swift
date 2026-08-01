@@ -6,10 +6,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var pollingTimer: Timer?
     private var appLaunchFallbackTask: Task<Void, Never>?
     private var lastInsertedText: String?
-    private var isShifted = true
     private var isPerformingInsertion = false
-    private var letterButtons: [UIButton] = []
-    private var shiftButton: UIButton?
+    private var renderedStyle: WritingStyle?
+    private var renderedStyleEnabled: Bool?
+    private var renderedPrimary: (
+        title: String, symbol: String, color: UIColor, enabled: Bool
+    )?
+    private var lastSpaceInsertedAt: Date?
+    private var lastDocumentID: String?
+    private var hasActiveSession = false
+    private var palette = KeyboardPalette(isDark: false)
 
     private var currentDocumentID: String? {
         // On iOS 26 the proxy can temporarily return nil during viewDidLoad even
@@ -30,12 +36,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let cancelButton = UIButton(type: .system)
     private let retryButton = UIButton(type: .system)
     private let undoButton = UIButton(type: .system)
-    private let globeButton = UIButton(type: .system)
     private let languageLabel = UILabel()
     private let styleButton = UIButton(type: .system)
     private let dictationCard = UIView()
     private let recordingDot = UIView()
     private let toolbarStack = UIStackView()
+    private lazy var keyGrid = KeyGridView(
+        metrics: KeyboardMetrics.resolved(for: traitCollection),
+        palette: palette
+    )
+    private var keyboardHeightConstraint: NSLayoutConstraint?
+    private var cardHeightConstraint: NSLayoutConstraint?
+    private var toolbarHeightConstraint: NSLayoutConstraint?
+    private var gridHeightConstraint: NSLayoutConstraint?
 
     var enableInputClicksWhenVisible: Bool { true }
 
@@ -43,27 +56,49 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         super.viewDidLoad()
         inputView?.allowsSelfSizing = true
         configureUI()
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
-            (controller: KeyboardViewController, _) in
+        registerForTraitChanges([
+            UITraitUserInterfaceStyle.self,
+            UITraitVerticalSizeClass.self,
+            UITraitHorizontalSizeClass.self,
+        ]) { (controller: KeyboardViewController, _) in
             controller.applyTheme()
+            controller.applyLayoutMetrics()
         }
+        // Lets the containing app show whether the keyboard is actually
+        // installed, which it has no API to determine on its own.
+        try? store.saveKeyboardStatus(KeyboardStatus(hasFullAccess: hasFullAccess))
         render(nil)
-        beginPolling()
+        refresh()
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        beginPolling()
+        // A recreated extension instance can inherit a session the previous one
+        // started, so scan once on appear and let `render` decide about polling.
+        applyDocumentTraits()
+        refresh()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         pollingTimer?.invalidate()
+        pollingTimer = nil
         appLaunchFallbackTask?.cancel()
     }
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
         super.textDidChange(textInput)
+        // Moving to a different field brings different traits with it, and the
+        // plane should reset so a number pad never leaves the user on letters.
+        let documentID = currentDocumentID
+        if documentID != lastDocumentID {
+            lastDocumentID = documentID
+            lastSpaceInsertedAt = nil
+            applyDocumentTraits()
+            keyGrid.plane = Self.initialPlane(
+                for: textDocumentProxy.keyboardType ?? .default
+            )
+        }
         updateAutomaticShift()
     }
 
@@ -84,6 +119,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             transition(&record, to: .finalizing)
         case .readyToInsert:
             insert(&record)
+        case .targetContextChanged:
+            // Tapping Insert is an explicit request for the transcript in
+            // whatever field the cursor is in now, so the guard is bypassed
+            // rather than leaving the transcript unreachable.
+            transition(&record, to: .readyToInsert)
+            insert(&record, force: true)
         case .launchingApp, .awaitingReturn:
             openContainingApp(for: record)
         default:
@@ -129,83 +170,106 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         statusLabel.text = "Last insertion removed."
     }
 
-    @objc private func globeTapped() {
-        advanceToNextInputMode()
-    }
+    // MARK: - Typing
 
-    @objc private func letterTapped(_ sender: UIButton) {
-        guard let letter = sender.accessibilityIdentifier else { return }
-        playKeyClick()
-        textDocumentProxy.insertText(isShifted ? letter.uppercased() : letter)
-        setShifted(false)
-    }
-
-    @objc private func shiftTapped() {
-        playKeyClick()
-        setShifted(!isShifted)
-    }
-
-    @objc private func deleteTapped() {
-        playKeyClick()
-        textDocumentProxy.deleteBackward()
-        updateAutomaticShift()
-    }
-
-    @objc private func spaceTapped() {
-        playKeyClick()
-        textDocumentProxy.insertText(" ")
-    }
-
-    @objc private func commaTapped() {
-        playKeyClick()
-        textDocumentProxy.insertText(",")
-        setShifted(false)
-    }
-
-    @objc private func periodTapped() {
-        playKeyClick()
-        textDocumentProxy.insertText(".")
-        setShifted(true)
-    }
-
-    @objc private func returnTapped() {
-        playKeyClick()
-        textDocumentProxy.insertText("\n")
-        setShifted(true)
-    }
-
-    @objc private func keyTouchDown(_ sender: UIButton) {
-        let changes = {
-            sender.transform = CGAffineTransform(scaleX: 0.97, y: 0.97)
-            sender.alpha = 0.78
+    func keyGrid(_ grid: KeyGridView, didProduce output: KeyboardOutput) {
+        switch output {
+        case let .text(text):
+            textDocumentProxy.insertText(text)
+            lastSpaceInsertedAt = nil
+            releaseUndoIfDetached()
+        case .space:
+            insertSpace()
+        case .newline:
+            textDocumentProxy.insertText("\n")
+            lastSpaceInsertedAt = nil
+            releaseUndoIfDetached()
+        case .deleteBackward:
+            textDocumentProxy.deleteBackward()
+            lastSpaceInsertedAt = nil
+            releaseUndoIfDetached()
+        case .deleteWord:
+            deleteWordBackward()
+            releaseUndoIfDetached()
+        case let .nextInputMode(anchor, event):
+            // `handleInputModeList` also drives the long-press keyboard picker,
+            // which `advanceToNextInputMode` alone cannot offer.
+            if let event {
+                handleInputModeList(from: anchor, with: event)
+            } else {
+                advanceToNextInputMode()
+            }
         }
-        guard !UIAccessibility.isReduceMotionEnabled else {
-            changes()
+    }
+
+    func keyGridDidChangeShift(_ grid: KeyGridView) {}
+
+    private func insertSpace() {
+        let proxy = textDocumentProxy
+        let before = proxy.documentContextBeforeInput ?? ""
+        // A second space closes the sentence instead of doubling the gap, which
+        // is the iOS behaviour people type by reflex.
+        if let previous = lastSpaceInsertedAt,
+           Date().timeIntervalSince(previous) < 1.2,
+           before.hasSuffix(" "),
+           !before.hasSuffix("  "),
+           let preceding = before.dropLast().last,
+           preceding.isLetter || preceding.isNumber
+        {
+            proxy.deleteBackward()
+            proxy.insertText(". ")
+            lastSpaceInsertedAt = nil
+        } else {
+            proxy.insertText(" ")
+            lastSpaceInsertedAt = Date()
+        }
+        releaseUndoIfDetached()
+    }
+
+    private func deleteWordBackward() {
+        let proxy = textDocumentProxy
+        guard let before = proxy.documentContextBeforeInput, !before.isEmpty else {
+            proxy.deleteBackward()
             return
         }
-        UIView.animate(
-            withDuration: 0.055,
-            delay: 0,
-            options: [.beginFromCurrentState, .allowUserInteraction],
-            animations: changes
-        )
+        var count = 0
+        var reachedWord = false
+        for character in before.reversed() {
+            if character.isWhitespace, reachedWord { break }
+            if !character.isWhitespace { reachedWord = true }
+            count += 1
+            if count >= 40 { break }
+        }
+        for _ in 0..<max(count, 1) { proxy.deleteBackward() }
     }
 
-    @objc private func keyTouchEnded(_ sender: UIButton) {
-        let changes = {
-            sender.transform = .identity
-            sender.alpha = 1
+    /// Undo only makes sense while the transcript is still the tail of the
+    /// document. Typing over it retires the offer rather than leaving a button
+    /// that would delete the wrong characters.
+    private func releaseUndoIfDetached() {
+        guard let inserted = lastInsertedText,
+              textDocumentProxy.documentContextBeforeInput?.hasSuffix(inserted) != true
+        else { return }
+        lastInsertedText = nil
+        undoButton.isEnabled = false
+        undoButton.isHidden = true
+    }
+
+    /// Starting a fresh dictation abandons a transcript the user chose not to
+    /// insert. Retiring that record keeps `mostRecent` from re-adopting it once
+    /// the new session finishes.
+    private func discardParkedSession() {
+        guard let id = activeSessionID,
+              var parked = try? store.load(id),
+              !parked.state.isTerminal
+        else { return }
+        do {
+            try parked.transition(to: .canceled)
+            try store.save(parked)
+            activeSessionID = nil
+        } catch {
+            // A session still moving through the pipeline resolves on its own.
         }
-        guard !UIAccessibility.isReduceMotionEnabled else {
-            changes()
-            return
-        }
-        UIView.animate(
-            withDuration: 0.1,
-            delay: 0,
-            options: [.beginFromCurrentState, .allowUserInteraction],
-            animations: changes
-        )
     }
 
     private func startSession() {
@@ -213,12 +277,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             statusLabel.text = "Enable Full Access for Local Flow in Keyboard Settings."
             return
         }
+        discardParkedSession()
         var record = SessionRecord(
             state: .idle,
             sourceDocumentID: currentDocumentID,
             language: "auto",
             style: KeyboardPreferences.writingStyle.rawValue
         )
+        // Dictating into Local Flow's own field means there is nowhere to swipe
+        // back to; the app needs to know so it does not cover that field with
+        // hand-off instructions.
+        record.startedInContainingApp = KeyboardPreferences.containingAppIsForeground
         do {
             try record.transition(to: .launchingApp)
             try store.save(record)
@@ -237,9 +306,26 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
-    private func insert(_ record: inout SessionRecord) {
+    /// A transcript belongs to the field it was dictated for. iOS may withhold
+    /// the document identifier, so only a confirmed mismatch between two known
+    /// identifiers blocks insertion; an unknown identifier must not strand a
+    /// transcript the user is waiting for.
+    private func documentMatchesSource(of record: SessionRecord) -> Bool {
+        guard let source = record.sourceDocumentID,
+              let current = currentDocumentID
+        else { return true }
+        return source == current
+    }
+
+    private func insert(_ record: inout SessionRecord, force: Bool = false) {
         guard !isPerformingInsertion else { return }
         guard let transcript = record.transcript, !transcript.isEmpty else { return }
+        guard force || documentMatchesSource(of: record) else {
+            if record.state == .readyToInsert {
+                transition(&record, to: .targetContextChanged)
+            }
+            return
+        }
         isPerformingInsertion = true
         defer { isPerformingInsertion = false }
         let prepared = TextInsertion.preparedTranscript(
@@ -337,13 +423,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
-    private func beginPolling() {
-        pollingTimer?.invalidate()
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) {
-            [weak self] _ in
+    /// The keyboard is the only writer that opens a session, so an idle keyboard
+    /// has nothing to wait for. Polling runs only while a session is in flight,
+    /// which keeps ordinary typing free of a four-times-a-second directory scan
+    /// inside a memory-constrained extension.
+    private func updatePolling(for record: SessionRecord?) {
+        let needsUpdates = record.map { !$0.state.isTerminal } ?? false
+        guard needsUpdates else {
+            pollingTimer?.invalidate()
+            pollingTimer = nil
+            return
+        }
+        guard pollingTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
-        refresh()
+        // Common mode keeps session updates flowing while a touch is being
+        // tracked on the key grid.
+        RunLoop.main.add(timer, forMode: .common)
+        pollingTimer = timer
     }
 
     private func refresh() {
@@ -352,17 +450,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 appLaunchFallbackTask?.cancel()
                 appLaunchFallbackTask = nil
             }
-            if record.state == .readyToInsert,
-               KeyboardPreferences.autoInsertTranscripts
-            {
-                var mutableRecord = record
-                insert(&mutableRecord)
-                return
-            }
-            render(record)
+            handle(record)
             return
         }
-        guard let recent = try? store.recent(limit: 1).first,
+        guard let recent = try? store.mostRecent(),
               !recent.state.isTerminal,
               recent.sourceDocumentID != "in-app-test"
         else {
@@ -370,17 +461,32 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             return
         }
         activeSessionID = recent.sessionID
-        if recent.state == .readyToInsert,
-           KeyboardPreferences.autoInsertTranscripts
-        {
-            var mutableRecord = recent
-            insert(&mutableRecord)
+        handle(recent)
+    }
+
+    private func handle(_ incoming: SessionRecord) {
+        var record = incoming
+        // Returning to the field the transcript was dictated for re-arms an
+        // insertion that was parked when the cursor moved elsewhere.
+        if record.state == .targetContextChanged, documentMatchesSource(of: record) {
+            transition(&record, to: .readyToInsert)
+        }
+        if record.state == .readyToInsert, KeyboardPreferences.autoInsertTranscripts {
+            insert(&record)
             return
         }
-        render(recent)
+        render(record)
     }
 
     private func render(_ record: SessionRecord?) {
+        updatePolling(for: record)
+        // An idle keyboard does not need a meter or a subtitle, and the space
+        // they used to occupy is better spent on the keys.
+        let isSessionActive = record.map { !$0.state.isTerminal } ?? false
+        if isSessionActive != hasActiveSession {
+            hasActiveSession = isSessionActive
+            applyLayoutMetrics()
+        }
         let selectedStyle = record.flatMap { WritingStyle(rawValue: $0.style) }
             ?? KeyboardPreferences.writingStyle
         guard hasFullAccess else {
@@ -414,6 +520,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         retryButton.isHidden = record?.canRetry != true
         cancelButton.isHidden = ![
             .launchingApp, .awaitingReturn, .recording, .finalizing, .uploading,
+            .targetContextChanged,
         ].contains(state)
         undoButton.isEnabled = lastInsertedText != nil
         undoButton.isHidden = lastInsertedText == nil || (record != nil && !state.isTerminal)
@@ -483,7 +590,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             )
         case .serverUnavailable, .uploadFailedRecoverable, .transcriptionFailedRecoverable:
             statusLabel.text = state == .serverUnavailable
-                ? "Mac unavailable"
+                ? "Gateway unavailable"
                 : "Transcription paused"
             languageLabel.text = "Recording preserved · Retry when ready"
             recordingDot.backgroundColor = .systemOrange
@@ -506,14 +613,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 enabled: true
             )
         case .targetContextChanged:
-            statusLabel.text = "Original field changed"
-            languageLabel.text = "Return to the original field to insert"
+            statusLabel.text = "Transcript is waiting"
+            languageLabel.text = "Return to that field, or insert it here"
             recordingDot.backgroundColor = .systemOrange
             meterView.activeColor = .systemOrange
             setPrimaryButton(
-                title: "Dictate",
-                symbol: "mic.fill",
-                color: .systemBlue,
+                title: "Insert here",
+                symbol: "text.badge.plus",
+                color: .systemGreen,
                 enabled: true
             )
         case .inserting, .inserted:
@@ -623,198 +730,121 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         retryButton.isHidden = true
         undoButton.isHidden = true
 
-        let typingStack = makeTypingStack()
-        let stack = UIStackView(arrangedSubviews: [
-            dictationCard, toolbarStack, typingStack,
-        ])
+        keyGrid.delegate = self
+        let stack = UIStackView(arrangedSubviews: [dictationCard, toolbarStack, keyGrid])
         stack.axis = .vertical
-        stack.spacing = 7
+        stack.spacing = Self.chromeSpacing
         stack.translatesAutoresizingMaskIntoConstraints = false
+        // Key previews for the top row draw above the grid's own bounds.
+        stack.clipsToBounds = false
+        view.clipsToBounds = false
         view.addSubview(stack)
-        let preferredHeight = view.heightAnchor.constraint(equalToConstant: 326)
-        preferredHeight.priority = UILayoutPriority(999)
+
+        let cardHeight = dictationCard.heightAnchor.constraint(equalToConstant: 76)
+        let toolbarHeight = toolbarStack.heightAnchor.constraint(equalToConstant: 34)
+        let gridHeight = keyGrid.heightAnchor.constraint(equalToConstant: 202)
+        let keyboardHeight = view.heightAnchor.constraint(equalToConstant: 326)
+        keyboardHeight.priority = UILayoutPriority(999)
+        cardHeightConstraint = cardHeight
+        toolbarHeightConstraint = toolbarHeight
+        gridHeightConstraint = gridHeight
+        keyboardHeightConstraint = keyboardHeight
+
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 6),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -6),
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -6),
-            toolbarStack.heightAnchor.constraint(equalToConstant: 34),
-            preferredHeight,
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: Self.chromeInset),
+            stack.trailingAnchor.constraint(
+                equalTo: view.trailingAnchor,
+                constant: -Self.chromeInset
+            ),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: Self.chromeInset),
+            stack.bottomAnchor.constraint(
+                lessThanOrEqualTo: view.bottomAnchor,
+                constant: -Self.chromeInset
+            ),
+            cardHeight,
+            toolbarHeight,
+            gridHeight,
+            keyboardHeight,
         ])
         applyTheme()
+        applyLayoutMetrics()
+        applyDocumentTraits()
         updateAutomaticShift()
     }
 
-    private func makeTypingStack() -> UIStackView {
-        let firstRow = makeKeyRow("qwertyuiop".map { makeLetterButton(String($0)) })
-        let secondRow = makeIndentedKeyRow(
-            "asdfghjkl".map { makeLetterButton(String($0)) }
-        )
+    private static let chromeSpacing: CGFloat = 7
+    private static let chromeInset: CGFloat = 6
 
-        let shift = makeKeyButton(
-            title: nil,
-            symbol: "shift",
-            accessibilityLabel: "Shift",
-            action: #selector(shiftTapped),
-            style: .function
-        )
-        shiftButton = shift
-        let thirdRowLetters = "zxcvbnm".map { makeLetterButton(String($0)) }
-        let delete = makeKeyButton(
-            title: nil,
-            symbol: "delete.left",
-            accessibilityLabel: "Delete",
-            action: #selector(deleteTapped),
-            style: .function
-        )
-        let thirdRow = makeKeyRow([shift] + thirdRowLetters + [delete], distribution: .fill)
-        NSLayoutConstraint.activate([
-            shift.widthAnchor.constraint(equalToConstant: 46),
-            delete.widthAnchor.constraint(equalToConstant: 46),
-        ])
-        for button in thirdRowLetters.dropFirst() {
-            button.widthAnchor.constraint(equalTo: thirdRowLetters[0].widthAnchor).isActive = true
+    /// Sizes everything from the current traits instead of a single portrait
+    /// iPhone constant, and gives the status card only as much room as the
+    /// current state actually needs.
+    private func applyLayoutMetrics() {
+        let metrics = KeyboardMetrics.resolved(for: traitCollection)
+        keyGrid.metrics = metrics
+
+        let isCompactHeight = traitCollection.verticalSizeClass == .compact
+        let cardHeight: CGFloat = isCompactHeight ? 46 : (hasActiveSession ? 76 : 54)
+        let toolbarHeight: CGFloat = isCompactHeight ? 30 : 34
+        let showsDetail = cardHeight >= 70
+        meterView.isHidden = !showsDetail
+        languageLabel.isHidden = !showsDetail
+
+        cardHeightConstraint?.constant = cardHeight
+        toolbarHeightConstraint?.constant = toolbarHeight
+        gridHeightConstraint?.constant = metrics.gridHeight
+        keyboardHeightConstraint?.constant = 2 * Self.chromeInset
+            + cardHeight
+            + toolbarHeight
+            + metrics.gridHeight
+            + 2 * Self.chromeSpacing
+        view.setNeedsLayout()
+    }
+
+    /// Mirrors the traits of the field being typed into. Without this the
+    /// keyboard capitalizes usernames, labels every action "return", and renders
+    /// a light theme inside a dark-appearance field.
+    private func applyDocumentTraits() {
+        let proxy = textDocumentProxy
+        keyGrid.showsGlobeKey = needsInputModeSwitchKey
+        let returnKeyType = proxy.returnKeyType ?? .default
+        keyGrid.returnKeyTitle = Self.returnKeyTitle(for: returnKeyType)
+        keyGrid.returnKeyIsProminent = returnKeyType != .default
+        keyGrid.leadingPunctuation = Self.leadingPunctuation(for: proxy.keyboardType ?? .default)
+        applyTheme()
+    }
+
+    private static func returnKeyTitle(for type: UIReturnKeyType) -> String {
+        switch type {
+        case .go: "Go"
+        case .google, .yahoo, .search: "Search"
+        case .join: "Join"
+        case .next: "Next"
+        case .route: "Route"
+        case .send: "Send"
+        case .done: "Done"
+        case .emergencyCall: "Emergency"
+        case .continue: "Continue"
+        default: "return"
         }
-
-        var globeConfiguration = UIButton.Configuration.filled()
-        globeConfiguration.image = UIImage(systemName: "globe")
-        globeConfiguration.cornerStyle = .medium
-        globeConfiguration.baseBackgroundColor = KeyStyle.function.backgroundColor
-        globeConfiguration.baseForegroundColor = KeyStyle.function.foregroundColor
-        globeConfiguration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
-            pointSize: 17,
-            weight: .medium
-        )
-        globeButton.configuration = globeConfiguration
-        globeButton.accessibilityLabel = "Next keyboard"
-        globeButton.addTarget(self, action: #selector(globeTapped), for: .touchUpInside)
-        addKeyTouchFeedback(to: globeButton)
-        globeButton.layer.shadowColor = UIColor.black.cgColor
-        globeButton.layer.shadowOpacity = 0.16
-        globeButton.layer.shadowRadius = 0.75
-        globeButton.layer.shadowOffset = CGSize(width: 0, height: 1.25)
-        globeButton.heightAnchor.constraint(equalToConstant: 43).isActive = true
-        let comma = makeKeyButton(
-            title: ",",
-            accessibilityLabel: "Comma",
-            action: #selector(commaTapped)
-        )
-        let space = makeKeyButton(
-            title: "space",
-            accessibilityLabel: "Space",
-            action: #selector(spaceTapped)
-        )
-        let period = makeKeyButton(
-            title: ".",
-            accessibilityLabel: "Period",
-            action: #selector(periodTapped)
-        )
-        let returnKey = makeKeyButton(
-            title: "return",
-            accessibilityLabel: "Return",
-            action: #selector(returnTapped),
-            style: .accent
-        )
-        let bottomRow = UIStackView(
-            arrangedSubviews: [globeButton, comma, space, period, returnKey]
-        )
-        bottomRow.axis = .horizontal
-        bottomRow.spacing = 6
-        bottomRow.distribution = .fill
-        NSLayoutConstraint.activate([
-            globeButton.widthAnchor.constraint(equalToConstant: 46),
-            comma.widthAnchor.constraint(equalToConstant: 40),
-            period.widthAnchor.constraint(equalToConstant: 40),
-            returnKey.widthAnchor.constraint(equalToConstant: 76),
-        ])
-
-        let stack = UIStackView(arrangedSubviews: [firstRow, secondRow, thirdRow, bottomRow])
-        stack.axis = .vertical
-        stack.spacing = 6
-        stack.distribution = .fillEqually
-        return stack
     }
 
-    private func makeLetterButton(_ letter: String) -> UIButton {
-        let button = makeKeyButton(
-            title: letter,
-            accessibilityLabel: letter.uppercased(),
-            action: #selector(letterTapped(_:))
-        )
-        button.accessibilityIdentifier = letter
-        letterButtons.append(button)
-        return button
-    }
-
-    private func makeKeyButton(
-        title: String?,
-        symbol: String? = nil,
-        accessibilityLabel: String,
-        action: Selector,
-        style: KeyStyle = .standard
-    ) -> UIButton {
-        let button = UIButton(type: .system)
-        var configuration = UIButton.Configuration.filled()
-        configuration.title = title
-        configuration.image = symbol.flatMap { UIImage(systemName: $0) }
-        configuration.cornerStyle = .medium
-        configuration.baseBackgroundColor = style.backgroundColor
-        configuration.baseForegroundColor = style.foregroundColor
-        configuration.preferredSymbolConfigurationForImage = UIImage.SymbolConfiguration(
-            pointSize: 17,
-            weight: .medium
-        )
-        configuration.contentInsets = NSDirectionalEdgeInsets(
-            top: 0,
-            leading: 4,
-            bottom: 0,
-            trailing: 4
-        )
-        let isCharacterKey = title?.count == 1 && title?.first?.isLetter == true
-        let font = isCharacterKey
-            ? UIFont.systemFont(ofSize: 20, weight: .regular)
-            : UIFont.systemFont(ofSize: 16, weight: .medium)
-        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
-            incoming in
-            var outgoing = incoming
-            outgoing.font = font
-            return outgoing
+    /// Email and web fields put their most-used separator where the comma sits,
+    /// the way the system keyboard does.
+    private static func leadingPunctuation(for type: UIKeyboardType) -> String {
+        switch type {
+        case .emailAddress: "@"
+        case .URL, .webSearch: "/"
+        default: ","
         }
-        button.configuration = configuration
-        button.accessibilityLabel = accessibilityLabel
-        button.addTarget(self, action: action, for: .touchUpInside)
-        addKeyTouchFeedback(to: button)
-        button.layer.shadowColor = UIColor.black.cgColor
-        button.layer.shadowOpacity = 0.16
-        button.layer.shadowRadius = 0.75
-        button.layer.shadowOffset = CGSize(width: 0, height: 1.25)
-        button.heightAnchor.constraint(equalToConstant: 43).isActive = true
-        return button
     }
 
-    private func makeKeyRow(
-        _ buttons: [UIButton],
-        distribution: UIStackView.Distribution = .fillEqually
-    ) -> UIStackView {
-        let row = UIStackView(arrangedSubviews: buttons)
-        row.axis = .horizontal
-        row.spacing = 6
-        row.distribution = distribution
-        return row
-    }
-
-    private func makeIndentedKeyRow(_ buttons: [UIButton]) -> UIView {
-        let container = UIView()
-        let row = makeKeyRow(buttons)
-        row.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(row)
-        NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            row.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
-            row.topAnchor.constraint(equalTo: container.topAnchor),
-            row.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-        ])
-        return container
+    private static func initialPlane(for type: UIKeyboardType) -> KeyPlane {
+        switch type {
+        case .numberPad, .phonePad, .decimalPad, .asciiCapableNumberPad, .numbersAndPunctuation:
+            .numbers
+        default:
+            .letters
+        }
     }
 
     private func configureUtilityButton(_ button: UIButton, title: String, symbol: String) {
@@ -829,7 +859,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             bottom: 5,
             trailing: 10
         )
-        configuration.baseBackgroundColor = KeyboardPalette.toolbarControl
+        configuration.baseBackgroundColor = palette.toolbarControl
         configuration.baseForegroundColor = .label
         configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             incoming in
@@ -842,6 +872,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func configureStyleButton(selected: WritingStyle, enabled: Bool) {
+        // `render` runs on every poll tick. Rebuilding the menu and button
+        // configuration each time churns allocations and re-lays out the toolbar
+        // for state that almost never changes.
+        guard renderedStyle != selected || renderedStyleEnabled != enabled else { return }
+        renderedStyle = selected
+        renderedStyleEnabled = enabled
         let actions = WritingStyle.allCases.map { style in
             UIAction(
                 title: style.displayName,
@@ -865,7 +901,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             bottom: 5,
             trailing: 10
         )
-        configuration.baseBackgroundColor = KeyboardPalette.toolbarControl
+        configuration.baseBackgroundColor = palette.toolbarControl
         configuration.baseForegroundColor = .systemBlue
         configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
             incoming in
@@ -884,6 +920,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         color: UIColor,
         enabled: Bool
     ) {
+        defer { primaryButton.accessibilityValue = statusLabel.text }
+        guard renderedPrimary?.title != title
+            || renderedPrimary?.symbol != symbol
+            || renderedPrimary?.color != color
+            || renderedPrimary?.enabled != enabled
+        else { return }
+        renderedPrimary = (title, symbol, color, enabled)
         var configuration = UIButton.Configuration.filled()
         configuration.title = title
         configuration.image = UIImage(systemName: symbol)
@@ -900,32 +943,37 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         primaryButton.configuration = configuration
         primaryButton.isEnabled = enabled
         primaryButton.accessibilityLabel = title
-        primaryButton.accessibilityValue = statusLabel.text
         primaryButton.accessibilityHint = switch title {
         case "Dictate": "Opens Local Flow and starts private dictation."
         case "Finish": "Stops recording and starts transcription."
         case "Insert": "Inserts the transcript at the cursor."
+        case "Insert here": "Inserts the waiting transcript into this field instead."
         case "Open app": "Opens Local Flow to continue."
         default: nil
         }
     }
 
-    private func addKeyTouchFeedback(to button: UIButton) {
-        button.addTarget(self, action: #selector(keyTouchDown(_:)), for: .touchDown)
-        button.addTarget(
-            self,
-            action: #selector(keyTouchEnded(_:)),
-            for: [.touchUpInside, .touchUpOutside, .touchCancel, .touchDragExit]
-        )
+    /// Fields can request a dark keyboard inside a light app, so the appearance
+    /// comes from the document first and only falls back to the system trait.
+    private var prefersDarkAppearance: Bool {
+        switch textDocumentProxy.keyboardAppearance ?? .default {
+        case .dark: true
+        case .light: false
+        default: traitCollection.userInterfaceStyle == .dark
+        }
     }
 
     private func applyTheme() {
-        view.backgroundColor = KeyboardPalette.background
-        inputView?.backgroundColor = KeyboardPalette.background
-        dictationCard.backgroundColor = KeyboardPalette.card
-        dictationCard.layer.borderColor = KeyboardPalette.cardBorder.resolvedColor(
-            with: traitCollection
-        ).cgColor
+        palette = KeyboardPalette(isDark: prefersDarkAppearance)
+        view.backgroundColor = palette.background
+        inputView?.backgroundColor = palette.background
+        dictationCard.backgroundColor = palette.card
+        dictationCard.layer.borderColor = palette.cardBorder.cgColor
+        statusLabel.textColor = palette.label
+        languageLabel.textColor = palette.secondaryLabel
+        keyGrid.palette = palette
+        renderedStyle = nil
+        renderedPrimary = nil
     }
 
     private func updateRecordingPulse(active: Bool) {
@@ -946,96 +994,38 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         recordingDot.layer.add(pulse, forKey: animationKey)
     }
 
-    private func playKeyClick() {
-        UIDevice.current.playInputClick()
-    }
-
-    private func setShifted(_ shifted: Bool) {
-        isShifted = shifted
-        for button in letterButtons {
-            guard let letter = button.accessibilityIdentifier else { continue }
-            button.configuration?.title = shifted ? letter.uppercased() : letter
-        }
-        if let shiftButton, var configuration = shiftButton.configuration {
-            configuration.image = UIImage(systemName: shifted ? "shift.fill" : "shift")
-            configuration.baseBackgroundColor = shifted
-                ? KeyboardPalette.shiftKeyActive
-                : KeyStyle.function.backgroundColor
-            configuration.baseForegroundColor = shifted ? .white : .label
-            shiftButton.configuration = configuration
-            shiftButton.accessibilityValue = shifted ? "On" : "Off"
-        }
-    }
-
+    /// Autocapitalization follows the field's own request. A username or URL
+    /// field asks for none, and forcing sentence case there produced input the
+    /// user had to correct on every word.
     private func updateAutomaticShift() {
-        let before = textDocumentProxy.documentContextBeforeInput ?? ""
-        let trimmed = before.trimmingCharacters(in: .whitespacesAndNewlines)
-        let shouldShift = trimmed.isEmpty
-            || before.hasSuffix("\n")
-            || before.hasSuffix(". ")
-            || before.hasSuffix("! ")
-            || before.hasSuffix("? ")
-        setShifted(shouldShift)
-    }
-
-    private enum KeyStyle {
-        case standard
-        case function
-        case accent
-
-        var backgroundColor: UIColor {
-            switch self {
-            case .standard: KeyboardPalette.standardKey
-            case .function: KeyboardPalette.functionKey
-            case .accent: .systemBlue
-            }
+        let proxy = textDocumentProxy
+        let requested = proxy.autocapitalizationType ?? .sentences
+        guard requested != .allCharacters else {
+            keyGrid.shiftState = .locked
+            return
         }
+        // A user-engaged caps lock outranks any automatic decision.
+        guard keyGrid.shiftState != .locked else { return }
 
-        var foregroundColor: UIColor {
-            self == .accent ? .white : .label
+        let before = proxy.documentContextBeforeInput ?? ""
+        switch requested {
+        case .none:
+            keyGrid.shiftState = .off
+        case .words:
+            keyGrid.shiftState = before.isEmpty || before.last?.isWhitespace == true ? .on : .off
+        default:
+            let trimmed = before.trimmingCharacters(in: .whitespacesAndNewlines)
+            let startsSentence = trimmed.isEmpty
+                || before.hasSuffix("\n")
+                || before.hasSuffix(". ")
+                || before.hasSuffix("! ")
+                || before.hasSuffix("? ")
+            keyGrid.shiftState = startsSentence ? .on : .off
         }
-    }
-
-    private enum KeyboardPalette {
-        static let background = UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.075, green: 0.082, blue: 0.095, alpha: 1)
-                : UIColor(red: 0.82, green: 0.835, blue: 0.86, alpha: 1)
-        }
-
-        static let card = UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.145, green: 0.155, blue: 0.18, alpha: 1)
-                : UIColor(red: 0.97, green: 0.975, blue: 0.985, alpha: 1)
-        }
-
-        static let cardBorder = UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor.white.withAlphaComponent(0.08)
-                : UIColor.black.withAlphaComponent(0.07)
-        }
-
-        static let standardKey = UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.275, green: 0.29, blue: 0.325, alpha: 1)
-                : .white
-        }
-
-        static let functionKey = UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.17, green: 0.18, blue: 0.205, alpha: 1)
-                : UIColor(red: 0.66, green: 0.685, blue: 0.72, alpha: 1)
-        }
-
-        static let toolbarControl = UIColor { traits in
-            traits.userInterfaceStyle == .dark
-                ? UIColor(red: 0.2, green: 0.215, blue: 0.245, alpha: 1)
-                : UIColor(white: 0.95, alpha: 1)
-        }
-
-        static let shiftKeyActive = UIColor.systemBlue
     }
 }
+
+extension KeyboardViewController: KeyGridViewDelegate {}
 
 private final class VoiceMeterView: UIView {
     var level: Float = 0 {

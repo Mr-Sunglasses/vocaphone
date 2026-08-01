@@ -8,9 +8,10 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: minimal
-    CURRENT_PROJECT_VERSION: 16
+    CURRENT_PROJECT_VERSION: 17
     MARKETING_VERSION: 0.1.0
     CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: A83WCPTTT9
 targets:
   LocalFlowApp:
     type: application
@@ -66,6 +67,11 @@ targets:
     sources:
       - LocalFlowTests
       - LocalFlowShared
+      # Key geometry is worth regression tests; the controller itself needs a
+      # host extension and stays out of the test target.
+      - path: LocalFlowKeyboard/KeyLayout.swift
+      - path: LocalFlowKeyboard/KeyView.swift
+      - path: LocalFlowKeyboard/KeyGridView.swift
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
