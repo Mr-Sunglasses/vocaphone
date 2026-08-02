@@ -8,6 +8,8 @@ ENGINE_WHISPER_CPP = "whisper.cpp"
 ENGINE_WHISPERKIT = "whisperkit"
 ENGINE_FASTER_WHISPER = "faster-whisper"
 ENGINE_MOONSHINE = "moonshine"
+ENGINE_SHERPA_ONNX = "sherpa-onnx"
+ENGINE_MLX_AUDIO = "mlx-audio"
 
 WHISPER_CPP_REPO = "ggerganov/whisper.cpp"
 WHISPERKIT_REPO = "argmaxinc/whisperkit-coreml"
@@ -35,6 +37,17 @@ class CatalogModel:
     description: str = "Local speech recognition model."
     source: str = "whisper.cpp"
     marker_file: str | None = None
+    language_code: str | None = None
+    model_arch: int | None = None
+    supports_streaming: bool = False
+    license_name: str = "See model source"
+    commercial_use: bool = True
+    archive_url: str | None = None
+    archive_root: str | None = None
+    required_files: tuple[str, ...] = ()
+    model_type: str | None = None
+    language_codes: tuple[str, ...] = ()
+    apple_silicon_only: bool = False
 
 
 def _whisper_cpp(
@@ -126,31 +139,305 @@ def _faster_whisper(
 
 
 def _moonshine(
+    key: str,
     language: str,
+    architecture: str,
+    model_arch: int,
     label: str,
     size_bytes: int,
-    languages: str,
+    quality: str,
+    *,
+    supports_streaming: bool = False,
+    minimum_ram_gb: float = 2,
 ) -> CatalogModel:
+    english = language == "en"
     return CatalogModel(
-        id=f"{ENGINE_MOONSHINE}:{language}",
+        id=f"{ENGINE_MOONSHINE}:{key}",
         engine=ENGINE_MOONSHINE,
-        key=language,
+        key=key,
         label=label,
         size_bytes=size_bytes,
-        languages=languages,
-        quality="Low-latency streaming",
-        minimum_ram_gb=4,
+        languages=f"{_MOONSHINE_LANGUAGE_NAMES[language]} only",
+        quality=quality,
+        minimum_ram_gb=minimum_ram_gb,
         family="Moonshine",
         description=(
-            "Experimental model designed for real-time local dictation and incremental audio."
+            f"{architecture} model optimized for private local dictation."
+            + (
+                " Uses cached incremental inference while you speak."
+                if supports_streaming
+                else " Uses the fast batch pipeline after recording."
+            )
         ),
         source="Moonshine Voice",
         marker_file=".localflow-model.json",
+        language_code=language,
+        model_arch=model_arch,
+        supports_streaming=supports_streaming,
+        license_name="MIT" if english else "Moonshine Community License",
+        commercial_use=english,
     )
 
 
+def _sherpa_onnx(
+    key: str,
+    label: str,
+    size_bytes: int,
+    languages: str,
+    quality: str,
+    minimum_ram_gb: float,
+    *,
+    archive_url: str,
+    archive_root: str,
+    required_files: tuple[str, ...],
+    model_type: str,
+    language_codes: tuple[str, ...],
+    family: str,
+    description: str,
+    license_name: str,
+) -> CatalogModel:
+    return CatalogModel(
+        id=f"{ENGINE_SHERPA_ONNX}:{key}",
+        engine=ENGINE_SHERPA_ONNX,
+        key=key,
+        label=label,
+        size_bytes=size_bytes,
+        languages=languages,
+        quality=quality,
+        minimum_ram_gb=minimum_ram_gb,
+        archive_url=archive_url,
+        archive_root=archive_root,
+        required_files=required_files,
+        family=family,
+        description=description,
+        source="sherpa-onnx",
+        marker_file=".localflow-model.json",
+        model_type=model_type,
+        language_codes=language_codes,
+        license_name=license_name,
+    )
+
+
+def _mlx_audio(
+    key: str,
+    label: str,
+    size_bytes: int,
+    languages: str,
+    quality: str,
+    minimum_ram_gb: float,
+    *,
+    repository: str,
+    family: str,
+    description: str,
+    license_name: str,
+    language_codes: tuple[str, ...] = (),
+) -> CatalogModel:
+    return CatalogModel(
+        id=f"{ENGINE_MLX_AUDIO}:{key}",
+        engine=ENGINE_MLX_AUDIO,
+        key=key,
+        label=label,
+        size_bytes=size_bytes,
+        languages=languages,
+        quality=quality,
+        minimum_ram_gb=minimum_ram_gb,
+        huggingface_repo=repository,
+        huggingface_folder="",
+        family=family,
+        description=description,
+        source="MLX Audio",
+        marker_file="model.safetensors",
+        language_codes=language_codes,
+        apple_silicon_only=True,
+        license_name=license_name,
+    )
+
+
+_MOONSHINE_LANGUAGE_NAMES = {
+    "ar": "Arabic",
+    "en": "English",
+    "es": "Spanish",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "uk": "Ukrainian",
+    "vi": "Vietnamese",
+    "zh": "Mandarin Chinese",
+}
+
+
 DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
-    _moonshine("en", "Moonshine English", 245 * MB, "English only"),
+    _sherpa_onnx(
+        "sensevoice-small-int8",
+        "SenseVoice Small INT8",
+        240 * MB,
+        "Mandarin, Cantonese, English, Japanese, Korean",
+        "Fastest multilingual · punctuation",
+        2,
+        archive_url=(
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+            "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17.tar.bz2"
+        ),
+        archive_root="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17",
+        required_files=("model.int8.onnx", "tokens.txt"),
+        model_type="sense_voice",
+        language_codes=("zh", "yue", "en", "ja", "ko"),
+        family="SenseVoice",
+        description=(
+            "Compact non-autoregressive INT8 model for fast CPU dictation on Linux and macOS."
+        ),
+        license_name="FunASR Model License",
+    ),
+    _sherpa_onnx(
+        "parakeet-tdt-0.6b-v3-int8",
+        "Parakeet TDT 0.6B v3 INT8",
+        672 * MB,
+        "25 European languages",
+        "Accurate multilingual · punctuation",
+        4,
+        archive_url=(
+            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+            "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2"
+        ),
+        archive_root="sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
+        required_files=(
+            "encoder.int8.onnx",
+            "decoder.int8.onnx",
+            "joiner.int8.onnx",
+            "tokens.txt",
+        ),
+        model_type="nemo_transducer",
+        language_codes=(
+            "bg",
+            "hr",
+            "cs",
+            "da",
+            "nl",
+            "en",
+            "et",
+            "fi",
+            "fr",
+            "de",
+            "el",
+            "hu",
+            "it",
+            "lv",
+            "lt",
+            "mt",
+            "pl",
+            "pt",
+            "ro",
+            "sk",
+            "sl",
+            "es",
+            "sv",
+            "ru",
+            "uk",
+        ),
+        family="Parakeet TDT",
+        description=(
+            "NVIDIA's multilingual Parakeet converted to INT8 ONNX for fast macOS and Linux CPU "
+            "inference."
+        ),
+        license_name="CC BY 4.0",
+    ),
+    _mlx_audio(
+        "whisper-large-v3-turbo-4bit",
+        "MLX Whisper Large v3 Turbo 4-bit",
+        469 * MB,
+        "Multilingual",
+        "Most accurate · compact",
+        8,
+        repository="mlx-community/whisper-large-v3-turbo-asr-4bit",
+        family="Whisper / MLX",
+        description=(
+            "Quantized Whisper Large v3 Turbo running natively on Apple silicon through MLX."
+        ),
+        license_name="MIT",
+    ),
+    _mlx_audio(
+        "parakeet-tdt-0.6b-v3",
+        "MLX Parakeet TDT 0.6B v3",
+        2510 * MB,
+        "25 European languages",
+        "Fast and accurate · punctuation",
+        8,
+        repository="mlx-community/parakeet-tdt-0.6b-v3",
+        family="Parakeet TDT / MLX",
+        description=(
+            "Full-precision Parakeet optimized for the unified memory and GPU of M-series Macs."
+        ),
+        license_name="CC BY 4.0",
+        language_codes=(
+            "bg",
+            "hr",
+            "cs",
+            "da",
+            "nl",
+            "en",
+            "et",
+            "fi",
+            "fr",
+            "de",
+            "el",
+            "hu",
+            "it",
+            "lv",
+            "lt",
+            "mt",
+            "pl",
+            "pt",
+            "ro",
+            "sk",
+            "sl",
+            "es",
+            "sv",
+            "ru",
+            "uk",
+        ),
+    ),
+    # Keep moonshine:en as the default English ID so existing installations and
+    # runtime configuration continue to resolve after adding explicit variants.
+    _moonshine(
+        "en",
+        "en",
+        "Medium Streaming",
+        5,
+        "Moonshine English Medium Streaming",
+        304 * MB,
+        "Most accurate · cached streaming",
+        supports_streaming=True,
+        minimum_ram_gb=4,
+    ),
+    _moonshine(
+        "en-small-streaming",
+        "en",
+        "Small Streaming",
+        4,
+        "Moonshine English Small Streaming",
+        165 * MB,
+        "Balanced · cached streaming",
+        supports_streaming=True,
+    ),
+    _moonshine(
+        "en-tiny-streaming",
+        "en",
+        "Tiny Streaming",
+        2,
+        "Moonshine English Tiny Streaming",
+        52 * MB,
+        "Fastest · cached streaming",
+        supports_streaming=True,
+    ),
+    _moonshine("en-base", "en", "Base", 1, "Moonshine English Base", 141 * MB, "Accurate · batch"),
+    _moonshine("en-tiny", "en", "Tiny", 0, "Moonshine English Tiny", 44 * MB, "Smallest · batch"),
+    _moonshine("es", "es", "Base", 1, "Moonshine Spanish", 65 * MB, "Fast · batch"),
+    _moonshine("ar", "ar", "Base", 1, "Moonshine Arabic", 141 * MB, "Fast · batch"),
+    _moonshine("ja", "ja", "Base", 1, "Moonshine Japanese Base", 141 * MB, "Fast · batch"),
+    _moonshine("ja-tiny", "ja", "Tiny", 0, "Moonshine Japanese Tiny", 72 * MB, "Fastest · batch"),
+    _moonshine("ko", "ko", "Tiny", 0, "Moonshine Korean", 72 * MB, "Fastest · batch"),
+    _moonshine("zh", "zh", "Base", 1, "Moonshine Mandarin", 141 * MB, "Fast · batch"),
+    _moonshine("uk", "uk", "Base", 1, "Moonshine Ukrainian", 141 * MB, "Fast · batch"),
+    _moonshine("vi", "vi", "Base", 1, "Moonshine Vietnamese", 141 * MB, "Fast · batch"),
     _faster_whisper("tiny.en", "faster-whisper Tiny EN", 75 * MB, "English only", "Fastest", 2),
     _faster_whisper("tiny", "faster-whisper Tiny", 75 * MB, "Multilingual", "Fastest", 2),
     _faster_whisper("base.en", "faster-whisper Base EN", 145 * MB, "English only", "Fast", 3),
@@ -282,19 +569,31 @@ def recommended_ids(system: SystemInfo) -> set[str]:
         if preferred_engine == ENGINE_WHISPERKIT:
             return {
                 f"{ENGINE_WHISPERKIT}:openai_whisper-large-v3-v20240930_626MB",
-                f"{ENGINE_WHISPERKIT}:openai_whisper-large-v3-v20240930_turbo",
+                f"{ENGINE_MLX_AUDIO}:whisper-large-v3-turbo-4bit",
+                f"{ENGINE_MLX_AUDIO}:parakeet-tdt-0.6b-v3",
             }
         return {
+            f"{ENGINE_SHERPA_ONNX}:parakeet-tdt-0.6b-v3-int8",
             f"{ENGINE_FASTER_WHISPER}:small",
             f"{ENGINE_FASTER_WHISPER}:distil-medium.en",
         }
     if ram >= 8:
         if preferred_engine == ENGINE_WHISPERKIT:
-            return {f"{ENGINE_WHISPERKIT}:openai_whisper-small_216MB"}
+            return {
+                f"{ENGINE_WHISPERKIT}:openai_whisper-small_216MB",
+                f"{ENGINE_MLX_AUDIO}:whisper-large-v3-turbo-4bit",
+            }
         return {
+            f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
             f"{ENGINE_FASTER_WHISPER}:base",
             f"{ENGINE_FASTER_WHISPER}:distil-small.en",
         }
     if preferred_engine == ENGINE_WHISPERKIT:
-        return {f"{ENGINE_WHISPERKIT}:openai_whisper-base"}
-    return {f"{ENGINE_FASTER_WHISPER}:tiny"}
+        return {
+            f"{ENGINE_WHISPERKIT}:openai_whisper-base",
+            f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
+        }
+    return {
+        f"{ENGINE_SHERPA_ONNX}:sensevoice-small-int8",
+        f"{ENGINE_FASTER_WHISPER}:tiny",
+    }

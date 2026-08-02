@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import tarfile
 import threading
 import urllib.request
 from dataclasses import dataclass, field
@@ -152,6 +153,10 @@ class ModelManager:
         handle = self._downloads.get(model_id)
         return handle.state if handle else None
 
+    def catalog_model(self, model_id: str) -> CatalogModel | None:
+        """Return catalog metadata without exposing the manager's mutable index."""
+        return self._by_id.get(model_id)
+
     # ------------------------------------------------------------- downloads
 
     def start_download(self, model_id: str) -> DownloadState:
@@ -220,12 +225,67 @@ class ModelManager:
         if model.engine == ENGINE_MOONSHINE:
             await self._run_moonshine_download(model, handle)
             return
+        if model.archive_url is not None:
+            await self._run_archive_download(model, handle)
+            return
         if model.huggingface_repo is not None:
             await self._run_huggingface_download(model, handle)
             return
         if model.download_url is None:
             raise UnknownModelError(model.id)
         await self._run_single_file(model.download_url, self.model_path(model), handle)
+
+    async def _run_archive_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
+        if not model.archive_url or not model.archive_root or not model.required_files:
+            raise UnknownModelError(f"Archive metadata is incomplete for {model.id}.")
+        final_dir = self.model_path(model)
+        partial_dir = final_dir.with_name(final_dir.name + ".partial")
+        extraction_dir = final_dir.with_name(final_dir.name + ".extracting")
+        archive_path = final_dir.with_name(final_dir.name + ".download")
+        shutil.rmtree(partial_dir, ignore_errors=True)
+        shutil.rmtree(extraction_dir, ignore_errors=True)
+        archive_path.unlink(missing_ok=True)
+        try:
+            await asyncio.to_thread(
+                _download_file,
+                model.archive_url,
+                archive_path,
+                handle.state,
+                handle.cancel,
+                Path(model.archive_url).name,
+            )
+            if handle.cancel.is_set():
+                raise DownloadCancelled
+            await asyncio.to_thread(_safe_extract_archive, archive_path, extraction_dir)
+            extracted = extraction_dir / model.archive_root
+            if not extracted.is_dir():
+                raise RuntimeError(
+                    f"Downloaded archive does not contain the expected {model.archive_root} folder."
+                )
+            missing = [name for name in model.required_files if not (extracted / name).is_file()]
+            if missing:
+                raise RuntimeError(f"Downloaded model is missing: {', '.join(missing)}.")
+            shutil.move(str(extracted), partial_dir)
+            metadata = {
+                "model_id": model.id,
+                "model_type": model.model_type,
+                "language_codes": list(model.language_codes),
+                "required_files": list(model.required_files),
+            }
+            (partial_dir / ".localflow-model.json").write_text(
+                json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+            )
+            if handle.cancel.is_set():
+                raise DownloadCancelled
+            final_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.rmtree(final_dir, ignore_errors=True)
+            partial_dir.replace(final_dir)
+            handle.state.status = "completed"
+        finally:
+            archive_path.unlink(missing_ok=True)
+            shutil.rmtree(extraction_dir, ignore_errors=True)
+            if handle.state.status != "completed":
+                shutil.rmtree(partial_dir, ignore_errors=True)
 
     async def _run_moonshine_download(self, model: CatalogModel, handle: _DownloadHandle) -> None:
         final_dir = self.model_path(model)
@@ -236,13 +296,17 @@ class ModelManager:
         handle.state.current_file = "Moonshine model assets"
         try:
             model_path, model_arch = await asyncio.to_thread(
-                _download_moonshine_model, model.key, partial_dir
+                _download_moonshine_model,
+                model.language_code or model.key,
+                model.model_arch,
+                partial_dir,
             )
             if handle.cancel.is_set():
                 raise DownloadCancelled
             relative_path = Path(model_path).resolve().relative_to(partial_dir.resolve())
             metadata = {
-                "language": model.key,
+                "model_id": model.id,
+                "language": model.language_code or model.key,
                 "model_path": str(relative_path),
                 "model_arch": int(model_arch),
             }
@@ -362,6 +426,19 @@ def _repo_path(folder: str, relative: str) -> str:
     return f"{folder}/{relative}" if folder else relative
 
 
+def _safe_extract_archive(archive_path: Path, destination: Path) -> None:
+    destination.mkdir(parents=True, exist_ok=True)
+    root = destination.resolve()
+    with tarfile.open(archive_path, mode="r:*") as archive:
+        for member in archive.getmembers():
+            target = (destination / member.name).resolve()
+            if not target.is_relative_to(root):
+                raise RuntimeError("Downloaded archive contains an unsafe path.")
+            if member.issym() or member.islnk():
+                raise RuntimeError("Downloaded archive contains an unsupported link.")
+        archive.extractall(destination, filter="data")
+
+
 def _download_file(
     url: str,
     destination: Path,
@@ -391,11 +468,22 @@ def _directory_size(path: Path) -> int:
     return sum(file.stat().st_size for file in path.rglob("*") if file.is_file())
 
 
-def _download_moonshine_model(language: str, cache_root: Path) -> tuple[str, Any]:
+def _download_moonshine_model(
+    language: str,
+    model_arch: int | None,
+    cache_root: Path,
+) -> tuple[str, Any]:
     try:
-        from moonshine_voice import get_model_for_language  # type: ignore[import-not-found]
+        from moonshine_voice import (  # type: ignore[import-untyped]
+            ModelArch,
+            get_model_for_language,
+        )
     except ImportError as error:
         raise RuntimeError(
             "Moonshine support is not installed. Install localflow-gateway[engines]."
         ) from error
-    return cast(tuple[str, Any], get_model_for_language(language, cache_root=cache_root))
+    architecture = ModelArch(model_arch) if model_arch is not None else None
+    return cast(
+        tuple[str, Any],
+        get_model_for_language(language, architecture, cache_root=cache_root),
+    )

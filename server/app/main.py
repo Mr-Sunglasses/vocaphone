@@ -223,11 +223,14 @@ def create_app(
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         state = await readiness.probe()
+        selected_engine = engine_provider.current()
         return HealthResponse(
             engine_ready=state.ready,
             engine=state.name,
             streaming_supported=(
-                state.ready and isinstance(engine_provider.current(), MoonshineEngine)
+                state.ready
+                and isinstance(selected_engine, MoonshineEngine)
+                and selected_engine.supports_streaming
             ),
         )
 
@@ -359,7 +362,10 @@ def create_app(
             await websocket.close(code=4401, reason="Unauthorized")
             return
         selected_engine = engine_provider.current()
-        if not isinstance(selected_engine, MoonshineEngine):
+        if (
+            not isinstance(selected_engine, MoonshineEngine)
+            or not selected_engine.supports_streaming
+        ):
             selected_health = await selected_engine.health()
             await websocket.accept()
             await websocket.send_json(
@@ -479,9 +485,11 @@ def create_app(
             whisperkit_binary=configured.whisperkit_binary,
             handy_binary=configured.handy_binary,
         )
-        engines = ["auto", "faster-whisper", "moonshine", "whisper.cpp"]
+        engines = ["auto", "sherpa-onnx", "faster-whisper", "moonshine", "whisper.cpp"]
         if system.os_name == "Darwin":
             engines.extend(["handy", "whisperkit"])
+        if system.is_apple_silicon:
+            engines.append("mlx-audio")
         return engines
 
     async def _status_payload() -> AdminStatusResponse:
@@ -523,6 +531,28 @@ def create_app(
                 available=importlib.util.find_spec("moonshine_voice") is not None,
                 path="Python package" if importlib.util.find_spec("moonshine_voice") else None,
                 install_hint="Install localflow-gateway[engines] or use the Docker image",
+            ),
+            DependencyStatus(
+                name="sherpa-onnx",
+                available=importlib.util.find_spec("sherpa_onnx") is not None,
+                path="Python package" if importlib.util.find_spec("sherpa_onnx") else None,
+                install_hint="Install localflow-gateway[engines] or use the Docker image",
+            ),
+            DependencyStatus(
+                name="MLX Audio",
+                available=(
+                    system.is_apple_silicon and importlib.util.find_spec("mlx_audio") is not None
+                ),
+                path=(
+                    "Python package"
+                    if system.is_apple_silicon and importlib.util.find_spec("mlx_audio") is not None
+                    else None
+                ),
+                install_hint=(
+                    "Install localflow-gateway[apple]"
+                    if system.is_apple_silicon
+                    else "Available only on Apple-silicon Macs"
+                ),
             ),
             DependencyStatus(
                 name="WhisperKit CLI",
@@ -597,7 +627,8 @@ def create_app(
         visible_catalog = (
             model
             for model in manager.catalog
-            if model.engine != "whisperkit" or system.is_apple_silicon
+            if (model.engine != "whisperkit" or system.is_apple_silicon)
+            and (not model.apple_silicon_only or system.is_apple_silicon)
         )
         for model in visible_catalog:
             download = manager.download_state(model.id)
@@ -626,6 +657,9 @@ def create_app(
                     family=model.family,
                     description=model.description,
                     source=model.source,
+                    supports_streaming=model.supports_streaming,
+                    license_name=model.license_name,
+                    commercial_use=model.commercial_use,
                     state=state,
                     active=bool(installed_model and installed_model.path == active_path),
                     recommended=model.id in recommended,
@@ -675,14 +709,18 @@ def create_app(
         if engine_manager is None:
             return None
         config = engine_manager.runtime_config
+        if config.engine == "moonshine":
+            return manager.installed_path(config.moonshine_model)
+        if config.engine == "sherpa-onnx" and config.sherpa_model:
+            return manager.installed_path(config.sherpa_model)
+        if config.engine == "mlx-audio" and config.mlx_audio_model:
+            return manager.installed_path(config.mlx_audio_model)
         if config.whisper_model:
             return Path(config.whisper_model)
         if config.whisperkit_model:
             return Path(config.whisperkit_model)
         if config.faster_whisper_model:
             return Path(config.faster_whisper_model)
-        if config.engine == "moonshine":
-            return manager.installed_path(f"moonshine:{config.moonshine_language}")
         return None
 
     @app.post(
@@ -786,8 +824,15 @@ def create_app(
             faster_whisper_model=(
                 engine_manager.runtime_config.faster_whisper_model if engine_manager else None
             ),
+            moonshine_model=(
+                engine_manager.runtime_config.moonshine_model if engine_manager else "moonshine:en"
+            ),
             moonshine_language=(
                 engine_manager.runtime_config.moonshine_language if engine_manager else "en"
+            ),
+            sherpa_model=(engine_manager.runtime_config.sherpa_model if engine_manager else None),
+            mlx_audio_model=(
+                engine_manager.runtime_config.mlx_audio_model if engine_manager else None
             ),
             compute_device=(
                 engine_manager.runtime_config.compute_device if engine_manager else "auto"

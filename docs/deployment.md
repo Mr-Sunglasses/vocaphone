@@ -9,8 +9,8 @@ engines, acceleration, isolation, and operational portability.
 | Consideration | Native macOS | Docker Compose |
 | --- | --- | --- |
 | Recommended host | Apple silicon Mac | Linux `amd64` or `arm64` home server |
-| Engines | WhisperKit, Handy, `whisper.cpp` | faster-whisper, Moonshine, `whisper.cpp` |
-| Acceleration | Apple-native WhisperKit/Core ML path | OpenBLAS CPU; native CPU, CUDA, or Vulkan profiles |
+| Engines | MLX Audio, WhisperKit, Handy, sherpa-onnx, `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
+| Acceleration | Apple-native MLX and WhisperKit/Core ML paths | INT8 ONNX/OpenBLAS CPU; native CPU, CUDA, or Vulkan profiles |
 | Mac performance | Recommended; no Linux VM | Usually slower and uses Docker Desktop resources |
 | Portability | macOS-specific service setup | Reproducible across supported Linux architectures |
 | Persistence | Files below `~/.local/share/localflow` | Named volume mounted at `/data` |
@@ -18,13 +18,13 @@ engines, acceleration, isolation, and operational portability.
 
 ### Recommendation
 
-- On an Apple silicon Mac, run natively and select a WhisperKit model. This
-  avoids Docker Desktop's Linux VM and lets the gateway use the Apple-native
-  engine path. The gateway warms one loopback-only WhisperKit service and keeps
-  its Core ML model resident between dictations.
-- On a Linux home server, use Docker Compose with faster-whisper CPU INT8. The
-  default OpenBLAS build works on `amd64` and `arm64`; select a hardware profile
-  only when that host exposes the matching device.
+- On an Apple silicon Mac, run natively and compare MLX Whisper Turbo 4-bit,
+  MLX Parakeet, and WhisperKit on the same recording. These avoid Docker
+  Desktop's Linux VM and keep the chosen Apple-native model resident.
+- On a Linux home server, start with SenseVoice Small INT8 for its supported
+  Asian languages plus English, or Parakeet TDT INT8 for 25 European languages.
+  Both use sherpa-onnx wheels on `amd64` and `arm64`; faster-whisper remains the
+  broad Whisper fallback.
 - Use Docker on a Mac when reproducibility and isolation matter more than the
   lowest transcription latency.
 
@@ -42,7 +42,7 @@ not only end-to-end time.
 ```sh
 brew install ffmpeg whisperkit-cli
 cd server
-uv sync --all-groups --extra engines
+uv sync --all-groups --extra engines --extra apple
 uv run localflow-server
 ```
 
@@ -98,7 +98,8 @@ host firewall. Never forward the port from the public internet.
 ### First model
 
 The container starts before a model is installed. Confirm process liveness,
-then open the WebUI and download/select a recommended `faster-whisper` model:
+then open the WebUI and download/select a recommended sherpa-onnx, Moonshine,
+or faster-whisper model:
 
 ```sh
 docker compose ps

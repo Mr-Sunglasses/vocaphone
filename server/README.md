@@ -9,12 +9,12 @@ management, engine selection, microphone testing, and operational status.
 
 | Mode | Engines | Recommended use |
 | --- | --- | --- |
-| Native macOS | Handy, WhisperKit, `whisper.cpp` | Best performance on Apple silicon |
-| Docker Compose | faster-whisper INT8, Moonshine, `whisper.cpp` | Linux `amd64`/`arm64` home servers |
+| Native macOS | MLX Audio, WhisperKit, Handy, sherpa-onnx, `whisper.cpp` | Best performance on Apple silicon |
+| Docker Compose | sherpa-onnx INT8, faster-whisper INT8, Moonshine, `whisper.cpp` | Linux `amd64`/`arm64` home servers |
 
-Native WhisperKit is normally the fastest choice on an Apple silicon Mac.
+Native MLX Audio and WhisperKit are the accelerated choices on Apple silicon.
 Docker Desktop runs the portable Linux image in a VM, so it cannot use the
-macOS WhisperKit/Core ML path. See [deployment.md](../docs/deployment.md) for the
+macOS MLX/WhisperKit/Core ML paths. See [deployment.md](../docs/deployment.md) for the
 performance explanation, operational commands, and persistence details.
 
 ## Native macOS quick start
@@ -22,7 +22,7 @@ performance explanation, operational commands, and persistence details.
 ```sh
 brew install ffmpeg whisperkit-cli
 cd server
-uv sync --all-groups --extra engines
+uv sync --all-groups --extra engines --extra apple
 uv run localflow-server
 ```
 
@@ -39,8 +39,9 @@ To keep the gateway running after terminal sessions and restart it after login:
 The LaunchAgent uses the checkout's `.venv`, adds standard Homebrew paths, and
 writes logs to `~/Library/Logs/LocalFlow/`.
 
-WhisperKit is recommended on Apple silicon. Standalone `whisper.cpp` is also
-supported:
+MLX Audio and WhisperKit are recommended on Apple silicon. The `apple` extra
+installs MLX only on an arm64 Mac; it is deliberately absent from Linux and
+Docker. Standalone `whisper.cpp` is also supported:
 
 ```sh
 brew install ffmpeg whisper-cpp
@@ -69,7 +70,7 @@ variable. Models, configuration, and the SQLite database persist in the
 
 The container is live before a model is installed, so `/health/ready` initially
 returns `503`. Open the WebUI, enter the token from `.env`, download/select a
-recommended `faster-whisper` model, and check again:
+recommended sherpa-onnx, Moonshine, or faster-whisper model, and check again:
 
 ```sh
 curl --fail http://127.0.0.1:8765/health/ready
@@ -98,14 +99,33 @@ The authenticated WebUI provides:
 Operational counters stay in process memory, contain no audio or transcript
 content, and reset when the gateway process restarts.
 
-The catalog contains WhisperKit Core ML folders for Apple silicon, persistent
-CTranslate2 `faster-whisper` models for Linux, experimental Moonshine English,
-and portable `whisper.cpp` models. It also includes compact Whisper Medium,
+The catalog contains WhisperKit Core ML and MLX models for Apple silicon,
+portable sherpa-onnx INT8 models, persistent CTranslate2 `faster-whisper`
+models, Moonshine models for Arabic, English, Spanish, Japanese, Korean,
+Mandarin Chinese, Ukrainian, and Vietnamese, and portable `whisper.cpp` models.
+It also includes compact Whisper Medium,
 Whisper Large v3, and Breeze ASR builds from
 [Handy's documented model family](https://handy.computer/docs/models) that run
 directly through `whisper.cpp`; Handy does not need to be installed.
-Handy's Parakeet, SenseVoice, GigaAM, and Canary models use other runtimes and
-are not presented as runnable until Local Flow gains compatible adapters.
+SenseVoice and Parakeet now run independently of Handy through sherpa-onnx;
+Parakeet also has an Apple-native MLX option. GigaAM and Canary still require
+runtime adapters that Local Flow does not ship.
+
+### Fast model guide
+
+| Model | Best host | Download | Languages | Choose it when |
+| --- | --- | ---: | --- | --- |
+| SenseVoice Small INT8 | Linux or macOS CPU | ~240 MB | Mandarin, Cantonese, English, Japanese, Korean | Lowest portable latency and small-server memory use matter most |
+| Parakeet TDT 0.6B v3 INT8 | Linux or macOS CPU | ~672 MB | 25 European languages | You want stronger multilingual accuracy, punctuation, and capitalization |
+| MLX Whisper Large v3 Turbo 4-bit | Apple silicon | ~469 MB | Multilingual | You want compact high accuracy through the M-series GPU |
+| MLX Parakeet TDT 0.6B v3 | Apple silicon with at least 8 GB RAM | ~2.51 GB | 25 European languages | You want the full MLX Parakeet path and have enough unified memory |
+
+All four adapters keep their loaded model in the gateway process. Benchmark
+three runs in the Test tab: the first includes model load, while runs two and
+three show steady-state dictation speed. SenseVoice uses the FunASR Model
+License; both Parakeet variants use CC BY 4.0; the quantized MLX Whisper model
+inherits Whisper's MIT license. Review the license shown on each model card
+before redistributing weights.
 
 ## Engine selection
 
@@ -113,19 +133,38 @@ The `auto` engine preference uses the first runnable option in this order:
 
 1. Handy when its macOS application binary is present
 2. a downloaded WhisperKit model kept resident in a managed loopback service
-3. a downloaded `faster-whisper` model kept resident in the gateway process
-4. a downloaded/configured `whisper.cpp` model
+3. a downloaded MLX Audio model on Apple silicon
+4. a downloaded sherpa-onnx model
+5. a downloaded `faster-whisper` model kept resident in the gateway process
+6. a downloaded/configured `whisper.cpp` model
 
-On a CPU-only Linux host, start with `faster-whisper Base EN` for English or
-`faster-whisper Base` for multilingual dictation, Compute device **CPU**, and
-Precision **INT8**. Tiny is the latency-first option; Small trades speed and RAM
-for accuracy. Use the Test tab's three-run benchmark after the first warm run.
+On a CPU-only Linux host, start with SenseVoice Small INT8 when its five
+languages cover your use case, or Parakeet TDT INT8 for its 25 European
+languages. Keep faster-whisper Base as the broad Whisper fallback. Compute
+device and precision settings affect faster-whisper; sherpa models are already
+INT8 CPU exports. Use the Test tab's three-run benchmark after the first warm
+run.
 
-Moonshine is an experimental English path. When selected, the iPhone sends
-float32 PCM over an authenticated WebSocket while it records. The ordinary WAV
-is still retained during the request and automatically used by the batch API if
-streaming is unavailable or interrupted. Batch-only engines such as WhisperKit
-and faster-whisper no longer trigger a WebSocket attempt.
+Moonshine's English Medium, Small, and Tiny Streaming tiers accept float32 PCM
+over an authenticated WebSocket while the iPhone records. Medium favors
+accuracy, Small is the balanced Linux default, and Tiny favors latency. The
+ordinary WAV is still retained during the request and automatically used by the
+batch API if streaming is unavailable or interrupted. Streaming support is
+negotiated on that socket to avoid an extra network round trip before every
+recording.
+
+The remaining Moonshine models use its fast batch path after recording. The
+server returns a structured unsupported response for those architectures, as it
+does for WhisperKit and faster-whisper, so the app immediately continues through
+the ordinary upload pipeline. In the iPhone app or keyboard, **Automatic** uses
+the active gateway model. Choosing a named language requires the active model to
+support that same language.
+
+Moonshine's English code and weights use the MIT license. Its non-English weights
+use the Moonshine Community License and are limited to non-commercial use; the
+WebUI labels these models **personal use**. Review the current
+[Moonshine licensing and model documentation](https://github.com/moonshine-ai/moonshine)
+before deploying them outside a personal setup.
 
 The WebUI can explicitly select an engine or installed model and persists that
 choice in the runtime configuration file.
@@ -164,7 +203,7 @@ uv run localflow-server
 | `LOCALFLOW_DATA_DIR` | `~/.local/share/localflow` | `/data` | Sessions and application data |
 | `LOCALFLOW_MODELS_DIR` | `<data>/models` | `/data/models` | Downloaded models |
 | `LOCALFLOW_CONFIG_FILE` | `~/.config/localflow/config.json` | `/data/config/config.json` | WebUI engine/model choice |
-| `LOCALFLOW_ENGINE` | `auto` | `auto` | `auto`, `handy`, `whisperkit`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
+| `LOCALFLOW_ENGINE` | `auto` | `auto` | `auto`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
 | `LOCALFLOW_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
 | `LOCALFLOW_WHISPER_MODEL` | base model path | base model path | Fallback `whisper.cpp` model |
 | `LOCALFLOW_WHISPERKIT_BINARY` | `whisperkit-cli` | unavailable | WhisperKit executable |
@@ -218,14 +257,16 @@ Use the reported private HTTPS URL in the iPhone app. Do not use Funnel. See
 - `GET /health/ready` returns `200` only when the engine/model can transcribe and
   returns `503` otherwise.
 - `GET /health` is the backward-compatible iPhone health response and includes
-  `streaming_supported`; clients open `/v1/stream` only when it is true.
+  `streaming_supported` for status display and capability discovery. The iOS
+  recording path negotiates on the socket itself to avoid a separate preflight.
 - Authenticated `/v1/admin/status` exposes setup, metrics, and readiness details
   used by the WebUI.
 
-Engine probes are cached for five seconds. `faster-whisper` and Moonshine load
-their selected model once and keep it resident. WhisperKit warmup starts its
-managed loopback service and keeps the Core ML model resident there. Handy and
-`whisper.cpp` retain the filesystem-prefetch warmup behavior.
+Engine probes are cached for five seconds. sherpa-onnx, MLX Audio,
+`faster-whisper`, and Moonshine load their selected model once and keep it
+resident. WhisperKit warmup starts its managed loopback service and keeps the
+Core ML model resident there. Handy and `whisper.cpp` retain the
+filesystem-prefetch warmup behavior.
 
 ## Docker performance profiles
 
@@ -278,7 +319,7 @@ model, configuration file, and stored session is intentional.
 ## Development checks
 
 ```sh
-uv sync --all-groups --extra engines
+uv sync --all-groups --extra engines --extra apple
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy app

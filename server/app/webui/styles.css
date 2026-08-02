@@ -306,6 +306,8 @@ button.no-margin { margin-left: 0; }
   text-transform: uppercase;
 }
 .model-badges { display: flex; gap: 5px; }
+.badge.streaming { color: #86d4ff; border-color: rgba(72, 179, 233, 0.45); }
+.badge.personal { color: #f3c978; border-color: rgba(224, 171, 65, 0.45); }
 .model-card h4 { font-size: 17px; letter-spacing: -0.01em; margin: 12px 0 5px; }
 .model-description { color: var(--muted); margin: 0 0 14px; }
 .model-meta { display: flex; flex-wrap: wrap; gap: 6px; }

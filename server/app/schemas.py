@@ -153,6 +153,9 @@ class AdminModelEntry(BaseModel):
     family: str
     description: str
     source: str
+    supports_streaming: bool = False
+    license_name: str = "See model source"
+    commercial_use: bool = True
     state: Literal["installed", "downloading", "not_installed"]
     active: bool
     recommended: bool
@@ -179,7 +182,10 @@ class ConfigResponse(BaseModel):
     whisper_model: str | None = None
     whisperkit_model: str | None = None
     faster_whisper_model: str | None = None
+    moonshine_model: str = "moonshine:en"
     moonshine_language: str = "en"
+    sherpa_model: str | None = None
+    mlx_audio_model: str | None = None
     compute_device: str = "auto"
     compute_type: str = "auto"
     cpu_threads: int = 0
@@ -188,7 +194,16 @@ class ConfigResponse(BaseModel):
 class ConfigUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    engine: Literal["auto", "handy", "whisper.cpp", "whisperkit", "faster-whisper", "moonshine"]
+    engine: Literal[
+        "auto",
+        "handy",
+        "whisper.cpp",
+        "whisperkit",
+        "faster-whisper",
+        "moonshine",
+        "sherpa-onnx",
+        "mlx-audio",
+    ]
     compute_device: Literal["auto", "cpu", "cuda"] = "auto"
     compute_type: Literal["auto", "int8", "int8_float16", "float16", "float32"] = "auto"
     cpu_threads: int = Field(default=0, ge=0, le=256)

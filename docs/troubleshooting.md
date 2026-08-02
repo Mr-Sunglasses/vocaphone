@@ -70,14 +70,17 @@ uv run localflow-status
 With `LOCALFLOW_ENGINE=whisper.cpp`, also check
 `$LOCALFLOW_WHISPER_BINARY` and `$LOCALFLOW_WHISPER_MODEL`.
 
-For Docker, open Models and download/select `faster-whisper Base EN` (English)
-or Base (multilingual). In Settings choose CPU + INT8. The container cannot run
-WhisperKit folders or Handy's ONNX-only model families.
+For Docker, open Models and download/select SenseVoice Small INT8, Parakeet TDT
+INT8, or a faster-whisper Base model. CPU + INT8 applies to faster-whisper;
+sherpa entries are already quantized. The container cannot run MLX Audio,
+WhisperKit folders, or Handy itself.
 
 ## Native Apple silicon transcription is slow
 
-Overview should report `Metal/Core ML`, and the active model should start with
-`whisperkit:`. Current WhisperKit builds stay resident behind a random
+For an MLX model, the active engine should start with `mlx-audio:` and the
+dependency card should show MLX Audio available. For WhisperKit, Overview should
+report `Metal/Core ML` and the active model should start with `whisperkit:`.
+Current WhisperKit builds stay resident behind a random
 loopback-only service; after gateway startup, `ps` should show a
 `whisperkit-cli serve` child process. Restart the gateway after upgrading
 WhisperKit so warmup can start the service. If `serve` is unavailable, Local
@@ -85,14 +88,17 @@ Flow deliberately falls back to the slower compatible one-shot CLI.
 
 Use the Test tab's three-run benchmark. It reports warm runs 2 and 3 separately
 from the first model-load run. If normalization is small but inference is slow,
-try a smaller WhisperKit model before changing network or iPhone settings.
+try MLX Whisper Turbo 4-bit or a smaller WhisperKit model before changing
+network or iPhone settings. MLX requires a native arm64 macOS gateway installed
+with `uv sync --extra engines --extra apple`; it is unavailable inside Docker.
 
 ## Linux transcription is still slow
 
 Use the Test tab's three-run benchmark, which reports the warm second/third run.
 Model load should be zero after the first persistent-engine request. Check:
 
-- the active engine is `faster-whisper`, not the per-request `whisper.cpp` CLI
+- the active engine is `sherpa-onnx`, Moonshine, or `faster-whisper`, not the
+  per-request `whisper.cpp` CLI
 - Precision is INT8 and CPU threads is 0 or no higher than the effective CPU
   allocation shown on Overview
 - the container has not been assigned a fractional CPU quota
@@ -101,8 +107,12 @@ Model load should be zero after the first persistent-engine request. Check:
   running instead of the portable default
 
 Do not run multiple profile services together: they share port 8765 and the
-model volume. Moonshine is another fast English option, but its live stream is
-experimental and automatically falls back to batch transcription.
+model volume. SenseVoice Small INT8 is the smallest portable multilingual
+choice, while Parakeet TDT INT8 covers 25 European languages with punctuation.
+Moonshine English Tiny/Small Streaming are fast Linux options;
+Tiny prioritizes latency and Small balances speed with accuracy. Other Moonshine
+languages use the batch upload path after recording. The app automatically
+falls back to that batch path whenever live streaming is unavailable.
 
 ## Docker service does not start
 

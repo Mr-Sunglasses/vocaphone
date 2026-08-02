@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
+import io
+import tarfile
 from pathlib import Path
 
 import pytest
@@ -53,6 +55,36 @@ TINY_CTRANSLATE = CatalogModel(
     marker_file="model.bin",
 )
 
+MOONSHINE_SPANISH = CatalogModel(
+    id="moonshine:es",
+    engine="moonshine",
+    key="es",
+    label="Moonshine Spanish",
+    size_bytes=65_000_000,
+    languages="Spanish only",
+    quality="Fast",
+    minimum_ram_gb=2,
+    marker_file=".localflow-model.json",
+    language_code="es",
+    model_arch=1,
+)
+
+SHERPA_TEST = CatalogModel(
+    id="sherpa-onnx:test-int8",
+    engine="sherpa-onnx",
+    key="test-int8",
+    label="Test sherpa model",
+    size_bytes=30,
+    languages="English only",
+    quality="Fast",
+    minimum_ram_gb=2,
+    marker_file=".localflow-model.json",
+    archive_root="published-model",
+    required_files=("model.int8.onnx", "tokens.txt"),
+    model_type="sense_voice",
+    language_codes=("en",),
+)
+
 
 def test_catalog_includes_standalone_handy_compatible_models() -> None:
     entries = {model.key: model for model in DEFAULT_CATALOG}
@@ -69,10 +101,46 @@ def test_distilled_faster_whisper_uses_published_repository_names() -> None:
         entries["faster-whisper:distil-small.en"].huggingface_repo
         == "Systran/faster-distil-whisper-small.en"
     )
+
+
+def test_catalog_includes_all_moonshine_languages_and_english_tiers() -> None:
+    entries = {model.id: model for model in DEFAULT_CATALOG}
+
+    assert {entry.language_code for entry in entries.values() if entry.engine == "moonshine"} == {
+        "ar",
+        "en",
+        "es",
+        "ja",
+        "ko",
+        "uk",
+        "vi",
+        "zh",
+    }
+    assert entries["moonshine:en"].model_arch == 5
+    assert entries["moonshine:en-tiny-streaming"].supports_streaming is True
+    assert entries["moonshine:es"].supports_streaming is False
+    assert entries["moonshine:es"].commercial_use is False
     assert (
         entries["faster-whisper:distil-medium.en"].huggingface_repo
         == "Systran/faster-distil-whisper-medium.en"
     )
+
+
+def test_catalog_includes_portable_and_apple_silicon_models() -> None:
+    entries = {model.id: model for model in DEFAULT_CATALOG}
+
+    sensevoice = entries["sherpa-onnx:sensevoice-small-int8"]
+    assert sensevoice.required_files == ("model.int8.onnx", "tokens.txt")
+    assert sensevoice.language_codes == ("zh", "yue", "en", "ja", "ko")
+    assert sensevoice.apple_silicon_only is False
+
+    parakeet = entries["sherpa-onnx:parakeet-tdt-0.6b-v3-int8"]
+    assert parakeet.model_type == "nemo_transducer"
+    assert parakeet.license_name == "CC BY 4.0"
+
+    mlx_turbo = entries["mlx-audio:whisper-large-v3-turbo-4bit"]
+    assert mlx_turbo.apple_silicon_only is True
+    assert mlx_turbo.marker_file == "model.safetensors"
 
 
 @pytest.fixture
@@ -184,6 +252,71 @@ async def test_root_huggingface_folder_download(
     installed = manager.installed_path("faster-whisper:tiny.en")
     assert installed is not None
     assert (installed / "model.bin").read_bytes() == b"model"
+
+
+async def test_moonshine_download_uses_catalog_language_and_architecture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manager = ModelManager(tmp_path / "models", catalog=(MOONSHINE_SPANISH,))
+    requested: dict[str, object] = {}
+
+    def fake_download(language: str, model_arch: int, cache_root: Path) -> tuple[str, int]:
+        requested.update(language=language, model_arch=model_arch)
+        model_path = cache_root / "downloaded-model"
+        model_path.mkdir()
+        (model_path / "weights.bin").write_bytes(b"model")
+        return str(model_path), model_arch
+
+    monkeypatch.setattr(model_manager, "_download_moonshine_model", fake_download)
+
+    state = manager.start_download("moonshine:es")
+    await asyncio.wait_for(_wait_finished(manager, "moonshine:es"), timeout=5)
+
+    assert state.status == "completed"
+    assert requested == {"language": "es", "model_arch": 1}
+    installed = manager.installed_path("moonshine:es")
+    assert installed is not None
+    metadata = (installed / ".localflow-model.json").read_text(encoding="utf-8")
+    assert '"model_id": "moonshine:es"' in metadata
+    assert '"language": "es"' in metadata
+
+
+async def test_archive_download_extracts_validated_model(tmp_path: Path) -> None:
+    source = tmp_path / "model.tar.bz2"
+    content = tmp_path / "published-model"
+    content.mkdir()
+    (content / "model.int8.onnx").write_bytes(b"onnx")
+    (content / "tokens.txt").write_text("token")
+    with tarfile.open(source, "w:bz2") as archive:
+        archive.add(content, arcname="published-model")
+    catalog_model = dataclasses.replace(SHERPA_TEST, archive_url=source.as_uri())
+    manager = ModelManager(tmp_path / "models", catalog=(catalog_model,))
+
+    state = manager.start_download(catalog_model.id)
+    await asyncio.wait_for(_wait_finished(manager, catalog_model.id), timeout=5)
+
+    assert state.status == "completed"
+    installed = manager.installed_path(catalog_model.id)
+    assert installed is not None
+    assert (installed / "model.int8.onnx").read_bytes() == b"onnx"
+    metadata = (installed / ".localflow-model.json").read_text(encoding="utf-8")
+    assert '"model_type": "sense_voice"' in metadata
+    assert '"language_codes": [' in metadata
+    assert not (manager.models_dir / "sherpa-onnx" / "test-int8.download").exists()
+
+
+def test_archive_extractor_rejects_parent_paths(tmp_path: Path) -> None:
+    archive_path = tmp_path / "unsafe.tar.bz2"
+    with tarfile.open(archive_path, "w:bz2") as archive:
+        member = tarfile.TarInfo("../escaped.txt")
+        payload = b"unsafe"
+        member.size = len(payload)
+        archive.addfile(member, io.BytesIO(payload))
+
+    with pytest.raises(RuntimeError, match="unsafe path"):
+        model_manager._safe_extract_archive(archive_path, tmp_path / "extract")
+
+    assert not (tmp_path / "escaped.txt").exists()
 
 
 async def test_custom_download_validates_url(manager: ModelManager) -> None:

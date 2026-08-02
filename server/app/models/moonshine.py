@@ -13,6 +13,18 @@ from app.errors import EngineUnavailableError, TranscriptionProcessError
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
 MODEL_METADATA = ".localflow-model.json"
+STREAMING_ARCHITECTURES = {2, 3, 4, 5}
+LANGUAGE_ALIASES = {
+    "ar": {"ar", "ar-SA"},
+    "en": {"en", "en-US", "en-GB"},
+    "es": {"es", "es-ES", "es-MX"},
+    "ja": {"ja", "ja-JP"},
+    "ko": {"ko", "ko-KR"},
+    "uk": {"uk", "uk-UA"},
+    "vi": {"vi", "vi-VN"},
+    "zh": {"zh", "zh-CN", "zh-TW", "cmn"},
+}
+NON_LATIN_LANGUAGES = {"ar", "ja", "ko", "zh"}
 
 
 class MoonshineEngine:
@@ -24,9 +36,14 @@ class MoonshineEngine:
         self._transcriber: Any | None = None
         self._load_lock = asyncio.Lock()
         self._inference_lock = asyncio.Lock()
+        self._metadata = _read_metadata(model_root)
         # The package owns mutable decoder state, so batch and streaming jobs
         # must never share the persistent transcriber concurrently.
         self.streaming_lock = self._inference_lock
+
+    @property
+    def supports_streaming(self) -> bool:
+        return self._metadata.get("model_arch") in STREAMING_ARCHITECTURES
 
     async def health(self) -> EngineHealth:
         package_ready = importlib.util.find_spec("moonshine_voice") is not None
@@ -48,15 +65,16 @@ class MoonshineEngine:
     async def transcribe(
         self, audio_path: Path, options: TranscriptionOptions
     ) -> EngineTranscription:
-        if options.language not in {"auto", "en", "en-US", "en-GB"}:
+        aliases = LANGUAGE_ALIASES.get(self.language, {self.language})
+        if options.language != "auto" and options.language not in aliases:
             raise TranscriptionProcessError(
-                "The installed Moonshine model supports English; "
-                "choose another engine for this language."
+                f"The selected Moonshine model supports {self.language}; "
+                f"choose {self.language}, Auto, or another model."
             )
         if not (await self.health()).ready:
             raise EngineUnavailableError(
                 "Moonshine or its selected model is unavailable. Install the engines extra and "
-                "download the Moonshine English model."
+                "download a compatible Moonshine model."
             )
         async with self._inference_lock:
             load_started = time.monotonic()
@@ -96,11 +114,26 @@ class MoonshineEngine:
     def _load_transcriber_sync(self) -> Any:
         if self.model_root is None:
             raise EngineUnavailableError("No Moonshine model is selected.")
-        metadata = json.loads((self.model_root / MODEL_METADATA).read_text(encoding="utf-8"))
+        metadata = self._metadata
         from moonshine_voice import ModelArch, Transcriber  # type: ignore[import-untyped]
 
         model_path = self.model_root / str(metadata["model_path"])
-        return Transcriber(model_path=model_path, model_arch=ModelArch(metadata["model_arch"]))
+        options = {"max_tokens_per_second": "13.0"} if self.language in NON_LATIN_LANGUAGES else {}
+        return Transcriber(
+            model_path=model_path,
+            model_arch=ModelArch(metadata["model_arch"]),
+            options=options,
+        )
+
+
+def _read_metadata(model_root: Path | None) -> dict[str, Any]:
+    if model_root is None:
+        return {}
+    try:
+        payload: object = json.loads((model_root / MODEL_METADATA).read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
 
 
 def _batch_transcribe(transcriber: Any, audio_path: Path) -> str:

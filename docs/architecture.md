@@ -11,7 +11,8 @@ Local Flow containing app
   ↕ bearer-authenticated HTTP/HTTPS through LAN, VPN, or reverse proxy
 FastAPI gateway on macOS or Linux (native or multi-architecture container)
   → bounded temporary audio → FFmpeg mono 16 kHz WAV
-  → TranscriptionEngine adapter → Handy, WhisperKit, faster-whisper, Moonshine, or whisper.cpp
+  → TranscriptionEngine adapter → Handy, MLX Audio, WhisperKit, sherpa-onnx,
+                                  faster-whisper, Moonshine, or whisper.cpp
 ```
 
 The App Group record is the source of truth. Polling is a wake-up strategy, not
@@ -29,10 +30,10 @@ absolute paths are never written to ordinary logs.
    bounded meter updates. The audio graph is not rebuilt between dictations.
 4. The user manually returns to the original app.
 5. Finish changes shared state to `finalizing`.
-6. The app checks `streaming_supported` in gateway health. With a ready
-   Moonshine engine, copied float32 buffers reach the authenticated streaming
-   endpoint while the app still writes the complete WAV. Batch-only engines
-   skip the socket entirely.
+6. The app negotiates streaming support on the authenticated WebSocket itself,
+   avoiding a separate health round trip. With a ready Moonshine engine, copied
+   float32 buffers reach the streaming endpoint while the app still writes the
+   complete WAV. Batch-only engines receive a structured unsupported response.
 7. The app stops recording and uses the stream result when available. Otherwise
    it creates the idempotent session and runs the normal upload/batch flow.
 8. The app writes `readyToInsert` and deletes its audio only after success.
@@ -65,14 +66,19 @@ runs Core ML folders through one managed loopback-only WhisperKit service on
 Apple silicon, and `WhisperCppEngine` is the portable CLI fallback. The service
 keeps the selected model resident and falls back to the one-shot CLI when an
 older WhisperKit build cannot serve. `FasterWhisperEngine` owns one persistent
-CTranslate2 model and uses CPU INT8 by default. `MoonshineEngine` owns one
-persistent transcriber and also exposes the guarded incremental stream used by
-`/v1/stream`. No engine-specific field is part of the stable session API
+CTranslate2 model and uses CPU INT8 by default. `SherpaOnnxEngine` owns one
+portable INT8 recognizer for SenseVoice or Parakeet. `MLXAudioEngine` keeps one
+Apple-silicon-native model in unified memory. `MoonshineEngine` owns one
+persistent transcriber. It exposes the guarded `/v1/stream` path only when the
+selected architecture supports cached incremental inference; language-specific
+batch models use the same upload fallback as other batch engines. No
+engine-specific field is part of the stable session API
 response.
 
-The default Docker image includes OpenBLAS `whisper.cpp`, faster-whisper, and
-Moonshine and persists `/data` as a volume. Compose also provides host-native
-CPU, NVIDIA CUDA, and Vulkan images. WhisperKit and Handy remain macOS-only.
+The default Docker image includes OpenBLAS `whisper.cpp`, sherpa-onnx,
+faster-whisper, and Moonshine and persists `/data` as a volume. Compose also
+provides host-native CPU, NVIDIA CUDA, and Vulkan images. MLX Audio,
+WhisperKit, and Handy remain native-macOS-only.
 
 The gateway keeps privacy-safe operational counters in process memory: uptime,
 active and queued transcriptions, completed/failed/rejected counts, stage-level
@@ -89,7 +95,7 @@ prefetch for the selected model while the HTTP process remains available.
 
 The native macOS gateway can use Apple-platform engines. The container is a
 Linux process with persistent CPU engines and optional GPU-specific images;
-Docker Desktop cannot pass the macOS WhisperKit/Core ML runtime into that
+Docker Desktop cannot pass the macOS MLX, WhisperKit, or Core ML runtime into that
 container. Both deployments expose
 the same API, WebUI, health semantics, and persistent model-selection behavior.
 

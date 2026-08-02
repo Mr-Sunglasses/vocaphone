@@ -15,6 +15,16 @@ from app.models.moonshine import MoonshineEngine
 TOKEN = "stream-" + ("x" * 48)
 
 
+def moonshine_engine(tmp_path: Path, model_arch: int = 5) -> MoonshineEngine:
+    model_root = tmp_path / f"moonshine-{model_arch}"
+    model_root.mkdir()
+    (model_root / ".localflow-model.json").write_text(
+        '{"language":"en","model_path":"model","model_arch":' + str(model_arch) + "}",
+        encoding="utf-8",
+    )
+    return MoonshineEngine(model_root)
+
+
 class BatchOnlyEngine:
     async def health(self) -> EngineHealth:
         return EngineHealth(ready=True, name="whisperkit:test-model")
@@ -54,7 +64,7 @@ def test_authenticated_moonshine_stream_returns_styled_transcript(
         whisper_binary=tmp_path / "whisper-cli",
         whisper_model=tmp_path / "model.bin",
     )
-    engine = MoonshineEngine(None)
+    engine = moonshine_engine(tmp_path)
     stream = FakeStream()
 
     async def create_stream() -> FakeStream:
@@ -95,7 +105,7 @@ def test_health_advertises_ready_moonshine_streaming(
         whisper_binary=tmp_path / "whisper-cli",
         whisper_model=tmp_path / "model.bin",
     )
-    engine = MoonshineEngine(None)
+    engine = moonshine_engine(tmp_path)
 
     async def health() -> EngineHealth:
         return EngineHealth(ready=True, name="moonshine:en")
@@ -107,6 +117,39 @@ def test_health_advertises_ready_moonshine_streaming(
         response = client.get("/health")
 
     assert response.json()["streaming_supported"] is True
+
+
+def test_batch_moonshine_gets_structured_stream_fallback(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "model.bin",
+    )
+    engine = moonshine_engine(tmp_path, model_arch=1)
+
+    async def health() -> EngineHealth:
+        return EngineHealth(ready=True, name="moonshine:es")
+
+    monkeypatch.setattr(engine, "health", health)
+    app = create_app(settings, engine=engine)
+
+    with (
+        TestClient(app) as client,
+        client.websocket_connect(
+            "/v1/stream", headers={"Authorization": f"Bearer {TOKEN}"}
+        ) as websocket,
+    ):
+        assert websocket.receive_json() == {
+            "type": "unsupported",
+            "reason": "active_engine",
+            "engine": "moonshine:es",
+        }
+
+    with TestClient(app) as client:
+        assert client.get("/health").json()["streaming_supported"] is False
 
 
 def test_authenticated_batch_engine_gets_structured_stream_fallback(tmp_path: Path) -> None:

@@ -19,16 +19,20 @@ ENGINE_LABELS = {
     "whisper.cpp": "whisper.cpp",
     "whisperkit": "WhisperKit",
     "faster-whisper": "faster-whisper",
-    "moonshine": "Moonshine (experimental)",
+    "moonshine": "Moonshine",
+    "sherpa-onnx": "sherpa-onnx",
+    "mlx-audio": "MLX Audio",
 }
 
 ENGINE_HINTS = {
-    "auto": "Uses Handy when installed, then downloaded WhisperKit or whisper.cpp models.",
+    "auto": "Uses the fastest compatible installed local engine for this machine.",
     "handy": "Reuses the Handy app and its downloaded models. No download needed.",
     "whisper.cpp": "Runs local GGML models with the whisper-cli binary.",
     "whisperkit": "Runs Core ML models with whisperkit-cli on Apple Silicon Macs.",
     "faster-whisper": "Keeps a CTranslate2 model loaded; CPU INT8 is the Linux default.",
-    "moonshine": "Low-latency English transcription with an experimental streaming path.",
+    "moonshine": "Fast, language-specific local models; compatible English tiers stream live.",
+    "sherpa-onnx": "Compact INT8 CPU models for fast macOS and Linux transcription.",
+    "mlx-audio": "Runs Apple-silicon-native MLX models with persistent loading.",
 }
 
 
@@ -333,6 +337,10 @@ def _model_card(entry: AdminModelEntry) -> str:
         badges += '<span class="badge recommended">recommended</span>'
     if entry.active:
         badges += '<span class="badge active">active</span>'
+    if entry.supports_streaming:
+        badges += '<span class="badge streaming">live</span>'
+    if not entry.commercial_use:
+        badges += '<span class="badge personal">personal use</span>'
 
     if entry.state == "downloading":
         percent = round((entry.progress or 0) * 100)
@@ -391,7 +399,7 @@ def _model_card(entry: AdminModelEntry) -> str:
           <span>{escape(entry.quality)}</span>
         </div>
         <div class="model-card-footer">
-          <span class="model-source">{escape(entry.source)}</span>
+          <span class="model-source">{escape(entry.source)} · {escape(entry.license_name)}</span>
           <div class="actions">{action}</div>
         </div>
       </article>

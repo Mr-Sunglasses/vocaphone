@@ -98,6 +98,8 @@ async def test_status_reports_system_and_setup(
         "Handy app",
         "faster-whisper",
         "Moonshine Voice",
+        "sherpa-onnx",
+        "MLX Audio",
     }
     assert payload["setup"]["token_configured"] is True
     assert payload["setup"]["model_installed"] is False

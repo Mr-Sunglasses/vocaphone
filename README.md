@@ -20,15 +20,16 @@ iPhone 14 Pro.
 
 - Native SwiftUI app and UIKit keyboard with Start, Finish, Cancel, Retry, Undo,
   language/style status, next-keyboard control, and direct insertion
-- Four local writing styles: Formal, Casual, Very Casual, and Excited
+- Eight selectable transcription languages plus Automatic, shared by the app
+  and keyboard, and four writing styles: Formal, Casual, Very Casual, and Excited
 - Automatic microphone routing or an explicit iPhone Microphone preference,
   with the input currently in use shown in the app
 - A bounded Quick Dictation window with persistent background input, a Live
   Activity/Dynamic Island timer, and standby buffers that are discarded
 - FastAPI gateway with bounded uploads, SQLite idempotency, FFmpeg normalization,
   silence detection, retention cleanup, and stable error responses
-- Handy, WhisperKit, persistent `faster-whisper`, experimental Moonshine, and
-  `whisper.cpp` adapters with downloadable local models
+- Handy, WhisperKit, Apple-native MLX Audio, persistent `sherpa-onnx` and
+  `faster-whisper`, multilingual Moonshine, and `whisper.cpp` adapters
 - Operational dashboard with hardware detection, queue/outcome counters,
   pipeline benchmarks, real-time factor, peak memory, and warmup state
 - CPU/OpenBLAS, host-native CPU, NVIDIA CUDA, and Vulkan Compose profiles
@@ -40,14 +41,14 @@ iPhone 14 Pro.
 
 | Deployment | Best for | Speech engine | Expected performance |
 | --- | --- | --- | --- |
-| Native macOS | Daily use on an Apple silicon Mac | WhisperKit, Handy, or `whisper.cpp` | Best on Apple silicon with WhisperKit |
-| Docker Compose | Linux home servers and reproducible deployment | faster-whisper INT8, Moonshine, or accelerated `whisper.cpp` | Portable CPU by default; optional native/CUDA/Vulkan profiles |
+| Native macOS | Daily use on an Apple silicon Mac | MLX Audio, WhisperKit, Handy, sherpa-onnx | Best with Apple-native MLX/Core ML engines |
+| Docker Compose | Linux home servers and reproducible deployment | sherpa-onnx INT8, faster-whisper INT8, Moonshine, or accelerated `whisper.cpp` | Portable CPU by default; optional native/CUDA/Vulkan profiles |
 
-On an Apple silicon Mac, use the native gateway with WhisperKit for the lowest
-latency and lowest virtualization overhead. Local Flow keeps the selected Core
-ML model resident in a loopback-only WhisperKit service instead of reloading the
-CLI for every dictation. The current container deliberately uses a portable
-Linux CPU backend and cannot use macOS Core ML from inside Docker Desktop.
+On an Apple silicon Mac, use the native gateway for the lowest virtualization
+overhead. MLX Audio runs directly on M-series unified memory/GPU, while
+WhisperKit uses Core ML; Local Flow keeps either selected model resident between
+dictations. The container deliberately uses portable Linux runtimes and cannot
+use macOS MLX or Core ML from inside Docker Desktop.
 Docker remains the recommended deployment for Linux home servers.
 Precise speed depends on the model, audio duration, and hardware; compare the
 same recording and model class before drawing benchmark conclusions.
@@ -64,7 +65,7 @@ Install the tools and launch the server:
 ```sh
 brew install ffmpeg whisperkit-cli
 cd server
-uv sync --all-groups --extra engines
+uv sync --all-groups --extra engines --extra apple
 uv run localflow-server
 ```
 
@@ -98,8 +99,8 @@ curl --fail http://127.0.0.1:8765/health/live
 ```
 
 Open the WebUI, enter the token from `server/.env`, and download/select a
-recommended `faster-whisper` model. Readiness returns `503` until a runnable
-model is selected:
+recommended sherpa-onnx, Moonshine, or faster-whisper model. Readiness returns
+`503` until a runnable model is selected:
 
 ```sh
 curl --fail http://127.0.0.1:8765/health/ready
@@ -161,7 +162,7 @@ Gateway checks:
 
 ```sh
 cd server
-uv sync --all-groups --extra engines
+uv sync --all-groups --extra engines --extra apple
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy app

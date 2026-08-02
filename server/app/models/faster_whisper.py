@@ -92,7 +92,7 @@ class FasterWhisperEngine:
     def _load_model_sync(self) -> Any:
         if self.model_path is None:
             raise EngineUnavailableError("No faster-whisper model is selected.")
-        from faster_whisper import WhisperModel  # type: ignore[import-not-found]
+        from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 
         device = _resolved_device(self.device)
         compute_type = _resolved_compute_type(self.compute_type, device)
@@ -126,7 +126,7 @@ def _resolved_device(value: str) -> str:
     if value in {"cpu", "cuda"}:
         return value
     try:
-        import ctranslate2  # type: ignore[import-not-found]
+        import ctranslate2  # type: ignore[import-untyped]
 
         if ctranslate2.get_cuda_device_count() > 0:
             return "cuda"

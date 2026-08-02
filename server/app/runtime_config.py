@@ -7,7 +7,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-VALID_ENGINES = ("auto", "handy", "whisper.cpp", "whisperkit", "faster-whisper", "moonshine")
+VALID_ENGINES = (
+    "auto",
+    "handy",
+    "whisper.cpp",
+    "whisperkit",
+    "faster-whisper",
+    "moonshine",
+    "sherpa-onnx",
+    "mlx-audio",
+)
 
 
 @dataclass(slots=True)
@@ -18,7 +27,10 @@ class RuntimeConfig:
     whisper_model: str | None = None
     whisperkit_model: str | None = None
     faster_whisper_model: str | None = None
+    moonshine_model: str = "moonshine:en"
     moonshine_language: str = "en"
+    sherpa_model: str | None = None
+    mlx_audio_model: str | None = None
     compute_device: str = "auto"
     compute_type: str = "auto"
     cpu_threads: int = 0
@@ -33,7 +45,10 @@ class RuntimeConfig:
         whisper_model = payload.get("whisper_model")
         whisperkit_model = payload.get("whisperkit_model")
         faster_whisper_model = payload.get("faster_whisper_model")
+        moonshine_model = payload.get("moonshine_model")
         moonshine_language = payload.get("moonshine_language")
+        sherpa_model = payload.get("sherpa_model")
+        mlx_audio_model = payload.get("mlx_audio_model")
         compute_device = payload.get("compute_device")
         compute_type = payload.get("compute_type")
         cpu_threads = payload.get("cpu_threads")
@@ -44,9 +59,20 @@ class RuntimeConfig:
             faster_whisper_model=(
                 faster_whisper_model if isinstance(faster_whisper_model, str) else None
             ),
+            moonshine_model=(
+                moonshine_model
+                if isinstance(moonshine_model, str)
+                else (
+                    f"moonshine:{moonshine_language}"
+                    if isinstance(moonshine_language, str)
+                    else "moonshine:en"
+                )
+            ),
             moonshine_language=(
                 moonshine_language if isinstance(moonshine_language, str) else "en"
             ),
+            sherpa_model=sherpa_model if isinstance(sherpa_model, str) else None,
+            mlx_audio_model=(mlx_audio_model if isinstance(mlx_audio_model, str) else None),
             compute_device=compute_device if compute_device in {"auto", "cpu", "cuda"} else "auto",
             compute_type=(
                 compute_type
@@ -65,7 +91,10 @@ class RuntimeConfig:
             "whisper_model": self.whisper_model,
             "whisperkit_model": self.whisperkit_model,
             "faster_whisper_model": self.faster_whisper_model,
+            "moonshine_model": self.moonshine_model,
             "moonshine_language": self.moonshine_language,
+            "sherpa_model": self.sherpa_model,
+            "mlx_audio_model": self.mlx_audio_model,
             "compute_device": self.compute_device,
             "compute_type": self.compute_type,
             "cpu_threads": self.cpu_threads,
