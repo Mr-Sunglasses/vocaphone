@@ -158,6 +158,23 @@ struct SettingsView: View {
             Text(selectedWritingStyle.detail)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Example")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(selectedWritingStyle.example)
+                    .font(.footnote)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
+
+            Text(
+                "Styles only change formatting. Your words, numbers, times, "
+                    + "links and contractions are never altered."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
         }
     }
 

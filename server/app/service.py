@@ -76,7 +76,7 @@ class TranscriptionService:
             )
             outcome = _engine_outcome(raw_result, inference_started)
             raw = outcome.text
-            transcript = apply_writing_style(raw, stored.style)
+            transcript = apply_writing_style(raw, stored.style, stored.language)
             completed = self.repository.update(
                 session_id,
                 state="completed",

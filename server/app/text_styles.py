@@ -1,76 +1,363 @@
 from __future__ import annotations
 
 import re
-import unicodedata
+import threading
+from dataclasses import dataclass
+
+import pysbd
+import tldextract
+from pysbd.languages import LANGUAGE_CODES
 
 SUPPORTED_WRITING_STYLES = frozenset({"raw", "clean", "formal", "casual", "very_casual", "excited"})
 
+# ---------------------------------------------------------------------------
+# Language-dependent punctuation
+#
+# Sentence and clause marks are not universal. Assuming "." and "," turned
+# Japanese into an unstyled passthrough with a stray "!" appended, and inserted
+# Latin commas into Arabic.
+# ---------------------------------------------------------------------------
 
-def apply_writing_style(text: str, style: str) -> str:
-    """Format a local transcript without changing its words or meaning."""
+
+@dataclass(frozen=True)
+class Punctuation:
+    terminator: str
+    separator: str
+    exclamation: str
+    question: str
+    terminators: str
+    segmentation_language: str
+    # CJK does not put a space between sentences.
+    join: str
+
+
+_LATIN = Punctuation(".", ",", "!", "?", ".!?", "en", " ")
+_CJK = Punctuation("。", "、", "！", "？", "。！？.!?", "ja", "")
+_ARABIC = Punctuation(".", "،", "!", "؟", ".!?؟", "ar", " ")
+_URDU = Punctuation("۔", "،", "!", "؟", "۔.!?؟", "ur", " ")
+
+_PUNCTUATION_BY_LANGUAGE = {
+    "ja": _CJK,
+    "zh": _CJK,
+    "yue": _CJK,
+    "ar": _ARABIC,
+    "fa": _ARABIC,
+    "ps": _ARABIC,
+    "ur": _URDU,
+}
+
+# Used when the caller says "auto", which is the default, so the script has to
+# be inferred from the transcript itself.
+_CJK_MARKS = "。、！？"
+_ARABIC_MARKS = "،؟"
+
+
+def _resolve_punctuation(language: str, text: str) -> Punctuation:
+    code = language.lower().split("-")[0]
+    known = _PUNCTUATION_BY_LANGUAGE.get(code)
+    if known is not None:
+        return known
+    if code not in ("auto", ""):
+        return _replace_segmentation_language(_LATIN, code)
+    if any(mark in text for mark in _CJK_MARKS):
+        return _CJK
+    if any(mark in text for mark in _ARABIC_MARKS):
+        return _ARABIC
+    if "۔" in text:
+        return _URDU
+    return _LATIN
+
+
+def _replace_segmentation_language(base: Punctuation, code: str) -> Punctuation:
+    if code == base.segmentation_language:
+        return base
+    return Punctuation(
+        base.terminator,
+        base.separator,
+        base.exclamation,
+        base.question,
+        base.terminators,
+        code,
+        base.join,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Protected spans
+#
+# Punctuation inside a price, time, decimal, address or contraction carries
+# meaning. These spans are masked before any transform and restored afterwards,
+# so no style can corrupt them. Sentence-ending abbreviations such as "Dr." are
+# deliberately not listed here: pysbd already knows them, per language.
+# ---------------------------------------------------------------------------
+
+_PLACEHOLDER_START = ""
+_PLACEHOLDER_END = ""
+_PLACEHOLDER = re.compile(rf"{_PLACEHOLDER_START}(\d+){_PLACEHOLDER_END}")
+
+_TRAILING = r"[^\s.,;:!?'\"“”)\]]"
+_SCHEME_URL = rf"[A-Za-z][A-Za-z0-9+.\-]*://[^\s]*{_TRAILING}"
+_EMAIL = r"[\w.+\-]+@(?:[\w\-]+\.)+[A-Za-z]{2,}"
+_DOMAIN = rf"(?:[\w\-]+\.)+[A-Za-z]{{2,24}}(?:/[^\s]*{_TRAILING})?"
+
+_PROTECTED = re.compile(
+    rf"""(
+        (?P<url>{_SCHEME_URL})
+      | (?P<email>{_EMAIL})
+      | (?P<domain>{_DOMAIN})
+      | (?P<number>\d+(?:[.,:/]\d+)+)
+      | (?P<ordinal>\d+(?:st|nd|rd|th)\b)
+      | (?P<acronym>(?:[A-Za-z]\.){{2,}})
+      | (?P<contraction>\w+['’]\w+)
+    )""",
+    re.VERBOSE,
+)
+
+_ADDRESS = re.compile(rf"^(?:{_SCHEME_URL}|{_EMAIL})$")
+
+# The Public Suffix List snapshot bundled with tldextract. Network lookups are
+# disabled so a local gateway never stalls on a suffix refresh.
+_SUFFIXES = tldextract.TLDExtract(suffix_list_urls=(), cache_dir=None)
+
+
+def _is_real_domain(candidate: str) -> bool:
+    host = candidate.split("/", 1)[0]
+    suffix = host.rsplit(".", 1)[-1]
+    # ".it" and ".in" are real country domains, so "I went home.It was fine"
+    # would otherwise be read as an address. Transcribed hosts are lower case.
+    if not suffix.islower():
+        return False
+    return bool(_SUFFIXES(host).suffix)
+
+
+def _protect(text: str) -> tuple[str, list[str]]:
+    tokens: list[str] = []
+
+    def capture(match: re.Match[str]) -> str:
+        span = match.group(0)
+        if match.lastgroup == "domain" and not _is_real_domain(span):
+            return span
+        tokens.append(span)
+        return f"{_PLACEHOLDER_START}{len(tokens) - 1}{_PLACEHOLDER_END}"
+
+    return _PROTECTED.sub(capture, text), tokens
+
+
+def _restore(text: str, tokens: list[str]) -> str:
+    if not tokens:
+        return text
+    return _PLACEHOLDER.sub(lambda match: tokens[int(match.group(1))], text)
+
+
+# ---------------------------------------------------------------------------
+# Sentence segmentation
+# ---------------------------------------------------------------------------
+
+_SEGMENTERS = threading.local()
+# Cheap probe: with no boundary inside the text there is nothing to segment, so
+# a single-sentence dictation never pays for the segmenter at all. CJK needs the
+# whitespace to be optional because it runs sentences together without a space;
+# requiring it elsewhere keeps "example.com" style text on the fast path.
+_BREAK_CACHE: dict[str, re.Pattern[str]] = {}
+
+
+def _internal_break_pattern(punctuation: Punctuation) -> re.Pattern[str]:
+    key = punctuation.terminators + "|" + punctuation.join
+    cached = _BREAK_CACHE.get(key)
+    if cached is None:
+        marks = re.escape(punctuation.terminators)
+        gap = r"\s*" if punctuation.join == "" else r"\s+"
+        cached = re.compile(rf"[{marks}]{gap}\S")
+        _BREAK_CACHE[key] = cached
+    return cached
+
+
+def _segmenter(code: str) -> pysbd.Segmenter:
+    cache = getattr(_SEGMENTERS, "cache", None)
+    if cache is None:
+        cache = {}
+        _SEGMENTERS.cache = cache
+    segmenter = cache.get(code)
+    if segmenter is None:
+        # Instances are cached per thread; pysbd keeps per-call state internally
+        # and sharing one across threads is not worth the risk.
+        segmenter = pysbd.Segmenter(language=code, clean=False)
+        cache[code] = segmenter
+    return segmenter
+
+
+def _segment(text: str, punctuation: Punctuation) -> list[str]:
+    if not _internal_break_pattern(punctuation).search(text):
+        return [text]
+    code = punctuation.segmentation_language
+    if code in LANGUAGE_CODES:
+        sentences = [str(sentence) for sentence in _segmenter(code).segment(text)]
+        if sentences and "".join(sentences) == text:
+            return sentences
+    return _split_on_terminators(text, punctuation)
+
+
+def _split_on_terminators(text: str, punctuation: Punctuation) -> list[str]:
+    """Fallback for languages pysbd does not cover, such as Korean. It has no
+    abbreviation knowledge, so it only splits on a terminator run."""
+    boundary = re.compile(rf"[{re.escape(punctuation.terminators)}]+\s+")
+    sentences: list[str] = []
+    start = 0
+    for match in boundary.finditer(text):
+        sentences.append(text[start : match.end()])
+        start = match.end()
+    if start < len(text):
+        sentences.append(text[start:])
+    return sentences or [text]
+
+
+# ---------------------------------------------------------------------------
+# Styles
+# ---------------------------------------------------------------------------
+
+_FIRST_LETTER = re.compile(r"^([\"'“‘(\[]*)([^\W\d_])")
+
+
+def apply_writing_style(text: str, style: str, language: str = "auto") -> str:
+    """Format a local transcript without changing its words or meaning.
+
+    Every style is presentation only: casing, spacing and sentence punctuation.
+    No word is ever added, removed or substituted, and protected spans such as
+    numbers, times, URLs, email addresses and contractions come back exactly as
+    the model produced them.
+    """
     if style == "raw":
         return text.strip()
+    if style not in SUPPORTED_WRITING_STYLES:
+        raise ValueError(f"Unsupported writing style: {style}")
+
+    punctuation = _resolve_punctuation(language, text)
+    masked, tokens = _protect(text)
+    normalized = _normalize_spacing(masked, punctuation)
+
     if style == "clean":
-        return _clean(text)
-    if style == "formal":
-        return _formal(text)
-    if style == "casual":
-        return _casual(text)
+        result = _ensure_terminator(normalized, punctuation)
+    elif style == "formal":
+        result = _formal(normalized, punctuation)
+    elif style == "casual":
+        result = _casual(normalized, punctuation)
+    else:
+        # Only the styles that rewrite sentence terminators need real
+        # boundaries; getting them wrong turns "Dr. Smith" into "Dr! Smith".
+        # Formal and casual leave terminators alone, so they skip the cost.
+        sentences = _segment(normalized, punctuation)
+        if style == "very_casual":
+            result = _very_casual(sentences, punctuation)
+        else:
+            result = _excited(sentences, punctuation)
+
     if style == "very_casual":
-        return _very_casual(text)
-    if style == "excited":
-        return _excited(text)
-    raise ValueError(f"Unsupported writing style: {style}")
+        tokens = [token if _ADDRESS.match(token) else token.lower() for token in tokens]
+    return _restore(result, tokens)
 
 
-def _normalize_spacing(text: str) -> str:
+def _normalize_spacing(text: str, punctuation: Punctuation) -> str:
     result = re.sub(r"\s+", " ", text).strip()
-    return re.sub(r"\s+([,.;:!?])", r"\1", result)
+    marks = re.escape(punctuation.terminators + punctuation.separator + ";:")
+    return re.sub(rf"\s+([{marks}])", r"\1", result)
 
 
-def _capitalize_sentence_starts(text: str) -> str:
-    pattern = re.compile(r'(^|[.!?]\s+)(["\'“‘(\[]*)([^\W\d_])', re.UNICODE)
-    return pattern.sub(
+def _capitalize(text: str) -> str:
+    return _FIRST_LETTER.sub(
+        lambda match: match.group(1) + match.group(2).upper(),
+        text,
+        count=1,
+    )
+
+
+def _split_terminator(sentence: str, punctuation: Punctuation) -> tuple[str, str]:
+    """Return the sentence body and its terminator, keeping an ellipsis with the
+    body because it is deliberate rather than a sentence end."""
+    body = sentence.strip()
+    if body and body[-1] in punctuation.terminators and not body.endswith(".."):
+        return body[:-1], body[-1]
+    return body, ""
+
+
+def _ensure_terminator(text: str, punctuation: Punctuation) -> str:
+    if text and text[-1] not in punctuation.terminators:
+        return text + punctuation.terminator
+    return text
+
+
+_SENTENCE_START_CACHE: dict[str, re.Pattern[str]] = {}
+
+
+def _sentence_start_pattern(punctuation: Punctuation) -> re.Pattern[str]:
+    cached = _SENTENCE_START_CACHE.get(punctuation.terminators)
+    if cached is None:
+        marks = re.escape(punctuation.terminators)
+        cached = re.compile(rf"(^|[{marks}]\s*)([\"'“‘(\[]*)([^\W\d_])")
+        _SENTENCE_START_CACHE[punctuation.terminators] = cached
+    return cached
+
+
+def _capitalize_sentence_starts(text: str, punctuation: Punctuation) -> str:
+    """Safe without real segmentation: capitalising after an abbreviation is a
+    no-op because the following word is already a capitalised name, and acronyms
+    are masked before this runs."""
+    return _sentence_start_pattern(punctuation).sub(
         lambda match: match.group(1) + match.group(2) + match.group(3).upper(),
         text,
     )
 
 
-def _formal(text: str) -> str:
-    result = _capitalize_sentence_starts(_normalize_spacing(text))
-    if result and result[-1] not in ".!?":
-        result += "."
+def _formal(text: str, punctuation: Punctuation) -> str:
+    return _ensure_terminator(_capitalize_sentence_starts(text, punctuation), punctuation)
+
+
+def _casual(text: str, punctuation: Punctuation) -> str:
+    """Sentence structure is preserved; only a closing full stop is dropped, the
+    way a dictated message is usually typed. A question mark or an exclamation
+    carries meaning and stays."""
+    result = _capitalize_sentence_starts(text, punctuation)
+    if result.endswith(punctuation.terminator) and not result.endswith(".."):
+        return result[: -len(punctuation.terminator)]
     return result
 
 
-def _clean(text: str) -> str:
-    result = _normalize_spacing(text)
-    if result and result[-1] not in ".!?":
-        result += "."
-    return result
+def _very_casual(sentences: list[str], punctuation: Punctuation) -> str:
+    """Everything runs together in lower case. Joining with the clause separator
+    is safe here precisely because nothing keeps its capital."""
+    parts = []
+    for index, sentence in enumerate(sentences):
+        body, terminator = _split_terminator(sentence, punctuation)
+        if not body:
+            continue
+        if index == len(sentences) - 1:
+            parts.append(body)
+        elif terminator in ("", punctuation.terminator):
+            parts.append(body + punctuation.separator)
+        else:
+            # A question or an exclamation carries meaning worth keeping.
+            parts.append(body + terminator)
+    return _lower_outside_placeholders(punctuation.join.join(parts))
 
 
-def _casual(text: str) -> str:
-    result = _normalize_spacing(text)
-    # Keep colons so URLs, times, and common emoji sequences remain usable.
-    result = re.sub(r"[,;]+", "", result)
-    result = re.sub(r"\s+", " ", result).strip()
-    result = _capitalize_sentence_starts(result)
-    return result[:-1] if result.endswith(".") else result
+def _excited(sentences: list[str], punctuation: Punctuation) -> str:
+    parts = []
+    for sentence in sentences:
+        body, terminator = _split_terminator(sentence, punctuation)
+        if not body:
+            continue
+        if terminator == punctuation.question:
+            parts.append(_capitalize(body) + terminator)
+        else:
+            parts.append(_capitalize(body) + punctuation.exclamation)
+    return punctuation.join.join(parts)
 
 
-def _very_casual(text: str) -> str:
-    result: list[str] = []
-    separators = {",", ";", ":", "/", "-", "‐", "‑", "–", "—"}
-    for character in _normalize_spacing(text).lower():
-        if not unicodedata.category(character).startswith("P"):
-            result.append(character)
-        elif character in separators:
-            result.append(" ")
-    return re.sub(r"\s+", " ", "".join(result)).strip()
-
-
-def _excited(text: str) -> str:
-    result = _formal(text)
-    result = re.sub(r"!+", "!", result)
-    return result[:-1] + "!" if result.endswith(".") else result
+def _lower_outside_placeholders(text: str) -> str:
+    pieces: list[str] = []
+    position = 0
+    for match in _PLACEHOLDER.finditer(text):
+        pieces.append(text[position : match.start()].lower())
+        pieces.append(match.group(0))
+        position = match.end()
+    pieces.append(text[position:].lower())
+    return "".join(pieces)

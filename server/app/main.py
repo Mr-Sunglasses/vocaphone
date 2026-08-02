@@ -395,6 +395,7 @@ def create_app(
         lines_lock = threading.Lock()
         sample_rate = 0
         style = "casual"
+        language = "auto"
         received_samples = 0
         try:
             start = await websocket.receive_json()
@@ -403,6 +404,7 @@ def create_app(
             sample_rate = int(start.get("sample_rate", 0))
             if not 8_000 <= sample_rate <= 96_000:
                 raise ValueError("Sample rate must be between 8000 and 96000 Hz.")
+            language = str(start.get("language", "auto"))
             style = str(start.get("style", "casual"))
             if style not in {"raw", "clean", "formal", "casual", "very_casual", "excited"}:
                 raise ValueError("Unsupported writing style.")
@@ -449,7 +451,9 @@ def create_app(
                                 for line in getattr(final_result, "lines", []) or []:
                                     if getattr(line, "text", ""):
                                         lines[int(line.line_id)] = str(line.text).strip()
-                                transcript = apply_writing_style(_joined_stream_lines(lines), style)
+                                transcript = apply_writing_style(
+                                    _joined_stream_lines(lines), style, language
+                                )
                             if not transcript:
                                 raise ValueError("Moonshine returned an empty transcript.")
                             await websocket.send_json(

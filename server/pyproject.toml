@@ -6,7 +6,12 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.116,<1",
+  # Multilingual sentence boundaries with per-language abbreviation lists, so
+  # transcript styling does not carry a hand-written English word list.
+  "pysbd>=0.3.4,<0.4",
   "python-multipart>=0.0.9,<1",
+  # Public Suffix List snapshot for recognising addresses in a transcript.
+  "tldextract>=5,<6",
   "uvicorn[standard]>=0.35,<1",
 ]
 

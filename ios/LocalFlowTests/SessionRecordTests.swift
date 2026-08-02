@@ -209,12 +209,26 @@ struct SessionRecordTests {
         #expect(try store.loadQuickDictationAvailability() == nil)
     }
 
+    /// These raw values are the gateway's wire contract; the server rejects
+    /// anything outside its own literal set.
     @Test func writingStylesHaveStableGatewayValues() {
+        #expect(WritingStyle.raw.rawValue == "raw")
+        #expect(WritingStyle.clean.rawValue == "clean")
         #expect(WritingStyle.formal.rawValue == "formal")
         #expect(WritingStyle.casual.rawValue == "casual")
         #expect(WritingStyle.veryCasual.rawValue == "very_casual")
         #expect(WritingStyle.excited.rawValue == "excited")
         #expect(SessionRecord().style == WritingStyle.casual.rawValue)
+        #expect(WritingStyle.allCases.count == 6)
+    }
+
+    @Test func everyWritingStyleIsPresentableInThePicker() {
+        for style in WritingStyle.allCases {
+            #expect(!style.displayName.isEmpty)
+            #expect(!style.detail.isEmpty)
+            #expect(!style.example.isEmpty)
+            #expect(!style.symbolName.isEmpty)
+        }
     }
 
     @Test func transcriptionLanguagesHaveStableGatewayValues() {

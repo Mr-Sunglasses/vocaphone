@@ -16,6 +16,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     )?
     private var lastSpaceInsertedAt: Date?
     private var lastDocumentID: String?
+    /// The document the active session inserts into, as observed by this
+    /// keyboard instance. iOS issues a fresh `documentIdentifier` when the
+    /// keyboard is torn down and recreated, so the identifier stored in the
+    /// session record is only comparable while the instance that captured it
+    /// is still alive; each instance records its own target.
+    private var sessionTargetDocumentID: String?
     private var hasActiveSession = false
     private var palette = KeyboardPalette(isDark: false)
 
@@ -270,6 +276,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try parked.transition(to: .canceled)
             try store.save(parked)
             activeSessionID = nil
+            sessionTargetDocumentID = nil
         } catch {
             // A session still moving through the pipeline resolves on its own.
         }
@@ -295,6 +302,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try record.transition(to: .launchingApp)
             try store.save(record)
             activeSessionID = record.sessionID
+            sessionTargetDocumentID = record.sourceDocumentID
             render(record)
             if let availability = try? store.loadQuickDictationAvailability(),
                availability.isReady()
@@ -309,21 +317,24 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
-    /// A transcript belongs to the field it was dictated for. iOS may withhold
-    /// the document identifier, so only a confirmed mismatch between two known
-    /// identifiers blocks insertion; an unknown identifier must not strand a
-    /// transcript the user is waiting for.
-    private func documentMatchesSource(of record: SessionRecord) -> Bool {
-        guard let source = record.sourceDocumentID,
+    /// A transcript belongs to the field it was dictated for. The comparison
+    /// uses the target this instance captured, never the identifier stored in
+    /// the record: identifiers are regenerated across keyboard relaunches, so
+    /// a stored one from a previous instance would block every insertion. iOS
+    /// may also withhold the identifier, so only a confirmed mismatch between
+    /// two known identifiers blocks insertion; an unknown identifier must not
+    /// strand a transcript the user is waiting for.
+    private func documentMatchesSessionTarget() -> Bool {
+        guard let target = sessionTargetDocumentID,
               let current = currentDocumentID
         else { return true }
-        return source == current
+        return target == current
     }
 
     private func insert(_ record: inout SessionRecord, force: Bool = false) {
         guard !isPerformingInsertion else { return }
         guard let transcript = record.transcript, !transcript.isEmpty else { return }
-        guard force || documentMatchesSource(of: record) else {
+        guard force || documentMatchesSessionTarget() else {
             if record.state == .readyToInsert {
                 transition(&record, to: .targetContextChanged)
             }
@@ -346,6 +357,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try record.transition(to: .completed)
             try store.save(record)
             activeSessionID = nil
+            sessionTargetDocumentID = nil
             render(record)
         } catch {
             statusLabel.text = "Insertion was interrupted; text will not be inserted twice."
@@ -464,6 +476,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             return
         }
         activeSessionID = recent.sessionID
+        // A recreated instance cannot compare its identifiers with ones the
+        // previous instance stored, so the field the user has returned to
+        // becomes the session's insertion target.
+        sessionTargetDocumentID = currentDocumentID
         handle(recent)
     }
 
@@ -471,7 +487,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         var record = incoming
         // Returning to the field the transcript was dictated for re-arms an
         // insertion that was parked when the cursor moved elsewhere.
-        if record.state == .targetContextChanged, documentMatchesSource(of: record) {
+        if record.state == .targetContextChanged, documentMatchesSessionTarget() {
             transition(&record, to: .readyToInsert)
         }
         if record.state == .readyToInsert, KeyboardPreferences.autoInsertTranscripts {

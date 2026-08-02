@@ -1,6 +1,11 @@
 import Foundation
 
+/// Presentation only. No style adds, removes or substitutes a word, and
+/// numbers, times, addresses and contractions are always left as the model
+/// transcribed them.
 enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
+    case raw
+    case clean
     case formal
     case casual
     case veryCasual = "very_casual"
@@ -10,6 +15,8 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var displayName: String {
         switch self {
+        case .raw: "Raw"
+        case .clean: "Clean"
         case .formal: "Formal"
         case .casual: "Casual"
         case .veryCasual: "Very Casual"
@@ -19,15 +26,37 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
 
     var detail: String {
         switch self {
-        case .formal: "Sentence capitalization with complete punctuation."
-        case .casual: "Sentence capitalization with lighter punctuation."
-        case .veryCasual: "Lowercase with punctuation removed."
-        case .excited: "Sentence capitalization with expressive punctuation."
+        case .raw:
+            "Exactly what the model returned, with nothing changed."
+        case .clean:
+            "Spacing tidied and a closing full stop. Capitalization untouched."
+        case .formal:
+            "Sentence capitalization and a closing full stop."
+        case .casual:
+            "Sentences kept, but no closing full stop."
+        case .veryCasual:
+            "All lowercase, sentences joined with commas."
+        case .excited:
+            "Every statement ends with an exclamation mark."
+        }
+    }
+
+    /// A short worked example, so the choice is obvious before dictating.
+    var example: String {
+        switch self {
+        case .raw: "I don't think it's ready. It cost $1,200."
+        case .clean: "I don't think it's ready. It cost $1,200."
+        case .formal: "I don't think it's ready. It cost $1,200."
+        case .casual: "I don't think it's ready. It cost $1,200"
+        case .veryCasual: "i don't think it's ready, it cost $1,200"
+        case .excited: "I don't think it's ready! It cost $1,200!"
         }
     }
 
     var symbolName: String {
         switch self {
+        case .raw: "doc.plaintext"
+        case .clean: "wand.and.stars"
         case .formal: "textformat"
         case .casual: "text.bubble"
         case .veryCasual: "textformat.abc"
