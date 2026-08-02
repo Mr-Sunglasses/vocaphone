@@ -68,9 +68,7 @@ def test_formal_capitalizes_and_terminates() -> None:
 
 
 def test_casual_drops_only_the_closing_full_stop() -> None:
-    assert apply_writing_style("Hello there. It is fine.", "casual") == (
-        "Hello there. It is fine"
-    )
+    assert apply_writing_style("Hello there. It is fine.", "casual") == ("Hello there. It is fine")
     # A question mark carries meaning and is not a decoration to strip.
     assert apply_writing_style("Are we ready?", "casual") == "Are we ready?"
 
@@ -105,9 +103,7 @@ def test_an_ellipsis_is_never_mistaken_for_a_sentence_end(style: str) -> None:
 
 
 def test_a_trailing_address_does_not_gain_a_second_period() -> None:
-    assert apply_writing_style("See example.com/docs.", "formal") == (
-        "See example.com/docs."
-    )
+    assert apply_writing_style("See example.com/docs.", "formal") == ("See example.com/docs.")
 
 
 def test_empty_input_stays_empty() -> None:
@@ -151,9 +147,7 @@ def test_arabic_uses_an_arabic_clause_separator() -> None:
 
 def test_a_language_pysbd_lacks_still_gets_styled() -> None:
     """Korean has no pysbd profile, so it falls back to terminator splitting."""
-    assert apply_writing_style(KOREAN, "excited", "ko") == (
-        "집에 갔어요! 존이 나중에 전화했어요!"
-    )
+    assert apply_writing_style(KOREAN, "excited", "ko") == ("집에 갔어요! 존이 나중에 전화했어요!")
 
 
 def test_german_abbreviations_come_from_the_segmenter_not_a_word_list() -> None:
@@ -162,13 +156,13 @@ def test_german_abbreviations_come_from_the_segmenter_not_a_word_list() -> None:
 
 
 def test_auto_infers_the_script_from_the_transcript() -> None:
-    """"auto" is the default, so the script has to be inferred from the text."""
+    """ "auto" is the default, so the script has to be inferred from the text."""
     assert apply_writing_style(JAPANESE, "excited", "auto") == (
         "家に帰りました！ジョンが電話してきました！"
     )
 
 
 def test_a_country_code_word_is_not_mistaken_for_a_domain() -> None:
-    """".it" is a real suffix, so "home.It" must not be read as an address."""
+    """ ".it" is a real suffix, so "home.It" must not be read as an address."""
     styled = apply_writing_style("I went home.It was fine.", "formal", "en")
     assert styled == "I went home.It was fine."

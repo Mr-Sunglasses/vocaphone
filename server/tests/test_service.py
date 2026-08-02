@@ -29,9 +29,7 @@ def test_casual_style_drops_only_the_closing_period() -> None:
         apply_writing_style("visit https://example.com, please.", "casual")
         == "Visit https://example.com, please"
     )
-    assert apply_writing_style("Hello there. It is fine.", "casual") == (
-        "Hello there. It is fine"
-    )
+    assert apply_writing_style("Hello there. It is fine.", "casual") == ("Hello there. It is fine")
 
 
 def test_very_casual_style_lowercases_without_mangling_words() -> None:
