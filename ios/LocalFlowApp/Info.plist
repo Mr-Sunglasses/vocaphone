@@ -26,6 +26,19 @@
   <dict>
     <key>NSAllowsLocalNetworking</key>
     <true/>
+    <!-- Tailscale MagicDNS names are fully qualified, so ATS would refuse the
+         plain-HTTP gateways this app is built around. Traffic to *.ts.net only
+         travels inside the user's WireGuard-encrypted tailnet. -->
+    <key>NSExceptionDomains</key>
+    <dict>
+      <key>ts.net</key>
+      <dict>
+        <key>NSIncludesSubdomains</key>
+        <true/>
+        <key>NSExceptionAllowsInsecureHTTPLoads</key>
+        <true/>
+      </dict>
+    </dict>
   </dict>
   <key>NSSupportsLiveActivities</key>
   <true/>
