@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 struct SettingsView: View {
-    @EnvironmentObject private var coordinator: RecordingCoordinator
+    @Environment(RecordingCoordinator.self) private var coordinator
     @AppStorage("gatewayURL") private var gatewayURL = ""
     @AppStorage(GatewayStatusPreferences.healthMessageKey)
     private var healthMessage = "Not tested"
@@ -22,6 +22,10 @@ struct SettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var writingStyleRawValue = WritingStyle.casual.rawValue
     @AppStorage(
+        KeyboardPreferences.transcriptionLanguageKey,
+        store: KeyboardPreferences.defaults
+    ) private var transcriptionLanguageRawValue = TranscriptionLanguage.automatic.rawValue
+    @AppStorage(
         KeyboardPreferences.microphonePreferenceKey,
         store: KeyboardPreferences.defaults
     ) private var microphonePreferenceRawValue = MicrophonePreference.automatic.rawValue
@@ -32,6 +36,7 @@ struct SettingsView: View {
         List {
             gatewaySection
             insertionSection
+            transcriptionLanguageSection
             writingStyleSection
             microphoneSection
             permissionsSection
@@ -156,6 +161,19 @@ struct SettingsView: View {
         }
     }
 
+    private var transcriptionLanguageSection: some View {
+        Section("Transcription language") {
+            Picker("Language", selection: $transcriptionLanguageRawValue) {
+                ForEach(TranscriptionLanguage.allCases) { language in
+                    Text(language.displayName).tag(language.rawValue)
+                }
+            }
+            Text(selectedTranscriptionLanguage.detail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private var microphoneSection: some View {
         Section("Microphone") {
             Picker("Input selection", selection: $microphonePreferenceRawValue) {
@@ -215,6 +233,10 @@ struct SettingsView: View {
 
     private var selectedWritingStyle: WritingStyle {
         WritingStyle(rawValue: writingStyleRawValue) ?? .casual
+    }
+
+    private var selectedTranscriptionLanguage: TranscriptionLanguage {
+        TranscriptionLanguage(rawValue: transcriptionLanguageRawValue) ?? .automatic
     }
 
     private var selectedMicrophonePreference: MicrophonePreference {

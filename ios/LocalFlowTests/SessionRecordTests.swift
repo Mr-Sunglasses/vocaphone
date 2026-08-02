@@ -217,6 +217,13 @@ struct SessionRecordTests {
         #expect(SessionRecord().style == WritingStyle.casual.rawValue)
     }
 
+    @Test func transcriptionLanguagesHaveStableGatewayValues() {
+        #expect(TranscriptionLanguage.allCases.map(\.rawValue) == [
+            "auto", "en", "es", "ar", "ja", "ko", "zh", "uk", "vi",
+        ])
+        #expect(SessionRecord().language == TranscriptionLanguage.automatic.rawValue)
+    }
+
     @Test func microphonePreferencesHaveStableStoredValues() {
         #expect(MicrophonePreference.automatic.rawValue == "automatic")
         #expect(MicrophonePreference.iPhone.rawValue == "iphone")

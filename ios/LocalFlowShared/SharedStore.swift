@@ -33,12 +33,21 @@ final class SharedStore: @unchecked Sendable {
         }
     }
 
+    /// Written several times a second while recording. An atomic write means a
+    /// temporary file plus a rename on every tick, and re-creating the directory
+    /// each time adds another syscall — both wasteful for four bytes whose next
+    /// value arrives 150 ms later. A torn read simply shows a stale level.
     func saveMeter(_ level: Float, for id: UUID) throws {
         let directory = try sessionsDirectory()
-        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
         let clamped = min(max(level, 0), 1)
         let data = try encoder.encode(clamped)
-        try data.write(to: meterURL(for: id, directory: directory), options: .atomic)
+        let fileURL = meterURL(for: id, directory: directory)
+        do {
+            try data.write(to: fileURL)
+        } catch {
+            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: fileURL)
+        }
     }
 
     func load(_ id: UUID) throws -> SessionRecord? {

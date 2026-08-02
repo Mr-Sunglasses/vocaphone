@@ -4,7 +4,7 @@ import UIKit
 /// Transcripts were previously visible only as the single latest result on the
 /// main screen, even though every session is already persisted.
 struct TranscriptHistoryView: View {
-    @EnvironmentObject private var coordinator: RecordingCoordinator
+    @Environment(RecordingCoordinator.self) private var coordinator
     @State private var records: [SessionRecord] = []
     @State private var copiedID: UUID?
 
@@ -24,8 +24,8 @@ struct TranscriptHistoryView: View {
         }
         .navigationTitle("Transcripts")
         .navigationBarTitleDisplayMode(.inline)
-        .task { reload() }
-        .refreshable { reload() }
+        .task { await reload() }
+        .refreshable { await reload() }
     }
 
     @ViewBuilder
@@ -75,8 +75,10 @@ struct TranscriptHistoryView: View {
         .padding(.vertical, 4)
     }
 
-    private func reload() {
-        records = coordinator.recentTranscripts()
+    /// Reading and decoding up to fifty session files is file work, so it stays
+    /// off the main actor and only the assignment comes back.
+    private func reload() async {
+        records = await coordinator.loadRecentTranscripts()
         copiedID = nil
     }
 }

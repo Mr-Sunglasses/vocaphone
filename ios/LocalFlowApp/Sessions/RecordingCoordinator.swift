@@ -3,11 +3,15 @@ import SwiftUI
 import UIKit
 
 @MainActor
-final class RecordingCoordinator: ObservableObject {
-    @Published private(set) var activeRecord: SessionRecord?
-    @Published private(set) var message: String?
-    @Published private(set) var quickDictationExpiresAt: Date?
-    @Published private(set) var currentMicrophoneName: String?
+@Observable
+final class RecordingCoordinator {
+    private(set) var activeRecord: SessionRecord?
+    private(set) var message: String?
+    private(set) var quickDictationExpiresAt: Date?
+    private(set) var currentMicrophoneName: String?
+    /// Kept separate from `activeRecord` so a level update several times a
+    /// second invalidates only the views that draw the meter.
+    private(set) var meterLevel: Float = 0
 
     private let recorder = AudioRecorder()
     private let store = SharedStore.shared
@@ -23,7 +27,6 @@ final class RecordingCoordinator: ObservableObject {
 
     var stateLabel: String { activeRecord?.state.rawValue ?? "idle" }
     var isRecording: Bool { activeRecord?.state == .recording && recorder.isRecording }
-    var meterLevel: Float { activeRecord?.meterLevel ?? 0 }
     var hasError: Bool { activeRecord?.error != nil }
     var transcript: String? { activeRecord?.transcript }
     var isQuickDictationReady: Bool {
@@ -56,9 +59,11 @@ final class RecordingCoordinator: ObservableObject {
         try? store.loadKeyboardStatus()
     }
 
-    func recentTranscripts(limit: Int = 50) -> [SessionRecord] {
-        ((try? store.recent(limit: limit)) ?? [])
-            .filter { !($0.transcript ?? "").isEmpty }
+    nonisolated func loadRecentTranscripts(limit: Int = 50) async -> [SessionRecord] {
+        await Task.detached(priority: .userInitiated) {
+            ((try? SharedStore.shared.recent(limit: limit)) ?? [])
+                .filter { !($0.transcript ?? "").isEmpty }
+        }.value
     }
     var microphoneStatusLabel: String {
         if let currentMicrophoneName { return currentMicrophoneName }
@@ -82,10 +87,6 @@ final class RecordingCoordinator: ObservableObject {
             if let inputName {
                 self.lastMicrophoneName = inputName
             }
-        }
-        let streamingBridge = streamingBridge
-        recorder.onPCMChunk = { data, sequence in
-            Task { await streamingBridge.send(data, sequence: sequence) }
         }
         loadGatewaySettings()
     }
@@ -231,7 +232,7 @@ final class RecordingCoordinator: ObservableObject {
         var record = SessionRecord(
             state: .idle,
             sourceDocumentID: "in-app-test",
-            language: "auto",
+            language: KeyboardPreferences.transcriptionLanguage.rawValue,
             style: KeyboardPreferences.writingStyle.rawValue
         )
         do {
@@ -265,6 +266,7 @@ final class RecordingCoordinator: ObservableObject {
         guard var record = activeRecord else { return }
         let shouldRemainReady = shouldKeepQuickDictationReady(after: record)
         recorder.cancelSession(keepAudioSessionActive: shouldRemainReady)
+        meterLevel = 0
         do {
             if !record.state.isTerminal {
                 try record.transition(to: .canceled)
@@ -361,13 +363,14 @@ final class RecordingCoordinator: ObservableObject {
 
             let directory = try localAudioDirectory()
             let audioURL = try recorder.start(sessionID: record.sessionID, directory: directory)
-            if let client = gatewayClient, let sampleRate = recorder.recordingSampleRate {
+            if let client = gatewayClient, let chunks = recorder.pcmChunks {
                 await streamingBridge.start(
                     client: client,
                     sessionID: record.sessionID,
                     language: record.language,
                     style: record.style,
-                    sampleRate: Int(sampleRate.rounded())
+                    sampleRate: Int(recorder.transcriptionSampleRate),
+                    chunks: chunks
                 )
             }
             if record.state == .launchingApp {
@@ -418,7 +421,11 @@ final class RecordingCoordinator: ObservableObject {
                 guard let self, let current = self.activeRecord,
                       let shared = try? self.store.load(current.sessionID)
                 else { continue }
-                self.activeRecord = shared
+                // Four times a second the record is usually identical. Assigning
+                // it anyway would invalidate observers for no reason.
+                if shared != current {
+                    self.activeRecord = shared
+                }
                 switch shared.state {
                 case .finalizing:
                     self.liveActivity.update(status: "Finishing", canFinish: false)
@@ -455,6 +462,7 @@ final class RecordingCoordinator: ObservableObject {
         let output = recorder.stopSession(
             keepAudioSessionActive: shouldRemainReady
         ) ?? resolvedAudioURL(for: record)
+        meterLevel = 0
         if shouldRemainReady {
             armQuickDictation()
         } else {
@@ -490,7 +498,7 @@ final class RecordingCoordinator: ObservableObject {
             liveActivity.update(status: "Finishing transcript", canFinish: false)
 
             if let transcript = await streamingBridge.finish(
-                expectedChunks: recorder.lastFinishedChunkCount
+                droppedChunks: recorder.lastDroppedChunkCount
             ) {
                 record.transcript = transcript
                 record.error = nil
@@ -596,13 +604,15 @@ final class RecordingCoordinator: ObservableObject {
     }
 
     private func persistMeter(_ level: Float) {
-        guard var record = activeRecord, record.state == .recording else { return }
-        record.meterLevel = min(max(level, 0), 1)
-        activeRecord = record
+        guard let record = activeRecord, record.state == .recording else { return }
+        let clamped = min(max(level, 0), 1)
+        // Only the level changes here. Leaving `activeRecord` untouched keeps
+        // this from invalidating every view observing the session.
+        meterLevel = clamped
         // Meter updates are intentionally stored separately from the session
         // record. Otherwise a stale meter write from the app can overwrite a
         // finalizing/canceled state written by the keyboard extension.
-        try? store.saveMeter(level, for: record.sessionID)
+        try? store.saveMeter(clamped, for: record.sessionID)
     }
 
     private func shouldKeepQuickDictationReady(after record: SessionRecord) -> Bool {
@@ -714,56 +724,55 @@ final class RecordingCoordinator: ObservableObject {
     }
 }
 
+/// Forwards captured audio to the gateway over a WebSocket.
+///
+/// The capture pipeline already emits chunks in order on a single queue, so a
+/// lone consumer task preserves ordering without a reordering buffer. Memory is
+/// bounded by the `AsyncStream` the recorder hands over: when the link cannot
+/// keep up, chunks are dropped and the recorder reports it, and the caller
+/// falls back to uploading the intact file rather than the stream growing
+/// without limit.
 private actor StreamingAudioBridge {
     private var stream: GatewayAudioStream?
-    private var pending: [UInt64: Data] = [:]
-    private var nextSequence: UInt64 = 0
-    private var acceptingAudio = false
+    private var pump: Task<Void, Never>?
+    private var failed = false
 
     func start(
         client: GatewayClient,
         sessionID: UUID,
         language: String,
         style: String,
-        sampleRate: Int
+        sampleRate: Int,
+        chunks: AsyncStream<Data>
     ) async {
-        stream?.cancel()
-        pending.removeAll(keepingCapacity: true)
-        nextSequence = 0
-        acceptingAudio = true
-        stream = try? await client.startAudioStream(
+        cancel()
+        guard let opened = try? await client.startAudioStream(
             sessionID: sessionID,
             language: language,
             style: style,
             sampleRate: sampleRate
-        )
-        if stream == nil {
-            acceptingAudio = false
-            pending.removeAll()
-        } else {
-            await drainPending()
-        }
-    }
+        ) else { return }
 
-    func send(_ data: Data, sequence: UInt64) async {
-        guard acceptingAudio else { return }
-        pending[sequence] = data
-        await drainPending()
-    }
-
-    func finish(expectedChunks: UInt64) async -> String? {
-        for _ in 0..<100 where nextSequence < expectedChunks && acceptingAudio {
-            await drainPending()
-            if nextSequence < expectedChunks {
-                try? await Task.sleep(for: .milliseconds(10))
+        stream = opened
+        failed = false
+        pump = Task { [weak self] in
+            for await chunk in chunks {
+                await self?.deliver(chunk)
             }
         }
-        guard nextSequence == expectedChunks else {
+    }
+
+    /// Returns a transcript only when the whole recording reached the gateway.
+    /// Any loss makes the stream untrustworthy, so the caller uploads instead.
+    func finish(droppedChunks: Int) async -> String? {
+        // The recorder finished the chunk stream before calling this, so the
+        // pump terminates once it has drained what is still buffered.
+        await pump?.value
+        pump = nil
+        guard droppedChunks == 0, !failed, let stream else {
             cancel()
             return nil
         }
-        guard let stream else { return nil }
-        acceptingAudio = false
         self.stream = nil
         do {
             return try await stream.finish()
@@ -774,25 +783,21 @@ private actor StreamingAudioBridge {
     }
 
     func cancel() {
+        pump?.cancel()
+        pump = nil
         stream?.cancel()
         stream = nil
-        acceptingAudio = false
-        pending.removeAll()
+        failed = false
     }
 
-    private func drainPending() async {
-        guard let stream else { return }
-        while let data = pending.removeValue(forKey: nextSequence) {
-            do {
-                try await stream.send(data)
-                nextSequence += 1
-            } catch {
-                stream.cancel()
-                self.stream = nil
-                acceptingAudio = false
-                pending.removeAll()
-                return
-            }
+    private func deliver(_ chunk: Data) async {
+        guard !failed, let stream else { return }
+        do {
+            try await stream.send(chunk)
+        } catch {
+            failed = true
+            stream.cancel()
+            self.stream = nil
         }
     }
 }

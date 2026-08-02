@@ -31,7 +31,7 @@ final class KeyGridView: UIView {
     }
 
     var plane: KeyPlane = .letters {
-        didSet { if plane != oldValue { rebuild() } }
+        didSet { if plane != oldValue { activatePlane() } }
     }
 
     var showsGlobeKey = true {
@@ -60,6 +60,11 @@ final class KeyGridView: UIView {
 
     private(set) var rows: [KeyRow] = []
     private(set) var keyViews: [KeyView] = []
+    /// Switching to digits and back is frequent, and rebuilding thirty-odd key
+    /// views each time means re-resolving fonts and symbol images. Built planes
+    /// are kept and simply hidden; only a metrics or palette change discards them.
+    private var planeCache: [KeyPlane: (rows: [KeyRow], views: [KeyView])] = [:]
+    private var previewPool: [KeyPreviewView] = []
     private var tracked: [TrackedTouch] = []
     private var deleteTimer: Timer?
     private var deleteRepeatCount = 0
@@ -201,29 +206,65 @@ final class KeyGridView: UIView {
 
     // MARK: - Building
 
+    /// Discards every cached plane. Only geometry or colour changes need this;
+    /// a plane switch goes through `activatePlane`.
     private func rebuild() {
         endDeleteRepeat()
-        tracked.forEach { $0.preview?.removeFromSuperview() }
-        tracked.removeAll()
-        keyViews.forEach { $0.removeFromSuperview() }
-        keyViews.removeAll()
-
-        rows = KeyLayout.rows(
-            for: plane,
-            includesGlobe: showsGlobeKey,
-            returnIsProminent: returnKeyIsProminent,
-            leadingPunctuation: leadingPunctuation
-        )
-        for row in rows {
-            for spec in row.keys {
-                let key = KeyView(spec: spec, metrics: metrics, palette: palette)
-                addSubview(key)
-                keyViews.append(key)
-            }
+        releaseTouches()
+        for (_, plane) in planeCache {
+            plane.views.forEach { $0.removeFromSuperview() }
         }
+        planeCache.removeAll()
+        previewPool.forEach { $0.removeFromSuperview() }
+        previewPool.removeAll()
+        keyViews.removeAll()
+        rows.removeAll()
+        activatePlane()
+    }
+
+    private func activatePlane() {
+        endDeleteRepeat()
+        releaseTouches()
+        keyViews.forEach { $0.isHidden = true }
+
+        let entry: (rows: [KeyRow], views: [KeyView])
+        if let cached = planeCache[plane] {
+            entry = cached
+        } else {
+            let built = KeyLayout.rows(
+                for: plane,
+                includesGlobe: showsGlobeKey,
+                returnIsProminent: returnKeyIsProminent,
+                leadingPunctuation: leadingPunctuation
+            )
+            var views: [KeyView] = []
+            views.reserveCapacity(built.reduce(0) { $0 + $1.keys.count })
+            for row in built {
+                for spec in row.keys {
+                    let key = KeyView(spec: spec, metrics: metrics, palette: palette)
+                    addSubview(key)
+                    views.append(key)
+                }
+            }
+            entry = (built, views)
+            planeCache[plane] = entry
+        }
+
+        rows = entry.rows
+        keyViews = entry.views
+        keyViews.forEach { $0.isHidden = false }
         updateKeys()
         invalidateIntrinsicContentSize()
         setNeedsLayout()
+    }
+
+    private func releaseTouches() {
+        for item in tracked {
+            item.key.isHighlighted = false
+            recycle(item.preview)
+            item.preview = nil
+        }
+        tracked.removeAll()
     }
 
     private func updateKeys() {
@@ -294,7 +335,7 @@ final class KeyGridView: UIView {
             let item = tracked.remove(at: index)
             let shouldCommit = commit && item.key.isHighlighted
             item.key.isHighlighted = false
-            item.preview?.removeFromSuperview()
+            recycle(item.preview)
             item.preview = nil
             if item.key.spec.cap == .delete { endDeleteRepeat() }
             guard shouldCommit, !item.key.spec.cap.actsOnTouchDown else { continue }
@@ -397,7 +438,7 @@ final class KeyGridView: UIView {
               item.key.spec.cap.isCharacter,
               let text = item.key.previewText
         else {
-            item.preview?.removeFromSuperview()
+            recycle(item.preview)
             item.preview = nil
             return
         }
@@ -406,8 +447,7 @@ final class KeyGridView: UIView {
         if let existing = item.preview {
             preview = existing
         } else {
-            preview = KeyPreviewView(palette: palette, metrics: metrics)
-            addSubview(preview)
+            preview = dequeuePreview()
             item.preview = preview
         }
         preview.show(text)
@@ -418,6 +458,29 @@ final class KeyGridView: UIView {
         let x = min(max(frame.midX - width / 2, 2), bounds.width - width - 2)
         preview.frame = CGRect(x: x, y: frame.minY - height - 6, width: width, height: height)
         bringSubviewToFront(preview)
+    }
+
+    /// Reused rather than allocated per touch; a fast typist would otherwise
+    /// create and discard a view for every keystroke.
+    private func dequeuePreview() -> KeyPreviewView {
+        if let reused = previewPool.popLast() {
+            reused.isHidden = false
+            return reused
+        }
+        let preview = KeyPreviewView(palette: palette, metrics: metrics)
+        addSubview(preview)
+        return preview
+    }
+
+    private func recycle(_ preview: KeyPreviewView?) {
+        guard let preview else { return }
+        preview.isHidden = true
+        // Two covers two-thumb typing; holding more would just retain views.
+        guard previewPool.count < 2 else {
+            preview.removeFromSuperview()
+            return
+        }
+        previewPool.append(preview)
     }
 }
 

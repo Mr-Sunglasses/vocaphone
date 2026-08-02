@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
-    @EnvironmentObject private var coordinator: RecordingCoordinator
+    @Environment(RecordingCoordinator.self) private var coordinator
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage("gatewayURL") private var gatewayURL = ""
     @AppStorage(GatewayStatusPreferences.engineReadyKey)
@@ -12,7 +12,12 @@ struct ContentView: View {
         store: KeyboardPreferences.defaults
     ) private var quickDictationEnabled = true
     @State private var keyboardStatus: KeyboardStatus?
+    @State private var keyboardStepDetail = ContentView.keyboardSetupHint
     @State private var testText = ""
+
+    private static let keyboardSetupHint =
+        "Enable Local Flow under Settings › General › Keyboards and allow Full "
+            + "Access. This confirms itself the first time the keyboard runs."
 
     var body: some View {
         NavigationStack {
@@ -50,7 +55,6 @@ struct ContentView: View {
         .overlay {
             if showsKeyboardReturnGuide {
                 KeyboardReturnGuide(
-                    meterLevel: coordinator.isKeyboardRecording ? coordinator.meterLevel : 0.42,
                     startedAt: coordinator.activeRecord?.createdAt ?? Date(),
                     finish: coordinator.requestFinish,
                     cancel: coordinator.cancel
@@ -90,21 +94,19 @@ struct ContentView: View {
         ]
     }
 
-    private var keyboardStepDetail: String {
-        guard let keyboardStatus else {
-            return "Enable Local Flow under Settings › General › Keyboards and allow Full "
-                + "Access. This confirms itself the first time the keyboard runs."
-        }
-        let seen = keyboardStatus.lastSeenAt.formatted(date: .abbreviated, time: .shortened)
-        return "Keyboard last active \(seen)."
-    }
-
     private var isSetupComplete: Bool {
         setupSteps.allSatisfy(\.isComplete)
     }
 
+    /// Date formatting is comparatively expensive and `body` re-evaluates
+    /// often, so the string is built when the status actually changes.
     private func reloadKeyboardStatus() {
-        keyboardStatus = coordinator.keyboardStatus()
+        let status = coordinator.keyboardStatus()
+        keyboardStatus = status
+        keyboardStepDetail = status.map {
+            let seen = $0.lastSeenAt.formatted(date: .abbreviated, time: .shortened)
+            return "Keyboard last active \(seen)."
+        } ?? Self.keyboardSetupHint
     }
 
     // MARK: - Sections
@@ -114,8 +116,7 @@ struct ContentView: View {
             LabeledContent("State", value: coordinator.stateLabel)
 
             if coordinator.isRecording {
-                ProgressView(value: Double(coordinator.meterLevel))
-                    .tint(.red)
+                RecordingMeter()
                 Text("Recording continues while you return to the previous app.")
                     .font(.footnote)
             }
@@ -191,8 +192,7 @@ struct ContentView: View {
                     Text("Listening")
                         .font(.subheadline.weight(.semibold))
                     Spacer()
-                    ProgressView(value: Double(coordinator.meterLevel))
-                        .tint(.red)
+                    RecordingMeter()
                         .frame(width: 90)
                 }
                 .accessibilityElement(children: .combine)
@@ -226,8 +226,41 @@ struct ContentView: View {
     }
 }
 
+/// The level updates several times a second. Keeping it in a leaf view means
+/// only this redraws, instead of every screen observing the coordinator.
+private struct RecordingMeter: View {
+    @Environment(RecordingCoordinator.self) private var coordinator
+
+    var body: some View {
+        ProgressView(value: Double(coordinator.meterLevel))
+            .tint(.red)
+    }
+}
+
+private struct RecordingPulse: View {
+    @Environment(RecordingCoordinator.self) private var coordinator
+
+    private var level: CGFloat {
+        coordinator.isKeyboardRecording ? CGFloat(coordinator.meterLevel) : 0.42
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.red.opacity(0.12))
+                .frame(width: 108, height: 108)
+            Circle()
+                .fill(.red)
+                .frame(width: 58 + level * 18, height: 58 + level * 18)
+                .animation(.linear(duration: 0.12), value: level)
+            Image(systemName: "mic.fill")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+    }
+}
+
 private struct KeyboardReturnGuide: View {
-    let meterLevel: Float
     let startedAt: Date
     let finish: () -> Void
     let cancel: () -> Void
@@ -262,21 +295,7 @@ private struct KeyboardReturnGuide: View {
 
                 Spacer(minLength: 4)
 
-                ZStack {
-                    Circle()
-                        .fill(Color.red.opacity(0.12))
-                        .frame(width: 108, height: 108)
-                    Circle()
-                        .fill(.red)
-                        .frame(
-                            width: 58 + CGFloat(meterLevel) * 18,
-                            height: 58 + CGFloat(meterLevel) * 18
-                        )
-                        .animation(.linear(duration: 0.12), value: meterLevel)
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
+                RecordingPulse()
 
                 VStack(spacing: 10) {
                     Text("Local Flow is listening")

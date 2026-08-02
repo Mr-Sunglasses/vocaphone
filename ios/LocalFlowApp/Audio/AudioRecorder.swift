@@ -1,11 +1,15 @@
 import AVFAudio
 import Foundation
+import os
 
 @MainActor
 final class AudioRecorder: NSObject {
-    private let captureSink = AudioCaptureSink()
     private var engine: AVAudioEngine?
     private var captureFormat: AVAudioFormat?
+    private var ring: PCMRingBuffer?
+    private var tap: CaptureTap?
+    private var pipeline: AudioCapturePipeline?
+    private var chunkContinuation: AsyncStream<Data>.Continuation?
     private var outputURL: URL?
     private var meterTimer: Timer?
     private var limitTimer: Timer?
@@ -13,10 +17,14 @@ final class AudioRecorder: NSObject {
     var onMeter: ((Float) -> Void)?
     var onMaximumDuration: (() -> Void)?
     var onInputRouteChanged: ((String?) -> Void)?
-    var onPCMChunk: (@Sendable (Data, UInt64) -> Void)? {
-        didSet { captureSink.onPCMChunk = onPCMChunk }
-    }
     var microphonePreference: MicrophonePreference = .automatic
+
+    /// Chunks of float32 PCM at the transcription sample rate, in order. Backed
+    /// by a bounded buffer: if the transport cannot keep up the stream is
+    /// abandoned rather than growing without limit, and the intact file on disk
+    /// becomes the fallback.
+    private(set) var pcmChunks: AsyncStream<Data>?
+    private(set) var lastDroppedChunkCount = 0
 
     override init() {
         super.init()
@@ -37,7 +45,7 @@ final class AudioRecorder: NSObject {
         }
     }
 
-    var isRecording: Bool { outputURL != nil && captureSink.isWriting }
+    var isRecording: Bool { outputURL != nil && pipeline != nil }
     var isStandbyActive: Bool { engine?.isRunning == true && !isRecording }
     var currentInputName: String? {
         guard engine?.isRunning == true else { return nil }
@@ -46,8 +54,9 @@ final class AudioRecorder: NSObject {
     var recordPermission: AVAudioApplication.recordPermission {
         AVAudioApplication.shared.recordPermission
     }
-    var recordingSampleRate: Double? { captureFormat?.sampleRate }
-    private(set) var lastFinishedChunkCount: UInt64 = 0
+    /// The rate the gateway is told about, which is the converted rate rather
+    /// than whatever the hardware happened to offer.
+    var transcriptionSampleRate: Double { CaptureFormat.sampleRate }
 
     func requestPermission(
         _ completion: @escaping @MainActor @Sendable (Bool) -> Void
@@ -67,16 +76,39 @@ final class AudioRecorder: NSObject {
             .appendingPathExtension("wav")
 
         try ensureEngineRunning()
-        guard let captureFormat else { throw RecordingError.inputUnavailable }
-        let file = try AVAudioFile(
-            forWriting: output,
-            settings: captureFormat.settings,
-            commonFormat: captureFormat.commonFormat,
-            interleaved: captureFormat.isInterleaved
-        )
-        captureSink.beginWriting(to: file)
-        lastFinishedChunkCount = 0
+        guard let captureFormat, let ring, let tap else {
+            throw RecordingError.inputUnavailable
+        }
+        guard let pipeline = AudioCapturePipeline(
+            sourceSampleRate: captureFormat.sampleRate,
+            ring: ring
+        ) else {
+            throw RecordingError.inputUnavailable
+        }
+
+        var continuation: AsyncStream<Data>.Continuation?
+        // Roughly five seconds of audio in flight. Past that the link is not
+        // going to recover within the recording, so dropping and falling back
+        // beats holding megabytes of PCM in memory.
+        let stream = AsyncStream<Data>(bufferingPolicy: .bufferingNewest(48)) {
+            continuation = $0
+        }
+        guard let continuation else { throw RecordingError.inputUnavailable }
+
+        ring.reset()
+        try pipeline.start(writingTo: output) { data in
+            switch continuation.yield(data) {
+            case .enqueued: true
+            default: false
+            }
+        }
+
+        self.pipeline = pipeline
+        chunkContinuation = continuation
+        pcmChunks = stream
+        lastDroppedChunkCount = 0
         outputURL = output
+        tap.isCapturing = true
 
         meterTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) {
             [weak self] _ in
@@ -97,9 +129,7 @@ final class AudioRecorder: NSObject {
     /// transcript.
     func stopSession(keepAudioSessionActive: Bool = false) -> URL? {
         let finishedOutput = outputURL
-        lastFinishedChunkCount = captureSink.finishWriting()
-        outputURL = nil
-        stopTimers()
+        teardownCapture()
         if !keepAudioSessionActive {
             stopEngine(deactivateAudioSession: true)
         }
@@ -108,9 +138,7 @@ final class AudioRecorder: NSObject {
 
     func cancelSession(keepAudioSessionActive: Bool = false) {
         let canceledOutput = outputURL
-        _ = captureSink.finishWriting()
-        outputURL = nil
-        stopTimers()
+        teardownCapture()
         if let canceledOutput {
             try? FileManager.default.removeItem(at: canceledOutput)
         }
@@ -120,7 +148,7 @@ final class AudioRecorder: NSObject {
     }
 
     /// Keeps the containing app eligible for background audio execution while
-    /// discarding every captured buffer. No standby audio is written to disk.
+    /// discarding every captured buffer. No standby audio reaches the ring.
     func startStandby() throws {
         guard !isRecording else { return }
         try ensureEngineRunning()
@@ -136,6 +164,20 @@ final class AudioRecorder: NSObject {
             cancelSession(keepAudioSessionActive: true)
         }
         stopEngine(deactivateAudioSession: true)
+    }
+
+    private func teardownCapture() {
+        tap?.isCapturing = false
+        // Drains what the ring still holds and closes the file before the
+        // caller uploads it.
+        pipeline?.finish()
+        lastDroppedChunkCount = (pipeline?.droppedChunkCount ?? 0) + (ring?.overflowCount ?? 0)
+        chunkContinuation?.finish()
+        chunkContinuation = nil
+        pcmChunks = nil
+        pipeline = nil
+        outputURL = nil
+        stopTimers()
     }
 
     private func ensureEngineRunning() throws {
@@ -183,16 +225,20 @@ final class AudioRecorder: NSObject {
             deactivateAudioSession()
             throw RecordingError.inputUnavailable
         }
-        let sink = captureSink
+        // Two seconds of headroom between the render thread and the drain tick.
+        let buffer = PCMRingBuffer(capacity: Int(format.sampleRate * 2))
+        let captureTap = CaptureTap(ring: buffer)
         input.installTap(onBus: 0, bufferSize: 4_096, format: format) {
             @Sendable buffer, _ in
-            sink.consume(buffer)
+            captureTap.consume(buffer)
         }
         newEngine.prepare()
         do {
             try newEngine.start()
             engine = newEngine
             captureFormat = format
+            ring = buffer
+            tap = captureTap
             publishCurrentInput()
         } catch {
             input.removeTap(onBus: 0)
@@ -207,6 +253,8 @@ final class AudioRecorder: NSObject {
             engine.inputNode.removeTap(onBus: 0)
             self.engine = nil
             captureFormat = nil
+            tap = nil
+            ring = nil
         }
         if deactivateAudioSession {
             self.deactivateAudioSession()
@@ -215,8 +263,8 @@ final class AudioRecorder: NSObject {
     }
 
     private func sampleMeter() {
-        guard isRecording else { return }
-        onMeter?(captureSink.meterLevel)
+        guard let pipeline else { return }
+        onMeter?(pipeline.meterLevel)
     }
 
     private func stopTimers() {
@@ -252,78 +300,28 @@ final class AudioRecorder: NSObject {
     }
 }
 
-/// The audio tap runs on a realtime queue, not the main actor. This small sink
-/// owns the file behind a lock so the tap can safely switch between discarding
-/// standby buffers and writing an active dictation without rebuilding audio.
-private final class AudioCaptureSink: @unchecked Sendable {
-    private let lock = NSLock()
-    private var file: AVAudioFile?
-    private var latestMeterLevel: Float = 0
-    var onPCMChunk: (@Sendable (Data, UInt64) -> Void)?
-    private var nextSequence: UInt64 = 0
+/// Everything the CoreAudio render thread is allowed to touch. The callback
+/// copies samples into a preallocated ring and returns: no allocation, no file
+/// access, no task creation, and no lock held longer than a word write.
+private final class CaptureTap: @unchecked Sendable {
+    private let ring: PCMRingBuffer
+    private let capturing = OSAllocatedUnfairLock(initialState: false)
 
-    var isWriting: Bool {
-        lock.withLock { file != nil }
+    init(ring: PCMRingBuffer) {
+        self.ring = ring
     }
 
-    var meterLevel: Float {
-        lock.withLock { latestMeterLevel }
-    }
-
-    func beginWriting(to file: AVAudioFile) {
-        lock.withLock {
-            self.file = file
-            latestMeterLevel = 0
-            nextSequence = 0
-        }
-    }
-
-    func finishWriting() -> UInt64 {
-        lock.withLock {
-            let chunkCount = nextSequence
-            file = nil
-            latestMeterLevel = 0
-            return chunkCount
-        }
+    var isCapturing: Bool {
+        get { capturing.withLock { $0 } }
+        set { capturing.withLock { $0 = newValue } }
     }
 
     func consume(_ buffer: AVAudioPCMBuffer) {
-        lock.withLock {
-            guard let file else { return }
-            do {
-                try file.write(from: buffer)
-                latestMeterLevel = Self.normalizedMeterLevel(buffer)
-                if let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 {
-                    let data = Data(
-                        bytes: samples,
-                        count: Int(buffer.frameLength) * MemoryLayout<Float>.size
-                    )
-                    let sequence = nextSequence
-                    nextSequence += 1
-                    onPCMChunk?(data, sequence)
-                }
-            } catch {
-                // The coordinator detects a missing/invalid output during
-                // finalization and preserves a recoverable session state.
-                self.file = nil
-                latestMeterLevel = 0
-            }
-        }
-    }
-
-    private static func normalizedMeterLevel(_ buffer: AVAudioPCMBuffer) -> Float {
-        guard let channels = buffer.floatChannelData,
+        guard capturing.withLock({ $0 }),
+              let channel = buffer.floatChannelData?[0],
               buffer.frameLength > 0
-        else { return 0 }
-        let samples = channels[0]
-        var sum: Float = 0
-        for index in 0..<Int(buffer.frameLength) {
-            let value = samples[index]
-            sum += value * value
-        }
-        let rms = sqrt(sum / Float(buffer.frameLength))
-        let decibels = 20 * log10(max(rms, 0.000_001))
-        return max(0, min(1, pow(10, decibels / 40)))
+        else { return }
+        ring.write(channel, count: Int(buffer.frameLength))
     }
 }
 

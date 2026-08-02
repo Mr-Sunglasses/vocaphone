@@ -72,6 +72,8 @@ targets:
       - path: LocalFlowKeyboard/KeyLayout.swift
       - path: LocalFlowKeyboard/KeyView.swift
       - path: LocalFlowKeyboard/KeyGridView.swift
+      # The realtime capture path is the highest-risk code in the app.
+      - path: LocalFlowApp/Audio/AudioCapturePipeline.swift
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

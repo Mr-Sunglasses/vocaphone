@@ -9,6 +9,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var isPerformingInsertion = false
     private var renderedStyle: WritingStyle?
     private var renderedStyleEnabled: Bool?
+    private var renderedLanguage: TranscriptionLanguage?
+    private var renderedLanguageEnabled: Bool?
     private var renderedPrimary: (
         title: String, symbol: String, color: UIColor, enabled: Bool
     )?
@@ -38,6 +40,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let undoButton = UIButton(type: .system)
     private let languageLabel = UILabel()
     private let styleButton = UIButton(type: .system)
+    private let transcriptionLanguageButton = UIButton(type: .system)
     private let dictationCard = UIView()
     private let recordingDot = UIView()
     private let toolbarStack = UIStackView()
@@ -281,7 +284,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         var record = SessionRecord(
             state: .idle,
             sourceDocumentID: currentDocumentID,
-            language: "auto",
+            language: KeyboardPreferences.transcriptionLanguage.rawValue,
             style: KeyboardPreferences.writingStyle.rawValue
         )
         // Dictating into Local Flow's own field means there is nowhere to swipe
@@ -489,11 +492,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         let selectedStyle = record.flatMap { WritingStyle(rawValue: $0.style) }
             ?? KeyboardPreferences.writingStyle
+        let selectedLanguage = record.flatMap { TranscriptionLanguage(rawValue: $0.language) }
+            ?? KeyboardPreferences.transcriptionLanguage
         guard hasFullAccess else {
             meterView.level = 0
             meterView.isActive = false
             languageLabel.text = "Full Access required"
             configureStyleButton(selected: selectedStyle, enabled: false)
+            configureLanguageButton(selected: selectedLanguage, enabled: false)
             retryButton.isHidden = true
             cancelButton.isHidden = true
             undoButton.isEnabled = false
@@ -517,6 +523,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             selected: selectedStyle,
             enabled: record == nil || state.isTerminal
         )
+        configureLanguageButton(
+            selected: selectedLanguage,
+            enabled: record == nil || state.isTerminal
+        )
         retryButton.isHidden = record?.canRetry != true
         cancelButton.isHidden = ![
             .launchingApp, .awaitingReturn, .recording, .finalizing, .uploading,
@@ -531,7 +541,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             statusLabel.text = state == .completed ? "Text inserted" : "Ready"
             languageLabel.text = state == .completed
                 ? "Undo is available below"
-                : "Auto language · private model"
+                : "\(selectedLanguage.displayName) · private model"
             recordingDot.backgroundColor = state == .completed ? .systemGreen : .systemBlue
             meterView.activeColor = state == .completed ? .systemGreen : .systemBlue
             setPrimaryButton(
@@ -663,6 +673,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
         styleButton.showsMenuAsPrimaryAction = true
         styleButton.accessibilityLabel = "Writing style"
+        transcriptionLanguageButton.showsMenuAsPrimaryAction = true
+        transcriptionLanguageButton.accessibilityLabel = "Transcription language"
 
         recordingDot.layer.cornerRadius = 5
         recordingDot.translatesAutoresizingMaskIntoConstraints = false
@@ -717,6 +729,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
         let toolbarSpacer = UIView()
         toolbarSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        toolbarStack.addArrangedSubview(transcriptionLanguageButton)
         toolbarStack.addArrangedSubview(styleButton)
         toolbarStack.addArrangedSubview(toolbarSpacer)
         toolbarStack.addArrangedSubview(cancelButton)
@@ -726,6 +739,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         toolbarStack.alignment = .center
         toolbarStack.spacing = 6
         styleButton.setContentHuggingPriority(.required, for: .horizontal)
+        transcriptionLanguageButton.setContentHuggingPriority(.required, for: .horizontal)
         cancelButton.isHidden = true
         retryButton.isHidden = true
         undoButton.isHidden = true
@@ -914,6 +928,52 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         styleButton.accessibilityValue = selected.displayName
     }
 
+    private func configureLanguageButton(
+        selected: TranscriptionLanguage,
+        enabled: Bool
+    ) {
+        guard renderedLanguage != selected || renderedLanguageEnabled != enabled else { return }
+        renderedLanguage = selected
+        renderedLanguageEnabled = enabled
+        let actions = TranscriptionLanguage.allCases.map { language in
+            UIAction(
+                title: language.displayName,
+                image: UIImage(systemName: "globe"),
+                state: language == selected ? .on : .off
+            ) { [weak self] _ in
+                KeyboardPreferences.transcriptionLanguage = language
+                self?.refresh()
+            }
+        }
+        transcriptionLanguageButton.menu = UIMenu(
+            title: "Transcription language",
+            children: actions
+        )
+
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = selected.shortLabel
+        configuration.image = UIImage(systemName: "globe")
+        configuration.imagePadding = 4
+        configuration.cornerStyle = .capsule
+        configuration.contentInsets = NSDirectionalEdgeInsets(
+            top: 5,
+            leading: 9,
+            bottom: 5,
+            trailing: 9
+        )
+        configuration.baseBackgroundColor = palette.toolbarControl
+        configuration.baseForegroundColor = .systemBlue
+        configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            incoming in
+            var outgoing = incoming
+            outgoing.font = .systemFont(ofSize: 13, weight: .semibold)
+            return outgoing
+        }
+        transcriptionLanguageButton.configuration = configuration
+        transcriptionLanguageButton.isEnabled = enabled
+        transcriptionLanguageButton.accessibilityValue = selected.displayName
+    }
+
     private func setPrimaryButton(
         title: String,
         symbol: String,
@@ -973,6 +1033,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         languageLabel.textColor = palette.secondaryLabel
         keyGrid.palette = palette
         renderedStyle = nil
+        renderedLanguage = nil
         renderedPrimary = nil
     }
 

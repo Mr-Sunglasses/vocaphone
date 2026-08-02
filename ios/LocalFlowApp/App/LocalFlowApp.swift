@@ -3,12 +3,12 @@ import SwiftUI
 @main
 struct LocalFlowApp: App {
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var coordinator = RecordingCoordinator()
+    @State private var coordinator = RecordingCoordinator()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(coordinator)
+                .environment(coordinator)
                 .onOpenURL { coordinator.handleDeepLink($0) }
                 .onAppear { KeyboardPreferences.containingAppIsForeground = true }
                 .onChange(of: scenePhase) { _, phase in

@@ -36,6 +36,57 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum TranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Sendable {
+    case automatic = "auto"
+    case english = "en"
+    case spanish = "es"
+    case arabic = "ar"
+    case japanese = "ja"
+    case korean = "ko"
+    case mandarinChinese = "zh"
+    case ukrainian = "uk"
+    case vietnamese = "vi"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .automatic: "Automatic"
+        case .english: "English"
+        case .spanish: "Spanish"
+        case .arabic: "Arabic"
+        case .japanese: "Japanese"
+        case .korean: "Korean"
+        case .mandarinChinese: "Mandarin Chinese"
+        case .ukrainian: "Ukrainian"
+        case .vietnamese: "Vietnamese"
+        }
+    }
+
+    var shortLabel: String {
+        switch self {
+        case .automatic: "Auto"
+        case .english: "EN"
+        case .spanish: "ES"
+        case .arabic: "AR"
+        case .japanese: "JA"
+        case .korean: "KO"
+        case .mandarinChinese: "ZH"
+        case .ukrainian: "UK"
+        case .vietnamese: "VI"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .automatic:
+            "Uses the language of the model selected on your gateway."
+        default:
+            "Requires a matching multilingual or \(displayName) model on your gateway."
+        }
+    }
+}
+
 enum MicrophonePreference: String, Codable, CaseIterable, Identifiable, Sendable {
     case automatic
     case iPhone = "iphone"
@@ -63,6 +114,7 @@ enum KeyboardPreferences {
     static let autoInsertKey = "autoInsertTranscripts"
     static let quickDictationKey = "quickDictationEnabled"
     static let writingStyleKey = "writingStyle"
+    static let transcriptionLanguageKey = "transcriptionLanguage"
     static let microphonePreferenceKey = "microphonePreference"
     static let containingAppForegroundKey = "containingAppForeground"
 
@@ -101,6 +153,18 @@ enum KeyboardPreferences {
         }
         set {
             defaults?.set(newValue.rawValue, forKey: writingStyleKey)
+        }
+    }
+
+    static var transcriptionLanguage: TranscriptionLanguage {
+        get {
+            guard let rawValue = defaults?.string(forKey: transcriptionLanguageKey),
+                  let language = TranscriptionLanguage(rawValue: rawValue)
+            else { return .automatic }
+            return language
+        }
+        set {
+            defaults?.set(newValue.rawValue, forKey: transcriptionLanguageKey)
         }
     }
 

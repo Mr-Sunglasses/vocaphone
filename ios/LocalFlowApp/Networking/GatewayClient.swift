@@ -92,8 +92,10 @@ struct GatewayClient: Sendable {
         request.httpMethod = "PUT"
         request.timeoutInterval = 30
         request.setValue(contentType(for: fileURL), forHTTPHeaderField: "Content-Type")
-        request.httpBody = try Data(contentsOf: fileURL)
-        return try await perform(request, as: GatewaySession.self)
+        // Streamed from disk rather than assigned to `httpBody`, which would
+        // hold the entire recording in memory and then let URLSession copy it
+        // again — on the path taken precisely when the network is struggling.
+        return try await perform(request, as: GatewaySession.self, uploading: fileURL)
     }
 
     func finish(sessionID: UUID) async throws -> GatewaySession {
@@ -115,10 +117,10 @@ struct GatewayClient: Sendable {
         style: String,
         sampleRate: Int
     ) async throws -> GatewayAudioStream {
-        let health = try await health()
-        guard health.streamingSupported == true else {
-            throw GatewayStreamError.unsupported
-        }
+        // Negotiate support on the authenticated WebSocket itself. A separate
+        // health preflight noticeably delays recording on mDNS hostnames whose
+        // IPv6 address is advertised but not reachable (for example, a Docker
+        // gateway published only on IPv4).
         let stream = GatewayAudioStream(
             url: websocketEndpoint("v1/stream"),
             token: token,
@@ -156,13 +158,18 @@ struct GatewayClient: Sendable {
     private func perform<T: Decodable>(
         _ original: URLRequest,
         as type: T.Type,
-        authenticated: Bool = true
+        authenticated: Bool = true,
+        uploading fileURL: URL? = nil
     ) async throws -> T {
         var request = original
         if authenticated {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = if let fileURL {
+            try await session.upload(for: request, fromFile: fileURL)
+        } else {
+            try await session.data(for: request)
+        }
         guard let http = response as? HTTPURLResponse else { throw GatewayError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             let body = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
@@ -252,7 +259,6 @@ private struct GatewayStreamEvent: Decodable {
 }
 
 private enum GatewayStreamError: Error {
-    case unsupported
     case handshakeFailed
     case emptyTranscript
     case serverRejected
