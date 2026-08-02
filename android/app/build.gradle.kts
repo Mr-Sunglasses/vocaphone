@@ -8,18 +8,18 @@ plugins {
 import java.util.Properties
 
 android {
-    namespace = "com.example.localflow.android"
+    namespace = "io.github.mrsunglasses.localflow"
     // Current AndroidX releases require compiling against API 37. targetSdk
     // stays at 36, which is what Play requires from 31 August 2026.
     compileSdk = 37
     compileSdkMinor = 0
 
     defaultConfig {
-        applicationId = "com.example.localflow.android"
+        applicationId = "io.github.mrsunglasses.localflow"
         minSdk = 33
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.0-beta.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
