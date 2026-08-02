@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Deliberately never focusable and never full width: the user's own keyboard
+  stays active and ordinary typing is untouched.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/bubble_root"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_bubble"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingStart="6dp"
+    android:paddingTop="6dp"
+    android:paddingEnd="10dp"
+    android:paddingBottom="6dp">
+
+    <ImageButton
+        android:id="@+id/bubble_mic"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="@drawable/bg_bubble_button"
+        android:contentDescription="@string/bubble_dictate"
+        android:padding="10dp"
+        android:src="@drawable/ic_dictation"
+        android:tint="#FFFFFFFF" />
+
+    <TextView
+        android:id="@+id/bubble_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="10dp"
+        android:ellipsize="start"
+        android:maxWidth="180dp"
+        android:maxLines="1"
+        android:textColor="#FFFFFFFF"
+        android:textSize="13sp"
+        android:visibility="gone" />
+
+    <ImageButton
+        android:id="@+id/bubble_finish"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="8dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/bubble_finish"
+        android:padding="7dp"
+        android:src="@drawable/ic_check"
+        android:tint="#FFFFFFFF"
+        android:visibility="gone" />
+
+    <ImageButton
+        android:id="@+id/bubble_cancel"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="2dp"
+        android:background="?android:attr/selectableItemBackgroundBorderless"
+        android:contentDescription="@string/bubble_cancel"
+        android:padding="8dp"
+        android:src="@drawable/ic_cancel"
+        android:tint="#B3FFFFFF" />
+</LinearLayout>

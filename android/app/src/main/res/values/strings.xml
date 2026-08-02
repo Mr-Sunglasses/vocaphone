@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Local Flow</string>
+
+    <string name="bubble_dictate">Dictate</string>
+    <string name="bubble_finish">Finish dictation</string>
+    <string name="bubble_cancel">Cancel dictation</string>
+
+    <string name="accessibility_service_label">Local Flow dictation</string>
+    <!--
+      Shown by the system on the Accessibility settings screen. It states the
+      only two things the service does, in the terms Play requires.
+    -->
+    <string name="accessibility_service_description">Local Flow uses accessibility access for two things only: to tell whether the text field you are focused on can be dictated into, and to insert the transcript you asked for at your cursor. It never reads, stores or uploads the surrounding text, and it is not active in password or payment fields.</string>
+</resources>

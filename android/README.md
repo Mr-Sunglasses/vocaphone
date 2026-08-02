@@ -1,0 +1,135 @@
+# Local Flow for Android
+
+A native Android dictation client for the same self-hosted Local Flow gateway the
+iPhone app uses. Unlike iOS, it does **not** replace your keyboard. Gboard,
+Samsung Keyboard or whatever you already use stays active, and Local Flow shows a
+floating bubble over eligible text fields, inserting the transcript at your
+cursor when you finish.
+
+Distributed as a private APK. Google Play publication is deferred, but the
+accessibility disclosure and consent Play requires are present from the start.
+
+## Requirements
+
+- Android 13 (API 33) or newer. Google Pixel is the baseline device.
+- A reachable Local Flow gateway — see the [root README](../README.md).
+- To build: JDK 17+ (the JDK bundled with Android Studio works) and the Android
+  SDK. Everything else is pinned in `gradle/libs.versions.toml` and fetched by
+  the Gradle wrapper.
+
+## Build
+
+```sh
+cd android
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+Verification the same way CI should run it:
+
+```sh
+./gradlew assembleDebug testDebugUnitTest lintDebug
+```
+
+`compileSdk` is 37 because current AndroidX releases require it. `targetSdk`
+stays at 36, which is what Play requires from 31 August 2026.
+
+## First run
+
+The companion app walks through setup and re-checks it on every resume, so a
+permission revoked later shows up as an actionable repair prompt rather than a
+silent failure.
+
+1. **Microphone** — recording only while you are dictating.
+2. **Notifications** — the ongoing recording notification Android requires for a
+   microphone foreground service.
+3. **Display over other apps** — draws the bubble.
+4. **Accessibility service** — see the disclosure below.
+5. **Unrestricted battery usage** (optional) — stops Android ending a long
+   dictation early.
+6. **Gateway address and token** — then **Test connection**, which reports
+   reachability, token validity, the active engine, whether it is ready, and
+   whether it supports streaming.
+
+## How accessibility access is used
+
+Local Flow is not an accessibility tool, so it states plainly what it does with
+the service, and the app asks for separate consent before the checklist step:
+
+- To tell whether the focused text field can be dictated into, so the bubble
+  appears only where it is useful.
+- To insert the transcript you asked for at your cursor, and to undo it.
+
+Field contents are read **only** at the moment of insertion, and only in memory.
+They are never stored, logged, or sent anywhere — not to the gateway. The bubble
+stays hidden in password and payment fields, on system permission screens, and in
+any app you exclude in Settings.
+
+## Dictating
+
+- **Tap** the bubble to start, **tap again** to finish.
+- **Hold** it for push-to-talk; release to finish.
+- **Drag** it anywhere on screen.
+- **Long-press the ✕** to snooze the bubble for 15 minutes.
+- Recording follows you across apps, warns a minute before the five-minute cap,
+  and stops there. The transcript goes into whichever eligible field is focused
+  when you finish.
+- If the screen locks or no safe editable target remains, nothing is inserted —
+  the transcript waits in History instead of landing somewhere uncertain.
+- **Undo** removes an insertion only while the exact text is still where it was
+  written. If you or the app edited it, Undo is disabled rather than destructive.
+
+## Gateway addresses
+
+The app talks only to the gateway you configure, over the unchanged public
+contract: `GET /health`, `GET /v1/models`, `POST /v1/sessions`,
+`PUT /v1/sessions/{id}/audio`, `POST /v1/sessions/{id}/finish`,
+`DELETE /v1/sessions/{id}`, and the `/v1/stream` WebSocket.
+
+| Address | Scheme |
+| --- | --- |
+| `http://homelabone.local:8765` | Plain HTTP allowed (mDNS) |
+| `http://192.168.1.20:8765` | Plain HTTP allowed (RFC 1918) |
+| `http://homelabone.tail1234.ts.net:8765` | Plain HTTP allowed (tailnet) |
+| `https://flow.example.com` | Required for anything public |
+
+Plain HTTP is refused for hosts reachable from the internet, and a persistent
+warning is shown while a cleartext gateway is configured. Tailscale needs no SDK:
+the Android Tailscale VPN routes the traffic transparently.
+
+## What happens to your audio
+
+- Captured as 16 kHz mono PCM16 and written to a complete WAV in app-private
+  storage while recording.
+- Streamed to `/v1/stream` as little-endian float32 frames when the active engine
+  supports it; otherwise, and after a recoverable stream failure, the WAV goes
+  through the batch endpoints. One session UUID is reused throughout, so retries
+  stay idempotent.
+- Deleted immediately on success. Kept only for a failed, still-retryable attempt,
+  and only for the retention window you choose (1, 6 or 24 hours).
+- The bearer token is encrypted with an AES-GCM key held in the Android Keystore;
+  only the ciphertext and nonce are stored. Backup and device-to-device transfer
+  are disabled.
+
+## Layout
+
+| Path | What lives there |
+| --- | --- |
+| `core/` | Styles, languages, endpoint validation, insertion arithmetic, field eligibility |
+| `gateway/` | HTTP client and the streaming WebSocket |
+| `audio/` | `AudioRecord` capture, WAV writing, PCM conversion |
+| `dictation/` | The pipeline, the microphone foreground service, retry |
+| `accessibility/` | The accessibility service, insertion and undo |
+| `overlay/` | The floating bubble |
+| `ui/` | The Compose companion app |
+| `settings/`, `data/`, `security/` | Preferences, history, the sealed token |
+
+## Not yet done
+
+- Instrumented and Compose UI tests are configured but not written; the 50 unit
+  tests cover the pure logic and the gateway protocol against MockWebServer.
+- The end-to-end path has not been exercised against a real gateway on a physical
+  Pixel, which the plan makes the gate for calling this milestone complete.
+- Samsung and other OEM battery-management work comes after the stock-Android
+  path passes.

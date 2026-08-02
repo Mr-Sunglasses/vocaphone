@@ -1,6 +1,8 @@
 .DS_Store
 __pycache__/
 *.py[cod]
+.mypy_cache/
+.ruff_cache/
 .build/
 .swiftpm/
 DerivedData/
@@ -27,3 +29,11 @@ server/*.sqlite3
 *.log
 *.p12
 *.mobileprovision
+
+# Android (see also android/.gitignore)
+.gradle/
+android/local.properties
+android/.idea/
+android/captures/
+android/*.hprof
+

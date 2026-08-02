@@ -1,13 +1,15 @@
 # Local Flow
 
-Local Flow is a privacy-first iPhone dictation keyboard backed by speech models
-running on hardware you control. The keyboard coordinates recording through its
-containing iOS app, sends recoverable audio to a private gateway, and inserts the
+Local Flow is privacy-first dictation backed by speech models running on hardware
+you control. On iPhone it is a keyboard that coordinates recording through its
+containing app; on Android it is a floating bubble that leaves your own keyboard
+alone. Both send recoverable audio to the same private gateway and insert the
 final transcript directly at the active cursor.
 
 The complete keyboard handoff, background recording, private Tailscale
 transcription, and direct text-insertion flow has been exercised on a physical
-iPhone 14 Pro.
+iPhone 14 Pro. The [Android client](android/README.md) builds, passes its unit
+tests, and has not yet been exercised end to end on a physical Pixel.
 
 > [!IMPORTANT]
 > iOS keyboard extensions cannot access the microphone. Local Flow records in
@@ -20,6 +22,8 @@ iPhone 14 Pro.
 
 - Native SwiftUI app and UIKit keyboard with Start, Finish, Cancel, Retry, Undo,
   language/style status, next-keyboard control, and direct insertion
+- Native Kotlin/Compose Android client that keeps your own keyboard and dictates
+  through a floating bubble, with the same styles, languages, and gateway
 - Eight selectable transcription languages plus Automatic, shared by the app
   and keyboard, and four writing styles: Formal, Casual, Very Casual, and Excited
 - Automatic microphone routing or an explicit iPhone Microphone preference,
@@ -156,6 +160,23 @@ Then:
 
 Complete the physical-device checklist in [device setup](docs/device-setup.md).
 
+### 5. Or install the Android app
+
+Android keeps your existing keyboard and dictates through a floating bubble
+instead. Build and install the APK, then follow the guided setup in the app:
+
+```sh
+cd android
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+The same placeholder application ID, `com.example.localflow.android`, should be
+replaced before you distribute a build. See the
+[Android client guide](android/README.md) for permissions, the accessibility
+disclosure, and the supported gateway address forms.
+
 ## Build and test
 
 Gateway checks:
@@ -168,6 +189,14 @@ uv run ruff format --check .
 uv run mypy app
 uv run pytest
 LOCALFLOW_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config --quiet
+```
+
+Android checks:
+
+```sh
+cd android
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+./gradlew assembleDebug testDebugUnitTest lintDebug
 ```
 
 iOS checks:
@@ -192,18 +221,21 @@ still require physical-device verification.
 
 ```text
 ios/                    Swift app, keyboard, Live Activity, shared state, tests
+android/                Kotlin app, dictation bubble, accessibility service, tests
 server/app/             FastAPI gateway, engines, model manager, WebUI
 server/tests/           Gateway unit and integration tests
 server/compose.yaml     Canonical container deployment
 server/Dockerfile*      CPU, NVIDIA CUDA, and Vulkan images
 docs/                   Architecture, setup, operations, privacy, decisions
 Plan.md                 Original implementation plan and acceptance criteria
+Plan-Android.md         Android implementation plan and acceptance criteria
 ```
 
 ## Documentation
 
 | Guide | Covers |
 | --- | --- |
+| [Android client](android/README.md) | Building the APK, guided setup, the dictation bubble, and accessibility disclosure |
 | [Gateway reference](server/README.md) | Native service, Compose, models, configuration, health, and CLI commands |
 | [Deployment](docs/deployment.md) | Native-vs-Docker performance, startup, upgrades, persistence, and backups |
 | [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
@@ -227,6 +259,11 @@ Plan.md                 Original implementation plan and acceptance criteria
   If Quick Dictation expires, Local Flow must open and the user returns manually.
 - Secure fields and apps that disable third-party keyboards remain iOS platform
   limitations.
+- On Android, accessibility access is used only to identify the focused editable
+  field and to insert the transcript the user asked for; field contents are read
+  in memory at insertion time and never stored, logged, or uploaded.
+- The Android bubble stays hidden in password and payment fields, on system
+  permission screens, and in any app the user excludes.
 
 ## Contributing, security, and license
 

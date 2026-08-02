@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing leaves the device through backup or device-to-device transfer.
+  Recordings, transcripts and the sealed gateway token stay on the phone they
+  were created on; the Keystore key backing the token cannot be transferred
+  anyway, so copying the ciphertext would only produce an unreadable blob.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" />
+    </device-transfer>
+</data-extraction-rules>

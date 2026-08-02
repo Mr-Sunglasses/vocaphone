@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Local Flow talks only to a gateway the user runs, which is normally a LAN,
+  mDNS or Tailscale host with no certificate. Those addresses cannot be
+  enumerated here — a home server can be on any RFC 1918 address — so cleartext
+  is permitted at the platform level and refused in the app instead:
+  `GatewayEndpoint.validate` rejects http:// for any host that is reachable from
+  the public internet, and the setup screen shows a persistent warning while a
+  cleartext gateway is configured. User certificates are trusted for the same
+  reason: a self-hosted HTTPS gateway usually presents a CA the user installed.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config
+        cleartextTrafficPermitted="true"
+        tools:ignore="InsecureBaseConfiguration">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates
+                src="user"
+                tools:ignore="AcceptsUserCertificates" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
