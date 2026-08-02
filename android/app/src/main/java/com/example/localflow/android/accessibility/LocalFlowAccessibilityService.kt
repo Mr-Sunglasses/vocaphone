@@ -5,7 +5,9 @@ import android.app.KeyguardManager
 import android.os.Bundle
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import com.example.localflow.android.LocalFlowApplication
+import com.example.localflow.android.core.BubblePolicy
 import com.example.localflow.android.core.FieldClassifier
 import com.example.localflow.android.core.FieldEligibility
 import com.example.localflow.android.core.FieldSignals
@@ -80,20 +82,36 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
 
     private fun refreshBubble() {
         val controller = bubble ?: return
-        if (bubbleBehavior == BubbleBehavior.OFF) {
-            controller.hide()
-            return
-        }
-        // A dictation already in flight keeps the bubble up while the user moves
-        // between apps; only an idle bubble follows focus.
-        if (LocalFlowApplication.container(this).dictation.state.value.phase.isBusy) {
-            controller.show()
-            return
-        }
+        val imeVisible = isImeVisible()
+        // The keyboard closing is what clears a ✕ dismissal, so the controller
+        // has to hear about every visibility change, including while hidden.
+        controller.onImeVisibility(imeVisible)
+
         val node = focusedEditableNode()
         val eligible = node != null && classify(node) == FieldEligibility.ELIGIBLE
         node?.recycleCompat()
-        if (eligible) controller.show() else controller.hide()
+
+        val decision = BubblePolicy.decide(
+            bubbleEnabled = bubbleBehavior != BubbleBehavior.OFF,
+            dictationBusy = LocalFlowApplication.container(this).dictation.state.value.phase.isBusy,
+            imeVisible = imeVisible,
+            fieldEligible = eligible,
+            snoozed = controller.isSnoozed,
+            dismissed = controller.isDismissed,
+        )
+        if (decision == BubblePolicy.Decision.SHOW) controller.show() else controller.hide()
+    }
+
+    /**
+     * The bubble lives with the keyboard, so IME visibility is the primary
+     * signal. An empty window list means the interactive-windows flag has not
+     * taken effect yet; treating that as visible degrades to focus-only
+     * behaviour instead of never showing the bubble at all.
+     */
+    private fun isImeVisible(): Boolean {
+        val visibleWindows = runCatching { windows }.getOrNull() ?: return true
+        if (visibleWindows.isEmpty()) return true
+        return visibleWindows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
     }
 
     private fun classify(node: AccessibilityNodeInfo): FieldEligibility =
@@ -101,7 +119,10 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
 
     private fun focusedEditableNode(): AccessibilityNodeInfo? {
         val focused = findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
-        if (!focused.isEditable) {
+        // The framework can hand back a node from a window that no longer
+        // exists; refresh proves it is still alive, still focused, and still
+        // editable before anything trusts it.
+        if (!focused.refresh() || !focused.isEditable || !focused.isFocused) {
             focused.recycleCompat()
             return null
         }
@@ -121,14 +142,43 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
             // latest safe target rather than a node that may no longer exist.
             val node = focusedEditableNode() ?: return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
             try {
-                if (!node.refresh()) return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
                 if (classify(node) != FieldEligibility.ELIGIBLE) {
                     return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
                 }
 
-                val existing = TextInsertion.fieldContents(
+                var existing = TextInsertion.fieldContents(
                     text = node.text?.toString(),
                     showingHintText = node.isShowingHintText,
+                    hintText = node.hintText?.toString(),
+                )
+                // WhatsApp exposes its placeholder as plain text: no hint, no
+                // showing-hint flag, and — the tell — no cursor. A focused
+                // editable with genuine content always reports one. Probe by
+                // trying to place the cursor at the end of the claimed text:
+                // on the empty editable underneath a placeholder that position
+                // is out of bounds and the action fails, while real typed text
+                // accepts it. Either way nothing is modified except, at most,
+                // moving a real cursor to exactly where the splice would put it.
+                var probedEmpty = false
+                if (existing.isNotEmpty() && node.textSelectionStart < 0 && node.textSelectionEnd < 0) {
+                    val probe = Bundle().apply {
+                        putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, existing.length)
+                        putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, existing.length)
+                    }
+                    if (!node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, probe)) {
+                        existing = ""
+                        probedEmpty = true
+                    }
+                }
+                // Kept at debug for diagnosing the next misbehaving editor via
+                // `adb logcat -s LocalFlow`. Metadata only — lengths, flags and
+                // the app's own hint; never the user's text or transcript.
+                android.util.Log.d(
+                    "LocalFlow",
+                    "insert target: pkg=${node.packageName} textLen=${node.text?.length ?: -1} " +
+                        "showingHint=${node.isShowingHintText} hint=${node.hintText} " +
+                        "sel=${node.textSelectionStart}..${node.textSelectionEnd} " +
+                        "probedEmpty=$probedEmpty treatedAsEmpty=${existing.isEmpty()}",
                 )
                 val selectionStart = node.textSelectionStart.takeIf { it in 0..existing.length }
                     ?: existing.length
@@ -167,12 +217,12 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
         withContext(Dispatchers.Main.immediate) {
             val node = focusedEditableNode() ?: return@withContext false
             try {
-                if (!node.refresh()) return@withContext false
                 if (node.packageName?.toString() != insertion.packageName) return@withContext false
 
                 val current = TextInsertion.fieldContents(
                     text = node.text?.toString(),
                     showingHintText = node.isShowingHintText,
+                    hintText = node.hintText?.toString(),
                 )
                 // Undo is only safe while the exact transcript is still where it was
                 // written; any edit by the user or the app disables it.

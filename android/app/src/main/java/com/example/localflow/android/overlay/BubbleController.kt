@@ -45,6 +45,26 @@ class BubbleController(
     private var snoozedUntilElapsed = 0L
     private var pushToTalkActive = false
 
+    /** Set by a tap on ✕; cleared the next time the keyboard closes. */
+    private var dismissed = false
+    private var imeWasVisible = false
+
+    val isSnoozed: Boolean
+        get() = SystemClock.elapsedRealtime() < snoozedUntilElapsed
+
+    val isDismissed: Boolean
+        get() = dismissed
+
+    /**
+     * A ✕ dismissal means "not for this typing session", so it lasts exactly
+     * until the keyboard goes away. Closing and reopening the keyboard brings
+     * the bubble back — matching what reopening it looks like to the user.
+     */
+    fun onImeVisibility(visible: Boolean) {
+        if (imeWasVisible && !visible) dismissed = false
+        imeWasVisible = visible
+    }
+
     private val layoutParams = WindowManager.LayoutParams(
         WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.WRAP_CONTENT,
@@ -55,7 +75,10 @@ class BubbleController(
             WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
         PixelFormat.TRANSLUCENT,
     ).apply {
-        gravity = Gravity.TOP or Gravity.START
+        // Anchored by its right edge: the bubble grows and shrinks with its
+        // status text, and an END anchor makes that growth extend leftward and
+        // collapse back to the same spot instead of walking across the screen.
+        gravity = Gravity.TOP or Gravity.END
         x = 0
         y = 0
     }
@@ -75,7 +98,7 @@ class BubbleController(
     @SuppressLint("InflateParams")
     fun show() {
         if (root != null) return
-        if (SystemClock.elapsedRealtime() < snoozedUntilElapsed) return
+        if (isSnoozed || dismissed) return
         if (!Settings.canDrawOverlays(context)) return
 
         val view = LayoutInflater.from(context).inflate(R.layout.view_bubble, null, false)
@@ -84,12 +107,10 @@ class BubbleController(
         finish = view.findViewById(R.id.bubble_finish)
         cancel = view.findViewById(R.id.bubble_cancel)
 
-        if (layoutParams.x == 0 && layoutParams.y == 0) {
-            // Placed near the right edge; clampToScreen pulls it fully back on
-            // once the view has been measured.
-            val metrics = windowManager.currentWindowMetrics.bounds
-            layoutParams.x = metrics.width() - context.resources.getDimensionPixelSize(R.dimen.bubble_inset)
-            layoutParams.y = metrics.height() / 2
+        if (layoutParams.y == 0) {
+            // First show: flush against the right edge, halfway down. With END
+            // gravity, x is the distance in from the right edge.
+            layoutParams.y = windowManager.currentWindowMetrics.bounds.height() / 2
         }
 
         mic?.setOnTouchListener(MicTouchListener())
@@ -117,10 +138,13 @@ class BubbleController(
         cancel = null
     }
 
-    /** Gets out of the user's way without them having to turn the feature off. */
+    /** Long-press only: gets out of the way without turning the feature off. */
     private fun snooze() {
         snoozedUntilElapsed = SystemClock.elapsedRealtime() + SNOOZE_MILLIS
-        dictation.cancel()
+        if (dictation.state.value.phase.isBusy) {
+            DictationService.send(context, DictationService.ACTION_CANCEL)
+        }
+        dictation.clearTransient()
         forceHide()
     }
 
@@ -128,14 +152,24 @@ class BubbleController(
         val view = root ?: return
         runCatching { windowManager.removeView(view) }
         root = null
+        status = null
+        mic = null
+        finish = null
+        cancel = null
     }
 
     private fun onCancelTapped() {
-        if (dictation.state.value.phase.isBusy) {
-            DictationService.send(context, DictationService.ACTION_CANCEL)
-        } else {
-            dictation.clearTransient()
-            snooze()
+        val phase = dictation.state.value.phase
+        when {
+            // Mid-dictation, ✕ cancels the dictation; the bubble stays.
+            phase.isBusy -> DictationService.send(context, DictationService.ACTION_CANCEL)
+            // A failure or leftover result: first tap clears it back to idle.
+            phase != DictationPhase.IDLE -> dictation.clearTransient()
+            // Idle: dismiss for this typing session only, not for 15 minutes.
+            else -> {
+                dismissed = true
+                forceHide()
+            }
         }
     }
 
@@ -241,7 +275,9 @@ class BubbleController(
                     val dy = event.rawY - downY
                     if (!dragging && (abs(dx) > touchSlop || abs(dy) > touchSlop)) dragging = true
                     if (dragging) {
-                        layoutParams.x = originX + dx.toInt()
+                        // END gravity: x measures in from the right edge, so a
+                        // rightward finger movement shrinks it.
+                        layoutParams.x = originX - dx.toInt()
                         layoutParams.y = originY + dy.toInt()
                         root?.let { runCatching { windowManager.updateViewLayout(it, layoutParams) } }
                         return true

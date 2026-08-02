@@ -433,6 +433,20 @@ class DictationController(
             transcript = transcript,
             level = 0f,
         )
+        if (report.outcome == InsertionOutcome.INSERTED) {
+            // "Inserted" is a confirmation, not a state the user acts on: after a
+            // moment the bubble returns to its idle mic on its own.
+            scope.launch {
+                delay(INSERTED_LINGER_MILLIS)
+                _state.update { current ->
+                    if (current.sessionId == sessionId && current.phase == DictationPhase.INSERTED) {
+                        DictationState()
+                    } else {
+                        current
+                    }
+                }
+            }
+        }
     }
 
     private suspend fun fail(
@@ -466,5 +480,8 @@ class DictationController(
     private companion object {
         /** Below this, there is nothing a model could usefully transcribe. */
         const val MINIMUM_RECORDING_MILLIS = 300L
+
+        /** How long the "Inserted" confirmation stays before the bubble goes idle. */
+        const val INSERTED_LINGER_MILLIS = 2_000L
     }
 }

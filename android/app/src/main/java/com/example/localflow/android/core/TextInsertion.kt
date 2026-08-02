@@ -19,10 +19,24 @@ object TextInsertion {
     /**
      * An empty field reports its placeholder from `getText()`, so "Signal
      * message" or "Ask Google" would otherwise be spliced into the user's
-     * message as if they had typed it.
+     * message as if they had typed it. Not every editor sets the
+     * showing-hint flag while doing this (WhatsApp's "Message" field does
+     * not), so text that matches the field's own hint — ignoring case and
+     * whitespace, since the two are reported through different paths — is
+     * also placeholder.
      */
-    fun fieldContents(text: String?, showingHintText: Boolean): String =
-        if (showingHintText) "" else text.orEmpty()
+    fun fieldContents(text: String?, showingHintText: Boolean, hintText: String? = null): String {
+        if (showingHintText) return ""
+        val contents = text.orEmpty()
+        if (contents.isBlank()) return ""
+        if (hintText != null && normalizedForHintComparison(contents) == normalizedForHintComparison(hintText)) {
+            return ""
+        }
+        return contents
+    }
+
+    private fun normalizedForHintComparison(value: String): String =
+        value.filterNot(Char::isWhitespace).lowercase()
 
     /**
      * Splices [transcript] over the selection, adding the spacing a person would

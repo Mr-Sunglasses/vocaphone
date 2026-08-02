@@ -125,11 +125,28 @@ the Android Tailscale VPN routes the traffic transparently.
 | `ui/` | The Compose companion app |
 | `settings/`, `data/`, `security/` | Preferences, history, the sealed token |
 
+## Verified on hardware
+
+The full path — bubble tap, microphone foreground service, capture, batch
+delivery to a real whisper.cpp gateway over LAN HTTP, and direct insertion —
+has been exercised on a physical Pixel 6a running Android 17, dictating into
+Signal, WhatsApp, and Google search. Device testing surfaced three classes of
+editor quirk now covered by unit tests:
+
+- Fields that expose their placeholder as text (`isShowingHintText`, hint
+  matching, and a cursor-placement probe for WhatsApp, which reports the
+  placeholder with no hint and no flag).
+- whisper.cpp emitting `[BLANK_AUDIO]` for silence, filtered by
+  `TranscriptSanitizer` so markers never reach a field.
+- The bubble's lifecycle, now tied to keyboard visibility through
+  `BubblePolicy` (requires `flagRetrieveInteractiveWindows`).
+
 ## Not yet done
 
-- Instrumented and Compose UI tests are configured but not written; the 50 unit
+- Instrumented and Compose UI tests are configured but not written; the unit
   tests cover the pure logic and the gateway protocol against MockWebServer.
-- The end-to-end path has not been exercised against a real gateway on a physical
-  Pixel, which the plan makes the gate for calling this milestone complete.
+- The streaming path has only been exercised against MockWebServer; the test
+  gateway's engine is batch-only. Verify against a Moonshine engine before
+  relying on it.
 - Samsung and other OEM battery-management work comes after the stock-Android
   path passes.

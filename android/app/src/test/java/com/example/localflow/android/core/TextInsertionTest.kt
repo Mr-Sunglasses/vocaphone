@@ -18,6 +18,34 @@ class TextInsertionTest {
     }
 
     @Test
+    fun `text matching the field's own hint is placeholder even without the flag`() {
+        // WhatsApp's entry field reports its "Message" hint from getText()
+        // with isShowingHintText false, which prefixed every dictation.
+        assertEquals(
+            "",
+            TextInsertion.fieldContents("Message", showingHintText = false, hintText = "Message"),
+        )
+        // The two are reported through different paths, so case and spacing
+        // may not agree even when they are the same placeholder.
+        assertEquals(
+            "",
+            TextInsertion.fieldContents("Message", showingHintText = false, hintText = "message "),
+        )
+        assertEquals(
+            "",
+            TextInsertion.fieldContents("Type a message…", showingHintText = false, hintText = "Type a message…"),
+        )
+        assertEquals(
+            "Message",
+            TextInsertion.fieldContents("Message", showingHintText = false, hintText = "Type here"),
+        )
+        assertEquals(
+            "Real text",
+            TextInsertion.fieldContents("Real text", showingHintText = false, hintText = "Message"),
+        )
+    }
+
+    @Test
     fun `dictating into an empty field produces only the transcript`() {
         val existing = TextInsertion.fieldContents("Signal message", showingHintText = true)
         val plan = TextInsertion.plan(existing, 0, 0, "Hey, we are using local flow app")!!
