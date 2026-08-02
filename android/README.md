@@ -23,7 +23,7 @@ accessibility disclosure and consent Play requires are present from the start.
 cd android
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 ./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/local-flow-debug.apk
 ```
 
 Verification the same way CI should run it:

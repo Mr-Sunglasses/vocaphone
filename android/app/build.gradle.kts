@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.room)
 }
 
+import java.util.Properties
+
 android {
     namespace = "com.example.localflow.android"
     // Current AndroidX releases require compiling against API 37. targetSdk
@@ -22,16 +24,45 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            // Reads android/keystore.properties (gitignored) on dev machines and
+            // falls back to CI env vars injected from GitHub secrets.
+            val props = Properties().apply {
+                val propFile = rootProject.file("keystore.properties")
+                if (propFile.exists()) propFile.inputStream().use { load(it) }
+            }
+            val env = System.getenv()
+            val storePath = props.getProperty("storeFile") ?: env["KEYSTORE_FILE"]
+            val storePass = props.getProperty("storePassword") ?: env["KEYSTORE_PASSWORD"]
+            val alias = props.getProperty("keyAlias") ?: env["KEY_ALIAS"]
+            val keyPass = props.getProperty("keyPassword") ?: env["KEY_PASSWORD"]
+            if (storePath != null) storeFile = file(storePath)
+            if (storePass != null) storePassword = storePass
+            if (alias != null) keyAlias = alias
+            if (keyPass != null) keyPassword = keyPass
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
     buildFeatures {
         compose = true
+    }
+
+    androidComponents {
+        onVariants(selector().all()) { variant ->
+            variant.outputs.forEach { output ->
+                output.outputFileName.set("local-flow-${variant.name}.apk")
+            }
+        }
     }
 
     compileOptions {

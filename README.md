@@ -169,7 +169,7 @@ instead. Build and install the APK, then follow the guided setup in the app:
 cd android
 export ANDROID_HOME="$HOME/Library/Android/sdk"
 ./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/local-flow-debug.apk
 ```
 
 The same placeholder application ID, `com.example.localflow.android`, should be
