@@ -64,7 +64,15 @@ module = ["mlx_audio.*", "sherpa_onnx"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["pysbd", "pysbd.*"]
+module = [
+  "ctranslate2",
+  "faster_whisper",
+  "faster_whisper.*",
+  "moonshine_voice",
+  "moonshine_voice.*",
+  "pysbd",
+  "pysbd.*",
+]
 ignore_missing_imports = true
 
 [build-system]

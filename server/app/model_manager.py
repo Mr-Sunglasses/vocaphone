@@ -474,7 +474,7 @@ def _download_moonshine_model(
     cache_root: Path,
 ) -> tuple[str, Any]:
     try:
-        from moonshine_voice import (  # type: ignore[import-untyped]
+        from moonshine_voice import (
             ModelArch,
             get_model_for_language,
         )

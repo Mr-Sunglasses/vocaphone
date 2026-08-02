@@ -115,7 +115,7 @@ class MoonshineEngine:
         if self.model_root is None:
             raise EngineUnavailableError("No Moonshine model is selected.")
         metadata = self._metadata
-        from moonshine_voice import ModelArch, Transcriber  # type: ignore[import-untyped]
+        from moonshine_voice import ModelArch, Transcriber
 
         model_path = self.model_root / str(metadata["model_path"])
         options = {"max_tokens_per_second": "13.0"} if self.language in NON_LATIN_LANGUAGES else {}
