@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -100,7 +101,10 @@ fun SetupScreen(
         }
 
         if (status.restrictedSettingsGuidance) {
-            RestrictedSettingsCard(onOpenAppInfo = { context.openAppSettings() })
+            RestrictedSettingsCard(
+                onOpenAccessibilitySettings = { context.openAccessibilitySettings() },
+                onOpenAppInfo = { context.openAppSettings() },
+            )
         }
 
         SectionCard("Gateway", supporting = "Your self-hosted Local Flow server.") {
@@ -168,12 +172,14 @@ fun AccessibilityDisclosureCard(
 
 /**
  * Shown when the accessibility switch is likely greyed out because Local Flow
- * was installed outside an app store. It points at App info rather than at
- * Accessibility settings: the permission cannot be granted from the switch
- * until the restriction is lifted from the overflow menu here.
+ * was installed outside an app store. The "Allow restricted settings" option
+ * stays hidden until the switch has actually been tried and blocked once, so
+ * that has to happen before App info's overflow menu is worth opening — the
+ * reverse order just lands on a menu with nothing useful in it.
  */
 @Composable
 fun RestrictedSettingsCard(
+    onOpenAccessibilitySettings: () -> Unit,
     onOpenAppInfo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -185,16 +191,36 @@ fun RestrictedSettingsCard(
             "Android blocks apps installed outside an app store from using " +
                 "accessibility access, so the switch may be greyed out and " +
                 "labelled \"Restricted setting\". Local Flow cannot lift that " +
-                "itself — only you can:\n\n" +
-                "1. Open App info below.\n" +
-                "2. Tap the ⋮ menu in the top-right corner.\n" +
-                "3. Choose \"Allow restricted settings\".\n" +
-                "4. Come back and turn the accessibility service on.\n\n" +
-                "Some manufacturers word this differently or put it elsewhere in " +
-                "App info.",
+                "itself — only you can, and the fix only appears after you've " +
+                "been blocked once:\n\n" +
+                "1. Open Accessibility settings below and try turning Local " +
+                "Flow on. It will refuse and show a \"Restricted setting\" " +
+                "message — that's expected, and it's what unlocks the next " +
+                "step.\n" +
+                "2. Open App info. Tap the ⋮ menu in the top-right corner and " +
+                "choose \"Allow restricted settings\". On some Samsung phones " +
+                "it appears as its own row on this page instead, without " +
+                "needing the menu.\n" +
+                "3. Confirm with your PIN, pattern or fingerprint.\n" +
+                "4. Come back to Accessibility settings and turn Local Flow " +
+                "on — it will work this time.",
             style = MaterialTheme.typography.bodyMedium,
         )
-        Button(onClick = onOpenAppInfo) { Text("Open app info") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(onClick = onOpenAccessibilitySettings) { Text("1. Accessibility") }
+            Button(onClick = onOpenAppInfo) { Text("2. App info") }
+        }
+        Text(
+            "On Samsung phones running One UI 8.5, \"Allow restricted " +
+                "settings\" is currently missing from App info entirely for " +
+                "every sideloaded app — a Samsung bug, not something Local " +
+                "Flow can work around from here. If that's what you're " +
+                "seeing, granting accessibility from a computer over adb is " +
+                "the only way through right now; see the project's GitHub " +
+                "releases page for the exact command.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
