@@ -67,6 +67,7 @@ from app.pairing import (
     decode_pairing_payload,
     discover_gateway_base_urls,
     encode_pairing_payload,
+    normalize_gateway_input,
     normalize_gateway_url,
     primary_gateway_base_url,
     qr_svg_for_payload,
@@ -940,7 +941,7 @@ def create_app(
         selected: str | None
         if selected_url:
             try:
-                selected = normalize_gateway_url(selected_url)
+                selected = normalize_gateway_input(selected_url, configured.port)
             except ValueError:
                 selected = primary_gateway_base_url(configured.port)
             else:
@@ -968,7 +969,7 @@ def create_app(
         candidates = discover_gateway_base_urls(configured.port)
         if url:
             try:
-                return normalize_gateway_url(url)
+                return normalize_gateway_input(url, configured.port)
             except ValueError as error:
                 raise APIProblem(400, "invalid_pairing_url", str(error)) from error
         if not candidates:

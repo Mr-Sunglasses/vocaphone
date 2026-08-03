@@ -8,6 +8,7 @@ from app.pairing import (
     PAIRING_VERSION,
     decode_pairing_payload,
     encode_pairing_payload,
+    normalize_gateway_input,
     primary_gateway_base_url,
     qr_svg_for_payload,
 )
@@ -70,3 +71,27 @@ def test_qr_svg_contains_path_and_is_svg() -> None:
 def test_primary_gateway_base_url_prefers_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://homelab.example:8765")
     assert primary_gateway_base_url(8765) == "http://homelab.example:8765"
+
+
+def test_normalize_gateway_input_adds_scheme_and_default_port() -> None:
+    assert normalize_gateway_input("100.101.102.103", 8765) == "http://100.101.102.103:8765"
+
+
+def test_normalize_gateway_input_keeps_explicit_port() -> None:
+    assert normalize_gateway_input("100.101.102.103:9000", 8765) == "http://100.101.102.103:9000"
+
+
+def test_normalize_gateway_input_accepts_tailscale_hostname() -> None:
+    assert (
+        normalize_gateway_input("phone.tailnet-name.ts.net", 8765)
+        == "http://phone.tailnet-name.ts.net:8765"
+    )
+
+
+def test_normalize_gateway_input_passes_through_full_url() -> None:
+    assert normalize_gateway_input("http://192.168.1.5:8765", 8765) == "http://192.168.1.5:8765"
+
+
+def test_normalize_gateway_input_rejects_empty() -> None:
+    with pytest.raises(ValueError, match="empty"):
+        normalize_gateway_input("   ", 8765)
