@@ -1,6 +1,6 @@
 """Phone pairing payload and QR for the authenticated WebUI.
 
-The payload is a compact JSON document the Android app scans:
+The payload is a compact JSON document the iPhone and Android apps scan:
 
     {"v":1,"url":"http://192.168.1.20:8765","token":"..."}
 

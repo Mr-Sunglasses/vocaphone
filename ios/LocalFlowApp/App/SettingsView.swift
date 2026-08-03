@@ -31,6 +31,7 @@ struct SettingsView: View {
     ) private var microphonePreferenceRawValue = MicrophonePreference.automatic.rawValue
     @State private var token = ""
     @State private var isTestingGateway = false
+    @State private var isShowingPairingScanner = false
 
     var body: some View {
         List {
@@ -45,6 +46,13 @@ struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { token = (try? KeychainStore.loadToken()) ?? "" }
+        .sheet(isPresented: $isShowingPairingScanner) {
+            PairingScannerView(
+                paired: applyPairing,
+                unavailable: handleScannerUnavailable
+            )
+            .ignoresSafeArea()
+        }
         .onChange(of: gatewayURL) {
             healthMessage = "Not tested"
             gatewayEngine = ""
@@ -54,6 +62,19 @@ struct SettingsView: View {
 
     private var gatewaySection: some View {
         Section("Transcription gateway") {
+            Button {
+                isShowingPairingScanner = true
+            } label: {
+                Label("Scan pairing QR code", systemImage: "qrcode.viewfinder")
+            }
+
+            Text(
+                "Open Overview in the gateway WebUI, then scan its Pair phone app QR "
+                    + "to fill the address and bearer token automatically."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+
             TextField(
                 "http://homelabone:8765 or https://dictation.example.com",
                 text: $gatewayURL
@@ -262,6 +283,22 @@ struct SettingsView: View {
 
     private var validatedGatewayURL: URL? {
         GatewayEndpoint.validatedURL(from: gatewayURL)
+    }
+
+    @MainActor
+    private func applyPairing(_ pairing: PairingPayload.Value) {
+        isShowingPairingScanner = false
+        gatewayURL = pairing.url.absoluteString
+        token = pairing.token
+        Task { await saveAndTestGateway() }
+    }
+
+    @MainActor
+    private func handleScannerUnavailable(_ message: String) {
+        isShowingPairingScanner = false
+        healthMessage = message
+        gatewayEngine = ""
+        gatewayEngineReady = false
     }
 
     @MainActor

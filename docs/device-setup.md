@@ -25,7 +25,9 @@ and on-device installation have been exercised with the current checkout.
    shows Quick Dictation as Ready and iOS displays its microphone indicator.
 3. Enter the configured HTTP/HTTPS gateway URL and bearer token. This may be a
    trusted LAN URL such as `http://homelabone:8765/`, a Tailscale Serve URL, or
-   an HTTPS VPS/reverse-proxy URL. Approve Local Network access for LAN hosts.
+   an HTTPS VPS/reverse-proxy URL. Or open **Settings**, tap **Scan pairing QR
+   code**, and scan the gateway WebUI Overview card. Approve camera and Local
+   Network access when prompted.
 4. Confirm that Save and test reports both gateway and model ready and shows the
    expected active model.
 5. Choose Automatic microphone routing or iPhone Microphone, connect any AirPods

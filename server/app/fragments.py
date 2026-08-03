@@ -443,7 +443,7 @@ def pairing_fragment(
     return f"""
       <div class="card" id="pairing-card">
         <h2>Pair phone app</h2>
-        <p class="muted">Scan this QR in Local Flow on Android to fill the gateway
+        <p class="muted">Scan this QR in Local Flow on iPhone or Android to fill the gateway
           address and bearer token. Keep the WebUI private — the code includes the
           live token.</p>
         <div class="pairing-layout">

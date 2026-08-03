@@ -95,8 +95,8 @@ LOCALFLOW_BIND_HOST=127.0.0.1 uv run localflow-server
 ### Phone pairing QR
 
 After you authenticate in the WebUI, the Overview page shows a **Pair phone app**
-QR. The Android app scans it to fill the gateway URL and bearer token. The code
-encodes a versioned JSON payload:
+QR. The iPhone and Android apps scan it to fill the gateway URL and bearer token.
+The code encodes a versioned JSON payload:
 
 ```json
 {"v":1,"url":"http://192.168.1.20:8765","token":"..."}

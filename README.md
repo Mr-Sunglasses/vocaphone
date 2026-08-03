@@ -183,13 +183,14 @@ tailscale serve status
   `https://dictation.example.com/`. Do not send recordings or bearer tokens over
   public HTTP.
 
-### Pair the phone with a QR code (Android)
+### Pair the phone with a QR code (iPhone or Android)
 
 Once the WebUI is open and authenticated on the gateway host:
 
 1. Stay on **Overview** — the **Pair phone app** card shows a QR for a
    phone-reachable address (LAN IP preferred, or `LOCALFLOW_PUBLIC_URL` if set).
-2. In the Android app, open **Gateway** and tap **Scan QR code**.
+2. In the iPhone app, open **Settings** and tap **Scan pairing QR code**. On
+   Android, open **Gateway** and tap **Scan QR code**.
 3. Grant camera access if asked; the scan fills address + token and runs the
    connection test.
 
