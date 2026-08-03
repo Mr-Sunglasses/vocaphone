@@ -46,16 +46,20 @@ tests, and has not yet been exercised end to end on a physical Pixel.
 | Deployment | Best for | Speech engine | Expected performance |
 | --- | --- | --- | --- |
 | Native macOS | Daily use on an Apple silicon Mac | MLX Audio, WhisperKit, Handy, sherpa-onnx | Best with Apple-native MLX/Core ML engines |
-| Docker Compose | Linux home servers and reproducible deployment | sherpa-onnx INT8, faster-whisper INT8, Moonshine, or accelerated `whisper.cpp` | Portable CPU by default; optional native/CUDA/Vulkan profiles |
+| Native Linux | Daily use on a Linux desktop or home server | sherpa-onnx INT8, faster-whisper, Moonshine | Good CPU latency; optional CUDA/Vulkan via Docker profiles |
+| Docker Compose | Reproducible Linux images and multi-arch hosts | sherpa-onnx INT8, faster-whisper INT8, Moonshine, or accelerated `whisper.cpp` | Portable CPU by default; optional native/CUDA/Vulkan profiles |
 
 On an Apple silicon Mac, use the native gateway for the lowest virtualization
 overhead. MLX Audio runs directly on M-series unified memory/GPU, while
 WhisperKit uses Core ML; Local Flow keeps either selected model resident between
 dictations. The container deliberately uses portable Linux runtimes and cannot
 use macOS MLX or Core ML from inside Docker Desktop.
-Docker remains the recommended deployment for Linux home servers.
-Precise speed depends on the model, audio duration, and hardware; compare the
-same recording and model class before drawing benchmark conclusions.
+
+On Linux, prefer the native gateway when you already have Python 3.12+ and FFmpeg
+on the host. Use Docker when you want an isolated image, CUDA/Vulkan profiles, or
+a multi-architecture registry build. Precise speed depends on the model, audio
+duration, and hardware; compare the same recording and model class before drawing
+benchmark conclusions.
 
 See [deployment choices](docs/deployment.md) for the complete comparison and
 operational commands.
@@ -85,7 +89,46 @@ cd server
 ./scripts/install-launch-agent.sh
 ```
 
-### 2. Or start it with Docker Compose
+### 2. Or start the gateway natively on Linux
+
+Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and FFmpeg. On Debian or
+Ubuntu:
+
+```sh
+sudo apt install ffmpeg
+# Install uv if needed: curl -LsSf https://astral.sh/uv/install.sh | sh
+cd server
+uv sync --all-groups --extra engines
+uv run localflow-server
+```
+
+Omit the `apple` extra on Linux; MLX Audio and WhisperKit are macOS-only. The
+startup banner prints the WebUI URL and where the bearer token lives:
+
+```text
+Local Flow gateway listening on 0.0.0.0:8765
+WebUI (this host): http://127.0.0.1:8765/
+Network access: use this host's LAN or Tailscale IP with the same port
+Token: ~/.config/localflow/token
+  (cat ~/.config/localflow/token — enter that value in the phone app)
+```
+
+Open the WebUI, enter the token from `~/.config/localflow/token`, download a
+recommended model (SenseVoice Small INT8 or Parakeet TDT INT8 on CPU), select it,
+and confirm Overview shows **Ready for dictation**.
+
+To keep the gateway running after the terminal closes (systemd user unit):
+
+```sh
+cd server
+./scripts/install-systemd-user.sh
+# optional: survive logout
+loginctl enable-linger "$USER"
+```
+
+Logs: `journalctl --user -u com.example.localflow.gateway.service -f`.
+
+### 3. Or start it with Docker Compose
 
 The canonical Compose file is [server/compose.yaml](server/compose.yaml). It
 publishes the gateway only on host loopback by default and stores models,
@@ -113,18 +156,24 @@ curl --fail http://127.0.0.1:8765/health/ready
 Copy [server/.env.example](server/.env.example) if you prefer an editable
 template. Never commit the resulting `.env` file.
 
-### 3. Choose how the iPhone reaches the gateway
+### 4. Choose how the phone reaches the gateway
 
-The app accepts any valid `http://` or `https://` gateway URL. Choose one of
-these network arrangements:
+The iPhone and Android apps accept any valid `http://` or `https://` gateway URL.
+Choose one of these network arrangements:
 
-- **Trusted LAN:** bind/publish the gateway on the LAN and enter a URL such as
-  `http://homelabone:8765/`. HTTP is unencrypted, so use this only on a network
-  you trust and never forward that port to the internet.
+- **Trusted LAN:** the native gateway listens on all interfaces by default. On
+  the same Wi‑Fi, enter `http://<host-lan-ip>:8765` (for example
+  `http://192.168.1.75:8765`). Find the IP with `hostname -I` or
+  `ip -4 addr`. HTTP is unencrypted, so use this only on a network you trust and
+  never forward that port to the internet. For Docker, set
+  `LOCALFLOW_PUBLISH_HOST=0.0.0.0` in `server/.env` and protect the port with the
+  host firewall.
 - **Tailscale:** keep the gateway on loopback and let Tailscale Serve provide
   tailnet-only HTTPS:
 
 ```sh
+# optional: bind loopback only when using Serve
+# LOCALFLOW_BIND_HOST=127.0.0.1 uv run localflow-server
 tailscale serve --bg 8765
 tailscale serve status
 ```
@@ -134,11 +183,18 @@ tailscale serve status
   `https://dictation.example.com/`. Do not send recordings or bearer tokens over
   public HTTP.
 
-Tailscale is recommended for a private personal deployment, but it is not
-mandatory. Follow [deployment](docs/deployment.md) and the optional
+In the phone app, paste:
+
+1. **Gateway address** — the LAN, Tailscale, or HTTPS URL above.
+2. **Bearer token** — `cat ~/.config/localflow/token` for native installs, or the
+   `LOCALFLOW_TOKEN` value from `server/.env` for Docker.
+
+Then use **Save and test** / **Test connection**. Tailscale is recommended for a
+private personal deployment, but it is not mandatory. Follow
+[deployment](docs/deployment.md) and the optional
 [Tailscale guide](docs/tailscale.md) for the relevant host configuration.
 
-### 4. Configure and install the iPhone app
+### 5. Configure and install the iPhone app
 
 Before signing under your own Apple account, replace these placeholders
 consistently in the Xcode project configuration and entitlements:
@@ -160,17 +216,21 @@ Then:
 
 Complete the physical-device checklist in [device setup](docs/device-setup.md).
 
-### 5. Or install the Android app
+### 6. Or install the Android app
 
 Android keeps your existing keyboard and dictates through a floating bubble
 instead. Build and install the APK, then follow the guided setup in the app:
 
 ```sh
 cd android
-export ANDROID_HOME="$HOME/Library/Android/sdk"
+# macOS default; on Linux try $HOME/Android/Sdk
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/local-flow-debug.apk
 ```
+
+In the app: grant microphone, notifications, overlay, and accessibility; then
+enter the gateway address and bearer token from step 4 and run **Test connection**.
 
 The same placeholder application ID, `com.example.localflow.android`, should be
 replaced before you distribute a build. See the
@@ -183,7 +243,8 @@ Gateway checks:
 
 ```sh
 cd server
-uv sync --all-groups --extra engines --extra apple
+# On macOS add --extra apple for MLX / WhisperKit tooling in the dev environment.
+uv sync --all-groups --extra engines
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy app
@@ -195,7 +256,7 @@ Android checks:
 
 ```sh
 cd android
-export ANDROID_HOME="$HOME/Library/Android/sdk"
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ./gradlew assembleDebug testDebugUnitTest lintDebug
 ```
 

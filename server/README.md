@@ -10,7 +10,8 @@ management, engine selection, microphone testing, and operational status.
 | Mode | Engines | Recommended use |
 | --- | --- | --- |
 | Native macOS | MLX Audio, WhisperKit, Handy, sherpa-onnx, `whisper.cpp` | Best performance on Apple silicon |
-| Docker Compose | sherpa-onnx INT8, faster-whisper INT8, Moonshine, `whisper.cpp` | Linux `amd64`/`arm64` home servers |
+| Native Linux | sherpa-onnx INT8, faster-whisper, Moonshine, optional `whisper.cpp` | Linux desktop or home server without Docker |
+| Docker Compose | sherpa-onnx INT8, faster-whisper INT8, Moonshine, `whisper.cpp` | Reproducible Linux `amd64`/`arm64` images |
 
 Native MLX Audio and WhisperKit are the accelerated choices on Apple silicon.
 Docker Desktop runs the portable Linux image in a VM, so it cannot use the
@@ -45,6 +46,50 @@ Docker. Standalone `whisper.cpp` is also supported:
 
 ```sh
 brew install ffmpeg whisper-cpp
+```
+
+## Native Linux quick start
+
+Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and FFmpeg on the host.
+
+```sh
+# Debian / Ubuntu
+sudo apt install ffmpeg
+# Install uv if needed: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+cd server
+uv sync --all-groups --extra engines
+uv run localflow-server
+```
+
+Do not pass `--extra apple` on Linux. The first run creates
+`~/.config/localflow/token` with mode `600`. The banner prints the WebUI URL and
+token path; show the secret with `cat ~/.config/localflow/token`. Open
+`http://127.0.0.1:8765/`, enter the token, download a recommended model
+(SenseVoice Small INT8 or Parakeet TDT INT8 on CPU), select it, and confirm
+**Ready for dictation**.
+
+To keep the gateway running after the terminal closes:
+
+```sh
+./scripts/install-systemd-user.sh
+# optional: keep the user session (and unit) after logout
+loginctl enable-linger "$USER"
+```
+
+```sh
+systemctl --user status com.example.localflow.gateway.service
+journalctl --user -u com.example.localflow.gateway.service -f
+```
+
+The unit uses the checkout's `.venv`. Re-run the installer after moving the
+repository or recreating the virtualenv.
+
+Phone clients on the same LAN can use `http://<host-lan-ip>:8765` while the
+gateway binds `0.0.0.0` (the default). For Tailscale Serve only, bind loopback:
+
+```sh
+LOCALFLOW_BIND_HOST=127.0.0.1 uv run localflow-server
 ```
 
 ## Docker Compose quick start
@@ -227,8 +272,8 @@ The native default listener is `0.0.0.0:8765`; the startup banner and WebUI show
 that listener separately from the local browser URL. An all-interface listener
 is reachable from connected networks, so keep the host firewall enabled.
 
-The iPhone app accepts ordinary HTTP and HTTPS gateway URLs; a Tailscale hostname
-is not mandatory. Supported arrangements include:
+The iPhone and Android apps accept ordinary HTTP and HTTPS gateway URLs; a
+Tailscale hostname is not mandatory. Supported arrangements include:
 
 - a trusted LAN hostname such as `http://homelabone:8765/`; for Docker, set
   `LOCALFLOW_PUBLISH_HOST=0.0.0.0` and protect the port with the host firewall
@@ -246,8 +291,8 @@ tailscale serve --bg 8765
 tailscale serve status
 ```
 
-Use the reported private HTTPS URL in the iPhone app. Do not use Funnel. See
-[deployment.md](../docs/deployment.md) for LAN/VPS alternatives and
+Use the reported private HTTPS URL in the iPhone or Android app. Do not use
+Funnel. See [deployment.md](../docs/deployment.md) for LAN/VPS alternatives and
 [tailscale.md](../docs/tailscale.md) for the private Serve setup.
 
 ## Health and readiness
@@ -300,8 +345,11 @@ uv run localflow-status
 # Remove sessions older than the configured retention window
 uv run localflow-cleanup
 
-# Follow the native LaunchAgent logs
+# Follow the native macOS LaunchAgent logs
 tail -f ~/Library/Logs/LocalFlow/gateway.log
+
+# Follow the native Linux systemd user unit logs
+journalctl --user -u com.example.localflow.gateway.service -f
 
 # Follow container logs
 docker compose logs --follow gateway
@@ -319,7 +367,8 @@ model, configuration file, and stored session is intentional.
 ## Development checks
 
 ```sh
-uv sync --all-groups --extra engines --extra apple
+# On macOS add --extra apple when you need MLX / WhisperKit in the dev environment.
+uv sync --all-groups --extra engines
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy app

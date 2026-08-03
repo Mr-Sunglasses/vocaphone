@@ -63,7 +63,7 @@ def overview_fragment(status: AdminStatusResponse) -> str:
     engine_hint = (
         "brew install whisper-cpp or whisperkit-cli"
         if is_mac
-        else "Use the Docker image or install whisper.cpp"
+        else "Install localflow-gateway[engines] (sherpa-onnx / faster-whisper) or use Docker"
     )
     checks = [
         ("Gateway token configured", status.setup.token_configured, ""),
@@ -122,7 +122,7 @@ def overview_fragment(status: AdminStatusResponse) -> str:
             <span class="ready-icon" aria-hidden="true">✓</span>
             <div><strong>The gateway is ready for dictation.</strong>
               <p class="muted">Use the Test tab for a quick microphone check, then connect
-                the iPhone using this server's Tailscale address.</p></div>
+                the phone app with this host's LAN or Tailscale URL and bearer token.</p></div>
           </div>
         """
     else:
@@ -132,7 +132,9 @@ def overview_fragment(status: AdminStatusResponse) -> str:
         if not status.setup.engine_binary_available:
             pending_steps.append(f"{escape(engine_hint)}.")
         if not status.setup.model_installed:
-            pending_steps.append("Open Models and download a model recommended for this Mac.")
+            pending_steps.append(
+                f"Open Models and download a model recommended for this {machine_label}."
+            )
         if not status.setup.engine_ready:
             pending_steps.append("Select an installed model and confirm that the engine is ready.")
         next_steps = (
@@ -140,10 +142,11 @@ def overview_fragment(status: AdminStatusResponse) -> str:
         )
     exposure_notice = ""
     if status.bind_host in WILDCARD_BIND_HOSTS:
-        exposure_notice = """
+        firewall_hint = "Keep macOS Firewall on" if is_mac else "Keep the host firewall enabled"
+        exposure_notice = f"""
           <div class="callout warning">
             <strong>Available on every network interface</strong>
-            <span>The private API still requires the bearer token. Keep macOS Firewall on,
+            <span>The private API still requires the bearer token. {firewall_hint},
               use Tailscale for remote access, and do not expose this port to the internet.</span>
           </div>
         """
@@ -157,7 +160,7 @@ def overview_fragment(status: AdminStatusResponse) -> str:
         </div>
         <dl class="connection-facts">
           <div><dt>Listener</dt><dd>{escape(listener)}</dd></div>
-          <div><dt>Open on this Mac</dt><dd>{escape(local_url)}</dd></div>
+          <div><dt>Open on this host</dt><dd>{escape(local_url)}</dd></div>
         </dl>
       </section>
       {exposure_notice}
@@ -482,7 +485,7 @@ def settings_fragment(
         <h2>Network</h2>
         <dl class="facts">
           <dt>Listener</dt><dd>{listener}</dd>
-          <dt>Open on this Mac</dt><dd>{local_url}</dd>
+          <dt>Open on this host</dt><dd>{local_url}</dd>
         </dl>
         {exposure_notice}
       </div>

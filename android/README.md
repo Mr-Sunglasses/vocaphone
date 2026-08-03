@@ -21,7 +21,8 @@ accessibility disclosure and consent Play requires are present from the start.
 
 ```sh
 cd android
-export ANDROID_HOME="$HOME/Library/Android/sdk"
+# macOS default SDK path; on Linux Android Studio usually uses $HOME/Android/Sdk
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/local-flow-debug.apk
 ```
