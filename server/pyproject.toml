@@ -11,6 +11,7 @@ dependencies = [
   "pysbd>=0.3.4,<0.4",
   "python-multipart>=0.0.9,<1",
   # Public Suffix List snapshot for recognising addresses in a transcript.
+  "qrcode>=7.4,<9",
   "tldextract>=5,<6",
   "uvicorn[standard]>=0.35,<1",
 ]
@@ -72,6 +73,8 @@ module = [
   "moonshine_voice.*",
   "pysbd",
   "pysbd.*",
+  "qrcode",
+  "qrcode.*",
 ]
 ignore_missing_imports = true
 

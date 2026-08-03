@@ -121,6 +121,39 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 24px 60px; }
 .grid.two { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 @media (max-width: 720px) { .grid.two { grid-template-columns: 1fr; } }
 
+.pairing-layout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+}
+.pairing-qr {
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  width: 220px;
+  height: 220px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pairing-qr svg {
+  width: 200px;
+  height: 200px;
+  display: block;
+}
+.pairing-meta { flex: 1 1 220px; min-width: 0; }
+.pairing-url-form label { display: grid; gap: 6px; margin-bottom: 12px; }
+.pairing-url-form select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
 .operations { margin: 18px 0; }
 .section-heading {
   display: flex;

@@ -92,6 +92,20 @@ gateway binds `0.0.0.0` (the default). For Tailscale Serve only, bind loopback:
 LOCALFLOW_BIND_HOST=127.0.0.1 uv run localflow-server
 ```
 
+### Phone pairing QR
+
+After you authenticate in the WebUI, the Overview page shows a **Pair phone app**
+QR. The Android app scans it to fill the gateway URL and bearer token. The code
+encodes a versioned JSON payload:
+
+```json
+{"v":1,"url":"http://192.168.1.20:8765","token":"..."}
+```
+
+Discovery prefers private Wi‑Fi addresses (for example `192.168.x.x`). Override
+with `LOCALFLOW_PUBLIC_URL` or `LOCALFLOW_PAIRING_URL` when automatic selection
+is wrong. The QR is only available through the authenticated WebUI/API.
+
 ## Docker Compose quick start
 
 [compose.yaml](compose.yaml) is the canonical container deployment. It builds a

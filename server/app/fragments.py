@@ -56,7 +56,7 @@ def engine_pill_oob(engine: EngineStatus) -> str:
     )
 
 
-def overview_fragment(status: AdminStatusResponse) -> str:
+def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> str:
     is_mac = status.system.os.startswith("Darwin")
     machine_label = "Mac" if is_mac else "server"
     ffmpeg_hint = "brew install ffmpeg" if is_mac else "Install FFmpeg with your package manager"
@@ -165,6 +165,7 @@ def overview_fragment(status: AdminStatusResponse) -> str:
       </section>
       {exposure_notice}
       {operations_fragment(status.metrics, status.readiness)}
+      {pairing_html}
       <div class="grid two">
         <div class="card">
           <h2>Setup checklist</h2>
@@ -406,6 +407,72 @@ def _model_card(entry: AdminModelEntry) -> str:
           <div class="actions">{action}</div>
         </div>
       </article>
+    """
+
+
+def pairing_fragment(
+    *,
+    selected_url: str | None,
+    candidates: list[str],
+    token_redacted: str,
+    qr_svg: str = "",
+) -> str:
+    """Authenticated phone-pairing card with QR for the selected gateway URL.
+
+    The SVG is inlined so the browser does not need a second request (img tags
+    cannot attach the WebUI bearer header).
+    """
+    if not selected_url:
+        return """
+      <div class="card" id="pairing-card">
+        <h2>Pair phone app</h2>
+        <p class="muted">No phone-reachable address was detected. Set
+          <code>LOCALFLOW_PUBLIC_URL</code> to the URL the phone should use
+          (for example <code>http://192.168.1.20:8765</code>), then reload.</p>
+      </div>
+        """
+    options = "".join(
+        f'<option value="{escape(url)}"{" selected" if url == selected_url else ""}>'
+        f"{escape(url)}</option>"
+        for url in candidates
+    )
+    # Strip XML declaration for clean inline embedding.
+    inline_svg = qr_svg
+    if inline_svg.lstrip().startswith("<?xml"):
+        inline_svg = inline_svg.split("?>", 1)[-1].lstrip()
+    return f"""
+      <div class="card" id="pairing-card">
+        <h2>Pair phone app</h2>
+        <p class="muted">Scan this QR in Local Flow on Android to fill the gateway
+          address and bearer token. Keep the WebUI private — the code includes the
+          live token.</p>
+        <div class="pairing-layout">
+          <div class="pairing-qr" role="img"
+               aria-label="Pairing QR code for {escape(selected_url)}">{inline_svg}</div>
+          <div class="pairing-meta">
+            <div class="pairing-url-form">
+              <label><span>Address encoded in the QR</span>
+                <select name="url"
+                        hx-get="/ui/partials/pairing"
+                        hx-target="#pairing-card"
+                        hx-swap="outerHTML"
+                        hx-trigger="change"
+                        hx-include="this">
+                  {options}
+                </select>
+              </label>
+            </div>
+            <dl class="facts">
+              <div><dt>Gateway URL</dt><dd><code>{escape(selected_url)}</code></dd></div>
+              <div><dt>Token</dt><dd><code>{escape(token_redacted)}</code></dd></div>
+            </dl>
+            <p class="muted small">Prefer the Wi‑Fi LAN address when the phone is on
+              the same network. Use a Tailscale MagicDNS name when both devices are
+              on the tailnet. Override discovery with
+              <code>LOCALFLOW_PUBLIC_URL</code>.</p>
+          </div>
+        </div>
+      </div>
     """
 
 

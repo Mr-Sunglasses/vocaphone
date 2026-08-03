@@ -7,6 +7,11 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Used only when the user taps Scan QR on the gateway screen. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
     <!-- Offered as an optional step so a long dictation is not killed mid-sentence. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
@@ -54,6 +59,12 @@
             android:noHistory="true"
             android:taskAffinity=""
             android:theme="@style/Theme.LocalFlow.Invisible" />
+
+        <activity
+            android:name=".ui.QrPairingActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.LocalFlow" />
 
         <service
             android:name=".dictation.DictationService"

@@ -52,6 +52,7 @@ from app.fragments import (
     models_list_fragment,
     operations_fragment,
     overview_fragment,
+    pairing_fragment,
     settings_fragment,
     test_fragment,
 )
@@ -62,6 +63,14 @@ from app.model_manager import (
 )
 from app.models.base import AudioNormalizer, TranscriptionEngine
 from app.models.moonshine import MoonshineEngine
+from app.pairing import (
+    decode_pairing_payload,
+    discover_gateway_base_urls,
+    encode_pairing_payload,
+    normalize_gateway_url,
+    primary_gateway_base_url,
+    qr_svg_for_payload,
+)
 from app.readiness import ReadinessMonitor
 from app.runtime_config import RuntimeConfig
 from app.schemas import (
@@ -926,13 +935,97 @@ def create_app(
     def _models_list_html() -> HTMLResponse:
         return _html(models_list_fragment(_model_entries()))
 
+    def _pairing_html(selected_url: str | None = None) -> str:
+        candidates = discover_gateway_base_urls(configured.port)
+        selected: str | None
+        if selected_url:
+            try:
+                selected = normalize_gateway_url(selected_url)
+            except ValueError:
+                selected = primary_gateway_base_url(configured.port)
+            else:
+                if selected not in candidates:
+                    candidates = [selected, *candidates]
+        else:
+            selected = primary_gateway_base_url(configured.port)
+        token = configured.token
+        redacted = (
+            f"{token[:4]}…{token[-4:]} ({len(token)} characters)"
+            if len(token) > 8
+            else "•" * len(token)
+        )
+        qr_svg = ""
+        if selected:
+            qr_svg = qr_svg_for_payload(encode_pairing_payload(selected, configured.token))
+        return pairing_fragment(
+            selected_url=selected,
+            candidates=candidates,
+            token_redacted=redacted,
+            qr_svg=qr_svg,
+        )
+
+    def _resolve_pairing_url(url: str | None) -> str:
+        candidates = discover_gateway_base_urls(configured.port)
+        if url:
+            try:
+                return normalize_gateway_url(url)
+            except ValueError as error:
+                raise APIProblem(400, "invalid_pairing_url", str(error)) from error
+        if not candidates:
+            raise APIProblem(
+                503,
+                "pairing_unavailable",
+                "No phone-reachable gateway address was detected. "
+                "Set LOCALFLOW_PUBLIC_URL and retry.",
+            )
+        return candidates[0]
+
+    @app.get(
+        "/v1/admin/pairing",
+        dependencies=[Depends(require_token)],
+    )
+    async def get_pairing(url: str | None = Query(default=None)) -> dict[str, Any]:
+        selected = _resolve_pairing_url(url)
+        payload = encode_pairing_payload(selected, configured.token)
+        # Round-trip so clients and tests share one format.
+        decoded = decode_pairing_payload(payload)
+        return {
+            "version": decoded.version,
+            "url": decoded.url,
+            "payload": payload,
+            "candidates": discover_gateway_base_urls(configured.port),
+        }
+
+    @app.get(
+        "/v1/admin/pairing/qr.svg",
+        dependencies=[Depends(require_token)],
+        response_class=Response,
+    )
+    async def get_pairing_qr(url: str | None = Query(default=None)) -> Response:
+        selected = _resolve_pairing_url(url)
+        payload = encode_pairing_payload(selected, configured.token)
+        svg = qr_svg_for_payload(payload)
+        return Response(
+            content=svg,
+            media_type="image/svg+xml",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    @app.get(
+        "/ui/partials/pairing",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_pairing(url: str | None = Query(default=None)) -> HTMLResponse:
+        return _html(_pairing_html(url))
+
     @app.get(
         "/ui/partials/overview",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
     async def ui_overview() -> HTMLResponse:
-        return _html(overview_fragment(await _status_payload()))
+        return _html(overview_fragment(await _status_payload(), pairing_html=_pairing_html()))
 
     @app.get(
         "/ui/partials/operations",
