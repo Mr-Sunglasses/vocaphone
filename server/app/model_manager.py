@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from app.catalog import (
     DEFAULT_CATALOG,
     ENGINE_MOONSHINE,
+    ENGINE_SHERPA_ONNX,
     ENGINE_WHISPER_CPP,
     ENGINE_WHISPERKIT,
     CatalogModel,
@@ -228,6 +229,9 @@ class ModelManager:
         if model.archive_url is not None:
             await self._run_archive_download(model, handle)
             return
+        if model.engine == ENGINE_SHERPA_ONNX and model.huggingface_repo is not None:
+            await self._run_sherpa_huggingface_download(model, handle)
+            return
         if model.huggingface_repo is not None:
             await self._run_huggingface_download(model, handle)
             return
@@ -284,6 +288,56 @@ class ModelManager:
         finally:
             archive_path.unlink(missing_ok=True)
             shutil.rmtree(extraction_dir, ignore_errors=True)
+            if handle.state.status != "completed":
+                shutil.rmtree(partial_dir, ignore_errors=True)
+
+    async def _run_sherpa_huggingface_download(
+        self, model: CatalogModel, handle: _DownloadHandle
+    ) -> None:
+        """Download exactly `required_files` from a plain Hugging Face model repo.
+
+        Unlike `_run_huggingface_download` (which mirrors an entire folder for
+        engines like MLX Audio and writes no marker), this fetches only the
+        named files a sherpa-onnx model actually needs and writes the same
+        `.localflow-model.json` marker `_run_archive_download` does, since
+        some model families (GigaAM, Canary) ship as bare Hugging Face repos
+        with no pre-packaged `.tar.bz2` release archive.
+        """
+        if not model.huggingface_repo or not model.required_files:
+            raise UnknownModelError(f"Hugging Face metadata is incomplete for {model.id}.")
+        final_dir = self.model_path(model)
+        partial_dir = final_dir.with_name(final_dir.name + ".partial")
+        shutil.rmtree(partial_dir, ignore_errors=True)
+        partial_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            available = dict(await asyncio.to_thread(_list_repo_folder, model.huggingface_repo, ""))
+            handle.state.total_bytes = sum(available.get(name, 0) for name in model.required_files)
+            for name in model.required_files:
+                if handle.cancel.is_set():
+                    raise DownloadCancelled
+                url = f"{HF_BASE_URL}/{model.huggingface_repo}/resolve/main/{name}"
+                await asyncio.to_thread(
+                    _download_file, url, partial_dir / name, handle.state, handle.cancel, name
+                )
+            missing = [name for name in model.required_files if not (partial_dir / name).is_file()]
+            if missing:
+                raise RuntimeError(f"Downloaded model is missing: {', '.join(missing)}.")
+            metadata = {
+                "model_id": model.id,
+                "model_type": model.model_type,
+                "language_codes": list(model.language_codes),
+                "required_files": list(model.required_files),
+            }
+            (partial_dir / ".localflow-model.json").write_text(
+                json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
+            )
+            if handle.cancel.is_set():
+                raise DownloadCancelled
+            final_dir.parent.mkdir(parents=True, exist_ok=True)
+            shutil.rmtree(final_dir, ignore_errors=True)
+            partial_dir.replace(final_dir)
+            handle.state.status = "completed"
+        finally:
             if handle.state.status != "completed":
                 shutil.rmtree(partial_dir, ignore_errors=True)
 

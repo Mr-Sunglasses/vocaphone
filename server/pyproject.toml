@@ -30,6 +30,7 @@ apple = [
 [project.scripts]
 localflow-server = "app.cli:serve"
 localflow-status = "app.cli:status"
+localflow-diagnostics = "app.cli:diagnostics"
 localflow-cleanup = "app.cli:cleanup"
 
 [dependency-groups]

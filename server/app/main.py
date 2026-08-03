@@ -36,6 +36,7 @@ from app.audio import (
 )
 from app.catalog import recommended_ids
 from app.config import Settings
+from app.diagnostics import build_diagnostics_bundle
 from app.engines import (
     EngineManager,
     EngineProvider,
@@ -55,14 +56,14 @@ from app.fragments import (
     pairing_fragment,
     settings_fragment,
     test_fragment,
+    tokens_fragment,
 )
 from app.model_manager import (
     DownloadInProgressError,
     ModelManager,
     UnknownModelError,
 )
-from app.models.base import AudioNormalizer, TranscriptionEngine
-from app.models.moonshine import MoonshineEngine
+from app.models.base import AudioNormalizer, StreamingEngine, TranscriptionEngine
 from app.pairing import (
     decode_pairing_payload,
     discover_gateway_base_urls,
@@ -82,6 +83,11 @@ from app.schemas import (
     CustomDownloadRequest,
     DeleteResponse,
     DependencyStatus,
+    DeviceTokenCreateRequest,
+    DeviceTokenCreateResponse,
+    DeviceTokenEntry,
+    DeviceTokenRevokeResponse,
+    DiagnosticsBundle,
     DownloadResponse,
     EngineStatus,
     ErrorDetail,
@@ -103,10 +109,12 @@ from app.service import TranscriptionService
 from app.storage import SessionRepository, StoredSession
 from app.system import detect_system
 from app.text_styles import apply_writing_style
+from app.tokens import TokenStore
 
 VERSION = "0.2.0"
 WEBUI_DIR = Path(__file__).parent / "webui"
 TOKEN_FILE_HINT = "~/.config/localflow/token"
+BOOTSTRAP_TOKEN_ID = "bootstrap"
 
 
 def create_app(
@@ -121,6 +129,7 @@ def create_app(
     repository = SessionRepository(configured.data_dir / "sessions.sqlite3")
     repository.initialize()
     manager = model_manager or ModelManager(configured.resolved_models_dir())
+    token_store = TokenStore(configured.data_dir / "device_tokens.json")
     config_path = configured.config_path
     if engine is not None:
         engine_provider: EngineProvider = StaticEngineProvider(engine)
@@ -201,6 +210,11 @@ def create_app(
         )
         return JSONResponse(status_code=problem.status_code, content=envelope.model_dump())
 
+    def _token_matches(supplied: str) -> bool:
+        if hmac.compare_digest(supplied, configured.token):
+            return True
+        return token_store.matches(supplied)
+
     def require_token(authorization: str | None = Header(default=None)) -> None:
         prefix = "Bearer "
         supplied = (
@@ -208,7 +222,7 @@ def create_app(
             if authorization and authorization.startswith(prefix)
             else ""
         )
-        if not hmac.compare_digest(supplied, configured.token):
+        if not _token_matches(supplied):
             raise APIProblem(401, "unauthorized", "A valid bearer token is required.")
 
     def token_is_valid(authorization: str | None) -> bool:
@@ -218,7 +232,7 @@ def create_app(
             if authorization and authorization.startswith(prefix)
             else ""
         )
-        return hmac.compare_digest(supplied, configured.token)
+        return _token_matches(supplied)
 
     # ---------------------------------------------------------------- WebUI
 
@@ -240,7 +254,7 @@ def create_app(
             engine=state.name,
             streaming_supported=(
                 state.ready
-                and isinstance(selected_engine, MoonshineEngine)
+                and isinstance(selected_engine, StreamingEngine)
                 and selected_engine.supports_streaming
             ),
         )
@@ -368,13 +382,19 @@ def create_app(
 
     @app.websocket("/v1/stream")
     async def stream_transcription(websocket: WebSocket) -> None:
-        """Experimental float32 PCM stream for a selected Moonshine engine."""
+        """Experimental float32 PCM stream for a streaming-capable engine.
+
+        Any engine exposing `supports_streaming` (True), `streaming_lock`, and
+        `create_stream()` returning an object with `add_listener`/`add_audio`/
+        `stop` works here — currently Moonshine and the sherpa-onnx streaming
+        zipformer model.
+        """
         if not token_is_valid(websocket.headers.get("authorization")):
             await websocket.close(code=4401, reason="Unauthorized")
             return
         selected_engine = engine_provider.current()
         if (
-            not isinstance(selected_engine, MoonshineEngine)
+            not isinstance(selected_engine, StreamingEngine)
             or not selected_engine.supports_streaming
         ):
             selected_health = await selected_engine.health()
@@ -431,7 +451,9 @@ def create_app(
                             lines[line_id] = str(text_value).strip()
 
                 await asyncio.to_thread(stream.add_listener, receive_event)
-                await websocket.send_json({"type": "ready", "engine": "moonshine"})
+                await websocket.send_json(
+                    {"type": "ready", "engine": selected_health.name.split(":", 1)[0]}
+                )
                 while True:
                     message = await websocket.receive()
                     if message.get("type") == "websocket.disconnect":
@@ -713,6 +735,90 @@ def create_app(
         return await _status_payload()
 
     @app.get(
+        "/v1/admin/diagnostics",
+        response_model=DiagnosticsBundle,
+        dependencies=[Depends(require_token)],
+    )
+    async def get_admin_diagnostics(response: Response) -> DiagnosticsBundle:
+        bundle = build_diagnostics_bundle(await _status_payload(), await get_config())
+        filename = f"localflow-diagnostics-{bundle.generated_at:%Y%m%dT%H%M%SZ}.json"
+        response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return bundle
+
+    def _token_entries() -> list[DeviceTokenEntry]:
+        entries = [
+            DeviceTokenEntry(
+                id=BOOTSTRAP_TOKEN_ID,
+                label="Bootstrap token (LOCALFLOW_TOKEN / token file)",
+                created_at=None,
+                revocable=False,
+            )
+        ]
+        entries.extend(
+            DeviceTokenEntry(
+                id=token.id, label=token.label, created_at=token.created_at, revocable=True
+            )
+            for token in token_store.all()
+        )
+        return entries
+
+    @app.get(
+        "/v1/admin/tokens",
+        response_model=list[DeviceTokenEntry],
+        dependencies=[Depends(require_token)],
+    )
+    async def list_admin_tokens() -> list[DeviceTokenEntry]:
+        return _token_entries()
+
+    @app.post(
+        "/v1/admin/tokens",
+        response_model=DeviceTokenCreateResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def create_admin_token(body: DeviceTokenCreateRequest) -> DeviceTokenCreateResponse:
+        record, plaintext = token_store.create(body.label)
+        return DeviceTokenCreateResponse(
+            id=record.id, label=record.label, token=plaintext, created_at=record.created_at
+        )
+
+    @app.delete(
+        "/v1/admin/tokens/{token_id}",
+        response_model=DeviceTokenRevokeResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def revoke_admin_token(token_id: str, response: Response) -> DeviceTokenRevokeResponse:
+        if token_id == BOOTSTRAP_TOKEN_ID:
+            raise APIProblem(
+                409,
+                "bootstrap_token_not_revocable",
+                "Rotate LOCALFLOW_TOKEN or its token file instead of revoking it here.",
+            )
+        revoked = token_store.revoke(token_id)
+        if not revoked:
+            response.status_code = 404
+        return DeviceTokenRevokeResponse(revoked=revoked)
+
+    @app.post(
+        "/v1/admin/tokens/{token_id}/rotate",
+        response_model=DeviceTokenCreateResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def rotate_admin_token(token_id: str) -> DeviceTokenCreateResponse:
+        if token_id == BOOTSTRAP_TOKEN_ID:
+            raise APIProblem(
+                409,
+                "bootstrap_token_not_rotatable",
+                "Rotate LOCALFLOW_TOKEN or its token file instead of rotating it here.",
+            )
+        rotated = token_store.rotate(token_id)
+        if rotated is None:
+            raise APIProblem(404, "token_not_found", "This device token no longer exists.")
+        record, plaintext = rotated
+        return DeviceTokenCreateResponse(
+            id=record.id, label=record.label, token=plaintext, created_at=record.created_at
+        )
+
+    @app.get(
         "/v1/admin/models",
         response_model=list[AdminModelEntry],
         dependencies=[Depends(require_token)],
@@ -937,7 +1043,43 @@ def create_app(
     def _models_list_html() -> HTMLResponse:
         return _html(models_list_fragment(_model_entries()))
 
-    def _pairing_html(selected_url: str | None = None, *, persist: bool = False) -> str:
+    def _resolve_pairing_token(
+        token_id: str | None,
+    ) -> tuple[str, str, Literal["ok", "stale", "unknown"], str | None]:
+        """Return (resolved_id, plaintext, status, requested_label).
+
+        `stale` means the token still exists (see it under Settings) but this
+        process never cached its plaintext — normally because it was created
+        before the gateway last restarted. `unknown` means no such token
+        exists at all (typically already revoked). Both fall back to the
+        bootstrap token for the QR actually shown; only `stale` can be fixed
+        by rotating the token to give it a fresh, displayable secret.
+        """
+        if token_id and token_id != BOOTSTRAP_TOKEN_ID:
+            cached = token_store.cached_plaintext(token_id)
+            if cached is not None:
+                return token_id, cached, "ok", None
+            existing = token_store.get(token_id)
+            if existing is not None:
+                return BOOTSTRAP_TOKEN_ID, configured.token, "stale", existing.label
+            return BOOTSTRAP_TOKEN_ID, configured.token, "unknown", None
+        return BOOTSTRAP_TOKEN_ID, configured.token, "ok", None
+
+    def _pairing_token_options() -> list[tuple[str, str]]:
+        cached_ids = {token.id for token in token_store.cached_entries()}
+        options = [(BOOTSTRAP_TOKEN_ID, "Bootstrap token")]
+        options.extend(
+            (
+                token.id,
+                token.label if token.id in cached_ids else f"{token.label} (rotate to view)",
+            )
+            for token in reversed(token_store.all())
+        )
+        return options
+
+    def _pairing_html(
+        selected_url: str | None = None, token_id: str | None = None, *, persist: bool = False
+    ) -> str:
         discovered = discover_gateway_base_urls(configured.port)
         candidates = list(discovered)
         for saved in pairing_config.pairing_urls:
@@ -964,7 +1106,7 @@ def create_app(
             selected = pairing_config.pairing_url or primary_gateway_base_url(configured.port)
             if selected and selected not in candidates:
                 candidates = [selected, *candidates]
-        token = configured.token
+        resolved_token_id, token, token_status, requested_label = _resolve_pairing_token(token_id)
         redacted = (
             f"{token[:4]}…{token[-4:]} ({len(token)} characters)"
             if len(token) > 8
@@ -972,13 +1114,18 @@ def create_app(
         )
         qr_svg = ""
         if selected:
-            qr_svg = qr_svg_for_payload(encode_pairing_payload(selected, configured.token))
+            qr_svg = qr_svg_for_payload(encode_pairing_payload(selected, token))
         return pairing_fragment(
             selected_url=selected,
             candidates=candidates,
             token_redacted=redacted,
             qr_svg=qr_svg,
             saved_urls=pairing_config.pairing_urls,
+            token_options=_pairing_token_options(),
+            selected_token_id=resolved_token_id,
+            token_status=token_status,
+            requested_token_id=token_id or "",
+            requested_token_label=requested_label,
         )
 
     def _forget_pairing_url(url: str) -> str:
@@ -1013,9 +1160,12 @@ def create_app(
         "/v1/admin/pairing",
         dependencies=[Depends(require_token)],
     )
-    async def get_pairing(url: str | None = Query(default=None)) -> dict[str, Any]:
+    async def get_pairing(
+        url: str | None = Query(default=None), token_id: str | None = Query(default=None)
+    ) -> dict[str, Any]:
         selected = _resolve_pairing_url(url)
-        payload = encode_pairing_payload(selected, configured.token)
+        _, token, _, _ = _resolve_pairing_token(token_id)
+        payload = encode_pairing_payload(selected, token)
         # Round-trip so clients and tests share one format.
         decoded = decode_pairing_payload(payload)
         return {
@@ -1030,9 +1180,12 @@ def create_app(
         dependencies=[Depends(require_token)],
         response_class=Response,
     )
-    async def get_pairing_qr(url: str | None = Query(default=None)) -> Response:
+    async def get_pairing_qr(
+        url: str | None = Query(default=None), token_id: str | None = Query(default=None)
+    ) -> Response:
         selected = _resolve_pairing_url(url)
-        payload = encode_pairing_payload(selected, configured.token)
+        _, token, _, _ = _resolve_pairing_token(token_id)
+        payload = encode_pairing_payload(selected, token)
         svg = qr_svg_for_payload(payload)
         return Response(
             content=svg,
@@ -1045,8 +1198,33 @@ def create_app(
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_pairing(url: str | None = Query(default=None)) -> HTMLResponse:
-        return _html(_pairing_html(url, persist=True))
+    async def ui_pairing(
+        url: str | None = Query(default=None), token_id: str | None = Query(default=None)
+    ) -> HTMLResponse:
+        return _html(_pairing_html(url, token_id, persist=True))
+
+    @app.post(
+        "/ui/partials/pairing/tokens",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_create_pairing_token(
+        label: str = Form(..., min_length=1, max_length=100), url: str | None = Form(default=None)
+    ) -> HTMLResponse:
+        record, _ = token_store.create(label)
+        return _html(_pairing_html(url, record.id, persist=True))
+
+    @app.post(
+        "/ui/partials/pairing/tokens/{token_id}/rotate",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_rotate_pairing_token(
+        token_id: str, url: str | None = Form(default=None)
+    ) -> HTMLResponse:
+        rotated = token_store.rotate(token_id)
+        resolved_id = rotated[0].id if rotated is not None else token_id
+        return _html(_pairing_html(url, resolved_id, persist=True))
 
     @app.delete(
         "/ui/partials/pairing",
@@ -1216,7 +1394,66 @@ def create_app(
             ("WebUI config file", str(config_path)),
             ("Token file", TOKEN_FILE_HINT),
         ]
-        return _html(settings_fragment(config, paths, configured.bind_host, configured.port))
+        return _html(
+            settings_fragment(
+                config, paths, configured.bind_host, configured.port, _tokens_fragment_str()
+            )
+        )
+
+    def _tokens_fragment_str(*, new_token: tuple[str, str] | None = None) -> str:
+        return tokens_fragment(_token_entries(), new_token=new_token)
+
+    @app.get(
+        "/ui/partials/tokens",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_tokens() -> HTMLResponse:
+        return _html(_tokens_fragment_str())
+
+    @app.post(
+        "/ui/partials/tokens",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_create_token(
+        label: str = Form(..., min_length=1, max_length=100),
+    ) -> HTMLResponse:
+        record, plaintext = token_store.create(label)
+        return _html(_tokens_fragment_str(new_token=(record.label, plaintext)))
+
+    @app.delete(
+        "/ui/partials/tokens/{token_id}",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_revoke_token(token_id: str) -> HTMLResponse:
+        if token_id == BOOTSTRAP_TOKEN_ID:
+            raise APIProblem(
+                409,
+                "bootstrap_token_not_revocable",
+                "Rotate LOCALFLOW_TOKEN or its token file instead of revoking it here.",
+            )
+        token_store.revoke(token_id)
+        return _html(_tokens_fragment_str())
+
+    @app.post(
+        "/ui/partials/tokens/{token_id}/rotate",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_rotate_token(token_id: str) -> HTMLResponse:
+        if token_id == BOOTSTRAP_TOKEN_ID:
+            raise APIProblem(
+                409,
+                "bootstrap_token_not_rotatable",
+                "Rotate LOCALFLOW_TOKEN or its token file instead of rotating it here.",
+            )
+        rotated = token_store.rotate(token_id)
+        if rotated is None:
+            raise APIProblem(404, "token_not_found", "This device token no longer exists.")
+        record, plaintext = rotated
+        return _html(_tokens_fragment_str(new_token=(record.label, plaintext)))
 
     @app.put(
         "/ui/partials/config",

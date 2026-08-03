@@ -4,8 +4,10 @@ import json
 
 import httpx
 import pytest
-from conftest import TOKEN
+from conftest import TOKEN, FakeEngine, FakeNormalizer
 
+from app.config import Settings
+from app.main import create_app
 from app.pairing import decode_pairing_payload
 
 
@@ -48,6 +50,152 @@ async def test_pairing_payload_and_qr(
     assert "192.168.1.75" in partial.text
     # QR is inlined so the browser never needs an unauthenticated <img> fetch.
     assert "<svg" in partial.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_pairing_defaults_to_bootstrap_token_dropdown(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    partial = await client.get("/ui/partials/pairing", headers=authorization)
+    assert partial.status_code == 200
+    assert '<option value="bootstrap" selected>Bootstrap token</option>' in partial.text
+    assert "Or pair a new device with its own token" in partial.text
+
+
+@pytest.mark.asyncio
+async def test_pairing_can_select_a_device_token_for_the_qr(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    created = await client.post(
+        "/v1/admin/tokens", headers=authorization, json={"label": "Pixel 6a"}
+    )
+    assert created.status_code == 200
+    device = created.json()
+
+    api = await client.get(
+        "/v1/admin/pairing",
+        headers=authorization,
+        params={"url": "http://192.168.1.75:8765", "token_id": device["id"]},
+    )
+    assert api.status_code == 200
+    decoded = decode_pairing_payload(api.json()["payload"])
+    assert decoded.token == device["token"]
+    assert decoded.token != TOKEN
+
+    partial = await client.get(
+        "/ui/partials/pairing",
+        headers=authorization,
+        params={"token_id": device["id"]},
+    )
+    assert partial.status_code == 200
+    assert f'<option value="{device["id"]}" selected>Pixel 6a</option>' in partial.text
+    assert "no longer available" not in partial.text
+
+
+@pytest.mark.asyncio
+async def test_pairing_falls_back_to_bootstrap_for_revoked_or_unknown_token(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    created = await client.post(
+        "/v1/admin/tokens", headers=authorization, json={"label": "Old phone"}
+    )
+    device_id = created.json()["id"]
+    await client.delete(f"/v1/admin/tokens/{device_id}", headers=authorization)
+
+    for missing_id in (device_id, "never-existed"):
+        api = await client.get(
+            "/v1/admin/pairing",
+            headers=authorization,
+            params={"url": "http://192.168.1.75:8765", "token_id": missing_id},
+        )
+        assert decode_pairing_payload(api.json()["payload"]).token == TOKEN
+
+        partial = await client.get(
+            "/ui/partials/pairing",
+            headers=authorization,
+            params={"token_id": missing_id},
+        )
+        assert "no longer exists" in partial.text
+        assert '<option value="bootstrap" selected>Bootstrap token</option>' in partial.text
+
+
+@pytest.mark.asyncio
+async def test_pairing_offers_to_rotate_a_stale_device_token(
+    settings: Settings,
+    fake_engine: FakeEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A token created before the gateway last restarted has no cached plaintext.
+
+    It should still appear in the dropdown (marked for rotation) instead of
+    silently vanishing, and rotating it should make it selectable again.
+    """
+    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    auth = {"Authorization": f"Bearer {TOKEN}"}
+
+    first_app = create_app(settings, engine=fake_engine, normalizer=FakeNormalizer())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=first_app), base_url="http://test"
+    ) as first_client:
+        created = await first_client.post(
+            "/v1/admin/tokens", headers=auth, json={"label": "Kanishk's Iphone"}
+        )
+        device_id = created.json()["id"]
+
+    # A fresh app over the same data directory simulates a restart: the token
+    # still exists on disk, but no process has its plaintext cached anymore.
+    second_app = create_app(settings, engine=fake_engine, normalizer=FakeNormalizer())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=second_app), base_url="http://test"
+    ) as second_client:
+        partial = await second_client.get(
+            "/ui/partials/pairing", headers=auth, params={"token_id": device_id}
+        )
+        assert "Kanishk&#x27;s Iphone (rotate to view)" in partial.text
+        assert "can't be displayed in this session" in partial.text
+        assert f'hx-post="/ui/partials/pairing/tokens/{device_id}/rotate"' in partial.text
+        assert '<option value="bootstrap" selected>Bootstrap token</option>' in partial.text
+
+        rotated = await second_client.post(
+            f"/ui/partials/pairing/tokens/{device_id}/rotate",
+            headers=auth,
+            data={"url": "http://192.168.1.75:8765"},
+        )
+        assert rotated.status_code == 200
+        assert (
+            f'<option value="{device_id}" selected>Kanishk&#x27;s Iphone</option>' in rotated.text
+        )
+        assert "can't be displayed" not in rotated.text
+
+
+@pytest.mark.asyncio
+async def test_creating_a_pairing_token_shows_its_own_qr(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    response = await client.post(
+        "/ui/partials/pairing/tokens",
+        headers=authorization,
+        data={"label": "Work iPad", "url": "http://192.168.1.75:8765"},
+    )
+    assert response.status_code == 200
+    assert '<option value="bootstrap">Bootstrap token</option>' in response.text
+    assert "selected>Work iPad</option>" in response.text
+
+    tokens = await client.get("/v1/admin/tokens", headers=authorization)
+    labels = {entry["label"] for entry in tokens.json()}
+    assert "Work iPad" in labels
 
 
 @pytest.mark.asyncio

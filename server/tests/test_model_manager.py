@@ -143,6 +143,77 @@ def test_catalog_includes_portable_and_apple_silicon_models() -> None:
     assert mlx_turbo.marker_file == "model.safetensors"
 
 
+def test_catalog_includes_gigaam_and_canary_models() -> None:
+    entries = {model.id: model for model in DEFAULT_CATALOG}
+
+    gigaam_ctc = entries["sherpa-onnx:gigaam-v3-ctc-russian-int8"]
+    assert gigaam_ctc.archive_url is None
+    assert (
+        gigaam_ctc.huggingface_repo
+        == "csukuangfj/sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16"
+    )
+    assert gigaam_ctc.required_files == ("model.int8.onnx", "tokens.txt")
+    assert gigaam_ctc.model_type == "nemo_ctc"
+    assert gigaam_ctc.language_codes == ("ru",)
+    assert gigaam_ctc.license_name == "MIT"
+
+    gigaam_rnnt = entries["sherpa-onnx:gigaam-v3-rnnt-russian-int8"]
+    assert gigaam_rnnt.huggingface_repo == (
+        "csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16"
+    )
+    assert gigaam_rnnt.required_files == (
+        "encoder.int8.onnx",
+        "decoder.onnx",
+        "joiner.onnx",
+        "tokens.txt",
+    )
+    assert gigaam_rnnt.model_type == "nemo_transducer"
+    assert gigaam_rnnt.license_name == "MIT"
+
+    canary = entries["sherpa-onnx:canary-180m-flash-en-int8"]
+    assert (
+        canary.huggingface_repo == "csukuangfj/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8"
+    )
+    assert canary.required_files == ("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt")
+    assert canary.model_type == "nemo_canary"
+    assert canary.language_codes == ("en",)
+    assert canary.license_name == "CC BY 4.0"
+
+    streaming = entries["sherpa-onnx:streaming-zipformer-en-20m-int8"]
+    assert (
+        streaming.huggingface_repo == "csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17"
+    )
+    assert streaming.required_files == (
+        "encoder-epoch-99-avg-1.int8.onnx",
+        "decoder-epoch-99-avg-1.int8.onnx",
+        "joiner-epoch-99-avg-1.int8.onnx",
+        "tokens.txt",
+    )
+    assert streaming.model_type == "streaming_zipformer"
+    assert streaming.supports_streaming is True
+    assert streaming.license_name == "Apache 2.0"
+
+
+def test_sherpa_onnx_helper_requires_a_download_mechanism() -> None:
+    from app.catalog import _sherpa_onnx
+
+    with pytest.raises(ValueError, match="archive_url/archive_root or huggingface_repo"):
+        _sherpa_onnx(
+            "broken",
+            "Broken",
+            1,
+            "English",
+            "Fast",
+            1,
+            required_files=("model.onnx",),
+            model_type="nemo_ctc",
+            language_codes=("en",),
+            family="Broken",
+            description="",
+            license_name="MIT",
+        )
+
+
 @pytest.fixture
 def tiny_file_model(tmp_path: Path) -> CatalogModel:
     source = tmp_path / "source.bin"
@@ -303,6 +374,52 @@ async def test_archive_download_extracts_validated_model(tmp_path: Path) -> None
     assert '"model_type": "sense_voice"' in metadata
     assert '"language_codes": [' in metadata
     assert not (manager.models_dir / "sherpa-onnx" / "test-int8.download").exists()
+
+
+async def test_sherpa_huggingface_download_fetches_only_required_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog_model = dataclasses.replace(
+        SHERPA_TEST,
+        id="sherpa-onnx:gigaam-test",
+        key="gigaam-test",
+        archive_url=None,
+        archive_root=None,
+        huggingface_repo="example/gigaam-repo",
+        required_files=("model.int8.onnx", "tokens.txt"),
+        model_type="nemo_ctc",
+    )
+    manager = ModelManager(tmp_path / "models", catalog=(catalog_model,))
+
+    mirror = tmp_path / "mirror"
+    folder = mirror / "example/gigaam-repo/resolve/main"
+    folder.mkdir(parents=True)
+    (folder / "model.int8.onnx").write_bytes(b"onnx-bytes")
+    (folder / "tokens.txt").write_text("token")
+    (folder / "README.md").write_text("not needed")
+    monkeypatch.setattr(model_manager, "HF_BASE_URL", mirror.as_uri())
+    monkeypatch.setattr(
+        model_manager,
+        "_list_repo_folder",
+        lambda repo, name: [
+            ("model.int8.onnx", 10),
+            ("tokens.txt", 5),
+            ("README.md", 999),
+        ],
+    )
+
+    state = manager.start_download(catalog_model.id)
+    await asyncio.wait_for(_wait_finished(manager, catalog_model.id), timeout=5)
+
+    assert state.status == "completed"
+    assert state.total_bytes == 15  # only required_files counted, not README.md
+    installed = manager.installed_path(catalog_model.id)
+    assert installed is not None
+    assert (installed / "model.int8.onnx").read_bytes() == b"onnx-bytes"
+    assert not (installed / "README.md").exists()
+    metadata = (installed / ".localflow-model.json").read_text(encoding="utf-8")
+    assert '"model_type": "nemo_ctc"' in metadata
+    assert not (manager.models_dir / "sherpa-onnx" / "gigaam-test.partial").exists()
 
 
 def test_archive_extractor_rejects_parent_paths(tmp_path: Path) -> None:
