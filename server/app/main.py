@@ -937,6 +937,7 @@ def create_app(
 
     def _pairing_html(selected_url: str | None = None) -> str:
         candidates = discover_gateway_base_urls(configured.port)
+        selected: str | None
         if selected_url:
             try:
                 selected = normalize_gateway_url(selected_url)

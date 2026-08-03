@@ -7,8 +7,11 @@ import android.os.Bundle
 import android.util.Size
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
@@ -16,6 +19,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -82,38 +86,7 @@ class QrPairingActivity : ComponentActivity() {
             val scanner = BarcodeScanning.getClient(options)
 
             analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                if (handled.get() || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-                    imageProxy.close()
-                    return@setAnalyzer
-                }
-                val media = imageProxy.image
-                if (media == null) {
-                    imageProxy.close()
-                    return@setAnalyzer
-                }
-                val image = InputImage.fromMediaImage(media, imageProxy.imageInfo.rotationDegrees)
-                scanner.process(image)
-                    .addOnSuccessListener { barcodes ->
-                        val raw = barcodes.firstNotNullOfOrNull { it.rawValue } ?: return@addOnSuccessListener
-                        if (!handled.compareAndSet(false, true)) return@addOnSuccessListener
-                        // Validate lightly here so we don't finish on unrelated QR codes.
-                        when (val parsed = PairingPayload.parse(raw)) {
-                            is PairingPayload.Result.Ok -> {
-                                setResult(
-                                    RESULT_OK,
-                                    Intent().putExtra(EXTRA_RAW, raw)
-                                        .putExtra(EXTRA_URL, parsed.parsed.url)
-                                        .putExtra(EXTRA_TOKEN, parsed.parsed.token),
-                                )
-                                finish()
-                            }
-                            is PairingPayload.Result.Err -> {
-                                // Keep scanning; not a Local Flow pairing code.
-                                handled.set(false)
-                            }
-                        }
-                    }
-                    .addOnCompleteListener { imageProxy.close() }
+                analyzeFrame(imageProxy, scanner)
             }
 
             provider.unbindAll()
@@ -124,6 +97,42 @@ class QrPairingActivity : ComponentActivity() {
                 analysis,
             )
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    @OptIn(ExperimentalGetImage::class)
+    private fun analyzeFrame(imageProxy: ImageProxy, scanner: BarcodeScanner) {
+        if (handled.get() || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+            imageProxy.close()
+            return
+        }
+        val media = imageProxy.image
+        if (media == null) {
+            imageProxy.close()
+            return
+        }
+        val image = InputImage.fromMediaImage(media, imageProxy.imageInfo.rotationDegrees)
+        scanner.process(image)
+            .addOnSuccessListener { barcodes ->
+                val raw = barcodes.firstNotNullOfOrNull { it.rawValue } ?: return@addOnSuccessListener
+                if (!handled.compareAndSet(false, true)) return@addOnSuccessListener
+                // Validate lightly here so we don't finish on unrelated QR codes.
+                when (val parsed = PairingPayload.parse(raw)) {
+                    is PairingPayload.Result.Ok -> {
+                        setResult(
+                            RESULT_OK,
+                            Intent().putExtra(EXTRA_RAW, raw)
+                                .putExtra(EXTRA_URL, parsed.parsed.url)
+                                .putExtra(EXTRA_TOKEN, parsed.parsed.token),
+                        )
+                        finish()
+                    }
+                    is PairingPayload.Result.Err -> {
+                        // Keep scanning; not a Local Flow pairing code.
+                        handled.set(false)
+                    }
+                }
+            }
+            .addOnCompleteListener { imageProxy.close() }
     }
 
     private fun finishCancelled(message: String) {
