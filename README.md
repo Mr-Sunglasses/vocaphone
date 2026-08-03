@@ -183,7 +183,17 @@ tailscale serve status
   `https://dictation.example.com/`. Do not send recordings or bearer tokens over
   public HTTP.
 
-In the phone app, paste:
+### Pair the phone with a QR code (Android)
+
+Once the WebUI is open and authenticated on the gateway host:
+
+1. Stay on **Overview** — the **Pair phone app** card shows a QR for a
+   phone-reachable address (LAN IP preferred, or `LOCALFLOW_PUBLIC_URL` if set).
+2. In the Android app, open **Gateway** and tap **Scan QR code**.
+3. Grant camera access if asked; the scan fills address + token and runs the
+   connection test.
+
+You can still paste manually:
 
 1. **Gateway address** — the LAN, Tailscale, or HTTPS URL above.
 2. **Bearer token** — `cat ~/.config/localflow/token` for native installs, or the

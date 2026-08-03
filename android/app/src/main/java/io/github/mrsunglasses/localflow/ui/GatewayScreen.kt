@@ -1,5 +1,8 @@
 package io.github.mrsunglasses.localflow.ui
 
+import android.app.Activity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,11 +26,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import io.github.mrsunglasses.localflow.core.GatewayEndpoint
+import io.github.mrsunglasses.localflow.core.PairingPayload
 import io.github.mrsunglasses.localflow.settings.LocalFlowSettings
 
 @Composable
@@ -40,10 +45,36 @@ fun GatewayScreen(
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     var url by remember(settings.gatewayUrl) { mutableStateOf(settings.gatewayUrl) }
     var token by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var saved by remember { mutableStateOf(false) }
+
+    val scanLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            val message = result.data?.getStringExtra(QrPairingActivity.EXTRA_ERROR)
+            if (!message.isNullOrBlank()) error = message
+            return@rememberLauncherForActivityResult
+        }
+        val raw = result.data?.getStringExtra(QrPairingActivity.EXTRA_RAW).orEmpty()
+        when (val parsed = PairingPayload.parse(raw)) {
+            is PairingPayload.Result.Err -> error = parsed.reason
+            is PairingPayload.Result.Ok -> {
+                url = parsed.parsed.url
+                token = parsed.parsed.token
+                error = null
+                saved = false
+                onSave(parsed.parsed.url, parsed.parsed.token) { failure ->
+                    error = failure
+                    saved = failure == null
+                    if (failure == null) token = ""
+                }
+            }
+        }
+    }
 
     Column(
         modifier = modifier
@@ -53,9 +84,26 @@ fun GatewayScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         SectionCard(
+            title = "Scan pairing QR",
+            supporting = "On the gateway host, open the WebUI Overview and scan the " +
+                "pairing QR. That fills the address and bearer token without typing.",
+        ) {
+            Button(
+                onClick = {
+                    scanLauncher.launch(
+                        android.content.Intent(context, QrPairingActivity::class.java),
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Scan QR code")
+            }
+        }
+
+        SectionCard(
             title = "Gateway address",
             supporting = "A private LAN or Tailscale host may use http://. Anything " +
-                "reachable from the internet must use https://.",
+                "reachable from the internet must use https://. Or scan the WebUI QR above.",
         ) {
             OutlinedTextField(
                 value = url,

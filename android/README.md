@@ -49,9 +49,10 @@ silent failure.
 4. **Accessibility service** — see the disclosure below.
 5. **Unrestricted battery usage** (optional) — stops Android ending a long
    dictation early.
-6. **Gateway address and token** — then **Test connection**, which reports
-   reachability, token validity, the active engine, whether it is ready, and
-   whether it supports streaming.
+6. **Gateway address and token** — either **Scan QR code** against the gateway
+   WebUI Overview pairing card, or paste the URL and bearer token, then
+   **Test connection**, which reports reachability, token validity, the active
+   engine, whether it is ready, and whether it supports streaming.
 
 ## How accessibility access is used
 
