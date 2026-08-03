@@ -16,7 +16,7 @@ def format_host_port(host: str, port: int) -> str:
 
 
 def local_webui_url(host: str, port: int) -> str:
-    """Return the loopback URL that opens a listener from the same Mac."""
+    """Return the loopback URL that opens a listener from the same host."""
     if host == "0.0.0.0":
         host = "127.0.0.1"
     elif host == "::":

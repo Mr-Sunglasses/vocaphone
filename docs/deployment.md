@@ -1,32 +1,36 @@
 # Gateway deployment
 
-Local Flow uses the same HTTP API whether the gateway runs directly on macOS or
-inside its Linux container. The meaningful differences are the available speech
-engines, acceleration, isolation, and operational portability.
+Local Flow uses the same HTTP API whether the gateway runs directly on macOS,
+directly on Linux, or inside its Linux container. The meaningful differences are
+the available speech engines, acceleration, isolation, and operational
+portability.
 
 ## Which deployment should I choose?
 
-| Consideration | Native macOS | Docker Compose |
-| --- | --- | --- |
-| Recommended host | Apple silicon Mac | Linux `amd64` or `arm64` home server |
-| Engines | MLX Audio, WhisperKit, Handy, sherpa-onnx, `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
-| Acceleration | Apple-native MLX and WhisperKit/Core ML paths | INT8 ONNX/OpenBLAS CPU; native CPU, CUDA, or Vulkan profiles |
-| Mac performance | Recommended; no Linux VM | Usually slower and uses Docker Desktop resources |
-| Portability | macOS-specific service setup | Reproducible across supported Linux architectures |
-| Persistence | Files below `~/.local/share/localflow` | Named volume mounted at `/data` |
-| Updates | Pull code, sync dependencies, restart LaunchAgent | Pull/build image and recreate the service |
+| Consideration | Native macOS | Native Linux | Docker Compose |
+| --- | --- | --- | --- |
+| Recommended host | Apple silicon Mac | Linux desktop or home server | Linux `amd64`/`arm64` when you want an image |
+| Engines | MLX Audio, WhisperKit, Handy, sherpa-onnx, `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, optional `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
+| Acceleration | Apple-native MLX and WhisperKit/Core ML paths | Host CPU (Python wheels); CUDA via Docker profiles | INT8 ONNX/OpenBLAS CPU; native CPU, CUDA, or Vulkan profiles |
+| Performance | Recommended on Mac; no Linux VM | No container overhead on Linux | Slightly more isolation cost; strong for CUDA images |
+| Portability | macOS LaunchAgent | systemd user unit | Reproducible across supported Linux architectures |
+| Persistence | Files below `~/.local/share/localflow` | Same as native macOS | Named volume mounted at `/data` |
+| Updates | Pull code, `uv sync`, restart LaunchAgent | Pull code, `uv sync`, restart systemd unit | Pull/build image and recreate the service |
 
 ### Recommendation
 
 - On an Apple silicon Mac, run natively and compare MLX Whisper Turbo 4-bit,
   MLX Parakeet, and WhisperKit on the same recording. These avoid Docker
   Desktop's Linux VM and keep the chosen Apple-native model resident.
-- On a Linux home server, start with SenseVoice Small INT8 for its supported
-  Asian languages plus English, or Parakeet TDT INT8 for 25 European languages.
-  Both use sherpa-onnx wheels on `amd64` and `arm64`; faster-whisper remains the
-  broad Whisper fallback.
-- Use Docker on a Mac when reproducibility and isolation matter more than the
-  lowest transcription latency.
+- On a Linux desktop or home server, run natively with
+  `uv sync --all-groups --extra engines` when you already trust the host Python
+  environment. Start with SenseVoice Small INT8 for its supported Asian languages
+  plus English, or Parakeet TDT INT8 for 25 European languages. Both use
+  sherpa-onnx wheels on `amd64` and `arm64`; faster-whisper remains the broad
+  Whisper fallback.
+- Use Docker on Linux when you want CUDA/Vulkan profiles, multi-arch images, or
+  stronger isolation. Use Docker on a Mac only when reproducibility matters more
+  than the lowest transcription latency.
 
 There is no honest fixed speed multiplier: model size, audio length, thermals,
 and host hardware all matter. For an apples-to-apples comparison, dictate the
@@ -71,6 +75,52 @@ launchctl print "gui/$(id -u)/com.example.localflow.gateway"
 Logs are written to `~/Library/Logs/LocalFlow/gateway.log` and
 `gateway-error.log`. Re-run the installer after changing the checkout location
 or gateway executable.
+
+## Native Linux deployment
+
+### Install and run
+
+```sh
+# Debian / Ubuntu example
+sudo apt install ffmpeg
+# https://docs.astral.sh/uv/ — curl -LsSf https://astral.sh/uv/install.sh | sh
+cd server
+uv sync --all-groups --extra engines
+uv run localflow-server
+```
+
+Omit `--extra apple` on Linux. The default listener is `0.0.0.0:8765`. When
+Tailscale Serve is the only desired ingress, override the listener:
+
+```sh
+LOCALFLOW_BIND_HOST=127.0.0.1 uv run localflow-server
+```
+
+Token, models, and config paths match the macOS native layout:
+
+- token: `~/.config/localflow/token`
+- models: `~/.local/share/localflow/models`
+- config: `~/.config/localflow/config.json`
+
+Phone clients need the bearer token (`cat ~/.config/localflow/token`) and a
+reachable URL such as `http://192.168.1.20:8765` on a trusted LAN.
+
+### Run as a systemd user service
+
+```sh
+cd server
+./scripts/install-systemd-user.sh
+systemctl --user status com.example.localflow.gateway.service
+journalctl --user -u com.example.localflow.gateway.service -f
+```
+
+To keep the unit after logout:
+
+```sh
+loginctl enable-linger "$USER"
+```
+
+Re-run the installer after moving the checkout or recreating `.venv`.
 
 ## Docker Compose deployment
 

@@ -20,10 +20,12 @@ def serve() -> None:
     host = settings.bind_host
     token_source = "(from LOCALFLOW_TOKEN)" if _token_from_env() else "~/.config/localflow/token"
     print(f"Local Flow gateway listening on {format_host_port(host, settings.port)}")
-    print(f"WebUI (this Mac): {local_webui_url(host, settings.port)}")
+    print(f"WebUI (this host): {local_webui_url(host, settings.port)}")
     if host in WILDCARD_BIND_HOSTS:
-        print("Network access: use this Mac's LAN or Tailscale IP with the same port")
+        print("Network access: use this host's LAN or Tailscale IP with the same port")
     print(f"Token: {token_source}")
+    if not _token_from_env():
+        print("  (cat ~/.config/localflow/token — enter that value in the phone app)")
     uvicorn.run(
         create_app(settings),
         host=host,

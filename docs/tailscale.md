@@ -11,11 +11,12 @@ network. Never use Funnel for this project.
 
 ## Prerequisites
 
-- Install and sign in to Tailscale on both the Mac and iPhone.
+- Install and sign in to Tailscale on the gateway host and on the phone (iPhone
+  or Android).
 - Confirm both devices appear in the same tailnet.
 - Start or publish the gateway on host loopback and verify liveness locally.
 
-For a native macOS process:
+For a native macOS or Linux process:
 
 ```sh
 cd server
@@ -42,8 +43,8 @@ tailscale serve --bg 8765
 tailscale serve status
 ```
 
-Use the private HTTPS URL shown by `tailscale serve status` in the iPhone app.
-Do not use the local HTTP address from the phone.
+Use the private HTTPS URL shown by `tailscale serve status` in the iPhone or
+Android app. Do not use the local HTTP address from the phone.
 
 The HTTPS endpoint can be live while transcription readiness is still `503`.
 After downloading/selecting a model in the WebUI, verify both paths:
@@ -59,9 +60,9 @@ To reverse the Serve configuration:
 tailscale serve reset
 ```
 
-Apply a restrictive tailnet policy so only the user's iPhone and administrative
-devices can reach the Mac. Tailscale identity is an additional network layer;
-the Local Flow bearer token is still required.
+Apply a restrictive tailnet policy so only the user's phone and administrative
+devices can reach the gateway host. Tailscale identity is an additional network
+layer; the Local Flow bearer token is still required.
 
 Command syntax was checked against the current
 [Tailscale Serve CLI reference](https://tailscale.com/docs/reference/tailscale-cli/serve).

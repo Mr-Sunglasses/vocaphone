@@ -1,0 +1,19 @@
+[Unit]
+Description=Local Flow transcription gateway
+Documentation=file://__REPOSITORY__/server/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__REPOSITORY__/server
+ExecStart=__REPOSITORY__/server/.venv/bin/localflow-server
+Restart=on-failure
+RestartSec=3
+# Keep the usual user PATH so FFmpeg and optional tools resolve without a login shell.
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# Uncomment to bind loopback only (pair with Tailscale Serve):
+# Environment=LOCALFLOW_BIND_HOST=127.0.0.1
+
+[Install]
+WantedBy=default.target
