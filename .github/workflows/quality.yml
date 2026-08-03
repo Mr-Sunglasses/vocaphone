@@ -73,12 +73,45 @@ jobs:
         working-directory: ios
       - run: git diff --exit-code -- LocalFlow.xcodeproj
         working-directory: ios
-      - run: |
+      - name: Run iOS unit tests
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          # macos-15 images sometimes list no pre-created devices for
+          # -showdestinations until simctl has materialized one. Prefer an
+          # available iPhone simulator; create and boot one if needed.
+          udid=$(
+            xcrun simctl list devices available \
+              | sed -n 's/.*iPhone[^(]*(\([A-F0-9-]*\)).*/\1/p' \
+              | head -1
+          )
+          if [ -z "${udid}" ]; then
+            runtime=$(
+              xcrun simctl list runtimes available \
+                | sed -n 's/.* - \(com\.apple\.CoreSimulator\.SimRuntime\.iOS[^ ]*\).*/\1/p' \
+                | tail -1
+            )
+            device_type=$(
+              xcrun simctl list devicetypes \
+                | sed -n 's/.*(\(com\.apple\.CoreSimulator\.SimDeviceType\.iPhone-[^)]*\)).*/\1/p' \
+                | tail -1
+            )
+            if [ -z "${runtime}" ] || [ -z "${device_type}" ]; then
+              echo "No iOS simulator runtime/device type available" >&2
+              xcrun simctl list runtimes || true
+              xcrun simctl list devicetypes || true
+              exit 1
+            fi
+            echo "Creating simulator: type=${device_type} runtime=${runtime}"
+            udid=$(xcrun simctl create "LocalFlow-CI-iPhone" "${device_type}" "${runtime}")
+          fi
+          echo "Using simulator ${udid}"
+          xcrun simctl boot "${udid}" 2>/dev/null || true
+          xcrun simctl bootstatus "${udid}" -b
           xcodebuild \
             -project LocalFlow.xcodeproj \
             -scheme LocalFlow \
             -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -destination "platform=iOS Simulator,id=${udid}" \
             CODE_SIGNING_ALLOWED=NO \
             test
-        working-directory: ios
