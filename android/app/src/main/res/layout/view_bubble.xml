@@ -4,7 +4,6 @@
   stays active and ordinary typing is untouched.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/bubble_root"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
@@ -24,7 +23,7 @@
         android:contentDescription="@string/bubble_dictate"
         android:padding="10dp"
         android:src="@drawable/ic_dictation"
-        app:tint="#FFFFFFFF" />
+        android:tint="#FFFFFFFF" />
 
     <TextView
         android:id="@+id/bubble_status"
@@ -48,7 +47,7 @@
         android:padding="7dp"
         android:src="@drawable/ic_check"
         android:visibility="gone"
-        app:tint="#FFFFFFFF" />
+        android:tint="#FFFFFFFF" />
 
     <ImageButton
         android:id="@+id/bubble_cancel"
@@ -59,5 +58,5 @@
         android:contentDescription="@string/bubble_cancel"
         android:padding="8dp"
         android:src="@drawable/ic_cancel"
-        app:tint="#B3FFFFFF" />
+        android:tint="#B3FFFFFF" />
 </LinearLayout>

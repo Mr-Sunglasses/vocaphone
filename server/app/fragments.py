@@ -416,6 +416,7 @@ def pairing_fragment(
     candidates: list[str],
     token_redacted: str,
     qr_svg: str = "",
+    saved_urls: list[str],
 ) -> str:
     """Authenticated phone-pairing card with QR for the selected gateway URL.
 
@@ -435,6 +436,24 @@ def pairing_fragment(
         f'<option value="{escape(url)}"{" selected" if url == selected_url else ""}>'
         f"{escape(url)}</option>"
         for url in candidates
+    )
+    saved_rows = "".join(
+        f"<li><code>{escape(url)}</code>"
+        f'<button type="button" class="ghost small danger"'
+        f' hx-delete="/ui/partials/pairing?url={quote(url, safe="")}"'
+        f' hx-target="#pairing-card" hx-swap="outerHTML"'
+        f' hx-confirm="Remove {escape(url)} from saved addresses?">Remove</button></li>'
+        for url in saved_urls
+    )
+    saved_section = (
+        f"""
+            <div class="pairing-saved">
+              <span>Saved addresses</span>
+              <ul>{saved_rows}</ul>
+            </div>
+        """
+        if saved_urls
+        else ""
     )
     # Strip XML declaration for clean inline embedding.
     inline_svg = qr_svg
@@ -470,6 +489,7 @@ def pairing_fragment(
                   </div>
                 </label>
               </form>
+              {saved_section}
             </div>
             <dl class="facts">
               <div><dt>Gateway URL</dt><dd><code>{escape(selected_url)}</code></dd></div>

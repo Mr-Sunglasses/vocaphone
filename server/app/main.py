@@ -68,7 +68,6 @@ from app.pairing import (
     discover_gateway_base_urls,
     encode_pairing_payload,
     normalize_gateway_input,
-    normalize_gateway_url,
     primary_gateway_base_url,
     qr_svg_for_payload,
 )
@@ -126,6 +125,7 @@ def create_app(
     if engine is not None:
         engine_provider: EngineProvider = StaticEngineProvider(engine)
         engine_manager: EngineManager | None = None
+        pairing_config = RuntimeConfig()
     else:
         engine_manager = EngineManager(
             configured,
@@ -134,6 +134,7 @@ def create_app(
             manager,
         )
         engine_provider = engine_manager
+        pairing_config = engine_manager.runtime_config
     service = TranscriptionService(
         configured,
         repository,
@@ -936,19 +937,33 @@ def create_app(
     def _models_list_html() -> HTMLResponse:
         return _html(models_list_fragment(_model_entries()))
 
-    def _pairing_html(selected_url: str | None = None) -> str:
-        candidates = discover_gateway_base_urls(configured.port)
+    def _pairing_html(selected_url: str | None = None, *, persist: bool = False) -> str:
+        discovered = discover_gateway_base_urls(configured.port)
+        candidates = list(discovered)
+        for saved in pairing_config.pairing_urls:
+            if saved not in candidates:
+                candidates.append(saved)
         selected: str | None
         if selected_url:
             try:
                 selected = normalize_gateway_input(selected_url, configured.port)
             except ValueError:
-                selected = primary_gateway_base_url(configured.port)
+                selected = pairing_config.pairing_url or primary_gateway_base_url(configured.port)
             else:
                 if selected not in candidates:
                     candidates = [selected, *candidates]
+                if persist and engine_manager is not None:
+                    changed = pairing_config.pairing_url != selected
+                    if selected not in discovered and selected not in pairing_config.pairing_urls:
+                        pairing_config.pairing_urls.append(selected)
+                        changed = True
+                    if changed:
+                        pairing_config.pairing_url = selected
+                        pairing_config.save(config_path)
         else:
-            selected = primary_gateway_base_url(configured.port)
+            selected = pairing_config.pairing_url or primary_gateway_base_url(configured.port)
+            if selected and selected not in candidates:
+                candidates = [selected, *candidates]
         token = configured.token
         redacted = (
             f"{token[:4]}…{token[-4:]} ({len(token)} characters)"
@@ -963,7 +978,20 @@ def create_app(
             candidates=candidates,
             token_redacted=redacted,
             qr_svg=qr_svg,
+            saved_urls=pairing_config.pairing_urls,
         )
+
+    def _forget_pairing_url(url: str) -> str:
+        try:
+            normalized = normalize_gateway_input(url, configured.port)
+        except ValueError as error:
+            raise APIProblem(400, "invalid_pairing_url", str(error)) from error
+        if engine_manager is not None and normalized in pairing_config.pairing_urls:
+            pairing_config.pairing_urls.remove(normalized)
+            if pairing_config.pairing_url == normalized:
+                pairing_config.pairing_url = None
+            pairing_config.save(config_path)
+        return _pairing_html()
 
     def _resolve_pairing_url(url: str | None) -> str:
         candidates = discover_gateway_base_urls(configured.port)
@@ -1018,7 +1046,15 @@ def create_app(
         dependencies=[Depends(require_token)],
     )
     async def ui_pairing(url: str | None = Query(default=None)) -> HTMLResponse:
-        return _html(_pairing_html(url))
+        return _html(_pairing_html(url, persist=True))
+
+    @app.delete(
+        "/ui/partials/pairing",
+        response_class=HTMLResponse,
+        dependencies=[Depends(require_token)],
+    )
+    async def ui_forget_pairing(url: str = Query(...)) -> HTMLResponse:
+        return _html(_forget_pairing_url(url))
 
     @app.get(
         "/ui/partials/overview",

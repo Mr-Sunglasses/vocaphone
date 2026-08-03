@@ -26,21 +26,14 @@
   <string>Local Flow connects to the transcription gateway you configure on your private network.</string>
   <key>NSAppTransportSecurity</key>
   <dict>
-    <key>NSAllowsLocalNetworking</key>
+    <!-- ATS has no CIDR-based exception, and neither NSAllowsLocalNetworking
+         nor an NSExceptionDomains entry for ts.net covers a bare Tailscale
+         CGNAT IP (100.64.0.0/10) or other private hosts typed by hand.
+         GatewayEndpoint.isPrivateNetworkHost is the real gate: it already
+         restricts plain-HTTP gateways to LAN/CGNAT/mDNS/tailnet hosts before
+         a request is ever made, matching the Android cleartext policy. -->
+    <key>NSAllowsArbitraryLoads</key>
     <true/>
-    <!-- Tailscale MagicDNS names are fully qualified, so ATS would refuse the
-         plain-HTTP gateways this app is built around. Traffic to *.ts.net only
-         travels inside the user's WireGuard-encrypted tailnet. -->
-    <key>NSExceptionDomains</key>
-    <dict>
-      <key>ts.net</key>
-      <dict>
-        <key>NSIncludesSubdomains</key>
-        <true/>
-        <key>NSExceptionAllowsInsecureHTTPLoads</key>
-        <true/>
-      </dict>
-    </dict>
   </dict>
   <key>NSSupportsLiveActivities</key>
   <true/>

@@ -153,6 +153,21 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 24px 60px; }
   background: var(--panel-strong);
   color: var(--text);
 }
+.pairing-saved { margin-top: 12px; }
+.pairing-saved > span { display: block; margin-bottom: 6px; font-size: 12.5px; color: var(--muted); }
+.pairing-saved ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.pairing-saved li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-strong);
+}
+.pairing-saved li code { overflow-wrap: anywhere; }
+.pairing-saved li button { flex: 0 0 auto; }
 
 .operations { margin: 18px 0; }
 .section-heading {

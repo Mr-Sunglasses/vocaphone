@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,8 @@ class RuntimeConfig:
     compute_device: str = "auto"
     compute_type: str = "auto"
     cpu_threads: int = 0
+    pairing_url: str | None = None
+    pairing_urls: list[str] = field(default_factory=list)
 
     @classmethod
     def load(cls, path: Path) -> RuntimeConfig:
@@ -52,6 +54,8 @@ class RuntimeConfig:
         compute_device = payload.get("compute_device")
         compute_type = payload.get("compute_type")
         cpu_threads = payload.get("cpu_threads")
+        pairing_url = payload.get("pairing_url")
+        pairing_urls = payload.get("pairing_urls")
         return cls(
             engine=engine if engine in VALID_ENGINES else "auto",
             whisper_model=whisper_model if isinstance(whisper_model, str) else None,
@@ -82,6 +86,12 @@ class RuntimeConfig:
             cpu_threads=(
                 cpu_threads if isinstance(cpu_threads, int) and 0 <= cpu_threads <= 256 else 0
             ),
+            pairing_url=pairing_url if isinstance(pairing_url, str) else None,
+            pairing_urls=(
+                [url for url in pairing_urls if isinstance(url, str)]
+                if isinstance(pairing_urls, list)
+                else []
+            ),
         )
 
     def save(self, path: Path) -> None:
@@ -98,6 +108,8 @@ class RuntimeConfig:
             "compute_device": self.compute_device,
             "compute_type": self.compute_type,
             "cpu_threads": self.cpu_threads,
+            "pairing_url": self.pairing_url,
+            "pairing_urls": self.pairing_urls,
         }
         descriptor, temporary_name = tempfile.mkstemp(
             dir=path.parent, prefix=".config-", suffix=".tmp"
