@@ -86,6 +86,29 @@ def normalize_gateway_url(url: str) -> str:
     return f"{parsed.scheme}://{host}{port}{path}"
 
 
+def normalize_gateway_input(raw: str, default_port: int) -> str:
+    """Normalize free-text pairing input into a gateway URL.
+
+    Lets a user paste a bare address — a Tailscale IP (``100.x.x.x``), a
+    Tailscale MagicDNS name (``phone.tailnet-name.ts.net``), or a LAN IP —
+    without typing a scheme or port. A full ``http://`` / ``https://`` URL is
+    also accepted and passed through to :func:`normalize_gateway_url`.
+    """
+    trimmed = raw.strip()
+    if not trimmed:
+        raise ValueError("Address must not be empty.")
+    if "://" not in trimmed:
+        trimmed = f"http://{trimmed}"
+    parsed = urlparse(trimmed)
+    if parsed.hostname and parsed.port is None:
+        host = parsed.hostname
+        if ":" in host:
+            host = f"[{host}]"
+        path = parsed.path or ""
+        trimmed = f"{parsed.scheme}://{host}:{default_port}{path}"
+    return normalize_gateway_url(trimmed)
+
+
 def discover_gateway_base_urls(port: int) -> list[str]:
     """Return phone-reachable gateway bases, preferred first.
 

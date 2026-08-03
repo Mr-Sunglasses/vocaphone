@@ -48,3 +48,31 @@ async def test_pairing_payload_and_qr(
     assert "192.168.1.75" in partial.text
     # QR is inlined so the browser never needs an unauthenticated <img> fetch.
     assert "<svg" in partial.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_pairing_accepts_bare_tailscale_address(
+    client: httpx.AsyncClient,
+    authorization: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+
+    partial = await client.get(
+        "/ui/partials/pairing",
+        headers=authorization,
+        params={"url": "100.101.102.103"},
+    )
+    assert partial.status_code == 200
+    assert "http://100.101.102.103:8765" in partial.text
+
+    api = await client.get(
+        "/v1/admin/pairing",
+        headers=authorization,
+        params={"url": "100.101.102.103"},
+    )
+    assert api.status_code == 200
+    body = api.json()
+    assert body["url"] == "http://100.101.102.103:8765"
+    decoded = decode_pairing_payload(body["payload"])
+    assert decoded.url == "http://100.101.102.103:8765"

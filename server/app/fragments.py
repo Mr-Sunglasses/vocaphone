@@ -461,6 +461,15 @@ def pairing_fragment(
                   {options}
                 </select>
               </label>
+              <form hx-get="/ui/partials/pairing" hx-target="#pairing-card" hx-swap="outerHTML">
+                <label><span>Or enter your own address (e.g. Tailscale IP)</span>
+                  <div class="row">
+                    <input name="url" type="text"
+                           placeholder="100.101.102.103 or phone.tailnet-name.ts.net" />
+                    <button type="submit" class="ghost small">Use this address</button>
+                  </div>
+                </label>
+              </form>
             </div>
             <dl class="facts">
               <div><dt>Gateway URL</dt><dd><code>{escape(selected_url)}</code></dd></div>
