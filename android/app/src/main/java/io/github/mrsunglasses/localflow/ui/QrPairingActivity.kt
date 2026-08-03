@@ -7,9 +7,7 @@ import android.os.Bundle
 import android.util.Size
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.OptIn
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
@@ -19,11 +17,13 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
-import com.google.mlkit.vision.barcode.BarcodeScanner
-import com.google.mlkit.vision.barcode.BarcodeScannerOptions
-import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.common.InputImage
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.DecodeHintType
+import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.ReaderException
+import com.google.zxing.common.HybridBinarizer
+import com.google.zxing.qrcode.QRCodeReader
 import io.github.mrsunglasses.localflow.core.PairingPayload
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
@@ -31,11 +31,19 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Full-screen QR scanner used only for gateway pairing. Returns the raw QR text
  * in [EXTRA_RAW] so [PairingPayload] can validate it on the caller's side.
+ *
+ * Decoding uses ZXing rather than ML Kit: ML Kit's barcode-scanning artifact
+ * fetches its model through Google Play Services at runtime, which is
+ * unavailable on GMS-less/microG ROMs and crashes there. ZXing decodes QR
+ * codes directly from camera frames, ships fully inside the APK, and needs
+ * no device services at all.
  */
 class QrPairingActivity : ComponentActivity() {
 
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private val handled = AtomicBoolean(false)
+    private val reader = QRCodeReader()
+    private val decodeHints = mapOf(DecodeHintType.POSSIBLE_FORMATS to listOf(BarcodeFormat.QR_CODE))
     private lateinit var previewView: PreviewView
 
     private val permissionLauncher = registerForActivityResult(
@@ -62,65 +70,62 @@ class QrPairingActivity : ComponentActivity() {
     private fun startCamera() {
         val future = ProcessCameraProvider.getInstance(this)
         future.addListener({
-            val provider = future.get()
-            val preview = Preview.Builder().build().also {
-                it.surfaceProvider = previewView.surfaceProvider
-            }
-            val analysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .setResolutionSelector(
-                    ResolutionSelector.Builder()
-                        .setResolutionStrategy(
-                            ResolutionStrategy(
-                                Size(1280, 720),
-                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
-                            ),
-                        )
-                        .build(),
+            try {
+                val provider = future.get()
+                val preview = Preview.Builder().build().also {
+                    it.surfaceProvider = previewView.surfaceProvider
+                }
+                val analysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setResolutionSelector(
+                        ResolutionSelector.Builder()
+                            .setResolutionStrategy(
+                                ResolutionStrategy(
+                                    Size(1280, 720),
+                                    ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                                ),
+                            )
+                            .build(),
+                    )
+                    .build()
+
+                analysis.setAnalyzer(cameraExecutor, ::analyzeFrame)
+
+                // Some tablets/Chromebooks only have a front camera; fall back
+                // to it instead of failing outright on DEFAULT_BACK_CAMERA.
+                val selector = when {
+                    provider.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA) -> CameraSelector.DEFAULT_BACK_CAMERA
+                    provider.hasCamera(CameraSelector.DEFAULT_FRONT_CAMERA) -> CameraSelector.DEFAULT_FRONT_CAMERA
+                    else -> throw IllegalStateException("No camera available on this device.")
+                }
+
+                provider.unbindAll()
+                provider.bindToLifecycle(this, selector, preview, analysis)
+            } catch (error: Exception) {
+                finishCancelled(
+                    "Couldn't start the camera on this device. Enter the gateway address manually instead.",
                 )
-                .build()
-
-            val options = BarcodeScannerOptions.Builder()
-                .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                .build()
-            val scanner = BarcodeScanning.getClient(options)
-
-            analysis.setAnalyzer(cameraExecutor) { imageProxy ->
-                analyzeFrame(imageProxy, scanner)
             }
-
-            provider.unbindAll()
-            provider.bindToLifecycle(
-                this,
-                CameraSelector.DEFAULT_BACK_CAMERA,
-                preview,
-                analysis,
-            )
         }, ContextCompat.getMainExecutor(this))
     }
 
-    @OptIn(ExperimentalGetImage::class)
-    private fun analyzeFrame(imageProxy: ImageProxy, scanner: BarcodeScanner) {
+    private fun analyzeFrame(imageProxy: ImageProxy) {
         if (handled.get() || !lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
             imageProxy.close()
             return
         }
-        val media = imageProxy.image
-        if (media == null) {
-            imageProxy.close()
-            return
-        }
-        val image = InputImage.fromMediaImage(media, imageProxy.imageInfo.rotationDegrees)
-        scanner.process(image)
-            .addOnSuccessListener { barcodes ->
-                val raw = barcodes.firstNotNullOfOrNull { it.rawValue } ?: return@addOnSuccessListener
-                if (!handled.compareAndSet(false, true)) return@addOnSuccessListener
-                // Validate lightly here so we don't finish on unrelated QR codes.
-                when (val parsed = PairingPayload.parse(raw)) {
+        try {
+            val width = imageProxy.width
+            val height = imageProxy.height
+            val luminance = extractLuminance(imageProxy.planes[0], width, height)
+            val source = PlanarYUVLuminanceSource(luminance, width, height, 0, 0, width, height, false)
+            val result = reader.decode(BinaryBitmap(HybridBinarizer(source)), decodeHints)
+            if (handled.compareAndSet(false, true)) {
+                when (val parsed = PairingPayload.parse(result.text)) {
                     is PairingPayload.Result.Ok -> {
                         setResult(
                             RESULT_OK,
-                            Intent().putExtra(EXTRA_RAW, raw)
+                            Intent().putExtra(EXTRA_RAW, result.text)
                                 .putExtra(EXTRA_URL, parsed.parsed.url)
                                 .putExtra(EXTRA_TOKEN, parsed.parsed.token),
                         )
@@ -132,7 +137,34 @@ class QrPairingActivity : ComponentActivity() {
                     }
                 }
             }
-            .addOnCompleteListener { imageProxy.close() }
+        } catch (_: ReaderException) {
+            // No QR code decoded in this frame; keep scanning.
+        } finally {
+            reader.reset()
+            imageProxy.close()
+        }
+    }
+
+    /** Copies the Y (luminance) plane into a packed, row-stride-free byte array. */
+    private fun extractLuminance(plane: ImageProxy.PlaneProxy, width: Int, height: Int): ByteArray {
+        val buffer = plane.buffer
+        val rowStride = plane.rowStride
+        val pixelStride = plane.pixelStride
+        if (pixelStride == 1 && rowStride == width) {
+            val data = ByteArray(width * height)
+            buffer.get(data)
+            return data
+        }
+        val data = ByteArray(width * height)
+        val row = ByteArray(rowStride)
+        for (y in 0 until height) {
+            buffer.position(y * rowStride)
+            buffer.get(row, 0, minOf(rowStride, buffer.remaining()))
+            for (x in 0 until width) {
+                data[y * width + x] = row[x * pixelStride]
+            }
+        }
+        return data
     }
 
     private fun finishCancelled(message: String) {
