@@ -20,6 +20,8 @@
   <true/>
   <key>NSMicrophoneUsageDescription</key>
   <string>Local Flow records dictation for your configured transcription gateway and, when Quick Dictation is enabled, keeps microphone input ready for up to 10 minutes. Standby audio is discarded.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Local Flow uses the camera only when you choose to scan the gateway pairing QR code.</string>
   <key>NSLocalNetworkUsageDescription</key>
   <string>Local Flow connects to the transcription gateway you configure on your private network.</string>
   <key>NSAppTransportSecurity</key>
