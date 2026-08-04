@@ -20,8 +20,16 @@ performance explanation, operational commands, and persistence details.
 
 ## Native macOS quick start
 
+Requires [Homebrew](https://brew.sh/), Python 3.12+, and
+[uv](https://docs.astral.sh/uv/). Install the host dependencies first:
+
+- `ffmpeg` — audio normalization (required by every engine)
+- `whisperkit-cli` — WhisperKit/Core ML engine on Apple silicon
+- `whisper-cpp` — provides `whisper-cli` for GGML `whisper.cpp` models,
+  including the Handy model family, which runs without the Handy app
+
 ```sh
-brew install ffmpeg whisperkit-cli
+brew install ffmpeg whisperkit-cli whisper-cpp
 cd server
 uv sync --all-groups --extra engines --extra apple
 uv run localflow-server
@@ -42,11 +50,9 @@ writes logs to `~/Library/Logs/LocalFlow/`.
 
 MLX Audio and WhisperKit are recommended on Apple silicon. The `apple` extra
 installs MLX only on an arm64 Mac; it is deliberately absent from Linux and
-Docker. Standalone `whisper.cpp` is also supported:
-
-```sh
-brew install ffmpeg whisper-cpp
-```
+Docker. The standalone `whisper.cpp` engine uses the `whisper-cli` binary
+installed above (override its location with `LOCALFLOW_WHISPER_BINARY`); on a
+native Linux host it is optional and can be built from source instead.
 
 ## Native Linux quick start
 
