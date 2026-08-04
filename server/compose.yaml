@@ -8,6 +8,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     init: true
+    network_mode: ${LOCALFLOW_NETWORK_MODE:-bridge}
     ports:
       - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
     environment:
@@ -27,6 +28,7 @@ services:
         GGML_NATIVE: "ON"
     restart: unless-stopped
     init: true
+    network_mode: ${LOCALFLOW_NETWORK_MODE:-bridge}
     ports:
       - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
     environment:
@@ -42,6 +44,7 @@ services:
       dockerfile: Dockerfile.cuda
     restart: unless-stopped
     init: true
+    network_mode: ${LOCALFLOW_NETWORK_MODE:-bridge}
     ports:
       - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
     environment:
@@ -59,6 +62,7 @@ services:
       dockerfile: Dockerfile.vulkan
     restart: unless-stopped
     init: true
+    network_mode: ${LOCALFLOW_NETWORK_MODE:-bridge}
     ports:
       - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
     environment:
