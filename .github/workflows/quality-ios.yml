@@ -1,68 +1,26 @@
-name: Quality
+name: Quality (iOS)
 
 on:
   push:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/quality-ios.yml'
   pull_request:
+    branches: [main]
+    paths:
+      - 'ios/**'
+      - '.github/workflows/quality-ios.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: quality-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  server:
-    runs-on: macos-15
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-      - run: brew install ffmpeg
-      - run: uv sync --locked --all-groups
-        working-directory: server
-      - run: uv run ruff check .
-        working-directory: server
-      - run: uv run ruff format --check .
-        working-directory: server
-      - run: uv run mypy app
-        working-directory: server
-      - run: uv run pytest
-        working-directory: server
-
-  container:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - name: Validate Compose configuration
-        run: docker compose config --quiet
-        working-directory: server
-        env:
-          LOCALFLOW_TOKEN: test-token-with-at-least-thirty-two-characters
-      - name: Build gateway image
-        run: docker build --tag localflow-gateway:test .
-        working-directory: server
-
-  android:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
-        with:
-          distribution: temurin
-          # Matches the JDK bundled with Android Studio, which is what the build
-          # has been verified against locally.
-          java-version: '25'
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
-      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
-      - run: ./gradlew assembleDebug testDebugUnitTest lintDebug
-        working-directory: android
-      - name: Fail if the checked-in Room schema is stale
-        run: git diff --exit-code -- app/schemas
-        working-directory: android
-
   ios:
     runs-on: macos-15
     timeout-minutes: 20
