@@ -23,6 +23,10 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # The release notes step walks back to the previous beta tag, which
+          # needs the tags and the history connecting them.
+          fetch-depth: 0
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
@@ -52,9 +56,25 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp android/app/build/outputs/apk/release/local-flow-release.apk local-flow.apk
+
+          # --generate-notes lists the pull requests merged since the previous
+          # beta. It will choose that starting point on its own, but naming the
+          # tag explicitly keeps the range right for a tag cut from anywhere
+          # other than the tip of main. An empty result is the first beta ever,
+          # where letting it pick means "everything", which is correct.
+          previous_tag="$(git describe --tags --abbrev=0 --match 'v*-beta*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          notes_range=()
+          if [ -n "$previous_tag" ]; then
+            notes_range=(--notes-start-tag "$previous_tag")
+          fi
+
+          # --notes is prepended to the generated list, so the install
+          # instructions stay at the top where a beta tester looks first.
           gh release create "$GITHUB_REF_NAME" \
             local-flow.apk \
             --repo "$GITHUB_REPOSITORY" \
             --title "Local Flow Android $GITHUB_REF_NAME" \
             --prerelease \
+            --generate-notes \
+            "${notes_range[@]}" \
             --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install local-flow.apk\` or open the APK on the device."
