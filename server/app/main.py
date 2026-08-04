@@ -1072,7 +1072,7 @@ def create_app(
         options.extend(
             (
                 token.id,
-                token.label if token.id in cached_ids else f"{token.label} (rotate to view)",
+                token.label if token.id in cached_ids else f"{token.label} (paired; no live QR)",
             )
             for token in reversed(token_store.all())
         )

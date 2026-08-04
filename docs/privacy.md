@@ -92,9 +92,17 @@ bootstrap token. The plaintext also stays cached in memory (never written to
 disk) for the rest of that gateway process, so the pairing card's token
 dropdown can still regenerate that same device's QR at a different address
 without creating a duplicate token; a restart, or revoking the token, clears
-it from that cache. Revoking a device token immediately rejects further
-requests carrying it without affecting the bootstrap token or any other
-paired device.
+it from that cache.
+
+A gateway restart (a routine deploy/update, for example) never affects an
+already-paired device: its token is validated by hash and keeps authenticating
+exactly as before. The in-memory cache only controls whether *this session*
+can redisplay that secret as a QR — losing it after a restart is expected and
+harmless. Rotating a token (giving it a fresh secret so its QR can be shown
+again) is the one action that actually breaks that device's existing pairing,
+so treat it as opt-in, not routine maintenance. Revoking a device token
+immediately rejects further requests carrying it without affecting the
+bootstrap token or any other paired device.
 
 ## Diagnostics export
 

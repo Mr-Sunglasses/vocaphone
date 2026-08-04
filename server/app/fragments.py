@@ -430,11 +430,15 @@ def pairing_fragment(
     The SVG is inlined so the browser does not need a second request (img tags
     cannot attach the WebUI bearer header). `token_options` lists the bootstrap
     token plus every device token, marking ones this process cannot currently
-    display with "(rotate to view)" — only cached plaintexts can be encoded.
-    `token_status` explains why the shown token differs from what was asked
-    for: `stale` means the requested device token still exists but needs a
-    rotate to get a fresh, displayable secret; `unknown` means it no longer
-    exists at all (typically already revoked).
+    display for QR purposes — only cached plaintexts can be encoded. That
+    device's own pairing is completely unaffected either way: the phone keeps
+    authenticating with its already-scanned secret regardless of whether this
+    process can still show it. `token_status` explains why the shown token
+    differs from what was asked for: `stale` means the requested device token
+    still works fine but this process cannot redisplay its secret (typically
+    after a restart) — rotating is optional and only needed to get a fresh,
+    viewable QR, for example to re-pair a lost phone. `unknown` means it no
+    longer exists at all (typically already revoked).
     """
     if not selected_url:
         return """
@@ -462,17 +466,19 @@ def pairing_fragment(
     if token_status == "stale":
         stale_label = escape(requested_token_label or "That device token")
         unavailable_notice = f"""
-          <div class="callout warning compact">
-            <span>{stale_label}'s secret can't be displayed in this session. This usually
-              happens because the server restarted since it was created. Showing the
-              bootstrap token instead.</span>
+          <div class="callout compact">
+            <span><strong>{stale_label} is still paired and working normally.</strong> A server
+              restart just means this session can no longer redisplay its secret — by design,
+              it's never stored anywhere it could be recovered from. Showing the bootstrap
+              token instead; no action is needed unless you actually want a fresh QR (for
+              example, to re-pair a lost phone).</span>
             <form hx-post="/ui/partials/pairing/tokens/{quote(requested_token_id, safe="")}/rotate"
                   hx-target="#pairing-card" hx-swap="outerHTML">
               <input type="hidden" name="url" value="{escape(selected_url)}" />
-              <button type="submit" class="ghost small">Rotate &amp; show its QR</button>
+              <button type="submit" class="ghost small">Rotate &amp; show a new QR</button>
             </form>
-            <span class="muted small">Rotating replaces its secret immediately. Anything still
-              using the old one will need to re-pair.</span>
+            <span class="muted small">Only rotate if you need that: it immediately retires the
+              current secret, and the device using it will have to be paired again.</span>
           </div>
         """
     elif token_status == "unknown":
