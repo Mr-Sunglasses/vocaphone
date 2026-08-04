@@ -466,19 +466,22 @@ def pairing_fragment(
     if token_status == "stale":
         stale_label = escape(requested_token_label or "That device token")
         unavailable_notice = f"""
-          <div class="callout compact">
+          <div class="callout compact stacked">
             <span><strong>{stale_label} is still paired and working normally.</strong> A server
               restart just means this session can no longer redisplay its secret — by design,
               it's never stored anywhere it could be recovered from. Showing the bootstrap
               token instead; no action is needed unless you actually want a fresh QR (for
               example, to re-pair a lost phone).</span>
-            <form hx-post="/ui/partials/pairing/tokens/{quote(requested_token_id, safe="")}/rotate"
-                  hx-target="#pairing-card" hx-swap="outerHTML">
-              <input type="hidden" name="url" value="{escape(selected_url)}" />
-              <button type="submit" class="ghost small">Rotate &amp; show a new QR</button>
-            </form>
-            <span class="muted small">Only rotate if you need that: it immediately retires the
-              current secret, and the device using it will have to be paired again.</span>
+            <div class="callout-actions">
+              <form
+                hx-post="/ui/partials/pairing/tokens/{quote(requested_token_id, safe="")}/rotate"
+                hx-target="#pairing-card" hx-swap="outerHTML">
+                <input type="hidden" name="url" value="{escape(selected_url)}" />
+                <button type="submit" class="ghost small">Rotate &amp; show a new QR</button>
+              </form>
+              <span class="muted small">Only rotate if you need that: it immediately retires
+                the current secret, and the device using it will have to be paired again.</span>
+            </div>
           </div>
         """
     elif token_status == "unknown":
