@@ -15,13 +15,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.github.mrsunglasses.localflow.settings.LocalFlowSettings
 
 /**
  * Guided setup. Every step states what Local Flow does with the access it asks
@@ -31,6 +32,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SetupScreen(
     status: SetupStatus,
+    settings: LocalFlowSettings,
     onOpenGateway: () -> Unit,
     onAcceptDisclosure: () -> Unit,
     onFinish: () -> Unit,
@@ -56,6 +58,8 @@ fun SetupScreen(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        SetupProgress(status)
 
         AccessibilityDisclosureCard(
             accepted = status.disclosureAccepted,
@@ -110,23 +114,54 @@ fun SetupScreen(
         SectionCard("Gateway", supporting = "Your self-hosted Local Flow server.") {
             ChecklistRow(
                 title = "Address and token",
-                detail = "A LAN, Tailscale or HTTPS gateway you control.",
+                // Echoing the saved address back is the confirmation that the
+                // gateway screen took what was typed into it.
+                detail = if (status.gatewayConfigured) {
+                    settings.gatewayUrl
+                } else {
+                    "A LAN, Tailscale or HTTPS gateway you control."
+                },
                 satisfied = status.gatewayConfigured,
                 actionLabel = "Set up",
                 onAction = onOpenGateway,
             )
             if (status.gatewayConfigured) {
-                TextButton(onClick = onOpenGateway) { Text("Change gateway") }
+                TextButton(onClick = onOpenGateway) { Text("Change or test gateway") }
             }
         }
 
-        Button(
+        PrimaryButton(
+            text = "Start dictating",
             onClick = onFinish,
             enabled = status.isReadyToDictate,
             modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (status.isReadyToDictate) "Start dictating" else "Finish the steps above")
+        )
+        if (!status.isReadyToDictate) {
+            Text(
+                "Still to do: " + status.remainingSteps.joinToString { it.label },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
+    }
+}
+
+/** How far through the checklist the user is, so the list has a visible end. */
+@Composable
+private fun SetupProgress(status: SetupStatus, modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "${status.completedStepCount} of ${status.stepCount} steps done",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        LinearProgressIndicator(
+            progress = { status.completedStepCount.toFloat() / status.stepCount },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -165,7 +200,7 @@ fun AccessibilityDisclosureCard(
                 color = MaterialTheme.colorScheme.primary,
             )
         } else {
-            Button(onClick = onAccept) { Text("I understand") }
+            PrimaryButton("I understand", onClick = onAccept, modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -206,9 +241,17 @@ fun RestrictedSettingsCard(
                 "on — it will work this time.",
             style = MaterialTheme.typography.bodyMedium,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = onOpenAccessibilitySettings) { Text("1. Accessibility") }
-            Button(onClick = onOpenAppInfo) { Text("2. App info") }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            PrimaryButton(
+                text = "1. Accessibility",
+                onClick = onOpenAccessibilitySettings,
+                modifier = Modifier.weight(1f),
+            )
+            SecondaryButton(
+                text = "2. App info",
+                onClick = onOpenAppInfo,
+                modifier = Modifier.weight(1f),
+            )
         }
         Text(
             "On Samsung phones running One UI 8.5, \"Allow restricted " +

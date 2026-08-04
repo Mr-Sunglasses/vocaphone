@@ -11,6 +11,20 @@ import androidx.core.content.ContextCompat
 import io.github.mrsunglasses.localflow.accessibility.LocalFlowAccessibilityService
 import io.github.mrsunglasses.localflow.core.RestrictedSettingsPolicy
 
+/**
+ * A step guided setup requires before dictation can work, in the order the
+ * checklist presents them. Battery is deliberately absent: it is offered,
+ * never required.
+ */
+enum class SetupStep(val label: String) {
+    DISCLOSURE("Accessibility disclosure"),
+    MICROPHONE("Microphone"),
+    NOTIFICATIONS("Notifications"),
+    OVERLAY("Display over other apps"),
+    ACCESSIBILITY("Accessibility service"),
+    GATEWAY("Gateway"),
+}
+
 /** Everything guided setup checks, re-read every time the app is resumed. */
 data class SetupStatus(
     val microphone: Boolean = false,
@@ -23,10 +37,25 @@ data class SetupStatus(
     /** The accessibility switch is probably greyed out; see [RestrictedSettingsPolicy]. */
     val restrictedSettingsGuidance: Boolean = false,
 ) {
-    /** Battery is deliberately excluded: it is offered, never required. */
+    fun isSatisfied(step: SetupStep): Boolean = when (step) {
+        SetupStep.DISCLOSURE -> disclosureAccepted
+        SetupStep.MICROPHONE -> microphone
+        SetupStep.NOTIFICATIONS -> notifications
+        SetupStep.OVERLAY -> overlay
+        SetupStep.ACCESSIBILITY -> accessibility
+        SetupStep.GATEWAY -> gatewayConfigured
+    }
+
+    /** What the checklist still wants, in checklist order, for a plain-English prompt. */
+    val remainingSteps: List<SetupStep>
+        get() = SetupStep.entries.filterNot(::isSatisfied)
+
+    val stepCount: Int get() = SetupStep.entries.size
+
+    val completedStepCount: Int get() = stepCount - remainingSteps.size
+
     val isReadyToDictate: Boolean
-        get() = microphone && notifications && overlay && accessibility &&
-            gatewayConfigured && disclosureAccepted
+        get() = remainingSteps.isEmpty()
 
     companion object {
         fun read(context: Context, gatewayConfigured: Boolean, disclosureAccepted: Boolean): SetupStatus {
@@ -53,7 +82,7 @@ data class SetupStatus(
  * Null covers both an install that recorded no originator and a read that
  * failed outright; either way the app cannot claim it came from a store.
  */
-private fun Context.installerPackage(): String? = runCatching {
+internal fun Context.installerPackage(): String? = runCatching {
     packageManager.getInstallSourceInfo(packageName).installingPackageName
 }.getOrNull()
 

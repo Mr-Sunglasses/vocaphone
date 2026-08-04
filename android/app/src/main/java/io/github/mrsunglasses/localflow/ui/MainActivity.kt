@@ -9,6 +9,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -87,6 +88,18 @@ fun LocalFlowApp(viewModel: LocalFlowViewModel = viewModel()) {
                         }
                     )
                 },
+                navigationIcon = {
+                    // The gateway screen is pushed on top of setup, so it needs a
+                    // visible way back; the system gesture alone is not discoverable.
+                    if (showingGateway) {
+                        IconButton(onClick = { showingGateway = false }) {
+                            Icon(
+                                painterResource(R.drawable.ic_back),
+                                contentDescription = "Back",
+                            )
+                        }
+                    }
+                },
             )
         },
         bottomBar = {
@@ -110,17 +123,20 @@ fun LocalFlowApp(viewModel: LocalFlowViewModel = viewModel()) {
                 settings = settings,
                 connection = connection,
                 testing = testing,
+                inOnboarding = !settings.onboardingComplete,
                 onSave = viewModel::saveGateway,
                 onTest = viewModel::testConnection,
                 onClear = {
                     viewModel.clearGateway()
                     showingGateway = false
                 },
+                onDone = { showingGateway = false },
                 modifier = content,
             )
 
             showSetup -> SetupScreen(
                 status = setup,
+                settings = settings,
                 onOpenGateway = { showingGateway = true },
                 onAcceptDisclosure = { viewModel.setDisclosureAccepted(true) },
                 onFinish = { viewModel.setOnboardingComplete(true) },

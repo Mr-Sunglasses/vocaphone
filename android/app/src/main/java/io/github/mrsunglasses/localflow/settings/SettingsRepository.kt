@@ -97,6 +97,9 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    /** Corrects the address while leaving the sealed token exactly as it is. */
+    suspend fun setGatewayUrl(url: String) = put(Keys.GATEWAY_URL, url)
+
     suspend fun clearGateway() {
         context.dataStore.edit { preferences ->
             preferences.remove(Keys.GATEWAY_URL)
