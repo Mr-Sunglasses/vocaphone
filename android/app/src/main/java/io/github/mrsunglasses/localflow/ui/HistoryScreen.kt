@@ -11,9 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -97,15 +95,19 @@ private fun HistoryRow(
             Text(record.transcript.orEmpty(), style = MaterialTheme.typography.bodyMedium)
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             if (failed && record.recoverable && record.audioPath != null) {
-                Button(onClick = onRetry) { Text("Retry") }
+                PrimaryButton("Retry", onClick = onRetry, modifier = Modifier.weight(1f))
             }
             record.transcript?.takeIf { it.isNotEmpty() }?.let { transcript ->
                 // Explicit only: Local Flow never writes to the clipboard on its own.
-                OutlinedButton(onClick = { onCopy(transcript) }) { Text("Copy") }
+                SecondaryButton(
+                    text = "Copy",
+                    onClick = { onCopy(transcript) },
+                    modifier = Modifier.weight(1f),
+                )
             }
-            TextButton(onClick = onDelete) { Text("Delete") }
+            TextButton(onClick = onDelete, modifier = Modifier.weight(1f)) { Text("Delete") }
         }
     }
 }

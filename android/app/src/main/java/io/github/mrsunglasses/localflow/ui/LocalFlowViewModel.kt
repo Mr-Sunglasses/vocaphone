@@ -80,11 +80,19 @@ class LocalFlowViewModel(application: Application) : AndroidViewModel(applicatio
         when (val validation = GatewayEndpoint.validate(url)) {
             is GatewayEndpoint.Validation.Invalid -> onResult(validation.reason)
             is GatewayEndpoint.Validation.Valid -> viewModelScope.launch {
-                if (token.isBlank()) {
+                val trimmed = token.trim()
+                if (trimmed.isEmpty() && !container.settings.current().hasToken) {
                     onResult("Enter the bearer token your gateway printed on first run.")
                     return@launch
                 }
-                container.settings.setGateway(validation.url, token.trim())
+                // A blank token with one already stored means "keep it", which is
+                // what the field promises. Correcting a typo in the address should
+                // not require digging the secret out again.
+                if (trimmed.isEmpty()) {
+                    container.settings.setGatewayUrl(validation.url)
+                } else {
+                    container.settings.setGateway(validation.url, trimmed)
+                }
                 refreshSetup()
                 testConnection()
                 onResult(null)

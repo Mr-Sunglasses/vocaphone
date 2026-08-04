@@ -1,5 +1,10 @@
 package io.github.mrsunglasses.localflow.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,11 +19,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -45,6 +50,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val appInfo = remember { context.readAppInfo() }
     LaunchedEffect(Unit) { onLoadApps() }
 
     Column(
@@ -68,7 +74,7 @@ fun SettingsScreen(
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
-            OutlinedButton(onClick = onOpenGateway) { Text("Gateway settings") }
+            SecondaryButton("Gateway settings", onClick = onOpenGateway)
         }
 
         SectionCard("Transcription language", supporting = settings.language.detail) {
@@ -121,15 +127,16 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
-                OutlinedButton(onClick = {
-                    if (!setup.overlay) {
-                        context.openOverlaySettings()
-                    } else {
-                        context.openAccessibilitySettings()
-                    }
-                }) {
-                    Text("Repair")
-                }
+                SecondaryButton(
+                    text = "Repair",
+                    onClick = {
+                        if (!setup.overlay) {
+                            context.openOverlaySettings()
+                        } else {
+                            context.openAccessibilitySettings()
+                        }
+                    },
+                )
             }
         }
 
@@ -180,7 +187,62 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
+
+        SectionCard(
+            title = "About",
+            supporting = "Local Flow ${appInfo.versionName} (${appInfo.versionCode})",
+        ) {
+            InfoRow("Android", "${appInfo.androidRelease} (SDK ${appInfo.sdkInt})")
+            InfoRow("Device", appInfo.device)
+            InfoRow("Installed from", appInfo.installedFrom)
+            InfoRow("Package", appInfo.packageName)
+            InfoRow(
+                "Engine",
+                settings.lastEngine.ifEmpty { "unknown" } +
+                    if (settings.lastEngineReady) " (ready)" else " (not ready)",
+            )
+            InfoRow(
+                "Setup",
+                if (setup.isReadyToDictate) {
+                    "complete"
+                } else {
+                    "${setup.completedStepCount} of ${setup.stepCount} steps"
+                },
+            )
+            Text(
+                "Diagnostics leave out your gateway's host name and never include " +
+                    "the token, so they are safe to paste into a public issue.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                SecondaryButton(
+                    text = "Copy diagnostics",
+                    onClick = {
+                        context.copyDiagnostics(
+                            diagnosticsReport(appInfo, settings, setup)
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                SecondaryButton(
+                    text = "Project page",
+                    onClick = { context.openUrl(PROJECT_URL) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
     }
+}
+
+private fun Context.copyDiagnostics(text: String) {
+    val clipboard = getSystemService(ClipboardManager::class.java) ?: return
+    clipboard.setPrimaryClip(ClipData.newPlainText("Local Flow diagnostics", text))
+}
+
+/** No browser is a plausible state on a stripped-down ROM, so failure is silent. */
+private fun Context.openUrl(url: String) {
+    runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
 }
 
 @Composable

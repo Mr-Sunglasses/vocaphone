@@ -6,13 +6,19 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,6 +30,82 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import io.github.mrsunglasses.localflow.R
+
+/**
+ * The app's two button weights, so every screen agrees on shape and height.
+ *
+ * Outlined buttons are deliberately absent: with dynamic dark colour their
+ * border all but vanishes against these cards, which left secondary actions
+ * looking like bare floating text.
+ */
+private val ButtonShape = RoundedCornerShape(16.dp)
+private val ButtonHeight = 48.dp
+
+@Composable
+fun PrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled && !loading,
+        shape = ButtonShape,
+        modifier = modifier.height(ButtonHeight),
+    ) {
+        ButtonLabel(text, loading)
+    }
+}
+
+@Composable
+fun SecondaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    loading: Boolean = false,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled && !loading,
+        shape = ButtonShape,
+        modifier = modifier.height(ButtonHeight),
+    ) {
+        ButtonLabel(text, loading)
+    }
+}
+
+@Composable
+private fun ButtonLabel(text: String, loading: Boolean) {
+    if (loading) {
+        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+    } else {
+        Text(text)
+    }
+}
+
+/** A label and its value on one line, for the About card. */
+@Composable
+fun InfoRow(label: String, value: String, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
 
 @Composable
 fun SectionCard(
@@ -91,7 +173,13 @@ fun ChecklistRow(
     }
 }
 
-/** A single-choice chip row, used for every enumerated setting. */
+/**
+ * A single-choice chip row, used for every enumerated setting.
+ *
+ * The chips carry their own fill rather than relying on an outline: the default
+ * chip border is invisible in a dynamic dark scheme, which made unselected
+ * options read as loose words rather than something you could tap.
+ */
 @Composable
 fun <T> ChipChoiceRow(
     options: List<T>,
@@ -103,13 +191,21 @@ fun <T> ChipChoiceRow(
     FlowRow(
         modifier = modifier.fillMaxWidth().selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         options.forEach { option ->
             FilterChip(
                 selected = option == selected,
                 onClick = { onSelect(option) },
                 label = { Text(label(option)) },
+                shape = RoundedCornerShape(12.dp),
+                border = null,
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    labelColor = MaterialTheme.colorScheme.onSurface,
+                    selectedContainerColor = MaterialTheme.colorScheme.primary,
+                    selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                ),
             )
         }
     }

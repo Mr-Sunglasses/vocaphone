@@ -9,10 +9,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -114,25 +112,31 @@ fun DictateScreen(
                 )
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 when {
                     state.isRecording -> {
-                        Button(onClick = onFinish) { Text("Finish") }
-                        OutlinedButton(onClick = onCancel) { Text("Cancel") }
+                        PrimaryButton("Finish", onClick = onFinish, modifier = Modifier.weight(1f))
+                        SecondaryButton("Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
                     }
 
-                    state.phase.isBusy -> OutlinedButton(onClick = onCancel) { Text("Cancel") }
+                    state.phase.isBusy ->
+                        SecondaryButton("Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
 
                     state.canRetry -> {
-                        Button(onClick = { state.sessionId?.let { onRetry(it.toString()) } }) {
-                            Text("Retry")
-                        }
-                        OutlinedButton(onClick = onDismiss) { Text("Dismiss") }
+                        PrimaryButton(
+                            text = "Retry",
+                            onClick = { state.sessionId?.let { onRetry(it.toString()) } },
+                            modifier = Modifier.weight(1f),
+                        )
+                        SecondaryButton("Dismiss", onClick = onDismiss, modifier = Modifier.weight(1f))
                     }
 
-                    else -> Button(onClick = onStart, enabled = setup.isReadyToDictate) {
-                        Text("Start dictation")
-                    }
+                    else -> PrimaryButton(
+                        text = "Start dictation",
+                        onClick = onStart,
+                        enabled = setup.isReadyToDictate,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
 
@@ -155,14 +159,11 @@ fun DictateScreen(
                 modifier = Modifier.fillMaxWidth().height(220.dp),
                 label = { Text("Your text") },
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(
-                    onClick = { scratchpad = TextFieldValue() },
-                    enabled = scratchpad.text.isNotEmpty(),
-                ) {
-                    Text("Clear")
-                }
-            }
+            SecondaryButton(
+                text = "Clear",
+                onClick = { scratchpad = TextFieldValue() },
+                enabled = scratchpad.text.isNotEmpty(),
+            )
         }
     }
 }
