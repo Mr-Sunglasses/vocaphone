@@ -69,10 +69,11 @@ operational commands.
 
 ### 1. Start the gateway natively on macOS
 
-Install the tools and launch the server:
+Install the tools (FFmpeg, plus the WhisperKit and `whisper.cpp` CLIs) and
+launch the server:
 
 ```sh
-brew install ffmpeg whisperkit-cli
+brew install ffmpeg whisperkit-cli whisper-cpp
 cd server
 uv sync --all-groups --extra engines --extra apple
 uv run localflow-server
@@ -168,7 +169,11 @@ Choose one of these network arrangements:
   `ip -4 addr`. HTTP is unencrypted, so use this only on a network you trust and
   never forward that port to the internet. For Docker, set
   `LOCALFLOW_PUBLISH_HOST=0.0.0.0` in `server/.env` and protect the port with the
-  host firewall.
+  host firewall. The container's own address auto-discovery (used by the
+  pairing QR) can't see the host's LAN IP under the default bridge network
+  either; on Linux Docker Engine, set `LOCALFLOW_NETWORK_MODE=host` in
+  `server/.env` instead so discovery finds it directly — see
+  [server/README.md](server/README.md#configuration).
 - **Tailscale:** keep the gateway on loopback and let Tailscale Serve provide
   tailnet-only HTTPS:
 

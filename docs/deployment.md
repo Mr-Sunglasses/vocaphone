@@ -44,7 +44,8 @@ not only end-to-end time.
 ### Install and run
 
 ```sh
-brew install ffmpeg whisperkit-cli
+# ffmpeg (required), WhisperKit CLI, and the whisper.cpp CLI
+brew install ffmpeg whisperkit-cli whisper-cpp
 cd server
 uv sync --all-groups --extra engines --extra apple
 uv run localflow-server
@@ -255,6 +256,24 @@ iPhone, and use a URL such as `http://homelabone:8765/`. Approve Local Network
 access when iOS asks. Plain HTTP exposes recordings and the bearer token to
 anyone who can inspect the network, so use it only on a trusted LAN or encrypted
 VPN and never forward it from a router.
+
+With the default bridge network, the container only ever sees its own private
+bridge address (for example `172.19.0.2`), never the host's real Wi-Fi/Ethernet
+interface — so the pairing card's auto-discovered candidate list won't include
+a `192.168.x.x` address even after the change above. On Linux Docker Engine
+(not Docker Desktop on macOS/Windows), share the host's network namespace
+instead so discovery sees the real LAN IP directly:
+
+```dotenv
+LOCALFLOW_NETWORK_MODE=host
+```
+
+`LOCALFLOW_PUBLISH_HOST`/`LOCALFLOW_PUBLISH_PORT` are ignored in this mode —
+Compose discards the `ports:` mapping and the container binds straight onto the
+host per `LOCALFLOW_BIND_HOST` (`0.0.0.0` by default) and `LOCALFLOW_PORT`
+(`8765` by default). That means the host firewall is now the only thing
+standing between port 8765 and every interface on the box, including any
+public one — lock it down before enabling this.
 
 ### Tailscale Serve
 
