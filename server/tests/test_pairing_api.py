@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -8,7 +9,9 @@ from conftest import TOKEN, FakeEngine, FakeNormalizer
 
 from app.config import Settings
 from app.main import create_app
+from app.model_manager import ModelManager
 from app.pairing import decode_pairing_payload
+from app.runtime_config import RuntimeConfig
 
 
 @pytest.mark.asyncio
@@ -196,6 +199,44 @@ async def test_creating_a_pairing_token_shows_its_own_qr(
     tokens = await client.get("/v1/admin/tokens", headers=authorization)
     labels = {entry["label"] for entry in tokens.json()}
     assert "Work iPad" in labels
+
+
+@pytest.mark.asyncio
+async def test_switching_networks_forgets_the_old_lan_address(tmp_path: Path) -> None:
+    """Reproduces the reported bug: an old Wi-Fi's LAN IP lingered forever
+    alongside the new one instead of being superseded by fresh discovery."""
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "model.bin",
+        config_path=tmp_path / "config.json",
+    )
+    old_address = "http://192.168.1.20:8765"
+    hostname_address = "https://homelabone.tail1234.ts.net:8765"
+    runtime_config = RuntimeConfig(
+        pairing_url=old_address,
+        pairing_urls=[old_address, hostname_address],
+    )
+    app = create_app(
+        settings,
+        model_manager=ModelManager(tmp_path / "models"),
+        runtime_config=runtime_config,
+    )
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        auth = {"Authorization": f"Bearer {TOKEN}"}
+        partial = await client.get("/ui/partials/pairing", headers=auth)
+        assert partial.status_code == 200
+        assert f'value="{old_address}"' not in partial.text
+        assert f'value="{hostname_address}"' in partial.text
+
+    # The stale ambient LAN IP is gone; the deliberately-typed hostname stayed.
+    assert old_address not in runtime_config.pairing_urls
+    assert hostname_address in runtime_config.pairing_urls
+    assert runtime_config.pairing_url != old_address
 
 
 @pytest.mark.asyncio

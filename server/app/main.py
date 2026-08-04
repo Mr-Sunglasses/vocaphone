@@ -68,6 +68,7 @@ from app.pairing import (
     decode_pairing_payload,
     discover_gateway_base_urls,
     encode_pairing_payload,
+    is_ambient_lan_address,
     normalize_gateway_input,
     primary_gateway_base_url,
     qr_svg_for_payload,
@@ -1077,10 +1078,41 @@ def create_app(
         )
         return options
 
+    def _forget_stale_lan_addresses(discovered: list[str]) -> None:
+        """Drop any remembered LAN/tailnet IP no longer part of fresh discovery.
+
+        A bare LAN or Tailscale IP reflects whichever network the gateway was
+        on when it was picked; keeping it around after switching Wi-Fi just
+        clutters the address list and dropdown with a dead entry. Hostnames
+        (MagicDNS names, custom domains) and public IPs are never touched —
+        the user chose those deliberately and they aren't tied to one network.
+        """
+        if engine_manager is None:
+            return
+        changed = False
+        if (
+            pairing_config.pairing_url
+            and pairing_config.pairing_url not in discovered
+            and is_ambient_lan_address(pairing_config.pairing_url)
+        ):
+            pairing_config.pairing_url = None
+            changed = True
+        remaining = [
+            url
+            for url in pairing_config.pairing_urls
+            if url in discovered or not is_ambient_lan_address(url)
+        ]
+        if len(remaining) != len(pairing_config.pairing_urls):
+            pairing_config.pairing_urls = remaining
+            changed = True
+        if changed:
+            pairing_config.save(config_path)
+
     def _pairing_html(
         selected_url: str | None = None, token_id: str | None = None, *, persist: bool = False
     ) -> str:
         discovered = discover_gateway_base_urls(configured.port)
+        _forget_stale_lan_addresses(discovered)
         candidates = list(discovered)
         for saved in pairing_config.pairing_urls:
             if saved not in candidates:

@@ -109,6 +109,28 @@ def normalize_gateway_input(raw: str, default_port: int) -> str:
     return normalize_gateway_url(trimmed)
 
 
+_AMBIENT_LAN_NETWORKS = (
+    ipaddress.IPv4Network("100.64.0.0/10"),  # Tailscale / CGNAT, not flagged by is_private
+)
+
+
+def is_ambient_lan_address(url: str) -> bool:
+    """True when *url*'s host is a bare LAN-or-tailnet IPv4 address.
+
+    Such an address (a plain LAN or Tailscale IP, not a hostname) reflects
+    whichever network the gateway happens to be on right now, so it should
+    track fresh discovery rather than being remembered indefinitely — unlike
+    a MagicDNS name, custom domain, or public IP, which the user chose
+    deliberately and isn't tied to a particular Wi-Fi network.
+    """
+    host = urlparse(url).hostname or ""
+    try:
+        ip = ipaddress.IPv4Address(host)
+    except ValueError:
+        return False
+    return ip.is_private or any(ip in network for network in _AMBIENT_LAN_NETWORKS)
+
+
 def discover_gateway_base_urls(port: int) -> list[str]:
     """Return phone-reachable gateway bases, preferred first.
 
