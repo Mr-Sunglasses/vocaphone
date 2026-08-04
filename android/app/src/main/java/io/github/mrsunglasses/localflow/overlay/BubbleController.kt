@@ -175,12 +175,13 @@ class BubbleController(
 
     private fun render(state: DictationState) {
         val view = root ?: return
+        // Streaming partials are deliberately not shown here. They rewrite
+        // themselves as the model catches up and only settle after the gateway's
+        // post-processing, so a live preview next to the text field the user is
+        // dictating into is noise — and wrong often enough to be distracting.
         status?.text = when {
             state.approachingLimit && state.phase == DictationPhase.LISTENING ->
                 "Listening — one minute left"
-
-            state.phase == DictationPhase.LISTENING && state.partialTranscript.isNotEmpty() ->
-                state.partialTranscript.takeLast(PARTIAL_PREVIEW_CHARACTERS)
 
             else -> state.statusText
         }
@@ -319,6 +320,5 @@ class BubbleController(
 
     private companion object {
         const val SNOOZE_MILLIS = 15 * 60 * 1000L
-        const val PARTIAL_PREVIEW_CHARACTERS = 48
     }
 }
