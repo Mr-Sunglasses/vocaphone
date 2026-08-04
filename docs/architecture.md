@@ -67,11 +67,19 @@ Apple silicon, and `WhisperCppEngine` is the portable CLI fallback. The service
 keeps the selected model resident and falls back to the one-shot CLI when an
 older WhisperKit build cannot serve. `FasterWhisperEngine` owns one persistent
 CTranslate2 model and uses CPU INT8 by default. `SherpaOnnxEngine` owns one
-portable INT8 recognizer for SenseVoice or Parakeet. `MLXAudioEngine` keeps one
+portable INT8 recognizer for SenseVoice, Parakeet, GigaAM, Canary, or a
+streaming Zipformer model, dispatching on the selected model's catalog
+`model_type` for both loading and decoding. `MLXAudioEngine` keeps one
 Apple-silicon-native model in unified memory. `MoonshineEngine` owns one
-persistent transcriber. It exposes the guarded `/v1/stream` path only when the
-selected architecture supports cached incremental inference; language-specific
-batch models use the same upload fallback as other batch engines. No
+persistent transcriber. Any engine can expose the guarded `/v1/stream` path by
+implementing the `StreamingEngine` protocol (`app/models/base.py`):
+`supports_streaming`, `streaming_lock`, and `create_stream()` returning an
+object with `add_listener`/`add_audio`/`stop`. Currently Moonshine's streaming
+architectures and sherpa-onnx's streaming Zipformer model do; `SherpaOnnxEngine`
+wraps sherpa-onnx's separate `OnlineRecognizer`/`OnlineStream` API in an adapter
+presenting that same surface, so the WebSocket handler itself has no
+engine-specific code. Every other model — including every other sherpa-onnx
+model — uses the same upload fallback as other batch engines. No
 engine-specific field is part of the stable session API
 response.
 

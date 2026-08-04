@@ -37,8 +37,9 @@ tests, and has not yet been exercised end to end on a physical Pixel.
 - Operational dashboard with hardware detection, queue/outcome counters,
   pipeline benchmarks, real-time factor, peak memory, and warmup state
 - CPU/OpenBLAS, host-native CPU, NVIDIA CUDA, and Vulkan Compose profiles
-- Bearer authentication, iOS Keychain storage, configurable HTTP/HTTPS gateway
-  access, optional private Tailscale HTTPS, no analytics, and no third-party
+- Bearer authentication with named per-device tokens and revocation, iOS
+  Keychain storage, configurable HTTP/HTTPS gateway access, optional private
+  Tailscale HTTPS, no analytics, and no third-party
   transcription
 
 ## Choose a gateway deployment
@@ -189,9 +190,15 @@ Once the WebUI is open and authenticated on the gateway host:
 
 1. Stay on **Overview** — the **Pair phone app** card shows a QR for a
    phone-reachable address (LAN IP preferred, or `LOCALFLOW_PUBLIC_URL` if set).
-2. In the iPhone app, open **Settings** and tap **Scan pairing QR code**. On
+2. To give this phone its own revocable credential instead of the shared
+   bootstrap token, use **Or pair a new device with its own token**: name the
+   device and the card immediately shows a QR for that device's token alone.
+   The **Token to encode** dropdown switches the QR between the bootstrap
+   token and any device token created this way; manage or revoke them later
+   from Settings → **Paired device tokens**.
+3. In the iPhone app, open **Settings** and tap **Scan pairing QR code**. On
    Android, open **Gateway** and tap **Scan QR code**.
-3. Grant camera access if asked; the scan fills address + token and runs the
+4. Grant camera access if asked; the scan fills address + token and runs the
    connection test.
 
 You can still paste manually:

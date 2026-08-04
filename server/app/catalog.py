@@ -187,15 +187,30 @@ def _sherpa_onnx(
     quality: str,
     minimum_ram_gb: float,
     *,
-    archive_url: str,
-    archive_root: str,
     required_files: tuple[str, ...],
     model_type: str,
     language_codes: tuple[str, ...],
     family: str,
     description: str,
     license_name: str,
+    archive_url: str | None = None,
+    archive_root: str | None = None,
+    huggingface_repo: str | None = None,
+    supports_streaming: bool = False,
 ) -> CatalogModel:
+    """Build a sherpa-onnx catalog entry from either download mechanism.
+
+    Most models ship as a `k2-fsa/sherpa-onnx` GitHub-release `.tar.bz2`
+    (`archive_url`/`archive_root`). Some model families (GigaAM, Canary) are
+    only published as individual files in a plain Hugging Face model repo with
+    no such archive; for those, pass `huggingface_repo` instead and the
+    gateway downloads exactly `required_files` from its root.
+    """
+    if archive_url is not None:
+        if archive_root is None:
+            raise ValueError(f"{key}: archive_url requires archive_root.")
+    elif huggingface_repo is None:
+        raise ValueError(f"{key}: provide either archive_url/archive_root or huggingface_repo.")
     return CatalogModel(
         id=f"{ENGINE_SHERPA_ONNX}:{key}",
         engine=ENGINE_SHERPA_ONNX,
@@ -207,6 +222,7 @@ def _sherpa_onnx(
         minimum_ram_gb=minimum_ram_gb,
         archive_url=archive_url,
         archive_root=archive_root,
+        huggingface_repo=huggingface_repo,
         required_files=required_files,
         family=family,
         description=description,
@@ -215,6 +231,7 @@ def _sherpa_onnx(
         model_type=model_type,
         language_codes=language_codes,
         license_name=license_name,
+        supports_streaming=supports_streaming,
     )
 
 
@@ -339,6 +356,87 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
             "inference."
         ),
         license_name="CC BY 4.0",
+    ),
+    _sherpa_onnx(
+        "gigaam-v3-ctc-russian-int8",
+        "GigaAM v3 CTC Russian INT8",
+        225 * MB,
+        "Russian only",
+        "Fastest Russian ASR",
+        2,
+        huggingface_repo="csukuangfj/sherpa-onnx-nemo-ctc-giga-am-v3-russian-2025-12-16",
+        required_files=("model.int8.onnx", "tokens.txt"),
+        model_type="nemo_ctc",
+        language_codes=("ru",),
+        family="GigaAM",
+        description=(
+            "Sber's GigaAM CTC converted to INT8 ONNX for fast Russian-only CPU transcription."
+        ),
+        license_name="MIT",
+    ),
+    _sherpa_onnx(
+        "gigaam-v3-rnnt-russian-int8",
+        "GigaAM v3 RNNT Russian",
+        230 * MB,
+        "Russian only",
+        "Most accurate Russian ASR",
+        2,
+        huggingface_repo="csukuangfj/sherpa-onnx-nemo-transducer-giga-am-v3-russian-2025-12-16",
+        required_files=("encoder.int8.onnx", "decoder.onnx", "joiner.onnx", "tokens.txt"),
+        model_type="nemo_transducer",
+        language_codes=("ru",),
+        family="GigaAM",
+        description=(
+            "Sber's GigaAM RNNT converted to ONNX for the most accurate Russian-only CPU "
+            "transcription; only its encoder is INT8-quantized, so it is larger and slower "
+            "than the CTC variant."
+        ),
+        license_name="MIT",
+    ),
+    _sherpa_onnx(
+        "canary-180m-flash-en-int8",
+        "Canary 180M Flash English INT8",
+        210 * MB,
+        "English only in this build",
+        "Compact multilingual model, English transcription",
+        2,
+        huggingface_repo="csukuangfj/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8",
+        required_files=("encoder.int8.onnx", "decoder.int8.onnx", "tokens.txt"),
+        model_type="nemo_canary",
+        language_codes=("en",),
+        family="Canary",
+        description=(
+            "NVIDIA's Canary 180M Flash converted to INT8 ONNX. The underlying model also "
+            "covers German, French, and Spanish, but its source/target language is fixed when "
+            "the recognizer loads rather than per request, so Local Flow loads it English-only "
+            "for now."
+        ),
+        license_name="CC BY 4.0",
+    ),
+    _sherpa_onnx(
+        "streaming-zipformer-en-20m-int8",
+        "Streaming Zipformer English 20M INT8",
+        44 * MB,
+        "English only",
+        "Fastest live streaming",
+        1,
+        huggingface_repo="csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
+        required_files=(
+            "encoder-epoch-99-avg-1.int8.onnx",
+            "decoder-epoch-99-avg-1.int8.onnx",
+            "joiner-epoch-99-avg-1.int8.onnx",
+            "tokens.txt",
+        ),
+        model_type="streaming_zipformer",
+        language_codes=("en",),
+        family="Zipformer",
+        description=(
+            "A small streaming-capable zipformer transducer. Unlike the other sherpa-onnx "
+            "models above, this one decodes incrementally over /v1/stream with real partial "
+            "results, independent of Moonshine."
+        ),
+        license_name="Apache 2.0",
+        supports_streaming=True,
     ),
     _mlx_audio(
         "whisper-large-v3-turbo-4bit",

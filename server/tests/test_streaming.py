@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from array import array
 from pathlib import Path
 from types import SimpleNamespace
@@ -150,6 +151,55 @@ def test_batch_moonshine_gets_structured_stream_fallback(
 
     with TestClient(app) as client:
         assert client.get("/health").json()["streaming_supported"] is False
+
+
+class FakeStreamingEngine:
+    """A non-Moonshine engine implementing the StreamingEngine protocol.
+
+    Proves the /v1/stream handler generalized past isinstance(MoonshineEngine)
+    to any engine exposing supports_streaming/streaming_lock/create_stream.
+    """
+
+    def __init__(self, stream: FakeStream) -> None:
+        self._stream = stream
+        self.supports_streaming = True
+        self.streaming_lock = asyncio.Lock()
+
+    async def health(self) -> EngineHealth:
+        return EngineHealth(ready=True, name="sherpa-onnx:streaming-zipformer-en-20m-int8")
+
+    async def create_stream(self) -> FakeStream:
+        return self._stream
+
+
+def test_authenticated_sherpa_onnx_style_stream_returns_styled_transcript(tmp_path: Path) -> None:
+    settings = Settings(
+        token=TOKEN,
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "model.bin",
+    )
+    stream = FakeStream()
+    engine = FakeStreamingEngine(stream)
+    app = create_app(settings, engine=engine)
+
+    with (
+        TestClient(app) as client,
+        client.websocket_connect(
+            "/v1/stream", headers={"Authorization": f"Bearer {TOKEN}"}
+        ) as websocket,
+    ):
+        websocket.send_json({"type": "start", "sample_rate": 16_000, "style": "formal"})
+        assert websocket.receive_json() == {"type": "ready", "engine": "sherpa-onnx"}
+        websocket.send_bytes(array("f", [0.1, -0.1]).tobytes())
+        assert websocket.receive_json() == {"type": "partial", "transcript": "hello"}
+        websocket.send_json({"type": "finish"})
+        assert websocket.receive_json() == {
+            "type": "complete",
+            "transcript": "Hello world.",
+        }
+
+    assert stream.closed is True
 
 
 def test_authenticated_batch_engine_gets_structured_stream_fallback(tmp_path: Path) -> None:

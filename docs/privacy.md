@@ -25,7 +25,10 @@ result needed for idempotent retry.
 
 - Configurable gateway binding, with loopback recommended for private deployments
 - Tailscale Serve private ingress over a loopback listener; no Funnel
-- Independent high-entropy bearer token
+- Independent high-entropy bearer token, with additional named per-device
+  tokens available so losing one phone means revoking that device's token
+  rather than rotating every paired device's credential (see "Per-device
+  tokens" below)
 - Token stored in an iPhone Keychain item and a mode-600 Mac file
 - Strict upload types, byte limits, duration limits, and one transcription slot
 - FFmpeg and `whisper.cpp` invoked with argument arrays, never a shell
@@ -42,8 +45,9 @@ The Compose source token is normally stored in the host-only `server/.env` file
 before Docker mounts it at `/run/secrets/localflow_token`. Keep that file at mode
 `600`, exclude it from backups shared with other people, and never commit it.
 
-Moonshine streaming uses the same bearer token and configured HTTP/HTTPS host as
-the batch API (`ws://` on trusted HTTP networks, `wss://` with HTTPS). The iPhone
+Streaming (Moonshine's streaming tiers, or sherpa-onnx's streaming Zipformer
+model) uses the same bearer token and configured HTTP/HTTPS host as the batch
+API (`ws://` on trusted HTTP networks, `wss://` with HTTPS). The iPhone
 continues writing the bounded WAV while streaming so a socket interruption can
 fall back without losing the dictation. Partial transcripts are not persisted by
 the gateway or written to ordinary logs.
@@ -74,10 +78,44 @@ app and the user's Mac. The extension does not record microphone audio, inspect
 unrelated keystrokes, or use clipboard insertion. iOS still controls whether a
 third-party keyboard is available in a field.
 
+## Per-device tokens
+
+`LOCALFLOW_TOKEN` (or its token file) remains a permanent bootstrap credential
+that always authenticates and cannot be revoked through the API — whoever
+controls that file or environment variable can already read or rotate it
+directly. The WebUI Settings tab and the Overview pairing card can both create
+named, independently revocable tokens for specific devices. Only a SHA-256
+digest of each is persisted (`app/tokens.py`); the plaintext is shown once, at
+creation. Creating a device token from the pairing card immediately shows a QR
+for it, so a new phone can scan its own credential instead of the shared
+bootstrap token. The plaintext also stays cached in memory (never written to
+disk) for the rest of that gateway process, so the pairing card's token
+dropdown can still regenerate that same device's QR at a different address
+without creating a duplicate token; a restart, or revoking the token, clears
+it from that cache.
+
+A gateway restart (a routine deploy/update, for example) never affects an
+already-paired device: its token is validated by hash and keeps authenticating
+exactly as before. The in-memory cache only controls whether *this session*
+can redisplay that secret as a QR — losing it after a restart is expected and
+harmless. Rotating a token (giving it a fresh secret so its QR can be shown
+again) is the one action that actually breaks that device's existing pairing,
+so treat it as opt-in, not routine maintenance. Revoking a device token
+immediately rejects further requests carrying it without affecting the
+bootstrap token or any other paired device.
+
+## Diagnostics export
+
+The authenticated WebUI Settings tab and `uv run localflow-diagnostics` can export a
+redacted snapshot for a bug report: version, engine/model status, hardware and
+dependency detection, setup checklist, in-memory operational counters, and
+persistent configuration. Filesystem paths under the operator's home directory are
+rewritten to `~`. It never includes the bearer token, recording audio, transcript
+text, or session identifiers — see `app/diagnostics.py`.
+
 ## Remaining threats before distribution
 
 - Review model and FFmpeg supply-chain provenance.
 - Add dependency vulnerability and secret scanning in CI.
 - Confirm tailnet ACLs restrict gateway access to the user's devices.
-- Review diagnostics export before implementing it.
 - Revisit transcript retention and lock-screen exposure with the user.

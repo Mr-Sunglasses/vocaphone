@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from html import escape
 from urllib.parse import quote
 
@@ -8,6 +9,7 @@ from app.schemas import (
     AdminModelEntry,
     AdminStatusResponse,
     ConfigResponse,
+    DeviceTokenEntry,
     EngineStatus,
     OperationalMetricsStatus,
     ReadinessStatus,
@@ -417,11 +419,26 @@ def pairing_fragment(
     token_redacted: str,
     qr_svg: str = "",
     saved_urls: list[str],
+    token_options: list[tuple[str, str]],
+    selected_token_id: str,
+    token_status: str = "ok",
+    requested_token_id: str = "",
+    requested_token_label: str | None = None,
 ) -> str:
     """Authenticated phone-pairing card with QR for the selected gateway URL.
 
     The SVG is inlined so the browser does not need a second request (img tags
-    cannot attach the WebUI bearer header).
+    cannot attach the WebUI bearer header). `token_options` lists the bootstrap
+    token plus every device token, marking ones this process cannot currently
+    display for QR purposes — only cached plaintexts can be encoded. That
+    device's own pairing is completely unaffected either way: the phone keeps
+    authenticating with its already-scanned secret regardless of whether this
+    process can still show it. `token_status` explains why the shown token
+    differs from what was asked for: `stale` means the requested device token
+    still works fine but this process cannot redisplay its secret (typically
+    after a restart) — rotating is optional and only needed to get a fresh,
+    viewable QR, for example to re-pair a lost phone. `unknown` means it no
+    longer exists at all (typically already revoked).
     """
     if not selected_url:
         return """
@@ -437,6 +454,45 @@ def pairing_fragment(
         f"{escape(url)}</option>"
         for url in candidates
     )
+    token_option_html = "".join(
+        f'<option value="{escape(token_id)}"{" selected" if token_id == selected_token_id else ""}>'
+        f"{escape(label)}</option>"
+        for token_id, label in token_options
+    )
+    selected_token_label = next(
+        (label for token_id, label in token_options if token_id == selected_token_id),
+        "Bootstrap token",
+    )
+    if token_status == "stale":
+        stale_label = escape(requested_token_label or "That device token")
+        unavailable_notice = f"""
+          <div class="callout compact stacked">
+            <span><strong>{stale_label} is still paired and working normally.</strong> A server
+              restart just means this session can no longer redisplay its secret — by design,
+              it's never stored anywhere it could be recovered from. Showing the bootstrap
+              token instead; no action is needed unless you actually want a fresh QR (for
+              example, to re-pair a lost phone).</span>
+            <div class="callout-actions">
+              <form
+                hx-post="/ui/partials/pairing/tokens/{quote(requested_token_id, safe="")}/rotate"
+                hx-target="#pairing-card" hx-swap="outerHTML">
+                <input type="hidden" name="url" value="{escape(selected_url)}" />
+                <button type="submit" class="primary small">Rotate &amp; show a new QR</button>
+              </form>
+              <span class="muted small">Only rotate if you need that: it immediately retires
+                the current secret, and the device using it will have to be paired again.</span>
+            </div>
+          </div>
+        """
+    elif token_status == "unknown":
+        unavailable_notice = """
+          <div class="callout warning compact">
+            <span>That device token no longer exists. It may have been revoked. Showing the
+              bootstrap token instead — create a new device token below for a fresh QR.</span>
+          </div>
+        """
+    else:
+        unavailable_notice = ""
     saved_rows = "".join(
         f"<li><code>{escape(url)}</code>"
         f'<button type="button" class="ghost small danger"'
@@ -469,6 +525,7 @@ def pairing_fragment(
           <div class="pairing-qr" role="img"
                aria-label="Pairing QR code for {escape(selected_url)}">{inline_svg}</div>
           <div class="pairing-meta">
+            {unavailable_notice}
             <div class="pairing-url-form">
               <label><span>Address encoded in the QR</span>
                 <select name="url"
@@ -476,11 +533,22 @@ def pairing_fragment(
                         hx-target="#pairing-card"
                         hx-swap="outerHTML"
                         hx-trigger="change"
-                        hx-include="this">
+                        hx-include="this,[name='token_id']">
                   {options}
                 </select>
               </label>
+              <label><span>Token to encode</span>
+                <select name="token_id"
+                        hx-get="/ui/partials/pairing"
+                        hx-target="#pairing-card"
+                        hx-swap="outerHTML"
+                        hx-trigger="change"
+                        hx-include="this,[name='url']">
+                  {token_option_html}
+                </select>
+              </label>
               <form hx-get="/ui/partials/pairing" hx-target="#pairing-card" hx-swap="outerHTML">
+                <input type="hidden" name="token_id" value="{escape(selected_token_id)}" />
                 <label><span>Or enter your own address (e.g. Tailscale IP)</span>
                   <div class="row">
                     <input name="url" type="text"
@@ -489,20 +557,102 @@ def pairing_fragment(
                   </div>
                 </label>
               </form>
+              <form hx-post="/ui/partials/pairing/tokens" hx-target="#pairing-card"
+                    hx-swap="outerHTML">
+                <input type="hidden" name="url" value="{escape(selected_url)}" />
+                <label><span>Or pair a new device with its own token</span>
+                  <div class="row">
+                    <input name="label" type="text" required maxlength="100"
+                           placeholder="e.g. Kanishk&#39;s iPhone" />
+                    <button type="submit" class="primary small">Create &amp; show QR</button>
+                  </div>
+                </label>
+              </form>
               {saved_section}
             </div>
             <dl class="facts">
               <div><dt>Gateway URL</dt><dd><code>{escape(selected_url)}</code></dd></div>
-              <div><dt>Token</dt><dd><code>{escape(token_redacted)}</code></dd></div>
+              <div><dt>Token</dt>
+                <dd><code>{escape(token_redacted)}</code>
+                  ({escape(selected_token_label)})</dd></div>
             </dl>
             <p class="muted small">Prefer the Wi‑Fi LAN address when the phone is on
               the same network. Use a Tailscale MagicDNS name when both devices are
               on the tailnet. Override discovery with
-              <code>LOCALFLOW_PUBLIC_URL</code>.</p>
+              <code>LOCALFLOW_PUBLIC_URL</code>. Device tokens created here also appear
+              under Settings, where they can be revoked.</p>
           </div>
         </div>
       </div>
     """
+
+
+def tokens_fragment(
+    entries: list[DeviceTokenEntry], *, new_token: tuple[str, str] | None = None
+) -> str:
+    reveal = ""
+    if new_token is not None:
+        label, plaintext = new_token
+        reveal = f"""
+          <div class="callout success">
+            <strong>New secret for {escape(label)}</strong>
+            <span>Copy this token now &mdash; it will not be shown again. Paste it with the
+              gateway address into that device's manual "Gateway address and token" fields.</span>
+            <div class="row">
+              <code id="new-token-value">{escape(plaintext)}</code>
+              <button type="button" class="ghost small" id="copy-new-token">Copy</button>
+            </div>
+          </div>
+        """
+    rows = "".join(
+        "<tr>"
+        f"<td>{escape(entry.label)}</td>"
+        f"<td>{escape(_format_created(entry.created_at))}</td>"
+        "<td>"
+        + (
+            '<button type="button" class="ghost small"'
+            f' hx-post="/ui/partials/tokens/{quote(entry.id, safe="")}/rotate"'
+            ' hx-target="#tokens-card" hx-swap="outerHTML"'
+            f' hx-confirm="Give {escape(entry.label)} a new secret? Its previous token stops '
+            'working immediately.">Regenerate</button>'
+            '<button type="button" class="ghost small danger"'
+            f' hx-delete="/ui/partials/tokens/{quote(entry.id, safe="")}"'
+            ' hx-target="#tokens-card" hx-swap="outerHTML"'
+            f' hx-confirm="Revoke {escape(entry.label)}? Any device using only this token '
+            'loses access immediately.">Revoke</button>'
+            if entry.revocable
+            else '<span class="muted small">Not revocable here</span>'
+        )
+        + "</td></tr>"
+        for entry in entries
+    )
+    return f"""
+      <div class="card" id="tokens-card">
+        <h2>Paired device tokens</h2>
+        <p class="muted">Give each phone its own bearer token so losing one device only means
+          revoking that device's token instead of rotating everyone else's. Devices already
+          paired with the bootstrap token keep working until you re-pair them with one of
+          these.</p>
+        {reveal}
+        <div class="table-scroll">
+          <table class="table">
+            <thead><tr><th>Label</th><th>Created</th><th></th></tr></thead>
+            <tbody>{rows}</tbody>
+          </table>
+        </div>
+        <form hx-post="/ui/partials/tokens" hx-target="#tokens-card" hx-swap="outerHTML">
+          <div class="row">
+            <input name="label" type="text" required maxlength="100"
+                   placeholder="e.g. Kanishk&#39;s iPhone" />
+            <button type="submit" class="primary">Create token</button>
+          </div>
+        </form>
+      </div>
+    """
+
+
+def _format_created(value: datetime | None) -> str:
+    return "—" if value is None else value.strftime("%Y-%m-%d %H:%M UTC")
 
 
 def settings_fragment(
@@ -510,6 +660,7 @@ def settings_fragment(
     paths: list[tuple[str, str]],
     bind_host: str,
     port: int,
+    tokens_html: str,
 ) -> str:
     options = "".join(
         f'<option value="{escape(value)}"{" selected" if value == config.engine else ""}>'
@@ -589,6 +740,15 @@ def settings_fragment(
         <h2>Storage &amp; configuration</h2>
         <dl class="facts">{facts}</dl>
       </div>
+      <div class="card">
+        <h2>Diagnostics</h2>
+        <p class="muted">Download a redacted snapshot of this gateway's setup, dependencies,
+          hardware, and operational counters &mdash; useful when attaching to a bug report.
+          It never includes the bearer token, recordings, transcripts, or session
+          identifiers.</p>
+        <button id="download-diagnostics" type="button" class="ghost">Download diagnostics</button>
+      </div>
+      {tokens_html}
       <div class="card danger-zone">
         <h2>Connection</h2>
         <p class="muted">The WebUI stores the bearer token only in this browser.</p>

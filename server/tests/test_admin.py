@@ -73,6 +73,8 @@ def auth() -> dict[str, str]:
 async def test_admin_endpoints_require_token(admin_client: httpx.AsyncClient) -> None:
     for path in (
         "/v1/admin/status",
+        "/v1/admin/diagnostics",
+        "/v1/admin/tokens",
         "/v1/admin/models",
         "/v1/admin/config",
         "/ui/partials/overview",
@@ -81,6 +83,82 @@ async def test_admin_endpoints_require_token(admin_client: httpx.AsyncClient) ->
     ):
         response = await admin_client.get(path)
         assert response.status_code == 401, path
+
+
+async def test_tokens_list_starts_with_only_the_bootstrap_entry(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    response = await admin_client.get("/v1/admin/tokens", headers=auth)
+    assert response.status_code == 200
+    entries = response.json()
+    assert entries == [
+        {
+            "id": "bootstrap",
+            "label": "Bootstrap token (LOCALFLOW_TOKEN / token file)",
+            "created_at": None,
+            "revocable": False,
+        }
+    ]
+
+
+async def test_created_device_token_authenticates_and_can_be_revoked(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    created = await admin_client.post("/v1/admin/tokens", headers=auth, json={"label": "Pixel 6a"})
+    assert created.status_code == 200
+    payload = created.json()
+    assert payload["label"] == "Pixel 6a"
+    device_auth = {"Authorization": f"Bearer {payload['token']}"}
+
+    # The new device token authenticates on its own, independent of the bootstrap token.
+    status = await admin_client.get("/v1/admin/status", headers=device_auth)
+    assert status.status_code == 200
+
+    listed = await admin_client.get("/v1/admin/tokens", headers=auth)
+    ids = {entry["id"]: entry for entry in listed.json()}
+    assert payload["id"] in ids
+    assert ids[payload["id"]]["revocable"] is True
+
+    revoked = await admin_client.delete(f"/v1/admin/tokens/{payload['id']}", headers=auth)
+    assert revoked.status_code == 200
+    assert revoked.json() == {"revoked": True}
+
+    # Revoking one device token never touches the bootstrap token or other clients.
+    still_ok = await admin_client.get("/v1/admin/status", headers=auth)
+    assert still_ok.status_code == 200
+    now_rejected = await admin_client.get("/v1/admin/status", headers=device_auth)
+    assert now_rejected.status_code == 401
+
+
+async def test_revoking_unknown_token_returns_404(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    response = await admin_client.delete("/v1/admin/tokens/does-not-exist", headers=auth)
+    assert response.status_code == 404
+    assert response.json() == {"revoked": False}
+
+
+async def test_bootstrap_token_cannot_be_revoked(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    response = await admin_client.delete("/v1/admin/tokens/bootstrap", headers=auth)
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "bootstrap_token_not_revocable"
+
+
+async def test_diagnostics_bundle_is_downloadable_and_redacted(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    response = await admin_client.get("/v1/admin/diagnostics", headers=auth)
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith(
+        'attachment; filename="localflow-diagnostics-'
+    )
+    payload = response.json()
+    assert payload["engine"]["id"] == "auto"
+    assert payload["config"]["engine"] == "auto"
+    assert "never_included" in payload and payload["never_included"]
+    assert TOKEN not in response.text
 
 
 async def test_status_reports_system_and_setup(
@@ -238,6 +316,20 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert settings.status_code == 200
     assert "Speech engine" in settings.text
     assert "All-interface listener" in settings.text
+    assert "Paired device tokens" in settings.text
+    assert "Bootstrap token (LOCALFLOW_TOKEN / token file)" in settings.text
+
+    tokens = await admin_client.get("/ui/partials/tokens", headers=auth)
+    assert tokens.status_code == 200
+    assert 'id="tokens-card"' in tokens.text
+
+    created = await admin_client.post(
+        "/ui/partials/tokens", headers=auth, data={"label": "Kanishk's iPhone"}
+    )
+    assert created.status_code == 200
+    assert "New secret for Kanishk&#x27;s iPhone" in created.text
+    assert 'id="new-token-value"' in created.text
+    assert "Regenerate</button>" in created.text
 
     operations = await admin_client.get("/ui/partials/operations", headers=auth)
     assert operations.status_code == 200

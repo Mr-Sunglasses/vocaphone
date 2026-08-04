@@ -275,6 +275,9 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 24px 60px; }
 .callout.warning { border-color: rgba(224, 176, 64, 0.5); }
 .callout.warning strong { color: var(--warn); }
 .callout.compact { margin: 16px 0 0; }
+.callout.stacked { flex-direction: column; align-items: stretch; }
+.callout-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.callout-actions form { display: contents; }
 .ready-message { display: flex; gap: 12px; align-items: flex-start; }
 .ready-message p { margin: 4px 0 0; }
 .ready-icon {

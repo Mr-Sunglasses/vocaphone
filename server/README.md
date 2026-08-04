@@ -106,6 +106,14 @@ Discovery prefers private Wi‑Fi addresses (for example `192.168.x.x`). Overrid
 with `LOCALFLOW_PUBLIC_URL` or `LOCALFLOW_PAIRING_URL` when automatic selection
 is wrong. The QR is only available through the authenticated WebUI/API.
 
+The same card can create a named per-device token and immediately show its own
+QR instead of the shared bootstrap token, and a **Token to encode** dropdown
+switches which one the QR (and the `/v1/admin/pairing` and
+`/v1/admin/pairing/qr.svg` JSON/SVG endpoints, via `?token_id=`) currently
+encodes. A device token's plaintext is cached in memory only for the life of
+the gateway process — long enough to regenerate its QR at a different address
+without creating a duplicate — and is dropped immediately on revoke.
+
 ## Docker Compose quick start
 
 [compose.yaml](compose.yaml) is the canonical container deployment. It builds a
@@ -154,6 +162,12 @@ The authenticated WebUI provides:
 - one-run or three-run microphone benchmarks with normalization, model-load,
   inference, real-time-factor, and peak-memory results
 - selected engine/model and readiness/warmup status
+- a redacted diagnostics export for bug reports (Settings tab or
+  `uv run localflow-diagnostics`); never includes the token, audio, transcripts,
+  or session identifiers
+- named, independently revocable per-device tokens (Settings tab), so losing
+  one phone means revoking that device's token instead of rotating everyone
+  else's; the bootstrap `LOCALFLOW_TOKEN` always keeps working alongside them
 
 Operational counters stay in process memory, contain no audio or transcript
 content, and reset when the gateway process restarts.
@@ -166,9 +180,13 @@ It also includes compact Whisper Medium,
 Whisper Large v3, and Breeze ASR builds from
 [Handy's documented model family](https://handy.computer/docs/models) that run
 directly through `whisper.cpp`; Handy does not need to be installed.
-SenseVoice and Parakeet now run independently of Handy through sherpa-onnx;
-Parakeet also has an Apple-native MLX option. GigaAM and Canary still require
-runtime adapters that Local Flow does not ship.
+SenseVoice, Parakeet, GigaAM, and Canary now all run independently of Handy
+through sherpa-onnx; Parakeet also has an Apple-native MLX option. GigaAM
+(Russian, CTC or RNNT) and Canary (English only in this build; the underlying
+model also covers German, French, and Spanish, but source/target language is
+fixed when the recognizer loads rather than per request) download individual
+files directly from their Hugging Face model repos rather than a packaged
+archive, since neither publishes one.
 
 ### Fast model guide
 
@@ -204,20 +222,23 @@ device and precision settings affect faster-whisper; sherpa models are already
 INT8 CPU exports. Use the Test tab's three-run benchmark after the first warm
 run.
 
-Moonshine's English Medium, Small, and Tiny Streaming tiers accept float32 PCM
-over an authenticated WebSocket while the iPhone records. Medium favors
-accuracy, Small is the balanced Linux default, and Tiny favors latency. The
-ordinary WAV is still retained during the request and automatically used by the
-batch API if streaming is unavailable or interrupted. Streaming support is
-negotiated on that socket to avoid an extra network round trip before every
-recording.
+Moonshine's English Medium, Small, and Tiny Streaming tiers, and the sherpa-onnx
+Streaming Zipformer English 20M INT8 model, accept float32 PCM over an
+authenticated WebSocket while the iPhone records — real incremental decoding
+with partial results, not a periodic re-transcription of the growing buffer.
+Moonshine Medium favors accuracy, Small is the balanced Linux default, and Tiny
+favors latency; the Zipformer model favors speed over accuracy at a fraction of
+the download size. The ordinary WAV is still retained during the request and
+automatically used by the batch API if streaming is unavailable or interrupted.
+Streaming support is negotiated on that socket to avoid an extra network round
+trip before every recording.
 
-The remaining Moonshine models use its fast batch path after recording. The
-server returns a structured unsupported response for those architectures, as it
-does for WhisperKit and faster-whisper, so the app immediately continues through
-the ordinary upload pipeline. In the iPhone app or keyboard, **Automatic** uses
-the active gateway model. Choosing a named language requires the active model to
-support that same language.
+Every other model — the remaining Moonshine tiers, WhisperKit, faster-whisper,
+and every other sherpa-onnx model above — uses its fast batch path after
+recording. The server returns a structured unsupported response for those, so
+the app immediately continues through the ordinary upload pipeline. In the
+iPhone app or keyboard, **Automatic** uses the active gateway model. Choosing a
+named language requires the active model to support that same language.
 
 Moonshine's English code and weights use the MIT license. Its non-English weights
 use the Moonshine Community License and are limited to non-commercial use; the
@@ -355,6 +376,9 @@ CPU there. The dashboard reports what devices the container can actually see.
 ```sh
 # Query the local backward-compatible health response
 uv run localflow-status
+
+# Download a redacted diagnostics bundle for a bug report
+uv run localflow-diagnostics
 
 # Remove sessions older than the configured retention window
 uv run localflow-cleanup

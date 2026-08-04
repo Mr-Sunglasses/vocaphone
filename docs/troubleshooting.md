@@ -161,8 +161,11 @@ Keep the host firewall enabled. Do not use this LAN configuration to expose port
 
 ## 401 unauthorized
 
-Re-run `server/scripts/setup-token.sh`, copy the exact token into Local Flow, and
-save/test again. Never put the token in a URL or screenshot.
+If this device was paired with its own token, open the WebUI Settings tab and
+confirm it is still listed under **Paired device tokens** — revoking a token
+there immediately rejects it. Otherwise re-run `server/scripts/setup-token.sh`,
+copy the exact token into Local Flow, and save/test again. Never put the token
+in a URL or screenshot.
 
 ## 413, 415, or 422
 
@@ -195,3 +198,11 @@ Repeated Finish taps are safe, but they do not create a second server session.
 When reporting a failure, include the keyboard state shown before and after the
 tap, whether Local Flow was open in the background, and the gateway readiness
 response—never include the token or a private transcript.
+
+## Reporting a gateway bug
+
+Attach the redacted diagnostics bundle instead of manually describing gateway
+state: open the WebUI **Settings** tab and click **Download diagnostics**, or run
+`uv run localflow-diagnostics` on the gateway host. It contains version, engine
+and dependency status, hardware detection, and operational counters, and never
+includes the bearer token, recordings, transcripts, or session identifiers.

@@ -315,6 +315,45 @@
   });
 
   document.body.addEventListener("click", async (event) => {
+    if (event.target.id !== "download-diagnostics") return;
+    try {
+      const response = await fetch("/v1/admin/diagnostics", {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      if (response.status === 401) {
+        localStorage.removeItem(TOKEN_KEY);
+        showOverlay("Your gateway session expired. Paste the current token.");
+        return;
+      }
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error?.message || "Diagnostics failed.");
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `localflow-diagnostics-${payload.generated_at.replace(/[:.]/g, "-")}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      showToast("Diagnostics downloaded.", false);
+    } catch (error) {
+      showToast(error.message || "Could not download diagnostics.");
+    }
+  });
+
+  document.body.addEventListener("click", async (event) => {
+    if (event.target.id !== "copy-new-token") return;
+    const value = document.getElementById("new-token-value").textContent;
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast("Token copied.", false);
+    } catch (_) {
+      showToast("Could not copy the token. Select it manually.");
+    }
+  });
+
+  document.body.addEventListener("click", async (event) => {
     if (event.target.id !== "copy-transcript") return;
     const transcript = document.getElementById("test-transcript").textContent;
     try {

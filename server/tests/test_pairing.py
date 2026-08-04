@@ -8,10 +8,24 @@ from app.pairing import (
     PAIRING_VERSION,
     decode_pairing_payload,
     encode_pairing_payload,
+    is_ambient_lan_address,
     normalize_gateway_input,
     primary_gateway_base_url,
     qr_svg_for_payload,
 )
+
+
+def test_is_ambient_lan_address_matches_private_and_tailnet_ips() -> None:
+    assert is_ambient_lan_address("http://192.168.1.20:8765") is True
+    assert is_ambient_lan_address("http://10.0.0.5:8765") is True
+    assert is_ambient_lan_address("http://172.16.5.5:8765") is True
+    assert is_ambient_lan_address("http://100.101.102.103:8765") is True  # Tailscale/CGNAT
+
+
+def test_is_ambient_lan_address_leaves_hostnames_and_public_ips_alone() -> None:
+    assert is_ambient_lan_address("https://homelabone.tail1234.ts.net:8765") is False
+    assert is_ambient_lan_address("https://flow.example.com") is False
+    assert is_ambient_lan_address("http://8.8.8.8:8765") is False
 
 
 def test_round_trip_encode_decode() -> None:

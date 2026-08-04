@@ -171,6 +171,30 @@ class CustomDownloadRequest(BaseModel):
     url: str = Field(min_length=12, max_length=2000)
 
 
+class DeviceTokenEntry(BaseModel):
+    id: str
+    label: str
+    created_at: datetime | None
+    revocable: bool
+
+
+class DeviceTokenCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    label: str = Field(min_length=1, max_length=100)
+
+
+class DeviceTokenCreateResponse(BaseModel):
+    id: str
+    label: str
+    token: str
+    created_at: datetime
+
+
+class DeviceTokenRevokeResponse(BaseModel):
+    revoked: bool
+
+
 class DownloadResponse(BaseModel):
     model_id: str
     status: str
@@ -233,3 +257,26 @@ class ErrorDetail(BaseModel):
 
 class ErrorEnvelope(BaseModel):
     error: ErrorDetail
+
+
+class DiagnosticsBundle(BaseModel):
+    """A redacted operational snapshot, safe to attach to a bug report.
+
+    Never contains the bearer token, recording audio, transcript text, or
+    session identifiers — only setup, dependency, hardware, and counter data
+    already shown in the authenticated WebUI.
+    """
+
+    generated_at: datetime
+    version: str
+    engine: EngineStatus
+    system: SystemStatus
+    dependencies: list[DependencyStatus]
+    paths: PathStatus
+    bind_host: str
+    port: int
+    setup: SetupChecklist
+    metrics: OperationalMetricsStatus
+    readiness: ReadinessStatus
+    config: ConfigResponse
+    never_included: list[str]

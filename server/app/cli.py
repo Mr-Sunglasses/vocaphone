@@ -52,6 +52,19 @@ def status() -> None:
     print(json.dumps(data, indent=2))
 
 
+def diagnostics() -> None:
+    settings = Settings.from_env()
+    url = f"{local_webui_url(settings.bind_host, settings.port)}v1/admin/diagnostics"
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {settings.token}"})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            data = json.load(response)
+    except Exception as error:
+        print(f"gateway unreachable or unauthorized: {error}", file=sys.stderr)
+        raise SystemExit(1) from error
+    print(json.dumps(data, indent=2))
+
+
 def cleanup() -> None:
     settings = Settings.from_env()
     repository = SessionRepository(settings.data_dir / "sessions.sqlite3")
