@@ -159,6 +159,14 @@ docker compose up --detach
 Keep the host firewall enabled. Do not use this LAN configuration to expose port
 8765 directly to the internet; use an HTTPS reverse proxy for a VPS.
 
+If the pairing QR itself shows no LAN address to pick from (or only shows a
+`172.x`/bridge address), that's the same root cause: the container's default
+bridge network only exposes its own private interface to address
+auto-discovery, never the host's real LAN NIC. On Linux Docker Engine (not
+Docker Desktop), set `LOCALFLOW_NETWORK_MODE=host` in `server/.env` instead so
+the container shares the host's network namespace and discovery finds the
+`192.168.x.x` address directly. See [deployment.md](deployment.md#trusted-local-network).
+
 ## 401 unauthorized
 
 If this device was paired with its own token, open the WebUI Settings tab and

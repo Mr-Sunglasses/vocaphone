@@ -16,6 +16,7 @@ server/.venv/
 server/.pytest_cache/
 server/.ruff_cache/
 server/.mypy_cache/
+server/.omo/
 server/data/
 server/*.db
 server/*.sqlite

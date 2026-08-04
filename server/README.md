@@ -154,6 +154,16 @@ Tailscale Serve. To intentionally allow direct LAN access, set
 `LOCALFLOW_PUBLISH_HOST=0.0.0.0` in `.env` and protect the port with the host
 firewall. Never expose port 8765 to the public internet.
 
+The default bridge network also hides the host's real LAN address from the
+gateway's own address auto-discovery (used for the pairing QR): the container
+only ever sees its private bridge IP, not the host's Wi-Fi/Ethernet interface.
+On Linux Docker Engine (not Docker Desktop on macOS/Windows), set
+`LOCALFLOW_NETWORK_MODE=host` in `.env` instead so the container shares the
+host's network namespace and discovery finds the real `192.168.x.x` address.
+This ignores `LOCALFLOW_PUBLISH_HOST`/`PORT` — the container binds directly on
+the host per `LOCALFLOW_BIND_HOST`/`LOCALFLOW_PORT`, so lock down port 8765
+with the host firewall first.
+
 ## WebUI
 
 The authenticated WebUI provides:
@@ -302,6 +312,7 @@ Compose-specific variables live in `server/.env`:
 | --- | --- | --- |
 | `LOCALFLOW_PUBLISH_HOST` | `127.0.0.1` | Host interface published by Docker |
 | `LOCALFLOW_PUBLISH_PORT` | `8765` | Host port published by Docker |
+| `LOCALFLOW_NETWORK_MODE` | `bridge` | Set to `host` on Linux Docker Engine to share the host's network namespace (ignores `LOCALFLOW_PUBLISH_HOST`/`PORT`); not supported by Docker Desktop |
 | `LOCALFLOW_IMAGE` | `localflow-gateway:local` | Local or registry image tag |
 
 Use [`.env.example`](.env.example) as a template and never commit the populated
