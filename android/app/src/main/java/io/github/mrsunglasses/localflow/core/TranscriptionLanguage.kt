@@ -13,6 +13,7 @@ enum class TranscriptionLanguage(val wireValue: String) {
     KOREAN("ko"),
     MANDARIN_CHINESE("zh"),
     UKRAINIAN("uk"),
+    RUSSIAN("ru"),
     VIETNAMESE("vi");
 
     val displayName: String
@@ -25,6 +26,7 @@ enum class TranscriptionLanguage(val wireValue: String) {
             KOREAN -> "Korean"
             MANDARIN_CHINESE -> "Mandarin Chinese"
             UKRAINIAN -> "Ukrainian"
+            RUSSIAN -> "Russian"
             VIETNAMESE -> "Vietnamese"
         }
 
