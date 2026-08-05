@@ -152,6 +152,8 @@ fun LocalFlowApp(viewModel: LocalFlowViewModel = viewModel()) {
                 onCancel = viewModel::cancelDictation,
                 onRetry = viewModel::retry,
                 onDismiss = viewModel::dismissDictation,
+                onOpenGateway = { showingGateway = true },
+                onAcceptDisclosure = { viewModel.setDisclosureAccepted(true) },
                 modifier = content,
             )
 
