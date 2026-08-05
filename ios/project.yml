@@ -80,6 +80,9 @@ targets:
       - path: LocalFlowKeyboard/DictationBarComponents.swift
       # The realtime capture path is the highest-risk code in the app.
       - path: LocalFlowApp/Audio/AudioCapturePipeline.swift
+      # Guided setup decides what the app claims is done, and every signal it
+      # reads can be undone from iOS Settings. The model behind it is pure.
+      - path: LocalFlowApp/App/SetupStatus.swift
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

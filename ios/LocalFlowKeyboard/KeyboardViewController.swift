@@ -15,6 +15,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var lastRenderedState: SessionState?
     private var hasRendered = false
     private var announcesStateChanges = false
+    private var lastPublishedAt: Date?
+    private static let statusRepublishInterval: TimeInterval = 10
     private var isBarExpanded = false
     private var lastDocumentID: String?
     /// The document the active session inserts into, as observed by this
@@ -64,9 +66,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             controller.applyTheme()
             controller.applyLayoutMetrics()
         }
-        // Lets the containing app show whether the keyboard is actually
-        // installed, which it has no API to determine on its own.
-        try? store.saveKeyboardStatus(KeyboardStatus(hasFullAccess: hasFullAccess))
+        publishKeyboardStatus()
         render(nil)
         refresh()
     }
@@ -76,6 +76,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // A recreated extension instance can inherit a session the previous one
         // started, so scan once on appear and let `render` decide about polling.
         applyDocumentTraits()
+        publishKeyboardStatus()
         refresh()
     }
 
@@ -92,6 +93,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         pollingTimer?.invalidate()
         pollingTimer = nil
         appLaunchFallbackTask?.cancel()
+    }
+
+    /// The containing app has no API for whether this keyboard is installed or
+    /// holds Full Access, so this write is the only evidence of either — and
+    /// guided setup sits waiting for it. iOS reuses extension instances, so
+    /// `viewDidLoad` alone can leave the app watching a status from an earlier
+    /// launch; republishing on every appearance closes that gap, throttled so
+    /// that returning to the keyboard repeatedly is not a stream of file writes.
+    private func publishKeyboardStatus() {
+        let now = Date()
+        if let lastPublishedAt,
+           now.timeIntervalSince(lastPublishedAt) < Self.statusRepublishInterval
+        {
+            return
+        }
+        lastPublishedAt = now
+        try? store.saveKeyboardStatus(
+            KeyboardStatus(lastSeenAt: now, hasFullAccess: hasFullAccess)
+        )
     }
 
     override func textDidChange(_ textInput: (any UITextInput)?) {

@@ -29,13 +29,10 @@ struct SettingsView: View {
         KeyboardPreferences.microphonePreferenceKey,
         store: KeyboardPreferences.defaults
     ) private var microphonePreferenceRawValue = MicrophonePreference.automatic.rawValue
-    @State private var token = ""
-    @State private var isTestingGateway = false
-    @State private var isShowingPairingScanner = false
 
     var body: some View {
         List {
-            gatewaySection
+            setupSection
             insertionSection
             transcriptionLanguageSection
             writingStyleSection
@@ -45,94 +42,41 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .task { token = (try? KeychainStore.loadToken()) ?? "" }
-        .sheet(isPresented: $isShowingPairingScanner) {
-            PairingScannerView(
-                paired: applyPairing,
-                unavailable: handleScannerUnavailable
-            )
-            .ignoresSafeArea()
-        }
-        .onChange(of: gatewayURL) {
-            healthMessage = "Not tested"
-            gatewayEngine = ""
-            gatewayEngineReady = false
-        }
     }
 
-    private var gatewaySection: some View {
-        Section("Transcription gateway") {
-            Button {
-                isShowingPairingScanner = true
+    private var setupSection: some View {
+        Section("Setup") {
+            NavigationLink {
+                GatewaySetupView()
             } label: {
-                Label("Scan pairing QR code", systemImage: "qrcode.viewfinder")
-            }
-
-            Text(
-                "Open Overview in the gateway WebUI, then scan its Pair phone app QR "
-                    + "to fill the address and bearer token automatically."
-            )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-
-            TextField(
-                "http://homelabone:8765 or https://dictation.example.com",
-                text: $gatewayURL
-            )
-            .textInputAutocapitalization(.never)
-            .keyboardType(.URL)
-
-            if let url = validatedGatewayURL, GatewayEndpoint.usesUnencryptedHTTP(url) {
-                Label(
-                    "HTTP is unencrypted. Use it only on a trusted private LAN or VPN; "
-                        + "use HTTPS for a VPS or any public network.",
-                    systemImage: "exclamationmark.triangle.fill"
-                )
-                .font(.footnote)
-                .foregroundStyle(.orange)
-            } else {
-                Text(
-                    "Use any reachable HTTP or HTTPS gateway. HTTPS is recommended and "
-                        + "required for safe access over the public internet."
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            }
-
-            SecureField("Pairing token", text: $token)
-                .textInputAutocapitalization(.never)
-
-            Button {
-                Task { await saveAndTestGateway() }
-            } label: {
-                HStack(spacing: 8) {
-                    if isTestingGateway {
-                        ProgressView().controlSize(.small)
-                    }
-                    Text(isTestingGateway ? "Testing gateway…" : "Save and test")
+                LabeledContent {
+                    Label(
+                        gatewayEngineReady ? "Ready" : "Not ready",
+                        systemImage: gatewayEngineReady
+                            ? "checkmark.circle.fill"
+                            : "exclamationmark.circle.fill"
+                    )
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(gatewayEngineReady ? .green : .orange)
+                } label: {
+                    Text("Transcription gateway")
+                    Text(gatewayURL.isEmpty ? healthMessage : gatewayURL)
+                        .font(.footnote)
                 }
             }
-            .disabled(isTestingGateway)
 
-            Text(healthMessage)
-                .font(.footnote)
-                .foregroundStyle(gatewayEngineReady ? .green : .secondary)
+            NavigationLink {
+                SetupView()
+            } label: {
+                Label("Guided setup", systemImage: "checklist")
+            }
 
             if !gatewayEngine.isEmpty {
-                VStack(alignment: .leading, spacing: 7) {
-                    HStack {
-                        Label("Transcription model", systemImage: "cpu")
-                            .font(.subheadline.weight(.semibold))
-                        Spacer()
-                        Label(
-                            gatewayEngineReady ? "Ready" : "Not ready",
-                            systemImage: gatewayEngineReady
-                                ? "checkmark.circle.fill"
-                                : "exclamationmark.circle.fill"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(gatewayEngineReady ? .green : .orange)
-                    }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Transcription model")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                     Text(gatewayEngine)
                         .font(.footnote.monospaced())
                         .textSelection(.enabled)
@@ -279,68 +223,5 @@ struct SettingsView: View {
 
     private var selectedMicrophonePreference: MicrophonePreference {
         MicrophonePreference(rawValue: microphonePreferenceRawValue) ?? .automatic
-    }
-
-    private var validatedGatewayURL: URL? {
-        GatewayEndpoint.validatedURL(from: gatewayURL)
-    }
-
-    @MainActor
-    private func applyPairing(_ pairing: PairingPayload.Value) {
-        isShowingPairingScanner = false
-        gatewayURL = pairing.url.absoluteString
-        token = pairing.token
-        Task { await saveAndTestGateway() }
-    }
-
-    @MainActor
-    private func handleScannerUnavailable(_ message: String) {
-        isShowingPairingScanner = false
-        healthMessage = message
-        gatewayEngine = ""
-        gatewayEngineReady = false
-    }
-
-    @MainActor
-    private func saveAndTestGateway() async {
-        guard let url = validatedGatewayURL else {
-            healthMessage = "Enter a valid HTTP or HTTPS gateway URL."
-            gatewayEngine = ""
-            gatewayEngineReady = false
-            return
-        }
-        do {
-            try KeychainStore.saveToken(token)
-        } catch {
-            healthMessage = "Could not save the pairing token: \(error.localizedDescription)"
-            return
-        }
-        await testGateway(at: url)
-    }
-
-    @MainActor
-    private func testGateway(at url: URL) async {
-        guard !isTestingGateway else { return }
-        isTestingGateway = true
-        defer { isTestingGateway = false }
-        do {
-            let client = GatewayClient(baseURL: url, token: token)
-            try await client.verifyAuthentication()
-            let health = try await client.health()
-            healthMessage = health.engineReady
-                ? "Gateway, token, and model are ready."
-                : "Gateway reachable; model is not ready."
-            gatewayEngine = health.engine.trimmingCharacters(in: .whitespacesAndNewlines)
-            gatewayEngineReady = health.engineReady
-            coordinator.updateGateway(baseURL: url, token: token)
-        } catch let GatewayError.api(status, _) where status == 401 {
-            healthMessage = "Gateway reachable, but the pairing token was rejected."
-            gatewayEngine = ""
-            gatewayEngineReady = false
-        } catch {
-            healthMessage = "Gateway test failed: \(error.localizedDescription)"
-            gatewayEngine = ""
-            gatewayEngineReady = false
-        }
     }
 }

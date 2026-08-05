@@ -12,6 +12,10 @@ final class RecordingCoordinator {
     /// Kept separate from `activeRecord` so a level update several times a
     /// second invalidates only the views that draw the meter.
     private(set) var meterLevel: Float = 0
+    /// Guided setup reads system state that emits no change notifications —
+    /// keyboard installation, a permission flipped in iOS Settings — so it is
+    /// snapshotted here and refreshed deliberately rather than polled.
+    private(set) var setupStatus = SetupStatus()
 
     private let recorder = AudioRecorder()
     private let store = SharedStore.shared
@@ -49,14 +53,37 @@ final class RecordingCoordinator {
     var canChangeMicrophone: Bool {
         !recorder.isRecording && startingSessionID == nil
     }
-    var microphonePermissionGranted: Bool {
-        recorder.recordPermission == .granted
+    var microphoneAccess: MicrophoneAccess {
+        switch recorder.recordPermission {
+        case .granted: .granted
+        case .denied: .denied
+        default: .undetermined
+        }
     }
 
-    /// Setup progress the app cannot otherwise observe: iOS exposes no API for
-    /// whether a keyboard extension is installed.
-    func keyboardStatus() -> KeyboardStatus? {
-        try? store.loadKeyboardStatus()
+    /// Re-reads every setup signal. Called on foreground and after any action
+    /// that could have changed one, because none of them are observable: iOS
+    /// exposes no API for whether a keyboard extension is installed, and a
+    /// permission can be revoked from Settings while the app is suspended.
+    func refreshSetupStatus() {
+        let address = UserDefaults.standard.string(forKey: "gatewayURL") ?? ""
+        let refreshed = SetupStatus(
+            gatewayReady: UserDefaults.standard.bool(
+                forKey: GatewayStatusPreferences.engineReadyKey
+            ),
+            gatewayAddress: address,
+            microphone: microphoneAccess,
+            keyboard: KeyboardSetupState.resolve(
+                try? store.loadKeyboardStatus(),
+                isInstalled: InstalledKeyboards.includesLocalFlow()
+            ),
+            hasDictatedOnce: KeyboardPreferences.hasCompletedFirstDictation
+        )
+        // Guided setup re-reads this several times a second while it waits for
+        // the keyboard. Assigning an identical value would still invalidate
+        // every observer, so the comparison earns its keep.
+        guard refreshed != setupStatus else { return }
+        setupStatus = refreshed
     }
 
     nonisolated func loadRecentTranscripts(limit: Int = 50) async -> [SessionRecord] {
@@ -89,6 +116,7 @@ final class RecordingCoordinator {
             }
         }
         loadGatewaySettings()
+        refreshSetupStatus()
     }
 
     func handleDeepLink(_ url: URL) {
@@ -125,6 +153,7 @@ final class RecordingCoordinator {
             } else {
                 self.message = "Microphone permission denied."
             }
+            self.refreshSetupStatus()
         }
     }
 
@@ -168,6 +197,7 @@ final class RecordingCoordinator {
     /// A gateway configured last week may be unreachable today, so the setup
     /// checklist re-verifies rather than trusting the stored result.
     func refreshGatewayHealth() async {
+        defer { refreshSetupStatus() }
         guard let value = UserDefaults.standard.string(forKey: "gatewayURL"),
               let baseURL = GatewayEndpoint.validatedURL(from: value),
               let token = try? KeychainStore.loadToken(),
@@ -510,7 +540,7 @@ final class RecordingCoordinator {
                     forKey: GatewayStatusPreferences.healthMessageKey
                 )
                 try? FileManager.default.removeItem(at: output)
-                message = "Transcript ready. Return to the keyboard to insert it."
+                markTranscriptDelivered(for: record)
                 liveActivity.end(status: "Transcript ready")
                 return
             }
@@ -545,7 +575,7 @@ final class RecordingCoordinator {
                 forKey: GatewayStatusPreferences.healthMessageKey
             )
             try? FileManager.default.removeItem(at: output)
-            message = "Transcript ready. Return to the keyboard to insert it."
+            markTranscriptDelivered(for: record)
             liveActivity.end(status: "Transcript ready")
         } catch {
             if Task.isCancelled || error is CancellationError {
@@ -601,6 +631,17 @@ final class RecordingCoordinator {
         } catch {
             message = "The session failed and its state could not be saved."
         }
+    }
+
+    /// The first transcript to come back is the only proof that recording,
+    /// upload and transcription work together, so guided setup stops asking for
+    /// a trial run once one has arrived.
+    private func markTranscriptDelivered(for record: SessionRecord) {
+        KeyboardPreferences.hasCompletedFirstDictation = true
+        refreshSetupStatus()
+        message = record.sourceDocumentID == "in-app-test"
+            ? "Transcript ready. Your gateway is working end to end."
+            : "Transcript ready. Return to the keyboard to insert it."
     }
 
     private func persistMeter(_ level: Float) {

@@ -146,6 +146,8 @@ enum KeyboardPreferences {
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let microphonePreferenceKey = "microphonePreference"
     static let containingAppForegroundKey = "containingAppForeground"
+    static let setupCompletedKey = "setupCompleted"
+    static let firstDictationKey = "hasCompletedFirstDictation"
 
     nonisolated(unsafe) static let defaults = UserDefaults(
         suiteName: AppConfiguration.appGroupIdentifier
@@ -203,6 +205,21 @@ enum KeyboardPreferences {
     static var containingAppIsForeground: Bool {
         get { defaults?.bool(forKey: containingAppForegroundKey) ?? false }
         set { defaults?.set(newValue, forKey: containingAppForegroundKey) }
+    }
+
+    /// Set when the user leaves guided setup, so it opens once rather than on
+    /// every launch. Whether setup is actually finished is re-derived from the
+    /// system each time; this only records that the screen has been seen.
+    static var setupCompleted: Bool {
+        get { defaults?.bool(forKey: setupCompletedKey) ?? false }
+        set { defaults?.set(newValue, forKey: setupCompletedKey) }
+    }
+
+    /// One transcript has made it back from the gateway, which is the only
+    /// proof that recording, upload, and transcription all work together.
+    static var hasCompletedFirstDictation: Bool {
+        get { defaults?.bool(forKey: firstDictationKey) ?? false }
+        set { defaults?.set(newValue, forKey: firstDictationKey) }
     }
 
     static var microphonePreference: MicrophonePreference {
