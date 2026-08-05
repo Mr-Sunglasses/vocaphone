@@ -14,9 +14,11 @@ from app.schemas import (
     OperationalMetricsStatus,
     ReadinessStatus,
 )
+from app.system import engine_requirement
 
 ENGINE_LABELS = {
     "auto": "Auto (recommended)",
+    "vocamac": "VocaMac app",
     "handy": "Handy app",
     "whisper.cpp": "whisper.cpp",
     "whisperkit": "WhisperKit",
@@ -28,7 +30,13 @@ ENGINE_LABELS = {
 
 ENGINE_HINTS = {
     "auto": "Uses the fastest compatible installed local engine for this machine.",
-    "handy": "Reuses the Handy app and its downloaded models. No download needed.",
+    "vocamac": (
+        "Optional Apple silicon Mac app. Reuses VocaMac's downloaded Core ML "
+        "models through whisperkit-cli. No download needed."
+    ),
+    "handy": (
+        "Optional macOS app. Reuses the Handy app and its downloaded models. No download needed."
+    ),
     "whisper.cpp": "Runs local GGML models with the whisper-cli binary.",
     "whisperkit": "Runs Core ML models with whisperkit-cli on Apple Silicon Macs.",
     "faster-whisper": "Keeps a CTranslate2 model loaded; CPU INT8 is the Linux default.",
@@ -36,6 +44,13 @@ ENGINE_HINTS = {
     "sherpa-onnx": "Compact INT8 CPU models for fast macOS and Linux transcription.",
     "mlx-audio": "Runs Apple-silicon-native MLX models with persistent loading.",
 }
+
+
+def _engine_option_label(engine: str) -> str:
+    """Name the host an engine needs, so the picker explains its own contents."""
+    label = ENGINE_LABELS.get(engine, engine)
+    requirement = engine_requirement(engine)
+    return f"{label} ({requirement} only)" if requirement else label
 
 
 def engine_pill_fragment(engine: EngineStatus) -> str:
@@ -283,8 +298,9 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
         <div>
           <span class="eyebrow">Private model library</span>
           <h2>Choose the voice engine for this server</h2>
-          <p>Models stay on this machine. Standalone models work without the Handy app
-            and can move with the Docker data volume.</p>
+          <p>Models stay on this machine. The VocaMac and Handy apps are optional
+            and Mac-only: standalone models work without either, on any host, and
+            can move with the Docker data volume.</p>
         </div>
         <div class="model-stats" aria-label="Model library summary">
           <span><strong>{installed}</strong> installed</span>
@@ -664,7 +680,7 @@ def settings_fragment(
 ) -> str:
     options = "".join(
         f'<option value="{escape(value)}"{" selected" if value == config.engine else ""}>'
-        f"{escape(ENGINE_LABELS.get(value, value))}</option>"
+        f"{escape(_engine_option_label(value))}</option>"
         for value in config.available_engines
     )
     hint = escape(ENGINE_HINTS.get(config.engine, ""))
@@ -698,7 +714,11 @@ def settings_fragment(
       <div class="card">
         <h2>Speech engine</h2>
         <p class="muted">Choose which local engine transcribes incoming audio.
-          Selecting a model in the Models tab sets this automatically.</p>
+          Selecting a model in the Models tab sets this automatically. The VocaMac
+          and Handy entries reuse those optional Mac apps and their downloaded
+          models; every other engine runs on its own. Host-specific engines are
+          listed only where they can run, and selecting one elsewhere is
+          rejected.</p>
         <form hx-put="/ui/partials/config" hx-target="#engine-result" hx-swap="innerHTML">
           <div class="settings-grid">
             <label><span>Engine</span>

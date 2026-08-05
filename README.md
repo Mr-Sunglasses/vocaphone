@@ -32,8 +32,10 @@ tests, and has not yet been exercised end to end on a physical Pixel.
   Activity/Dynamic Island timer, and standby buffers that are discarded
 - FastAPI gateway with bounded uploads, SQLite idempotency, FFmpeg normalization,
   silence detection, retention cleanup, and stable error responses
-- Handy, WhisperKit, Apple-native MLX Audio, persistent `sherpa-onnx` and
-  `faster-whisper`, multilingual Moonshine, and `whisper.cpp` adapters
+- VocaMac, Handy, WhisperKit, Apple-native MLX Audio, persistent `sherpa-onnx`
+  and `faster-whisper`, multilingual Moonshine, and `whisper.cpp` adapters —
+  the VocaMac and Handy desktop apps are optional, Mac-only, and reuse the
+  models they already downloaded
 - Operational dashboard with hardware detection, queue/outcome counters,
   pipeline benchmarks, real-time factor, peak memory, and warmup state
 - CPU/OpenBLAS, host-native CPU, NVIDIA CUDA, and Vulkan Compose profiles
@@ -46,7 +48,7 @@ tests, and has not yet been exercised end to end on a physical Pixel.
 
 | Deployment | Best for | Speech engine | Expected performance |
 | --- | --- | --- | --- |
-| Native macOS | Daily use on an Apple silicon Mac | MLX Audio, WhisperKit, Handy, sherpa-onnx | Best with Apple-native MLX/Core ML engines |
+| Native macOS | Daily use on an Apple silicon Mac | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx | Best with Apple-native MLX/Core ML engines |
 | Native Linux | Daily use on a Linux desktop or home server | sherpa-onnx INT8, faster-whisper, Moonshine | Good CPU latency; optional CUDA/Vulkan via Docker profiles |
 | Docker Compose | Reproducible Linux images and multi-arch hosts | sherpa-onnx INT8, faster-whisper INT8, Moonshine, or accelerated `whisper.cpp` | Portable CPU by default; optional native/CUDA/Vulkan profiles |
 

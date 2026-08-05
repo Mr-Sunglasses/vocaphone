@@ -16,7 +16,7 @@ body:
         - iOS containing app
         - Custom keyboard
         - Native or Docker gateway
-        - Handy, WhisperKit, or whisper.cpp adapter
+        - VocaMac, Handy, WhisperKit, or whisper.cpp adapter
         - Documentation or setup
     validations:
       required: true

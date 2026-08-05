@@ -220,6 +220,7 @@ class ConfigUpdateRequest(BaseModel):
 
     engine: Literal[
         "auto",
+        "vocamac",
         "handy",
         "whisper.cpp",
         "whisperkit",
