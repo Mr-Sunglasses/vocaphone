@@ -233,7 +233,7 @@ struct SessionRecordTests {
 
     @Test func transcriptionLanguagesHaveStableGatewayValues() {
         #expect(TranscriptionLanguage.allCases.map(\.rawValue) == [
-            "auto", "en", "es", "ar", "ja", "ko", "zh", "uk", "vi",
+            "auto", "en", "es", "ar", "ja", "ko", "zh", "uk", "ru", "vi",
         ])
         #expect(SessionRecord().language == TranscriptionLanguage.automatic.rawValue)
     }
