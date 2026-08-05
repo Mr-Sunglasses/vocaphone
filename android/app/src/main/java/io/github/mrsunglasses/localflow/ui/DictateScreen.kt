@@ -41,6 +41,8 @@ fun DictateScreen(
     onCancel: () -> Unit,
     onRetry: (String) -> Unit,
     onDismiss: () -> Unit,
+    onOpenGateway: () -> Unit,
+    onAcceptDisclosure: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var scratchpad by remember { mutableStateOf(TextFieldValue()) }
@@ -142,12 +144,20 @@ fun DictateScreen(
 
             if (!setup.isReadyToDictate) {
                 Text(
-                    "Finish setup before dictating.",
+                    "Dictation is paused — see below.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
         }
+
+        // Directly under the disabled button rather than at the foot of the
+        // screen: this is the answer to why the button will not press.
+        SetupRepairCard(
+            status = setup,
+            onOpenGateway = onOpenGateway,
+            onAcceptDisclosure = onAcceptDisclosure,
+        )
 
         SectionCard(
             title = "Scratchpad",
