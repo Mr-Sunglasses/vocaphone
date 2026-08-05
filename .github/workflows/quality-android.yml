@@ -5,11 +5,19 @@ on:
     branches: [main]
     paths:
       - 'android/**'
+      # Prose next to the code it documents cannot break the build.
+      - '!android/**.md'
+      - '.github/actions/setup-android/action.yml'
       - '.github/workflows/quality-android.yml'
   pull_request:
     branches: [main]
+    # A draft pull request is filtered out below; listing ready_for_review makes
+    # the checks start the moment it stops being a draft.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'android/**'
+      - '!android/**.md'
+      - '.github/actions/setup-android/action.yml'
       - '.github/workflows/quality-android.yml'
   workflow_dispatch:
 
@@ -18,22 +26,28 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A superseded pull request push is wasted minutes, but a run on main is the
+  # record for a merged commit, so let that one finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   android:
+    # Work in progress re-runs the full build on every push. The checks that
+    # matter run when the author marks the pull request ready.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
-          distribution: temurin
-          # Matches the JDK bundled with Android Studio, which is what the build
-          # has been verified against locally.
-          java-version: '25'
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
-      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+          persist-credentials: false
+      - uses: ./.github/actions/setup-android
+        with:
+          # Branches read main's cache and never save their own, which keeps the
+          # 10 GB repository cache from filling with one Gradle copy per branch
+          # and evicting the entry everything else restores from.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - run: ./gradlew assembleDebug testDebugUnitTest lintDebug
         working-directory: android
       - name: Fail if the checked-in Room schema is stale

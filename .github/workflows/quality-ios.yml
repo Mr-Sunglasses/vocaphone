@@ -5,11 +5,18 @@ on:
     branches: [main]
     paths:
       - 'ios/**'
+      # Prose next to the code it documents cannot break the build, and macOS
+      # minutes bill at ten times the Linux rate.
+      - '!ios/**.md'
       - '.github/workflows/quality-ios.yml'
   pull_request:
     branches: [main]
+    # A draft pull request is filtered out below; listing ready_for_review makes
+    # the checks start the moment it stops being a draft.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'ios/**'
+      - '!ios/**.md'
       - '.github/workflows/quality-ios.yml'
   workflow_dispatch:
 
@@ -18,26 +25,42 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A superseded pull request push is wasted minutes, but a run on main is the
+  # record for a merged commit, so let that one finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Homebrew otherwise refreshes its whole formula index before installing, and
+  # cleans up afterwards, on a runner that is thrown away either way.
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  HOMEBREW_NO_INSTALL_CLEANUP: '1'
+  HOMEBREW_NO_ENV_HINTS: '1'
 
 jobs:
   ios:
+    # Work in progress re-runs the full build on every push. The checks that
+    # matter run when the author marks the pull request ready.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - run: brew install xcodegen
-      - run: xcodegen generate --spec project.yml
+      - name: Fail if the checked-in Xcode project is stale
         working-directory: ios
-      - run: git diff --exit-code -- LocalFlow.xcodeproj
-        working-directory: ios
-      - name: Run iOS unit tests
-        working-directory: ios
+        run: |
+          xcodegen generate --spec project.yml
+          git diff --exit-code -- LocalFlow.xcodeproj
+
+      - name: Pick an iOS simulator
+        id: simulator
         run: |
           set -euo pipefail
           # macos-15 images sometimes list no pre-created devices for
           # -showdestinations until simctl has materialized one. Prefer an
-          # available iPhone simulator; create and boot one if needed.
+          # available iPhone simulator; create one if there is none.
           udid=$(
             xcrun simctl list devices available \
               | sed -n 's/.*iPhone[^(]*(\([A-F0-9-]*\)).*/\1/p' \
@@ -64,12 +87,55 @@ jobs:
             udid=$(xcrun simctl create "LocalFlow-CI-iPhone" "${device_type}" "${runtime}")
           fi
           echo "Using simulator ${udid}"
-          xcrun simctl boot "${udid}" 2>/dev/null || true
-          xcrun simctl bootstatus "${udid}" -b
-          xcodebuild \
-            -project LocalFlow.xcodeproj \
-            -scheme LocalFlow \
-            -sdk iphonesimulator \
-            -destination "platform=iOS Simulator,id=${udid}" \
-            CODE_SIGNING_ALLOWED=NO \
-            test
+          echo "udid=${udid}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and run iOS unit tests
+        working-directory: ios
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+          RESULT_BUNDLE: ${{ runner.temp }}/LocalFlow.xcresult
+        run: |
+          set -euo pipefail
+
+          # First boot spends over a minute in data migration, and the build
+          # needs no device at all. Boot in the background so that minute
+          # overlaps compilation instead of running before it.
+          xcrun simctl bootstatus "${UDID}" -b &
+          boot=$!
+
+          # Shared flags. Index-while-building only feeds Xcode's editor, and
+          # there are no Swift packages to resolve, so both are pure overhead
+          # here.
+          common=(
+            -project LocalFlow.xcodeproj
+            -scheme LocalFlow
+            -sdk iphonesimulator
+            -destination "platform=iOS Simulator,id=${UDID}"
+            -derivedDataPath "${DERIVED_DATA}"
+            -disableAutomaticPackageResolution
+            CODE_SIGNING_ALLOWED=NO
+            COMPILER_INDEX_STORE_ENABLE=NO
+          )
+
+          # -quiet drops roughly 1500 lines of per-file compile commands while
+          # still printing warnings and errors. The test run below keeps its
+          # full output, which is short and carries the failed expectation.
+          xcodebuild "${common[@]}" -quiet build-for-testing
+
+          # Fails the step if the device never came up, which is a clearer
+          # signal than xcodebuild timing out against a half-booted simulator.
+          wait "${boot}"
+
+          xcodebuild "${common[@]}" \
+            -resultBundlePath "${RESULT_BUNDLE}" \
+            test-without-building
+
+      - name: Upload the test result bundle
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ios-test-results
+          path: ${{ runner.temp }}/LocalFlow.xcresult
+          retention-days: 7
+          if-no-files-found: ignore

@@ -1,0 +1,35 @@
+name: Set up the Android toolchain
+description: Installs the JDK, accepts the Android SDK licences, and wires up the Gradle cache.
+
+inputs:
+  cache-read-only:
+    description: >
+      Restore the Gradle cache without saving a new entry. Every branch that
+      saves gets its own copy, so only the default branch should write.
+    default: 'false'
+  cache-encryption-key:
+    description: >
+      Base64 key used to encrypt the cached configuration-cache entries. Gradle
+      refuses to cache them without one; leaving it empty keeps the rest of the
+      Gradle cache working and just skips that part.
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      with:
+        distribution: temurin
+        # Matches the JDK bundled with Android Studio, which is what the build
+        # has been verified against locally.
+        java-version: '25'
+    - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      with:
+        # The runner image already ships the command-line and platform tools, so
+        # the default package install is a redownload of what is on disk. The
+        # action still accepts the licences, which is the part the build needs.
+        packages: ''
+    - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+      with:
+        cache-read-only: ${{ inputs.cache-read-only }}
+        cache-encryption-key: ${{ inputs.cache-encryption-key }}
