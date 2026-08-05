@@ -1,0 +1,27 @@
+version: 2
+
+# Every action is pinned to a commit SHA, which is what keeps a compromised tag
+# from silently entering the build — and also what stops those pins from ever
+# moving on their own. One grouped pull request a month keeps them current
+# without turning into a queue of single-line updates that each cost a CI run.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
+  # Composite actions are not covered by the entry above; they are found only
+  # through the directory that holds them.
+  - package-ecosystem: github-actions
+    directory: /.github/actions/setup-android
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
