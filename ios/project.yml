@@ -72,6 +72,12 @@ targets:
       - path: LocalFlowKeyboard/KeyLayout.swift
       - path: LocalFlowKeyboard/KeyView.swift
       - path: LocalFlowKeyboard/KeyGridView.swift
+      # The state-to-interface mapping for the dictation bar is pure, so every
+      # session state can be checked without standing up the extension.
+      - path: LocalFlowKeyboard/DictationPresentation.swift
+      - path: LocalFlowKeyboard/DictationBarStyle.swift
+      - path: LocalFlowKeyboard/DictationBarView.swift
+      - path: LocalFlowKeyboard/DictationBarComponents.swift
       # The realtime capture path is the highest-risk code in the app.
       - path: LocalFlowApp/Audio/AudioCapturePipeline.swift
     settings:
