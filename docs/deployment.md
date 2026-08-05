@@ -10,7 +10,7 @@ portability.
 | Consideration | Native macOS | Native Linux | Docker Compose |
 | --- | --- | --- | --- |
 | Recommended host | Apple silicon Mac | Linux desktop or home server | Linux `amd64`/`arm64` when you want an image |
-| Engines | MLX Audio, WhisperKit, Handy, sherpa-onnx, `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, optional `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
+| Engines | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, optional `whisper.cpp` | sherpa-onnx, faster-whisper, Moonshine, `whisper.cpp` |
 | Acceleration | Apple-native MLX and WhisperKit/Core ML paths | Host CPU (Python wheels); CUDA via Docker profiles | INT8 ONNX/OpenBLAS CPU; native CPU, CUDA, or Vulkan profiles |
 | Performance | Recommended on Mac; no Linux VM | No container overhead on Linux | Slightly more isolation cost; strong for CUDA images |
 | Portability | macOS LaunchAgent | systemd user unit | Reproducible across supported Linux architectures |

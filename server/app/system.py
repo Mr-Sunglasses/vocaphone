@@ -7,6 +7,19 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+MACOS = "macOS"
+APPLE_SILICON = "Apple silicon"
+
+# Engines that cannot run on every host, and the requirement the WebUI shows.
+# The desktop-app adapters are the strictest: Handy ships for macOS, and VocaMac
+# is Apple-silicon-only, so neither exists on Linux or inside a container.
+ENGINE_HOST_REQUIREMENTS = {
+    "vocamac": APPLE_SILICON,
+    "handy": MACOS,
+    "whisperkit": MACOS,
+    "mlx-audio": APPLE_SILICON,
+}
+
 
 @dataclass(frozen=True, slots=True)
 class SystemInfo:
@@ -20,6 +33,7 @@ class SystemInfo:
     whisper_cpp_path: str | None
     whisperkit_cli_path: str | None
     handy_installed: bool
+    vocamac_installed: bool
     logical_cpus: int
     effective_cpus: float
     containerized: bool
@@ -32,6 +46,7 @@ def detect_system(
     whisper_binary: Path,
     whisperkit_binary: str,
     handy_binary: Path,
+    vocamac_app: Path = Path("/Applications/VocaMac.app"),
 ) -> SystemInfo:
     arch = platform.machine()
     is_mac = platform.system() == "Darwin"
@@ -51,11 +66,34 @@ def detect_system(
         ),
         whisperkit_cli_path=_resolve_binary(whisperkit_binary),
         handy_installed=handy_binary.is_file(),
+        vocamac_installed=vocamac_app.exists(),
         logical_cpus=logical_cpus,
         effective_cpus=_effective_cpu_count(logical_cpus),
         containerized=_is_containerized(),
         accelerators=_accelerators(is_mac, arch),
         cpu_features=_cpu_features(is_mac),
+    )
+
+
+def engine_requirement(engine: str) -> str | None:
+    """The host an engine needs, or None when it runs anywhere."""
+    return ENGINE_HOST_REQUIREMENTS.get(engine)
+
+
+def engine_runs_on(engine: str, *, is_mac: bool, is_apple_silicon: bool) -> bool:
+    requirement = ENGINE_HOST_REQUIREMENTS.get(engine)
+    if requirement is None:
+        return True
+    return is_apple_silicon if requirement == APPLE_SILICON else is_mac
+
+
+def engine_runs_here(engine: str) -> bool:
+    """The same check for the running host, without a full `detect_system` probe."""
+    is_mac = platform.system() == "Darwin"
+    return engine_runs_on(
+        engine,
+        is_mac=is_mac,
+        is_apple_silicon=is_mac and platform.machine() == "arm64",
     )
 
 

@@ -108,7 +108,7 @@ from app.schemas import (
 )
 from app.service import TranscriptionService
 from app.storage import SessionRepository, StoredSession
-from app.system import detect_system
+from app.system import detect_system, engine_runs_on
 from app.text_styles import apply_writing_style
 from app.tokens import TokenStore
 
@@ -522,12 +522,19 @@ def create_app(
             whisper_binary=configured.whisper_binary,
             whisperkit_binary=configured.whisperkit_binary,
             handy_binary=configured.handy_binary,
+            vocamac_app=configured.vocamac_app,
         )
         engines = ["auto", "sherpa-onnx", "faster-whisper", "moonshine", "whisper.cpp"]
-        if system.os_name == "Darwin":
-            engines.extend(["handy", "whisperkit"])
-        if system.is_apple_silicon:
-            engines.append("mlx-audio")
+        # The desktop-app and Apple-native adapters only exist on a matching host.
+        engines.extend(
+            engine
+            for engine in ("vocamac", "handy", "whisperkit", "mlx-audio")
+            if engine_runs_on(
+                engine,
+                is_mac=system.os_name == "Darwin",
+                is_apple_silicon=system.is_apple_silicon,
+            )
+        )
         return engines
 
     async def _status_payload() -> AdminStatusResponse:
@@ -535,6 +542,7 @@ def create_app(
             whisper_binary=configured.whisper_binary,
             whisperkit_binary=configured.whisperkit_binary,
             handy_binary=configured.handy_binary,
+            vocamac_app=configured.vocamac_app,
         )
         is_mac = system.os_name == "Darwin"
         dependencies = [
@@ -606,6 +614,16 @@ def create_app(
                 path=str(configured.handy_binary) if system.handy_installed else None,
                 install_hint=("https://handy.computer" if is_mac else "Available only on macOS"),
             ),
+            DependencyStatus(
+                name="VocaMac app",
+                available=system.vocamac_installed,
+                path=str(configured.vocamac_app) if system.vocamac_installed else None,
+                install_hint=(
+                    "https://github.com/jatinkrmalik/vocamac"
+                    if system.is_apple_silicon
+                    else "Available only on Apple silicon Macs"
+                ),
+            ),
         ]
         readiness_details = await readiness.details()
         state = readiness_details.health
@@ -657,6 +675,7 @@ def create_app(
             whisper_binary=configured.whisper_binary,
             whisperkit_binary=configured.whisperkit_binary,
             handy_binary=configured.handy_binary,
+            vocamac_app=configured.vocamac_app,
         )
         recommended = recommended_ids(system)
         installed = {model.id: model for model in manager.installed()}
@@ -973,12 +992,15 @@ def create_app(
             raise APIProblem(
                 409, "engine_locked", "The engine was fixed at startup and cannot switch."
             )
-        engine_manager.configure(
-            body.engine,
-            body.compute_device,
-            body.compute_type,
-            body.cpu_threads,
-        )
+        try:
+            engine_manager.configure(
+                body.engine,
+                body.compute_device,
+                body.compute_type,
+                body.cpu_threads,
+            )
+        except ValueError as error:
+            raise APIProblem(422, "invalid_engine", str(error)) from error
         await readiness.warmup()
         state = await readiness.probe()
         return SelectModelResponse(
@@ -1530,6 +1552,7 @@ def select_engine(settings: Settings) -> TranscriptionEngine:
     """Resolve an engine purely from environment settings (CLI usage)."""
     if settings.engine not in {
         "auto",
+        "vocamac",
         "handy",
         "whisper.cpp",
         "whisperkit",
@@ -1539,8 +1562,16 @@ def select_engine(settings: Settings) -> TranscriptionEngine:
         raise RuntimeError("LOCALFLOW_ENGINE is not a supported engine.")
     manager = ModelManager(settings.resolved_models_dir())
     if settings.engine == "auto":
+        from app.models.vocamac import VocaMacEngine
         from app.models.whisper_cpp import WhisperCppEngine
 
+        vocamac = VocaMacEngine(
+            settings.whisperkit_binary,
+            settings.vocamac_model,
+            app_path=settings.vocamac_app,
+        )
+        if vocamac.is_available():
+            return vocamac
         if settings.handy_binary.is_file():
             from app.models.handy import HandyEngine
 

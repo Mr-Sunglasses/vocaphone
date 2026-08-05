@@ -34,6 +34,8 @@ class Settings:
     handy_binary: Path = Path("/Applications/Handy.app/Contents/MacOS/handy")
     handy_model: str | None = None
     handy_fallback_model: str | None = DEFAULT_HANDY_FALLBACK_MODEL
+    vocamac_app: Path = Path("/Applications/VocaMac.app")
+    vocamac_model: str | None = None
     whisperkit_binary: str = "whisperkit-cli"
     models_dir: Path | None = None
     config_path: Path = Path("~/.config/localflow/config.json")
@@ -94,6 +96,10 @@ class Settings:
                 DEFAULT_HANDY_FALLBACK_MODEL,
             )
             or None,
+            vocamac_app=Path(
+                os.environ.get("LOCALFLOW_VOCAMAC_APP", "/Applications/VocaMac.app")
+            ).expanduser(),
+            vocamac_model=os.environ.get("LOCALFLOW_VOCAMAC_MODEL") or None,
             whisperkit_binary=os.environ.get("LOCALFLOW_WHISPERKIT_BINARY", "whisperkit-cli"),
             models_dir=Path(
                 os.environ.get("LOCALFLOW_MODELS_DIR", str(data_dir / "models"))

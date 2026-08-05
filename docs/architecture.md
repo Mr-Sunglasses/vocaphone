@@ -11,8 +11,9 @@ Local Flow containing app
   ↕ bearer-authenticated HTTP/HTTPS through LAN, VPN, or reverse proxy
 FastAPI gateway on macOS or Linux (native or multi-architecture container)
   → bounded temporary audio → FFmpeg mono 16 kHz WAV
-  → TranscriptionEngine adapter → Handy, MLX Audio, WhisperKit, sherpa-onnx,
-                                  faster-whisper, Moonshine, or whisper.cpp
+  → TranscriptionEngine adapter → VocaMac, Handy, MLX Audio, WhisperKit,
+                                  sherpa-onnx, faster-whisper, Moonshine,
+                                  or whisper.cpp
 ```
 
 The App Group record is the source of truth. Polling is a wake-up strategy, not
@@ -63,7 +64,16 @@ session creation or finishing a completed session returns the same job/result.
 engines that can identify model files also expose best-effort warmup.
 `HandyEngine` can reuse Handy's selected downloaded model, `WhisperKitEngine`
 runs Core ML folders through one managed loopback-only WhisperKit service on
-Apple silicon, and `WhisperCppEngine` is the portable CLI fallback. The service
+Apple silicon, and `WhisperCppEngine` is the portable CLI fallback.
+`VocaMacEngine` covers the other optional desktop app: VocaMac exposes no
+headless transcription command, so instead of driving the app it reads the model
+chosen in VocaMac's preferences, rejects incomplete downloads the way VocaMac's
+own asset check does, and hands the Core ML folder and VocaMac's tokenizers to
+`WhisperKitEngine`. Both desktop apps are optional and Mac-only — Handy needs
+macOS, VocaMac needs Apple silicon — so `app/system.py` holds one table of
+per-engine host requirements that drives the WebUI picker contents, the label
+shown beside each engine, and the `422` rejection when a host cannot run the
+selected engine. The service
 keeps the selected model resident and falls back to the one-shot CLI when an
 older WhisperKit build cannot serve. `FasterWhisperEngine` owns one persistent
 CTranslate2 model and uses CPU INT8 by default. `SherpaOnnxEngine` owns one
@@ -86,7 +96,7 @@ response.
 The default Docker image includes OpenBLAS `whisper.cpp`, sherpa-onnx,
 faster-whisper, and Moonshine and persists `/data` as a volume. Compose also
 provides host-native CPU, NVIDIA CUDA, and Vulkan images. MLX Audio,
-WhisperKit, and Handy remain native-macOS-only.
+WhisperKit, VocaMac, and Handy remain native-macOS-only.
 
 The gateway keeps privacy-safe operational counters in process memory: uptime,
 active and queued transcriptions, completed/failed/rejected counts, stage-level

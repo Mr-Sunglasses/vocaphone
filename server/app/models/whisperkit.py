@@ -31,9 +31,18 @@ class _PersistentServerUnavailable(Exception):
 class WhisperKitEngine:
     """Persistent Apple-silicon WhisperKit adapter with a legacy CLI fallback."""
 
-    def __init__(self, binary: str, model_path: Path | None) -> None:
+    def __init__(
+        self,
+        binary: str,
+        model_path: Path | None,
+        *,
+        tokenizer_path: Path | None = None,
+    ) -> None:
         self.binary = binary
         self.model_path = model_path
+        # Set when another app already downloaded the matching tokenizer files,
+        # so the CLI reuses them instead of fetching them from Hugging Face.
+        self.tokenizer_path = tokenizer_path
         self._server: _WhisperKitServer | None = None
         self._load_lock = asyncio.Lock()
         self._inference_lock = asyncio.Lock()
@@ -129,6 +138,7 @@ class WhisperKitEngine:
                 _start_server,
                 resolved,
                 self.model_path,
+                self.tokenizer_path,
             )
             return self._server, True
 
@@ -147,6 +157,8 @@ class WhisperKitEngine:
             "--model-path",
             str(self.model_path),
         ]
+        if self.tokenizer_path is not None:
+            arguments.extend(["--download-tokenizer-path", str(self.tokenizer_path)])
         if options.language != "auto":
             arguments.extend(["--language", options.language])
         process = await asyncio.create_subprocess_exec(
@@ -199,19 +211,26 @@ class WhisperKitEngine:
             self.close()
 
 
-def _start_server(binary: str, model_path: Path) -> _WhisperKitServer:
+def _start_server(
+    binary: str,
+    model_path: Path,
+    tokenizer_path: Path | None = None,
+) -> _WhisperKitServer:
     port = _available_loopback_port()
+    arguments = [
+        binary,
+        "serve",
+        "--model-path",
+        str(model_path),
+        "--host",
+        "127.0.0.1",
+        "--port",
+        str(port),
+    ]
+    if tokenizer_path is not None:
+        arguments.extend(["--download-tokenizer-path", str(tokenizer_path)])
     process = subprocess.Popen(
-        [
-            binary,
-            "serve",
-            "--model-path",
-            str(model_path),
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(port),
-        ],
+        arguments,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

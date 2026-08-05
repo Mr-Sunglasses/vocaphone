@@ -9,11 +9,15 @@ import httpx
 import pytest
 from conftest import TOKEN, FakeNormalizer
 
+from app import engines as engines_module
+from app import main
 from app.catalog import CatalogModel
 from app.config import Settings
 from app.main import create_app
 from app.model_manager import ModelManager
 from app.runtime_config import RuntimeConfig
+
+MAC_ONLY = frozenset({"vocamac", "handy", "whisperkit", "mlx-audio"})
 
 TINY = CatalogModel(
     id="whisper.cpp:ggml-tiny.bin",
@@ -35,6 +39,7 @@ def admin_settings(tmp_path: Path) -> Settings:
         whisper_binary=tmp_path / "whisper-cli",
         whisper_model=tmp_path / "model.bin",
         handy_binary=tmp_path / "no-handy",
+        vocamac_app=tmp_path / "no-vocamac",
         models_dir=tmp_path / "models",
         config_path=tmp_path / "config.json",
     )
@@ -174,6 +179,7 @@ async def test_status_reports_system_and_setup(
         "whisper.cpp CLI",
         "WhisperKit CLI",
         "Handy app",
+        "VocaMac app",
         "faster-whisper",
         "Moonshine Voice",
         "sherpa-onnx",
@@ -277,10 +283,44 @@ async def test_config_update_persists_engine(
     assert invalid.status_code == 422
 
     updated = await admin_client.put(
-        "/v1/admin/config", headers=auth, json={"engine": "whisperkit"}
+        "/v1/admin/config", headers=auth, json={"engine": "sherpa-onnx"}
     )
     assert updated.status_code == 200
-    assert RuntimeConfig.load(admin_settings.config_path).engine == "whisperkit"
+    assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
+
+
+async def test_mac_only_engines_are_hidden_and_rejected_on_other_hosts(
+    admin_client: httpx.AsyncClient,
+    auth: dict[str, str],
+    admin_settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(main, "engine_runs_on", lambda engine, **_: engine not in MAC_ONLY)
+    monkeypatch.setattr(engines_module, "engine_runs_here", lambda engine: engine not in MAC_ONLY)
+
+    config = await admin_client.get("/v1/admin/config", headers=auth)
+    settings_html = (await admin_client.get("/ui/partials/settings", headers=auth)).text
+    rejected = await admin_client.put("/v1/admin/config", headers=auth, json={"engine": "vocamac"})
+
+    assert set(config.json()["available_engines"]).isdisjoint(MAC_ONLY)
+    assert "VocaMac app" not in settings_html
+    assert "Handy app" not in settings_html
+    assert rejected.status_code == 422
+    assert rejected.json()["error"]["code"] == "invalid_engine"
+    assert "Apple silicon" in rejected.json()["error"]["message"]
+    assert RuntimeConfig.load(admin_settings.config_path).engine != "vocamac"
+
+
+async def test_mac_only_engines_are_labelled_with_their_host(
+    admin_client: httpx.AsyncClient, auth: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(main, "engine_runs_on", lambda engine, **_: True)
+
+    settings_html = (await admin_client.get("/ui/partials/settings", headers=auth)).text
+
+    assert "VocaMac app (Apple silicon only)" in settings_html
+    assert "Handy app (macOS only)" in settings_html
+    assert "sherpa-onnx</option>" in settings_html
 
 
 async def test_custom_download_rejects_bad_url(

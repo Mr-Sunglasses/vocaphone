@@ -9,6 +9,7 @@ from typing import Any
 
 VALID_ENGINES = (
     "auto",
+    "vocamac",
     "handy",
     "whisper.cpp",
     "whisperkit",

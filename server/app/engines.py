@@ -20,9 +20,11 @@ from app.models.handy import HandyEngine
 from app.models.mlx_audio import MLXAudioEngine
 from app.models.moonshine import MoonshineEngine
 from app.models.sherpa_onnx import SherpaOnnxEngine
+from app.models.vocamac import VocaMacEngine
 from app.models.whisper_cpp import WhisperCppEngine
 from app.models.whisperkit import WhisperKitEngine
 from app.runtime_config import VALID_ENGINES, RuntimeConfig
+from app.system import engine_requirement, engine_runs_here
 
 
 class EngineProvider(Protocol):
@@ -152,6 +154,8 @@ class EngineManager:
         """Validate and persist an engine/performance update atomically."""
         if engine not in VALID_ENGINES:
             raise ValueError(f"Engine must be one of: {', '.join(VALID_ENGINES)}.")
+        if not engine_runs_here(engine):
+            raise ValueError(f"The {engine} engine runs only on {engine_requirement(engine)}.")
         if device not in {"auto", "cpu", "cuda"}:
             raise ValueError("Invalid compute device.")
         if compute_type not in {"auto", "int8", "int8_float16", "float16", "float32"}:
@@ -193,6 +197,8 @@ def build_engine(
     model_manager: ModelManager,
 ) -> TranscriptionEngine:
     engine = runtime_config.engine or settings.engine
+    if engine == "vocamac":
+        return _vocamac_engine(settings)
     if engine == "handy":
         return HandyEngine(
             settings.handy_binary,
@@ -242,6 +248,9 @@ def build_engine(
             _whisper_cpp_model_path(settings, runtime_config, model_manager),
         )
     # auto: prefer what is actually usable on this machine
+    vocamac = _vocamac_engine(settings)
+    if vocamac.is_available():
+        return vocamac
     if settings.handy_binary.is_file():
         return HandyEngine(
             settings.handy_binary,
@@ -282,6 +291,14 @@ def build_engine(
     return WhisperCppEngine(
         settings.whisper_binary,
         _whisper_cpp_model_path(settings, runtime_config, model_manager),
+    )
+
+
+def _vocamac_engine(settings: Settings) -> VocaMacEngine:
+    return VocaMacEngine(
+        settings.whisperkit_binary,
+        settings.vocamac_model,
+        app_path=settings.vocamac_app,
     )
 
 

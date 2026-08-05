@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pytest import MonkeyPatch
 
+from app import engines as engines_module
 from app.catalog import CatalogModel
 from app.config import Settings
 from app.engines import EngineManager
@@ -11,6 +13,7 @@ from app.model_manager import ModelManager
 from app.models.mlx_audio import MLXAudioEngine
 from app.models.sherpa_onnx import SherpaOnnxEngine
 from app.runtime_config import RuntimeConfig
+from app.system import engine_requirement, engine_runs_on
 
 
 @pytest.mark.parametrize(
@@ -68,6 +71,8 @@ def test_model_selection_builds_new_engine_and_persists_id(
         data_dir=tmp_path,
         whisper_binary=tmp_path / "whisper-cli",
         whisper_model=tmp_path / "whisper.bin",
+        handy_binary=tmp_path / "no-handy",
+        vocamac_app=tmp_path / "no-vocamac",
     )
     config_path = tmp_path / "config.json"
     engines = EngineManager(settings, runtime, config_path, manager)
@@ -78,3 +83,46 @@ def test_model_selection_builds_new_engine_and_persists_id(
     assert runtime.engine == catalog_model.engine
     assert getattr(runtime, config_field) == catalog_model.id
     assert getattr(RuntimeConfig.load(config_path), config_field) == catalog_model.id
+
+
+@pytest.mark.parametrize(
+    ("engine", "linux", "intel_mac", "apple_silicon"),
+    [
+        ("vocamac", False, False, True),
+        ("handy", False, True, True),
+        ("whisperkit", False, True, True),
+        ("mlx-audio", False, False, True),
+        ("sherpa-onnx", True, True, True),
+        ("whisper.cpp", True, True, True),
+        ("auto", True, True, True),
+    ],
+)
+def test_desktop_and_apple_engines_only_run_on_a_matching_host(
+    engine: str, linux: bool, intel_mac: bool, apple_silicon: bool
+) -> None:
+    assert engine_runs_on(engine, is_mac=False, is_apple_silicon=False) is linux
+    assert engine_runs_on(engine, is_mac=True, is_apple_silicon=False) is intel_mac
+    assert engine_runs_on(engine, is_mac=True, is_apple_silicon=True) is apple_silicon
+
+
+def test_configure_rejects_an_engine_the_host_cannot_run(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    settings = Settings(
+        token="test-token-with-at-least-thirty-two-characters",
+        data_dir=tmp_path,
+        whisper_binary=tmp_path / "whisper-cli",
+        whisper_model=tmp_path / "whisper.bin",
+        handy_binary=tmp_path / "no-handy",
+        vocamac_app=tmp_path / "no-vocamac",
+    )
+    runtime = RuntimeConfig()
+    config_path = tmp_path / "config.json"
+    engines = EngineManager(settings, runtime, config_path, ModelManager(tmp_path / "models"))
+    monkeypatch.setattr(engines_module, "engine_runs_here", lambda engine: engine != "vocamac")
+
+    with pytest.raises(ValueError, match="runs only on Apple silicon"):
+        engines.set_engine("vocamac")
+
+    assert runtime.engine == "auto"
+    assert engine_requirement("vocamac") == "Apple silicon"
