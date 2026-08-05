@@ -59,6 +59,12 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
         when (event?.eventType) {
             AccessibilityEvent.TYPE_VIEW_FOCUSED,
             AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED,
+            // A WebView editor announces neither focus nor selection when the
+            // caret lands in it — the first thing it says is that its text
+            // changed. Without these two, focusing Gmail's compose body
+            // produced no event at all and the bubble never re-evaluated.
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_CLICKED,
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOWS_CHANGED,
             -> refreshBubble()
@@ -117,16 +123,58 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
     private fun classify(node: AccessibilityNodeInfo): FieldEligibility =
         FieldClassifier.classify(node.toSignals(), excludedPackages)
 
+    /**
+     * The focused text field, however the app's UI toolkit chooses to describe
+     * one.
+     *
+     * `findFocus(FOCUS_INPUT)` alone only answers for classic View hierarchies.
+     * Measured on a Compose toolbar it hands back the non-editable wrapper
+     * around the real field — a bare `android.view.View` reporting `isFocused`
+     * as false — so the whole of Firefox's address bar, and every Compose text
+     * field, was a silent dead end. Hence: take the framework's answer when it
+     * is usable, and otherwise search for the node that claims focus itself.
+     *
+     * Known gap: a WebView editor is still not reached. Gmail's compose body
+     * answers `findFocus` with null *and* reports a null root on its own
+     * active, focused window, so there is nothing here to search. uiautomator
+     * reads that same tree fine from its own connection, so the content is
+     * retrievable in principle — the way in has not been found yet.
+     */
     private fun focusedEditableNode(): AccessibilityNodeInfo? {
-        val focused = findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
-        // The framework can hand back a node from a window that no longer
-        // exists; refresh proves it is still alive, still focused, and still
-        // editable before anything trusts it.
-        if (!focused.refresh() || !focused.isEditable || !focused.isFocused) {
-            focused.recycleCompat()
-            return null
+        val reported = findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (reported != null) {
+            // The framework can hand back a node from a window that no longer
+            // exists; refresh proves it is still alive before anything trusts it.
+            if (reported.refresh() && reported.isUsableTarget) return reported
+            // A wrapper: the field Compose actually draws is inside it.
+            reported.focusedTargetInSubtree()?.let { found ->
+                reported.recycleCompat()
+                return found
+            }
+            reported.recycleCompat()
         }
-        return focused
+        // Not rootInActiveWindow alone: it comes back null often enough that a
+        // single source would be its own dead end, so every window is asked.
+        // The IME's own window is skipped — its keys are editable-looking nodes
+        // and none of them is the user's field.
+        val budget = intArrayOf(SEARCH_NODE_BUDGET)
+        for (root in searchableRoots()) {
+            val found = root.focusedTargetInSubtree(budget)
+            if (found != null) {
+                if (found !== root) root.recycleCompat()
+                return found
+            }
+            root.recycleCompat()
+        }
+        return null
+    }
+
+    private fun searchableRoots(): List<AccessibilityNodeInfo> = buildList {
+        rootInActiveWindow?.let { add(it) }
+        runCatching { windows }.getOrNull().orEmpty().forEach { window ->
+            if (window.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) return@forEach
+            runCatching { window.root }.getOrNull()?.let { add(it) }
+        }
     }
 
     // ----------------------------------------------------------- insertion
@@ -257,8 +305,47 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
         getSystemService(KeyguardManager::class.java)?.isKeyguardLocked ?: false
 }
 
+/**
+ * Whether this node is the field the user is typing in and can be written to.
+ *
+ * `isEditable` is not required on its own: a WebView editor or a Compose text
+ * field can advertise [AccessibilityNodeInfo.ACTION_SET_TEXT] — which is the
+ * capability insertion actually uses — without setting the editable flag.
+ */
+internal val AccessibilityNodeInfo.isUsableTarget: Boolean
+    get() = isFocused && isEnabled && isVisibleToUser && acceptsText
+
+internal val AccessibilityNodeInfo.acceptsText: Boolean
+    get() = isEditable || actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }
+
+/**
+ * Depth-first search for the node that reports itself focused. Bounded because
+ * this runs on every accessibility event, and an unbounded walk of a large web
+ * page would be paid on each one.
+ */
+internal fun AccessibilityNodeInfo.focusedTargetInSubtree(
+    budget: IntArray = intArrayOf(SEARCH_NODE_BUDGET),
+    depth: Int = 0,
+): AccessibilityNodeInfo? {
+    if (depth > SEARCH_MAX_DEPTH || budget[0] <= 0) return null
+    budget[0]--
+
+    if (isUsableTarget) return this
+
+    for (index in 0 until childCount) {
+        val child = runCatching { getChild(index) }.getOrNull() ?: continue
+        val found = child.focusedTargetInSubtree(budget, depth + 1)
+        if (found != null) return found
+        child.recycleCompat()
+    }
+    return null
+}
+
+private const val SEARCH_NODE_BUDGET = 600
+private const val SEARCH_MAX_DEPTH = 40
+
 internal fun AccessibilityNodeInfo.toSignals() = FieldSignals(
-    editable = isEditable,
+    editable = acceptsText,
     visibleToUser = isVisibleToUser,
     enabled = isEnabled,
     password = isPassword,
