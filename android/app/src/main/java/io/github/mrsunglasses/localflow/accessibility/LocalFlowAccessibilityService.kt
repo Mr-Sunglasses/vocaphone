@@ -41,6 +41,7 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        applyEventMask()
         val container = LocalFlowApplication.container(this)
         container.dictation.inserter = this
 
@@ -56,21 +57,27 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        when (event?.eventType) {
-            AccessibilityEvent.TYPE_VIEW_FOCUSED,
-            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED,
-            // A WebView editor announces neither focus nor selection when the
-            // caret lands in it — the first thing it says is that its text
-            // changed. Without these two, focusing Gmail's compose body
-            // produced no event at all and the bubble never re-evaluated.
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_CLICKED,
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED,
-            -> refreshBubble()
+        val type = event?.eventType ?: return
+        if (type and EVENT_MASK != 0) refreshBubble()
+    }
 
-            else -> Unit
-        }
+    /**
+     * Re-declares which events this service wants, every time it connects.
+     *
+     * The same list is in `accessibility_service_config.xml`, but that file is
+     * only read when the service is enabled — an app update does not re-read
+     * it. Measured on a POCO F1: shipping a build that added two event types
+     * left the framework serving the *old* mask, so the newly handled fields
+     * stayed dead until the user toggled the service off and on. Every existing
+     * user would have updated into that. Asserting the mask here applies it on
+     * the connect that follows the update, so the XML only ever has to be right
+     * for a fresh install.
+     */
+    private fun applyEventMask() {
+        val info = serviceInfo ?: return
+        if (info.eventTypes == EVENT_MASK) return
+        info.eventTypes = EVENT_MASK
+        runCatching { serviceInfo = info }
     }
 
     override fun onInterrupt() = Unit
@@ -303,6 +310,26 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
 
     private fun isDeviceLocked(): Boolean =
         getSystemService(KeyguardManager::class.java)?.isKeyguardLocked ?: false
+
+    private companion object {
+        /**
+         * Everything that can mean "the field under the cursor may have
+         * changed". Mirrored in `accessibility_service_config.xml` for the
+         * first connection of a fresh install; [applyEventMask] is what keeps
+         * an updated install honest.
+         *
+         * Text-changed and clicked are here for editors that announce nothing
+         * else: focusing Gmail's compose body reports neither focus nor
+         * selection, so without them the bubble never re-evaluated at all.
+         */
+        const val EVENT_MASK =
+            AccessibilityEvent.TYPE_VIEW_FOCUSED or
+                AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_CLICKED or
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED
+    }
 }
 
 /**
