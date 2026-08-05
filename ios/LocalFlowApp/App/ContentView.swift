@@ -4,27 +4,23 @@ import UIKit
 struct ContentView: View {
     @Environment(RecordingCoordinator.self) private var coordinator
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("gatewayURL") private var gatewayURL = ""
-    @AppStorage(GatewayStatusPreferences.engineReadyKey)
-    private var gatewayEngineReady = false
     @AppStorage(
         KeyboardPreferences.quickDictationKey,
         store: KeyboardPreferences.defaults
     ) private var quickDictationEnabled = true
-    @State private var keyboardStatus: KeyboardStatus?
-    @State private var keyboardStepDetail = ContentView.keyboardSetupHint
+    @AppStorage(
+        KeyboardPreferences.setupCompletedKey,
+        store: KeyboardPreferences.defaults
+    ) private var setupCompleted = false
+    /// Deliberately not derived from `setupCompleted`: the cover opens once per
+    /// install, and leaving setup must not reopen it.
+    @State private var isShowingSetup = false
     @State private var testText = ""
-
-    private static let keyboardSetupHint =
-        "Enable Local Flow under Settings › General › Keyboards and allow Full "
-            + "Access. This confirms itself the first time the keyboard runs."
 
     var body: some View {
         NavigationStack {
             List {
-                if !isSetupComplete {
-                    SetupChecklistView(steps: setupSteps, recheck: reloadKeyboardStatus)
-                }
+                setupBanner
                 sessionSection
                 transcriptSection
                 practiceSection
@@ -41,15 +37,21 @@ struct ContentView: View {
                 }
             }
             .task {
-                reloadKeyboardStatus()
+                if !setupCompleted { isShowingSetup = true }
+                coordinator.refreshSetupStatus()
                 await coordinator.recoverRecentSession()
                 coordinator.prepareQuickDictationIfEnabled()
                 await coordinator.refreshGatewayHealth()
             }
             .onChange(of: scenePhase) { previousPhase, currentPhase in
                 guard previousPhase != .active, currentPhase == .active else { return }
-                reloadKeyboardStatus()
+                coordinator.refreshSetupStatus()
                 Task { await coordinator.refreshGatewayHealth() }
+            }
+            .fullScreenCover(isPresented: $isShowingSetup) {
+                NavigationStack {
+                    SetupView()
+                }
             }
         }
         .overlay {
@@ -67,46 +69,37 @@ struct ContentView: View {
 
     // MARK: - Setup
 
-    private var setupSteps: [SetupStep] {
-        [
-            SetupStep(
-                id: "gateway",
-                title: "Connect your transcription gateway",
-                detail: gatewayEngineReady
-                    ? "Gateway, token, and model are ready."
-                    : "Add the gateway URL and pairing token in Settings, then tap Save and test.",
-                isComplete: gatewayEngineReady
-            ),
-            SetupStep(
-                id: "microphone",
-                title: "Allow microphone access",
-                detail: coordinator.microphonePermissionGranted
-                    ? "Local Flow can record on this iPhone."
-                    : "Recording happens in this app; the keyboard only receives the transcript.",
-                isComplete: coordinator.microphonePermissionGranted
-            ),
-            SetupStep(
-                id: "keyboard",
-                title: "Add the keyboard with Full Access",
-                detail: keyboardStepDetail,
-                isComplete: keyboardStatus?.hasFullAccess == true
-            ),
-        ]
-    }
-
-    private var isSetupComplete: Bool {
-        setupSteps.allSatisfy(\.isComplete)
-    }
-
-    /// Date formatting is comparatively expensive and `body` re-evaluates
-    /// often, so the string is built when the status actually changes.
-    private func reloadKeyboardStatus() {
-        let status = coordinator.keyboardStatus()
-        keyboardStatus = status
-        keyboardStepDetail = status.map {
-            let seen = $0.lastSeenAt.formatted(date: .abbreviated, time: .shortened)
-            return "Keyboard last active \(seen)."
-        } ?? Self.keyboardSetupHint
+    /// Only what actually stops dictation working earns a place at the top of
+    /// the main screen; the rest of the checklist stays behind guided setup.
+    @ViewBuilder private var setupBanner: some View {
+        if let headline = coordinator.setupStatus.attentionHeadline {
+            Section {
+                NavigationLink {
+                    SetupView()
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.orange)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(headline)
+                                .font(.subheadline.weight(.semibold))
+                            if let detail = coordinator.setupStatus.attentionDetail {
+                                Text(detail)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            Text("Finish setup")
+                                .font(.footnote.weight(.semibold))
+                        }
+                    }
+                    .padding(.vertical, 2)
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
     }
 
     // MARK: - Sections
@@ -228,7 +221,7 @@ struct ContentView: View {
 
 /// The level updates several times a second. Keeping it in a leaf view means
 /// only this redraws, instead of every screen observing the coordinator.
-private struct RecordingMeter: View {
+struct RecordingMeter: View {
     @Environment(RecordingCoordinator.self) private var coordinator
 
     var body: some View {

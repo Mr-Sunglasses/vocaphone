@@ -5,11 +5,17 @@ on:
     branches: [main]
     paths:
       - 'server/**'
+      # Prose next to the code it documents cannot break the build.
+      - '!server/**.md'
       - '.github/workflows/quality-server.yml'
   pull_request:
     branches: [main]
+    # A draft pull request is filtered out below; listing ready_for_review makes
+    # the checks start the moment it stops being a draft.
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'server/**'
+      - '!server/**.md'
       - '.github/workflows/quality-server.yml'
   workflow_dispatch:
 
@@ -18,19 +24,27 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # A superseded pull request push is wasted minutes, but a run on main is the
+  # record for a merged commit, so let that one finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   server:
+    # Work in progress re-runs the full suite on every push. The checks that
+    # matter run when the author marks the pull request ready.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           working-directory: server
           enable-cache: true
-      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # tests/test_audio.py shells out to FFmpeg against real audio.
+      - run: sudo apt-get update && sudo apt-get install --yes --no-install-recommends ffmpeg
       - run: uv sync --locked --all-groups
         working-directory: server
       - run: uv run ruff check .
@@ -41,23 +55,10 @@ jobs:
         working-directory: server
       - run: uv run pytest
         working-directory: server
-
-  container:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      # Parsing the Compose file costs nothing, so it stays on every server
+      # change even though building the image (container-server.yml) does not.
       - name: Validate Compose configuration
         run: docker compose config --quiet
         working-directory: server
         env:
           LOCALFLOW_TOKEN: test-token-with-at-least-thirty-two-characters
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
-      - name: Build gateway image
-        working-directory: server
-        run: |
-          docker buildx build \
-            --tag localflow-gateway:test \
-            --cache-from type=gha \
-            --cache-to type=gha,mode=max \
-            --load .

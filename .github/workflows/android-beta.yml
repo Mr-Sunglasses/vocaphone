@@ -25,24 +25,29 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           # The release notes step walks back to the previous beta tag, which
-          # needs the tags and the history connecting them.
+          # needs the tags and the history connecting them. Only the commits
+          # are needed, so skip fetching every blob in that history.
           fetch-depth: 0
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+          filter: blob:none
+          persist-credentials: false
+      - uses: ./.github/actions/setup-android
         with:
-          distribution: temurin
-          # Matches the JDK bundled with Android Studio, which is what the build
-          # has been verified against locally.
-          java-version: '25'
-      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
-      - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+          # A cache entry saved from a tag ref is scoped to that tag and can
+          # never be restored again, so this build reads main's and saves none.
+          cache-read-only: true
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - name: Build signed release APK
         env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_FILE: ${{ runner.temp }}/local-flow-release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > "$KEYSTORE_FILE"
+          set -euo pipefail
+          # Passed through the environment rather than interpolated into the
+          # script, so the keystore never becomes part of the command line.
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
           ./gradlew assembleRelease
         working-directory: android
       - name: Upload APK as workflow artifact
@@ -51,10 +56,16 @@ jobs:
           name: local-flow-apk
           path: android/app/build/outputs/apk/release/local-flow-release.apk
           if-no-files-found: error
+          # The release below is the durable copy. This one only covers the
+          # window before it is published, so it does not need 90 days of
+          # storage, and an APK is already a compressed archive.
+          retention-days: 7
+          compression-level: 0
       - name: Publish beta GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           cp android/app/build/outputs/apk/release/local-flow-release.apk local-flow.apk
 
           # --generate-notes lists the pull requests merged since the previous
