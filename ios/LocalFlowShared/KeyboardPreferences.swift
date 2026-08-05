@@ -74,6 +74,7 @@ enum TranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Sendabl
     case korean = "ko"
     case mandarinChinese = "zh"
     case ukrainian = "uk"
+    case russian = "ru"
     case vietnamese = "vi"
 
     var id: String { rawValue }
@@ -88,6 +89,7 @@ enum TranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Sendabl
         case .korean: "Korean"
         case .mandarinChinese: "Mandarin Chinese"
         case .ukrainian: "Ukrainian"
+        case .russian: "Russian"
         case .vietnamese: "Vietnamese"
         }
     }
@@ -102,6 +104,7 @@ enum TranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Sendabl
         case .korean: "KO"
         case .mandarinChinese: "ZH"
         case .ukrainian: "UK"
+        case .russian: "RU"
         case .vietnamese: "VI"
         }
     }
