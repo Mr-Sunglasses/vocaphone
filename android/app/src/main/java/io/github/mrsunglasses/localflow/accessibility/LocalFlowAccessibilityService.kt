@@ -127,18 +127,18 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
      * The focused text field, however the app's UI toolkit chooses to describe
      * one.
      *
-     * `findFocus(FOCUS_INPUT)` alone only answers for classic View hierarchies.
-     * Measured on a Compose toolbar it hands back the non-editable wrapper
-     * around the real field — a bare `android.view.View` reporting `isFocused`
-     * as false — so the whole of Firefox's address bar, and every Compose text
-     * field, was a silent dead end. Hence: take the framework's answer when it
-     * is usable, and otherwise search for the node that claims focus itself.
+     * `findFocus(FOCUS_INPUT)` alone only answers for classic View hierarchies,
+     * and it fails in two different directions. On a Compose toolbar it hands
+     * back the non-editable wrapper around the real field — a bare
+     * `android.view.View` reporting `isFocused` as false. Inside a WebView
+     * editor it returns null outright. Firefox's address bar and Gmail's
+     * compose body were both silent dead ends for those reasons.
      *
-     * Known gap: a WebView editor is still not reached. Gmail's compose body
-     * answers `findFocus` with null *and* reports a null root on its own
-     * active, focused window, so there is nothing here to search. uiautomator
-     * reads that same tree fine from its own connection, so the content is
-     * retrievable in principle — the way in has not been found yet.
+     * So: take the framework's answer when it is usable, then look inside it
+     * for the field a wrapper is hiding, and failing that ask the windows
+     * directly for the node that claims focus itself. Both routes are needed —
+     * the wrapper descent is what recovers Compose, the window search is what
+     * recovers WebView.
      */
     private fun focusedEditableNode(): AccessibilityNodeInfo? {
         val reported = findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
