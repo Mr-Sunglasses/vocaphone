@@ -41,6 +41,7 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        applyEventMask()
         val container = LocalFlowApplication.container(this)
         container.dictation.inserter = this
 
@@ -56,15 +57,27 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        when (event?.eventType) {
-            AccessibilityEvent.TYPE_VIEW_FOCUSED,
-            AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED,
-            -> refreshBubble()
+        val type = event?.eventType ?: return
+        if (type and EVENT_MASK != 0) refreshBubble()
+    }
 
-            else -> Unit
-        }
+    /**
+     * Re-declares which events this service wants, every time it connects.
+     *
+     * The same list is in `accessibility_service_config.xml`, but that file is
+     * only read when the service is enabled — an app update does not re-read
+     * it. Measured on a POCO F1: shipping a build that added two event types
+     * left the framework serving the *old* mask, so the newly handled fields
+     * stayed dead until the user toggled the service off and on. Every existing
+     * user would have updated into that. Asserting the mask here applies it on
+     * the connect that follows the update, so the XML only ever has to be right
+     * for a fresh install.
+     */
+    private fun applyEventMask() {
+        val info = serviceInfo ?: return
+        if (info.eventTypes == EVENT_MASK) return
+        info.eventTypes = EVENT_MASK
+        runCatching { serviceInfo = info }
     }
 
     override fun onInterrupt() = Unit
@@ -117,16 +130,58 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
     private fun classify(node: AccessibilityNodeInfo): FieldEligibility =
         FieldClassifier.classify(node.toSignals(), excludedPackages)
 
+    /**
+     * The focused text field, however the app's UI toolkit chooses to describe
+     * one.
+     *
+     * `findFocus(FOCUS_INPUT)` alone only answers for classic View hierarchies,
+     * and it fails in two different directions. On a Compose toolbar it hands
+     * back the non-editable wrapper around the real field — a bare
+     * `android.view.View` reporting `isFocused` as false. Inside a WebView
+     * editor it returns null outright. Firefox's address bar and Gmail's
+     * compose body were both silent dead ends for those reasons.
+     *
+     * So: take the framework's answer when it is usable, then look inside it
+     * for the field a wrapper is hiding, and failing that ask the windows
+     * directly for the node that claims focus itself. Both routes are needed —
+     * the wrapper descent is what recovers Compose, the window search is what
+     * recovers WebView.
+     */
     private fun focusedEditableNode(): AccessibilityNodeInfo? {
-        val focused = findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return null
-        // The framework can hand back a node from a window that no longer
-        // exists; refresh proves it is still alive, still focused, and still
-        // editable before anything trusts it.
-        if (!focused.refresh() || !focused.isEditable || !focused.isFocused) {
-            focused.recycleCompat()
-            return null
+        val reported = findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        if (reported != null) {
+            // The framework can hand back a node from a window that no longer
+            // exists; refresh proves it is still alive before anything trusts it.
+            if (reported.refresh() && reported.isUsableTarget) return reported
+            // A wrapper: the field Compose actually draws is inside it.
+            reported.focusedTargetInSubtree()?.let { found ->
+                reported.recycleCompat()
+                return found
+            }
+            reported.recycleCompat()
         }
-        return focused
+        // Not rootInActiveWindow alone: it comes back null often enough that a
+        // single source would be its own dead end, so every window is asked.
+        // The IME's own window is skipped — its keys are editable-looking nodes
+        // and none of them is the user's field.
+        val budget = intArrayOf(SEARCH_NODE_BUDGET)
+        for (root in searchableRoots()) {
+            val found = root.focusedTargetInSubtree(budget)
+            if (found != null) {
+                if (found !== root) root.recycleCompat()
+                return found
+            }
+            root.recycleCompat()
+        }
+        return null
+    }
+
+    private fun searchableRoots(): List<AccessibilityNodeInfo> = buildList {
+        rootInActiveWindow?.let { add(it) }
+        runCatching { windows }.getOrNull().orEmpty().forEach { window ->
+            if (window.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD) return@forEach
+            runCatching { window.root }.getOrNull()?.let { add(it) }
+        }
     }
 
     // ----------------------------------------------------------- insertion
@@ -255,10 +310,69 @@ class LocalFlowAccessibilityService : AccessibilityService(), TranscriptInserter
 
     private fun isDeviceLocked(): Boolean =
         getSystemService(KeyguardManager::class.java)?.isKeyguardLocked ?: false
+
+    private companion object {
+        /**
+         * Everything that can mean "the field under the cursor may have
+         * changed". Mirrored in `accessibility_service_config.xml` for the
+         * first connection of a fresh install; [applyEventMask] is what keeps
+         * an updated install honest.
+         *
+         * Text-changed and clicked are here for editors that announce nothing
+         * else: focusing Gmail's compose body reports neither focus nor
+         * selection, so without them the bubble never re-evaluated at all.
+         */
+        const val EVENT_MASK =
+            AccessibilityEvent.TYPE_VIEW_FOCUSED or
+                AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_CLICKED or
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED
+    }
 }
 
+/**
+ * Whether this node is the field the user is typing in and can be written to.
+ *
+ * `isEditable` is not required on its own: a WebView editor or a Compose text
+ * field can advertise [AccessibilityNodeInfo.ACTION_SET_TEXT] — which is the
+ * capability insertion actually uses — without setting the editable flag.
+ */
+internal val AccessibilityNodeInfo.isUsableTarget: Boolean
+    get() = isFocused && isEnabled && isVisibleToUser && acceptsText
+
+internal val AccessibilityNodeInfo.acceptsText: Boolean
+    get() = isEditable || actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }
+
+/**
+ * Depth-first search for the node that reports itself focused. Bounded because
+ * this runs on every accessibility event, and an unbounded walk of a large web
+ * page would be paid on each one.
+ */
+internal fun AccessibilityNodeInfo.focusedTargetInSubtree(
+    budget: IntArray = intArrayOf(SEARCH_NODE_BUDGET),
+    depth: Int = 0,
+): AccessibilityNodeInfo? {
+    if (depth > SEARCH_MAX_DEPTH || budget[0] <= 0) return null
+    budget[0]--
+
+    if (isUsableTarget) return this
+
+    for (index in 0 until childCount) {
+        val child = runCatching { getChild(index) }.getOrNull() ?: continue
+        val found = child.focusedTargetInSubtree(budget, depth + 1)
+        if (found != null) return found
+        child.recycleCompat()
+    }
+    return null
+}
+
+private const val SEARCH_NODE_BUDGET = 600
+private const val SEARCH_MAX_DEPTH = 40
+
 internal fun AccessibilityNodeInfo.toSignals() = FieldSignals(
-    editable = isEditable,
+    editable = acceptsText,
     visibleToUser = isVisibleToUser,
     enabled = isEnabled,
     password = isPassword,

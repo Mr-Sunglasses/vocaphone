@@ -9,7 +9,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -241,16 +240,19 @@ fun RestrictedSettingsCard(
                 "on — it will work this time.",
             style = MaterialTheme.typography.bodyMedium,
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Stacked rather than side by side: at a large display size two weighted
+        // buttons clip their labels to "1." and "2. App", which loses precisely
+        // the ordering the numbered steps above are asking the user to follow.
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             PrimaryButton(
-                text = "1. Accessibility",
+                text = "1. Accessibility settings",
                 onClick = onOpenAccessibilitySettings,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
             SecondaryButton(
                 text = "2. App info",
                 onClick = onOpenAppInfo,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         Text(

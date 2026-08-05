@@ -35,6 +35,7 @@ class BubbleController(
     private val windowManager = context.getSystemService(WindowManager::class.java)
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private val longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong()
+    private val overlayNotice = OverlayPermissionNotice(context)
 
     private var root: View? = null
     private var status: TextView? = null
@@ -99,7 +100,14 @@ class BubbleController(
     fun show() {
         if (root != null) return
         if (isSnoozed || dismissed) return
-        if (!Settings.canDrawOverlays(context)) return
+        // The one failure the user cannot see from here: they are typing in
+        // another app, so the only way to explain the missing bubble is to
+        // notify. See OverlayNoticePolicy.
+        if (!Settings.canDrawOverlays(context)) {
+            overlayNotice.onBubbleBlocked()
+            return
+        }
+        overlayNotice.onOverlayAvailable()
 
         val view = LayoutInflater.from(context).inflate(R.layout.view_bubble, null, false)
         status = view.findViewById(R.id.bubble_status)
