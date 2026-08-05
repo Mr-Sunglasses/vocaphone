@@ -9,7 +9,7 @@ management, engine selection, microphone testing, and operational status.
 
 | Mode | Engines | Recommended use |
 | --- | --- | --- |
-| Native macOS | MLX Audio, WhisperKit, Handy, sherpa-onnx, `whisper.cpp` | Best performance on Apple silicon |
+| Native macOS | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx, `whisper.cpp` | Best performance on Apple silicon |
 | Native Linux | sherpa-onnx INT8, faster-whisper, Moonshine, optional `whisper.cpp` | Linux desktop or home server without Docker |
 | Docker Compose | sherpa-onnx INT8, faster-whisper INT8, Moonshine, `whisper.cpp` | Reproducible Linux `amd64`/`arm64` images |
 
@@ -24,9 +24,18 @@ Requires [Homebrew](https://brew.sh/), Python 3.12+, and
 [uv](https://docs.astral.sh/uv/). Install the host dependencies first:
 
 - `ffmpeg` — audio normalization (required by every engine)
-- `whisperkit-cli` — WhisperKit/Core ML engine on Apple silicon
+- `whisperkit-cli` — WhisperKit/Core ML engine on Apple silicon, and the engine
+  behind the VocaMac adapter
 - `whisper-cpp` — provides `whisper-cli` for GGML `whisper.cpp` models,
   including the Handy model family, which runs without the Handy app
+
+The [VocaMac](https://github.com/jatinkrmalik/vocamac) and
+[Handy](https://handy.computer) desktop apps are **optional and Mac-only**:
+VocaMac needs an Apple silicon Mac, Handy needs macOS. Install neither and the
+gateway downloads and runs its own models; install either and the gateway can
+reuse the models that app already downloaded instead of asking for a second
+copy. On Linux and in containers both engines are hidden from the WebUI picker,
+and selecting one through the API is rejected with `422 invalid_engine`.
 
 ```sh
 brew install ffmpeg whisperkit-cli whisper-cpp
@@ -224,12 +233,17 @@ before redistributing weights.
 
 The `auto` engine preference uses the first runnable option in this order:
 
-1. Handy when its macOS application binary is present
-2. a downloaded WhisperKit model kept resident in a managed loopback service
-3. a downloaded MLX Audio model on Apple silicon
-4. a downloaded sherpa-onnx model
-5. a downloaded `faster-whisper` model kept resident in the gateway process
-6. a downloaded/configured `whisper.cpp` model
+1. VocaMac when the app is installed and one of its downloaded Core ML models
+   is complete
+2. Handy when its macOS application binary is present
+3. a downloaded WhisperKit model kept resident in a managed loopback service
+4. a downloaded MLX Audio model on Apple silicon
+5. a downloaded sherpa-onnx model
+6. a downloaded `faster-whisper` model kept resident in the gateway process
+7. a downloaded/configured `whisper.cpp` model
+
+Steps 1 and 2 are skipped on any machine without those optional apps, which is
+every Linux host and every container.
 
 On a CPU-only Linux host, start with SenseVoice Small INT8 when its five
 languages cover your use case, or Parakeet TDT INT8 for its 25 European
@@ -265,10 +279,44 @@ before deploying them outside a personal setup.
 The WebUI can explicitly select an engine or installed model and persists that
 choice in the runtime configuration file.
 
+Four engines need a specific host, and the WebUI names the requirement next to
+each one:
+
+| Engine | Runs on |
+| --- | --- |
+| `vocamac` | Apple silicon Macs (the VocaMac app is Apple-silicon-only) |
+| `mlx-audio` | Apple silicon Macs |
+| `handy` | macOS |
+| `whisperkit` | macOS |
+
+The engine picker lists them only on a host that can run them, and both the
+WebUI and `PUT /v1/admin/config` reject a selection the host cannot run with
+`422 invalid_engine` rather than persisting a broken choice. `auto` skips them
+on every other host.
+
 On Apple silicon, current WhisperKit CLIs expose a local `serve` mode. Local
 Flow starts it on a random `127.0.0.1` port during warmup and reuses the loaded
 Core ML model. If an older CLI does not support `serve`, transcription falls
 back to the compatible one-shot command rather than becoming unavailable.
+
+VocaMac has no headless transcription command, so its adapter reuses the app's
+Core ML model library and tokenizers through `whisperkit-cli` rather than the
+app itself: it reads the model chosen in VocaMac's Models tab, verifies the
+downloaded files are complete, and skips partial downloads in favour of another
+complete model. VocaMac does not need to be running.
+
+To force VocaMac from the environment:
+
+```sh
+export LOCALFLOW_ENGINE=vocamac
+export LOCALFLOW_VOCAMAC_MODEL='small'   # optional; otherwise VocaMac's own choice
+uv run localflow-server
+```
+
+`LOCALFLOW_VOCAMAC_MODEL` accepts either a VocaMac model size (`small`,
+`large-v3-v20240930_turbo_632MB`) or a WhisperKit folder name
+(`openai_whisper-small`). A configured model is never substituted: if it is not
+downloaded, the engine reports unavailable rather than quietly using another.
 
 To force Handy from the environment:
 
@@ -299,10 +347,12 @@ uv run localflow-server
 | `LOCALFLOW_DATA_DIR` | `~/.local/share/localflow` | `/data` | Sessions and application data |
 | `LOCALFLOW_MODELS_DIR` | `<data>/models` | `/data/models` | Downloaded models |
 | `LOCALFLOW_CONFIG_FILE` | `~/.config/localflow/config.json` | `/data/config/config.json` | WebUI engine/model choice |
-| `LOCALFLOW_ENGINE` | `auto` | `auto` | `auto`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
+| `LOCALFLOW_ENGINE` | `auto` | `auto` | `auto`, `vocamac`, `handy`, `mlx-audio`, `whisperkit`, `sherpa-onnx`, `faster-whisper`, `moonshine`, or `whisper.cpp` |
 | `LOCALFLOW_WHISPER_BINARY` | `/opt/homebrew/bin/whisper-cli` | `/usr/local/bin/whisper-cli` | `whisper.cpp` executable |
 | `LOCALFLOW_WHISPER_MODEL` | base model path | base model path | Fallback `whisper.cpp` model |
 | `LOCALFLOW_WHISPERKIT_BINARY` | `whisperkit-cli` | unavailable | WhisperKit executable |
+| `LOCALFLOW_VOCAMAC_APP` | `/Applications/VocaMac.app` | unavailable | Optional VocaMac app bundle |
+| `LOCALFLOW_VOCAMAC_MODEL` | unset | unset | Pin a VocaMac model instead of following the app's choice |
 | `LOCALFLOW_RETENTION_HOURS` | `24` | `24` | Failed-session retry retention |
 | `LOCALFLOW_DELETE_SUCCESSFUL_AUDIO` | `true` | `true` | Delete source/normalized audio after success |
 
@@ -362,8 +412,9 @@ Funnel. See [deployment.md](../docs/deployment.md) for LAN/VPS alternatives and
 Engine probes are cached for five seconds. sherpa-onnx, MLX Audio,
 `faster-whisper`, and Moonshine load their selected model once and keep it
 resident. WhisperKit warmup starts its managed loopback service and keeps the
-Core ML model resident there. Handy and `whisper.cpp` retain the
-filesystem-prefetch warmup behavior.
+Core ML model resident there, and the VocaMac adapter inherits that behavior for
+VocaMac's own models. Handy and `whisper.cpp` retain the filesystem-prefetch
+warmup behavior.
 
 ## Docker performance profiles
 

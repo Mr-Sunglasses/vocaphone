@@ -67,13 +67,28 @@ cd server
 uv run localflow-status
 ```
 
+For a native VocaMac setup, check that the app is installed, that
+`whisperkit-cli` is on `PATH`, and that the model VocaMac selected finished
+downloading. An interrupted download leaves the variant folder in place with
+empty Core ML components, and the gateway skips it:
+
+```sh
+test -d /Applications/VocaMac.app
+command -v whisperkit-cli
+defaults read com.vocamac.app vocamac.selectedModelSize
+du -sh ~/Library/Application\ Support/VocaMac/models/models/argmaxinc/whisperkit-coreml/*
+```
+
+A folder of a few kilobytes is an incomplete download — re-download that model
+in VocaMac's Models tab.
+
 With `LOCALFLOW_ENGINE=whisper.cpp`, also check
 `$LOCALFLOW_WHISPER_BINARY` and `$LOCALFLOW_WHISPER_MODEL`.
 
 For Docker, open Models and download/select SenseVoice Small INT8, Parakeet TDT
 INT8, or a faster-whisper Base model. CPU + INT8 applies to faster-whisper;
 sherpa entries are already quantized. The container cannot run MLX Audio,
-WhisperKit folders, or Handy itself.
+WhisperKit folders, VocaMac, or Handy itself.
 
 ## Native Apple silicon transcription is slow
 

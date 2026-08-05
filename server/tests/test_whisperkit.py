@@ -40,7 +40,7 @@ async def test_whisperkit_keeps_one_native_server_loaded(
     process = FakeProcess()
     starts = 0
 
-    def start_server(_: str, __: Path) -> whisperkit._WhisperKitServer:
+    def start_server(_: str, __: Path, ___: Path | None = None) -> whisperkit._WhisperKitServer:
         nonlocal starts
         starts += 1
         return whisperkit._WhisperKitServer(process=process, port=50123)  # type: ignore[arg-type]
