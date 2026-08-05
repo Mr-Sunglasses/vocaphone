@@ -13,7 +13,7 @@ These are changeable implementation defaults, not confirmed product decisions:
 | App Group | `group.com.example.localflow` | Placeholder |
 | Recording | WAV from one persistent `AVAudioEngine` input | Avoids losing background microphone readiness between dictations; FFmpeg normalizes it on the Mac |
 | Quick Dictation | Enabled, 10-minute ready window | Reduces app switching while bounding battery and microphone exposure |
-| Language | Automatic plus Arabic, English, Spanish, Japanese, Korean, Mandarin Chinese, Ukrainian, and Vietnamese | Automatic follows the selected gateway model; explicit choices must match it |
+| Language | Automatic plus Arabic, English, Spanish, Japanese, Korean, Mandarin Chinese, Ukrainian, Russian, and Vietnamese | Automatic follows the selected gateway model; explicit choices must match it |
 | Output mode | Raw | Avoids unconfirmed cleanup by default |
 | Audio retention | Delete on success; keep failures 24 hours | Privacy with retry recovery |
 | Transcript history | Shared session records only | Full product history remains a later choice |
