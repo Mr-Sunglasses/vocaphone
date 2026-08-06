@@ -9,7 +9,11 @@ from array import array
 from pathlib import Path
 from typing import Any
 
-from app.errors import EngineUnavailableError, TranscriptionProcessError
+from app.errors import (
+    EngineUnavailableError,
+    LanguageUnsupportedError,
+    TranscriptionProcessError,
+)
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
 MODEL_METADATA = ".localflow-model.json"
@@ -67,7 +71,7 @@ class MoonshineEngine:
     ) -> EngineTranscription:
         aliases = LANGUAGE_ALIASES.get(self.language, {self.language})
         if options.language != "auto" and options.language not in aliases:
-            raise TranscriptionProcessError(
+            raise LanguageUnsupportedError(
                 f"The selected Moonshine model supports {self.language}; "
                 f"choose {self.language}, Auto, or another model."
             )

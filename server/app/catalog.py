@@ -48,6 +48,10 @@ class CatalogModel:
     model_type: str | None = None
     language_codes: tuple[str, ...] = ()
     apple_silicon_only: bool = False
+    # True when the model decides the language itself and offers no way to pin it.
+    # `language_codes` then means "these are transcribed well", not "you may choose
+    # one of these" — the app's language setting cannot constrain the result.
+    detects_language_automatically: bool = False
 
 
 def _whisper_cpp(
@@ -197,6 +201,7 @@ def _sherpa_onnx(
     archive_root: str | None = None,
     huggingface_repo: str | None = None,
     supports_streaming: bool = False,
+    detects_language_automatically: bool = False,
 ) -> CatalogModel:
     """Build a sherpa-onnx catalog entry from either download mechanism.
 
@@ -232,6 +237,7 @@ def _sherpa_onnx(
         language_codes=language_codes,
         license_name=license_name,
         supports_streaming=supports_streaming,
+        detects_language_automatically=detects_language_automatically,
     )
 
 
@@ -270,6 +276,135 @@ def _mlx_audio(
     )
 
 
+# Display names for every code any catalog entry declares, so a model card can list
+# "Hindi, Bengali, Tamil" instead of "hi, bn, ta". A missing code falls back to the
+# code itself rather than hiding the language.
+LANGUAGE_NAMES: dict[str, str] = {
+    "ar": "Arabic",
+    "as": "Assamese",
+    "az": "Azerbaijani",
+    "ba": "Bashkir",
+    "bg": "Bulgarian",
+    "bn": "Bengali",
+    "bo": "Tibetan",
+    "cs": "Czech",
+    "ct": "Yue Chinese",
+    "da": "Danish",
+    "de": "German",
+    "el": "Greek",
+    "en": "English",
+    "es": "Spanish",
+    "et": "Estonian",
+    "fa": "Persian",
+    "fi": "Finnish",
+    "fil": "Filipino",
+    "fr": "French",
+    "gu": "Gujarati",
+    "hi": "Hindi",
+    "hr": "Croatian",
+    "hu": "Hungarian",
+    "id": "Indonesian",
+    "it": "Italian",
+    "ja": "Japanese",
+    "jv": "Javanese",
+    "kab": "Kabyle",
+    "kk": "Kazakh",
+    "km": "Khmer",
+    "kn": "Kannada",
+    "ko": "Korean",
+    "ks": "Kashmiri",
+    "ky": "Kyrgyz",
+    "lo": "Lao",
+    "lt": "Lithuanian",
+    "lv": "Latvian",
+    "ml": "Malayalam",
+    "mn": "Mongolian",
+    "mr": "Marathi",
+    "ms": "Malay",
+    "mt": "Maltese",
+    "my": "Burmese",
+    "ne": "Nepali",
+    "nl": "Dutch",
+    "or": "Odia",
+    "pa": "Punjabi",
+    "pl": "Polish",
+    "ps": "Pashto",
+    "pt": "Portuguese",
+    "ro": "Romanian",
+    "ru": "Russian",
+    "sa": "Sanskrit",
+    "sd": "Sindhi",
+    "si": "Sinhala",
+    "sk": "Slovak",
+    "sl": "Slovenian",
+    "su": "Sundanese",
+    "sv": "Swedish",
+    "ta": "Tamil",
+    "te": "Telugu",
+    "tg": "Tajik",
+    "th": "Thai",
+    "tl": "Tagalog",
+    "ug": "Uyghur",
+    "uk": "Ukrainian",
+    "ur": "Urdu",
+    "uz": "Uzbek",
+    "vi": "Vietnamese",
+    "yue": "Cantonese",
+    "zh": "Mandarin Chinese",
+}
+
+
+def language_names(codes: tuple[str, ...]) -> list[str]:
+    """Human-readable names for a model's languages, in the order declared."""
+    return [LANGUAGE_NAMES.get(code, code) for code in codes]
+
+
+# Dolphin's own language codes, from DataoceanAI/Dolphin `languages.md`. Two are not
+# ISO 639-1: `ct` is Yue Chinese (`yue` elsewhere in this catalog) and `fil` is Filipino.
+_DOLPHIN_LANGUAGE_CODES: tuple[str, ...] = (
+    "zh",
+    "ja",
+    "th",
+    "ru",
+    "ko",
+    "id",
+    "vi",
+    "ct",
+    "hi",
+    "ur",
+    "ms",
+    "uz",
+    "ar",
+    "fa",
+    "bn",
+    "ta",
+    "te",
+    "ug",
+    "gu",
+    "my",
+    "tl",
+    "kk",
+    "or",
+    "ne",
+    "mn",
+    "km",
+    "jv",
+    "lo",
+    "si",
+    "fil",
+    "ps",
+    "pa",
+    "kab",
+    "ba",
+    "ks",
+    "tg",
+    "su",
+    "mr",
+    "ky",
+    "az",
+)
+
+
 _MOONSHINE_LANGUAGE_NAMES = {
     "ar": "Arabic",
     "en": "English",
@@ -303,6 +438,8 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
             "Compact non-autoregressive INT8 model for fast CPU dictation on Linux and macOS."
         ),
         license_name="FunASR Model License",
+        # Loaded with language="auto"; this build exposes no per-stream override.
+        detects_language_automatically=True,
     ),
     _sherpa_onnx(
         "parakeet-tdt-0.6b-v3-int8",
@@ -354,6 +491,30 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         description=(
             "NVIDIA's multilingual Parakeet converted to INT8 ONNX for fast macOS and Linux CPU "
             "inference."
+        ),
+        license_name="CC BY 4.0",
+    ),
+    _sherpa_onnx(
+        "parakeet-tdt-0.6b-v2-int8",
+        "Parakeet TDT 0.6B v2 INT8",
+        661 * MB,
+        "English only",
+        "Most accurate English · punctuation",
+        4,
+        huggingface_repo="csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
+        required_files=(
+            "encoder.int8.onnx",
+            "decoder.int8.onnx",
+            "joiner.int8.onnx",
+            "tokens.txt",
+        ),
+        model_type="nemo_transducer",
+        language_codes=("en",),
+        family="Parakeet TDT",
+        description=(
+            "The English-only Parakeet. v3 traded English accuracy for 25-language coverage, so "
+            "this earlier release still transcribes English more accurately than the v3 entry "
+            "above at the same speed."
         ),
         license_name="CC BY 4.0",
     ),
@@ -438,6 +599,143 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         license_name="Apache 2.0",
         supports_streaming=True,
     ),
+    _sherpa_onnx(
+        "cohere-transcribe-14-lang-int8",
+        "Cohere Transcribe 14-language INT8",
+        2888 * MB,
+        "14 languages",
+        "Most accurate multilingual · punctuation",
+        8,
+        huggingface_repo="csukuangfj2/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01",
+        # `encoder.int8.onnx` is a small ONNX graph whose weights live beside it in
+        # `encoder.int8.onnx.data`; onnxruntime resolves that sidecar by name from the
+        # same directory, so it is never passed to the recognizer but must be present.
+        required_files=(
+            "encoder.int8.onnx",
+            "encoder.int8.onnx.data",
+            "decoder.int8.onnx",
+            "tokens.txt",
+        ),
+        model_type="cohere_transcribe",
+        language_codes=(
+            "en",
+            "fr",
+            "de",
+            "it",
+            "es",
+            "pt",
+            "el",
+            "nl",
+            "pl",
+            "zh",
+            "ja",
+            "ko",
+            "vi",
+            "ar",
+        ),
+        family="Cohere Transcribe",
+        description=(
+            "Cohere's multilingual transcription model converted to INT8 ONNX. The most accurate "
+            "multilingual option in this catalog, at the cost of the largest download."
+        ),
+        license_name="Apache 2.0",
+    ),
+    _sherpa_onnx(
+        "dolphin-small-ctc-int8",
+        "Dolphin Small CTC INT8",
+        250 * MB,
+        "40 Eastern languages",
+        "Accurate · South, East and Southeast Asian",
+        2,
+        huggingface_repo="csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02",
+        required_files=("model.int8.onnx", "tokens.txt"),
+        model_type="dolphin_ctc",
+        language_codes=_DOLPHIN_LANGUAGE_CODES,
+        family="Dolphin",
+        description=(
+            "DataoceanAI and Tsinghua's model for Eastern languages, converted to INT8 ONNX. The "
+            "only entry in this catalog that covers Hindi, Bengali, Tamil, Urdu and the other "
+            "South Asian languages. It detects the language itself and cannot be pinned to one, "
+            "so closely related languages — Hindi and Urdu, say — are sometimes confused on short "
+            "recordings. Choose a Whisper model if you need a guaranteed language."
+        ),
+        license_name="Apache 2.0",
+        detects_language_automatically=True,
+    ),
+    _sherpa_onnx(
+        "dolphin-base-ctc-int8",
+        "Dolphin Base CTC INT8",
+        104 * MB,
+        "40 Eastern languages",
+        "Fast · South, East and Southeast Asian",
+        1,
+        huggingface_repo="csukuangfj/sherpa-onnx-dolphin-base-ctc-multi-lang-int8-2025-04-02",
+        required_files=("model.int8.onnx", "tokens.txt"),
+        model_type="dolphin_ctc",
+        language_codes=_DOLPHIN_LANGUAGE_CODES,
+        family="Dolphin",
+        description=(
+            "The compact Dolphin build, with the same 40-language coverage as the small variant "
+            "at roughly half the accuracy cost of its size. It detects the language itself and "
+            "cannot be pinned to one, and confuses related languages more often than the small "
+            "variant does."
+        ),
+        license_name="Apache 2.0",
+        detects_language_automatically=True,
+    ),
+    _sherpa_onnx(
+        "omnilingual-asr-300m-ctc-int8",
+        "Omnilingual ASR 300M CTC INT8",
+        365 * MB,
+        "1600+ languages",
+        "Widest language coverage",
+        2,
+        huggingface_repo=(
+            "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12"
+        ),
+        required_files=("model.int8.onnx", "tokens.txt"),
+        model_type="omnilingual_ctc",
+        # Deliberately empty: an allowlist is meaningless at 1600+ languages, and an
+        # incomplete one would reject languages the model actually handles.
+        language_codes=(),
+        family="Omnilingual ASR",
+        description=(
+            "Meta's Omnilingual ASR converted to INT8 ONNX. Reaches far beyond every other model "
+            "here, though per-language accuracy varies widely across the long tail. It detects "
+            "the language itself and cannot be pinned to one."
+        ),
+        license_name="See model source",
+        detects_language_automatically=True,
+    ),
+    _sherpa_onnx(
+        "qwen3-asr-0.6b-int8",
+        "Qwen3-ASR 0.6B INT8",
+        987 * MB,
+        "11 languages",
+        "Accurate multilingual · punctuation",
+        6,
+        huggingface_repo="csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
+        # This family reads a Hugging Face tokenizer directory rather than a `tokens.txt`,
+        # so the marker check and the recognizer both look under `tokenizer/`.
+        required_files=(
+            "conv_frontend.onnx",
+            "encoder.int8.onnx",
+            "decoder.int8.onnx",
+            "tokenizer/vocab.json",
+            "tokenizer/merges.txt",
+            "tokenizer/tokenizer_config.json",
+        ),
+        model_type="qwen3_asr",
+        language_codes=("en", "zh", "ja", "ko", "es", "fr", "de", "ru", "ar", "it", "pt"),
+        family="Qwen3-ASR",
+        description=(
+            "Alibaba's speech-aware Qwen3 converted to INT8 ONNX. An LLM decoder rather than a "
+            "CTC or transducer head, so it punctuates well but decodes more slowly. It detects "
+            "the language itself and cannot be pinned to one."
+        ),
+        license_name="Apache 2.0",
+        detects_language_automatically=True,
+    ),
     _mlx_audio(
         "whisper-large-v3-turbo-4bit",
         "MLX Whisper Large v3 Turbo 4-bit",
@@ -492,6 +790,71 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
             "ru",
             "uk",
         ),
+    ),
+    _mlx_audio(
+        "parakeet-tdt-0.6b-v2",
+        "MLX Parakeet TDT 0.6B v2",
+        2472 * MB,
+        "English only",
+        "Most accurate English · punctuation",
+        8,
+        repository="mlx-community/parakeet-tdt-0.6b-v2",
+        family="Parakeet TDT / MLX",
+        description=(
+            "The English-only Parakeet on Apple silicon. More accurate on English than the v3 "
+            "entry above, which spends capacity on 24 other languages."
+        ),
+        license_name="CC BY 4.0",
+        language_codes=("en",),
+    ),
+    _mlx_audio(
+        "qwen3-asr-0.6b-4bit",
+        "MLX Qwen3-ASR 0.6B 4-bit",
+        713 * MB,
+        "11 languages",
+        "Accurate multilingual · punctuation",
+        8,
+        repository="mlx-community/Qwen3-ASR-0.6B-4bit",
+        family="Qwen3-ASR / MLX",
+        description=(
+            "Quantized Qwen3-ASR running natively on Apple silicon through MLX. An LLM decoder, "
+            "so it punctuates well but decodes more slowly than Parakeet."
+        ),
+        license_name="Apache 2.0",
+        language_codes=("en", "zh", "ja", "ko", "es", "fr", "de", "ru", "ar", "it", "pt"),
+    ),
+    _mlx_audio(
+        "qwen3-asr-1.7b-4bit",
+        "MLX Qwen3-ASR 1.7B 4-bit",
+        1608 * MB,
+        "11 languages",
+        "Most accurate multilingual · punctuation",
+        12,
+        repository="mlx-community/Qwen3-ASR-1.7B-4bit",
+        family="Qwen3-ASR / MLX",
+        description=(
+            "The larger Qwen3-ASR for Macs with memory to spare; the same 11 languages as the "
+            "0.6B entry, with better accuracy on accented and noisy speech."
+        ),
+        license_name="Apache 2.0",
+        language_codes=("en", "zh", "ja", "ko", "es", "fr", "de", "ru", "ar", "it", "pt"),
+    ),
+    _mlx_audio(
+        "granite-speech-4.1-2b-nar",
+        "MLX Granite Speech 4.1 2B",
+        2377 * MB,
+        "English only",
+        "Most accurate English",
+        12,
+        repository="mlx-community/granite-speech-4.1-2b-nar-mlx-5bit",
+        family="Granite Speech / MLX",
+        description=(
+            "IBM's Granite Speech, quantized for Apple silicon. Its non-autoregressive decoder "
+            "keeps it fast for a model of this size, and it sits at the top of the open English "
+            "accuracy rankings."
+        ),
+        license_name="Apache 2.0",
+        language_codes=("en",),
     ),
     # Keep moonshine:en as the default English ID so existing installations and
     # runtime configuration continue to resolve after adding explicit variants.
@@ -669,9 +1032,11 @@ def recommended_ids(system: SystemInfo) -> set[str]:
                 f"{ENGINE_WHISPERKIT}:openai_whisper-large-v3-v20240930_626MB",
                 f"{ENGINE_MLX_AUDIO}:whisper-large-v3-turbo-4bit",
                 f"{ENGINE_MLX_AUDIO}:parakeet-tdt-0.6b-v3",
+                f"{ENGINE_MLX_AUDIO}:parakeet-tdt-0.6b-v2",
             }
         return {
             f"{ENGINE_SHERPA_ONNX}:parakeet-tdt-0.6b-v3-int8",
+            f"{ENGINE_SHERPA_ONNX}:parakeet-tdt-0.6b-v2-int8",
             f"{ENGINE_FASTER_WHISPER}:small",
             f"{ENGINE_FASTER_WHISPER}:distil-medium.en",
         }

@@ -6,7 +6,7 @@ from types import ModuleType
 
 import pytest
 
-from app.errors import TranscriptionProcessError
+from app.errors import LanguageUnsupportedError
 from app.models.base import TranscriptionOptions
 from app.models.moonshine import MoonshineEngine
 
@@ -53,7 +53,7 @@ def test_non_latin_model_uses_expanded_decoder_budget(
 async def test_language_must_match_selected_moonshine_model(tmp_path: Path) -> None:
     engine = MoonshineEngine(model_root(tmp_path, 1), "zh")
 
-    with pytest.raises(TranscriptionProcessError, match="supports zh"):
+    with pytest.raises(LanguageUnsupportedError, match="supports zh"):
         await engine.transcribe(
             tmp_path / "unused.wav",
             TranscriptionOptions(language="es", style="casual"),

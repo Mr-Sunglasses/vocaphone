@@ -36,6 +36,40 @@ _CJK = Punctuation("。", "、", "！", "？", "。！？.!?", "ja", "")
 _ARABIC = Punctuation(".", "،", "!", "؟", ".!?؟", "ar", " ")
 _URDU = Punctuation("۔", "،", "!", "؟", "۔.!?؟", "ur", " ")
 
+# Indic scripts end a sentence with the danda "।" (U+0964), not a full stop, and
+# use the Latin comma, question mark and exclamation mark. Both the danda and "."
+# are accepted as terminators, because a model trained on mixed corpora emits
+# either — recognising only one of them appended a second terminator to text that
+# already had one, and hid every sentence boundary from the segmenter.
+_DANDA = Punctuation("।", ",", "!", "?", "।.!?", "hi", " ")
+# Dravidian scripts and modern Gujarati write the full stop instead, but still
+# have to recognise a danda the model may have produced.
+_INDIC_LATIN = Punctuation(".", ",", "!", "?", "।.!?", "en", " ")
+
+# Thai and Lao mark a sentence end with a space and nothing else. The empty
+# terminator means "append nothing"; `_casual` guards against it explicitly,
+# because dropping a zero-length terminator would truncate the whole transcript.
+_UNTERMINATED = Punctuation("", " ", "!", "?", "!?", "th", " ")
+# Southeast and Central Asian scripts with their own sentence marks.
+_BURMESE = Punctuation("။", "၊", "!", "?", "။.!?", "my", " ")
+_KHMER = Punctuation("។", ",", "!", "?", "។.!?", "km", " ")
+_TIBETAN = Punctuation("།", "།", "!", "?", "།.!?", "bo", " ")
+
+
+def _replace_segmentation_language(base: Punctuation, code: str) -> Punctuation:
+    if code == base.segmentation_language:
+        return base
+    return Punctuation(
+        base.terminator,
+        base.separator,
+        base.exclamation,
+        base.question,
+        base.terminators,
+        code,
+        base.join,
+    )
+
+
 _PUNCTUATION_BY_LANGUAGE = {
     "ja": _CJK,
     "zh": _CJK,
@@ -44,6 +78,36 @@ _PUNCTUATION_BY_LANGUAGE = {
     "fa": _ARABIC,
     "ps": _ARABIC,
     "ur": _URDU,
+    # pysbd covers Hindi and Marathi; the rest fall back to splitting on a
+    # terminator run, which is all a danda-delimited sentence needs anyway.
+    "hi": _DANDA,
+    "mr": _replace_segmentation_language(_DANDA, "mr"),
+    "ne": _replace_segmentation_language(_DANDA, "ne"),
+    "sa": _replace_segmentation_language(_DANDA, "sa"),
+    "bn": _replace_segmentation_language(_DANDA, "bn"),
+    "as": _replace_segmentation_language(_DANDA, "as"),
+    "pa": _replace_segmentation_language(_DANDA, "pa"),
+    "or": _replace_segmentation_language(_DANDA, "or"),
+    "kok": _replace_segmentation_language(_DANDA, "kok"),
+    "mai": _replace_segmentation_language(_DANDA, "mai"),
+    "brx": _replace_segmentation_language(_DANDA, "brx"),
+    "doi": _replace_segmentation_language(_DANDA, "doi"),
+    "ta": _replace_segmentation_language(_INDIC_LATIN, "ta"),
+    "te": _replace_segmentation_language(_INDIC_LATIN, "te"),
+    "kn": _replace_segmentation_language(_INDIC_LATIN, "kn"),
+    "ml": _replace_segmentation_language(_INDIC_LATIN, "ml"),
+    "gu": _replace_segmentation_language(_INDIC_LATIN, "gu"),
+    # Modern Sinhala writes the full stop; the traditional kunddaliya is not used.
+    "si": _replace_segmentation_language(_INDIC_LATIN, "si"),
+    # Perso-Arabic scripts follow Urdu rather than Arabic: they end on "۔".
+    "sd": _replace_segmentation_language(_URDU, "sd"),
+    "ks": _replace_segmentation_language(_URDU, "ks"),
+    "ug": _replace_segmentation_language(_ARABIC, "ug"),
+    "th": _UNTERMINATED,
+    "lo": _replace_segmentation_language(_UNTERMINATED, "lo"),
+    "my": _BURMESE,
+    "km": _KHMER,
+    "bo": _TIBETAN,
 }
 
 # Used when the caller says "auto", which is the default, so the script has to
@@ -65,21 +129,12 @@ def _resolve_punctuation(language: str, text: str) -> Punctuation:
         return _ARABIC
     if "۔" in text:
         return _URDU
+    # Auto matters more than usual here: several models detect the language
+    # themselves, so a Hindi transcript often arrives with the language still
+    # set to Automatic.
+    if "।" in text:
+        return _DANDA
     return _LATIN
-
-
-def _replace_segmentation_language(base: Punctuation, code: str) -> Punctuation:
-    if code == base.segmentation_language:
-        return base
-    return Punctuation(
-        base.terminator,
-        base.separator,
-        base.exclamation,
-        base.question,
-        base.terminators,
-        code,
-        base.join,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -316,7 +371,14 @@ def _casual(text: str, punctuation: Punctuation) -> str:
     way a dictated message is usually typed. A question mark or an exclamation
     carries meaning and stays."""
     result = _capitalize_sentence_starts(text, punctuation)
-    if result.endswith(punctuation.terminator) and not result.endswith(".."):
+    # The empty-terminator guard is load-bearing, not defensive: Thai and Lao end
+    # sentences with nothing at all, and `"text".endswith("")` is True while
+    # `result[:-0]` is the empty string, so an unguarded drop erases the transcript.
+    if (
+        punctuation.terminator
+        and result.endswith(punctuation.terminator)
+        and not result.endswith("..")
+    ):
         return result[: -len(punctuation.terminator)]
     return result
 

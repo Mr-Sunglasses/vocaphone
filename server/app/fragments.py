@@ -368,6 +368,31 @@ def models_list_fragment(entries: list[AdminModelEntry], installed_only: bool = 
     return '<p class="empty-state">No models are available.</p>'
 
 
+def _language_disclosure(entry: AdminModelEntry) -> str:
+    """Name the languages behind a summary like "25 European languages".
+
+    A `<details>` rather than an always-open list: the summary line is what people
+    scan, and forty language names on every card would bury everything else. It
+    needs no JavaScript, stays keyboard-accessible, and is searchable by the
+    browser's own find-in-page once opened.
+    """
+    if not entry.language_names:
+        return ""
+    names = ", ".join(escape(name) for name in entry.language_names)
+    note = (
+        " This model chooses the language itself, so these are the languages it "
+        "transcribes well, not a list you can pick from."
+        if entry.detects_language_automatically
+        else ""
+    )
+    return f"""
+        <details class="model-languages">
+          <summary>{len(entry.language_names)} languages</summary>
+          <p class="model-language-list">{names}.{escape(note)}</p>
+        </details>
+    """
+
+
 def _model_card(entry: AdminModelEntry) -> str:
     encoded_id = quote(entry.id, safe="")
     badges = ""
@@ -379,6 +404,11 @@ def _model_card(entry: AdminModelEntry) -> str:
         badges += '<span class="badge streaming">live</span>'
     if not entry.commercial_use:
         badges += '<span class="badge personal">personal use</span>'
+    if entry.detects_language_automatically:
+        badges += (
+            '<span class="badge auto-language" title="This model decides the language itself.'
+            ' The language chosen in the app does not constrain it.">auto language</span>'
+        )
 
     if entry.state == "downloading":
         percent = round((entry.progress or 0) * 100)
@@ -440,6 +470,7 @@ def _model_card(entry: AdminModelEntry) -> str:
           <span>{escape(entry.languages)}</span>
           <span>{escape(entry.quality)}</span>
         </div>
+        {_language_disclosure(entry)}
         <div class="model-card-footer">
           <span class="model-source">{escape(entry.source)} · {escape(entry.license_name)}</span>
           <div class="actions">{action}</div>
@@ -816,16 +847,36 @@ def test_fragment(maximum_duration_seconds: int) -> str:
         <div class="row" id="recorder-controls"
              data-maximum-seconds="{maximum_duration_seconds}">
           <select id="test-language">
+            <!-- Same languages, in the same order, as TranscriptionLanguage on iOS and
+                 Android, so anything a client can ask for can also be tested here. -->
             <option value="auto">Detect language</option>
-            <option value="en">English</option>
-            <option value="de">German</option>
-            <option value="es">Spanish</option>
-            <option value="fr">French</option>
-            <option value="it">Italian</option>
-            <option value="pt">Portuguese</option>
+            <option value="ar">Arabic</option>
+            <option value="as">Assamese</option>
+            <option value="bn">Bengali</option>
             <option value="nl">Dutch</option>
+            <option value="en">English</option>
+            <option value="fr">French</option>
+            <option value="de">German</option>
+            <option value="gu">Gujarati</option>
+            <option value="hi">Hindi</option>
+            <option value="it">Italian</option>
             <option value="ja">Japanese</option>
-            <option value="zh">Chinese</option>
+            <option value="kn">Kannada</option>
+            <option value="ko">Korean</option>
+            <option value="ml">Malayalam</option>
+            <option value="zh">Mandarin Chinese</option>
+            <option value="mr">Marathi</option>
+            <option value="ne">Nepali</option>
+            <option value="pl">Polish</option>
+            <option value="pt">Portuguese</option>
+            <option value="pa">Punjabi</option>
+            <option value="ru">Russian</option>
+            <option value="es">Spanish</option>
+            <option value="ta">Tamil</option>
+            <option value="te">Telugu</option>
+            <option value="uk">Ukrainian</option>
+            <option value="ur">Urdu</option>
+            <option value="vi">Vietnamese</option>
           </select>
           <select id="test-runs" aria-label="Benchmark repetitions">
             <option value="1">1 run</option>

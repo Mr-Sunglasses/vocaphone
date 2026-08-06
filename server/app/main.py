@@ -34,7 +34,7 @@ from app.audio import (
     atomic_upload_path,
     complete_atomic_upload,
 )
-from app.catalog import recommended_ids
+from app.catalog import language_names, recommended_ids
 from app.config import Settings
 from app.diagnostics import build_diagnostics_bundle
 from app.engines import (
@@ -750,6 +750,8 @@ def create_app(
                     supports_streaming=model.supports_streaming,
                     license_name=model.license_name,
                     commercial_use=model.commercial_use,
+                    detects_language_automatically=model.detects_language_automatically,
+                    language_names=language_names(model.language_codes),
                     state=state,
                     active=bool(installed_model and installed_model.path == active_path),
                     recommended=model.id in recommended,

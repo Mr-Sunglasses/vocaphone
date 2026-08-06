@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.catalog import CatalogModel
+from app.errors import LanguageUnsupportedError
 from app.models.base import EngineTranscription, TranscriptionOptions
 from app.models.mlx_audio import MLXAudioEngine
 
@@ -67,3 +68,30 @@ async def test_mlx_audio_keeps_one_model_loaded(
     assert first.text == "persistent mlx result"
     assert second.model_load_ms == 0
     assert constructions == [root]
+
+
+async def test_mlx_rejects_a_language_the_model_cannot_serve(tmp_path: Path) -> None:
+    """English-only MLX entries (Parakeet v2, Granite Speech) must refuse other
+    languages with the specific error the API turns into `language_unsupported`."""
+    root = tmp_path / "mlx-model"
+    root.mkdir()
+    (root / "model.safetensors").write_bytes(b"model")
+    catalog_model = CatalogModel(
+        id="mlx-audio:english-only",
+        engine="mlx-audio",
+        key="english-only",
+        label="Test",
+        size_bytes=1,
+        languages="English only",
+        quality="Fast",
+        minimum_ram_gb=1,
+        language_codes=("en",),
+    )
+
+    engine = MLXAudioEngine(root, catalog_model)
+
+    with pytest.raises(LanguageUnsupportedError, match="does not support hi"):
+        await engine.transcribe(
+            tmp_path / "unused.wav",
+            TranscriptionOptions(language="hi", style="raw"),
+        )

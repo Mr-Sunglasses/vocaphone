@@ -581,6 +581,21 @@ final class RecordingCoordinator {
             if Task.isCancelled || error is CancellationError {
                 return
             }
+            let code = redactedErrorCode(error)
+            // The gateway's model cannot transcribe the chosen language. Retrying
+            // replays the same pairing, so this fails permanently and says what to
+            // change instead of promising a retry that cannot succeed.
+            if code == "language_unsupported" {
+                await fail(
+                    &record,
+                    state: .transcriptionFailedPermanent,
+                    code: code,
+                    message: "Your gateway's model does not support this language. "
+                        + "Choose Automatic or another language in Settings.",
+                    recoverable: false
+                )
+                return
+            }
             let state: SessionState
             if error is URLError {
                 state = .serverUnavailable
@@ -592,7 +607,7 @@ final class RecordingCoordinator {
             await fail(
                 &record,
                 state: state,
-                code: redactedErrorCode(error),
+                code: code,
                 message: "The recording is preserved. Return to the keyboard to retry."
             )
         }
@@ -618,11 +633,12 @@ final class RecordingCoordinator {
         _ record: inout SessionRecord,
         state: SessionState,
         code: String,
-        message failureMessage: String
+        message failureMessage: String,
+        recoverable: Bool = true
     ) async {
         do {
             try record.transition(to: state)
-            record.error = SessionFailure(code: code, message: failureMessage, recoverable: true)
+            record.error = SessionFailure(code: code, message: failureMessage, recoverable: recoverable)
             try store.save(record)
             activeRecord = record
             message = failureMessage

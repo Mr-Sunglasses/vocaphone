@@ -15,6 +15,7 @@ from app.errors import (
     APIProblem,
     EngineUnavailableError,
     InvalidAudioError,
+    LanguageUnsupportedError,
     SilentAudioError,
     TranscriptionProcessError,
 )
@@ -112,6 +113,13 @@ class TranscriptionService:
             self.metrics.failed(_elapsed_ms(started))
             self.repository.update(session_id, state="failed", error_code="engine_unavailable")
             raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
+        except LanguageUnsupportedError as error:
+            # Before the general handler below: this is a `TranscriptionProcessError`,
+            # but retrying replays the same language against the same model, so the
+            # audio is discarded rather than kept for a Retry that cannot succeed.
+            self.metrics.failed(_elapsed_ms(started))
+            self.repository.update(session_id, state="failed", error_code="language_unsupported")
+            raise APIProblem(422, "language_unsupported", str(error)) from error
         except TranscriptionProcessError as error:
             self.metrics.failed(_elapsed_ms(started))
             self.repository.update(session_id, state="failed", error_code="transcription_failed")
@@ -163,6 +171,9 @@ class TranscriptionService:
         except EngineUnavailableError as error:
             self.metrics.failed(_elapsed_ms(started))
             raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
+        except LanguageUnsupportedError as error:
+            self.metrics.failed(_elapsed_ms(started))
+            raise APIProblem(422, "language_unsupported", str(error)) from error
         except TranscriptionProcessError as error:
             self.metrics.failed(_elapsed_ms(started))
             raise APIProblem(502, "transcription_failed", str(error), recoverable=True) from error

@@ -1,18 +1,66 @@
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
 from conftest import TOKEN, FakeEngine, FakeNormalizer
 
 from app.config import Settings
+from app.errors import LanguageUnsupportedError
 from app.main import create_app
-from app.models.base import EngineHealth
+from app.models.base import EngineHealth, TranscriptionOptions
 
 
 class UnreadyEngine:
     async def health(self) -> EngineHealth:
         return EngineHealth(ready=False, name="missing-model")
+
+
+class WrongLanguageEngine:
+    """Stands in for a loaded model whose language list excludes the request."""
+
+    async def health(self) -> EngineHealth:
+        return EngineHealth(ready=True, name="english-only-model")
+
+    async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
+        raise LanguageUnsupportedError(
+            "The selected model does not support hi. Choose Auto, en, or another model."
+        )
+
+
+async def test_unsupported_language_is_reported_as_permanent(
+    settings: Settings, authorization: dict[str, str], audio_bytes: bytes
+) -> None:
+    """A language the loaded model cannot serve must not look like a transient fault.
+
+    The clients decide whether to keep audio for Retry from this code, and no
+    number of retries will make an English-only model transcribe Hindi.
+    """
+    app = create_app(settings, engine=WrongLanguageEngine(), normalizer=FakeNormalizer())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+        session_id = uuid4()
+        await client.post(
+            "/v1/sessions",
+            headers=authorization,
+            json={"client_session_id": str(session_id), "language": "hi", "style": "raw"},
+        )
+        await client.put(
+            f"/v1/sessions/{session_id}/audio",
+            headers={**authorization, "Content-Type": "audio/wav"},
+            content=audio_bytes,
+        )
+        finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
+
+        assert finished.status_code == 422
+        error = finished.json()["error"]
+        assert error["code"] == "language_unsupported"
+        assert error["recoverable"] is False
+        assert "does not support hi" in error["message"]
+
+        session = await client.get(f"/v1/sessions/{session_id}", headers=authorization)
+        assert session.json()["error_code"] == "language_unsupported"
 
 
 async def test_health_is_public_and_separates_engine_readiness(

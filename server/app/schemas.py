@@ -156,6 +156,10 @@ class AdminModelEntry(BaseModel):
     supports_streaming: bool = False
     license_name: str = "See model source"
     commercial_use: bool = True
+    detects_language_automatically: bool = False
+    # Named languages behind the `languages` summary. Empty when a model's coverage
+    # is too broad to enumerate (Whisper's ~100, Omnilingual's 1600+).
+    language_names: list[str] = []
     state: Literal["installed", "downloading", "not_installed"]
     active: bool
     recommended: bool

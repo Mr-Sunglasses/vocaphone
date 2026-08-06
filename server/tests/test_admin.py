@@ -494,6 +494,77 @@ async def test_recorder_ui_shows_limit_and_copy_action(
     assert 'id="copy-transcript"' in response.text
 
 
+def test_model_cards_name_their_languages() -> None:
+    """ "25 European languages" does not tell anyone whether their language is in
+    there. The card names them, collapsed so the summary stays scannable.
+
+    Driven off the real catalog rather than the stub the admin fixtures use, since
+    the point is that shipped entries carry usable language metadata.
+    """
+    from app.catalog import DEFAULT_CATALOG, language_names
+    from app.fragments import _model_card
+    from app.schemas import AdminModelEntry
+
+    def card(model_id: str) -> str:
+        model = next(m for m in DEFAULT_CATALOG if m.id == model_id)
+        return _model_card(
+            AdminModelEntry(
+                id=model.id,
+                engine=model.engine,
+                label=model.label,
+                size_bytes=model.size_bytes,
+                languages=model.languages,
+                quality=model.quality,
+                family=model.family,
+                description=model.description,
+                source=model.source,
+                state="not_installed",
+                active=False,
+                recommended=False,
+                detects_language_automatically=model.detects_language_automatically,
+                language_names=language_names(model.language_codes),
+            )
+        )
+
+    parakeet = card("sherpa-onnx:parakeet-tdt-0.6b-v3-int8")
+    assert "<summary>25 languages</summary>" in parakeet
+    assert "Bulgarian, Croatian, Czech" in parakeet
+    # A model that can be pinned carries neither the badge nor the caveat.
+    assert "badge auto-language" not in parakeet
+    assert "chooses the language itself" not in parakeet
+
+    dolphin = card("sherpa-onnx:dolphin-small-ctc-int8")
+    assert "<summary>40 languages</summary>" in dolphin
+    assert "Hindi" in dolphin and "Bengali" in dolphin and "Tamil" in dolphin
+    assert 'class="badge auto-language"' in dolphin
+    assert "chooses the language itself" in dolphin
+
+    # Whisper's coverage is too broad to enumerate, so it keeps the summary only.
+    whisper = card("whisper.cpp:ggml-large-v3-turbo.bin")
+    assert "model-languages" not in whisper
+
+
+async def test_recorder_offers_every_language_a_client_can_request(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    """The Test tab must not be narrower than the mobile pickers.
+
+    This list is duplicated in `TranscriptionLanguage` on iOS and Android, which
+    pin the same order in their own suites. An operator who downloads a model for
+    a language has to be able to test that language here.
+    """
+    import re
+
+    response = await admin_client.get("/ui/partials/test", headers=auth)
+    select = response.text.split('<select id="test-language">')[1].split("</select>")[0]
+
+    assert re.findall(r'<option value="([a-z]+)"', select) == [
+        "auto", "ar", "as", "bn", "nl", "en", "fr", "de", "gu", "hi",
+        "it", "ja", "kn", "ko", "ml", "zh", "mr", "ne", "pl", "pt",
+        "pa", "ru", "es", "ta", "te", "uk", "ur", "vi",
+    ]  # fmt: skip
+
+
 async def test_test_transcription_endpoint(
     client: httpx.AsyncClient,
     authorization: dict[str, str],

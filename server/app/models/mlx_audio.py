@@ -9,7 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from app.catalog import CatalogModel
-from app.errors import EngineUnavailableError, TranscriptionProcessError
+from app.errors import (
+    EngineUnavailableError,
+    LanguageUnsupportedError,
+    TranscriptionProcessError,
+)
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
 
@@ -93,7 +97,7 @@ class MLXAudioEngine:
         normalized = _language_code(language)
         if language != "auto" and supported and normalized not in supported:
             choices = ", ".join(supported)
-            raise TranscriptionProcessError(
+            raise LanguageUnsupportedError(
                 f"The selected MLX model does not support {language}. Choose Auto, {choices}, "
                 "or another model."
             )

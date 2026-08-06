@@ -31,3 +31,12 @@ class EngineUnavailableError(Exception):
 
 class TranscriptionProcessError(Exception):
     pass
+
+
+class LanguageUnsupportedError(TranscriptionProcessError):
+    """The request asked for a language the loaded model cannot transcribe.
+
+    A subclass so any handler that only knows about `TranscriptionProcessError`
+    still catches it, but it gets its own error code because retrying is futile:
+    the fix is to choose a different language or load a different model.
+    """

@@ -56,6 +56,16 @@ class GatewayException(
         fun fromStatus(status: Int, code: String?): GatewayException {
             val resolved = code ?: "http_$status"
             return when {
+                // Keyed on the code rather than the status: the gateway loaded a model
+                // that cannot transcribe the chosen language, so a Retry would replay
+                // the same pairing and fail identically. Point at the fix instead.
+                resolved == "language_unsupported" -> GatewayException(
+                    resolved,
+                    "Your gateway's model does not support this language. " +
+                        "Choose Automatic or another language, or load a matching model.",
+                    recoverable = false,
+                )
+
                 status == 401 || status == 403 -> GatewayException(
                     resolved,
                     "Your gateway rejected the token. Check it in Settings.",
