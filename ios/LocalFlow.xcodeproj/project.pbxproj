@@ -27,6 +27,7 @@
 		2DD59385E1E2FE40DA6D12B5 /* KeyGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AD7CA27F30AE6D9A5375898 /* KeyGridView.swift */; };
 		2EFD17B37B8F0B12A4D02D71 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0971907F8807AF4111357EAA /* LiveActivityManager.swift */; };
 		2FFACFDCAF2A2C308075C416 /* DictationBarLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDF392D84438885719810A3E /* DictationBarLayoutTests.swift */; };
+		FB2182797FA440E68654EE7D /* LanguageMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFC9A10536744CFDA867D873 /* LanguageMenuTests.swift */; };
 		36D030A4745EC041A8576C57 /* KeyboardPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A360AC1ABD0B65D97947A185 /* KeyboardPreferences.swift */; };
 		D410B969564C44C6BFB8BBFD /* ModelLanguageSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F48DF87CF5C4B75B8B2BB7D /* ModelLanguageSupport.swift */; };
 		3D9F43741DE7FD79F1D7BBD4 /* PairingPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3D16BA539DADFFDC84CA902 /* PairingPayload.swift */; };
@@ -183,6 +184,7 @@
 		DBE771351D7769E816A9351D /* KeyLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyLayout.swift; sourceTree = "<group>"; };
 		E3DC0671915A7EE93CC93158 /* DictationBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarView.swift; sourceTree = "<group>"; };
 		EDF392D84438885719810A3E /* DictationBarLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarLayoutTests.swift; sourceTree = "<group>"; };
+		BFC9A10536744CFDA867D873 /* LanguageMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageMenuTests.swift; sourceTree = "<group>"; };
 		F37BD648DCFB7D3452241CE1 /* GatewayEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEndpoint.swift; sourceTree = "<group>"; };
 		FB2D93BC8D9A8F925C00A507 /* KeyGridLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyGridLayoutTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -258,6 +260,7 @@
 			children = (
 				32903D1AECF2E8F3A4EB8DB6 /* AudioCaptureTests.swift */,
 				EDF392D84438885719810A3E /* DictationBarLayoutTests.swift */,
+				BFC9A10536744CFDA867D873 /* LanguageMenuTests.swift */,
 				D8055049DFA0E4417BA11820 /* DictationPresentationTests.swift */,
 				FB2D93BC8D9A8F925C00A507 /* KeyGridLayoutTests.swift */,
 				4344F731096BD514A985FFCA /* PairingPayloadTests.swift */,
@@ -517,6 +520,7 @@
 				F778A5B91B15F1447918FC5D /* AudioCaptureTests.swift in Sources */,
 				193F876B9DBE611E631B41A8 /* DictationBarComponents.swift in Sources */,
 				2FFACFDCAF2A2C308075C416 /* DictationBarLayoutTests.swift in Sources */,
+				FB2182797FA440E68654EE7D /* LanguageMenuTests.swift in Sources */,
 				DF60F08E1FCC3495066672B8 /* DictationBarStyle.swift in Sources */,
 				071A3B76B9A9898F013BBBFA /* DictationBarView.swift in Sources */,
 				EA5040DEBFDC6E94F32E61A6 /* DictationPresentation.swift in Sources */,

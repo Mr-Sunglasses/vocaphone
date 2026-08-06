@@ -207,6 +207,7 @@ enum KeyboardPreferences {
     static let firstDictationKey = "hasCompletedFirstDictation"
     static let modelLanguagesKey = "gatewayModelLanguages"
     static let modelDetectsLanguageKey = "gatewayModelDetectsLanguage"
+    static let recentLanguagesKey = "recentTranscriptionLanguages"
 
     nonisolated(unsafe) static let defaults = UserDefaults(
         suiteName: AppConfiguration.appGroupIdentifier
@@ -244,6 +245,30 @@ enum KeyboardPreferences {
         set {
             defaults?.set(newValue.rawValue, forKey: writingStyleKey)
         }
+    }
+
+    /// Languages picked recently, most recent first. Shared through the App Group
+    /// so the keyboard's short menu and the app agree on what to surface, and
+    /// capped because the point is to keep the keyboard menu to a glance.
+    static let recentLanguageLimit = 3
+
+    static var recentTranscriptionLanguages: [TranscriptionLanguage] {
+        get {
+            (defaults?.stringArray(forKey: recentLanguagesKey) ?? [])
+                .compactMap(TranscriptionLanguage.init(rawValue:))
+        }
+        set {
+            defaults?.set(newValue.map(\.rawValue), forKey: recentLanguagesKey)
+        }
+    }
+
+    /// Records a pick. Automatic is excluded: it is always shown first anyway, so
+    /// listing it again would spend one of three scarce slots on a duplicate.
+    static func noteTranscriptionLanguageUse(_ language: TranscriptionLanguage) {
+        guard language != .automatic else { return }
+        var recents = recentTranscriptionLanguages.filter { $0 != language }
+        recents.insert(language, at: 0)
+        recentTranscriptionLanguages = Array(recents.prefix(recentLanguageLimit))
     }
 
     /// What the gateway's loaded model can be asked for, written by the app after
