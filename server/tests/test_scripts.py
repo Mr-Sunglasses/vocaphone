@@ -97,3 +97,26 @@ def test_every_client_language_can_be_judged() -> None:
     ]  # fmt: skip
     unjudgeable = [code for code in client_languages if not expected_scripts(code)]
     assert not unjudgeable, f"no expected script for: {unjudgeable}"
+
+
+@pytest.mark.parametrize(
+    ("text", "language", "script"),
+    [
+        ("Здраво свете", "sr", "Serbian Cyrillic — official in Serbia"),
+        ("Zdravo svete", "sr", "Serbian Latin — everyday use"),
+        ("Салам дүнја", "az", "Azerbaijani Cyrillic"),
+        ("Salam dünya", "az", "Azerbaijani Latin"),
+        ("Салом дунё", "uz", "Uzbek Cyrillic"),
+        ("Salom dunyo", "uz", "Uzbek Latin"),
+        ("ਸਤ ਸ੍ਰੀ ਅਕਾਲ", "pa", "Punjabi Gurmukhi — India"),
+        ("السلام علیکم", "pa", "Punjabi Shahmukhi — Pakistan"),
+        ("Сәлеметсіз бе", "kk", "Kazakh Cyrillic"),
+    ],
+)
+def test_languages_written_in_two_scripts_accept_either(
+    text: str, language: str, script: str
+) -> None:
+    """A guard that rejects transcripts must not be wrong about a language's
+    writing system. Holding Serbian to one alphabet would throw away half the
+    country's writing, and a false rejection destroys a good dictation."""
+    assert transcript_matches_language(text, language), script

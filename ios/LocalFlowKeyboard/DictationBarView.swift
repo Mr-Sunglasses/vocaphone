@@ -361,7 +361,11 @@ final class DictationBarView: UIView {
     }
 
     private func updatePreferenceControls() {
-        let language = KeyboardPreferences.transcriptionLanguage
+        // The effective language, not the stored one. A stored choice the loaded
+        // model cannot honour is dictated as Automatic, and a chip reading "HI"
+        // while Automatic is what happens is the UI lying about the result. The
+        // stored preference is untouched and returns when a model supports it.
+        let language = KeyboardPreferences.effectiveTranscriptionLanguage
         let menuKey = LanguageMenuKey.current(selected: language)
         // Keyed on everything the menu draws from, not just the selection. Keying
         // on the language alone left the enabled states stale after the gateway

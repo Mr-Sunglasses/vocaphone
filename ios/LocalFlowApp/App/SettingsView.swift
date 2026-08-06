@@ -152,9 +152,12 @@ struct SettingsView: View {
             NavigationLink {
                 TranscriptionLanguageList(selection: $transcriptionLanguageRawValue)
             } label: {
-                LabeledContent("Language", value: selectedTranscriptionLanguage.displayName)
+                LabeledContent(
+                    "Language",
+                    value: KeyboardPreferences.effectiveTranscriptionLanguage.displayName
+                )
             }
-            Text(selectedTranscriptionLanguage.detail)
+            Text(KeyboardPreferences.effectiveTranscriptionLanguage.detail)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -307,7 +310,13 @@ struct TranscriptionLanguageList: View {
                 Text(language.displayName)
                     .foregroundStyle(selectable ? .primary : .secondary)
                 Spacer()
-                if language.rawValue == selection {
+                // Ticks what is in force, so the mark never sits on a row the
+                // loaded model cannot honour.
+                if language == ModelLanguageSupport.resolve(
+                    TranscriptionLanguage(rawValue: selection) ?? .automatic,
+                    modelLanguages: modelLanguages,
+                    detectsLanguageAutomatically: detectsLanguage
+                ) {
                     Image(systemName: "checkmark")
                         .foregroundStyle(.tint)
                         .accessibilityLabel("Selected")

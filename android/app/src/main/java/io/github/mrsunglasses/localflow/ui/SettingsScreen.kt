@@ -93,15 +93,15 @@ fun SettingsScreen(
         )
         SectionCard(
             "Transcription language",
-            supporting = listOfNotNull(settings.language.detail, languageRestriction)
+            supporting = listOfNotNull(settings.effectiveLanguage.detail, languageRestriction)
                 .joinToString("\n"),
         ) {
-            InfoRow(label = "Language", value = settings.language.displayName)
+            InfoRow(label = "Language", value = settings.effectiveLanguage.displayName)
             SecondaryButton("Change language", onClick = { pickingLanguage = true })
         }
         if (pickingLanguage) {
             LanguagePickerSheet(
-                selected = settings.language,
+                selected = settings.effectiveLanguage,
                 modelLanguages = settings.modelLanguages,
                 detectsLanguageAutomatically = settings.modelDetectsLanguage,
                 onSelect = onLanguage,

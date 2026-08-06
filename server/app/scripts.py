@@ -30,6 +30,12 @@ _BENGALI = frozenset({"BENGALI"})
 # Japanese mixes three scripts, and Chinese characters are named "CJK ...".
 _JAPANESE = frozenset({"HIRAGANA", "KATAKANA", "CJK"})
 _CHINESE = frozenset({"CJK"})
+# Languages written in more than one script must accept either, or the guard
+# throws away perfectly good transcripts. Serbian is the clearest case: Cyrillic
+# is official in Serbia and Latin is in everyday use, so holding it to one would
+# reject half the country's writing.
+_CYRILLIC_OR_LATIN = _CYRILLIC | _LATIN
+_ARABIC_OR_DEVANAGARI = _ARABIC | _DEVANAGARI
 
 EXPECTED_SCRIPTS: dict[str, frozenset[str]] = {
     # Indic
@@ -46,7 +52,8 @@ EXPECTED_SCRIPTS: dict[str, frozenset[str]] = {
     "kn": frozenset({"KANNADA"}),
     "ml": frozenset({"MALAYALAM"}),
     "gu": frozenset({"GUJARATI"}),
-    "pa": frozenset({"GURMUKHI"}),
+    # Gurmukhi in India, Perso-Arabic (Shahmukhi) in Pakistan.
+    "pa": frozenset({"GURMUKHI", "ARABIC"}),
     "or": frozenset({"ORIYA"}),
     "si": frozenset({"SINHALA"}),
     # Perso-Arabic
@@ -54,16 +61,16 @@ EXPECTED_SCRIPTS: dict[str, frozenset[str]] = {
     "fa": _ARABIC,
     "ps": _ARABIC,
     "ur": _ARABIC,
-    "sd": _ARABIC,
-    "ks": _ARABIC,
+    "sd": _ARABIC_OR_DEVANAGARI,
+    "ks": _ARABIC_OR_DEVANAGARI,
     "ug": _ARABIC,
     # Cyrillic
     "ru": _CYRILLIC,
     "uk": _CYRILLIC,
     "be": _CYRILLIC,
     "bg": _CYRILLIC,
-    "mn": _CYRILLIC,
-    "kk": _CYRILLIC,
+    "mn": _CYRILLIC | frozenset({"MONGOLIAN"}),
+    "kk": _CYRILLIC_OR_LATIN,
     "ky": _CYRILLIC,
     "tg": _CYRILLIC,
     "ba": _CYRILLIC,
@@ -97,9 +104,13 @@ _LATIN_LANGUAGES = frozenset(
         "fil", "sv", "da", "no", "nn", "fi", "et", "lv", "lt", "cs", "sk", "sl",
         "hr", "bs", "sq", "ro", "hu", "mt", "tr", "az", "uz", "af", "ca", "eu",
         "gl", "cy", "br", "is", "la", "lb", "ln", "mg", "mi", "oc", "sn", "so",
-        "sw", "tk", "yo", "ha", "haw", "ht", "jv", "jw", "su", "kab", "fo", "sr",
+        "sw", "yo", "ha", "haw", "ht", "jv", "jw", "su", "kab", "fo",
     }
 )  # fmt: skip
+
+# Written in both alphabets, so neither may be rejected on its own.
+for _code in ("sr", "az", "uz", "tk"):
+    EXPECTED_SCRIPTS[_code] = _CYRILLIC_OR_LATIN
 
 
 def _script_of(character: str) -> str:

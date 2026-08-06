@@ -78,4 +78,23 @@ class ModelLanguageSupportTest {
         val limited = ModelLanguageSupport.restriction(dolphin, false)
         assertTrue(limited!!.contains("${dolphin.size} languages"))
     }
+
+    /// What Settings shows must be what dictation does. The stored choice is
+    /// kept, but a row reading "Hindi" while Automatic is what actually happens
+    /// is the interface lying about the result.
+    @Test
+    fun `the displayed language is the one that will be used`() {
+        val settings = io.github.mrsunglasses.localflow.settings.LocalFlowSettings(
+            language = TranscriptionLanguage.HINDI,
+            modelLanguages = englishOnly,
+            modelDetectsLanguage = false,
+        )
+        assertEquals(TranscriptionLanguage.AUTOMATIC, settings.effectiveLanguage)
+        // The stored preference survives and returns once a model supports it.
+        assertEquals(TranscriptionLanguage.HINDI, settings.language)
+        assertEquals(
+            TranscriptionLanguage.HINDI,
+            settings.copy(modelLanguages = setOf("en", "hi")).effectiveLanguage,
+        )
+    }
 }

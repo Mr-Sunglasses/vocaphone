@@ -110,3 +110,20 @@ struct ModelLanguageSupportTests {
         )
     }
 }
+
+/// What the UI shows must be what dictation does. The stored choice is kept, but
+/// a chip reading "HI" while Automatic is what actually happens is the interface
+/// lying about the result.
+struct EffectiveLanguageTests {
+    @Test func theDisplayedLanguageIsTheOneThatWillBeUsed() {
+        KeyboardPreferences.transcriptionLanguage = .hindi
+        KeyboardPreferences.modelLanguages = ["en"]
+        KeyboardPreferences.modelDetectsLanguage = false
+        #expect(KeyboardPreferences.effectiveTranscriptionLanguage == .automatic)
+
+        // The stored preference survives and returns once a model supports it.
+        #expect(KeyboardPreferences.transcriptionLanguage == .hindi)
+        KeyboardPreferences.modelLanguages = ["en", "hi"]
+        #expect(KeyboardPreferences.effectiveTranscriptionLanguage == .hindi)
+    }
+}
