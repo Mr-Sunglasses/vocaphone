@@ -36,6 +36,9 @@ localflow-cleanup = "app.cli:cleanup"
 [dependency-groups]
 dev = [
   "httpx>=0.28,<1",
+  # starlette.testclient (used for WebSocket streaming tests) prefers this
+  # over plain httpx; without it every run prints a deprecation warning.
+  "httpx2>=2,<3",
   "mypy>=1.17,<2",
   "pytest>=8.4,<9",
   "pytest-asyncio>=1.1,<2",

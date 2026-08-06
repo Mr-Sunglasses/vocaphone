@@ -380,6 +380,32 @@ async def test_mac_only_engines_are_labelled_with_their_host(
     assert "sherpa-onnx</option>" in settings_html
 
 
+async def test_ui_config_update_switches_engine_and_renders_a_fragment(
+    admin_client: httpx.AsyncClient, auth: dict[str, str], admin_settings: Settings
+) -> None:
+    response = await admin_client.put(
+        "/ui/partials/config",
+        headers=auth,
+        data={"engine": "sherpa-onnx", "compute_device": "cpu", "cpu_threads": "2"},
+    )
+    assert response.status_code == 200
+    assert "Engine preference saved." in response.text
+    assert 'id="engine-pill"' in response.text
+    assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
+
+
+async def test_ui_config_update_rejects_an_invalid_engine(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    response = await admin_client.put(
+        "/ui/partials/config",
+        headers=auth,
+        data={"engine": "cloud"},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_engine"
+
+
 async def test_custom_download_rejects_bad_url(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:

@@ -521,6 +521,8 @@ def create_app(
                                 )
                             if not transcript:
                                 raise ValueError("Moonshine returned an empty transcript.")
+                            await asyncio.to_thread(stream.close)
+                            stream = None
                             await websocket.send_json(
                                 {"type": "complete", "transcript": transcript}
                             )
