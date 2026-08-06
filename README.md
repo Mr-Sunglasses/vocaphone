@@ -93,7 +93,7 @@ limits, Android accessibility consent, and what the bubble will never touch
 - 11 selectable transcription languages plus Automatic on Android (9 on iOS,
   pending French and German), and four writing styles: Formal, Casual, Very
   Casual, and Excited
-- Automatic microphone routing or an explicit iPhone Microphone preference,
+- Automatic microphone routing or an explicit Microphone preference,
   with the input currently in use shown in the app
 - A bounded Quick Dictation window with persistent background input, a Live
   Activity/Dynamic Island timer, and standby buffers that are discarded

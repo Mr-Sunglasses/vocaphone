@@ -179,6 +179,10 @@ fun ChecklistRow(
  * The chips carry their own fill rather than relying on an outline: the default
  * chip border is invisible in a dynamic dark scheme, which made unselected
  * options read as loose words rather than something you could tap.
+ *
+ * [enabled] greys an option out rather than hiding it, so a choice that depends
+ * on hardware — a microphone that is not plugged in — reads as "not right now"
+ * instead of leaving the user hunting for a setting that appears to be missing.
  */
 @Composable
 fun <T> ChipChoiceRow(
@@ -187,6 +191,7 @@ fun <T> ChipChoiceRow(
     label: (T) -> String,
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
+    enabled: (T) -> Boolean = { true },
 ) {
     FlowRow(
         modifier = modifier.fillMaxWidth().selectableGroup(),
@@ -196,6 +201,7 @@ fun <T> ChipChoiceRow(
         options.forEach { option ->
             FilterChip(
                 selected = option == selected,
+                enabled = enabled(option),
                 onClick = { onSelect(option) },
                 label = { Text(label(option)) },
                 shape = RoundedCornerShape(12.dp),
@@ -205,6 +211,11 @@ fun <T> ChipChoiceRow(
                     labelColor = MaterialTheme.colorScheme.onSurface,
                     selectedContainerColor = MaterialTheme.colorScheme.primary,
                     selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                    // A disabled chip defaults to no fill at all, which drops it
+                    // back to the loose-words problem the container solves. Keep
+                    // the shape and dim only the label.
+                    disabledContainerColor = MaterialTheme.colorScheme.surface,
+                    disabledLabelColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                 ),
             )
         }

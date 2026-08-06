@@ -60,6 +60,9 @@ fun diagnosticsReport(
     appendLine("Engine: ${settings.lastEngine.ifEmpty { "unknown" }}" +
         if (settings.lastEngineReady) " (ready)" else " (not ready)")
     appendLine("Streaming: " + if (settings.lastStreamingSupported) "supported" else "batch upload")
+    // Names the category asked for, not the device: a product name would put the
+    // user's hardware into a report meant to be safe to paste publicly.
+    appendLine("Microphone: ${settings.microphone.storedValue}")
     append("Setup: ")
     append(
         if (setup.isReadyToDictate) {

@@ -1,20 +1,28 @@
 package io.github.mrsunglasses.localflow.audio
 
 import android.Manifest
-import android.media.AudioDeviceInfo
+import android.content.Context
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Process
 import androidx.annotation.RequiresPermission
+import io.github.mrsunglasses.localflow.core.MicrophonePreference
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Microphone capture on its own high-priority thread. The read loop only copies
  * samples and hands them to [onFrame]; every slow operation — file writes,
  * network sends — happens on the caller's side of that callback.
+ *
+ * [preference] is a request, not a guarantee: Android may still route elsewhere,
+ * and a preference whose hardware is not attached falls back to automatic rather
+ * than refusing to record.
  */
 class AudioCapture(
+    private val context: Context,
+    private val preference: MicrophonePreference = MicrophonePreference.DEFAULT,
     private val onFrame: (samples: ShortArray, count: Int) -> Unit,
     private val onError: (Throwable) -> Unit,
 ) {
@@ -28,6 +36,12 @@ class AudioCapture(
 
     @Volatile
     private var thread: Thread? = null
+
+    /** Set only when this capture took over the communication route, so only it clears it. */
+    @Volatile
+    private var heldCommunicationDevice = false
+
+    private val audioManager: AudioManager? get() = context.getSystemService(AudioManager::class.java)
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun start(): Boolean {
@@ -70,6 +84,7 @@ class AudioCapture(
 
         record = recorder
         return try {
+            applyPreference(recorder)
             recorder.startRecording()
             if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 throw IllegalStateException("Another app is using the microphone.")
@@ -95,13 +110,46 @@ class AudioCapture(
             runCatching { recorder.release() }
         }
         record = null
+        releaseCommunicationDevice()
+    }
+
+    /**
+     * Asks for the selected input. Android may honour none of this — the route is
+     * confirmed afterwards by [currentRouteLabel], never assumed from here — and a
+     * preference with nothing attached deliberately leaves the recorder on
+     * automatic instead of failing a dictation the user already started.
+     */
+    private fun applyPreference(recorder: AudioRecord) {
+        val manager = audioManager ?: return
+        // Reaching a Bluetooth microphone means putting the headset into call
+        // mode; setPreferredDevice alone does not do that.
+        val communication = InputDevices.communicationMatch(manager, preference)
+        if (communication == null) {
+            // A Bluetooth headset selected earlier keeps the communication route
+            // until something gives it back — and a process killed mid-dictation
+            // gives nothing back — so every other preference reclaims it first.
+            runCatching { manager.clearCommunicationDevice() }
+        } else {
+            heldCommunicationDevice = runCatching {
+                manager.setCommunicationDevice(communication)
+            }.getOrDefault(false)
+        }
+        InputDevices.match(manager, preference)?.let { device ->
+            runCatching { recorder.setPreferredDevice(device) }
+        }
+    }
+
+    private fun releaseCommunicationDevice() {
+        if (!heldCommunicationDevice) return
+        heldCommunicationDevice = false
+        runCatching { audioManager?.clearCommunicationDevice() }
     }
 
     /**
      * Android chooses the input route and may change it mid-recording, so this is
      * reported rather than requested. Returns null before the route is known.
      */
-    fun currentRouteLabel(): String? = record?.routedDevice?.let(::describe)
+    fun currentRouteLabel(): String? = record?.routedDevice?.let(InputDevices::describe)
 
     private fun readLoop(recorder: AudioRecord) {
         Process.setThreadPriority(Process.THREAD_PRIORITY_URGENT_AUDIO)
@@ -122,18 +170,5 @@ class AudioCapture(
                 }
             }
         }
-    }
-
-    private fun describe(device: AudioDeviceInfo): String {
-        val kind = when (device.type) {
-            AudioDeviceInfo.TYPE_BUILTIN_MIC -> "Phone microphone"
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLE_HEADSET -> "Bluetooth headset"
-            AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired headset"
-            AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_DEVICE -> "USB microphone"
-            AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> "System audio"
-            else -> "External microphone"
-        }
-        val name = device.productName?.toString()?.trim().orEmpty()
-        return if (name.isEmpty() || name.equals(kind, ignoreCase = true)) kind else "$kind — $name"
     }
 }
