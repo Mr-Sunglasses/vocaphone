@@ -23,7 +23,10 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -81,6 +84,9 @@ fun SettingsScreen(
             SecondaryButton("Gateway settings", onClick = onOpenGateway)
         }
 
+        // One row rather than 27 wrapping chips, which pushed every setting below
+        // this one off the screen. The full list, with search, lives in a sheet.
+        var pickingLanguage by remember { mutableStateOf(false) }
         val languageRestriction = ModelLanguageSupport.restriction(
             settings.modelLanguages,
             settings.modelDetectsLanguage,
@@ -90,20 +96,16 @@ fun SettingsScreen(
             supporting = listOfNotNull(settings.language.detail, languageRestriction)
                 .joinToString("\n"),
         ) {
-            ChipChoiceRow(
-                options = TranscriptionLanguage.entries,
+            InfoRow(label = "Language", value = settings.language.displayName)
+            SecondaryButton("Change language", onClick = { pickingLanguage = true })
+        }
+        if (pickingLanguage) {
+            LanguagePickerSheet(
                 selected = settings.language,
-                label = { it.displayName },
+                modelLanguages = settings.modelLanguages,
+                detectsLanguageAutomatically = settings.modelDetectsLanguage,
                 onSelect = onLanguage,
-                // Greyed rather than hidden: a language that vanishes reads as
-                // unsupported by the app, when the fix is to change the model.
-                enabled = {
-                    ModelLanguageSupport.isSelectable(
-                        it,
-                        settings.modelLanguages,
-                        settings.modelDetectsLanguage,
-                    )
-                },
+                onDismiss = { pickingLanguage = false },
             )
         }
 
