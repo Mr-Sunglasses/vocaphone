@@ -267,6 +267,63 @@ async def test_download_select_and_delete_flow(
     assert saved.whisper_model is None
 
 
+async def test_models_list_installed_only_filter(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    model_id = "whisper.cpp:ggml-tiny.bin"
+
+    before = await admin_client.get(
+        "/v1/admin/models", params={"installed_only": "true"}, headers=auth
+    )
+    assert before.status_code == 200
+    assert model_id not in {entry["id"] for entry in before.json()}
+
+    started = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
+    assert started.status_code == 200
+
+    for _ in range(200):
+        filtered = {
+            entry["id"]: entry
+            for entry in (
+                await admin_client.get(
+                    "/v1/admin/models", params={"installed_only": "true"}, headers=auth
+                )
+            ).json()
+        }
+        if model_id in filtered:
+            break
+        await asyncio.sleep(0.02)
+    assert filtered[model_id]["state"] == "installed"
+    assert all(entry["state"] == "installed" for entry in filtered.values())
+
+
+async def test_ui_select_preserves_installed_only_filter(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    model_id = "whisper.cpp:ggml-tiny.bin"
+
+    await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
+    entries: dict[str, dict[str, object]] = {}
+    for _ in range(200):
+        entries = {
+            entry["id"]: entry
+            for entry in (await admin_client.get("/v1/admin/models", headers=auth)).json()
+        }
+        if entries[model_id]["state"] == "installed":
+            break
+        await asyncio.sleep(0.02)
+    assert entries[model_id]["state"] == "installed"
+
+    selected = await admin_client.post(
+        f"/ui/partials/models/{model_id}/select",
+        headers=auth,
+        data={"installed_only": "true"},
+    )
+    assert selected.status_code == 200
+    assert 'class="model-card"' in selected.text
+    assert "No models downloaded yet" not in selected.text
+
+
 async def test_unknown_model_download_404(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:

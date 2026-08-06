@@ -874,8 +874,11 @@ def create_app(
         response_model=list[AdminModelEntry],
         dependencies=[Depends(require_token)],
     )
-    async def get_admin_models() -> list[AdminModelEntry]:
-        return _model_entries()
+    async def get_admin_models(installed_only: bool = False) -> list[AdminModelEntry]:
+        entries = _model_entries()
+        if installed_only:
+            entries = [entry for entry in entries if entry.state == "installed"]
+        return entries
 
     def _active_model_path() -> Path | None:
         if engine_manager is None:
@@ -1094,8 +1097,11 @@ def create_app(
     def _html(content: str) -> HTMLResponse:
         return HTMLResponse(content)
 
-    def _models_list_html() -> HTMLResponse:
-        return _html(models_list_fragment(_model_entries()))
+    def _models_list_html(installed_only: bool = False) -> HTMLResponse:
+        entries = _model_entries()
+        if installed_only:
+            entries = [entry for entry in entries if entry.state == "installed"]
+        return _html(models_list_fragment(entries, installed_only))
 
     def _resolve_pairing_token(
         token_id: str | None,
@@ -1370,15 +1376,15 @@ def create_app(
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_models_list() -> HTMLResponse:
-        return _models_list_html()
+    async def ui_models_list(installed_only: bool = False) -> HTMLResponse:
+        return _models_list_html(installed_only)
 
     @app.post(
         "/ui/partials/models/{model_id}/download",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_start_download(model_id: str) -> HTMLResponse:
+    async def ui_start_download(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
         try:
             manager.start_download(model_id)
         except UnknownModelError as error:
@@ -1387,37 +1393,39 @@ def create_app(
             raise APIProblem(
                 409, "download_in_progress", "This model is already downloading."
             ) from error
-        return _models_list_html()
+        return _models_list_html(installed_only)
 
     @app.post(
         "/ui/partials/models/custom",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_custom_download(url: str = Form(...)) -> HTMLResponse:
+    async def ui_custom_download(
+        url: str = Form(...), installed_only: bool = Form(False)
+    ) -> HTMLResponse:
         try:
             manager.start_custom_download(url)
         except ValueError as error:
             raise APIProblem(422, "invalid_model_url", str(error)) from error
         except DownloadInProgressError as error:
             raise APIProblem(409, "download_in_progress", str(error)) from error
-        return _models_list_html()
+        return _models_list_html(installed_only)
 
     @app.post(
         "/ui/partials/models/{model_id}/cancel",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_cancel_download(model_id: str) -> HTMLResponse:
+    async def ui_cancel_download(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
         manager.cancel_download(model_id)
-        return _models_list_html()
+        return _models_list_html(installed_only)
 
     @app.delete(
         "/ui/partials/models/{model_id}",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_delete_model(model_id: str) -> HTMLResponse:
+    async def ui_delete_model(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
         try:
             if engine_manager is not None:
                 engine_manager.forget_if_active(model_id)
@@ -1426,14 +1434,16 @@ def create_app(
             raise APIProblem(
                 409, "download_in_progress", "Cancel the download before deleting."
             ) from error
-        return _models_list_html()
+        return _models_list_html(installed_only)
 
     @app.post(
         "/ui/partials/models/{model_id}/select",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_select_model(model_id: str) -> HTMLResponse:
+    async def ui_select_model(
+        model_id: str, installed_only: bool = Form(False)
+    ) -> HTMLResponse:
         if engine_manager is None:
             raise APIProblem(
                 409, "engine_locked", "The engine was fixed at startup and cannot switch."
@@ -1446,8 +1456,11 @@ def create_app(
             ) from error
         await readiness.warmup()
         state = await readiness.probe()
+        entries = _model_entries()
+        if installed_only:
+            entries = [entry for entry in entries if entry.state == "installed"]
         return _html(
-            models_list_fragment(_model_entries())
+            models_list_fragment(entries, installed_only)
             + engine_pill_oob(
                 EngineStatus(
                     id=engine_manager.runtime_config.engine, name=state.name, ready=state.ready
