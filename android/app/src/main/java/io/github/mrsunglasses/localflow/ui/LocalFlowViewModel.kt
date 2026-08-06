@@ -4,10 +4,15 @@ import android.app.Application
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.mrsunglasses.localflow.LocalFlowApplication
+import io.github.mrsunglasses.localflow.audio.InputDevices
 import io.github.mrsunglasses.localflow.core.GatewayEndpoint
+import io.github.mrsunglasses.localflow.core.MicrophonePreference
 import io.github.mrsunglasses.localflow.core.TranscriptionLanguage
 import io.github.mrsunglasses.localflow.core.WritingStyle
 import io.github.mrsunglasses.localflow.data.DictationRecordEntity
@@ -24,6 +29,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -38,6 +44,32 @@ data class ConnectionReport(
 )
 
 data class InstalledApp(val packageName: String, val label: String)
+
+/**
+ * What the Microphone setting can offer right now. The route is only knowable
+ * while capture holds the microphone, so it is remembered afterwards rather than
+ * blanked — "last used" is a truthful answer, an empty line is not.
+ */
+data class MicrophoneStatus(
+    val available: Set<MicrophonePreference> = setOf(MicrophonePreference.AUTOMATIC),
+    val route: String? = null,
+    val recording: Boolean = false,
+) {
+    /** Changing the input rebuilds the recorder, which a live dictation cannot survive. */
+    val changeable: Boolean get() = !recording
+
+    fun inUseLabel(preference: MicrophonePreference): String = when {
+        route == null ->
+            if (preference == MicrophonePreference.AUTOMATIC) {
+                "Selected when recording starts"
+            } else {
+                preference.displayName
+            }
+
+        recording -> route
+        else -> "Last used: $route"
+    }
+}
 
 class LocalFlowViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -62,6 +94,43 @@ class LocalFlowViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _installedApps = MutableStateFlow<List<InstalledApp>>(emptyList())
     val installedApps: StateFlow<List<InstalledApp>> = _installedApps.asStateFlow()
+
+    private val _microphone = MutableStateFlow(MicrophoneStatus())
+    val microphone: StateFlow<MicrophoneStatus> = _microphone.asStateFlow()
+
+    private val audioManager = application.getSystemService(AudioManager::class.java)
+
+    /**
+     * Headsets are plugged and unplugged while the settings screen is open, so the
+     * offered inputs track the hardware rather than a snapshot taken at launch.
+     * Registration fires the callback once with what is already attached.
+     */
+    private val deviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) = refreshMicrophones()
+
+        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) = refreshMicrophones()
+    }
+
+    init {
+        audioManager?.registerAudioDeviceCallback(deviceCallback, null)
+        viewModelScope.launch {
+            container.dictation.state.collect { state ->
+                _microphone.update {
+                    it.copy(route = state.inputRouteLabel ?: it.route, recording = state.isRecording)
+                }
+            }
+        }
+    }
+
+    override fun onCleared() {
+        audioManager?.unregisterAudioDeviceCallback(deviceCallback)
+        super.onCleared()
+    }
+
+    private fun refreshMicrophones() {
+        val manager = audioManager ?: return
+        _microphone.update { it.copy(available = InputDevices.available(manager)) }
+    }
 
     fun refreshSetup() {
         viewModelScope.launch {
@@ -181,6 +250,17 @@ class LocalFlowViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setStyle(style: WritingStyle) =
         viewModelScope.launch { container.settings.setStyle(style) }
+
+    fun setMicrophone(preference: MicrophonePreference) {
+        // Applied when the recorder is built, so a live dictation would keep the
+        // old input while the screen claimed otherwise.
+        if (_microphone.value.recording) return
+        viewModelScope.launch {
+            container.settings.setMicrophone(preference)
+            // The remembered route described the previous selection.
+            _microphone.update { it.copy(route = null) }
+        }
+    }
 
     fun setAutomaticInsertion(enabled: Boolean) =
         viewModelScope.launch { container.settings.setAutomaticInsertion(enabled) }

@@ -82,6 +82,19 @@ any app you exclude in Settings.
 - **Undo** removes an insertion only while the exact text is still where it was
   written. If you or the app edited it, Undo is disabled rather than destructive.
 
+## Choosing a microphone
+
+**Settings → Microphone** picks which input dictation asks for: Automatic, or the
+phone, wired headset, Bluetooth headset, or USB microphone. Options with no
+matching hardware connected stay visible but greyed out, and the row locks while
+a dictation is running — the input is chosen when the recorder is built.
+
+A category is stored rather than a device id, because Android issues a fresh id
+on every reconnect. Selecting a Bluetooth headset puts it into call mode, which
+is the only way Android exposes its microphone, so music playback drops in
+quality while you dictate. Android has the final say on routing: **Input in use**
+reports the route capture actually got, not the one that was requested.
+
 ## Gateway addresses
 
 The app talks only to the gateway you configure, over the unchanged public
@@ -118,9 +131,9 @@ the Android Tailscale VPN routes the traffic transparently.
 
 | Path | What lives there |
 | --- | --- |
-| `core/` | Styles, languages, endpoint validation, insertion arithmetic, field eligibility |
+| `core/` | Styles, languages, microphone preference, endpoint validation, insertion arithmetic, field eligibility |
 | `gateway/` | HTTP client and the streaming WebSocket |
-| `audio/` | `AudioRecord` capture, WAV writing, PCM conversion |
+| `audio/` | `AudioRecord` capture, input routing, WAV writing, PCM conversion |
 | `dictation/` | The pipeline, the microphone foreground service, retry |
 | `accessibility/` | The accessibility service, insertion and undo |
 | `overlay/` | The floating bubble |

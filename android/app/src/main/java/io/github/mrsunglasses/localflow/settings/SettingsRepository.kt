@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import io.github.mrsunglasses.localflow.core.MicrophonePreference
 import io.github.mrsunglasses.localflow.core.TranscriptionLanguage
 import io.github.mrsunglasses.localflow.core.WritingStyle
 import io.github.mrsunglasses.localflow.security.TokenVault
@@ -55,6 +56,7 @@ data class LocalFlowSettings(
     val hasToken: Boolean = false,
     val language: TranscriptionLanguage = TranscriptionLanguage.DEFAULT,
     val style: WritingStyle = WritingStyle.DEFAULT,
+    val microphone: MicrophonePreference = MicrophonePreference.DEFAULT,
     val automaticInsertion: Boolean = true,
     val bubbleBehavior: BubbleBehavior = BubbleBehavior.EVERY_EDITABLE_FIELD,
     val audioRetention: AudioRetention = AudioRetention.DEFAULT,
@@ -116,6 +118,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setStyle(style: WritingStyle) = put(Keys.STYLE, style.wireValue)
 
+    suspend fun setMicrophone(preference: MicrophonePreference) =
+        put(Keys.MICROPHONE, preference.storedValue)
+
     suspend fun setAutomaticInsertion(enabled: Boolean) = put(Keys.AUTOMATIC_INSERTION, enabled)
 
     suspend fun setBubbleBehavior(behavior: BubbleBehavior) = put(Keys.BUBBLE_BEHAVIOR, behavior.name)
@@ -145,6 +150,7 @@ class SettingsRepository(private val context: Context) {
         hasToken = this[Keys.TOKEN_CIPHERTEXT] != null,
         language = TranscriptionLanguage.fromWire(this[Keys.LANGUAGE]),
         style = WritingStyle.fromWire(this[Keys.STYLE]),
+        microphone = MicrophonePreference.fromStored(this[Keys.MICROPHONE]),
         automaticInsertion = this[Keys.AUTOMATIC_INSERTION] ?: true,
         bubbleBehavior = this[Keys.BUBBLE_BEHAVIOR]?.let { name ->
             BubbleBehavior.entries.firstOrNull { it.name == name }
@@ -164,6 +170,7 @@ class SettingsRepository(private val context: Context) {
         val TOKEN_NONCE = stringPreferencesKey("gateway_token_nonce")
         val LANGUAGE = stringPreferencesKey("transcription_language")
         val STYLE = stringPreferencesKey("writing_style")
+        val MICROPHONE = stringPreferencesKey("microphone_preference")
         val AUTOMATIC_INSERTION = booleanPreferencesKey("automatic_insertion")
         val BUBBLE_BEHAVIOR = stringPreferencesKey("bubble_behavior")
         val RETENTION_HOURS = intPreferencesKey("audio_retention_hours")

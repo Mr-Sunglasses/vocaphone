@@ -223,6 +223,8 @@ class DictationController(
         var captureError: Throwable? = null
 
         val recorder = AudioCapture(
+            context = context,
+            preference = configuration.microphone,
             onFrame = { samples, count -> frames.trySend(samples.copyOf(count)) },
             onError = { error ->
                 captureError = error

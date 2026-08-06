@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import io.github.mrsunglasses.localflow.core.MicrophonePreference
 import io.github.mrsunglasses.localflow.core.TranscriptionLanguage
 import io.github.mrsunglasses.localflow.core.WritingStyle
 import io.github.mrsunglasses.localflow.settings.AudioRetention
@@ -39,9 +40,11 @@ fun SettingsScreen(
     settings: LocalFlowSettings,
     setup: SetupStatus,
     installedApps: List<InstalledApp>,
+    microphone: MicrophoneStatus,
     onLoadApps: () -> Unit,
     onLanguage: (TranscriptionLanguage) -> Unit,
     onStyle: (WritingStyle) -> Unit,
+    onMicrophone: (MicrophonePreference) -> Unit,
     onAutomaticInsertion: (Boolean) -> Unit,
     onBubbleBehavior: (BubbleBehavior) -> Unit,
     onAudioRetention: (AudioRetention) -> Unit,
@@ -97,6 +100,12 @@ fun SettingsScreen(
                 onSelect = onStyle,
             )
         }
+
+        MicrophoneCard(
+            selected = settings.microphone,
+            status = microphone,
+            onSelect = onMicrophone,
+        )
 
         SectionCard("Insertion") {
             ToggleRow(
@@ -232,6 +241,47 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+}
+
+/**
+ * Which microphone dictation asks for. Options the hardware cannot satisfy stay
+ * visible but greyed, and the whole row locks while a dictation is running: the
+ * input is chosen when the recorder is built, so a mid-recording change would be
+ * a promise the current dictation cannot keep.
+ */
+@Composable
+private fun MicrophoneCard(
+    selected: MicrophonePreference,
+    status: MicrophoneStatus,
+    onSelect: (MicrophonePreference) -> Unit,
+) {
+    val attached = selected in status.available
+    SectionCard(
+        title = "Microphone",
+        supporting = if (attached) selected.detail else selected.unavailableDetail,
+    ) {
+        ChipChoiceRow(
+            options = MicrophonePreference.entries,
+            selected = selected,
+            label = { it.displayName },
+            onSelect = onSelect,
+            enabled = { status.changeable && (it in status.available || it == selected) },
+        )
+
+        InfoRow("Input in use", status.inUseLabel(selected))
+
+        Text(
+            if (!status.changeable) {
+                "Finish the current dictation before changing microphones."
+            } else {
+                "Greyed-out options have no matching microphone connected. " +
+                    "Android has the final say on routing, so the input above " +
+                    "is what capture actually used."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

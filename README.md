@@ -26,8 +26,9 @@ tests, and has not yet been exercised end to end on a physical Pixel.
   through a floating bubble, with the same styles, languages, and gateway
 - Eight selectable transcription languages plus Automatic, shared by the app
   and keyboard, and four writing styles: Formal, Casual, Very Casual, and Excited
-- Automatic microphone routing or an explicit iPhone Microphone preference,
-  with the input currently in use shown in the app
+- Automatic microphone routing or an explicit input preference — the iPhone
+  microphone on iOS, and the phone, wired, Bluetooth or USB microphone on
+  Android — with the input currently in use shown in the app
 - A bounded Quick Dictation window with persistent background input, a Live
   Activity/Dynamic Island timer, and standby buffers that are discarded
 - FastAPI gateway with bounded uploads, SQLite idempotency, FFmpeg normalization,

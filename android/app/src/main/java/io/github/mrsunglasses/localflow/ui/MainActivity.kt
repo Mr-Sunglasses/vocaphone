@@ -59,6 +59,7 @@ fun LocalFlowApp(viewModel: LocalFlowViewModel = viewModel()) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
     val testing by viewModel.testing.collectAsStateWithLifecycle()
     val installedApps by viewModel.installedApps.collectAsStateWithLifecycle()
+    val microphone by viewModel.microphone.collectAsStateWithLifecycle()
 
     // Overlay and accessibility are system toggles, so their state can change
     // while the app is in the background; re-read them on every resume.
@@ -169,9 +170,11 @@ fun LocalFlowApp(viewModel: LocalFlowViewModel = viewModel()) {
                 settings = settings,
                 setup = setup,
                 installedApps = installedApps,
+                microphone = microphone,
                 onLoadApps = viewModel::loadInstalledApps,
                 onLanguage = { viewModel.setLanguage(it) },
                 onStyle = { viewModel.setStyle(it) },
+                onMicrophone = { viewModel.setMicrophone(it) },
                 onAutomaticInsertion = { viewModel.setAutomaticInsertion(it) },
                 onBubbleBehavior = { viewModel.setBubbleBehavior(it) },
                 onAudioRetention = { viewModel.setAudioRetention(it) },
