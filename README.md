@@ -1,22 +1,88 @@
-# Local Flow
+<div align="center">
 
-Local Flow is privacy-first dictation backed by speech models running on hardware
-you control. On iPhone it is a keyboard that coordinates recording through its
-containing app; on Android it is a floating bubble that leaves your own keyboard
-alone. Both send recoverable audio to the same private gateway and insert the
-final transcript directly at the active cursor.
+# vocaphone
 
-The complete keyboard handoff, background recording, private Tailscale
-transcription, and direct text-insertion flow has been exercised on a physical
-iPhone 14 Pro. The [Android client](android/README.md) builds, passes its unit
-tests, and has not yet been exercised end to end on a physical Pixel.
+**Voice dictation for iPhone and Android.**
+
+[![Status: in development](https://img.shields.io/badge/status-in%20development-yellow)](#status)
+[![Platform: iOS + Android](https://img.shields.io/badge/platform-iOS%20%2B%20Android-lightgrey)](#how-it-works)
+[![Privacy: self-hosted](https://img.shields.io/badge/privacy-self--hosted%20%2F%20no%20cloud%20STT-success)](#privacy-and-platform-boundaries)
+[![Part of VocaHQ](https://img.shields.io/badge/family-VocaHQ-1a7f4e)](https://github.com/VocaHQ)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+Speak into your phone. Text shows up where you're typing. Transcription runs on
+hardware you control, not a cloud speech service.
+
+</div>
+
+---
+
+**vocaphone** is the phone side of the [Voca](https://github.com/VocaHQ) family:
+the same privacy-first dictation idea that already runs on Linux
+([VocaLinux](https://github.com/VocaHQ/vocalinux)) and macOS
+([VocaMac](https://github.com/VocaHQ/vocamac)), with Windows coming later.
+
+Longer term the goal is straightforward: set Voca up once and use it across
+whatever machines you own. Desktop plus phone is what makes that real.
+
+Dictate from an iPhone keyboard or an Android floating bubble. Audio goes to a
+gateway on your Mac, Linux box, or home server. Local speech models turn it into
+text, and the transcript lands at your cursor. No accounts, no cloud STT, and no
+subscription.
+
+> Working name in code and binaries is still **Local Flow**
+> (`localflow-server`, `com.example.localflow`, ...). Product name in prose and
+> on GitHub is **vocaphone**. Bundle IDs and package names will catch up before
+> a public release.
+
+## Status
+
+| Client | State |
+| --- | --- |
+| **iOS** | End-to-end flow exercised on a physical iPhone 14 Pro: keyboard handoff, background recording, private Tailscale transcription, direct insertion |
+| **Android** | Builds and passes unit tests; floating-bubble client not yet exercised end to end on a physical Pixel |
+| **Gateway** | Runs natively on macOS/Linux or via Docker Compose, with multiple local engine adapters |
+
+No open-source license has been selected yet. Until one is added, the
+repository is source-available for review but does not grant permission to copy,
+modify, or redistribute the code.
+
+## How it works
+
+On iPhone, vocaphone is a custom keyboard plus a containing app. iOS keyboard
+extensions cannot access the microphone, so the app records, shares only
+versioned session state with the keyboard, and inserts through
+`UITextDocumentProxy`. Quick Dictation can keep the app ready for up to 10
+minutes so most later dictations skip another app switch.
+
+On Android, your own keyboard stays put. A floating bubble starts and stops
+dictation and inserts at the focused field, with the same styles, languages, and
+gateway as iOS.
+
+Both clients send recoverable audio to the same private gateway and insert the
+final transcript at the active cursor.
 
 > [!IMPORTANT]
-> iOS keyboard extensions cannot access the microphone. Local Flow records in
+> iOS keyboard extensions cannot access the microphone. vocaphone records in
 > the containing app, shares only versioned session state with the keyboard, and
 > then inserts through `UITextDocumentProxy`. Quick Dictation can keep that app
 > ready for up to 10 minutes so most later dictations do not require another app
 > switch.
+
+## Why vocaphone
+
+Most phone dictation means either a cloud API listening to every utterance, or
+an app that only works inside itself. vocaphone is built differently.
+
+Transcription runs on a Mac, Linux desktop, or home server you already own, not
+a vendor's GPU farm. You pick the network path: trusted LAN, private Tailscale,
+or HTTPS behind your own reverse proxy. Bearer tokens are per device. There is
+no analytics SDK and no third-party transcription.
+
+Same privacy stance as VocaLinux and VocaMac: free, offline first, and meant to
+stay that way. We also document the awkward platform bits honestly: iOS keyboard
+limits, Android accessibility consent, and what the bubble will never touch
+(password fields, payment screens, apps you exclude).
 
 ## Highlights
 
@@ -34,16 +100,27 @@ tests, and has not yet been exercised end to end on a physical Pixel.
 - FastAPI gateway with bounded uploads, SQLite idempotency, FFmpeg normalization,
   silence detection, retention cleanup, and stable error responses
 - VocaMac, Handy, WhisperKit, Apple-native MLX Audio, persistent `sherpa-onnx`
-  and `faster-whisper`, multilingual Moonshine, and `whisper.cpp` adapters —
-  the VocaMac and Handy desktop apps are optional, Mac-only, and reuse the
+  and `faster-whisper`, multilingual Moonshine, and `whisper.cpp` adapters.
+  The VocaMac and Handy desktop apps are optional, Mac-only, and reuse the
   models they already downloaded
 - Operational dashboard with hardware detection, queue/outcome counters,
   pipeline benchmarks, real-time factor, peak memory, and warmup state
 - CPU/OpenBLAS, host-native CPU, NVIDIA CUDA, and Vulkan Compose profiles
 - Bearer authentication with named per-device tokens and revocation, iOS
   Keychain storage, configurable HTTP/HTTPS gateway access, optional private
-  Tailscale HTTPS, no analytics, and no third-party
-  transcription
+  Tailscale HTTPS, no analytics, and no third-party transcription
+
+## Part of VocaHQ
+
+| Platform | Project | Repo | Status |
+| --- | --- | --- | --- |
+| Linux | VocaLinux | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Stable |
+| macOS | VocaMac | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
+| Windows | VocaWin | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Coming soon |
+| iOS / Android | vocaphone | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | In development |
+
+Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
+[hello@vocahq.com](mailto:hello@vocahq.com)
 
 ## Choose a gateway deployment
 
@@ -55,7 +132,7 @@ tests, and has not yet been exercised end to end on a physical Pixel.
 
 On an Apple silicon Mac, use the native gateway for the lowest virtualization
 overhead. MLX Audio runs directly on M-series unified memory/GPU, while
-WhisperKit uses Core ML; Local Flow keeps either selected model resident between
+WhisperKit uses Core ML; the gateway keeps either selected model resident between
 dictations. The container deliberately uses portable Linux runtimes and cannot
 use macOS MLX or Core ML from inside Docker Desktop.
 
@@ -235,9 +312,9 @@ Then:
 1. Generate/open `ios/LocalFlow.xcodeproj` and select your Apple development team.
 2. Register the same App Group for the app, keyboard, and Live Activity targets.
 3. Install the containing app on the iPhone and grant microphone permission.
-4. Add Local Flow under **Settings → General → Keyboard → Keyboards** and enable
+4. Add the keyboard under **Settings → General → Keyboard → Keyboards** and enable
    Full Access.
-5. In Local Flow, enter the reachable HTTP/HTTPS gateway URL and bearer token,
+5. In the app, enter the reachable HTTP/HTTPS gateway URL and bearer token,
    then use **Save and test**. Approve Local Network access when using a LAN host.
 
 Complete the physical-device checklist in [device setup](docs/device-setup.md).
@@ -343,7 +420,8 @@ Plan-Android.md         Android implementation plan and acceptance criteria
 - Operational metrics contain counts and timings only and reset when the gateway
   restarts.
 - iOS does not provide a public API to reopen an arbitrary previously active app.
-  If Quick Dictation expires, Local Flow must open and the user returns manually.
+  If Quick Dictation expires, the containing app must open and the user returns
+  manually.
 - Secure fields and apps that disable third-party keyboards remain iOS platform
   limitations.
 - On Android, accessibility access is used only to identify the focused editable

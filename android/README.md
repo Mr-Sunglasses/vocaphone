@@ -1,18 +1,21 @@
-# Local Flow for Android
+# vocaphone for Android
 
-A native Android dictation client for the same self-hosted Local Flow gateway the
+A native Android dictation client for the same self-hosted vocaphone gateway the
 iPhone app uses. Unlike iOS, it does **not** replace your keyboard. Gboard,
-Samsung Keyboard or whatever you already use stays active, and Local Flow shows a
+Samsung Keyboard or whatever you already use stays active, and vocaphone shows a
 floating bubble over eligible text fields, inserting the transcript at your
 cursor when you finish.
 
 Distributed as a private APK. Google Play publication is deferred, but the
 accessibility disclosure and consent Play requires are present from the start.
 
+> In-code package and APK names still use the Local Flow working name
+> (`local-flow-debug.apk`, `com.example.localflow.android`).
+
 ## Requirements
 
 - Android 13 (API 33) or newer. Google Pixel is the baseline device.
-- A reachable Local Flow gateway — see the [root README](../README.md).
+- A reachable vocaphone gateway. See the [root README](../README.md).
 - To build: JDK 17+ (the JDK bundled with Android Studio works) and the Android
   SDK. Everything else is pinned in `gradle/libs.versions.toml` and fetched by
   the Gradle wrapper.
@@ -56,7 +59,7 @@ silent failure.
 
 ## How accessibility access is used
 
-Local Flow is not an accessibility tool, so it states plainly what it does with
+vocaphone is not an accessibility tool, so it states plainly what it does with
 the service, and the app asks for separate consent before the checklist step:
 
 - To tell whether the focused text field can be dictated into, so the bubble

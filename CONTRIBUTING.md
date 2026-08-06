@@ -1,7 +1,8 @@
 # Contributing
 
-Thanks for helping improve Local Flow. Changes should preserve its privacy-first
-architecture, documented network-exposure controls, and iOS keyboard constraints.
+Thanks for helping improve vocaphone. (The working name in code is still Local
+Flow.) Changes should keep the privacy-first architecture, the documented
+network-exposure controls, and the iOS keyboard constraints intact.
 
 ## Development setup
 
