@@ -267,6 +267,63 @@ async def test_download_select_and_delete_flow(
     assert saved.whisper_model is None
 
 
+async def test_models_list_installed_only_filter(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    model_id = "whisper.cpp:ggml-tiny.bin"
+
+    before = await admin_client.get(
+        "/v1/admin/models", params={"installed_only": "true"}, headers=auth
+    )
+    assert before.status_code == 200
+    assert model_id not in {entry["id"] for entry in before.json()}
+
+    started = await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
+    assert started.status_code == 200
+
+    for _ in range(200):
+        filtered = {
+            entry["id"]: entry
+            for entry in (
+                await admin_client.get(
+                    "/v1/admin/models", params={"installed_only": "true"}, headers=auth
+                )
+            ).json()
+        }
+        if model_id in filtered:
+            break
+        await asyncio.sleep(0.02)
+    assert filtered[model_id]["state"] == "installed"
+    assert all(entry["state"] == "installed" for entry in filtered.values())
+
+
+async def test_ui_select_preserves_installed_only_filter(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    model_id = "whisper.cpp:ggml-tiny.bin"
+
+    await admin_client.post(f"/v1/admin/models/{model_id}/download", headers=auth)
+    entries: dict[str, dict[str, object]] = {}
+    for _ in range(200):
+        entries = {
+            entry["id"]: entry
+            for entry in (await admin_client.get("/v1/admin/models", headers=auth)).json()
+        }
+        if entries[model_id]["state"] == "installed":
+            break
+        await asyncio.sleep(0.02)
+    assert entries[model_id]["state"] == "installed"
+
+    selected = await admin_client.post(
+        f"/ui/partials/models/{model_id}/select",
+        headers=auth,
+        data={"installed_only": "true"},
+    )
+    assert selected.status_code == 200
+    assert 'class="model-card"' in selected.text
+    assert "No models downloaded yet" not in selected.text
+
+
 async def test_unknown_model_download_404(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
@@ -321,6 +378,32 @@ async def test_mac_only_engines_are_labelled_with_their_host(
     assert "VocaMac app (Apple silicon only)" in settings_html
     assert "Handy app (macOS only)" in settings_html
     assert "sherpa-onnx</option>" in settings_html
+
+
+async def test_ui_config_update_switches_engine_and_renders_a_fragment(
+    admin_client: httpx.AsyncClient, auth: dict[str, str], admin_settings: Settings
+) -> None:
+    response = await admin_client.put(
+        "/ui/partials/config",
+        headers=auth,
+        data={"engine": "sherpa-onnx", "compute_device": "cpu", "cpu_threads": "2"},
+    )
+    assert response.status_code == 200
+    assert "Engine preference saved." in response.text
+    assert 'id="engine-pill"' in response.text
+    assert RuntimeConfig.load(admin_settings.config_path).engine == "sherpa-onnx"
+
+
+async def test_ui_config_update_rejects_an_invalid_engine(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    response = await admin_client.put(
+        "/ui/partials/config",
+        headers=auth,
+        data={"engine": "cloud"},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "invalid_engine"
 
 
 async def test_custom_download_rejects_bad_url(

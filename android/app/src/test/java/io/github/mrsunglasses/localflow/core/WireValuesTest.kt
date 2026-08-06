@@ -20,7 +20,7 @@ class WireValuesTest {
     @Test
     fun `languages match the server literals in order`() {
         assertEquals(
-            listOf("auto", "en", "es", "ar", "ja", "ko", "zh", "uk", "ru", "vi", "de"),
+            listOf("auto", "ar", "en", "fr", "de", "ja", "ko", "zh", "ru", "es", "uk", "vi"),
             TranscriptionLanguage.entries.map { it.wireValue },
         )
     }

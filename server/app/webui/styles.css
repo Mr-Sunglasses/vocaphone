@@ -318,6 +318,36 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 24px 60px; }
 .model-stats strong { color: var(--text); font-size: 20px; line-height: 1.1; }
 .models-toolbar { margin-bottom: 18px; }
 .models-toolbar h2, .models-toolbar p { margin-bottom: 0; }
+.models-toolbar-actions { display: flex; align-items: center; gap: 14px; }
+.filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  font: inherit;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+  background: none;
+  padding: 5px 12px;
+}
+.filter-toggle:hover { color: var(--text); }
+.filter-toggle:has(input:checked) { color: var(--accent); border-color: var(--accent); }
+.filter-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 button.no-margin { margin-left: 0; }
 .model-group + .model-group { margin-top: 28px; }
 .model-group-heading {

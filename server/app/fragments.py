@@ -313,9 +313,17 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
             <h2>Available models</h2>
             <p class="muted">Recommendations are matched to this server's hardware.</p>
           </div>
-          <button type="button" class="ghost small no-margin"
-                  hx-get="/ui/partials/models-list"
-                  hx-target="#models-list" hx-swap="innerHTML">Refresh</button>
+          <div class="models-toolbar-actions">
+            <label class="filter-toggle" for="installed-only-toggle">
+              <input type="checkbox" id="installed-only-toggle" name="installed_only"
+                     value="true" class="sr-only" hx-get="/ui/partials/models-list"
+                     hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change" />
+              Installed only
+            </label>
+            <button type="button" class="ghost small no-margin"
+                    hx-get="/ui/partials/models-list" hx-include="#installed-only-toggle"
+                    hx-target="#models-list" hx-swap="innerHTML">Refresh</button>
+          </div>
         </div>
         <div id="models-list" aria-live="polite">
           {models_list_fragment(entries)}
@@ -325,7 +333,8 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
         <h2>Bring your own Whisper model</h2>
         <p class="muted">Paste a direct HTTPS link to a compatible <code>.bin</code> or
           <code>.gguf</code> file. It will run through the standalone engine.</p>
-        <form hx-post="/ui/partials/models/custom" hx-target="#models-list" hx-swap="innerHTML">
+        <form hx-post="/ui/partials/models/custom" hx-include="#installed-only-toggle"
+              hx-target="#models-list" hx-swap="innerHTML">
           <div class="row">
             <input name="url" type="url" required
                    placeholder="https://huggingface.co/&hellip;/resolve/main/model.gguf" />
@@ -336,7 +345,7 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
     """
 
 
-def models_list_fragment(entries: list[AdminModelEntry]) -> str:
+def models_list_fragment(entries: list[AdminModelEntry], installed_only: bool = False) -> str:
     groups: dict[str, list[AdminModelEntry]] = {}
     for entry in entries:
         groups.setdefault(entry.engine, []).append(entry)
@@ -349,7 +358,14 @@ def models_list_fragment(entries: list[AdminModelEntry]) -> str:
             f"<h3>{title}</h3><span>{len(items)} models</span></div>"
             f'<div class="model-grid">{cards}</div></section>'
         )
-    return "".join(parts) or '<p class="empty-state">No models are available.</p>'
+    if parts:
+        return "".join(parts)
+    if installed_only:
+        return (
+            '<p class="empty-state">No models downloaded yet. '
+            "Turn off &ldquo;Installed only&rdquo; to browse the catalog.</p>"
+        )
+    return '<p class="empty-state">No models are available.</p>'
 
 
 def _model_card(entry: AdminModelEntry) -> str:
@@ -374,6 +390,7 @@ def _model_card(entry: AdminModelEntry) -> str:
             f'<span class="muted small progress-copy">'
             f"{percent}% · {downloaded} / {total}</span>"
             f'<button class="ghost small" hx-post="/ui/partials/models/{encoded_id}/cancel"'
+            f' hx-include="#installed-only-toggle"'
             f' hx-target="#models-list" hx-swap="innerHTML">Cancel</button>'
         )
     elif entry.state == "installed":
@@ -383,6 +400,7 @@ def _model_card(entry: AdminModelEntry) -> str:
             else (
                 f'<button class="primary small"'
                 f' hx-post="/ui/partials/models/{encoded_id}/select"'
+                f' hx-include="#installed-only-toggle"'
                 f' hx-target="#models-list" hx-swap="innerHTML">Select</button>'
             )
         )
@@ -390,6 +408,7 @@ def _model_card(entry: AdminModelEntry) -> str:
             f"{select_button}"
             f'<button class="ghost small danger"'
             f' hx-delete="/ui/partials/models/{encoded_id}"'
+            f' hx-include="#installed-only-toggle"'
             f' hx-confirm="Delete {escape(entry.label)} from this server?"'
             f' hx-target="#models-list" hx-swap="innerHTML">Delete</button>'
         )
@@ -403,6 +422,7 @@ def _model_card(entry: AdminModelEntry) -> str:
             f"{note}"
             f'<button class="primary small"'
             f' hx-post="/ui/partials/models/{encoded_id}/download"'
+            f' hx-include="#installed-only-toggle"'
             f' hx-target="#models-list" hx-swap="innerHTML">Download</button>'
         )
 
