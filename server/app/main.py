@@ -172,6 +172,7 @@ def create_app(
         version=VERSION,
         docs_url=None,
         redoc_url=None,
+        openapi_url="/openapi.json" if configured.debug else None,
         lifespan=lifespan,
     )
     app.state.settings = configured
@@ -243,6 +244,36 @@ def create_app(
 
     if WEBUI_DIR.is_dir():
         app.mount("/assets", StaticFiles(directory=WEBUI_DIR), name="webui-assets")
+
+    # ------------------------------------------------------------- API docs
+
+    if configured.debug:
+
+        @app.get("/docs", include_in_schema=False)
+        async def api_docs() -> HTMLResponse:
+            # Swagger UI's init call is loaded from an external, same-origin
+            # script rather than inlined, because the CSP above sends
+            # `script-src 'self'` with no `'unsafe-inline'`.
+            favicon = (
+                "data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' "
+                "viewBox='0 0 100 100'&gt;&lt;text y='.9em' "
+                "font-size='90'&gt;&#127908;&lt;/text&gt;&lt;/svg&gt;"
+            )
+            return HTMLResponse(f"""<!doctype html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link type="text/css" rel="stylesheet" href="/assets/swagger/swagger-ui.css">
+<link rel="icon" href="{favicon}">
+<title>{app.title} - API docs</title>
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="/assets/swagger/swagger-ui-bundle.js"></script>
+<script src="/assets/swagger/docs-init.js"></script>
+</body>
+</html>
+""")
 
     # -------------------------------------------------------------- iOS API
 

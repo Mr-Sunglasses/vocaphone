@@ -13,6 +13,7 @@ services:
       - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
     environment:
       LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
+      LOCALFLOW_DEBUG: ${LOCALFLOW_DEBUG:-false}
     secrets:
       - localflow_token
     volumes:
@@ -33,6 +34,7 @@ services:
       - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
     environment:
       LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
+      LOCALFLOW_DEBUG: ${LOCALFLOW_DEBUG:-false}
     secrets: [localflow_token]
     volumes: [localflow-data:/data]
 
@@ -49,6 +51,7 @@ services:
       - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
     environment:
       LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
+      LOCALFLOW_DEBUG: ${LOCALFLOW_DEBUG:-false}
       NVIDIA_VISIBLE_DEVICES: all
     gpus: all
     secrets: [localflow_token]
@@ -67,6 +70,7 @@ services:
       - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
     environment:
       LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
+      LOCALFLOW_DEBUG: ${LOCALFLOW_DEBUG:-false}
     devices:
       - /dev/dri:/dev/dri
     secrets: [localflow_token]

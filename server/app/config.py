@@ -46,6 +46,7 @@ class Settings:
     retention_hours: int = 24
     delete_successful_audio: bool = True
     maximum_concurrent_transcriptions: int = 1
+    debug: bool = False
 
     def resolved_models_dir(self) -> Path:
         return self.models_dir if self.models_dir is not None else self.data_dir / "models"
@@ -117,6 +118,7 @@ class Settings:
                 "LOCALFLOW_DELETE_SUCCESSFUL_AUDIO", "true"
             ).lower()
             in {"1", "true", "yes"},
+            debug=os.environ.get("LOCALFLOW_DEBUG", "false").lower() in {"1", "true", "yes"},
         )
 
 
