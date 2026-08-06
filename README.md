@@ -56,8 +56,8 @@ versioned session state with the keyboard, and inserts through
 minutes so most later dictations skip another app switch.
 
 On Android, your own keyboard stays put. A floating bubble starts and stops
-dictation and inserts at the focused field, with the same styles, languages, and
-gateway as iOS.
+dictation and inserts at the focused field, with the same styles and gateway as
+iOS.
 
 Both clients send recoverable audio to the same private gateway and insert the
 final transcript at the active cursor.
@@ -89,9 +89,10 @@ limits, Android accessibility consent, and what the bubble will never touch
 - Native SwiftUI app and UIKit keyboard with Start, Finish, Cancel, Retry, Undo,
   language/style status, next-keyboard control, and direct insertion
 - Native Kotlin/Compose Android client that keeps your own keyboard and dictates
-  through a floating bubble, with the same styles, languages, and gateway
-- Eight selectable transcription languages plus Automatic, shared by the app
-  and keyboard, and four writing styles: Formal, Casual, Very Casual, and Excited
+  through a floating bubble, with the same styles and gateway as the keyboard
+- 11 selectable transcription languages plus Automatic on Android (9 on iOS,
+  pending French and German), and four writing styles: Formal, Casual, Very
+  Casual, and Excited
 - Automatic microphone routing or an explicit iPhone Microphone preference,
   with the input currently in use shown in the app
 - A bounded Quick Dictation window with persistent background input, a Live
