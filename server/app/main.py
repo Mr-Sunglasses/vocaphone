@@ -1441,9 +1441,7 @@ def create_app(
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_select_model(
-        model_id: str, installed_only: bool = Form(False)
-    ) -> HTMLResponse:
+    async def ui_select_model(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
         if engine_manager is None:
             raise APIProblem(
                 409, "engine_locked", "The engine was fixed at startup and cannot switch."
