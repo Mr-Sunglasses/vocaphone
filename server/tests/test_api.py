@@ -73,6 +73,10 @@ async def test_health_is_public_and_separates_engine_readiness(
         "engine_ready": True,
         "engine": "fake-local-model",
         "streaming_supported": False,
+        # A stub engine has no catalog entry, so the gateway makes no claim and
+        # clients keep every language selectable.
+        "languages": [],
+        "detects_language_automatically": False,
     }
 
     liveness = await client.get("/health/live")
@@ -241,3 +245,33 @@ async def test_delete_is_idempotent(
     assert first.json() == {"deleted": True}
     assert second.status_code == 404
     assert second.json() == {"deleted": False}
+
+
+async def test_health_reports_what_the_loaded_model_can_do(
+    settings: Settings, audio_bytes: bytes
+) -> None:
+    """Clients cannot offer a sensible language picker without knowing whether the
+    loaded model can be pinned at all. An engine holding a catalog entry reports
+    that entry's languages; one that picks its own language says so."""
+    from app.catalog import DEFAULT_CATALOG
+    from app.models.base import EngineHealth
+
+    dolphin = next(m for m in DEFAULT_CATALOG if m.id == "sherpa-onnx:dolphin-small-ctc-int8")
+
+    class DolphinLikeEngine:
+        catalog_model = dolphin
+
+        async def health(self) -> EngineHealth:
+            return EngineHealth(ready=True, name="sherpa-onnx:dolphin")
+
+        async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
+            return "unused"
+
+    app = create_app(settings, engine=DolphinLikeEngine(), normalizer=FakeNormalizer())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+        payload = (await client.get("/health")).json()
+
+    assert payload["detects_language_automatically"] is True
+    assert "hi" in payload["languages"] and "bn" in payload["languages"]
+    assert "en" not in payload["languages"]  # Dolphin is not trained on English

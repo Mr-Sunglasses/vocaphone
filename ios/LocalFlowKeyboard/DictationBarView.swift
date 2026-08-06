@@ -282,10 +282,15 @@ final class DictationBarView: UIView {
         let language = KeyboardPreferences.transcriptionLanguage
         if renderedLanguage != language {
             renderedLanguage = language
+            // The keyboard reads the same App Group capability the app writes, so
+            // it never offers a language the app has already ruled out. Disabled
+            // rather than omitted, matching the settings screen.
+            let modelLanguages = KeyboardPreferences.modelLanguages
+            let detectsLanguage = KeyboardPreferences.modelDetectsLanguage
             languageButton.menu = UIMenu(
                 title: "Transcription language",
                 children: TranscriptionLanguage.allCases.map { option in
-                    UIAction(
+                    let action = UIAction(
                         title: option.displayName,
                         image: UIImage(systemName: "globe"),
                         state: option == language ? .on : .off
@@ -294,6 +299,14 @@ final class DictationBarView: UIView {
                         KeyboardPreferences.transcriptionLanguage = option
                         delegate?.dictationBarDidChangePreferences(self)
                     }
+                    if !ModelLanguageSupport.isSelectable(
+                        option,
+                        modelLanguages: modelLanguages,
+                        detectsLanguageAutomatically: detectsLanguage
+                    ) {
+                        action.attributes = .disabled
+                    }
+                    return action
                 }
             )
             applyChipConfiguration(

@@ -208,6 +208,7 @@ final class RecordingCoordinator {
                 engine: "",
                 ready: false
             )
+            GatewayStatusPreferences.storeLanguageSupport(nil)
             return
         }
         let client = GatewayClient(baseURL: baseURL, token: token)
@@ -222,18 +223,21 @@ final class RecordingCoordinator {
                 engine: health.engine.trimmingCharacters(in: .whitespacesAndNewlines),
                 ready: health.engineReady
             )
+            GatewayStatusPreferences.storeLanguageSupport(health)
         } catch let GatewayError.api(status, _) where status == 401 {
             GatewayStatusPreferences.store(
                 message: "Gateway reachable, but the pairing token was rejected.",
                 engine: "",
                 ready: false
             )
+            GatewayStatusPreferences.storeLanguageSupport(nil)
         } catch {
             GatewayStatusPreferences.store(
                 message: "Gateway test failed: \(error.localizedDescription)",
                 engine: "",
                 ready: false
             )
+            GatewayStatusPreferences.storeLanguageSupport(nil)
         }
     }
 
@@ -262,7 +266,7 @@ final class RecordingCoordinator {
         var record = SessionRecord(
             state: .idle,
             sourceDocumentID: "in-app-test",
-            language: KeyboardPreferences.transcriptionLanguage.rawValue,
+            language: KeyboardPreferences.effectiveTranscriptionLanguage.rawValue,
             style: KeyboardPreferences.writingStyle.rawValue
         )
         do {

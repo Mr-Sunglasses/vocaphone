@@ -34,7 +34,7 @@ from app.audio import (
     atomic_upload_path,
     complete_atomic_upload,
 )
-from app.catalog import language_names, recommended_ids
+from app.catalog import CatalogModel, language_names, recommended_ids
 from app.config import Settings
 from app.diagnostics import build_diagnostics_bundle
 from app.engines import (
@@ -291,10 +291,37 @@ def create_app(
 
     # -------------------------------------------------------------- iOS API
 
+    def _active_catalog_model() -> CatalogModel | None:
+        """The catalog entry behind the running engine, if it came from the catalog.
+
+        sherpa-onnx and MLX engines hold their entry directly; the others are
+        configured by path, so those are matched back through the installed list.
+        Returns None for an imported model or when nothing is selected, which the
+        clients read as "no restriction".
+        """
+        engine = engine_provider.current()
+        held = getattr(engine, "catalog_model", None)
+        if isinstance(held, CatalogModel):
+            return held
+        active = _active_model_path()
+        if active is None:
+            return None
+        for installed in manager.installed():
+            if installed.path == active:
+                return manager.catalog_model(installed.id)
+        return None
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         state = await readiness.probe()
         selected_engine = engine_provider.current()
+        active_model = _active_catalog_model()
+        languages: tuple[str, ...] = ()
+        if active_model is not None:
+            # Moonshine keeps its single language in the singular field.
+            languages = active_model.language_codes or (
+                (active_model.language_code,) if active_model.language_code else ()
+            )
         return HealthResponse(
             engine_ready=state.ready,
             engine=state.name,
@@ -302,6 +329,10 @@ def create_app(
                 state.ready
                 and isinstance(selected_engine, StreamingEngine)
                 and selected_engine.supports_streaming
+            ),
+            languages=list(languages),
+            detects_language_automatically=(
+                active_model is not None and active_model.detects_language_automatically
             ),
         )
 

@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.mrsunglasses.localflow.core.MicrophonePreference
+import io.github.mrsunglasses.localflow.core.ModelLanguageSupport
 import io.github.mrsunglasses.localflow.core.TranscriptionLanguage
 import io.github.mrsunglasses.localflow.core.WritingStyle
 import io.github.mrsunglasses.localflow.settings.AudioRetention
@@ -80,12 +81,29 @@ fun SettingsScreen(
             SecondaryButton("Gateway settings", onClick = onOpenGateway)
         }
 
-        SectionCard("Transcription language", supporting = settings.language.detail) {
+        val languageRestriction = ModelLanguageSupport.restriction(
+            settings.modelLanguages,
+            settings.modelDetectsLanguage,
+        )
+        SectionCard(
+            "Transcription language",
+            supporting = listOfNotNull(settings.language.detail, languageRestriction)
+                .joinToString("\n"),
+        ) {
             ChipChoiceRow(
                 options = TranscriptionLanguage.entries,
                 selected = settings.language,
                 label = { it.displayName },
                 onSelect = onLanguage,
+                // Greyed rather than hidden: a language that vanishes reads as
+                // unsupported by the app, when the fix is to change the model.
+                enabled = {
+                    ModelLanguageSupport.isSelectable(
+                        it,
+                        settings.modelLanguages,
+                        settings.modelDetectsLanguage,
+                    )
+                },
             )
         }
 

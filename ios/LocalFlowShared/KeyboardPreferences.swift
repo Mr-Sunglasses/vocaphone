@@ -205,6 +205,8 @@ enum KeyboardPreferences {
     static let containingAppForegroundKey = "containingAppForeground"
     static let setupCompletedKey = "setupCompleted"
     static let firstDictationKey = "hasCompletedFirstDictation"
+    static let modelLanguagesKey = "gatewayModelLanguages"
+    static let modelDetectsLanguageKey = "gatewayModelDetectsLanguage"
 
     nonisolated(unsafe) static let defaults = UserDefaults(
         suiteName: AppConfiguration.appGroupIdentifier
@@ -242,6 +244,30 @@ enum KeyboardPreferences {
         set {
             defaults?.set(newValue.rawValue, forKey: writingStyleKey)
         }
+    }
+
+    /// What the gateway's loaded model can be asked for, written by the app after
+    /// each health check. Stored in the App Group so the keyboard's own language
+    /// menu reaches the same conclusion as the containing app rather than
+    /// offering choices the app has already ruled out.
+    static var modelLanguages: Set<String> {
+        get { Set(defaults?.stringArray(forKey: modelLanguagesKey) ?? []) }
+        set { defaults?.set(Array(newValue).sorted(), forKey: modelLanguagesKey) }
+    }
+
+    static var modelDetectsLanguage: Bool {
+        get { defaults?.bool(forKey: modelDetectsLanguageKey) ?? false }
+        set { defaults?.set(newValue, forKey: modelDetectsLanguageKey) }
+    }
+
+    /// The language to actually dictate in, after discarding a stored choice the
+    /// current model cannot honour.
+    static var effectiveTranscriptionLanguage: TranscriptionLanguage {
+        ModelLanguageSupport.resolve(
+            transcriptionLanguage,
+            modelLanguages: modelLanguages,
+            detectsLanguageAutomatically: modelDetectsLanguage
+        )
     }
 
     static var transcriptionLanguage: TranscriptionLanguage {

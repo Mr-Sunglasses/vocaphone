@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.github.mrsunglasses.localflow.core.MicrophonePreference
+import io.github.mrsunglasses.localflow.core.ModelLanguageSupport
 import io.github.mrsunglasses.localflow.core.TranscriptionLanguage
 import io.github.mrsunglasses.localflow.core.WritingStyle
 import io.github.mrsunglasses.localflow.security.TokenVault
@@ -66,7 +67,21 @@ data class LocalFlowSettings(
     val lastEngine: String = "",
     val lastEngineReady: Boolean = false,
     val lastStreamingSupported: Boolean = false,
+    /**
+     * Languages the gateway's loaded model covers, empty when it made no claim.
+     * Drives which options the language picker offers rather than what it hides.
+     */
+    val modelLanguages: Set<String> = emptySet(),
+    val modelDetectsLanguage: Boolean = false,
 ) {
+
+    /**
+     * The language to actually send. A stored choice goes stale when the gateway
+     * switches to a model that cannot honour it, and sending it anyway produces
+     * the wrong-language failure this whole mechanism exists to prevent.
+     */
+    val effectiveLanguage: TranscriptionLanguage
+        get() = ModelLanguageSupport.resolve(language, modelLanguages, modelDetectsLanguage)
     val isConfigured: Boolean get() = gatewayUrl.isNotEmpty() && hasToken
 }
 
@@ -110,6 +125,8 @@ class SettingsRepository(private val context: Context) {
             preferences.remove(Keys.LAST_ENGINE)
             preferences.remove(Keys.LAST_ENGINE_READY)
             preferences.remove(Keys.LAST_STREAMING)
+            preferences.remove(Keys.MODEL_LANGUAGES)
+            preferences.remove(Keys.MODEL_DETECTS_LANGUAGE)
         }
         TokenVault.clear()
     }
@@ -133,11 +150,19 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setOnboardingComplete(complete: Boolean) = put(Keys.ONBOARDING_COMPLETE, complete)
 
-    suspend fun recordEngineStatus(engine: String, ready: Boolean, streamingSupported: Boolean) {
+    suspend fun recordEngineStatus(
+        engine: String,
+        ready: Boolean,
+        streamingSupported: Boolean,
+        modelLanguages: Set<String> = emptySet(),
+        modelDetectsLanguage: Boolean = false,
+    ) {
         context.dataStore.edit { preferences ->
             preferences[Keys.LAST_ENGINE] = engine
             preferences[Keys.LAST_ENGINE_READY] = ready
             preferences[Keys.LAST_STREAMING] = streamingSupported
+            preferences[Keys.MODEL_LANGUAGES] = modelLanguages
+            preferences[Keys.MODEL_DETECTS_LANGUAGE] = modelDetectsLanguage
         }
     }
 
@@ -162,6 +187,8 @@ class SettingsRepository(private val context: Context) {
         lastEngine = this[Keys.LAST_ENGINE].orEmpty(),
         lastEngineReady = this[Keys.LAST_ENGINE_READY] ?: false,
         lastStreamingSupported = this[Keys.LAST_STREAMING] ?: false,
+        modelLanguages = this[Keys.MODEL_LANGUAGES].orEmpty(),
+        modelDetectsLanguage = this[Keys.MODEL_DETECTS_LANGUAGE] ?: false,
     )
 
     private object Keys {
@@ -180,5 +207,7 @@ class SettingsRepository(private val context: Context) {
         val LAST_ENGINE = stringPreferencesKey("last_engine")
         val LAST_ENGINE_READY = booleanPreferencesKey("last_engine_ready")
         val LAST_STREAMING = booleanPreferencesKey("last_streaming_supported")
+        val MODEL_LANGUAGES = stringSetPreferencesKey("model_languages")
+        val MODEL_DETECTS_LANGUAGE = booleanPreferencesKey("model_detects_language")
     }
 }

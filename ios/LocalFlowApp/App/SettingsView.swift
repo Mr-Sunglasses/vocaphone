@@ -143,16 +143,43 @@ struct SettingsView: View {
         }
     }
 
+    /// A `Picker` cannot disable individual rows, so the languages the gateway's
+    /// model cannot honour are listed explicitly and greyed. Greyed rather than
+    /// hidden: a language that simply vanishes reads as unsupported by the app,
+    /// when the fix is to change the model on the gateway.
     private var transcriptionLanguageSection: some View {
         Section("Transcription language") {
-            Picker("Language", selection: $transcriptionLanguageRawValue) {
-                ForEach(TranscriptionLanguage.allCases) { language in
-                    Text(language.displayName).tag(language.rawValue)
+            ForEach(TranscriptionLanguage.allCases) { language in
+                let selectable = ModelLanguageSupport.isSelectable(
+                    language,
+                    modelLanguages: KeyboardPreferences.modelLanguages,
+                    detectsLanguageAutomatically: KeyboardPreferences.modelDetectsLanguage
+                )
+                Button {
+                    transcriptionLanguageRawValue = language.rawValue
+                } label: {
+                    HStack {
+                        Text(language.displayName)
+                            .foregroundStyle(selectable ? .primary : .tertiary)
+                        Spacer()
+                        if language.rawValue == transcriptionLanguageRawValue {
+                            Image(systemName: "checkmark").foregroundStyle(.tint)
+                        }
+                    }
                 }
+                .disabled(!selectable)
             }
             Text(selectedTranscriptionLanguage.detail)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if let restriction = ModelLanguageSupport.restriction(
+                modelLanguages: KeyboardPreferences.modelLanguages,
+                detectsLanguageAutomatically: KeyboardPreferences.modelDetectsLanguage
+            ) {
+                Text(restriction)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
