@@ -14,7 +14,8 @@ enum class TranscriptionLanguage(val wireValue: String) {
     MANDARIN_CHINESE("zh"),
     UKRAINIAN("uk"),
     RUSSIAN("ru"),
-    VIETNAMESE("vi");
+    VIETNAMESE("vi"),
+    GERMAN("de");
 
     val displayName: String
         get() = when (this) {
@@ -28,6 +29,7 @@ enum class TranscriptionLanguage(val wireValue: String) {
             UKRAINIAN -> "Ukrainian"
             RUSSIAN -> "Russian"
             VIETNAMESE -> "Vietnamese"
+            GERMAN -> "German"
         }
 
     val shortLabel: String
