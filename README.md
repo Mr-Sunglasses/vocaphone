@@ -105,10 +105,10 @@ limits, Android accessibility consent, and what the bubble will never touch
   and `faster-whisper`, multilingual Moonshine, and `whisper.cpp` adapters.
   The VocaMac and Handy desktop apps are optional, Mac-only, and reuse the
   models they already downloaded
-- A 60-model catalog spanning Whisper, Parakeet, SenseVoice, Moonshine, GigaAM,
-  Canary, Cohere Transcribe, Qwen3-ASR, Granite Speech, Dolphin (40 Eastern
-  languages, including Hindi, Bengali, Tamil and Urdu), and Omnilingual ASR
-  (1600+ languages)
+- A 58-model catalog spanning Whisper, Parakeet, SenseVoice, Moonshine, GigaAM,
+  Canary, Qwen3-ASR, Granite Speech, and Dolphin (40 Eastern
+  languages, including Hindi, Bengali, Tamil and Urdu), filterable by the
+  language you actually speak
 - Operational dashboard with hardware detection, queue/outcome counters,
   pipeline benchmarks, real-time factor, peak memory, and warmup state
 - CPU/OpenBLAS, host-native CPU, NVIDIA CUDA, and Vulkan Compose profiles

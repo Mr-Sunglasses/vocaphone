@@ -1,17 +1,19 @@
 """Detect when a transcript came back in the wrong writing system.
 
 Several catalog models decide the language themselves and cannot be pinned
-(Dolphin, Omnilingual ASR, SenseVoice, Qwen3-ASR). On a short recording their
-detection can land on the wrong language entirely: dictating "नमस्ते" to Dolphin
-returns "насте" — confident, fluent, and in Cyrillic.
+(Dolphin, SenseVoice, Qwen3-ASR). On a short recording — which is most of
+dictation — their detection can land on a completely unrelated language:
+"ठीक है" comes back from both Dolphin and Qwen3-ASR as Chinese, and "नमस्ते"
+from Dolphin as Cyrillic.
 
 That is worse than an error, because it reaches the cursor looking like a real
 transcript. Comparing the script of the result against the script the requested
 language is written in turns a silent wrong answer into an honest failure.
 
-The check is deliberately lenient. It only fires when the transcript contains
-*no* letters of the expected script at all, so code-switching ("मैं office जा
-रहा हूँ"), digits, punctuation and loanwords never trip it.
+The check is deliberately lenient, since a false rejection throws away a good
+transcript. It never fires on an unknown language, on `auto`, or on text without
+letters, and it requires only a minority of letters to be in the expected script
+so that code-switching ("मैं report Friday तक send करूंगा") always passes.
 """
 
 from __future__ import annotations
@@ -117,7 +119,7 @@ def expected_scripts(language: str) -> frozenset[str]:
 
 
 # Share of letters that must be in the expected script. A presence test alone was
-# not enough: Omnilingual transliterated "send me the report by Friday" into Arabic
+# not enough: a model under evaluation transliterated "send me the report by Friday" into Arabic
 # as "ل سند مي رoرت بي فريداي", whose single stray Latin "o" passed it. Genuine
 # code-switching keeps far more of the base script than that — Hinglish rarely
 # drops below a third — so this sits well below any real transcript.

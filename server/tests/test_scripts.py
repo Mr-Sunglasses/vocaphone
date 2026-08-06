@@ -16,9 +16,9 @@ def test_the_dolphin_cyrillic_bug_is_rejected() -> None:
 
 
 def test_transliteration_into_another_script_is_rejected() -> None:
-    """Omnilingual rendered "send me the report by Friday" as Arabic. A presence
-    test let it through on the single stray Latin "o" in "رoرت", which is why the
-    check is proportional rather than binary."""
+    """A model under evaluation rendered "send me the report by Friday" in Arabic
+    script. A presence test let it through on the single stray Latin "o" in
+    "رoرت", which is why the check is proportional rather than binary."""
     transliterated = "ل سند مي  رoرت بي فريداي"
     assert "o" in transliterated  # the character that used to rescue it
     assert transcript_matches_language(transliterated, "en") is False
@@ -27,8 +27,8 @@ def test_transliteration_into_another_script_is_rejected() -> None:
 
 
 def test_code_switching_is_never_rejected() -> None:
-    """Indian speakers routinely mix English into Hindi. The check only fires
-    when there is no trace of the expected script at all."""
+    """Indian speakers routinely mix English into Hindi, so the threshold has to
+    sit below the share of the base script even heavy Hinglish keeps."""
     # Including heavy Hinglish, which is where a proportional check could bite.
     for text in (
         "मैं office जा रहा हूँ",

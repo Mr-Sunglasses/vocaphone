@@ -201,20 +201,19 @@ in a URL or screenshot.
   language the model covers, or download a model that covers it — the Models tab
   lists each model's languages. This failure is deliberately not retryable,
   because retrying sends the same language to the same model. For Hindi and other
-  South Asian languages, use Dolphin; for the widest coverage, Omnilingual ASR.
+  South Asian languages, pin the language and use a multilingual Whisper model.
 
 ## The transcript came back in the wrong language
 
 Some models decide the language themselves and cannot be pinned to one. Dolphin,
-SenseVoice, Omnilingual ASR, and Qwen3-ASR all predict the language as part of
+SenseVoice, and Qwen3-ASR all predict the language as part of
 decoding, so the language chosen in the app does not constrain them — their model
 cards carry an **auto language** badge. On short recordings they can confuse
 closely related languages, most often Hindi with Urdu, Marathi, or Nepali.
 
 If you need a guaranteed language, use a Whisper model. `whisper.cpp`,
 faster-whisper, WhisperKit, and MLX Whisper are all passed the language
-explicitly, so selecting Hindi transcribes Hindi. Cohere Transcribe also accepts
-an explicit language where the engine build exposes it.
+explicitly, so selecting Hindi transcribes Hindi.
 
 Speaking for longer also helps the auto-detecting models: a two-second clip
 carries much less evidence of which language it is than a full sentence.

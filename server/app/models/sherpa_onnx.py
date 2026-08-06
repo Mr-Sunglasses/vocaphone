@@ -105,7 +105,7 @@ class SherpaOnnxEngine:
             decode = _decode_wave_online if self.supports_streaming else _decode_wave
             try:
                 text = await asyncio.wait_for(
-                    asyncio.to_thread(decode, recognizer, audio_path, options.language),
+                    asyncio.to_thread(decode, recognizer, audio_path),
                     timeout=180,
                 )
             except TimeoutError as error:
@@ -188,28 +188,8 @@ class SherpaOnnxEngine:
                 num_threads=threads,
                 provider="cpu",
             )
-        if self.catalog_model.model_type == "cohere_transcribe":
-            # An empty `language` means auto-detect. The encoder's weights live in the
-            # `.data` sidecar listed in `required_files`; onnxruntime finds it by name.
-            return sherpa_onnx.OfflineRecognizer.from_cohere_transcribe(
-                encoder=str(self.model_root / "encoder.int8.onnx"),
-                decoder=str(self.model_root / "decoder.int8.onnx"),
-                tokens=tokens,
-                num_threads=threads,
-                language="",
-                use_punct=True,
-                use_itn=True,
-                provider="cpu",
-            )
         if self.catalog_model.model_type == "dolphin_ctc":
             return sherpa_onnx.OfflineRecognizer.from_dolphin_ctc(
-                model=str(self.model_root / "model.int8.onnx"),
-                tokens=tokens,
-                num_threads=threads,
-                provider="cpu",
-            )
-        if self.catalog_model.model_type == "omnilingual_ctc":
-            return sherpa_onnx.OfflineRecognizer.from_omnilingual_asr_ctc(
                 model=str(self.model_root / "model.int8.onnx"),
                 tokens=tokens,
                 num_threads=threads,
@@ -267,40 +247,20 @@ def _read_wave_samples(audio_path: Path) -> tuple[int, list[float]]:
     return sample_rate, [sample / 32768.0 for sample in samples]
 
 
-def _apply_stream_language(stream: Any, language: str) -> None:
-    """Pin the decode to one language when the model actually supports it.
-
-    Only some families expose this. Cohere Transcribe documents a per-stream
-    `set_option("language", ...)`; Dolphin, SenseVoice, Omnilingual ASR and
-    Qwen3-ASR predict the language themselves as part of decoding and expose no
-    option at all, so this is deliberately a no-op for them rather than a silent
-    failure. Their catalog entries carry `detects_language_automatically` so the
-    model card can say the language setting will not constrain them.
-    """
-    if language == "auto":
-        return
-    has_option = getattr(stream, "has_option", None)
-    if has_option is None or not has_option("language"):
-        return
-    stream.set_option("language", _language_code(language))
-
-
-def _decode_wave(recognizer: Any, audio_path: Path, language: str = "auto") -> str:
+def _decode_wave(recognizer: Any, audio_path: Path) -> str:
     sample_rate, floats = _read_wave_samples(audio_path)
     stream = recognizer.create_stream()
-    _apply_stream_language(stream, language)
     stream.accept_waveform(sample_rate, floats)
     recognizer.decode_stream(stream)
     return str(stream.result.text).strip()
 
 
-def _decode_wave_online(recognizer: Any, audio_path: Path, language: str = "auto") -> str:
+def _decode_wave_online(recognizer: Any, audio_path: Path) -> str:
     """Batch fallback for a streaming-only model: feed the whole recording as
     one continuous stream and read the final result off the recognizer,
     rather than the stream itself (`OnlineStream` has no `.result`)."""
     sample_rate, floats = _read_wave_samples(audio_path)
     stream = recognizer.create_stream()
-    _apply_stream_language(stream, language)
     stream.accept_waveform(sample_rate, floats)
     stream.input_finished()
     while recognizer.is_ready(stream):

@@ -665,47 +665,6 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         supports_streaming=True,
     ),
     _sherpa_onnx(
-        "cohere-transcribe-14-lang-int8",
-        "Cohere Transcribe 14-language INT8",
-        2888 * MB,
-        "14 languages",
-        "Most accurate multilingual · punctuation",
-        8,
-        huggingface_repo="csukuangfj2/sherpa-onnx-cohere-transcribe-14-lang-int8-2026-04-01",
-        # `encoder.int8.onnx` is a small ONNX graph whose weights live beside it in
-        # `encoder.int8.onnx.data`; onnxruntime resolves that sidecar by name from the
-        # same directory, so it is never passed to the recognizer but must be present.
-        required_files=(
-            "encoder.int8.onnx",
-            "encoder.int8.onnx.data",
-            "decoder.int8.onnx",
-            "tokens.txt",
-        ),
-        model_type="cohere_transcribe",
-        language_codes=(
-            "en",
-            "fr",
-            "de",
-            "it",
-            "es",
-            "pt",
-            "el",
-            "nl",
-            "pl",
-            "zh",
-            "ja",
-            "ko",
-            "vi",
-            "ar",
-        ),
-        family="Cohere Transcribe",
-        description=(
-            "Cohere's multilingual transcription model converted to INT8 ONNX. The most accurate "
-            "multilingual option in this catalog, at the cost of the largest download."
-        ),
-        license_name="Apache 2.0",
-    ),
-    _sherpa_onnx(
         "dolphin-small-ctc-int8",
         "Dolphin Small CTC INT8",
         250 * MB,
@@ -747,32 +706,6 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
             "variant does."
         ),
         license_name="Apache 2.0",
-        detects_language_automatically=True,
-    ),
-    _sherpa_onnx(
-        "omnilingual-asr-300m-ctc-int8",
-        "Omnilingual ASR 300M CTC INT8",
-        365 * MB,
-        "1600+ languages",
-        "Widest coverage · lowest accuracy",
-        2,
-        huggingface_repo=(
-            "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12"
-        ),
-        required_files=("model.int8.onnx", "tokens.txt"),
-        model_type="omnilingual_ctc",
-        # Deliberately empty: an allowlist is meaningless at 1600+ languages, and an
-        # incomplete one would reject languages the model actually handles.
-        language_codes=(),
-        family="Omnilingual ASR",
-        description=(
-            "Meta's Omnilingual ASR converted to INT8 ONNX. A last resort for languages "
-            "nothing else covers, not a general dictation model: it detects the language "
-            "itself and cannot be pinned, writes no punctuation or capitalisation, and on "
-            "anything short it transliterates into the wrong script entirely. Every other "
-            "model here is better for the languages they share."
-        ),
-        license_name="See model source",
         detects_language_automatically=True,
     ),
     _sherpa_onnx(

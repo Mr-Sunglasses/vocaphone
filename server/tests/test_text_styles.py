@@ -239,3 +239,26 @@ def test_a_country_code_word_is_not_mistaken_for_a_domain() -> None:
     """ ".it" is a real suffix, so "home.It" must not be read as an address."""
     styled = apply_writing_style("I went home.It was fine.", "formal", "en")
     assert styled == "I went home.It was fine."
+
+
+def test_a_foreign_terminator_is_recognised_not_doubled() -> None:
+    """A model that picks its own language leaks that language's punctuation:
+    Dolphin ends a Hindi sentence with the CJK "。". Appending a danda to text
+    that already ended produced "。।" at the cursor."""
+    leaked = "आज मैं ऑफिस जा रहा हूँ。"
+    assert apply_writing_style(leaked, "clean", "hi") == leaked
+    assert apply_writing_style(leaked, "formal", "hi") == leaked
+    # Styles that rewrite terminators normalise it to the right language's mark.
+    assert apply_writing_style(leaked, "excited", "hi") == "आज मैं ऑफिस जा रहा हूँ!"
+    # The reverse direction too: a danda leaking into Japanese.
+    assert apply_writing_style("私は元気です।", "clean", "ja") == "私は元気です।"
+
+
+def test_recognising_foreign_marks_does_not_change_normal_text() -> None:
+    for language, text in (
+        ("hi", "मैं घर गया। जॉन ने फोन किया।"),
+        ("en", "I went home. John called."),
+        ("ja", "家に帰りました。ジョンが電話してきました。"),
+        ("ar", "ذهبت إلى المنزل. اتصل بي جون."),
+    ):
+        assert apply_writing_style(text, "clean", language) == text

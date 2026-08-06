@@ -198,44 +198,10 @@ def test_sherpa_nemo_transducer_uses_each_files_own_quantization(
     assert constructions[0]["joiner"] == str(root / "joiner.onnx")
 
 
-def test_sherpa_cohere_transcribe_loads_with_auto_language(
+def test_sherpa_dolphin_loads_a_single_file_ctc(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    catalog_model = _catalog(
-        "cohere_transcribe",
-        required_files=(
-            "encoder.int8.onnx",
-            "encoder.int8.onnx.data",
-            "decoder.int8.onnx",
-            "tokens.txt",
-        ),
-    )
-    root = _model_root(tmp_path, catalog_model)
-    constructions: list[dict[str, object]] = []
-    _fake_recognizer_module("from_cohere_transcribe", constructions, monkeypatch)
-    monkeypatch.setattr(
-        "app.models.sherpa_onnx.importlib.util.find_spec",
-        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
-    )
-
-    SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
-
-    assert constructions[0]["encoder"] == str(root / "encoder.int8.onnx")
-    assert constructions[0]["decoder"] == str(root / "decoder.int8.onnx")
-    assert constructions[0]["tokens"] == str(root / "tokens.txt")
-    # An empty language means auto-detect across all 14 languages, not English.
-    assert constructions[0]["language"] == ""
-    # The weight sidecar is required on disk but resolved by onnxruntime, never passed.
-    assert "encoder.int8.onnx.data" not in str(constructions[0].values())
-
-
-def test_sherpa_dolphin_and_omnilingual_load_single_file_ctc(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    for model_type, factory in (
-        ("dolphin_ctc", "from_dolphin_ctc"),
-        ("omnilingual_ctc", "from_omnilingual_asr_ctc"),
-    ):
+    for model_type, factory in (("dolphin_ctc", "from_dolphin_ctc"),):
         catalog_model = _catalog(model_type, required_files=("model.int8.onnx", "tokens.txt"))
         root = _model_root(tmp_path, catalog_model)
         constructions: list[dict[str, object]] = []
@@ -399,55 +365,6 @@ async def test_sherpa_rejects_unsupported_language(tmp_path: Path) -> None:
             tmp_path / "unused.wav",
             TranscriptionOptions("es", "casual"),
         )
-
-
-def test_decode_pins_the_language_only_when_the_model_supports_it(tmp_path: Path) -> None:
-    """Cohere Transcribe documents a per-stream language option; Dolphin,
-    SenseVoice, Omnilingual and Qwen3-ASR predict the language themselves and
-    expose none. Setting it blindly would raise on the models that lack it."""
-    from app.models.sherpa_onnx import _decode_wave
-
-    audio = tmp_path / "audio.wav"
-    _wave(audio)
-
-    class Stream:
-        def __init__(self, supports: bool) -> None:
-            self.supports = supports
-            self.options: dict[str, str] = {}
-            self.result = type("Result", (), {"text": "ok"})()
-
-        def has_option(self, key: str) -> bool:
-            return self.supports and key == "language"
-
-        def set_option(self, key: str, value: str) -> None:
-            assert self.supports, "must not be called on a model without the option"
-            self.options[key] = value
-
-        def accept_waveform(self, sample_rate: int, samples: list[float]) -> None:
-            pass
-
-    class Recognizer:
-        def __init__(self, supports: bool) -> None:
-            self.stream = Stream(supports)
-
-        def create_stream(self) -> Stream:
-            return self.stream
-
-        def decode_stream(self, stream: Stream) -> None:
-            pass
-
-    supporting = Recognizer(supports=True)
-    _decode_wave(supporting, audio, "hi-IN")
-    assert supporting.stream.options == {"language": "hi"}
-
-    # Auto never pins, even where the option exists.
-    auto = Recognizer(supports=True)
-    _decode_wave(auto, audio, "auto")
-    assert auto.stream.options == {}
-
-    # A model without the option decodes normally instead of raising.
-    lacking = Recognizer(supports=False)
-    assert _decode_wave(lacking, audio, "hi") == "ok"
 
 
 def test_decode_wave_online_reads_result_from_the_recognizer(tmp_path: Path) -> None:

@@ -122,10 +122,10 @@ BOOTSTRAP_TOKEN_ID = "bootstrap"
 def _model_covers(entry: AdminModelEntry, language: str) -> bool:
     """Whether a model can transcribe `language`.
 
-    A model with no declared languages matches everything rather than nothing:
-    the only such entry is Omnilingual ASR, whose 1600+ languages are genuinely
-    too many to enumerate, and hiding it from every filter would bury the one
-    model most likely to cover an unusual language.
+    A model with no declared languages matches everything rather than nothing.
+    No catalog entry is in that position today, but a user's own imported model
+    is, and hiding an unlabelled model from every filter would make it look like
+    the import had failed.
     """
     if not entry.language_codes:
         return True

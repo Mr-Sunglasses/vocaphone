@@ -362,10 +362,10 @@ def test_language_filter_answers_which_model_should_i_use() -> None:
     # An English-only build must not surface under Hindi.
     assert not any(e.id.endswith(".en.bin") for e in hindi)
 
-    # Omnilingual declares no codes; it covers 1600+ languages, so it matches
-    # everything rather than disappearing from every filter.
-    omni = next(e for e in entries if "omnilingual" in e.id)
-    assert _model_covers(omni, "hi") and _model_covers(omni, "yo")
+    # A model with no declared languages (an imported one) matches everything
+    # rather than disappearing from every filter.
+    unlabelled = entries[0].model_copy(update={"language_codes": []})
+    assert _model_covers(unlabelled, "hi") and _model_covers(unlabelled, "yo")
 
     english = [e for e in entries if _model_covers(e, "en")]
     assert any(e.id.endswith(".en.bin") for e in english)
@@ -376,7 +376,7 @@ def test_language_filter_answers_which_model_should_i_use() -> None:
     assert not any(e.engine == "moonshine" and e.id != "moonshine:hi" for e in hindi)
     assert any(e.engine == "moonshine" for e in english)
 
-    # Odia is real but Whisper-less: only Dolphin and Omnilingual cover it, which
+    # Odia is real but Whisper-less: only Dolphin covers it, which
     # is exactly why the phone clients do not offer it as a choice.
     odia = [e for e in entries if _model_covers(e, "or")]
     assert odia and all(e.detects_language_automatically for e in odia)

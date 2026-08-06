@@ -197,25 +197,12 @@ def test_catalog_includes_gigaam_and_canary_models() -> None:
 def test_catalog_includes_the_newer_sherpa_families() -> None:
     entries = {model.id: model for model in DEFAULT_CATALOG}
 
-    cohere = entries["sherpa-onnx:cohere-transcribe-14-lang-int8"]
-    assert cohere.model_type == "cohere_transcribe"
-    # The encoder's weights live in an external sidecar; without it onnxruntime
-    # loads a graph with no tensors, so it has to be downloaded alongside.
-    assert "encoder.int8.onnx.data" in cohere.required_files
-    assert cohere.license_name == "Apache 2.0"
-    assert set(cohere.language_codes) >= {"en", "fr", "de", "ja", "ar"}
-
     dolphin = entries["sherpa-onnx:dolphin-small-ctc-int8"]
     assert dolphin.model_type == "dolphin_ctc"
     assert dolphin.required_files == ("model.int8.onnx", "tokens.txt")
     # The only South Asian coverage in the catalog.
     assert {"hi", "bn", "ta", "ur"} <= set(dolphin.language_codes)
     assert entries["sherpa-onnx:dolphin-base-ctc-int8"].language_codes == dolphin.language_codes
-
-    omnilingual = entries["sherpa-onnx:omnilingual-asr-300m-ctc-int8"]
-    assert omnilingual.model_type == "omnilingual_ctc"
-    # Deliberately unset: an allowlist would reject languages the model handles.
-    assert omnilingual.language_codes == ()
 
     qwen3 = entries["sherpa-onnx:qwen3-asr-0.6b-int8"]
     assert qwen3.model_type == "qwen3_asr"

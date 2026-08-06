@@ -30,6 +30,20 @@ class Punctuation:
     # CJK does not put a space between sentences.
     join: str
 
+    def __post_init__(self) -> None:
+        # A model that picks its own language leaks that language's punctuation
+        # into another script: Dolphin ends a Hindi sentence with the CJK "。".
+        # Recognising every sentence mark stops a second terminator being
+        # appended to text that already ended — the visible bug was "。।" — and
+        # lets the segmenter see the boundary. Only `terminator`, the mark that
+        # gets *written*, stays language-specific.
+        merged = self.terminators + _UNIVERSAL_TERMINATORS
+        object.__setattr__(self, "terminators", "".join(dict.fromkeys(merged)))
+
+
+# Every sentence-ending mark any catalog model is capable of emitting.
+_UNIVERSAL_TERMINATORS = ".!?。！？।۔။។།؟"
+
 
 _LATIN = Punctuation(".", ",", "!", "?", ".!?", "en", " ")
 _CJK = Punctuation("。", "、", "！", "？", "。！？.!?", "ja", "")
