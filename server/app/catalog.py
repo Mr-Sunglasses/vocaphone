@@ -720,9 +720,10 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         description=(
             "DataoceanAI and Tsinghua's model for Eastern languages, converted to INT8 ONNX. The "
             "only entry in this catalog that covers Hindi, Bengali, Tamil, Urdu and the other "
-            "South Asian languages. It detects the language itself and cannot be pinned to one, "
-            "so closely related languages — Hindi and Urdu, say — are sometimes confused on short "
-            "recordings. Choose a Whisper model if you need a guaranteed language."
+            "South Asian languages, and the most accurate of them on a full sentence. It "
+            "detects the language itself and cannot be pinned, and on a short phrase that "
+            "detection fails outright — a two-word Hindi clip can come back in Cyrillic. "
+            "Dictate whole sentences, or choose a Whisper model for a guaranteed language."
         ),
         license_name="Apache 2.0",
         detects_language_automatically=True,
@@ -753,7 +754,7 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         "Omnilingual ASR 300M CTC INT8",
         365 * MB,
         "1600+ languages",
-        "Widest language coverage",
+        "Widest coverage · lowest accuracy",
         2,
         huggingface_repo=(
             "csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12"
@@ -765,9 +766,11 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         language_codes=(),
         family="Omnilingual ASR",
         description=(
-            "Meta's Omnilingual ASR converted to INT8 ONNX. Reaches far beyond every other model "
-            "here, though per-language accuracy varies widely across the long tail. It detects "
-            "the language itself and cannot be pinned to one."
+            "Meta's Omnilingual ASR converted to INT8 ONNX. A last resort for languages "
+            "nothing else covers, not a general dictation model: it detects the language "
+            "itself and cannot be pinned, writes no punctuation or capitalisation, and on "
+            "anything short it transliterates into the wrong script entirely. Every other "
+            "model here is better for the languages they share."
         ),
         license_name="See model source",
         detects_language_automatically=True,

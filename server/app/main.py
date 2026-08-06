@@ -106,6 +106,7 @@ from app.schemas import (
     SystemStatus,
     TestTranscriptionResponse,
 )
+from app.scripts import transcript_matches_language
 from app.service import TranscriptionService
 from app.storage import SessionRepository, StoredSession
 from app.system import detect_system, engine_runs_on
@@ -529,9 +530,13 @@ def create_app(
                                 for line in getattr(final_result, "lines", []) or []:
                                     if getattr(line, "text", ""):
                                         lines[int(line.line_id)] = str(line.text).strip()
-                                transcript = apply_writing_style(
-                                    _joined_stream_lines(lines), style, language
-                                )
+                                joined = _joined_stream_lines(lines)
+                                if not transcript_matches_language(joined, language):
+                                    raise ValueError(
+                                        "The model transcribed this as a different "
+                                        f"language than {language}."
+                                    )
+                                transcript = apply_writing_style(joined, style, language)
                             if not transcript:
                                 raise ValueError("Moonshine returned an empty transcript.")
                             await asyncio.to_thread(stream.close)

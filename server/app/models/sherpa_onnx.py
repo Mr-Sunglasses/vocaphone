@@ -115,6 +115,16 @@ class SherpaOnnxEngine:
                     f"sherpa-onnx failed: {str(error)[-240:]}"
                 ) from error
             if not text:
+                # A model asked for a language it was never trained on returns
+                # nothing at all rather than failing: Dolphin does this for
+                # English. Silence was already rejected upstream, so an empty
+                # result here means the model could not read this speech.
+                if options.language != "auto":
+                    raise LanguageUnsupportedError(
+                        f"The selected model returned nothing for {options.language}. "
+                        "It probably does not cover that language — choose another "
+                        "model, or set the language to Automatic."
+                    )
                 raise TranscriptionProcessError("sherpa-onnx returned an empty transcript.")
             return EngineTranscription(
                 text=text,
