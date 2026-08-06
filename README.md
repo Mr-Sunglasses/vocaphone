@@ -90,9 +90,11 @@ limits, Android accessibility consent, and what the bubble will never touch
   language/style status, next-keyboard control, and direct insertion
 - Native Kotlin/Compose Android client that keeps your own keyboard and dictates
   through a floating bubble, with the same styles and gateway as the keyboard
-- 11 selectable transcription languages plus Automatic on Android (9 on iOS,
-  pending French and German), and four writing styles: Formal, Casual, Very
-  Casual, and Excited
+- 27 selectable transcription languages plus Automatic on both clients —
+  including Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, Kannada,
+  Malayalam, Punjabi, Assamese and Nepali — and four writing styles: Formal,
+  Casual, Very Casual, and Excited, with sentence punctuation that follows the
+  script rather than assuming a Latin full stop
 - Automatic microphone routing or an explicit Microphone preference,
   with the input currently in use shown in the app
 - A bounded Quick Dictation window with persistent background input, a Live
@@ -103,6 +105,10 @@ limits, Android accessibility consent, and what the bubble will never touch
   and `faster-whisper`, multilingual Moonshine, and `whisper.cpp` adapters.
   The VocaMac and Handy desktop apps are optional, Mac-only, and reuse the
   models they already downloaded
+- A 58-model catalog spanning Whisper, Parakeet, SenseVoice, Moonshine, GigaAM,
+  Canary, Qwen3-ASR, Granite Speech, and Dolphin (40 Eastern
+  languages, including Hindi, Bengali, Tamil and Urdu), filterable by the
+  language you actually speak
 - Operational dashboard with hardware detection, queue/outcome counters,
   pipeline benchmarks, real-time factor, peak memory, and warmup state
 - CPU/OpenBLAS, host-native CPU, NVIDIA CUDA, and Vulkan Compose profiles

@@ -229,6 +229,8 @@ class LocalFlowViewModel(application: Application) : AndroidViewModel(applicatio
             engine = health.engine,
             ready = health.engineReady,
             streamingSupported = health.streamingSupported == true,
+            modelLanguages = health.languages,
+            modelDetectsLanguage = health.detectsLanguageAutomatically,
         )
         return ConnectionReport(
             reachable = true,

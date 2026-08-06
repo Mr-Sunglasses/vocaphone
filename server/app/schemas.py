@@ -39,6 +39,14 @@ class HealthResponse(BaseModel):
     engine_ready: bool
     engine: str
     streaming_supported: bool
+    # What the loaded model can actually do with the `language` field, so a client
+    # can stop offering choices it cannot honour. An empty list means "unknown" —
+    # an older gateway, no model selected, or a user's own imported model — and
+    # clients must keep every language available rather than locking the picker.
+    languages: list[str] = []
+    # True when the model picks the language itself. `languages` then describes
+    # what it transcribes well, not what a client may ask for.
+    detects_language_automatically: bool = False
 
 
 class LivenessResponse(BaseModel):
@@ -156,6 +164,11 @@ class AdminModelEntry(BaseModel):
     supports_streaming: bool = False
     license_name: str = "See model source"
     commercial_use: bool = True
+    detects_language_automatically: bool = False
+    # Named languages behind the `languages` summary, and the codes the filter
+    # matches on. Empty codes mean "matches any language" rather than none.
+    language_names: list[str] = []
+    language_codes: list[str] = []
     state: Literal["installed", "downloading", "not_installed"]
     active: bool
     recommended: bool

@@ -51,6 +51,7 @@ final class DictationBarView: UIView {
 
     private var renderedModel: DictationBarModel?
     private var renderedLanguage: TranscriptionLanguage?
+    private var renderedLanguageMenuKey: LanguageMenuKey?
     private var renderedStyle: WritingStyle?
     private var visibleBodyView: UIView?
     private var flashWork: DispatchWorkItem?
@@ -278,24 +279,102 @@ final class DictationBarView: UIView {
 
     // MARK: - Preference controls
 
-    private func updatePreferenceControls() {
-        let language = KeyboardPreferences.transcriptionLanguage
-        if renderedLanguage != language {
-            renderedLanguage = language
-            languageButton.menu = UIMenu(
-                title: "Transcription language",
-                children: TranscriptionLanguage.allCases.map { option in
-                    UIAction(
-                        title: option.displayName,
-                        image: UIImage(systemName: "globe"),
-                        state: option == language ? .on : .off
-                    ) { [weak self] _ in
-                        guard let self else { return }
-                        KeyboardPreferences.transcriptionLanguage = option
-                        delegate?.dictationBarDidChangePreferences(self)
-                    }
-                }
+    /// Everything the language menu is drawn from. The gateway's model can change
+    /// without the selection changing, and that flips which entries are usable.
+    struct LanguageMenuKey: Equatable {
+        let selected: TranscriptionLanguage
+        let modelLanguages: Set<String>
+        let detectsLanguage: Bool
+        let recents: [TranscriptionLanguage]
+
+        static func current(selected: TranscriptionLanguage) -> LanguageMenuKey {
+            LanguageMenuKey(
+                selected: selected,
+                modelLanguages: KeyboardPreferences.modelLanguages,
+                detectsLanguage: KeyboardPreferences.modelDetectsLanguage,
+                recents: KeyboardPreferences.recentTranscriptionLanguages
             )
+        }
+    }
+
+    /// Automatic, then a few recent languages, then everything else behind a
+    /// submenu. A flat list of 27 was unusable on a surface this cramped; this
+    /// keeps the top level to about five rows however many languages exist.
+    func makeLanguageMenu(
+        selected: TranscriptionLanguage,
+        key: LanguageMenuKey
+    ) -> UIMenu {
+        func action(for option: TranscriptionLanguage) -> UIAction {
+            let selectable = ModelLanguageSupport.isSelectable(
+                option,
+                modelLanguages: key.modelLanguages,
+                detectsLanguageAutomatically: key.detectsLanguage
+            )
+            let action = UIAction(
+                title: option.displayName,
+                image: UIImage(systemName: "globe"),
+                state: option == selected ? .on : .off
+            ) { [weak self] _ in
+                guard let self else { return }
+                KeyboardPreferences.transcriptionLanguage = option
+                KeyboardPreferences.noteTranscriptionLanguageUse(option)
+                delegate?.dictationBarDidChangePreferences(self)
+            }
+            if !selectable { action.attributes = .disabled }
+            return action
+        }
+
+        // Only usable recents are promoted: a greyed-out shortcut is worse than
+        // no shortcut, because it occupies one of very few visible rows.
+        let recents = key.recents.filter { option in
+            option != .automatic
+                && ModelLanguageSupport.isSelectable(
+                    option,
+                    modelLanguages: key.modelLanguages,
+                    detectsLanguageAutomatically: key.detectsLanguage
+                )
+        }
+        var shortcuts = [action(for: .automatic)]
+        shortcuts.append(contentsOf: recents.map(action(for:)))
+        // The selection itself always deserves a row, even if it was never
+        // recorded as recent — it is the one entry the user is looking for.
+        if selected != .automatic, !recents.contains(selected) {
+            shortcuts.append(action(for: selected))
+        }
+
+        let remaining = TranscriptionLanguage.allCases.filter { option in
+            !shortcuts.contains { $0.title == option.displayName }
+        }
+        var children: [UIMenuElement] = [
+            UIMenu(title: "", options: .displayInline, children: shortcuts)
+        ]
+        if !remaining.isEmpty {
+            children.append(
+                UIMenu(
+                    title: "All languages",
+                    image: UIImage(systemName: "list.bullet"),
+                    children: remaining.map(action(for:))
+                )
+            )
+        }
+        return UIMenu(title: "Transcription language", children: children)
+    }
+
+    private func updatePreferenceControls() {
+        // The effective language, not the stored one. A stored choice the loaded
+        // model cannot honour is dictated as Automatic, and a chip reading "HI"
+        // while Automatic is what happens is the UI lying about the result. The
+        // stored preference is untouched and returns when a model supports it.
+        let language = KeyboardPreferences.effectiveTranscriptionLanguage
+        let menuKey = LanguageMenuKey.current(selected: language)
+        // Keyed on everything the menu draws from, not just the selection. Keying
+        // on the language alone left the enabled states stale after the gateway
+        // switched models, so the keyboard kept offering languages the app had
+        // already ruled out.
+        if renderedLanguageMenuKey != menuKey {
+            renderedLanguageMenuKey = menuKey
+            renderedLanguage = language
+            languageButton.menu = makeLanguageMenu(selected: language, key: menuKey)
             applyChipConfiguration(
                 to: languageButton,
                 title: language.shortLabel,
@@ -402,6 +481,7 @@ final class DictationBarView: UIView {
         // rendering has to be discarded before the next apply.
         renderedModel = nil
         renderedLanguage = nil
+        renderedLanguageMenuKey = nil
         renderedStyle = nil
     }
 
@@ -429,6 +509,7 @@ final class DictationBarView: UIView {
         messageLabel.numberOfLines = metrics.messageLineLimit
         renderedModel = nil
         renderedLanguage = nil
+        renderedLanguageMenuKey = nil
         renderedStyle = nil
         setNeedsLayout()
     }

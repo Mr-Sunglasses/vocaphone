@@ -1,18 +1,66 @@
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import uuid4
 
 import httpx
 from conftest import TOKEN, FakeEngine, FakeNormalizer
 
 from app.config import Settings
+from app.errors import LanguageUnsupportedError
 from app.main import create_app
-from app.models.base import EngineHealth
+from app.models.base import EngineHealth, TranscriptionOptions
 
 
 class UnreadyEngine:
     async def health(self) -> EngineHealth:
         return EngineHealth(ready=False, name="missing-model")
+
+
+class WrongLanguageEngine:
+    """Stands in for a loaded model whose language list excludes the request."""
+
+    async def health(self) -> EngineHealth:
+        return EngineHealth(ready=True, name="english-only-model")
+
+    async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
+        raise LanguageUnsupportedError(
+            "The selected model does not support hi. Choose Auto, en, or another model."
+        )
+
+
+async def test_unsupported_language_is_reported_as_permanent(
+    settings: Settings, authorization: dict[str, str], audio_bytes: bytes
+) -> None:
+    """A language the loaded model cannot serve must not look like a transient fault.
+
+    The clients decide whether to keep audio for Retry from this code, and no
+    number of retries will make an English-only model transcribe Hindi.
+    """
+    app = create_app(settings, engine=WrongLanguageEngine(), normalizer=FakeNormalizer())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+        session_id = uuid4()
+        await client.post(
+            "/v1/sessions",
+            headers=authorization,
+            json={"client_session_id": str(session_id), "language": "hi", "style": "raw"},
+        )
+        await client.put(
+            f"/v1/sessions/{session_id}/audio",
+            headers={**authorization, "Content-Type": "audio/wav"},
+            content=audio_bytes,
+        )
+        finished = await client.post(f"/v1/sessions/{session_id}/finish", headers=authorization)
+
+        assert finished.status_code == 422
+        error = finished.json()["error"]
+        assert error["code"] == "language_unsupported"
+        assert error["recoverable"] is False
+        assert "does not support hi" in error["message"]
+
+        session = await client.get(f"/v1/sessions/{session_id}", headers=authorization)
+        assert session.json()["error_code"] == "language_unsupported"
 
 
 async def test_health_is_public_and_separates_engine_readiness(
@@ -25,6 +73,10 @@ async def test_health_is_public_and_separates_engine_readiness(
         "engine_ready": True,
         "engine": "fake-local-model",
         "streaming_supported": False,
+        # A stub engine has no catalog entry, so the gateway makes no claim and
+        # clients keep every language selectable.
+        "languages": [],
+        "detects_language_automatically": False,
     }
 
     liveness = await client.get("/health/live")
@@ -193,3 +245,33 @@ async def test_delete_is_idempotent(
     assert first.json() == {"deleted": True}
     assert second.status_code == 404
     assert second.json() == {"deleted": False}
+
+
+async def test_health_reports_what_the_loaded_model_can_do(
+    settings: Settings, audio_bytes: bytes
+) -> None:
+    """Clients cannot offer a sensible language picker without knowing whether the
+    loaded model can be pinned at all. An engine holding a catalog entry reports
+    that entry's languages; one that picks its own language says so."""
+    from app.catalog import DEFAULT_CATALOG
+    from app.models.base import EngineHealth
+
+    dolphin = next(m for m in DEFAULT_CATALOG if m.id == "sherpa-onnx:dolphin-small-ctc-int8")
+
+    class DolphinLikeEngine:
+        catalog_model = dolphin
+
+        async def health(self) -> EngineHealth:
+            return EngineHealth(ready=True, name="sherpa-onnx:dolphin")
+
+        async def transcribe(self, audio_path: Path, options: TranscriptionOptions) -> str:
+            return "unused"
+
+    app = create_app(settings, engine=DolphinLikeEngine(), normalizer=FakeNormalizer())
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://gateway") as client:
+        payload = (await client.get("/health")).json()
+
+    assert payload["detects_language_automatically"] is True
+    assert "hi" in payload["languages"] and "bn" in payload["languages"]
+    assert "en" not in payload["languages"]  # Dolphin is not trained on English

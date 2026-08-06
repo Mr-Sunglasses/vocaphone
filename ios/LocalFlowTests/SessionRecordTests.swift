@@ -233,9 +233,28 @@ struct SessionRecordTests {
 
     @Test func transcriptionLanguagesHaveStableGatewayValues() {
         #expect(TranscriptionLanguage.allCases.map(\.rawValue) == [
-            "auto", "en", "es", "ar", "ja", "ko", "zh", "uk", "ru", "vi",
+            "auto", "ar", "as", "bn", "nl", "en", "fr", "de", "gu", "hi",
+            "it", "ja", "kn", "ko", "ml", "zh", "mr", "ne", "pl", "pt",
+            "pa", "ru", "es", "ta", "te", "uk", "ur", "vi",
         ])
         #expect(SessionRecord().language == TranscriptionLanguage.automatic.rawValue)
+    }
+
+    /// An unsupported language routes a transcribing session straight to the
+    /// permanent failure state. Retrying replays the same language against the
+    /// same model, so the session must be terminal and must not offer Retry.
+    @Test func anUnsupportedLanguageFailsPermanentlyAndCannotBeRetried() throws {
+        var record = SessionRecord()
+        try record.transition(to: .launchingApp)
+        try record.transition(to: .recording)
+        try record.transition(to: .finalizing)
+        try record.transition(to: .uploading)
+        try record.transition(to: .transcribing)
+
+        try record.transition(to: .transcriptionFailedPermanent)
+
+        #expect(record.state.isTerminal)
+        #expect(!record.canRetry)
     }
 
     @Test func microphonePreferencesHaveStableStoredValues() {

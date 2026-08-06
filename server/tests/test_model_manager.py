@@ -194,6 +194,60 @@ def test_catalog_includes_gigaam_and_canary_models() -> None:
     assert streaming.license_name == "Apache 2.0"
 
 
+def test_catalog_includes_the_newer_sherpa_families() -> None:
+    entries = {model.id: model for model in DEFAULT_CATALOG}
+
+    dolphin = entries["sherpa-onnx:dolphin-small-ctc-int8"]
+    assert dolphin.model_type == "dolphin_ctc"
+    assert dolphin.required_files == ("model.int8.onnx", "tokens.txt")
+    # The only South Asian coverage in the catalog.
+    assert {"hi", "bn", "ta", "ur"} <= set(dolphin.language_codes)
+    assert entries["sherpa-onnx:dolphin-base-ctc-int8"].language_codes == dolphin.language_codes
+
+    qwen3 = entries["sherpa-onnx:qwen3-asr-0.6b-int8"]
+    assert qwen3.model_type == "qwen3_asr"
+    assert "tokenizer/vocab.json" in qwen3.required_files
+    assert "tokens.txt" not in qwen3.required_files
+
+    parakeet_v2 = entries["sherpa-onnx:parakeet-tdt-0.6b-v2-int8"]
+    assert parakeet_v2.model_type == "nemo_transducer"
+    assert parakeet_v2.language_codes == ("en",)
+
+
+def test_catalog_includes_the_newer_apple_silicon_models() -> None:
+    entries = {model.id: model for model in DEFAULT_CATALOG}
+
+    for model_id, repository in (
+        ("mlx-audio:parakeet-tdt-0.6b-v2", "mlx-community/parakeet-tdt-0.6b-v2"),
+        ("mlx-audio:qwen3-asr-0.6b-4bit", "mlx-community/Qwen3-ASR-0.6B-4bit"),
+        ("mlx-audio:qwen3-asr-1.7b-4bit", "mlx-community/Qwen3-ASR-1.7B-4bit"),
+        ("mlx-audio:granite-speech-4.1-2b-nar", "mlx-community/granite-speech-4.1-2b-nar-mlx-5bit"),
+    ):
+        model = entries[model_id]
+        assert model.huggingface_repo == repository
+        assert model.apple_silicon_only is True
+        assert model.marker_file == "model.safetensors"
+        assert model.huggingface_folder == ""
+
+
+def test_every_catalog_model_has_a_download_mechanism() -> None:
+    for model in DEFAULT_CATALOG:
+        if model.engine == "moonshine":
+            assert model.language_code, f"{model.id} needs a language for the Moonshine downloader"
+            continue
+        mechanism = (
+            model.archive_url is not None
+            or model.huggingface_repo is not None
+            or model.download_url is not None
+        )
+        assert mechanism, f"{model.id} has no way to be downloaded"
+        if model.archive_url is not None:
+            assert model.archive_root, f"{model.id} has an archive_url but no archive_root"
+        if model.engine == "sherpa-onnx":
+            assert model.required_files, f"{model.id} must name the files it needs"
+            assert model.model_type, f"{model.id} must declare a model_type"
+
+
 def test_sherpa_onnx_helper_requires_a_download_mechanism() -> None:
     from app.catalog import _sherpa_onnx
 

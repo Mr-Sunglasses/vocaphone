@@ -11,7 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from app.catalog import CatalogModel
-from app.errors import EngineUnavailableError, TranscriptionProcessError
+from app.errors import (
+    EngineUnavailableError,
+    LanguageUnsupportedError,
+    TranscriptionProcessError,
+)
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
 MODEL_METADATA = ".localflow-model.json"
@@ -111,6 +115,16 @@ class SherpaOnnxEngine:
                     f"sherpa-onnx failed: {str(error)[-240:]}"
                 ) from error
             if not text:
+                # A model asked for a language it was never trained on returns
+                # nothing at all rather than failing: Dolphin does this for
+                # English. Silence was already rejected upstream, so an empty
+                # result here means the model could not read this speech.
+                if options.language != "auto":
+                    raise LanguageUnsupportedError(
+                        f"The selected model returned nothing for {options.language}. "
+                        "It probably does not cover that language — choose another "
+                        "model, or set the language to Automatic."
+                    )
                 raise TranscriptionProcessError("sherpa-onnx returned an empty transcript.")
             return EngineTranscription(
                 text=text,
@@ -174,6 +188,24 @@ class SherpaOnnxEngine:
                 num_threads=threads,
                 provider="cpu",
             )
+        if self.catalog_model.model_type == "dolphin_ctc":
+            return sherpa_onnx.OfflineRecognizer.from_dolphin_ctc(
+                model=str(self.model_root / "model.int8.onnx"),
+                tokens=tokens,
+                num_threads=threads,
+                provider="cpu",
+            )
+        if self.catalog_model.model_type == "qwen3_asr":
+            # Unlike every other type here, this one takes a Hugging Face tokenizer
+            # directory rather than a `tokens.txt`, so it ignores `tokens` entirely.
+            return sherpa_onnx.OfflineRecognizer.from_qwen3_asr(
+                conv_frontend=str(self.model_root / "conv_frontend.onnx"),
+                encoder=str(self.model_root / "encoder.int8.onnx"),
+                decoder=str(self.model_root / "decoder.int8.onnx"),
+                tokenizer=str(self.model_root / "tokenizer"),
+                num_threads=threads,
+                provider="cpu",
+            )
         if self.catalog_model.model_type == STREAMING_MODEL_TYPE:
             encoder_file, decoder_file, joiner_file, _ = self.catalog_model.required_files
             return sherpa_onnx.OnlineRecognizer.from_transducer(
@@ -194,7 +226,7 @@ class SherpaOnnxEngine:
         normalized = _language_code(language)
         if language != "auto" and supported and normalized not in supported:
             choices = ", ".join(supported)
-            raise TranscriptionProcessError(
+            raise LanguageUnsupportedError(
                 f"The selected model does not support {language}. Choose Auto, {choices}, or "
                 "another model."
             )

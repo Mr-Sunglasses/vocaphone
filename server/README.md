@@ -208,13 +208,22 @@ It also includes compact Whisper Medium,
 Whisper Large v3, and Breeze ASR builds from
 [Handy's documented model family](https://handy.computer/docs/models) that run
 directly through `whisper.cpp`; Handy does not need to be installed.
-SenseVoice, Parakeet, GigaAM, and Canary now all run independently of Handy
-through sherpa-onnx; Parakeet also has an Apple-native MLX option. GigaAM
-(Russian, CTC or RNNT) and Canary (English only in this build; the underlying
-model also covers German, French, and Spanish, but source/target language is
-fixed when the recognizer loads rather than per request) download individual
-files directly from their Hugging Face model repos rather than a packaged
-archive, since neither publishes one.
+SenseVoice, Parakeet, GigaAM, Canary, Dolphin, and Qwen3-ASR now all run independently of Handy through sherpa-onnx;
+Parakeet, Qwen3-ASR, and Granite Speech also have Apple-native MLX options.
+GigaAM (Russian, CTC or RNNT) and Canary (English only in this build; the
+underlying model also covers German, French, and Spanish, but source/target
+language is fixed when the recognizer loads rather than per request) download
+individual files directly from their Hugging Face model repos rather than a
+packaged archive, since neither publishes one.
+
+Qwen3-ASR reads a Hugging Face tokenizer
+directory instead of a `tokens.txt`, so the gateway fetches `tokenizer/` and
+passes the folder to the recognizer.
+
+Parakeet ships in two generations, and newer is not automatically better: v3
+covers 25 European languages, while the English-only v2 spends all of its
+capacity on English and transcribes it more accurately. Pick v2 if you dictate
+only in English.
 
 ### Fast model guide
 
@@ -222,15 +231,20 @@ archive, since neither publishes one.
 | --- | --- | ---: | --- | --- |
 | SenseVoice Small INT8 | Linux or macOS CPU | ~240 MB | Mandarin, Cantonese, English, Japanese, Korean | Lowest portable latency and small-server memory use matter most |
 | Parakeet TDT 0.6B v3 INT8 | Linux or macOS CPU | ~672 MB | 25 European languages | You want stronger multilingual accuracy, punctuation, and capitalization |
+| Parakeet TDT 0.6B v2 INT8 | Linux or macOS CPU | ~661 MB | English only | You dictate only in English and want the best accuracy at that speed |
+| Dolphin Small CTC INT8 | Linux or macOS CPU | ~250 MB | 40 Eastern languages | You need Hindi, Bengali, Tamil, Urdu, Thai, or another South or Southeast Asian language |
 | MLX Whisper Large v3 Turbo 4-bit | Apple silicon | ~469 MB | Multilingual | You want compact high accuracy through the M-series GPU |
 | MLX Parakeet TDT 0.6B v3 | Apple silicon with at least 8 GB RAM | ~2.51 GB | 25 European languages | You want the full MLX Parakeet path and have enough unified memory |
+| MLX Qwen3-ASR 0.6B 4-bit | Apple silicon with at least 8 GB RAM | ~713 MB | 11 languages | You want strong punctuation from an LLM decoder and can accept slower decoding |
+| MLX Granite Speech 4.1 2B | Apple silicon with at least 12 GB RAM | ~2.38 GB | English only | You want top-ranked English accuracy on Apple silicon |
 
-All four adapters keep their loaded model in the gateway process. Benchmark
-three runs in the Test tab: the first includes model load, while runs two and
-three show steady-state dictation speed. SenseVoice uses the FunASR Model
-License; both Parakeet variants use CC BY 4.0; the quantized MLX Whisper model
-inherits Whisper's MIT license. Review the license shown on each model card
-before redistributing weights.
+Every adapter keeps its loaded model in the gateway process. Benchmark three
+runs in the Test tab: the first includes model load, while runs two and three
+show steady-state dictation speed. SenseVoice uses the FunASR Model License;
+both Parakeet variants use CC BY 4.0; the quantized MLX Whisper model inherits
+Whisper's MIT license; Dolphin, Qwen3-ASR, and Granite Speech are Apache 2.0.
+Review the license shown on each model card before
+redistributing weights.
 
 ## Engine selection
 

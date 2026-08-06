@@ -325,7 +325,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         var record = SessionRecord(
             state: .idle,
             sourceDocumentID: currentDocumentID,
-            language: KeyboardPreferences.transcriptionLanguage.rawValue,
+            language: KeyboardPreferences.effectiveTranscriptionLanguage.rawValue,
             style: KeyboardPreferences.writingStyle.rawValue
         )
         // Dictating into Local Flow's own field means there is nowhere to swipe

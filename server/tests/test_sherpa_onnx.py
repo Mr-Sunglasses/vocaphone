@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from app.catalog import CatalogModel
-from app.errors import EngineUnavailableError, TranscriptionProcessError
+from app.errors import EngineUnavailableError, LanguageUnsupportedError
 from app.models.base import EngineTranscription, TranscriptionOptions
 from app.models.sherpa_onnx import SherpaOnnxEngine, _SherpaOnnxStreamAdapter
 
@@ -47,6 +47,8 @@ def _model_root(tmp_path: Path, model: CatalogModel) -> Path:
     root.mkdir()
     (root / ".localflow-model.json").write_text("{}")
     for filename in model.required_files:
+        # Some families (Qwen3-ASR) list files inside a nested tokenizer directory.
+        (root / filename).parent.mkdir(parents=True, exist_ok=True)
         (root / filename).write_bytes(b"model")
     return root
 
@@ -196,6 +198,57 @@ def test_sherpa_nemo_transducer_uses_each_files_own_quantization(
     assert constructions[0]["joiner"] == str(root / "joiner.onnx")
 
 
+def test_sherpa_dolphin_loads_a_single_file_ctc(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for model_type, factory in (("dolphin_ctc", "from_dolphin_ctc"),):
+        catalog_model = _catalog(model_type, required_files=("model.int8.onnx", "tokens.txt"))
+        root = _model_root(tmp_path, catalog_model)
+        constructions: list[dict[str, object]] = []
+        _fake_recognizer_module(factory, constructions, monkeypatch)
+        monkeypatch.setattr(
+            "app.models.sherpa_onnx.importlib.util.find_spec",
+            lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+        )
+
+        SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+
+        assert constructions[0]["model"] == str(root / "model.int8.onnx")
+        assert constructions[0]["tokens"] == str(root / "tokens.txt")
+
+
+def test_sherpa_qwen3_asr_loads_a_tokenizer_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """This family takes a Hugging Face tokenizer folder, not a `tokens.txt`."""
+    catalog_model = _catalog(
+        "qwen3_asr",
+        required_files=(
+            "conv_frontend.onnx",
+            "encoder.int8.onnx",
+            "decoder.int8.onnx",
+            "tokenizer/vocab.json",
+            "tokenizer/merges.txt",
+            "tokenizer/tokenizer_config.json",
+        ),
+    )
+    root = _model_root(tmp_path, catalog_model)
+    constructions: list[dict[str, object]] = []
+    _fake_recognizer_module("from_qwen3_asr", constructions, monkeypatch)
+    monkeypatch.setattr(
+        "app.models.sherpa_onnx.importlib.util.find_spec",
+        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+    )
+
+    SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+
+    assert constructions[0]["conv_frontend"] == str(root / "conv_frontend.onnx")
+    assert constructions[0]["encoder"] == str(root / "encoder.int8.onnx")
+    assert constructions[0]["decoder"] == str(root / "decoder.int8.onnx")
+    assert constructions[0]["tokenizer"] == str(root / "tokenizer")
+    assert "tokens" not in constructions[0]
+
+
 def test_streaming_zipformer_loads_via_online_recognizer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -255,11 +308,59 @@ async def test_create_stream_wraps_the_recognizers_stream(
     assert adapter._stream is raw_stream
 
 
+def test_every_shipped_sherpa_model_type_has_a_loader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A new catalog entry must not reach users before its engine branch exists."""
+    from app.catalog import DEFAULT_CATALOG, ENGINE_SHERPA_ONNX
+
+    class Recognizer:
+        def __getattr__(self, name: str) -> object:
+            raise AttributeError(name)
+
+    def make_module() -> types.ModuleType:
+        module = types.ModuleType("sherpa_onnx")
+
+        class Any_:
+            def __getattr__(self, name: str) -> object:
+                return lambda **kwargs: Recognizer()
+
+            def __call__(self, **kwargs: object) -> Recognizer:
+                return Recognizer()
+
+        module.OfflineRecognizer = Any_()  # type: ignore[attr-defined]
+        module.OnlineRecognizer = Any_()  # type: ignore[attr-defined]
+        return module
+
+    monkeypatch.setitem(sys.modules, "sherpa_onnx", make_module())
+    monkeypatch.setattr(
+        "app.models.sherpa_onnx.importlib.util.find_spec",
+        lambda _: importlib.machinery.ModuleSpec("sherpa_onnx", loader=None),
+    )
+
+    shipped = [model for model in DEFAULT_CATALOG if model.engine == ENGINE_SHERPA_ONNX]
+    assert shipped, "expected sherpa-onnx entries in the default catalog"
+    for model in shipped:
+        root = _model_root(tmp_path, model)
+        SherpaOnnxEngine(root, model)._load_recognizer_sync()
+
+
+def test_sherpa_rejects_unknown_model_type(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    catalog_model = _catalog("not_a_real_engine", required_files=("tokens.txt",))
+    root = _model_root(tmp_path, catalog_model)
+    monkeypatch.setitem(sys.modules, "sherpa_onnx", types.ModuleType("sherpa_onnx"))
+
+    with pytest.raises(EngineUnavailableError, match="Unsupported sherpa-onnx model type"):
+        SherpaOnnxEngine(root, catalog_model)._load_recognizer_sync()
+
+
 async def test_sherpa_rejects_unsupported_language(tmp_path: Path) -> None:
     catalog_model = _catalog()
     engine = SherpaOnnxEngine(_model_root(tmp_path, catalog_model), catalog_model)
 
-    with pytest.raises(TranscriptionProcessError, match="does not support es"):
+    # The specific subclass, not just the base: the API layer keys the
+    # `language_unsupported` code off it, and the clients key Retry off that code.
+    with pytest.raises(LanguageUnsupportedError, match="does not support es"):
         await engine.transcribe(
             tmp_path / "unused.wav",
             TranscriptionOptions("es", "casual"),

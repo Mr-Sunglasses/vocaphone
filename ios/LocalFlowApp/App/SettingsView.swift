@@ -143,14 +143,21 @@ struct SettingsView: View {
         }
     }
 
+    /// One row that pushes to the full list, the way a `Picker` behaves in a
+    /// form. Listing all 27 languages inline buried every setting below it, and a
+    /// `Picker` cannot grey out the ones the loaded model cannot honour — hence a
+    /// `NavigationLink` to a list that can do both.
     private var transcriptionLanguageSection: some View {
         Section("Transcription language") {
-            Picker("Language", selection: $transcriptionLanguageRawValue) {
-                ForEach(TranscriptionLanguage.allCases) { language in
-                    Text(language.displayName).tag(language.rawValue)
-                }
+            NavigationLink {
+                TranscriptionLanguageList(selection: $transcriptionLanguageRawValue)
+            } label: {
+                LabeledContent(
+                    "Language",
+                    value: KeyboardPreferences.effectiveTranscriptionLanguage.displayName
+                )
             }
-            Text(selectedTranscriptionLanguage.detail)
+            Text(KeyboardPreferences.effectiveTranscriptionLanguage.detail)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -223,5 +230,99 @@ struct SettingsView: View {
 
     private var selectedMicrophonePreference: MicrophonePreference {
         MicrophonePreference(rawValue: microphonePreferenceRawValue) ?? .automatic
+    }
+}
+
+/// The full language list, reached from Settings. Search matters at 27 entries,
+/// and the ones the gateway's model cannot honour are grouped at the bottom and
+/// greyed rather than hidden: a language that simply disappears reads as
+/// unsupported by the app, when the fix is to change the model on the gateway.
+struct TranscriptionLanguageList: View {
+    @Binding var selection: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+
+    private var modelLanguages: Set<String> { KeyboardPreferences.modelLanguages }
+    private var detectsLanguage: Bool { KeyboardPreferences.modelDetectsLanguage }
+
+    private func matches(_ language: TranscriptionLanguage) -> Bool {
+        query.isEmpty
+            || language.displayName.localizedCaseInsensitiveContains(query)
+            || language.rawValue.localizedCaseInsensitiveContains(query)
+    }
+
+    private func isSelectable(_ language: TranscriptionLanguage) -> Bool {
+        ModelLanguageSupport.isSelectable(
+            language,
+            modelLanguages: modelLanguages,
+            detectsLanguageAutomatically: detectsLanguage
+        )
+    }
+
+    private var available: [TranscriptionLanguage] {
+        TranscriptionLanguage.allCases.filter { matches($0) && isSelectable($0) }
+    }
+
+    private var unavailable: [TranscriptionLanguage] {
+        TranscriptionLanguage.allCases.filter { matches($0) && !isSelectable($0) }
+    }
+
+    var body: some View {
+        List {
+            if !available.isEmpty {
+                Section {
+                    ForEach(available) { language in
+                        row(language, selectable: true)
+                    }
+                } footer: {
+                    if let restriction = ModelLanguageSupport.restriction(
+                        modelLanguages: modelLanguages,
+                        detectsLanguageAutomatically: detectsLanguage
+                    ) {
+                        Text(restriction)
+                    }
+                }
+            }
+            if !unavailable.isEmpty {
+                Section("Needs a different model") {
+                    ForEach(unavailable) { language in
+                        row(language, selectable: false)
+                    }
+                }
+            }
+            if available.isEmpty && unavailable.isEmpty {
+                Text("No language matches “\(query)”.")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .navigationTitle("Language")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, prompt: "Search languages")
+    }
+
+    private func row(_ language: TranscriptionLanguage, selectable: Bool) -> some View {
+        Button {
+            selection = language.rawValue
+            KeyboardPreferences.noteTranscriptionLanguageUse(language)
+            dismiss()
+        } label: {
+            HStack {
+                Text(language.displayName)
+                    .foregroundStyle(selectable ? .primary : .secondary)
+                Spacer()
+                // Ticks what is in force, so the mark never sits on a row the
+                // loaded model cannot honour.
+                if language == ModelLanguageSupport.resolve(
+                    TranscriptionLanguage(rawValue: selection) ?? .automatic,
+                    modelLanguages: modelLanguages,
+                    detectsLanguageAutomatically: detectsLanguage
+                ) {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                        .accessibilityLabel("Selected")
+                }
+            }
+        }
+        .disabled(!selectable)
     }
 }

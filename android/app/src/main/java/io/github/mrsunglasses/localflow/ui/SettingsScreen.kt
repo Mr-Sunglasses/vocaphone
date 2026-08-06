@@ -23,12 +23,16 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import io.github.mrsunglasses.localflow.core.MicrophonePreference
+import io.github.mrsunglasses.localflow.core.ModelLanguageSupport
 import io.github.mrsunglasses.localflow.core.TranscriptionLanguage
 import io.github.mrsunglasses.localflow.core.WritingStyle
 import io.github.mrsunglasses.localflow.settings.AudioRetention
@@ -80,12 +84,28 @@ fun SettingsScreen(
             SecondaryButton("Gateway settings", onClick = onOpenGateway)
         }
 
-        SectionCard("Transcription language", supporting = settings.language.detail) {
-            ChipChoiceRow(
-                options = TranscriptionLanguage.entries,
-                selected = settings.language,
-                label = { it.displayName },
+        // One row rather than 27 wrapping chips, which pushed every setting below
+        // this one off the screen. The full list, with search, lives in a sheet.
+        var pickingLanguage by remember { mutableStateOf(false) }
+        val languageRestriction = ModelLanguageSupport.restriction(
+            settings.modelLanguages,
+            settings.modelDetectsLanguage,
+        )
+        SectionCard(
+            "Transcription language",
+            supporting = listOfNotNull(settings.effectiveLanguage.detail, languageRestriction)
+                .joinToString("\n"),
+        ) {
+            InfoRow(label = "Language", value = settings.effectiveLanguage.displayName)
+            SecondaryButton("Change language", onClick = { pickingLanguage = true })
+        }
+        if (pickingLanguage) {
+            LanguagePickerSheet(
+                selected = settings.effectiveLanguage,
+                modelLanguages = settings.modelLanguages,
+                detectsLanguageAutomatically = settings.modelDetectsLanguage,
                 onSelect = onLanguage,
+                onDismiss = { pickingLanguage = false },
             )
         }
 

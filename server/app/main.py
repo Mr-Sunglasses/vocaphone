@@ -34,7 +34,7 @@ from app.audio import (
     atomic_upload_path,
     complete_atomic_upload,
 )
-from app.catalog import recommended_ids
+from app.catalog import CatalogModel, language_names, recommended_ids
 from app.config import Settings
 from app.diagnostics import build_diagnostics_bundle
 from app.engines import (
@@ -106,6 +106,7 @@ from app.schemas import (
     SystemStatus,
     TestTranscriptionResponse,
 )
+from app.scripts import transcript_matches_language
 from app.service import TranscriptionService
 from app.storage import SessionRepository, StoredSession
 from app.system import detect_system, engine_runs_on
@@ -116,6 +117,19 @@ VERSION = "0.2.0"
 WEBUI_DIR = Path(__file__).parent / "webui"
 TOKEN_FILE_HINT = "~/.config/localflow/token"
 BOOTSTRAP_TOKEN_ID = "bootstrap"
+
+
+def _model_covers(entry: AdminModelEntry, language: str) -> bool:
+    """Whether a model can transcribe `language`.
+
+    A model with no declared languages matches everything rather than nothing.
+    No catalog entry is in that position today, but a user's own imported model
+    is, and hiding an unlabelled model from every filter would make it look like
+    the import had failed.
+    """
+    if not entry.language_codes:
+        return True
+    return language in entry.language_codes
 
 
 def create_app(
@@ -277,10 +291,37 @@ def create_app(
 
     # -------------------------------------------------------------- iOS API
 
+    def _active_catalog_model() -> CatalogModel | None:
+        """The catalog entry behind the running engine, if it came from the catalog.
+
+        sherpa-onnx and MLX engines hold their entry directly; the others are
+        configured by path, so those are matched back through the installed list.
+        Returns None for an imported model or when nothing is selected, which the
+        clients read as "no restriction".
+        """
+        engine = engine_provider.current()
+        held = getattr(engine, "catalog_model", None)
+        if isinstance(held, CatalogModel):
+            return held
+        active = _active_model_path()
+        if active is None:
+            return None
+        for installed in manager.installed():
+            if installed.path == active:
+                return manager.catalog_model(installed.id)
+        return None
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         state = await readiness.probe()
         selected_engine = engine_provider.current()
+        active_model = _active_catalog_model()
+        languages: tuple[str, ...] = ()
+        if active_model is not None:
+            # Moonshine keeps its single language in the singular field.
+            languages = active_model.language_codes or (
+                (active_model.language_code,) if active_model.language_code else ()
+            )
         return HealthResponse(
             engine_ready=state.ready,
             engine=state.name,
@@ -288,6 +329,10 @@ def create_app(
                 state.ready
                 and isinstance(selected_engine, StreamingEngine)
                 and selected_engine.supports_streaming
+            ),
+            languages=list(languages),
+            detects_language_automatically=(
+                active_model is not None and active_model.detects_language_automatically
             ),
         )
 
@@ -516,9 +561,13 @@ def create_app(
                                 for line in getattr(final_result, "lines", []) or []:
                                     if getattr(line, "text", ""):
                                         lines[int(line.line_id)] = str(line.text).strip()
-                                transcript = apply_writing_style(
-                                    _joined_stream_lines(lines), style, language
-                                )
+                                joined = _joined_stream_lines(lines)
+                                if not transcript_matches_language(joined, language):
+                                    raise ValueError(
+                                        "The model transcribed this as a different "
+                                        f"language than {language}."
+                                    )
+                                transcript = apply_writing_style(joined, style, language)
                             if not transcript:
                                 raise ValueError("Moonshine returned an empty transcript.")
                             await asyncio.to_thread(stream.close)
@@ -750,6 +799,9 @@ def create_app(
                     supports_streaming=model.supports_streaming,
                     license_name=model.license_name,
                     commercial_use=model.commercial_use,
+                    detects_language_automatically=model.detects_language_automatically,
+                    language_names=language_names(model.language_codes),
+                    language_codes=list(model.language_codes),
                     state=state,
                     active=bool(installed_model and installed_model.path == active_path),
                     recommended=model.id in recommended,
@@ -876,11 +928,10 @@ def create_app(
         response_model=list[AdminModelEntry],
         dependencies=[Depends(require_token)],
     )
-    async def get_admin_models(installed_only: bool = False) -> list[AdminModelEntry]:
-        entries = _model_entries()
-        if installed_only:
-            entries = [entry for entry in entries if entry.state == "installed"]
-        return entries
+    async def get_admin_models(
+        installed_only: bool = False, language: str = ""
+    ) -> list[AdminModelEntry]:
+        return _filtered_model_entries(installed_only, language)
 
     def _active_model_path() -> Path | None:
         if engine_manager is None:
@@ -1099,11 +1150,17 @@ def create_app(
     def _html(content: str) -> HTMLResponse:
         return HTMLResponse(content)
 
-    def _models_list_html(installed_only: bool = False) -> HTMLResponse:
+    def _filtered_model_entries(installed_only: bool, language: str) -> list[AdminModelEntry]:
         entries = _model_entries()
         if installed_only:
             entries = [entry for entry in entries if entry.state == "installed"]
-        return _html(models_list_fragment(entries, installed_only))
+        if language:
+            entries = [entry for entry in entries if _model_covers(entry, language)]
+        return entries
+
+    def _models_list_html(installed_only: bool = False, language: str = "") -> HTMLResponse:
+        entries = _filtered_model_entries(installed_only, language)
+        return _html(models_list_fragment(entries, installed_only, language))
 
     def _resolve_pairing_token(
         token_id: str | None,
@@ -1378,15 +1435,19 @@ def create_app(
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_models_list(installed_only: bool = False) -> HTMLResponse:
-        return _models_list_html(installed_only)
+    async def ui_models_list(installed_only: bool = False, language: str = "") -> HTMLResponse:
+        return _models_list_html(installed_only, language)
 
     @app.post(
         "/ui/partials/models/{model_id}/download",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_start_download(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
+    async def ui_start_download(
+        model_id: str,
+        installed_only: bool = Form(False),
+        language: str = Form(""),
+    ) -> HTMLResponse:
         try:
             manager.start_download(model_id)
         except UnknownModelError as error:
@@ -1395,7 +1456,7 @@ def create_app(
             raise APIProblem(
                 409, "download_in_progress", "This model is already downloading."
             ) from error
-        return _models_list_html(installed_only)
+        return _models_list_html(installed_only, language)
 
     @app.post(
         "/ui/partials/models/custom",
@@ -1403,7 +1464,7 @@ def create_app(
         dependencies=[Depends(require_token)],
     )
     async def ui_custom_download(
-        url: str = Form(...), installed_only: bool = Form(False)
+        url: str = Form(...), installed_only: bool = Form(False), language: str = Form("")
     ) -> HTMLResponse:
         try:
             manager.start_custom_download(url)
@@ -1411,23 +1472,31 @@ def create_app(
             raise APIProblem(422, "invalid_model_url", str(error)) from error
         except DownloadInProgressError as error:
             raise APIProblem(409, "download_in_progress", str(error)) from error
-        return _models_list_html(installed_only)
+        return _models_list_html(installed_only, language)
 
     @app.post(
         "/ui/partials/models/{model_id}/cancel",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_cancel_download(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
+    async def ui_cancel_download(
+        model_id: str,
+        installed_only: bool = Form(False),
+        language: str = Form(""),
+    ) -> HTMLResponse:
         manager.cancel_download(model_id)
-        return _models_list_html(installed_only)
+        return _models_list_html(installed_only, language)
 
     @app.delete(
         "/ui/partials/models/{model_id}",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_delete_model(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
+    async def ui_delete_model(
+        model_id: str,
+        installed_only: bool = Form(False),
+        language: str = Form(""),
+    ) -> HTMLResponse:
         try:
             if engine_manager is not None:
                 engine_manager.forget_if_active(model_id)
@@ -1436,14 +1505,18 @@ def create_app(
             raise APIProblem(
                 409, "download_in_progress", "Cancel the download before deleting."
             ) from error
-        return _models_list_html(installed_only)
+        return _models_list_html(installed_only, language)
 
     @app.post(
         "/ui/partials/models/{model_id}/select",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_select_model(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
+    async def ui_select_model(
+        model_id: str,
+        installed_only: bool = Form(False),
+        language: str = Form(""),
+    ) -> HTMLResponse:
         if engine_manager is None:
             raise APIProblem(
                 409, "engine_locked", "The engine was fixed at startup and cannot switch."

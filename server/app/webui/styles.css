@@ -334,6 +334,25 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 24px 60px; }
   background: none;
   padding: 5px 12px;
 }
+/* Matches .filter-toggle so the two filters read as one control group. */
+.language-filter {
+  font: inherit;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+  background: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  max-width: 190px;
+}
+.language-filter:hover { color: var(--text); }
+.language-filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* An active filter has to look active, or a narrowed list reads as an empty catalog. */
+.language-filter:not(:has(option[value=""]:checked)) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .filter-toggle:hover { color: var(--text); }
 .filter-toggle:has(input:checked) { color: var(--accent); border-color: var(--accent); }
 .filter-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -389,6 +408,21 @@ button.no-margin { margin-left: 0; }
 .model-badges { display: flex; gap: 5px; }
 .badge.streaming { color: #86d4ff; border-color: rgba(72, 179, 233, 0.45); }
 .badge.personal { color: #f3c978; border-color: rgba(224, 171, 65, 0.45); }
+.badge.auto-language { color: #c3a6f5; border-color: rgba(160, 130, 230, 0.45); }
+.model-languages { margin-top: 8px; }
+.model-languages summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  list-style: revert;
+}
+.model-languages summary:hover { color: var(--text); }
+.model-language-list {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+}
 .model-card h4 { font-size: 17px; letter-spacing: -0.01em; margin: 12px 0 5px; }
 .model-description { color: var(--muted); margin: 0 0 14px; }
 .model-meta { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -588,3 +622,5 @@ input:focus, select:focus { border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+.models-language-hint { margin-bottom: 16px; }
+.models-language-hint em { font-style: normal; color: #c3a6f5; }

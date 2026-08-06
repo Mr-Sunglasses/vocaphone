@@ -148,6 +148,27 @@ class GatewayClientTest {
     }
 
     @Test
+    fun `a language the gateway model cannot serve is not retried`() = runTest {
+        // 422 alone would read as "could not read the recording"; the code has to
+        // win so the user is told to change the language rather than to retry.
+        server.enqueue(
+            json(
+                code = 422,
+                body = """{"error":{"code":"language_unsupported","message":"no hi","recoverable":false}}""",
+            )
+        )
+
+        try {
+            client().finish(sessionId)
+            fail("Expected the client to surface the unsupported language.")
+        } catch (error: GatewayException) {
+            assertEquals("language_unsupported", error.code)
+            assertFalse(error.recoverable)
+            assertTrue(error.userMessage.contains("does not support this language"))
+        }
+    }
+
+    @Test
     fun `an oversized recording is not retried`() = runTest {
         server.enqueue(
             json(code = 413, body = """{"error":{"code":"audio_too_large","message":"big","recoverable":false}}""")

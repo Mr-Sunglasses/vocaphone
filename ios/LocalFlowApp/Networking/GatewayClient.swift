@@ -6,12 +6,19 @@ struct GatewayHealth: Decodable, Sendable {
     let engine: String
     /// Optional so an updated app remains compatible with older gateways.
     let streamingSupported: Bool?
+    /// Languages the loaded model covers. Absent or empty means the gateway made
+    /// no claim, and the language picker must stay fully open.
+    let languages: [String]?
+    /// True when the model picks the language itself and cannot be pinned.
+    let detectsLanguageAutomatically: Bool?
 
     enum CodingKeys: String, CodingKey {
         case status
         case engineReady = "engine_ready"
         case engine
         case streamingSupported = "streaming_supported"
+        case languages
+        case detectsLanguageAutomatically = "detects_language_automatically"
     }
 }
 
@@ -27,6 +34,17 @@ enum GatewayStatusPreferences {
         defaults.set(message, forKey: healthMessageKey)
         defaults.set(engine, forKey: engineKey)
         defaults.set(ready, forKey: engineReadyKey)
+    }
+
+    /// Records what the loaded model can be asked for. Written to the App Group
+    /// rather than standard defaults, because the keyboard extension has its own
+    /// language menu and must not offer choices the app has ruled out.
+    ///
+    /// A gateway that says nothing clears the restriction instead of keeping a
+    /// stale one — being uninformed must never look like being unsupported.
+    static func storeLanguageSupport(_ health: GatewayHealth?) {
+        KeyboardPreferences.modelLanguages = Set(health?.languages ?? [])
+        KeyboardPreferences.modelDetectsLanguage = health?.detectsLanguageAutomatically ?? false
     }
 }
 

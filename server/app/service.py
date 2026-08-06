@@ -15,11 +15,13 @@ from app.errors import (
     APIProblem,
     EngineUnavailableError,
     InvalidAudioError,
+    LanguageUnsupportedError,
     SilentAudioError,
     TranscriptionProcessError,
 )
 from app.metrics import PipelineTiming, RuntimeMetrics
 from app.models.base import AudioNormalizer, EngineTranscription, TranscriptionOptions
+from app.scripts import transcript_matches_language
 from app.storage import SessionRepository, StoredSession
 from app.text_styles import apply_writing_style
 
@@ -76,6 +78,7 @@ class TranscriptionService:
             )
             outcome = _engine_outcome(raw_result, inference_started)
             raw = outcome.text
+            _require_matching_script(raw, stored.language)
             transcript = apply_writing_style(raw, stored.style, stored.language)
             completed = self.repository.update(
                 session_id,
@@ -112,6 +115,13 @@ class TranscriptionService:
             self.metrics.failed(_elapsed_ms(started))
             self.repository.update(session_id, state="failed", error_code="engine_unavailable")
             raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
+        except LanguageUnsupportedError as error:
+            # Before the general handler below: this is a `TranscriptionProcessError`,
+            # but retrying replays the same language against the same model, so the
+            # audio is discarded rather than kept for a Retry that cannot succeed.
+            self.metrics.failed(_elapsed_ms(started))
+            self.repository.update(session_id, state="failed", error_code="language_unsupported")
+            raise APIProblem(422, "language_unsupported", str(error)) from error
         except TranscriptionProcessError as error:
             self.metrics.failed(_elapsed_ms(started))
             self.repository.update(session_id, state="failed", error_code="transcription_failed")
@@ -143,6 +153,7 @@ class TranscriptionService:
                 normalized, TranscriptionOptions(language=language, style="raw")
             )
             outcome = _engine_outcome(raw_result, inference_started)
+            _require_matching_script(outcome.text, language)
             name = (await engine.health()).name
             duration_ms = _elapsed_ms(started)
             timing = _pipeline_timing(
@@ -163,6 +174,9 @@ class TranscriptionService:
         except EngineUnavailableError as error:
             self.metrics.failed(_elapsed_ms(started))
             raise APIProblem(503, "engine_unavailable", str(error), recoverable=True) from error
+        except LanguageUnsupportedError as error:
+            self.metrics.failed(_elapsed_ms(started))
+            raise APIProblem(422, "language_unsupported", str(error)) from error
         except TranscriptionProcessError as error:
             self.metrics.failed(_elapsed_ms(started))
             raise APIProblem(502, "transcription_failed", str(error), recoverable=True) from error
@@ -216,6 +230,24 @@ class TranscriptionService:
         if Path(audio_name).name != audio_name:
             raise APIProblem(500, "invalid_storage_reference", "Stored audio reference is invalid.")
         return self.upload_dir / audio_name
+
+
+def _require_matching_script(text: str, language: str) -> None:
+    """Refuse a transcript written in the wrong alphabet.
+
+    Models that detect the language themselves can return fluent text in a
+    language nobody asked for — Dolphin turns a short Hindi phrase into Cyrillic.
+    Inserting that at the cursor is worse than failing, because it looks like a
+    real transcript. Raised as `LanguageUnsupportedError` so it carries the same
+    non-retryable `language_unsupported` code the clients already explain.
+    """
+    if transcript_matches_language(text, language):
+        return
+    raise LanguageUnsupportedError(
+        f"The model transcribed this as a different language than {language}. "
+        "It detects the language itself and misread a short recording; try "
+        "speaking a full sentence, or choose a model that supports this language."
+    )
 
 
 def conservative_cleanup(text: str) -> str:

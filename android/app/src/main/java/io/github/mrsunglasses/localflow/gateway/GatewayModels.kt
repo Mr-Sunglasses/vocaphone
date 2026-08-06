@@ -8,6 +8,14 @@ data class GatewayHealth(
     val engine: String,
     /** Absent on gateways older than the streaming negotiation change. */
     val streamingSupported: Boolean?,
+    /**
+     * Languages the loaded model covers. Empty means the gateway made no claim —
+     * an older build, no model selected, or an imported one — and the language
+     * picker must stay fully open rather than locking the user out.
+     */
+    val languages: Set<String>,
+    /** True when the model picks the language itself and cannot be pinned. */
+    val detectsLanguageAutomatically: Boolean,
 ) {
     companion object {
         fun from(json: JSONObject) = GatewayHealth(
@@ -19,6 +27,10 @@ data class GatewayHealth(
             } else {
                 null
             },
+            languages = json.optJSONArray("languages")?.let { array ->
+                (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotEmpty) }
+            }.orEmpty().toSet(),
+            detectsLanguageAutomatically = json.optBoolean("detects_language_automatically", false),
         )
     }
 }
@@ -56,6 +68,16 @@ class GatewayException(
         fun fromStatus(status: Int, code: String?): GatewayException {
             val resolved = code ?: "http_$status"
             return when {
+                // Keyed on the code rather than the status: the gateway loaded a model
+                // that cannot transcribe the chosen language, so a Retry would replay
+                // the same pairing and fail identically. Point at the fix instead.
+                resolved == "language_unsupported" -> GatewayException(
+                    resolved,
+                    "Your gateway's model does not support this language. " +
+                        "Choose Automatic or another language, or load a matching model.",
+                    recoverable = false,
+                )
+
                 status == 401 || status == 403 -> GatewayException(
                     resolved,
                     "Your gateway rejected the token. Check it in Settings.",

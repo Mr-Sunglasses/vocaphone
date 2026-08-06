@@ -143,7 +143,7 @@ class DictationController(
             _state.value = DictationState(
                 sessionId = UUID.fromString(sessionId),
                 phase = DictationPhase.UPLOADING,
-                language = configuration.language,
+                language = configuration.effectiveLanguage,
                 style = configuration.style,
             )
             deliverBatch(
@@ -196,7 +196,7 @@ class DictationController(
         _state.value = DictationState(
             sessionId = sessionId,
             phase = DictationPhase.LISTENING,
-            language = configuration.language,
+            language = configuration.effectiveLanguage,
             style = configuration.style,
             startedAtElapsedMillis = SystemClock.elapsedRealtime(),
         )
@@ -206,7 +206,7 @@ class DictationController(
         val stream = try {
             client.openStream(
                 sessionId = sessionId,
-                language = configuration.language.wireValue,
+                language = configuration.effectiveLanguage.wireValue,
                 style = configuration.style.wireValue,
                 sampleRate = CaptureFormat.SAMPLE_RATE,
             ).also { it.connect() }
@@ -334,7 +334,15 @@ class DictationController(
             // is exactly what the batch endpoints need.
         }
 
-        deliverBatch(client, sessionId, wavFile, configuration.language.wireValue, configuration.style.wireValue, configuration, source)
+        deliverBatch(
+            client,
+            sessionId,
+            wavFile,
+            configuration.effectiveLanguage.wireValue,
+            configuration.style.wireValue,
+            configuration,
+            source,
+        )
     }
 
     /**
@@ -404,7 +412,7 @@ class DictationController(
             )
             history.recordSuccess(
                 sessionId = sessionId.toString(),
-                language = configuration.language.wireValue,
+                language = configuration.effectiveLanguage.wireValue,
                 style = configuration.style.wireValue,
                 transcript = transcript,
                 targetPackage = target?.currentTargetPackage(),
@@ -420,7 +428,7 @@ class DictationController(
         lastInsertion = report.applied
         history.recordSuccess(
             sessionId = sessionId.toString(),
-            language = configuration.language.wireValue,
+            language = configuration.effectiveLanguage.wireValue,
             style = configuration.style.wireValue,
             transcript = transcript,
             targetPackage = report.applied?.packageName ?: target.currentTargetPackage(),
@@ -459,7 +467,7 @@ class DictationController(
     ) = withContext(NonCancellable) {
         history.recordFailure(
             sessionId = sessionId.toString(),
-            language = configuration.language.wireValue,
+            language = configuration.effectiveLanguage.wireValue,
             style = configuration.style.wireValue,
             errorCode = error.code,
             errorMessage = error.userMessage,
