@@ -5,8 +5,8 @@ package io.github.mrsunglasses.localflow.core
  * first as the default; the rest are alphabetical by [displayName].
  */
 enum class TranscriptionLanguage(val wireValue: String) {
-    ARABIC("ar"),
     AUTOMATIC("auto"),
+    ARABIC("ar"),
     ENGLISH("en"),
     FRENCH("fr"),
     GERMAN("de"),
@@ -24,6 +24,7 @@ enum class TranscriptionLanguage(val wireValue: String) {
             ARABIC -> "Arabic"
             ENGLISH -> "English"
             FRENCH -> "French"
+            GERMAN -> "German"
             JAPANESE -> "Japanese"
             KOREAN -> "Korean"
             MANDARIN_CHINESE -> "Mandarin Chinese"
@@ -31,7 +32,6 @@ enum class TranscriptionLanguage(val wireValue: String) {
             SPANISH -> "Spanish"
             UKRAINIAN -> "Ukrainian"
             VIETNAMESE -> "Vietnamese"
-            GERMAN -> "German"
         }
 
     val shortLabel: String
