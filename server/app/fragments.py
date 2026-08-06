@@ -386,7 +386,7 @@ def models_list_fragment(
             f'<div class="model-grid">{cards}</div></section>'
         )
     if parts:
-        return "".join(parts)
+        return _dictation_language_hint(entries, language) + "".join(parts)
     if installed_only and language:
         name = escape(LANGUAGE_NAMES.get(language, language))
         return (
@@ -402,6 +402,33 @@ def models_list_fragment(
             "Turn off &ldquo;Installed only&rdquo; to browse the catalog.</p>"
         )
     return '<p class="empty-state">No models are available.</p>'
+
+
+def _dictation_language_hint(entries: list[AdminModelEntry], language: str) -> str:
+    """Warn when a filtered list mixes pinnable and auto-detecting models.
+
+    Testing showed every auto-detecting model returns the wrong writing system on
+    a short phrase — "ठीक है" came back as Chinese from both Dolphin and
+    Qwen3-ASR. Pinning the language fixes it outright, so someone filtering for
+    their language needs to know which half of the list to trust for dictation,
+    which is mostly short phrases.
+    """
+    if not language:
+        return ""
+    automatic = [entry for entry in entries if entry.detects_language_automatically]
+    pinnable = [entry for entry in entries if not entry.detects_language_automatically]
+    if not automatic or not pinnable:
+        return ""
+    name = escape(LANGUAGE_NAMES.get(language, language))
+    return (
+        '<div class="callout warning models-language-hint">'
+        f"<strong>Choosing a model for {name}</strong>"
+        "<span>The models badged <em>auto language</em> decide the language themselves. "
+        "They are strong on full sentences but return the wrong alphabet entirely on a "
+        "short phrase, which is most of dictation. Prefer one of the other "
+        f"{len(pinnable)} models here, which are told to transcribe {name}.</span>"
+        "</div>"
+    )
 
 
 def _language_disclosure(entry: AdminModelEntry) -> str:

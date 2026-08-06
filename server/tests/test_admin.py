@@ -711,3 +711,38 @@ async def test_test_transcription_rejects_unsupported_type(
         content=b"x" * 200,
     )
     assert response.status_code == 415
+
+
+def test_a_filtered_list_warns_which_models_suit_dictation() -> None:
+    """Every auto-detecting model tested returned the wrong writing system on a
+    short phrase, and dictation is mostly short phrases. A list mixing both kinds
+    has to say which half to trust."""
+    from app.catalog import DEFAULT_CATALOG, language_names
+    from app.fragments import models_list_fragment
+    from app.main import _model_covers
+    from app.schemas import AdminModelEntry
+
+    entries = [
+        AdminModelEntry(
+            id=m.id, engine=m.engine, label=m.label, size_bytes=m.size_bytes,
+            languages=m.languages, quality=m.quality, family=m.family,
+            description=m.description, source=m.source, state="not_installed",
+            active=False, recommended=False,
+            detects_language_automatically=m.detects_language_automatically,
+            language_names=language_names(m.language_codes),
+            language_codes=list(m.language_codes),
+        )
+        for m in DEFAULT_CATALOG
+    ]  # fmt: skip
+
+    hindi = [e for e in entries if _model_covers(e, "hi")]
+    rendered = models_list_fragment(hindi, language="hi")
+    assert "models-language-hint" in rendered
+    assert "wrong alphabet" in rendered
+    assert "Hindi" in rendered
+
+    # No hint when there is nothing to choose between.
+    only_auto = [e for e in hindi if e.detects_language_automatically]
+    assert "models-language-hint" not in models_list_fragment(only_auto, language="hi")
+    # And never on the unfiltered catalog, where it would just be noise.
+    assert "models-language-hint" not in models_list_fragment(entries)

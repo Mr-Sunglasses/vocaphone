@@ -622,3 +622,5 @@ input:focus, select:focus { border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
 }
+.models-language-hint { margin-bottom: 16px; }
+.models-language-hint em { font-style: normal; color: #c3a6f5; }
