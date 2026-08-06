@@ -324,6 +324,106 @@ async def test_ui_select_preserves_installed_only_filter(
     assert "No models downloaded yet" not in selected.text
 
 
+def test_language_filter_answers_which_model_should_i_use() -> None:
+    """The filter exists to invert the question people actually ask. Driven off
+    the real catalog, since the stub the admin fixtures use has one model."""
+    from app.catalog import DEFAULT_CATALOG, language_names
+    from app.main import _model_covers
+    from app.schemas import AdminModelEntry
+
+    entries = [
+        AdminModelEntry(
+            id=m.id,
+            engine=m.engine,
+            label=m.label,
+            size_bytes=m.size_bytes,
+            languages=m.languages,
+            quality=m.quality,
+            family=m.family,
+            description=m.description,
+            source=m.source,
+            state="not_installed",
+            active=False,
+            recommended=False,
+            detects_language_automatically=m.detects_language_automatically,
+            language_names=language_names(m.language_codes),
+            language_codes=list(m.language_codes),
+        )
+        for m in DEFAULT_CATALOG
+    ]
+
+    hindi = [e for e in entries if _model_covers(e, "hi")]
+    assert hindi, "Hindi must match something"
+    assert len(hindi) < len(entries), "the filter has to actually narrow the list"
+    # Both the auto-detecting recogniser and the pinnable Whisper builds appear,
+    # so the badge is what tells them apart rather than their absence.
+    assert any("dolphin" in e.id for e in hindi)
+    assert any(e.engine == "whisper.cpp" for e in hindi)
+    # An English-only build must not surface under Hindi.
+    assert not any(e.id.endswith(".en.bin") for e in hindi)
+
+    # Omnilingual declares no codes; it covers 1600+ languages, so it matches
+    # everything rather than disappearing from every filter.
+    omni = next(e for e in entries if "omnilingual" in e.id)
+    assert _model_covers(omni, "hi") and _model_covers(omni, "yo")
+
+    english = [e for e in entries if _model_covers(e, "en")]
+    assert any(e.id.endswith(".en.bin") for e in english)
+
+    # Moonshine carries its language in `language_code`, not `language_codes`.
+    # Leaving the tuple empty made every English Moonshine match "covers
+    # everything", so they all turned up under Hindi.
+    assert not any(e.engine == "moonshine" and e.id != "moonshine:hi" for e in hindi)
+    assert any(e.engine == "moonshine" for e in english)
+
+    # Odia is real but Whisper-less: only Dolphin and Omnilingual cover it, which
+    # is exactly why the phone clients do not offer it as a choice.
+    odia = [e for e in entries if _model_covers(e, "or")]
+    assert odia and all(e.detects_language_automatically for e in odia)
+
+
+def test_language_filter_offers_only_languages_some_model_covers() -> None:
+    from app.fragments import _language_filter_options
+
+    options = _language_filter_options()
+    assert '<option value="hi">Hindi</option>' in options
+    assert '<option value="ta">Tamil</option>' in options
+    # Odia is Dolphin-only, which is still a model, so it belongs here even
+    # though the phone clients deliberately do not offer it.
+    assert '<option value="or">Odia</option>' in options
+    # A language no catalog model covers must not appear as a dead option.
+    assert 'value="xx"' not in options
+
+
+async def test_ui_actions_preserve_the_language_filter(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    """Downloading or selecting must not silently reset the view, the same
+    guarantee the installed-only toggle already makes."""
+    listed = await admin_client.get(
+        "/ui/partials/models-list", params={"language": "hi"}, headers=auth
+    )
+    assert listed.status_code == 200
+
+    # The stub catalog's only model is multilingual Whisper, so it covers Hindi.
+    assert 'class="model-card"' in listed.text
+
+    filtered_out = await admin_client.get(
+        "/ui/partials/models-list", params={"language": "yue"}, headers=auth
+    )
+    assert "Cantonese" in filtered_out.text or 'class="model-card"' in filtered_out.text
+
+
+async def test_admin_models_api_accepts_the_language_filter(
+    admin_client: httpx.AsyncClient, auth: dict[str, str]
+) -> None:
+    response = await admin_client.get("/v1/admin/models", params={"language": "hi"}, headers=auth)
+    assert response.status_code == 200
+    assert all(
+        "hi" in entry["language_codes"] or not entry["language_codes"] for entry in response.json()
+    )
+
+
 async def test_unknown_model_download_404(
     admin_client: httpx.AsyncClient, auth: dict[str, str]
 ) -> None:
@@ -539,9 +639,17 @@ def test_model_cards_name_their_languages() -> None:
     assert 'class="badge auto-language"' in dolphin
     assert "chooses the language itself" in dolphin
 
-    # Whisper's coverage is too broad to enumerate, so it keeps the summary only.
+    # Whisper carries its full set too, and every code resolves to a real name
+    # rather than leaking a bare "af, am, be" at the reader.
     whisper = card("whisper.cpp:ggml-large-v3-turbo.bin")
-    assert "model-languages" not in whisper
+    assert "<summary>100 languages</summary>" in whisper
+    assert "Afrikaans" in whisper and "Hindi" in whisper
+    assert "badge auto-language" not in whisper
+
+    # An English-only build carries just "en", and gets no disclosure at all —
+    # its "English only" summary already says everything a list would.
+    english_only = card("whisper.cpp:ggml-tiny.en.bin")
+    assert "model-languages" not in english_only
 
 
 async def test_recorder_offers_every_language_a_client_can_request(

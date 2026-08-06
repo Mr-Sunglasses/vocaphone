@@ -66,6 +66,7 @@ def _whisper_cpp(
     family: str = "Whisper",
     description: str = "OpenAI Whisper converted for the standalone whisper.cpp engine.",
     source: str = "whisper.cpp",
+    language_codes: tuple[str, ...] = (),
 ) -> CatalogModel:
     return CatalogModel(
         id=f"{ENGINE_WHISPER_CPP}:{key}",
@@ -81,6 +82,7 @@ def _whisper_cpp(
         family=family,
         description=description,
         source=source,
+        language_codes=language_codes or _whisper_language_codes(languages),
     )
 
 
@@ -106,6 +108,7 @@ def _whisperkit(
         family="Whisper",
         description="Core ML Whisper model optimized for Apple silicon.",
         source="WhisperKit",
+        language_codes=_whisper_language_codes(languages),
     )
 
 
@@ -139,6 +142,7 @@ def _faster_whisper(
         ),
         source="faster-whisper",
         marker_file="model.bin",
+        language_codes=_whisper_language_codes(languages),
     )
 
 
@@ -176,6 +180,10 @@ def _moonshine(
         source="Moonshine Voice",
         marker_file=".localflow-model.json",
         language_code=language,
+        # Also as a tuple: the engine reads `language_code`, but the model cards and
+        # the language filter read `language_codes`, and an empty tuple there means
+        # "covers everything" — which would list every English Moonshine under Hindi.
+        language_codes=(language,),
         model_arch=model_arch,
         supports_streaming=supports_streaming,
         license_name="MIT" if english else "Moonshine Community License",
@@ -276,37 +284,75 @@ def _mlx_audio(
     )
 
 
+# Whisper's own language set, shared by every Whisper-derived entry (whisper.cpp,
+# WhisperKit, faster-whisper, MLX Whisper). None of those engines validate against
+# it — they pass the language straight to the CLI or library — so this is metadata
+# for the model cards and the language filter, not a gate.
+WHISPER_LANGUAGES: tuple[str, ...] = (
+    "af", "am", "ar", "as", "az", "ba", "be", "bg", "bn", "bo", "br", "bs", "ca", "cs", "cy",
+    "da", "de", "el", "en", "es", "et", "eu", "fa", "fi", "fo", "fr", "gl", "gu", "ha", "haw",
+    "he", "hi", "hr", "ht", "hu", "hy", "id", "is", "it", "ja", "jw", "ka", "kk", "km", "kn",
+    "ko", "la", "lb", "ln", "lo", "lt", "lv", "mg", "mi", "mk", "ml", "mn", "mr", "ms", "mt",
+    "my", "ne", "nl", "nn", "no", "oc", "pa", "pl", "ps", "pt", "ro", "ru", "sa", "sd", "si",
+    "sk", "sl", "sn", "so", "sq", "sr", "su", "sv", "sw", "ta", "te", "tg", "th", "tk", "tl",
+    "tr", "tt", "uk", "ur", "uz", "vi", "yi", "yo", "yue", "zh",
+)  # fmt: skip
+
+
+def _whisper_language_codes(languages: str) -> tuple[str, ...]:
+    """Derive a Whisper entry's codes from its human-readable summary."""
+    return ("en",) if languages == "English only" else WHISPER_LANGUAGES
+
+
 # Display names for every code any catalog entry declares, so a model card can list
 # "Hindi, Bengali, Tamil" instead of "hi, bn, ta". A missing code falls back to the
 # code itself rather than hiding the language.
 LANGUAGE_NAMES: dict[str, str] = {
+    "af": "Afrikaans",
+    "am": "Amharic",
     "ar": "Arabic",
     "as": "Assamese",
     "az": "Azerbaijani",
     "ba": "Bashkir",
+    "be": "Belarusian",
     "bg": "Bulgarian",
     "bn": "Bengali",
     "bo": "Tibetan",
+    "br": "Breton",
+    "bs": "Bosnian",
+    "ca": "Catalan",
     "cs": "Czech",
     "ct": "Yue Chinese",
+    "cy": "Welsh",
     "da": "Danish",
     "de": "German",
     "el": "Greek",
     "en": "English",
     "es": "Spanish",
     "et": "Estonian",
+    "eu": "Basque",
     "fa": "Persian",
     "fi": "Finnish",
     "fil": "Filipino",
+    "fo": "Faroese",
     "fr": "French",
+    "gl": "Galician",
     "gu": "Gujarati",
+    "ha": "Hausa",
+    "haw": "Hawaiian",
+    "he": "Hebrew",
     "hi": "Hindi",
     "hr": "Croatian",
+    "ht": "Haitian Creole",
     "hu": "Hungarian",
+    "hy": "Armenian",
     "id": "Indonesian",
+    "is": "Icelandic",
     "it": "Italian",
     "ja": "Japanese",
     "jv": "Javanese",
+    "jw": "Javanese",
+    "ka": "Georgian",
     "kab": "Kabyle",
     "kk": "Kazakh",
     "km": "Khmer",
@@ -314,9 +360,15 @@ LANGUAGE_NAMES: dict[str, str] = {
     "ko": "Korean",
     "ks": "Kashmiri",
     "ky": "Kyrgyz",
+    "la": "Latin",
+    "lb": "Luxembourgish",
+    "ln": "Lingala",
     "lo": "Lao",
     "lt": "Lithuanian",
     "lv": "Latvian",
+    "mg": "Malagasy",
+    "mi": "Maori",
+    "mk": "Macedonian",
     "ml": "Malayalam",
     "mn": "Mongolian",
     "mr": "Marathi",
@@ -325,6 +377,9 @@ LANGUAGE_NAMES: dict[str, str] = {
     "my": "Burmese",
     "ne": "Nepali",
     "nl": "Dutch",
+    "nn": "Norwegian Nynorsk",
+    "no": "Norwegian",
+    "oc": "Occitan",
     "or": "Odia",
     "pa": "Punjabi",
     "pl": "Polish",
@@ -337,18 +392,28 @@ LANGUAGE_NAMES: dict[str, str] = {
     "si": "Sinhala",
     "sk": "Slovak",
     "sl": "Slovenian",
+    "sn": "Shona",
+    "so": "Somali",
+    "sq": "Albanian",
+    "sr": "Serbian",
     "su": "Sundanese",
     "sv": "Swedish",
+    "sw": "Swahili",
     "ta": "Tamil",
     "te": "Telugu",
     "tg": "Tajik",
     "th": "Thai",
+    "tk": "Turkmen",
     "tl": "Tagalog",
+    "tr": "Turkish",
+    "tt": "Tatar",
     "ug": "Uyghur",
     "uk": "Ukrainian",
     "ur": "Urdu",
     "uz": "Uzbek",
     "vi": "Vietnamese",
+    "yi": "Yiddish",
+    "yo": "Yoruba",
     "yue": "Cantonese",
     "zh": "Mandarin Chinese",
 }
@@ -744,6 +809,7 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         "Most accurate · compact",
         8,
         repository="mlx-community/whisper-large-v3-turbo-asr-4bit",
+        language_codes=WHISPER_LANGUAGES,
         family="Whisper / MLX",
         description=(
             "Quantized Whisper Large v3 Turbo running natively on Apple silicon through MLX."
@@ -1011,6 +1077,7 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         family="Breeze ASR",
         description="Whisper variant tuned for Taiwanese Mandarin and code-switching.",
         source="Handy-compatible",
+        language_codes=("zh", "en"),
     ),
     _whisper_cpp(
         "ggml-large-v3.bin", "whisper.cpp Large v3", 3 * GB, "Multilingual", "Most accurate", 24

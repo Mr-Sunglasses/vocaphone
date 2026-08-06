@@ -157,9 +157,10 @@ class AdminModelEntry(BaseModel):
     license_name: str = "See model source"
     commercial_use: bool = True
     detects_language_automatically: bool = False
-    # Named languages behind the `languages` summary. Empty when a model's coverage
-    # is too broad to enumerate (Whisper's ~100, Omnilingual's 1600+).
+    # Named languages behind the `languages` summary, and the codes the filter
+    # matches on. Empty codes mean "matches any language" rather than none.
     language_names: list[str] = []
+    language_codes: list[str] = []
     state: Literal["installed", "downloading", "not_installed"]
     active: bool
     recommended: bool

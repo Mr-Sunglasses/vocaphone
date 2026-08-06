@@ -4,6 +4,7 @@ from datetime import datetime
 from html import escape
 from urllib.parse import quote
 
+from app.catalog import DEFAULT_CATALOG, LANGUAGE_NAMES
 from app.config import WILDCARD_BIND_HOSTS, format_host_port, local_webui_url
 from app.schemas import (
     AdminModelEntry,
@@ -15,6 +16,10 @@ from app.schemas import (
     ReadinessStatus,
 )
 from app.system import engine_requirement
+
+# Every action that re-renders the model list sends both filters, so downloading
+# or selecting a model never silently resets the view.
+MODEL_FILTER_INPUTS = "#installed-only-toggle, #language-filter"
 
 ENGINE_LABELS = {
     "auto": "Auto (recommended)",
@@ -314,14 +319,22 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
             <p class="muted">Recommendations are matched to this server's hardware.</p>
           </div>
           <div class="models-toolbar-actions">
+            <label class="sr-only" for="language-filter">Filter models by language</label>
+            <select id="language-filter" name="language" class="language-filter"
+                    hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
+                    hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change">
+              <option value="">All languages</option>
+              {_language_filter_options()}
+            </select>
             <label class="filter-toggle" for="installed-only-toggle">
               <input type="checkbox" id="installed-only-toggle" name="installed_only"
                      value="true" class="sr-only" hx-get="/ui/partials/models-list"
+                     hx-include="{MODEL_FILTER_INPUTS}"
                      hx-target="#models-list" hx-swap="innerHTML" hx-trigger="change" />
               Installed only
             </label>
             <button type="button" class="ghost small no-margin"
-                    hx-get="/ui/partials/models-list" hx-include="#installed-only-toggle"
+                    hx-get="/ui/partials/models-list" hx-include="{MODEL_FILTER_INPUTS}"
                     hx-target="#models-list" hx-swap="innerHTML">Refresh</button>
           </div>
         </div>
@@ -333,7 +346,7 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
         <h2>Bring your own Whisper model</h2>
         <p class="muted">Paste a direct HTTPS link to a compatible <code>.bin</code> or
           <code>.gguf</code> file. It will run through the standalone engine.</p>
-        <form hx-post="/ui/partials/models/custom" hx-include="#installed-only-toggle"
+        <form hx-post="/ui/partials/models/custom" hx-include="{MODEL_FILTER_INPUTS}"
               hx-target="#models-list" hx-swap="innerHTML">
           <div class="row">
             <input name="url" type="url" required
@@ -345,7 +358,21 @@ def models_fragment(entries: list[AdminModelEntry]) -> str:
     """
 
 
-def models_list_fragment(entries: list[AdminModelEntry], installed_only: bool = False) -> str:
+def _language_filter_options() -> str:
+    """Only languages some model actually covers, so the filter never has a
+    dead option. Whisper's set dominates, but Dolphin contributes the South and
+    Southeast Asian languages Whisper lacks."""
+    covered = {code for model in DEFAULT_CATALOG for code in model.language_codes}
+    named = sorted((LANGUAGE_NAMES.get(code, code), code) for code in covered)
+    return "".join(
+        f'<option value="{escape(code, quote=True)}">{escape(name)}</option>'
+        for name, code in named
+    )
+
+
+def models_list_fragment(
+    entries: list[AdminModelEntry], installed_only: bool = False, language: str = ""
+) -> str:
     groups: dict[str, list[AdminModelEntry]] = {}
     for entry in entries:
         groups.setdefault(entry.engine, []).append(entry)
@@ -360,6 +387,15 @@ def models_list_fragment(entries: list[AdminModelEntry], installed_only: bool = 
         )
     if parts:
         return "".join(parts)
+    if installed_only and language:
+        name = escape(LANGUAGE_NAMES.get(language, language))
+        return (
+            f'<p class="empty-state">No downloaded model covers {name}. '
+            "Turn off &ldquo;Installed only&rdquo; to find one to download.</p>"
+        )
+    if language:
+        name = escape(LANGUAGE_NAMES.get(language, language))
+        return f'<p class="empty-state">No model in the catalog covers {name}.</p>'
     if installed_only:
         return (
             '<p class="empty-state">No models downloaded yet. '
@@ -376,7 +412,9 @@ def _language_disclosure(entry: AdminModelEntry) -> str:
     needs no JavaScript, stays keyboard-accessible, and is searchable by the
     browser's own find-in-page once opened.
     """
-    if not entry.language_names:
+    # A single-language model needs no disclosure: the "English only" summary
+    # beside it already says everything the list would.
+    if len(entry.language_names) < 2:
         return ""
     names = ", ".join(escape(name) for name in entry.language_names)
     note = (
@@ -420,7 +458,7 @@ def _model_card(entry: AdminModelEntry) -> str:
             f'<span class="muted small progress-copy">'
             f"{percent}% · {downloaded} / {total}</span>"
             f'<button class="ghost small" hx-post="/ui/partials/models/{encoded_id}/cancel"'
-            f' hx-include="#installed-only-toggle"'
+            f' hx-include="{MODEL_FILTER_INPUTS}"'
             f' hx-target="#models-list" hx-swap="innerHTML">Cancel</button>'
         )
     elif entry.state == "installed":
@@ -430,7 +468,7 @@ def _model_card(entry: AdminModelEntry) -> str:
             else (
                 f'<button class="primary small"'
                 f' hx-post="/ui/partials/models/{encoded_id}/select"'
-                f' hx-include="#installed-only-toggle"'
+                f' hx-include="{MODEL_FILTER_INPUTS}"'
                 f' hx-target="#models-list" hx-swap="innerHTML">Select</button>'
             )
         )
@@ -438,7 +476,7 @@ def _model_card(entry: AdminModelEntry) -> str:
             f"{select_button}"
             f'<button class="ghost small danger"'
             f' hx-delete="/ui/partials/models/{encoded_id}"'
-            f' hx-include="#installed-only-toggle"'
+            f' hx-include="{MODEL_FILTER_INPUTS}"'
             f' hx-confirm="Delete {escape(entry.label)} from this server?"'
             f' hx-target="#models-list" hx-swap="innerHTML">Delete</button>'
         )
@@ -452,7 +490,7 @@ def _model_card(entry: AdminModelEntry) -> str:
             f"{note}"
             f'<button class="primary small"'
             f' hx-post="/ui/partials/models/{encoded_id}/download"'
-            f' hx-include="#installed-only-toggle"'
+            f' hx-include="{MODEL_FILTER_INPUTS}"'
             f' hx-target="#models-list" hx-swap="innerHTML">Download</button>'
         )
 

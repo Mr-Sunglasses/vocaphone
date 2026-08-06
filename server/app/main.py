@@ -118,6 +118,19 @@ TOKEN_FILE_HINT = "~/.config/localflow/token"
 BOOTSTRAP_TOKEN_ID = "bootstrap"
 
 
+def _model_covers(entry: AdminModelEntry, language: str) -> bool:
+    """Whether a model can transcribe `language`.
+
+    A model with no declared languages matches everything rather than nothing:
+    the only such entry is Omnilingual ASR, whose 1600+ languages are genuinely
+    too many to enumerate, and hiding it from every filter would bury the one
+    model most likely to cover an unusual language.
+    """
+    if not entry.language_codes:
+        return True
+    return language in entry.language_codes
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -752,6 +765,7 @@ def create_app(
                     commercial_use=model.commercial_use,
                     detects_language_automatically=model.detects_language_automatically,
                     language_names=language_names(model.language_codes),
+                    language_codes=list(model.language_codes),
                     state=state,
                     active=bool(installed_model and installed_model.path == active_path),
                     recommended=model.id in recommended,
@@ -878,11 +892,10 @@ def create_app(
         response_model=list[AdminModelEntry],
         dependencies=[Depends(require_token)],
     )
-    async def get_admin_models(installed_only: bool = False) -> list[AdminModelEntry]:
-        entries = _model_entries()
-        if installed_only:
-            entries = [entry for entry in entries if entry.state == "installed"]
-        return entries
+    async def get_admin_models(
+        installed_only: bool = False, language: str = ""
+    ) -> list[AdminModelEntry]:
+        return _filtered_model_entries(installed_only, language)
 
     def _active_model_path() -> Path | None:
         if engine_manager is None:
@@ -1101,11 +1114,17 @@ def create_app(
     def _html(content: str) -> HTMLResponse:
         return HTMLResponse(content)
 
-    def _models_list_html(installed_only: bool = False) -> HTMLResponse:
+    def _filtered_model_entries(installed_only: bool, language: str) -> list[AdminModelEntry]:
         entries = _model_entries()
         if installed_only:
             entries = [entry for entry in entries if entry.state == "installed"]
-        return _html(models_list_fragment(entries, installed_only))
+        if language:
+            entries = [entry for entry in entries if _model_covers(entry, language)]
+        return entries
+
+    def _models_list_html(installed_only: bool = False, language: str = "") -> HTMLResponse:
+        entries = _filtered_model_entries(installed_only, language)
+        return _html(models_list_fragment(entries, installed_only, language))
 
     def _resolve_pairing_token(
         token_id: str | None,
@@ -1380,15 +1399,19 @@ def create_app(
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_models_list(installed_only: bool = False) -> HTMLResponse:
-        return _models_list_html(installed_only)
+    async def ui_models_list(installed_only: bool = False, language: str = "") -> HTMLResponse:
+        return _models_list_html(installed_only, language)
 
     @app.post(
         "/ui/partials/models/{model_id}/download",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_start_download(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
+    async def ui_start_download(
+        model_id: str,
+        installed_only: bool = Form(False),
+        language: str = Form(""),
+    ) -> HTMLResponse:
         try:
             manager.start_download(model_id)
         except UnknownModelError as error:
@@ -1397,7 +1420,7 @@ def create_app(
             raise APIProblem(
                 409, "download_in_progress", "This model is already downloading."
             ) from error
-        return _models_list_html(installed_only)
+        return _models_list_html(installed_only, language)
 
     @app.post(
         "/ui/partials/models/custom",
@@ -1405,7 +1428,7 @@ def create_app(
         dependencies=[Depends(require_token)],
     )
     async def ui_custom_download(
-        url: str = Form(...), installed_only: bool = Form(False)
+        url: str = Form(...), installed_only: bool = Form(False), language: str = Form("")
     ) -> HTMLResponse:
         try:
             manager.start_custom_download(url)
@@ -1413,23 +1436,31 @@ def create_app(
             raise APIProblem(422, "invalid_model_url", str(error)) from error
         except DownloadInProgressError as error:
             raise APIProblem(409, "download_in_progress", str(error)) from error
-        return _models_list_html(installed_only)
+        return _models_list_html(installed_only, language)
 
     @app.post(
         "/ui/partials/models/{model_id}/cancel",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_cancel_download(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
+    async def ui_cancel_download(
+        model_id: str,
+        installed_only: bool = Form(False),
+        language: str = Form(""),
+    ) -> HTMLResponse:
         manager.cancel_download(model_id)
-        return _models_list_html(installed_only)
+        return _models_list_html(installed_only, language)
 
     @app.delete(
         "/ui/partials/models/{model_id}",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_delete_model(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
+    async def ui_delete_model(
+        model_id: str,
+        installed_only: bool = Form(False),
+        language: str = Form(""),
+    ) -> HTMLResponse:
         try:
             if engine_manager is not None:
                 engine_manager.forget_if_active(model_id)
@@ -1438,14 +1469,18 @@ def create_app(
             raise APIProblem(
                 409, "download_in_progress", "Cancel the download before deleting."
             ) from error
-        return _models_list_html(installed_only)
+        return _models_list_html(installed_only, language)
 
     @app.post(
         "/ui/partials/models/{model_id}/select",
         response_class=HTMLResponse,
         dependencies=[Depends(require_token)],
     )
-    async def ui_select_model(model_id: str, installed_only: bool = Form(False)) -> HTMLResponse:
+    async def ui_select_model(
+        model_id: str,
+        installed_only: bool = Form(False),
+        language: str = Form(""),
+    ) -> HTMLResponse:
         if engine_manager is None:
             raise APIProblem(
                 409, "engine_locked", "The engine was fixed at startup and cannot switch."

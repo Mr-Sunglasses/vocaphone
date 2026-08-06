@@ -334,6 +334,25 @@ main { max-width: 1120px; margin: 0 auto; padding: 24px 24px 60px; }
   background: none;
   padding: 5px 12px;
 }
+/* Matches .filter-toggle so the two filters read as one control group. */
+.language-filter {
+  font: inherit;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--panel-border);
+  color: var(--muted);
+  background: none;
+  padding: 5px 10px;
+  cursor: pointer;
+  max-width: 190px;
+}
+.language-filter:hover { color: var(--text); }
+.language-filter:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* An active filter has to look active, or a narrowed list reads as an empty catalog. */
+.language-filter:not(:has(option[value=""]:checked)) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .filter-toggle:hover { color: var(--text); }
 .filter-toggle:has(input:checked) { color: var(--accent); border-color: var(--accent); }
 .filter-toggle:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
