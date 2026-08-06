@@ -1,9 +1,12 @@
-# Local Flow gateway
+# vocaphone gateway
 
-The gateway accepts bounded recordings from the Local Flow iPhone app,
-normalizes them with FFmpeg, invokes a local speech engine, and returns an
+The gateway accepts bounded recordings from the vocaphone iPhone and Android
+apps, normalizes them with FFmpeg, invokes a local speech engine, and returns an
 idempotent transcript. It includes an authenticated HTMX WebUI for setup, model
 management, engine selection, microphone testing, and operational status.
+
+> CLI entry points, env vars, and config paths still use the Local Flow working
+> name (`localflow-server`, `LOCALFLOW_*`, `~/.config/localflow/`).
 
 ## Deployment summary
 
@@ -29,7 +32,7 @@ Requires [Homebrew](https://brew.sh/), Python 3.12+, and
 - `whisper-cpp` — provides `whisper-cli` for GGML `whisper.cpp` models,
   including the Handy model family, which runs without the Handy app
 
-The [VocaMac](https://github.com/jatinkrmalik/vocamac) and
+The [VocaMac](https://github.com/VocaHQ/vocamac) and
 [Handy](https://handy.computer) desktop apps are **optional and Mac-only**:
 VocaMac needs an Apple silicon Mac, Handy needs macOS. Install neither and the
 gateway downloads and runs its own models; install either and the gateway can
