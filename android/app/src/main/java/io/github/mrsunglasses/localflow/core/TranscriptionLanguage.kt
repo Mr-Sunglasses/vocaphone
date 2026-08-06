@@ -1,33 +1,35 @@
 package io.github.mrsunglasses.localflow.core
 
 /**
- * Mirrors the gateway's accepted `language` values and the iOS client's
- * `TranscriptionLanguage`, in the same order.
+ * Mirrors the gateway's accepted `language` values. Automatic is pinned
+ * first as the default; the rest are alphabetical by [displayName].
  */
 enum class TranscriptionLanguage(val wireValue: String) {
+    ARABIC("ar"),
     AUTOMATIC("auto"),
     ENGLISH("en"),
-    SPANISH("es"),
-    ARABIC("ar"),
+    FRENCH("fr"),
+    GERMAN("de"),
     JAPANESE("ja"),
     KOREAN("ko"),
     MANDARIN_CHINESE("zh"),
-    UKRAINIAN("uk"),
     RUSSIAN("ru"),
-    VIETNAMESE("vi"),
-    GERMAN("de");
+    SPANISH("es"),
+    UKRAINIAN("uk"),
+    VIETNAMESE("vi");
 
     val displayName: String
         get() = when (this) {
             AUTOMATIC -> "Automatic"
-            ENGLISH -> "English"
-            SPANISH -> "Spanish"
             ARABIC -> "Arabic"
+            ENGLISH -> "English"
+            FRENCH -> "French"
             JAPANESE -> "Japanese"
             KOREAN -> "Korean"
             MANDARIN_CHINESE -> "Mandarin Chinese"
-            UKRAINIAN -> "Ukrainian"
             RUSSIAN -> "Russian"
+            SPANISH -> "Spanish"
+            UKRAINIAN -> "Ukrainian"
             VIETNAMESE -> "Vietnamese"
             GERMAN -> "German"
         }
