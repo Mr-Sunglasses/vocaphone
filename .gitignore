@@ -1,4 +1,5 @@
 .DS_Store
+.cursor/
 __pycache__/
 *.py[cod]
 .mypy_cache/

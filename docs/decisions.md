@@ -6,7 +6,7 @@ These are changeable implementation defaults, not confirmed product decisions:
 
 | Choice | Current assumption | Why |
 | --- | --- | --- |
-| Product name | Local Flow | Codename from `Plan.md` |
+| Product name | **vocaphone** (prose / GitHub); Local Flow still used in code, binaries, and placeholders | Product name chosen for the Voca family; code identifiers catch up before public release |
 | Minimum iOS | iOS 17.0 | Supports the chosen SwiftUI and audio APIs |
 | App bundle ID | `com.example.localflow` | Placeholder that builds unsigned |
 | Keyboard bundle ID | `com.example.localflow.keyboard` | Placeholder |
@@ -24,7 +24,8 @@ These are changeable implementation defaults, not confirmed product decisions:
 
 ## Must be confirmed before physical-device acceptance
 
-- Final product name, bundle identifiers, Apple team, and App Group
+- Bundle identifiers, Apple team, and App Group (product name is **vocaphone**;
+  migrate off `localflow` / `com.example.localflow` placeholders)
 - Whether iOS 17.0 is the desired minimum
 - Mac availability and sleep policy
 - Whether mixed Hindi/English should be added through a separate multilingual model
