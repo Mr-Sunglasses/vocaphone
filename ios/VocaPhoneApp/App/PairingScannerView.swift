@@ -18,7 +18,7 @@ struct PairingScannerView: UIViewControllerRepresentable {
 @MainActor
 final class PairingScannerViewController: UIViewController, @preconcurrency AVCaptureMetadataOutputObjectsDelegate {
     private let captureSession = AVCaptureSession()
-    private let sessionQueue = DispatchQueue(label: "io.github.mrsunglasses.vocaphone.pairing-camera")
+    private let sessionQueue = DispatchQueue(label: "com.vocahq.vocaphone.pairing-camera")
     private let paired: (PairingPayload.Value) -> Void
     private let unavailable: (String) -> Void
     private var hasPaired = false

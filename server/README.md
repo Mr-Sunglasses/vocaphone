@@ -7,7 +7,9 @@ management, engine selection, microphone testing, and operational status.
 
 > CLI entry points, env vars, and config paths previously used the Local Flow
 > working name (`localflow-server`, `LOCALFLOW_*`, `~/.config/localflow/`) and
-> were renamed to vocaphone in v0.3.0.
+> were renamed to vocaphone in v0.3.0. Native startups migrate a missing
+> bootstrap token from the old path once; see the
+> [migration guide](../docs/deployment.md#migrating-from-the-local-flow-working-name-v030).
 
 ## Deployment summary
 

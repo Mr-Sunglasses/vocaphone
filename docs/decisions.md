@@ -27,8 +27,11 @@ identifiers. The following are the final identifiers in use:
 Apple Developer portal registration of these bundle identifiers and App Group
 under the existing team is a required follow-up.
 
-See [deployment.md](deployment.md#migrating-from-the-local-flow-working-name-v030)
-for the full migration guide.
+Native gateway startups migrate a missing vocaphone bootstrap token (and
+WebUI config) from the Local Flow paths once, and the LaunchAgent/systemd
+install helpers remove the obsolete Local Flow units. Everything else remains
+a documented hard cutover — see
+[deployment.md](deployment.md#migrating-from-the-local-flow-working-name-v030).
 
 ## Implemented assumptions
 

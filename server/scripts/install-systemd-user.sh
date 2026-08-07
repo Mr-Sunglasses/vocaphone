@@ -30,6 +30,16 @@ sed -e "s/__REPOSITORY__/$escaped_repository/g" "$template" > "$temporary"
 mv "$temporary" "$destination"
 trap - EXIT
 
+# Drop the pre-rename Local Flow unit so it cannot keep restarting a missing
+# localflow-server binary after the vocaphone rename.
+legacy_unit="com.example.localflow.gateway.service"
+legacy_destination="$unit_dir/$legacy_unit"
+if systemctl --user cat "$legacy_unit" >/dev/null 2>&1 || [ -f "$legacy_destination" ]; then
+  systemctl --user disable --now "$legacy_unit" 2>/dev/null || true
+  rm -f "$legacy_destination"
+  printf 'Removed obsolete systemd unit %s\n' "$legacy_unit"
+fi
+
 systemctl --user daemon-reload
 systemctl --user enable --now "$unit_name"
 

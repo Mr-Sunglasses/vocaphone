@@ -27,6 +27,17 @@ sed \
 mv "$temporary" "$destination"
 trap - EXIT
 
+# Drop the pre-rename Local Flow LaunchAgent so it cannot keep crash-looping
+# after localflow-server disappears from the venv.
+legacy_label="com.example.localflow.gateway"
+legacy_service="$domain/$legacy_label"
+legacy_plist="$HOME/Library/LaunchAgents/${legacy_label}.plist"
+if launchctl print "$legacy_service" >/dev/null 2>&1 || [ -f "$legacy_plist" ]; then
+  launchctl bootout "$legacy_service" 2>/dev/null || true
+  rm -f "$legacy_plist"
+  printf 'Removed obsolete LaunchAgent %s\n' "$legacy_label"
+fi
+
 launchctl bootout "$service" 2>/dev/null || true
 remaining=50
 while launchctl print "$service" >/dev/null 2>&1; do

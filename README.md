@@ -335,16 +335,17 @@ cd android
 # macOS default; on Linux try $HOME/Android/Sdk
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ./gradlew assembleDebug
+# Uninstall any pre-rename Local Flow build first — application IDs differ, so
+# `adb install -r` will side-install next to io.github.mrsunglasses.localflow.
+adb uninstall io.github.mrsunglasses.localflow 2>/dev/null || true
 adb install -r app/build/outputs/apk/debug/vocaphone-debug.apk
 ```
 
 In the app: grant microphone, notifications, overlay, and accessibility; then
 enter the gateway address and bearer token from step 4 and run **Test connection**.
 
-The same application ID, `com.vocahq.vocaphone`, should be
-replaced before you distribute a build. See the
-[Android client guide](android/README.md) for permissions, the accessibility
-disclosure, and the supported gateway address forms.
+See the [Android client guide](android/README.md) for permissions, the
+accessibility disclosure, and the supported gateway address forms.
 
 ## Build and test
 

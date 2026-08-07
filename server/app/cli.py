@@ -18,14 +18,15 @@ from app.storage import SessionRepository
 def serve() -> None:
     settings = Settings.from_env()
     host = settings.bind_host
-    token_source = "(from VOCAPHONE_TOKEN)" if _token_from_env() else "~/.config/vocaphone/token"
+    token_path = settings.token_file_display
+    token_source = "(from VOCAPHONE_TOKEN)" if _token_from_env() else token_path
     print(f"vocaphone gateway listening on {format_host_port(host, settings.port)}")
     print(f"WebUI (this host): {local_webui_url(host, settings.port)}")
     if host in WILDCARD_BIND_HOSTS:
         print("Network access: use this host's LAN or Tailscale IP with the same port")
     print(f"Token: {token_source}")
     if not _token_from_env():
-        print("  (cat ~/.config/vocaphone/token — enter that value in the phone app)")
+        print(f"  (cat {token_path} — enter that value in the phone app)")
     uvicorn.run(
         create_app(settings),
         host=host,
@@ -37,7 +38,7 @@ def serve() -> None:
 def _token_from_env() -> bool:
     import os
 
-    return bool(os.environ.get("VOCAPHONE_TOKEN"))
+    return bool(os.environ.get("VOCAPHONE_TOKEN", "").strip())
 
 
 def status() -> None:

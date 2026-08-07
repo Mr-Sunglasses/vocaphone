@@ -301,24 +301,48 @@ over the public internet.
 ## Migrating from the Local Flow working name (v0.3.0)
 
 The v0.3.0 release replaced the **Local Flow** working name with **vocaphone**
-across all identifiers. This is a hard cutover — no compatibility aliases are
-provided. If you are upgrading from an earlier checkout, follow each step below.
+across all identifiers. Environment variable names, config paths, Docker
+resources, and service units are a hard cutover — there are no long-lived
+`LOCALFLOW_*` aliases.
+
+Native gateway startups do perform a **one-time bootstrap migration** when they
+find an old Local Flow token (or config file) and no vocaphone token yet: the
+token is copied to `~/.config/vocaphone/token` so paired phones keep working.
+If Local Flow data exists but no token can be found, startup fails instead of
+minting a new secret. Still follow the steps below for env vars, data dirs,
+Docker volumes, and client reinstalls.
 
 ### Environment variables
 
-Rename every `LOCALFLOW_*` variable to `VOCAPHONE_*`:
+Rename every `LOCALFLOW_*` variable to `VOCAPHONE_*`. The common set:
 
 ```sh
-# Before (obsolete)                # After (current)
-LOCALFLOW_TOKEN=…                   VOCAPHONE_TOKEN=…
-LOCALFLOW_BIND_HOST=127.0.0.1       VOCAPHONE_BIND_HOST=127.0.0.1
-LOCALFLOW_PUBLISH_HOST=127.0.0.1    VOCAPHONE_PUBLISH_HOST=127.0.0.1
-LOCALFLOW_PUBLISH_PORT=8765         VOCAPHONE_PUBLISH_PORT=8765
-LOCALFLOW_NETWORK_MODE=host         VOCAPHONE_NETWORK_MODE=host
-LOCALFLOW_IMAGE=…                   VOCAPHONE_IMAGE=…
-LOCALFLOW_ENGINE=…                  VOCAPHONE_ENGINE=…
-LOCALFLOW_WHISPER_BINARY=…          VOCAPHONE_WHISPER_BINARY=…
-LOCALFLOW_WHISPER_MODEL=…           VOCAPHONE_WHISPER_MODEL=…
+# Before (obsolete)                         # After (current)
+LOCALFLOW_TOKEN=…                            VOCAPHONE_TOKEN=…
+LOCALFLOW_TOKEN_FILE=…                       VOCAPHONE_TOKEN_FILE=…
+LOCALFLOW_BIND_HOST=127.0.0.1                VOCAPHONE_BIND_HOST=127.0.0.1
+LOCALFLOW_PORT=8765                          VOCAPHONE_PORT=8765
+LOCALFLOW_PUBLISH_HOST=127.0.0.1             VOCAPHONE_PUBLISH_HOST=127.0.0.1
+LOCALFLOW_PUBLISH_PORT=8765                  VOCAPHONE_PUBLISH_PORT=8765
+LOCALFLOW_NETWORK_MODE=host                  VOCAPHONE_NETWORK_MODE=host
+LOCALFLOW_IMAGE=…                            VOCAPHONE_IMAGE=…
+LOCALFLOW_DATA_DIR=…                         VOCAPHONE_DATA_DIR=…
+LOCALFLOW_CONFIG_FILE=…                      VOCAPHONE_CONFIG_FILE=…
+LOCALFLOW_MODELS_DIR=…                       VOCAPHONE_MODELS_DIR=…
+LOCALFLOW_PUBLIC_URL=…                       VOCAPHONE_PUBLIC_URL=…
+LOCALFLOW_PAIRING_URL=…                      VOCAPHONE_PAIRING_URL=…
+LOCALFLOW_ENGINE=…                           VOCAPHONE_ENGINE=…
+LOCALFLOW_WHISPER_BINARY=…                   VOCAPHONE_WHISPER_BINARY=…
+LOCALFLOW_WHISPER_MODEL=…                    VOCAPHONE_WHISPER_MODEL=…
+LOCALFLOW_HANDY_BINARY=…                     VOCAPHONE_HANDY_BINARY=…
+LOCALFLOW_HANDY_MODEL=…                      VOCAPHONE_HANDY_MODEL=…
+LOCALFLOW_HANDY_FALLBACK_MODEL=…             VOCAPHONE_HANDY_FALLBACK_MODEL=…
+LOCALFLOW_VOCAMAC_APP=…                      VOCAPHONE_VOCAMAC_APP=…
+LOCALFLOW_VOCAMAC_MODEL=…                    VOCAPHONE_VOCAMAC_MODEL=…
+LOCALFLOW_WHISPERKIT_BINARY=…                VOCAPHONE_WHISPERKIT_BINARY=…
+LOCALFLOW_RETENTION_HOURS=24                 VOCAPHONE_RETENTION_HOURS=24
+LOCALFLOW_DELETE_SUCCESSFUL_AUDIO=true       VOCAPHONE_DELETE_SUCCESSFUL_AUDIO=true
+LOCALFLOW_DEBUG=false                        VOCAPHONE_DEBUG=false
 ```
 
 Security defaults (loopback binding, mode-600 token files, per-device bearer
@@ -336,10 +360,12 @@ Move existing data into the new locations or let the first run re-create them:
 | `~/Library/Logs/LocalFlow/` | `~/Library/Logs/Vocaphone/` |
 
 The token file and config are portable; copy them into the new location under
-the same permissions. Models can be moved or re-downloaded — the WebUI catalog
-keeps the same model URLs. If you move an existing sherpa-onnx or Moonshine
-model, rename its `.localflow-model.json` marker to `.vocaphone-model.json`;
-otherwise the gateway will treat that model as not installed.
+the same permissions (or let `vocaphone-server` / `scripts/setup-token.sh`
+perform the one-time token and config copy described above). Models can be
+moved or re-downloaded — the WebUI catalog keeps the same model URLs. If you
+move an existing sherpa-onnx or Moonshine model, rename its
+`.localflow-model.json` marker to `.vocaphone-model.json`; otherwise the
+gateway will treat that model as not installed.
 
 ### Docker volume
 
@@ -355,24 +381,28 @@ docker run --rm \
   -v localflow_localflow-data:/from:ro \
   -v vocaphone_vocaphone-data:/to \
   alpine sh -c 'cp -a /from/. /to/'
+# Rename model markers inside the copied volume when you keep existing models:
+docker run --rm -v vocaphone_vocaphone-data:/data alpine \
+  sh -c 'find /data -name .localflow-model.json -exec sh -c \
+  "mv \"\$1\" \"\${1%.localflow-model.json}.vocaphone-model.json\"" _ {} \;'
 # or omit the copy and let it download fresh:
 docker compose up --detach --build
 ```
 
 ### LaunchAgent / systemd units
 
-Stop and unload the old unit, then install the renamed one:
+The install helpers remove the obsolete Local Flow unit and install the renamed
+one. You can also do it manually:
 
 **macOS:**
 ```sh
-launchctl bootout "gui/$(id -u)/com.example.localflow.gateway"
+# install-launch-agent.sh boots out com.example.localflow.gateway automatically
 cd server && ./scripts/install-launch-agent.sh
 ```
 
 **Linux:**
 ```sh
-systemctl --user stop com.example.localflow.gateway.service
-systemctl --user disable com.example.localflow.gateway.service
+# install-systemd-user.sh disables com.example.localflow.gateway.service automatically
 cd server && ./scripts/install-systemd-user.sh
 ```
 
@@ -388,10 +418,11 @@ existing iOS and Android installations are not upgraded in place:
 - **iOS Apple Developer registration**: Register the new bundle identifiers and
   App Group under your existing team in the Apple Developer portal. See
   [decisions.md](decisions.md) for the final identifiers.
-- **Android**: Uninstall the old APK. Build the renamed
-  `com.vocahq.vocaphone` project and install the new APK. The Android Keystore
-  token ciphertext is not portable between application IDs — re-enter the token
-  and re-pair.
+- **Android**: Uninstall the old APK (`io.github.mrsunglasses.localflow`) before
+  installing the new one. `adb install -r` will **not** replace it — the
+  application ID changed to `com.vocahq.vocaphone`, so a side-by-side install
+  leaves both apps on the device. The Android Keystore token ciphertext is not
+  portable between application IDs — re-enter the token and re-pair.
 
 ### CLI entry points
 
