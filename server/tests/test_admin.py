@@ -9,8 +9,8 @@ import httpx
 import pytest
 from conftest import TOKEN, FakeNormalizer
 
+from app import engine_state
 from app import engines as engines_module
-from app import main
 from app.catalog import CatalogModel
 from app.config import Settings
 from app.main import create_app
@@ -328,8 +328,8 @@ def test_language_filter_answers_which_model_should_i_use() -> None:
     """The filter exists to invert the question people actually ask. Driven off
     the real catalog, since the stub the admin fixtures use has one model."""
     from app.catalog import DEFAULT_CATALOG, language_names
-    from app.main import _model_covers
     from app.schemas import AdminModelEntry
+    from app.serializers import model_covers as _model_covers
 
     entries = [
         AdminModelEntry(
@@ -383,7 +383,7 @@ def test_language_filter_answers_which_model_should_i_use() -> None:
 
 
 def test_language_filter_offers_only_languages_some_model_covers() -> None:
-    from app.fragments import _language_filter_options
+    from app.fragments.models import _language_filter_options
 
     options = _language_filter_options()
     assert '<option value="hi">Hindi</option>' in options
@@ -452,7 +452,7 @@ async def test_mac_only_engines_are_hidden_and_rejected_on_other_hosts(
     admin_settings: Settings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(main, "engine_runs_on", lambda engine, **_: engine not in MAC_ONLY)
+    monkeypatch.setattr(engine_state, "engine_runs_on", lambda engine, **_: engine not in MAC_ONLY)
     monkeypatch.setattr(engines_module, "engine_runs_here", lambda engine: engine not in MAC_ONLY)
 
     config = await admin_client.get("/v1/admin/config", headers=auth)
@@ -471,7 +471,7 @@ async def test_mac_only_engines_are_hidden_and_rejected_on_other_hosts(
 async def test_mac_only_engines_are_labelled_with_their_host(
     admin_client: httpx.AsyncClient, auth: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(main, "engine_runs_on", lambda engine, **_: True)
+    monkeypatch.setattr(engine_state, "engine_runs_on", lambda engine, **_: True)
 
     settings_html = (await admin_client.get("/ui/partials/settings", headers=auth)).text
 
@@ -602,7 +602,7 @@ def test_model_cards_name_their_languages() -> None:
     the point is that shipped entries carry usable language metadata.
     """
     from app.catalog import DEFAULT_CATALOG, language_names
-    from app.fragments import _model_card
+    from app.fragments.models import _model_card
     from app.schemas import AdminModelEntry
 
     def card(model_id: str) -> str:
@@ -718,9 +718,9 @@ def test_a_filtered_list_warns_which_models_suit_dictation() -> None:
     short phrase, and dictation is mostly short phrases. A list mixing both kinds
     has to say which half to trust."""
     from app.catalog import DEFAULT_CATALOG, language_names
-    from app.fragments import models_list_fragment
-    from app.main import _model_covers
+    from app.fragments.models import models_list_fragment
     from app.schemas import AdminModelEntry
+    from app.serializers import model_covers as _model_covers
 
     entries = [
         AdminModelEntry(
