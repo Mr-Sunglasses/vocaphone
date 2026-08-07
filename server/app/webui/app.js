@@ -1,8 +1,8 @@
-/* Local Flow WebUI glue: token auth for HTMX, tab styling, mic recorder, toasts. */
+/* vocaphone WebUI glue: token auth for HTMX, tab styling, mic recorder, toasts. */
 (() => {
   "use strict";
 
-  const TOKEN_KEY = "localflow.token";
+  const TOKEN_KEY = "vocaphone.token";
   const overlay = document.getElementById("token-overlay");
   const tokenInput = document.getElementById("token-input");
   const tokenError = document.getElementById("token-error");
@@ -331,7 +331,7 @@
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `localflow-diagnostics-${payload.generated_at.replace(/[:.]/g, "-")}.json`;
+      link.download = `vocaphone-diagnostics-${payload.generated_at.replace(/[:.]/g, "-")}.json`;
       document.body.appendChild(link);
       link.click();
       link.remove();

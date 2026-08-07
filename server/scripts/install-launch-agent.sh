@@ -3,12 +3,12 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository=$(CDPATH= cd -- "$script_dir/../.." && pwd)
-destination="$HOME/Library/LaunchAgents/com.example.localflow.gateway.plist"
-log_dir="$HOME/Library/Logs/LocalFlow"
-template="$script_dir/com.example.localflow.gateway.plist"
-program="$repository/server/.venv/bin/localflow-server"
+destination="$HOME/Library/LaunchAgents/com.vocahq.vocaphone.gateway.plist"
+log_dir="$HOME/Library/Logs/Vocaphone"
+template="$script_dir/com.vocahq.vocaphone.gateway.plist"
+program="$repository/server/.venv/bin/vocaphone-server"
 domain="gui/$(id -u)"
-service="$domain/com.example.localflow.gateway"
+service="$domain/com.vocahq.vocaphone.gateway"
 
 if [ ! -x "$program" ]; then
   printf 'Gateway executable not found at %s\nRun uv sync in server/ first.\n' "$program" >&2
@@ -18,7 +18,7 @@ fi
 mkdir -p "$HOME/Library/LaunchAgents" "$log_dir"
 escaped_repository=$(printf '%s' "$repository" | sed 's/[\/&]/\\&/g')
 escaped_home=$(printf '%s' "$HOME" | sed 's/[\/&]/\\&/g')
-temporary=$(mktemp "${TMPDIR:-/tmp}/localflow-launch-agent.XXXXXX")
+temporary=$(mktemp "${TMPDIR:-/tmp}/vocaphone-launch-agent.XXXXXX")
 trap 'rm -f "$temporary"' EXIT
 sed \
   -e "s/__REPOSITORY__/$escaped_repository/g" \

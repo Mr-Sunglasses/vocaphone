@@ -8,14 +8,14 @@ plugins {
 import java.util.Properties
 
 android {
-    namespace = "io.github.mrsunglasses.localflow"
+    namespace = "com.vocahq.vocaphone"
     // Current AndroidX releases require compiling against API 37. targetSdk
     // stays at 36, which is what Play requires from 31 August 2026.
     compileSdk = 37
     compileSdkMinor = 0
 
     defaultConfig {
-        applicationId = "io.github.mrsunglasses.localflow"
+        applicationId = "com.vocahq.vocaphone"
         minSdk = 33
         targetSdk = 36
         versionCode = 5
@@ -60,7 +60,7 @@ android {
     androidComponents {
         onVariants(selector().all()) { variant ->
             variant.outputs.forEach { output ->
-                output.outputFileName.set("local-flow-${variant.name}.apk")
+                output.outputFileName.set("vocaphone-${variant.name}.apk")
             }
         }
     }

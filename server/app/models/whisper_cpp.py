@@ -27,7 +27,7 @@ class WhisperCppEngine:
         health = await self.health()
         if not health.ready:
             raise EngineUnavailableError("The whisper.cpp binary or selected model is unavailable.")
-        with tempfile.TemporaryDirectory(prefix="localflow-transcript-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="vocaphone-transcript-") as temporary:
             output_stem = Path(temporary) / "result"
             arguments = [
                 str(self.binary),

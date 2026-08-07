@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.vocahq.vocaphone.gateway</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__REPOSITORY__/server/.venv/bin/vocaphone-server</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/Vocaphone/gateway.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/Vocaphone/gateway-error.log</string>
+</dict>
+</plist>

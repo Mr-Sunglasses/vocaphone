@@ -30,11 +30,6 @@ gateway on your Mac, Linux box, or home server. Local speech models turn it into
 text, and the transcript lands at your cursor. No accounts, no cloud STT, and no
 subscription.
 
-> Working name in code and binaries is still **Local Flow**
-> (`localflow-server`, `com.example.localflow`, ...). Product name in prose and
-> on GitHub is **vocaphone**. Bundle IDs and package names will catch up before
-> a public release.
-
 ## Status
 
 | Client | State |
@@ -162,11 +157,11 @@ launch the server:
 brew install ffmpeg whisperkit-cli whisper-cpp
 cd server
 uv sync --all-groups --extra engines --extra apple
-uv run localflow-server
+uv run vocaphone-server
 ```
 
 The first run creates a private bearer token at
-`~/.config/localflow/token`. Open `http://127.0.0.1:8765/`, enter that token,
+`~/.config/vocaphone/token`. Open `http://127.0.0.1:8765/`, enter that token,
 download a recommended model from **Models**, select it, and confirm the Overview
 shows **Ready for dictation**.
 
@@ -187,21 +182,21 @@ sudo apt install ffmpeg
 # Install uv if needed: curl -LsSf https://astral.sh/uv/install.sh | sh
 cd server
 uv sync --all-groups --extra engines
-uv run localflow-server
+uv run vocaphone-server
 ```
 
 Omit the `apple` extra on Linux; MLX Audio and WhisperKit are macOS-only. The
 startup banner prints the WebUI URL and where the bearer token lives:
 
 ```text
-Local Flow gateway listening on 0.0.0.0:8765
+vocaphone gateway listening on 0.0.0.0:8765
 WebUI (this host): http://127.0.0.1:8765/
 Network access: use this host's LAN or Tailscale IP with the same port
-Token: ~/.config/localflow/token
-  (cat ~/.config/localflow/token — enter that value in the phone app)
+Token: ~/.config/vocaphone/token
+  (cat ~/.config/vocaphone/token — enter that value in the phone app)
 ```
 
-Open the WebUI, enter the token from `~/.config/localflow/token`, download a
+Open the WebUI, enter the token from `~/.config/vocaphone/token`, download a
 recommended model (SenseVoice Small INT8 or Parakeet TDT INT8 on CPU), select it,
 and confirm Overview shows **Ready for dictation**.
 
@@ -214,7 +209,7 @@ cd server
 loginctl enable-linger "$USER"
 ```
 
-Logs: `journalctl --user -u com.example.localflow.gateway.service -f`.
+Logs: `journalctl --user -u com.vocahq.vocaphone.gateway.service -f`.
 
 ### 3. Or start it with Docker Compose
 
@@ -225,9 +220,9 @@ configuration, and the session database in a named volume.
 ```sh
 cd server
 umask 077
-printf 'LOCALFLOW_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
-printf 'LOCALFLOW_PUBLISH_HOST=127.0.0.1\n' >> .env
-printf 'LOCALFLOW_PUBLISH_PORT=8765\n' >> .env
+printf 'VOCAPHONE_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
+printf 'VOCAPHONE_PUBLISH_HOST=127.0.0.1\n' >> .env
+printf 'VOCAPHONE_PUBLISH_PORT=8765\n' >> .env
 docker compose up --detach --build
 docker compose ps
 curl --fail http://127.0.0.1:8765/health/live
@@ -254,10 +249,10 @@ Choose one of these network arrangements:
   `http://192.168.1.75:8765`). Find the IP with `hostname -I` or
   `ip -4 addr`. HTTP is unencrypted, so use this only on a network you trust and
   never forward that port to the internet. For Docker, set
-  `LOCALFLOW_PUBLISH_HOST=0.0.0.0` in `server/.env` and protect the port with the
+  `VOCAPHONE_PUBLISH_HOST=0.0.0.0` in `server/.env` and protect the port with the
   host firewall. The container's own address auto-discovery (used by the
   pairing QR) can't see the host's LAN IP under the default bridge network
-  either; on Linux Docker Engine, set `LOCALFLOW_NETWORK_MODE=host` in
+  either; on Linux Docker Engine, set `VOCAPHONE_NETWORK_MODE=host` in
   `server/.env` instead so discovery finds it directly — see
   [server/README.md](server/README.md#configuration).
 - **Tailscale:** keep the gateway on loopback and let Tailscale Serve provide
@@ -265,7 +260,7 @@ Choose one of these network arrangements:
 
 ```sh
 # optional: bind loopback only when using Serve
-# LOCALFLOW_BIND_HOST=127.0.0.1 uv run localflow-server
+# VOCAPHONE_BIND_HOST=127.0.0.1 uv run vocaphone-server
 tailscale serve --bg 8765
 tailscale serve status
 ```
@@ -280,7 +275,7 @@ tailscale serve status
 Once the WebUI is open and authenticated on the gateway host:
 
 1. Stay on **Overview** — the **Pair phone app** card shows a QR for a
-   phone-reachable address (LAN IP preferred, or `LOCALFLOW_PUBLIC_URL` if set).
+   phone-reachable address (LAN IP preferred, or `VOCAPHONE_PUBLIC_URL` if set).
 2. To give this phone its own revocable credential instead of the shared
    bootstrap token, use **Or pair a new device with its own token**: name the
    device and the card immediately shows a QR for that device's token alone.
@@ -295,8 +290,8 @@ Once the WebUI is open and authenticated on the gateway host:
 You can still paste manually:
 
 1. **Gateway address** — the LAN, Tailscale, or HTTPS URL above.
-2. **Bearer token** — `cat ~/.config/localflow/token` for native installs, or the
-   `LOCALFLOW_TOKEN` value from `server/.env` for Docker.
+2. **Bearer token** — `cat ~/.config/vocaphone/token` for native installs, or the
+   `VOCAPHONE_TOKEN` value from `server/.env` for Docker.
 
 Then use **Save and test** / **Test connection**. Tailscale is recommended for a
 private personal deployment, but it is not mandatory. Follow
@@ -308,14 +303,14 @@ private personal deployment, but it is not mandatory. Follow
 Before signing under your own Apple account, replace these placeholders
 consistently in the Xcode project configuration and entitlements:
 
-- `com.example.localflow`
-- `com.example.localflow.keyboard`
-- `com.example.localflow.liveactivity`
-- `group.com.example.localflow`
+- `com.vocahq.vocaphone`
+- `com.vocahq.vocaphone.keyboard`
+- `com.vocahq.vocaphone.liveactivity`
+- `group.com.vocahq.vocaphone`
 
 Then:
 
-1. Generate/open `ios/LocalFlow.xcodeproj` and select your Apple development team.
+1. Generate/open `ios/VocaPhone.xcodeproj` and select your Apple development team.
 2. Register the same App Group for the app, keyboard, and Live Activity targets.
 3. Install the containing app on the iPhone and grant microphone permission.
 4. Add the keyboard under **Settings → General → Keyboard → Keyboards** and enable
@@ -335,13 +330,13 @@ cd android
 # macOS default; on Linux try $HOME/Android/Sdk
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/local-flow-debug.apk
+adb install -r app/build/outputs/apk/debug/vocaphone-debug.apk
 ```
 
 In the app: grant microphone, notifications, overlay, and accessibility; then
 enter the gateway address and bearer token from step 4 and run **Test connection**.
 
-The same placeholder application ID, `com.example.localflow.android`, should be
+The same application ID, `com.vocahq.vocaphone`, should be
 replaced before you distribute a build. See the
 [Android client guide](android/README.md) for permissions, the accessibility
 disclosure, and the supported gateway address forms.
@@ -358,7 +353,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy app
 uv run pytest
-LOCALFLOW_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config --quiet
+VOCAPHONE_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config --quiet
 ```
 
 Android checks:
@@ -375,8 +370,8 @@ iOS checks:
 cd ios
 xcodegen generate --spec project.yml
 xcodebuild \
-  -project LocalFlow.xcodeproj \
-  -scheme LocalFlow \
+  -project VocaPhone.xcodeproj \
+  -scheme VocaPhone \
   -sdk iphonesimulator \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   CODE_SIGNING_ALLOWED=NO \

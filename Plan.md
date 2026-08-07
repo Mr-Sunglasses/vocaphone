@@ -8,8 +8,6 @@ The intended experience is similar to Wispr Flow on iPhone, but the transcriptio
 
 This is not a voice-notes application, a PWA, or a clipboard-only workflow. The primary product is a native iOS keyboard plus its containing iOS application.
 
-Working codename: **Local Flow**. The final product name and bundle identifiers remain to be decided.
-
 ## 2. Product requirements
 
 ### 2.1 Confirmed requirements
@@ -121,8 +119,8 @@ Do not silently decide these based only on developer convenience. Record the cho
 ├── README.md
 ├── Plan.md
 ├── ios/
-│   ├── LocalFlow.xcodeproj
-│   ├── LocalFlowApp/
+│   ├── VocaPhone.xcodeproj
+│   ├── VocaPhoneApp/
 │   │   ├── App/
 │   │   ├── Audio/
 │   │   ├── Networking/
@@ -130,18 +128,18 @@ Do not silently decide these based only on developer convenience. Record the cho
 │   │   ├── Shared/
 │   │   ├── Settings/
 │   │   └── Onboarding/
-│   ├── LocalFlowKeyboard/
+│   ├── VocaPhoneKeyboard/
 │   │   ├── KeyboardViewController.swift
 │   │   ├── KeyboardState.swift
 │   │   ├── KeyboardLayout/
 │   │   └── TextInsertion/
-│   ├── LocalFlowShared/
+│   ├── VocaPhoneShared/
 │   │   ├── SessionRecord.swift
 │   │   ├── SharedStore.swift
 │   │   ├── IPC.swift
 │   │   └── Models.swift
-│   ├── LocalFlowTests/
-│   └── LocalFlowUITests/
+│   ├── VocaPhoneTests/
+│   └── VocaPhoneUITests/
 ├── server/
 │   ├── pyproject.toml
 │   ├── app/
@@ -243,7 +241,7 @@ The API and iOS application must not depend on `whisper.cpp`-specific response f
 
 1. The keyboard creates a UUID session record.
 2. The keyboard writes `launchingApp` to the shared App Group.
-3. The keyboard asks iOS to open `localflow://dictate?session=<uuid>`.
+3. The keyboard asks iOS to open `vocaphone://dictate?session=<uuid>`.
 4. The containing app receives the deep link.
 5. The app validates the session and activates the microphone.
 6. The app writes `recording` and current meter data to shared state.
@@ -457,7 +455,7 @@ The containing app must guide the user through:
 5. Requesting microphone permission from the containing app
 6. Explaining why keyboard Full Access is needed
 7. Opening iOS Keyboard Settings
-8. Enabling the Local Flow keyboard
+8. Enabling the VocaPhone keyboard
 9. Enabling Full Access
 10. Running an in-app recording test
 11. Running an external text-field insertion test
@@ -565,7 +563,7 @@ Required physical-device test:
 
 ```text
 Notes text field
--> Local Flow keyboard
+-> VocaPhone keyboard
 -> Start
 -> containing app records
 -> swipe back

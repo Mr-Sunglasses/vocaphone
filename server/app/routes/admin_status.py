@@ -26,7 +26,7 @@ async def get_admin_diagnostics(
     response: Response, ctx: GatewayContext = Depends(get_context)
 ) -> DiagnosticsBundle:
     bundle = build_diagnostics_bundle(await status_payload(ctx), config_response(ctx))
-    filename = f"localflow-diagnostics-{bundle.generated_at:%Y%m%dT%H%M%SZ}.json"
+    filename = f"vocaphone-diagnostics-{bundle.generated_at:%Y%m%dT%H%M%SZ}.json"
     response.headers["Content-Disposition"] = f'attachment; filename="{filename}"'
     return bundle
 

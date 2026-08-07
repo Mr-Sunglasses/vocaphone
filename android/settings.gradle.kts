@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LocalFlow"
+rootProject.name = "VocaPhone"
 include(":app")

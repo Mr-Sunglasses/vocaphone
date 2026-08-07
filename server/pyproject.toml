@@ -1,7 +1,7 @@
 [project]
-name = "localflow-gateway"
+name = "vocaphone-gateway"
 version = "0.2.0"
-description = "Tailnet-only transcription gateway for the Local Flow iPhone keyboard"
+description = "Tailnet-only transcription gateway for the vocaphone iPhone keyboard"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -28,10 +28,10 @@ apple = [
 ]
 
 [project.scripts]
-localflow-server = "app.cli:serve"
-localflow-status = "app.cli:status"
-localflow-diagnostics = "app.cli:diagnostics"
-localflow-cleanup = "app.cli:cleanup"
+vocaphone-server = "app.cli:serve"
+vocaphone-status = "app.cli:status"
+vocaphone-diagnostics = "app.cli:diagnostics"
+vocaphone-cleanup = "app.cli:cleanup"
 
 [dependency-groups]
 dev = [

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -591,66 +591,6 @@ wheels = [
 ]
 
 [[package]]
-name = "localflow-gateway"
-version = "0.2.0"
-source = { editable = "." }
-dependencies = [
-    { name = "fastapi" },
-    { name = "pysbd" },
-    { name = "python-multipart" },
-    { name = "qrcode" },
-    { name = "tldextract" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.optional-dependencies]
-apple = [
-    { name = "mlx-audio", extra = ["stt"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
-]
-engines = [
-    { name = "faster-whisper" },
-    { name = "moonshine-voice" },
-    { name = "sherpa-onnx" },
-    { name = "sherpa-onnx-bin" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "httpx" },
-    { name = "httpx2" },
-    { name = "mypy" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", specifier = ">=0.116,<1" },
-    { name = "faster-whisper", marker = "extra == 'engines'", specifier = ">=1.2,<2" },
-    { name = "mlx-audio", extras = ["stt"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'apple'", specifier = ">=0.4.6,<0.5" },
-    { name = "moonshine-voice", marker = "extra == 'engines'", specifier = ">=0.1,<0.2" },
-    { name = "pysbd", specifier = ">=0.3.4,<0.4" },
-    { name = "python-multipart", specifier = ">=0.0.9,<1" },
-    { name = "qrcode", specifier = ">=7.4,<9" },
-    { name = "sherpa-onnx", marker = "extra == 'engines'", specifier = ">=1.13.4,<2" },
-    { name = "sherpa-onnx-bin", marker = "extra == 'engines'", specifier = ">=1.13.4,<2" },
-    { name = "tldextract", specifier = ">=5,<6" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.35,<1" },
-]
-provides-extras = ["engines", "apple"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.28,<1" },
-    { name = "httpx2", specifier = ">=2,<3" },
-    { name = "mypy", specifier = ">=1.17,<2" },
-    { name = "pytest", specifier = ">=8.4,<9" },
-    { name = "pytest-asyncio", specifier = ">=1.1,<2" },
-    { name = "ruff", specifier = ">=0.12,<1" },
-]
-
-[[package]]
 name = "markdown-it-py"
 version = "4.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -703,7 +643,7 @@ name = "mlx"
 version = "0.32.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "mlx-metal" },
+    { name = "mlx-metal", marker = "sys_platform == 'darwin'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/aa/a6/489176d8a2a06137a299910057cc44dc3fccfb73151f7562fea2b75894d9/mlx-0.32.0-cp312-cp312-macosx_14_0_arm64.whl", hash = "sha256:ea5a594355c89c0095eaba413fd39d4caa8642fa13432dfb0c9354d141046467", size = 558889, upload-time = "2026-07-07T17:55:45.268Z" },
@@ -748,7 +688,7 @@ version = "0.31.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jinja2" },
-    { name = "mlx" },
+    { name = "mlx", marker = "sys_platform == 'darwin'" },
     { name = "numpy" },
     { name = "protobuf" },
     { name = "pyyaml" },
@@ -1527,7 +1467,7 @@ version = "0.27.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
-    { name = "colorama", marker = "python_version < '0'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "rich" },
     { name = "shellingham" },
 ]
@@ -1619,6 +1559,66 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c1/37/945b4ca0ac27e3dc4952642d4c900edd030b3da6c9634875af6e13ae80e5/uvloop-0.22.1-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b91328c72635f6f9e0282e4a57da7470c7350ab1c9f48546c0f2866205349d21", size = 4467065, upload-time = "2025-10-16T22:16:58.206Z" },
     { url = "https://files.pythonhosted.org/packages/97/cc/48d232f33d60e2e2e0b42f4e73455b146b76ebe216487e862700457fbf3c/uvloop-0.22.1-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:daf620c2995d193449393d6c62131b3fbd40a63bf7b307a1527856ace637fe88", size = 4328384, upload-time = "2025-10-16T22:16:59.36Z" },
     { url = "https://files.pythonhosted.org/packages/e4/16/c1fd27e9549f3c4baf1dc9c20c456cd2f822dbf8de9f463824b0c0357e06/uvloop-0.22.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:6cde23eeda1a25c75b2e07d39970f3374105d5eafbaab2a4482be82f272d5a5e", size = 4296730, upload-time = "2025-10-16T22:17:00.744Z" },
+]
+
+[[package]]
+name = "vocaphone-gateway"
+version = "0.2.0"
+source = { editable = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "pysbd" },
+    { name = "python-multipart" },
+    { name = "qrcode" },
+    { name = "tldextract" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+apple = [
+    { name = "mlx-audio", extra = ["stt"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
+]
+engines = [
+    { name = "faster-whisper" },
+    { name = "moonshine-voice" },
+    { name = "sherpa-onnx" },
+    { name = "sherpa-onnx-bin" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx" },
+    { name = "httpx2" },
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "fastapi", specifier = ">=0.116,<1" },
+    { name = "faster-whisper", marker = "extra == 'engines'", specifier = ">=1.2,<2" },
+    { name = "mlx-audio", extras = ["stt"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'apple'", specifier = ">=0.4.6,<0.5" },
+    { name = "moonshine-voice", marker = "extra == 'engines'", specifier = ">=0.1,<0.2" },
+    { name = "pysbd", specifier = ">=0.3.4,<0.4" },
+    { name = "python-multipart", specifier = ">=0.0.9,<1" },
+    { name = "qrcode", specifier = ">=7.4,<9" },
+    { name = "sherpa-onnx", marker = "extra == 'engines'", specifier = ">=1.13.4,<2" },
+    { name = "sherpa-onnx-bin", marker = "extra == 'engines'", specifier = ">=1.13.4,<2" },
+    { name = "tldextract", specifier = ">=5,<6" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.35,<1" },
+]
+provides-extras = ["engines", "apple"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx", specifier = ">=0.28,<1" },
+    { name = "httpx2", specifier = ">=2,<3" },
+    { name = "mypy", specifier = ">=1.17,<2" },
+    { name = "pytest", specifier = ">=8.4,<9" },
+    { name = "pytest-asyncio", specifier = ">=1.1,<2" },
+    { name = "ruff", specifier = ">=0.12,<1" },
 ]
 
 [[package]]

@@ -1,7 +1,6 @@
 # Contributing
 
-Thanks for helping improve vocaphone. (The working name in code is still Local
-Flow.) Changes should keep the privacy-first architecture, the documented
+Thanks for helping improve vocaphone. Changes should keep the privacy-first architecture, the documented
 network-exposure controls, and the iOS keyboard constraints intact.
 
 ## Development setup
@@ -29,8 +28,8 @@ For container changes, also run:
 
 ```sh
 cd server
-LOCALFLOW_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config
-docker build --tag localflow-gateway:test .
+VOCAPHONE_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config
+docker build --tag vocaphone-gateway:test .
 ```
 
 When changing documentation, check local links and commands against the current
@@ -43,8 +42,8 @@ Then build and test the iOS project on an installed simulator:
 cd ios
 xcodegen generate --spec project.yml
 xcodebuild \
-  -project LocalFlow.xcodeproj \
-  -scheme LocalFlow \
+  -project VocaPhone.xcodeproj \
+  -scheme VocaPhone \
   -sdk iphonesimulator \
   -destination 'platform=iOS Simulator,name=iPhone 17' \
   CODE_SIGNING_ALLOWED=NO \

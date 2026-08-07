@@ -1,0 +1,924 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		062CD049AAD6768AE5AB3766 /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0A752EC9784F6FD2274150 /* GatewayEndpoint.swift */; };
+		07D7CA474CBB8812C0E83D1C /* VocaPhoneActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8988211922DAD4FC77AF89EB /* VocaPhoneActivityAttributes.swift */; };
+		0B939DE9494D3B8F14F18142 /* ModelLanguageSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C6476FC82C4B74D01F4358 /* ModelLanguageSupport.swift */; };
+		0D07EBF90CE481AE0C1976CF /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346B6558EE5557A35C916067 /* SetupView.swift */; };
+		15CB6862BDAB7694EE44D7F8 /* DictationBarStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7842B22D05FB171B261101A /* DictationBarStyle.swift */; };
+		1B72FBEA5D41DB51B82A1305 /* SetupStatusTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA031D86C1DE3C2F8B047308 /* SetupStatusTests.swift */; };
+		1BB4BED912ADFA11ED122052 /* DictationPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DCCE5FE1A8242B96B8CA9FD /* DictationPresentation.swift */; };
+		1D96E4B5456A18FA04F5F15D /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0A752EC9784F6FD2274150 /* GatewayEndpoint.swift */; };
+		28C271BC0195C62E93292A9C /* SessionRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B854354D06D0111DEB123E7A /* SessionRecordTests.swift */; };
+		2C362C9B71AA6A93A6D7E4DB /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36767643E0E4AA29BBB3D4FD /* SessionRecord.swift */; };
+		2D1CF0D6875DFD7D9BFD10FF /* DictationBarStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7842B22D05FB171B261101A /* DictationBarStyle.swift */; };
+		2E93E016656B5EA74568DD4F /* PairingPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFB4BB0345784837C629340 /* PairingPayload.swift */; };
+		314748D93E078B40FEEEBEBE /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894063AE1B3DDA92C529268D /* AppConfiguration.swift */; };
+		31D729EBEF69158BAAFE66D0 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98325CD266139FCDEE156D8F /* KeyboardViewController.swift */; };
+		3219DC5DD26E1998A7A0CD5C /* SetupStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342F2B3B437269514C969C77 /* SetupStatus.swift */; };
+		3226364FB9F43F49B12FE2A6 /* DictationBarLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA83B914C241E5F8BF8F32AC /* DictationBarLayoutTests.swift */; };
+		33A2193E058E05B4B4FB3860 /* ModelLanguageSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C6476FC82C4B74D01F4358 /* ModelLanguageSupport.swift */; };
+		36295638EAABF35D05369EB0 /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36767643E0E4AA29BBB3D4FD /* SessionRecord.swift */; };
+		364C315F292BA4BD66E23C2A /* PairingPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFB4BB0345784837C629340 /* PairingPayload.swift */; };
+		3655C2E063B7C9B8F286057B /* FinishRecordingIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B19321866AE8083C78C2B7F /* FinishRecordingIntent.swift */; };
+		366E7DFAD5B2666FC1FF9FB3 /* SetupStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342F2B3B437269514C969C77 /* SetupStatus.swift */; };
+		387B6B6A0B0AE57B6324B55F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87F5D76EB1E944F3A323006D /* SettingsView.swift */; };
+		3C4DE9EF77062407F71ACDCB /* LanguageMenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C45D98EAFE18C689DC7551E9 /* LanguageMenuTests.swift */; };
+		3EF8AE348290CBB5FE45BD11 /* ModelLanguageSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C6476FC82C4B74D01F4358 /* ModelLanguageSupport.swift */; };
+		3F3E17AFAAE8EB6B79A872BE /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36767643E0E4AA29BBB3D4FD /* SessionRecord.swift */; };
+		4016476924F9555E1E861673 /* GatewaySetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17B4671FC8BBA4DD4FD5AA8C /* GatewaySetupView.swift */; };
+		4C8B6E06406E63E122F9CBD1 /* KeyLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = B87128326897BFA30E7B2038 /* KeyLayout.swift */; };
+		4F24DEC1FC8411ACBDA6BC50 /* VocaPhoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 934F25D30F7D00565D83CAA0 /* VocaPhoneApp.swift */; };
+		4FDB3D32A404C674AFAB948F /* ModelLanguageSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C6476FC82C4B74D01F4358 /* ModelLanguageSupport.swift */; };
+		52D566C02915D934240601EA /* PairingPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFB4BB0345784837C629340 /* PairingPayload.swift */; };
+		5673DF7E07F7F800FB847C2A /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F34BD131F1AB394941AC87 /* KeyboardStatus.swift */; };
+		5769EF4A106AFBD7B375DC5D /* KeyboardPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9571AEC75B1A986C5D3077 /* KeyboardPreferences.swift */; };
+		582C18BD155158A79ADCBB5A /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F34BD131F1AB394941AC87 /* KeyboardStatus.swift */; };
+		58CDCA65875E94B8F7BE0101 /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */; };
+		5A151959ABCE2ADE4646A79D /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7948F8C6C72A8D7A16C18562 /* SharedStore.swift */; };
+		5D5A394AA7E8170CFE4E128B /* RecordingCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CF871FC84B4C6B2627A43C2 /* RecordingCoordinator.swift */; };
+		6192C923119F158CCE94B48E /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */; };
+		61D705F2D38349B0A9667F2E /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F34BD131F1AB394941AC87 /* KeyboardStatus.swift */; };
+		62F20884ED82C44DD050F3E5 /* KeyGridLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EC2C1575D306E7683092FBA /* KeyGridLayoutTests.swift */; };
+		6565BFD7DC56DDCECDBC0D7C /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F34BD131F1AB394941AC87 /* KeyboardStatus.swift */; };
+		68E7553DB227208E27DF3A8F /* KeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5118F8CFAAE127CD5FF92076 /* KeyView.swift */; };
+		76E660378F845C250AEA0673 /* AudioCapturePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15DE10A5F8F90C87D4BA48A /* AudioCapturePipeline.swift */; };
+		7E3D8E857A83184E74B15433 /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0A752EC9784F6FD2274150 /* GatewayEndpoint.swift */; };
+		8468AAFD83E231AD9BB99792 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCC7453FC149EBB02E3FB58 /* KeychainStore.swift */; };
+		84EB79403F7CED013A82334F /* PairingScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70B3F1DBA8332A13B095E4BA /* PairingScannerView.swift */; };
+		84F2FD89DD3C1EB490E86A73 /* FinishRecordingIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B19321866AE8083C78C2B7F /* FinishRecordingIntent.swift */; };
+		89E3D47D85EBD6AD5A093813 /* TextInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEBB0D1B0CD48BA2F8F22986 /* TextInsertion.swift */; };
+		8DD5E5E2B734765883552523 /* DictationBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3489C985467C23EB6A90AD /* DictationBarView.swift */; };
+		90F0433AE6FE139E90D62F9A /* KeyboardPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9571AEC75B1A986C5D3077 /* KeyboardPreferences.swift */; };
+		91C1D5BB9A998A47DFF79A52 /* DictationBarComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75FD84E65614D9F94D8EF0AC /* DictationBarComponents.swift */; };
+		94B667AC0FFB905D57BE2CA3 /* VocaPhoneLiveActivity.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = CF080065DC31C6DA8E693163 /* VocaPhoneLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		966E2D9A6D13630E7A2122A6 /* KeyLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = B87128326897BFA30E7B2038 /* KeyLayout.swift */; };
+		97EE4663316E8CF2EAE9761A /* KeyboardPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9571AEC75B1A986C5D3077 /* KeyboardPreferences.swift */; };
+		A2112E100F4277466EA8DD4F /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0A752EC9784F6FD2274150 /* GatewayEndpoint.swift */; };
+		A568F548D639C064CDA86F0D /* KeyboardPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B9571AEC75B1A986C5D3077 /* KeyboardPreferences.swift */; };
+		A794CD8D0B445E5118500EC3 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7948F8C6C72A8D7A16C18562 /* SharedStore.swift */; };
+		A79BA8A795F60838D96EDFAA /* VocaPhoneLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D3E1455AD292ED6DA1DFAC /* VocaPhoneLiveActivity.swift */; };
+		ACDADCAF73BF41FE2355ED15 /* VocaPhoneKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B7028AF4B134C7EDD726891E /* VocaPhoneKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B0DF0FF5821BD7E8C839065C /* GatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4211FAA8E574AEF57D788FA /* GatewayClient.swift */; };
+		B2406DA05AE90DDB7EED6246 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7948F8C6C72A8D7A16C18562 /* SharedStore.swift */; };
+		B463A007E4ABBFF427073748 /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36767643E0E4AA29BBB3D4FD /* SessionRecord.swift */; };
+		B4EE97A67B156A6D5BA0D258 /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */; };
+		B803C86D8A77C8A2D758DA0A /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37C9B64B52A8D28D252CC3A5 /* AudioRecorder.swift */; };
+		BA7DED07F63C388ADD4EC07A /* KeyboardURLLauncher.m in Sources */ = {isa = PBXBuildFile; fileRef = 88548183D3F0AD213E2268E1 /* KeyboardURLLauncher.m */; };
+		BC36D829FEE2BEC0A6BC30C2 /* KeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5118F8CFAAE127CD5FF92076 /* KeyView.swift */; };
+		BCB8CA3BAACE6280D9ED4B22 /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */; };
+		BF22B8C9A4943F8B06F74216 /* DictationBarComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75FD84E65614D9F94D8EF0AC /* DictationBarComponents.swift */; };
+		C4D64FB835EAB5A67E6CE009 /* AudioCapturePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15DE10A5F8F90C87D4BA48A /* AudioCapturePipeline.swift */; };
+		C80FCACABE7FF798EFD1EB61 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894063AE1B3DDA92C529268D /* AppConfiguration.swift */; };
+		CE9227DEA1DE35F0F9987562 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894063AE1B3DDA92C529268D /* AppConfiguration.swift */; };
+		D1CD3C13398FA4514EF57CA7 /* TranscriptHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28ECEDA044D2B1021710F205 /* TranscriptHistoryView.swift */; };
+		D4CA018F48AA244D322B9156 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52F3A6E7B826D1389D462944 /* ContentView.swift */; };
+		D4FEC9D26550CB1696FDF424 /* TextInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEBB0D1B0CD48BA2F8F22986 /* TextInsertion.swift */; };
+		D7CC096732C721CE14B5F682 /* TextInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEBB0D1B0CD48BA2F8F22986 /* TextInsertion.swift */; };
+		D9811B8978380027BF95D0D5 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7948F8C6C72A8D7A16C18562 /* SharedStore.swift */; };
+		DCF552B58B7A7A12C517C17B /* PairingPayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E9E5CE913B4FA5EF8EECD4E /* PairingPayloadTests.swift */; };
+		DEB245BAC4DEE643F2EB38B0 /* DictationPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56047A6705008B5F17F003CE /* DictationPresentationTests.swift */; };
+		E2C8F215E536CABB80623B3A /* VocaPhoneActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8988211922DAD4FC77AF89EB /* VocaPhoneActivityAttributes.swift */; };
+		E366EFAD9B70FE3FC43FEBAD /* TextInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEBB0D1B0CD48BA2F8F22986 /* TextInsertion.swift */; };
+		E4162282629880D2A33913CA /* KeyGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BF7CAC171521FC372DF2BF0 /* KeyGridView.swift */; };
+		E4187B9A8DA6FBBA6DE095AC /* DictationPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9DCCE5FE1A8242B96B8CA9FD /* DictationPresentation.swift */; };
+		E5EAD40641B38DDA0CCA0300 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894063AE1B3DDA92C529268D /* AppConfiguration.swift */; };
+		E9E86F6940BDB4381A8C9FF5 /* LiveActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C304CF763960E5F1D8F76B2B /* LiveActivityManager.swift */; };
+		F1CDF580A8C552E1A03524A1 /* DictationBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3489C985467C23EB6A90AD /* DictationBarView.swift */; };
+		F426CFBED733974D61FDB432 /* ModelLanguageSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE41EF03C8A4F930315EFE77 /* ModelLanguageSupportTests.swift */; };
+		F6901AAB3D79295B2F40E436 /* AudioCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2678D836274997421A54E901 /* AudioCaptureTests.swift */; };
+		F859CEA335A920156C89478F /* KeyGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BF7CAC171521FC372DF2BF0 /* KeyGridView.swift */; };
+		FAD55FD707FD21407E0980FA /* PairingPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFB4BB0345784837C629340 /* PairingPayload.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		354ADE35152315DF69CC545A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9BE609EECC97FF38A7DC0AA6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2439C57D534B9770D35D98EE;
+			remoteInfo = VocaPhoneLiveActivity;
+		};
+		C93B12E734271D29E75763F8 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 9BE609EECC97FF38A7DC0AA6 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8064393ED94ED8E4DF68D37C;
+			remoteInfo = VocaPhoneKeyboard;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		B0BD28A8D44273B7701E428A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				ACDADCAF73BF41FE2355ED15 /* VocaPhoneKeyboard.appex in Embed Foundation Extensions */,
+				94B667AC0FFB905D57BE2CA3 /* VocaPhoneLiveActivity.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickDictationAvailability.swift; sourceTree = "<group>"; };
+		17B4671FC8BBA4DD4FD5AA8C /* GatewaySetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewaySetupView.swift; sourceTree = "<group>"; };
+		2678D836274997421A54E901 /* AudioCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureTests.swift; sourceTree = "<group>"; };
+		28ECEDA044D2B1021710F205 /* TranscriptHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptHistoryView.swift; sourceTree = "<group>"; };
+		342F2B3B437269514C969C77 /* SetupStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupStatus.swift; sourceTree = "<group>"; };
+		346B6558EE5557A35C916067 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
+		36767643E0E4AA29BBB3D4FD /* SessionRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecord.swift; sourceTree = "<group>"; };
+		36B96ADF2831E766F13F9565 /* VocaPhoneKeyboard-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "VocaPhoneKeyboard-Bridging-Header.h"; sourceTree = "<group>"; };
+		3785791C0D9A5ABA2506F1B7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		37C9B64B52A8D28D252CC3A5 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		3EC2C1575D306E7683092FBA /* KeyGridLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyGridLayoutTests.swift; sourceTree = "<group>"; };
+		4871EA8AAF829D7979EC9587 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		5118F8CFAAE127CD5FF92076 /* KeyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyView.swift; sourceTree = "<group>"; };
+		52F3A6E7B826D1389D462944 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		56047A6705008B5F17F003CE /* DictationPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationPresentationTests.swift; sourceTree = "<group>"; };
+		5B19321866AE8083C78C2B7F /* FinishRecordingIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FinishRecordingIntent.swift; sourceTree = "<group>"; };
+		5FC91810C8F97443ECEF7FD1 /* VocaPhoneApp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VocaPhoneApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6CF871FC84B4C6B2627A43C2 /* RecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinator.swift; sourceTree = "<group>"; };
+		70B3F1DBA8332A13B095E4BA /* PairingScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScannerView.swift; sourceTree = "<group>"; };
+		75FD84E65614D9F94D8EF0AC /* DictationBarComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarComponents.swift; sourceTree = "<group>"; };
+		786DEF44BDB4C70935762971 /* VocaPhoneLiveActivity.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VocaPhoneLiveActivity.entitlements; sourceTree = "<group>"; };
+		7948F8C6C72A8D7A16C18562 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
+		7E9E5CE913B4FA5EF8EECD4E /* PairingPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingPayloadTests.swift; sourceTree = "<group>"; };
+		87F5D76EB1E944F3A323006D /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		88548183D3F0AD213E2268E1 /* KeyboardURLLauncher.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = KeyboardURLLauncher.m; sourceTree = "<group>"; };
+		894063AE1B3DDA92C529268D /* AppConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfiguration.swift; sourceTree = "<group>"; };
+		8988211922DAD4FC77AF89EB /* VocaPhoneActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaPhoneActivityAttributes.swift; sourceTree = "<group>"; };
+		8ACA0C7140D6C997C12CFDD1 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8BF7CAC171521FC372DF2BF0 /* KeyGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyGridView.swift; sourceTree = "<group>"; };
+		934F25D30F7D00565D83CAA0 /* VocaPhoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaPhoneApp.swift; sourceTree = "<group>"; };
+		98325CD266139FCDEE156D8F /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
+		9A0A752EC9784F6FD2274150 /* GatewayEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayEndpoint.swift; sourceTree = "<group>"; };
+		9B9571AEC75B1A986C5D3077 /* KeyboardPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardPreferences.swift; sourceTree = "<group>"; };
+		9DCCE5FE1A8242B96B8CA9FD /* DictationPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationPresentation.swift; sourceTree = "<group>"; };
+		A51A47686C093AFE92B89758 /* VocaPhoneKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VocaPhoneKeyboard.entitlements; sourceTree = "<group>"; };
+		A8F34BD131F1AB394941AC87 /* KeyboardStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardStatus.swift; sourceTree = "<group>"; };
+		AC7B3909E42D8DC662165142 /* VocaPhoneTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = VocaPhoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B15DE10A5F8F90C87D4BA48A /* AudioCapturePipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCapturePipeline.swift; sourceTree = "<group>"; };
+		B7028AF4B134C7EDD726891E /* VocaPhoneKeyboard.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VocaPhoneKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B854354D06D0111DEB123E7A /* SessionRecordTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecordTests.swift; sourceTree = "<group>"; };
+		B87128326897BFA30E7B2038 /* KeyLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyLayout.swift; sourceTree = "<group>"; };
+		BE0BE99770A5F7F08891E2BD /* KeyboardURLLauncher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyboardURLLauncher.h; sourceTree = "<group>"; };
+		BE3489C985467C23EB6A90AD /* DictationBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarView.swift; sourceTree = "<group>"; };
+		C304CF763960E5F1D8F76B2B /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
+		C3D3E1455AD292ED6DA1DFAC /* VocaPhoneLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaPhoneLiveActivity.swift; sourceTree = "<group>"; };
+		C4211FAA8E574AEF57D788FA /* GatewayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayClient.swift; sourceTree = "<group>"; };
+		C45D98EAFE18C689DC7551E9 /* LanguageMenuTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageMenuTests.swift; sourceTree = "<group>"; };
+		C7842B22D05FB171B261101A /* DictationBarStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarStyle.swift; sourceTree = "<group>"; };
+		CDCC7453FC149EBB02E3FB58 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		CEA8F4B58D6EF52749026347 /* VocaPhoneApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VocaPhoneApp.entitlements; sourceTree = "<group>"; };
+		CF080065DC31C6DA8E693163 /* VocaPhoneLiveActivity.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = VocaPhoneLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D0C6476FC82C4B74D01F4358 /* ModelLanguageSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelLanguageSupport.swift; sourceTree = "<group>"; };
+		DBFB4BB0345784837C629340 /* PairingPayload.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingPayload.swift; sourceTree = "<group>"; };
+		EA031D86C1DE3C2F8B047308 /* SetupStatusTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupStatusTests.swift; sourceTree = "<group>"; };
+		EE41EF03C8A4F930315EFE77 /* ModelLanguageSupportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelLanguageSupportTests.swift; sourceTree = "<group>"; };
+		FA83B914C241E5F8BF8F32AC /* DictationBarLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarLayoutTests.swift; sourceTree = "<group>"; };
+		FEBB0D1B0CD48BA2F8F22986 /* TextInsertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInsertion.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		1839F58A312F2D4BB1A97941 /* VocaPhoneApp */ = {
+			isa = PBXGroup;
+			children = (
+				4871EA8AAF829D7979EC9587 /* Info.plist */,
+				CEA8F4B58D6EF52749026347 /* VocaPhoneApp.entitlements */,
+				AAF95B55221B170F0DA7CAE5 /* App */,
+				34DE966505F645843BA89C68 /* Audio */,
+				6406D1E093D312D487B6ED25 /* Networking */,
+				7BCBCEAB34407A1628943447 /* Sessions */,
+			);
+			path = VocaPhoneApp;
+			sourceTree = "<group>";
+		};
+		3100468ACA52C373010E777D /* VocaPhoneKeyboard */ = {
+			isa = PBXGroup;
+			children = (
+				75FD84E65614D9F94D8EF0AC /* DictationBarComponents.swift */,
+				C7842B22D05FB171B261101A /* DictationBarStyle.swift */,
+				BE3489C985467C23EB6A90AD /* DictationBarView.swift */,
+				9DCCE5FE1A8242B96B8CA9FD /* DictationPresentation.swift */,
+				3785791C0D9A5ABA2506F1B7 /* Info.plist */,
+				BE0BE99770A5F7F08891E2BD /* KeyboardURLLauncher.h */,
+				88548183D3F0AD213E2268E1 /* KeyboardURLLauncher.m */,
+				98325CD266139FCDEE156D8F /* KeyboardViewController.swift */,
+				8BF7CAC171521FC372DF2BF0 /* KeyGridView.swift */,
+				B87128326897BFA30E7B2038 /* KeyLayout.swift */,
+				5118F8CFAAE127CD5FF92076 /* KeyView.swift */,
+				36B96ADF2831E766F13F9565 /* VocaPhoneKeyboard-Bridging-Header.h */,
+				A51A47686C093AFE92B89758 /* VocaPhoneKeyboard.entitlements */,
+			);
+			path = VocaPhoneKeyboard;
+			sourceTree = "<group>";
+		};
+		34DE966505F645843BA89C68 /* Audio */ = {
+			isa = PBXGroup;
+			children = (
+				B15DE10A5F8F90C87D4BA48A /* AudioCapturePipeline.swift */,
+				37C9B64B52A8D28D252CC3A5 /* AudioRecorder.swift */,
+			);
+			path = Audio;
+			sourceTree = "<group>";
+		};
+		368A980E8DB61513F70F620F /* VocaPhoneShared */ = {
+			isa = PBXGroup;
+			children = (
+				894063AE1B3DDA92C529268D /* AppConfiguration.swift */,
+				9A0A752EC9784F6FD2274150 /* GatewayEndpoint.swift */,
+				9B9571AEC75B1A986C5D3077 /* KeyboardPreferences.swift */,
+				A8F34BD131F1AB394941AC87 /* KeyboardStatus.swift */,
+				D0C6476FC82C4B74D01F4358 /* ModelLanguageSupport.swift */,
+				DBFB4BB0345784837C629340 /* PairingPayload.swift */,
+				0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */,
+				36767643E0E4AA29BBB3D4FD /* SessionRecord.swift */,
+				7948F8C6C72A8D7A16C18562 /* SharedStore.swift */,
+				FEBB0D1B0CD48BA2F8F22986 /* TextInsertion.swift */,
+			);
+			path = VocaPhoneShared;
+			sourceTree = "<group>";
+		};
+		6406D1E093D312D487B6ED25 /* Networking */ = {
+			isa = PBXGroup;
+			children = (
+				C4211FAA8E574AEF57D788FA /* GatewayClient.swift */,
+				CDCC7453FC149EBB02E3FB58 /* KeychainStore.swift */,
+			);
+			path = Networking;
+			sourceTree = "<group>";
+		};
+		696861DC826546C83ED32B29 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5FC91810C8F97443ECEF7FD1 /* VocaPhoneApp.app */,
+				B7028AF4B134C7EDD726891E /* VocaPhoneKeyboard.appex */,
+				CF080065DC31C6DA8E693163 /* VocaPhoneLiveActivity.appex */,
+				AC7B3909E42D8DC662165142 /* VocaPhoneTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		6E5439F0105EB13C54C7549C /* VocaPhoneLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				8ACA0C7140D6C997C12CFDD1 /* Info.plist */,
+				786DEF44BDB4C70935762971 /* VocaPhoneLiveActivity.entitlements */,
+				C3D3E1455AD292ED6DA1DFAC /* VocaPhoneLiveActivity.swift */,
+			);
+			path = VocaPhoneLiveActivity;
+			sourceTree = "<group>";
+		};
+		7BCBCEAB34407A1628943447 /* Sessions */ = {
+			isa = PBXGroup;
+			children = (
+				C304CF763960E5F1D8F76B2B /* LiveActivityManager.swift */,
+				6CF871FC84B4C6B2627A43C2 /* RecordingCoordinator.swift */,
+			);
+			path = Sessions;
+			sourceTree = "<group>";
+		};
+		7E46AABFA3E90F0F519DEF02 = {
+			isa = PBXGroup;
+			children = (
+				BA056971FB6830230CA657BE /* VocaPhoneActivityShared */,
+				1839F58A312F2D4BB1A97941 /* VocaPhoneApp */,
+				3100468ACA52C373010E777D /* VocaPhoneKeyboard */,
+				6E5439F0105EB13C54C7549C /* VocaPhoneLiveActivity */,
+				368A980E8DB61513F70F620F /* VocaPhoneShared */,
+				933CC6C800F854E14554ACCA /* VocaPhoneTests */,
+				696861DC826546C83ED32B29 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		933CC6C800F854E14554ACCA /* VocaPhoneTests */ = {
+			isa = PBXGroup;
+			children = (
+				2678D836274997421A54E901 /* AudioCaptureTests.swift */,
+				FA83B914C241E5F8BF8F32AC /* DictationBarLayoutTests.swift */,
+				56047A6705008B5F17F003CE /* DictationPresentationTests.swift */,
+				3EC2C1575D306E7683092FBA /* KeyGridLayoutTests.swift */,
+				C45D98EAFE18C689DC7551E9 /* LanguageMenuTests.swift */,
+				EE41EF03C8A4F930315EFE77 /* ModelLanguageSupportTests.swift */,
+				7E9E5CE913B4FA5EF8EECD4E /* PairingPayloadTests.swift */,
+				B854354D06D0111DEB123E7A /* SessionRecordTests.swift */,
+				EA031D86C1DE3C2F8B047308 /* SetupStatusTests.swift */,
+			);
+			path = VocaPhoneTests;
+			sourceTree = "<group>";
+		};
+		AAF95B55221B170F0DA7CAE5 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				52F3A6E7B826D1389D462944 /* ContentView.swift */,
+				17B4671FC8BBA4DD4FD5AA8C /* GatewaySetupView.swift */,
+				70B3F1DBA8332A13B095E4BA /* PairingScannerView.swift */,
+				87F5D76EB1E944F3A323006D /* SettingsView.swift */,
+				342F2B3B437269514C969C77 /* SetupStatus.swift */,
+				346B6558EE5557A35C916067 /* SetupView.swift */,
+				28ECEDA044D2B1021710F205 /* TranscriptHistoryView.swift */,
+				934F25D30F7D00565D83CAA0 /* VocaPhoneApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		BA056971FB6830230CA657BE /* VocaPhoneActivityShared */ = {
+			isa = PBXGroup;
+			children = (
+				5B19321866AE8083C78C2B7F /* FinishRecordingIntent.swift */,
+				8988211922DAD4FC77AF89EB /* VocaPhoneActivityAttributes.swift */,
+			);
+			path = VocaPhoneActivityShared;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2439C57D534B9770D35D98EE /* VocaPhoneLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 970B6C1D70C8230EA7CE042E /* Build configuration list for PBXNativeTarget "VocaPhoneLiveActivity" */;
+			buildPhases = (
+				9FC4E35F75A19502E114669C /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VocaPhoneLiveActivity;
+			packageProductDependencies = (
+			);
+			productName = VocaPhoneLiveActivity;
+			productReference = CF080065DC31C6DA8E693163 /* VocaPhoneLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		25EE7CD122403ED0C22EE2DE /* VocaPhoneTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 081550E6407111AF5C8E4E91 /* Build configuration list for PBXNativeTarget "VocaPhoneTests" */;
+			buildPhases = (
+				D061CC7FC2584C4C5E169DE3 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VocaPhoneTests;
+			packageProductDependencies = (
+			);
+			productName = VocaPhoneTests;
+			productReference = AC7B3909E42D8DC662165142 /* VocaPhoneTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		8064393ED94ED8E4DF68D37C /* VocaPhoneKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A597F05C6C6A63BF18F55D4C /* Build configuration list for PBXNativeTarget "VocaPhoneKeyboard" */;
+			buildPhases = (
+				4BD0D6DD35B769E44E38EA81 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = VocaPhoneKeyboard;
+			packageProductDependencies = (
+			);
+			productName = VocaPhoneKeyboard;
+			productReference = B7028AF4B134C7EDD726891E /* VocaPhoneKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		B1FFCB59AB3A9C83423539EC /* VocaPhoneApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 78C4D997AE0D4122C3839545 /* Build configuration list for PBXNativeTarget "VocaPhoneApp" */;
+			buildPhases = (
+				559581F3DAAD0A7B2649B8E4 /* Sources */,
+				B0BD28A8D44273B7701E428A /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3FE88C802E77699F576488CF /* PBXTargetDependency */,
+				DA9DBBEED5819188D47E2953 /* PBXTargetDependency */,
+			);
+			name = VocaPhoneApp;
+			packageProductDependencies = (
+			);
+			productName = VocaPhoneApp;
+			productReference = 5FC91810C8F97443ECEF7FD1 /* VocaPhoneApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		9BE609EECC97FF38A7DC0AA6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					2439C57D534B9770D35D98EE = {
+						DevelopmentTeam = A83WCPTTT9;
+						ProvisioningStyle = Automatic;
+					};
+					25EE7CD122403ED0C22EE2DE = {
+						DevelopmentTeam = A83WCPTTT9;
+						ProvisioningStyle = Automatic;
+					};
+					8064393ED94ED8E4DF68D37C = {
+						DevelopmentTeam = A83WCPTTT9;
+						ProvisioningStyle = Automatic;
+					};
+					B1FFCB59AB3A9C83423539EC = {
+						DevelopmentTeam = A83WCPTTT9;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 5B407BB5DC4EB3600A77CFCB /* Build configuration list for PBXProject "VocaPhone" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 7E46AABFA3E90F0F519DEF02;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 696861DC826546C83ED32B29 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B1FFCB59AB3A9C83423539EC /* VocaPhoneApp */,
+				8064393ED94ED8E4DF68D37C /* VocaPhoneKeyboard */,
+				2439C57D534B9770D35D98EE /* VocaPhoneLiveActivity */,
+				25EE7CD122403ED0C22EE2DE /* VocaPhoneTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4BD0D6DD35B769E44E38EA81 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CE9227DEA1DE35F0F9987562 /* AppConfiguration.swift in Sources */,
+				BF22B8C9A4943F8B06F74216 /* DictationBarComponents.swift in Sources */,
+				2D1CF0D6875DFD7D9BFD10FF /* DictationBarStyle.swift in Sources */,
+				F1CDF580A8C552E1A03524A1 /* DictationBarView.swift in Sources */,
+				E4187B9A8DA6FBBA6DE095AC /* DictationPresentation.swift in Sources */,
+				7E3D8E857A83184E74B15433 /* GatewayEndpoint.swift in Sources */,
+				E4162282629880D2A33913CA /* KeyGridView.swift in Sources */,
+				4C8B6E06406E63E122F9CBD1 /* KeyLayout.swift in Sources */,
+				68E7553DB227208E27DF3A8F /* KeyView.swift in Sources */,
+				97EE4663316E8CF2EAE9761A /* KeyboardPreferences.swift in Sources */,
+				6565BFD7DC56DDCECDBC0D7C /* KeyboardStatus.swift in Sources */,
+				BA7DED07F63C388ADD4EC07A /* KeyboardURLLauncher.m in Sources */,
+				31D729EBEF69158BAAFE66D0 /* KeyboardViewController.swift in Sources */,
+				3EF8AE348290CBB5FE45BD11 /* ModelLanguageSupport.swift in Sources */,
+				FAD55FD707FD21407E0980FA /* PairingPayload.swift in Sources */,
+				6192C923119F158CCE94B48E /* QuickDictationAvailability.swift in Sources */,
+				36295638EAABF35D05369EB0 /* SessionRecord.swift in Sources */,
+				A794CD8D0B445E5118500EC3 /* SharedStore.swift in Sources */,
+				E366EFAD9B70FE3FC43FEBAD /* TextInsertion.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		559581F3DAAD0A7B2649B8E4 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C80FCACABE7FF798EFD1EB61 /* AppConfiguration.swift in Sources */,
+				C4D64FB835EAB5A67E6CE009 /* AudioCapturePipeline.swift in Sources */,
+				B803C86D8A77C8A2D758DA0A /* AudioRecorder.swift in Sources */,
+				D4CA018F48AA244D322B9156 /* ContentView.swift in Sources */,
+				84F2FD89DD3C1EB490E86A73 /* FinishRecordingIntent.swift in Sources */,
+				B0DF0FF5821BD7E8C839065C /* GatewayClient.swift in Sources */,
+				062CD049AAD6768AE5AB3766 /* GatewayEndpoint.swift in Sources */,
+				4016476924F9555E1E861673 /* GatewaySetupView.swift in Sources */,
+				A568F548D639C064CDA86F0D /* KeyboardPreferences.swift in Sources */,
+				61D705F2D38349B0A9667F2E /* KeyboardStatus.swift in Sources */,
+				8468AAFD83E231AD9BB99792 /* KeychainStore.swift in Sources */,
+				E9E86F6940BDB4381A8C9FF5 /* LiveActivityManager.swift in Sources */,
+				4FDB3D32A404C674AFAB948F /* ModelLanguageSupport.swift in Sources */,
+				52D566C02915D934240601EA /* PairingPayload.swift in Sources */,
+				84EB79403F7CED013A82334F /* PairingScannerView.swift in Sources */,
+				B4EE97A67B156A6D5BA0D258 /* QuickDictationAvailability.swift in Sources */,
+				5D5A394AA7E8170CFE4E128B /* RecordingCoordinator.swift in Sources */,
+				B463A007E4ABBFF427073748 /* SessionRecord.swift in Sources */,
+				387B6B6A0B0AE57B6324B55F /* SettingsView.swift in Sources */,
+				366E7DFAD5B2666FC1FF9FB3 /* SetupStatus.swift in Sources */,
+				0D07EBF90CE481AE0C1976CF /* SetupView.swift in Sources */,
+				D9811B8978380027BF95D0D5 /* SharedStore.swift in Sources */,
+				89E3D47D85EBD6AD5A093813 /* TextInsertion.swift in Sources */,
+				D1CD3C13398FA4514EF57CA7 /* TranscriptHistoryView.swift in Sources */,
+				E2C8F215E536CABB80623B3A /* VocaPhoneActivityAttributes.swift in Sources */,
+				4F24DEC1FC8411ACBDA6BC50 /* VocaPhoneApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9FC4E35F75A19502E114669C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				314748D93E078B40FEEEBEBE /* AppConfiguration.swift in Sources */,
+				3655C2E063B7C9B8F286057B /* FinishRecordingIntent.swift in Sources */,
+				1D96E4B5456A18FA04F5F15D /* GatewayEndpoint.swift in Sources */,
+				5769EF4A106AFBD7B375DC5D /* KeyboardPreferences.swift in Sources */,
+				582C18BD155158A79ADCBB5A /* KeyboardStatus.swift in Sources */,
+				33A2193E058E05B4B4FB3860 /* ModelLanguageSupport.swift in Sources */,
+				364C315F292BA4BD66E23C2A /* PairingPayload.swift in Sources */,
+				58CDCA65875E94B8F7BE0101 /* QuickDictationAvailability.swift in Sources */,
+				3F3E17AFAAE8EB6B79A872BE /* SessionRecord.swift in Sources */,
+				B2406DA05AE90DDB7EED6246 /* SharedStore.swift in Sources */,
+				D4FEC9D26550CB1696FDF424 /* TextInsertion.swift in Sources */,
+				07D7CA474CBB8812C0E83D1C /* VocaPhoneActivityAttributes.swift in Sources */,
+				A79BA8A795F60838D96EDFAA /* VocaPhoneLiveActivity.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D061CC7FC2584C4C5E169DE3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E5EAD40641B38DDA0CCA0300 /* AppConfiguration.swift in Sources */,
+				76E660378F845C250AEA0673 /* AudioCapturePipeline.swift in Sources */,
+				F6901AAB3D79295B2F40E436 /* AudioCaptureTests.swift in Sources */,
+				91C1D5BB9A998A47DFF79A52 /* DictationBarComponents.swift in Sources */,
+				3226364FB9F43F49B12FE2A6 /* DictationBarLayoutTests.swift in Sources */,
+				15CB6862BDAB7694EE44D7F8 /* DictationBarStyle.swift in Sources */,
+				8DD5E5E2B734765883552523 /* DictationBarView.swift in Sources */,
+				1BB4BED912ADFA11ED122052 /* DictationPresentation.swift in Sources */,
+				DEB245BAC4DEE643F2EB38B0 /* DictationPresentationTests.swift in Sources */,
+				A2112E100F4277466EA8DD4F /* GatewayEndpoint.swift in Sources */,
+				62F20884ED82C44DD050F3E5 /* KeyGridLayoutTests.swift in Sources */,
+				F859CEA335A920156C89478F /* KeyGridView.swift in Sources */,
+				966E2D9A6D13630E7A2122A6 /* KeyLayout.swift in Sources */,
+				BC36D829FEE2BEC0A6BC30C2 /* KeyView.swift in Sources */,
+				90F0433AE6FE139E90D62F9A /* KeyboardPreferences.swift in Sources */,
+				5673DF7E07F7F800FB847C2A /* KeyboardStatus.swift in Sources */,
+				3C4DE9EF77062407F71ACDCB /* LanguageMenuTests.swift in Sources */,
+				0B939DE9494D3B8F14F18142 /* ModelLanguageSupport.swift in Sources */,
+				F426CFBED733974D61FDB432 /* ModelLanguageSupportTests.swift in Sources */,
+				2E93E016656B5EA74568DD4F /* PairingPayload.swift in Sources */,
+				DCF552B58B7A7A12C517C17B /* PairingPayloadTests.swift in Sources */,
+				BCB8CA3BAACE6280D9ED4B22 /* QuickDictationAvailability.swift in Sources */,
+				2C362C9B71AA6A93A6D7E4DB /* SessionRecord.swift in Sources */,
+				28C271BC0195C62E93292A9C /* SessionRecordTests.swift in Sources */,
+				3219DC5DD26E1998A7A0CD5C /* SetupStatus.swift in Sources */,
+				1B72FBEA5D41DB51B82A1305 /* SetupStatusTests.swift in Sources */,
+				5A151959ABCE2ADE4646A79D /* SharedStore.swift in Sources */,
+				D7CC096732C721CE14B5F682 /* TextInsertion.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3FE88C802E77699F576488CF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8064393ED94ED8E4DF68D37C /* VocaPhoneKeyboard */;
+			targetProxy = C93B12E734271D29E75763F8 /* PBXContainerItemProxy */;
+		};
+		DA9DBBEED5819188D47E2953 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2439C57D534B9770D35D98EE /* VocaPhoneLiveActivity */;
+			targetProxy = 354ADE35152315DF69CC545A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		28116B51C021C7D98328E0C6 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.VocaPhoneTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		2856E68174F1ED1FA0A9DA53 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VocaPhoneLiveActivity/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.liveactivity;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		68792551E893F952F8DE7305 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VocaPhoneKeyboard/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.keyboard;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneKeyboard/VocaPhoneKeyboard-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		75E324C0B268E8D8B0B41680 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = VocaPhoneApp/VocaPhoneApp.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VocaPhoneApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		920528EC8359F2B7B0A8BD71 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = VocaPhoneApp/VocaPhoneApp.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VocaPhoneApp/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9E08B264C29A60500BC3E2F3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.VocaPhoneTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9F9FD427F7996B4E6E8003D0 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 17;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = A83WCPTTT9;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		9FE063DBE2D20860DF3F3875 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 17;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = A83WCPTTT9;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		C572083A6BFE10829F6BFCC7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VocaPhoneLiveActivity/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.liveactivity;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CD1310FDA21FA5ACDB4C6448 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = VocaPhoneKeyboard/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.keyboard;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneKeyboard/VocaPhoneKeyboard-Bridging-Header.h";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		081550E6407111AF5C8E4E91 /* Build configuration list for PBXNativeTarget "VocaPhoneTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9E08B264C29A60500BC3E2F3 /* Debug */,
+				28116B51C021C7D98328E0C6 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		5B407BB5DC4EB3600A77CFCB /* Build configuration list for PBXProject "VocaPhone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9F9FD427F7996B4E6E8003D0 /* Debug */,
+				9FE063DBE2D20860DF3F3875 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		78C4D997AE0D4122C3839545 /* Build configuration list for PBXNativeTarget "VocaPhoneApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				920528EC8359F2B7B0A8BD71 /* Debug */,
+				75E324C0B268E8D8B0B41680 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		970B6C1D70C8230EA7CE042E /* Build configuration list for PBXNativeTarget "VocaPhoneLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C572083A6BFE10829F6BFCC7 /* Debug */,
+				2856E68174F1ED1FA0A9DA53 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A597F05C6C6A63BF18F55D4C /* Build configuration list for PBXNativeTarget "VocaPhoneKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CD1310FDA21FA5ACDB4C6448 /* Debug */,
+				68792551E893F952F8DE7305 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 9BE609EECC97FF38A7DC0AA6 /* Project object */;
+}

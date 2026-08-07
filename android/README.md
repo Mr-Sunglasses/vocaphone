@@ -9,8 +9,8 @@ cursor when you finish.
 Distributed as a private APK. Google Play publication is deferred, but the
 accessibility disclosure and consent Play requires are present from the start.
 
-> In-code package and APK names still use the Local Flow working name
-> (`local-flow-debug.apk`, `com.example.localflow.android`).
+> Package name and application ID have been updated to `com.vocahq.vocaphone`; the APK
+> output is `vocaphone-debug.apk`.
 
 ## Requirements
 
@@ -27,7 +27,7 @@ cd android
 # macOS default SDK path; on Linux Android Studio usually uses $HOME/Android/Sdk
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 ./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/local-flow-debug.apk
+adb install -r app/build/outputs/apk/debug/vocaphone-debug.apk
 ```
 
 Verification the same way CI should run it:

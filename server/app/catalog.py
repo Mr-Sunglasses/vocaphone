@@ -178,7 +178,7 @@ def _moonshine(
             )
         ),
         source="Moonshine Voice",
-        marker_file=".localflow-model.json",
+        marker_file=".vocaphone-model.json",
         language_code=language,
         # Also as a tuple: the engine reads `language_code`, but the model cards and
         # the language filter read `language_codes`, and an empty tuple there means
@@ -240,7 +240,7 @@ def _sherpa_onnx(
         family=family,
         description=description,
         source="sherpa-onnx",
-        marker_file=".localflow-model.json",
+        marker_file=".vocaphone-model.json",
         model_type=model_type,
         language_codes=language_codes,
         license_name=license_name,
@@ -634,7 +634,7 @@ DEFAULT_CATALOG: tuple[CatalogModel, ...] = (
         description=(
             "NVIDIA's Canary 180M Flash converted to INT8 ONNX. The underlying model also "
             "covers German, French, and Spanish, but its source/target language is fixed when "
-            "the recognizer loads rather than per request, so Local Flow loads it English-only "
+            "the recognizer loads rather than per request, so vocaphone loads it English-only "
             "for now."
         ),
         license_name="CC BY 4.0",

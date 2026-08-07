@@ -38,7 +38,7 @@ class Settings:
     vocamac_model: str | None = None
     whisperkit_binary: str = "whisperkit-cli"
     models_dir: Path | None = None
-    config_path: Path = Path("~/.config/localflow/config.json")
+    config_path: Path = Path("~/.config/vocaphone/config.json")
     bind_host: str = "0.0.0.0"
     port: int = 8765
     maximum_upload_bytes: int = 25 * 1024 * 1024
@@ -55,70 +55,70 @@ class Settings:
     def from_env(cls) -> Settings:
         token_file = Path(
             os.environ.get(
-                "LOCALFLOW_TOKEN_FILE",
-                "~/.config/localflow/token",
+                "VOCAPHONE_TOKEN_FILE",
+                "~/.config/vocaphone/token",
             )
         ).expanduser()
-        token = os.environ.get("LOCALFLOW_TOKEN", "")
+        token = os.environ.get("VOCAPHONE_TOKEN", "")
         if not token and token_file.is_file():
             token = token_file.read_text(encoding="utf-8").strip()
         if not token:
             token = _generate_token(token_file)
         if len(token) < 32:
             raise RuntimeError(
-                "Set LOCALFLOW_TOKEN to at least 32 characters or create "
-                "~/.config/localflow/token with mode 600."
+                "Set VOCAPHONE_TOKEN to at least 32 characters or create "
+                "~/.config/vocaphone/token with mode 600."
             )
         data_dir = Path(
-            os.environ.get("LOCALFLOW_DATA_DIR", "~/.local/share/localflow")
+            os.environ.get("VOCAPHONE_DATA_DIR", "~/.local/share/vocaphone")
         ).expanduser()
         return cls(
             token=token,
             data_dir=data_dir,
             whisper_binary=Path(
-                os.environ.get("LOCALFLOW_WHISPER_BINARY", "/opt/homebrew/bin/whisper-cli")
+                os.environ.get("VOCAPHONE_WHISPER_BINARY", "/opt/homebrew/bin/whisper-cli")
             ).expanduser(),
             whisper_model=Path(
                 os.environ.get(
-                    "LOCALFLOW_WHISPER_MODEL",
+                    "VOCAPHONE_WHISPER_MODEL",
                     "~/.local/share/whisper.cpp/models/ggml-base.en.bin",
                 )
             ).expanduser(),
-            engine=os.environ.get("LOCALFLOW_ENGINE", "auto").lower(),
+            engine=os.environ.get("VOCAPHONE_ENGINE", "auto").lower(),
             handy_binary=Path(
                 os.environ.get(
-                    "LOCALFLOW_HANDY_BINARY",
+                    "VOCAPHONE_HANDY_BINARY",
                     "/Applications/Handy.app/Contents/MacOS/handy",
                 )
             ).expanduser(),
-            handy_model=os.environ.get("LOCALFLOW_HANDY_MODEL") or None,
+            handy_model=os.environ.get("VOCAPHONE_HANDY_MODEL") or None,
             handy_fallback_model=os.environ.get(
-                "LOCALFLOW_HANDY_FALLBACK_MODEL",
+                "VOCAPHONE_HANDY_FALLBACK_MODEL",
                 DEFAULT_HANDY_FALLBACK_MODEL,
             )
             or None,
             vocamac_app=Path(
-                os.environ.get("LOCALFLOW_VOCAMAC_APP", "/Applications/VocaMac.app")
+                os.environ.get("VOCAPHONE_VOCAMAC_APP", "/Applications/VocaMac.app")
             ).expanduser(),
-            vocamac_model=os.environ.get("LOCALFLOW_VOCAMAC_MODEL") or None,
-            whisperkit_binary=os.environ.get("LOCALFLOW_WHISPERKIT_BINARY", "whisperkit-cli"),
+            vocamac_model=os.environ.get("VOCAPHONE_VOCAMAC_MODEL") or None,
+            whisperkit_binary=os.environ.get("VOCAPHONE_WHISPERKIT_BINARY", "whisperkit-cli"),
             models_dir=Path(
-                os.environ.get("LOCALFLOW_MODELS_DIR", str(data_dir / "models"))
+                os.environ.get("VOCAPHONE_MODELS_DIR", str(data_dir / "models"))
             ).expanduser(),
             config_path=Path(
                 os.environ.get(
-                    "LOCALFLOW_CONFIG_FILE",
-                    "~/.config/localflow/config.json",
+                    "VOCAPHONE_CONFIG_FILE",
+                    "~/.config/vocaphone/config.json",
                 )
             ).expanduser(),
-            bind_host=os.environ.get("LOCALFLOW_BIND_HOST", "0.0.0.0"),
-            port=int(os.environ.get("LOCALFLOW_PORT", "8765")),
-            retention_hours=int(os.environ.get("LOCALFLOW_RETENTION_HOURS", "24")),
+            bind_host=os.environ.get("VOCAPHONE_BIND_HOST", "0.0.0.0"),
+            port=int(os.environ.get("VOCAPHONE_PORT", "8765")),
+            retention_hours=int(os.environ.get("VOCAPHONE_RETENTION_HOURS", "24")),
             delete_successful_audio=os.environ.get(
-                "LOCALFLOW_DELETE_SUCCESSFUL_AUDIO", "true"
+                "VOCAPHONE_DELETE_SUCCESSFUL_AUDIO", "true"
             ).lower()
             in {"1", "true", "yes"},
-            debug=os.environ.get("LOCALFLOW_DEBUG", "false").lower() in {"1", "true", "yes"},
+            debug=os.environ.get("VOCAPHONE_DEBUG", "false").lower() in {"1", "true", "yes"},
         )
 
 

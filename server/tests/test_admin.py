@@ -99,7 +99,7 @@ async def test_tokens_list_starts_with_only_the_bootstrap_entry(
     assert entries == [
         {
             "id": "bootstrap",
-            "label": "Bootstrap token (LOCALFLOW_TOKEN / token file)",
+            "label": "Bootstrap token (VOCAPHONE_TOKEN / token file)",
             "created_at": None,
             "revocable": False,
         }
@@ -157,7 +157,7 @@ async def test_diagnostics_bundle_is_downloadable_and_redacted(
     response = await admin_client.get("/v1/admin/diagnostics", headers=auth)
     assert response.status_code == 200
     assert response.headers["content-disposition"].startswith(
-        'attachment; filename="localflow-diagnostics-'
+        'attachment; filename="vocaphone-diagnostics-'
     )
     payload = response.json()
     assert payload["engine"]["id"] == "auto"
@@ -540,7 +540,7 @@ async def test_partials_render_html(admin_client: httpx.AsyncClient, auth: dict[
     assert "Speech engine" in settings.text
     assert "All-interface listener" in settings.text
     assert "Paired device tokens" in settings.text
-    assert "Bootstrap token (LOCALFLOW_TOKEN / token file)" in settings.text
+    assert "Bootstrap token (VOCAPHONE_TOKEN / token file)" in settings.text
 
     tokens = await admin_client.get("/ui/partials/tokens", headers=auth)
     assert tokens.status_code == 200

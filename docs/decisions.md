@@ -1,16 +1,42 @@
 # Decisions and open setup choices
 
+## Final naming decisions (v0.3.0)
+
+The **Local Flow** working name has been replaced with **vocaphone** across all
+identifiers. The following are the final identifiers in use:
+
+| Scope | Final identifier |
+| --- | --- |
+| Product / display | **vocaphone** (lowercase prose) |
+| Client code symbols | **VocaPhone** (PascalCase) |
+| Server CLI entry points | `vocaphone-server`, `vocaphone-status`, `vocaphone-diagnostics`, `vocaphone-cleanup` |
+| Server env prefix | `VOCAPHONE_` |
+| Server config/data paths | `~/.config/vocaphone/`, `~/.local/share/vocaphone/` |
+| macOS logs | `~/Library/Logs/Vocaphone/` |
+| iOS app bundle ID | `com.vocahq.vocaphone` |
+| iOS keyboard bundle ID | `com.vocahq.vocaphone.keyboard` |
+| iOS Live Activity bundle ID | `com.vocahq.vocaphone.liveactivity` |
+| iOS App Group | `group.com.vocahq.vocaphone` |
+| iOS URL scheme | `vocaphone://dictate` |
+| Android application ID | `com.vocahq.vocaphone` |
+| LaunchAgent label | `com.vocahq.vocaphone.gateway` |
+| systemd unit | `com.vocahq.vocaphone.gateway.service` |
+| Docker image tag | `vocaphone-gateway` |
+| Docker volume | `vocaphone_vocaphone-data` |
+
+Apple Developer portal registration of these bundle identifiers and App Group
+under the existing team is a required follow-up.
+
+See [deployment.md](deployment.md#migrating-from-the-local-flow-working-name-v030)
+for the full migration guide.
+
 ## Implemented assumptions
 
 These are changeable implementation defaults, not confirmed product decisions:
 
 | Choice | Current assumption | Why |
 | --- | --- | --- |
-| Product name | **vocaphone** (prose / GitHub); Local Flow still used in code, binaries, and placeholders | Product name chosen for the Voca family; code identifiers catch up before public release |
 | Minimum iOS | iOS 17.0 | Supports the chosen SwiftUI and audio APIs |
-| App bundle ID | `com.example.localflow` | Placeholder that builds unsigned |
-| Keyboard bundle ID | `com.example.localflow.keyboard` | Placeholder |
-| App Group | `group.com.example.localflow` | Placeholder |
 | Recording | WAV from one persistent `AVAudioEngine` input | Avoids losing background microphone readiness between dictations; FFmpeg normalizes it on the Mac |
 | Quick Dictation | Enabled, 10-minute ready window | Reduces app switching while bounding battery and microphone exposure |
 | Language | Automatic plus Arabic, English, Spanish, Japanese, Korean, Mandarin Chinese, Ukrainian, Russian, and Vietnamese | Automatic follows the selected gateway model; explicit choices must match it |
@@ -24,8 +50,6 @@ These are changeable implementation defaults, not confirmed product decisions:
 
 ## Must be confirmed before physical-device acceptance
 
-- Bundle identifiers, Apple team, and App Group (product name is **vocaphone**;
-  migrate off `localflow` / `com.example.localflow` placeholders)
 - Whether iOS 17.0 is the desired minimum
 - Mac availability and sleep policy
 - Whether mixed Hindi/English should be added through a separate multilingual model
@@ -34,5 +58,3 @@ These are changeable implementation defaults, not confirmed product decisions:
 - Transcript history policy
 - Failed-audio retry window
 - Whether local cleanup should remain opt-in
-
-Do not treat the current placeholder identifiers as production identifiers.

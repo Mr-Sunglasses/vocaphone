@@ -49,7 +49,7 @@ jobs:
           # The question this job answers is whether the build succeeds, and
           # nothing downstream runs the image.
           docker buildx build \
-            --tag localflow-gateway:test \
+            --tag vocaphone-gateway:test \
             --cache-from type=gha,scope=gateway \
             --cache-to type=gha,mode=max,scope=gateway \
             --output type=cacheonly \

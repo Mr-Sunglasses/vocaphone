@@ -37,7 +37,7 @@ def pairing_fragment(
       <div class="card" id="pairing-card">
         <h2>Pair phone app</h2>
         <p class="muted">No phone-reachable address was detected. Set
-          <code>LOCALFLOW_PUBLIC_URL</code> to the URL the phone should use
+          <code>VOCAPHONE_PUBLIC_URL</code> to the URL the phone should use
           (for example <code>http://192.168.1.20:8765</code>), then reload.</p>
       </div>
         """
@@ -110,7 +110,7 @@ def pairing_fragment(
     return f"""
       <div class="card" id="pairing-card">
         <h2>Pair phone app</h2>
-        <p class="muted">Scan this QR in Local Flow on iPhone or Android to fill the gateway
+        <p class="muted">Scan this QR in vocaphone on iPhone or Android to fill the gateway
           address and bearer token. Keep the WebUI private — the code includes the
           live token.</p>
         <div class="pairing-layout">
@@ -171,7 +171,7 @@ def pairing_fragment(
             <p class="muted small">Prefer the Wi‑Fi LAN address when the phone is on
               the same network. Use a Tailscale MagicDNS name when both devices are
               on the tailnet. Override discovery with
-              <code>LOCALFLOW_PUBLIC_URL</code>. Device tokens created here also appear
+              <code>VOCAPHONE_PUBLIC_URL</code>. Device tokens created here also appear
               under Settings, where they can be revoked.</p>
           </div>
         </div>

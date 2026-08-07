@@ -56,19 +56,19 @@ async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
             name="faster-whisper",
             available=importlib.util.find_spec("faster_whisper") is not None,
             path="Python package" if importlib.util.find_spec("faster_whisper") else None,
-            install_hint="Install localflow-gateway[engines] or use the Docker image",
+            install_hint="Install vocaphone-gateway[engines] or use the Docker image",
         ),
         DependencyStatus(
             name="Moonshine Voice",
             available=importlib.util.find_spec("moonshine_voice") is not None,
             path="Python package" if importlib.util.find_spec("moonshine_voice") else None,
-            install_hint="Install localflow-gateway[engines] or use the Docker image",
+            install_hint="Install vocaphone-gateway[engines] or use the Docker image",
         ),
         DependencyStatus(
             name="sherpa-onnx",
             available=importlib.util.find_spec("sherpa_onnx") is not None,
             path="Python package" if importlib.util.find_spec("sherpa_onnx") else None,
-            install_hint="Install localflow-gateway[engines] or use the Docker image",
+            install_hint="Install vocaphone-gateway[engines] or use the Docker image",
         ),
         DependencyStatus(
             name="MLX Audio",
@@ -81,7 +81,7 @@ async def status_payload(ctx: GatewayContext) -> AdminStatusResponse:
                 else None
             ),
             install_hint=(
-                "Install localflow-gateway[apple]"
+                "Install vocaphone-gateway[apple]"
                 if system.is_apple_silicon
                 else "Available only on Apple-silicon Macs"
             ),
@@ -249,7 +249,7 @@ def token_entries(ctx: GatewayContext) -> list[DeviceTokenEntry]:
     entries = [
         DeviceTokenEntry(
             id=BOOTSTRAP_TOKEN_ID,
-            label="Bootstrap token (LOCALFLOW_TOKEN / token file)",
+            label="Bootstrap token (VOCAPHONE_TOKEN / token file)",
             created_at=None,
             revocable=False,
         )

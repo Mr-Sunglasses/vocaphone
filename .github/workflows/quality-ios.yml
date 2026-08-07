@@ -52,7 +52,7 @@ jobs:
         working-directory: ios
         run: |
           xcodegen generate --spec project.yml
-          git diff --exit-code -- LocalFlow.xcodeproj
+          git diff --exit-code -- VocaPhone.xcodeproj
 
       - name: Pick an iOS simulator
         id: simulator
@@ -84,7 +84,7 @@ jobs:
               exit 1
             fi
             echo "Creating simulator: type=${device_type} runtime=${runtime}"
-            udid=$(xcrun simctl create "LocalFlow-CI-iPhone" "${device_type}" "${runtime}")
+            udid=$(xcrun simctl create "VocaPhone-CI-iPhone" "${device_type}" "${runtime}")
           fi
           echo "Using simulator ${udid}"
           echo "udid=${udid}" >> "$GITHUB_OUTPUT"
@@ -94,7 +94,7 @@ jobs:
         env:
           UDID: ${{ steps.simulator.outputs.udid }}
           DERIVED_DATA: ${{ runner.temp }}/DerivedData
-          RESULT_BUNDLE: ${{ runner.temp }}/LocalFlow.xcresult
+          RESULT_BUNDLE: ${{ runner.temp }}/VocaPhone.xcresult
         run: |
           set -euo pipefail
 
@@ -108,8 +108,8 @@ jobs:
           # there are no Swift packages to resolve, so both are pure overhead
           # here.
           common=(
-            -project LocalFlow.xcodeproj
-            -scheme LocalFlow
+            -project VocaPhone.xcodeproj
+            -scheme VocaPhone
             -sdk iphonesimulator
             -destination "platform=iOS Simulator,id=${UDID}"
             -derivedDataPath "${DERIVED_DATA}"
@@ -136,6 +136,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ios-test-results
-          path: ${{ runner.temp }}/LocalFlow.xcresult
+          path: ${{ runner.temp }}/VocaPhone.xcresult
           retention-days: 7
           if-no-files-found: ignore

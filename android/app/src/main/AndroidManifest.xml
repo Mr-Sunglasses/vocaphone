@@ -34,7 +34,7 @@
     </queries>
 
     <application
-        android:name=".LocalFlowApplication"
+        android:name=".VocaPhoneApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
@@ -42,7 +42,7 @@
         android:label="@string/app_name"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
-        android:theme="@style/Theme.LocalFlow">
+        android:theme="@style/Theme.VocaPhone">
 
         <activity
             android:name=".ui.MainActivity"
@@ -65,13 +65,13 @@
             android:exported="false"
             android:noHistory="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.LocalFlow.Invisible" />
+            android:theme="@style/Theme.VocaPhone.Invisible" />
 
         <activity
             android:name=".ui.QrPairingActivity"
             android:exported="false"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.LocalFlow" />
+            android:theme="@style/Theme.VocaPhone" />
 
         <service
             android:name=".dictation.DictationService"
@@ -79,7 +79,7 @@
             android:foregroundServiceType="microphone" />
 
         <service
-            android:name=".accessibility.LocalFlowAccessibilityService"
+            android:name=".accessibility.VocaPhoneAccessibilityService"
             android:exported="true"
             android:label="@string/accessibility_service_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">

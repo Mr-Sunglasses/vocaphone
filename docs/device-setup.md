@@ -8,19 +8,19 @@ insertion. Complete these steps on the actual iPhone.
 
 1. Decide the final app bundle ID, keyboard bundle ID, and App Group.
 2. Replace the placeholder IDs in `ios/project.yml`,
-   `ios/LocalFlowShared/AppConfiguration.swift`, both entitlements files, and
+   `ios/VocaPhoneShared/AppConfiguration.swift`, both entitlements files, and
    the URL type name in the app plist.
 3. Run `xcodegen generate --spec ios/project.yml`.
-4. Open `ios/LocalFlow.xcodeproj`, choose your Apple team for both targets, and
+4. Open `ios/VocaPhone.xcodeproj`, choose your Apple team for both targets, and
    enable the same App Group capability on each.
-5. Connect the iPhone, select it as the run destination, and run LocalFlowApp.
+5. Connect the iPhone, select it as the run destination, and run VocaPhoneApp.
 
 The connected iPhone, automatic development signing, App Group provisioning,
 and on-device installation have been exercised with the current checkout.
 
 ## On-device setup
 
-1. Open Local Flow and grant microphone permission.
+1. Open vocaphone and grant microphone permission.
 2. Leave “Keep Quick Dictation ready for 10 minutes” enabled. Confirm the app
    shows Quick Dictation as Ready and iOS displays its microphone indicator.
 3. Enter the configured HTTP/HTTPS gateway URL and bearer token. This may be a
@@ -32,8 +32,8 @@ and on-device installation have been exercised with the current checkout.
    expected active model.
 5. Choose Automatic microphone routing or iPhone Microphone, connect any AirPods
    or Bluetooth headset used in normal operation, and confirm **Input in use**.
-6. Open Settings from Local Flow.
-7. Under General → Keyboard → Keyboards, add Local Flow.
+6. Open Settings from vocaphone.
+7. Under General → Keyboard → Keyboards, add vocaphone.
 8. Enable Full Access. It is used for the app's shared state and private Mac
    workflow, not to collect unrelated typing.
 
@@ -42,7 +42,7 @@ and on-device installation have been exercised with the current checkout.
 Repeat this in Notes at least five times:
 
 ```text
-Notes field → Local Flow keyboard → Start
+Notes field → vocaphone keyboard → Start
 → containing app begins recording → manually swipe back
 → keyboard shows active recording → Finish
 → transcript becomes available → Insert
@@ -51,7 +51,7 @@ Notes field → Local Flow keyboard → Start
 Then, while Quick Dictation still shows Ready, repeat:
 
 ```text
-Notes field → Local Flow keyboard → Dictate
+Notes field → vocaphone keyboard → Dictate
 → Notes remains visible → keyboard changes to Recording → Finish
 → transcript becomes available → Insert
 ```
@@ -59,8 +59,8 @@ Notes field → Local Flow keyboard → Dictate
 Verify that:
 
 - the microphone remains active while returning to Notes;
-- later Dictate taps do not foreground Local Flow during the ready window;
-- an expired or interrupted ready window falls back to opening Local Flow;
+- later Dictate taps do not foreground vocaphone during the ready window;
+- an expired or interrupted ready window falls back to opening vocaphone;
 - Finish stops the recorder;
 - the App Group state survives app switching;
 - text is inserted directly, never via clipboard;

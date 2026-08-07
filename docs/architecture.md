@@ -5,9 +5,9 @@
 ```text
 target app text field
   ↕ UITextDocumentProxy
-Local Flow keyboard extension
+vocaphone keyboard extension
   ↕ atomic App Group JSON + revision numbers
-Local Flow containing app
+vocaphone containing app
   ↕ bearer-authenticated HTTP/HTTPS through LAN, VPN, or reverse proxy
 FastAPI gateway on macOS or Linux (native or multi-architecture container)
   → bounded temporary audio → FFmpeg mono 16 kHz WAV
@@ -25,7 +25,7 @@ absolute paths are never written to ordinary logs.
 1. The keyboard creates a UUID session and atomically writes `launchingApp`.
 2. If a nonexpired Quick Dictation marker exists, the already-running app sees
    the request while its background input is active. Otherwise the keyboard
-   opens `localflow://dictate?session=<uuid>` after a short fallback delay.
+   opens `vocaphone://dictate?session=<uuid>` after a short fallback delay.
 3. The app validates the session, switches its persistent audio input from
    discarding buffers to writing a WAV recording, and writes `recording` plus
    bounded meter updates. The audio graph is not rebuilt between dictations.

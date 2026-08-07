@@ -19,7 +19,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 PAIRING_VERSION = 1
-PAIRING_SCHEME_HINT = "localflow-pair-v1"
+PAIRING_SCHEME_HINT = "vocaphone-pair-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,11 +135,11 @@ def discover_gateway_base_urls(port: int) -> list[str]:
     """Return phone-reachable gateway bases, preferred first.
 
     Loopback is omitted: a phone cannot use 127.0.0.1 on the gateway host.
-    Override with LOCALFLOW_PUBLIC_URL or LOCALFLOW_PAIRING_URL when automatic
+    Override with VOCAPHONE_PUBLIC_URL or VOCAPHONE_PAIRING_URL when automatic
     discovery is wrong (multiple NICs, reverse proxy, etc.).
     """
     overrides: list[str] = []
-    for key in ("LOCALFLOW_PUBLIC_URL", "LOCALFLOW_PAIRING_URL"):
+    for key in ("VOCAPHONE_PUBLIC_URL", "VOCAPHONE_PAIRING_URL"):
         value = os.environ.get(key, "").strip()
         if value:
             try:

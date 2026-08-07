@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible Local Flow problem without including private data.
+description: Report a reproducible vocaphone problem without including private data.
 title: "[Bug]: "
 labels:
   - bug

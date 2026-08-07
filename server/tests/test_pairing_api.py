@@ -26,7 +26,7 @@ async def test_pairing_payload_and_qr(
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://192.168.1.75:8765")
     response = await client.get("/v1/admin/pairing", headers=authorization)
     assert response.status_code == 200
     body = response.json()
@@ -61,7 +61,7 @@ async def test_pairing_defaults_to_bootstrap_token_dropdown(
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://192.168.1.75:8765")
     partial = await client.get("/ui/partials/pairing", headers=authorization)
     assert partial.status_code == 200
     assert '<option value="bootstrap" selected>Bootstrap token</option>' in partial.text
@@ -74,7 +74,7 @@ async def test_pairing_can_select_a_device_token_for_the_qr(
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://192.168.1.75:8765")
     created = await client.post(
         "/v1/admin/tokens", headers=authorization, json={"label": "Pixel 6a"}
     )
@@ -107,7 +107,7 @@ async def test_pairing_falls_back_to_bootstrap_for_revoked_or_unknown_token(
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://192.168.1.75:8765")
     created = await client.post(
         "/v1/admin/tokens", headers=authorization, json={"label": "Old phone"}
     )
@@ -142,7 +142,7 @@ async def test_pairing_offers_to_rotate_a_stale_device_token(
     It should still appear in the dropdown (marked for rotation) instead of
     silently vanishing, and rotating it should make it selectable again.
     """
-    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://192.168.1.75:8765")
     auth = {"Authorization": f"Bearer {TOKEN}"}
 
     first_app = create_app(settings, engine=fake_engine, normalizer=FakeNormalizer())
@@ -186,7 +186,7 @@ async def test_creating_a_pairing_token_shows_its_own_qr(
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://192.168.1.75:8765")
     response = await client.post(
         "/ui/partials/pairing/tokens",
         headers=authorization,
@@ -245,7 +245,7 @@ async def test_pairing_accepts_bare_tailscale_address(
     authorization: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://192.168.1.75:8765")
+    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://192.168.1.75:8765")
 
     partial = await client.get(
         "/ui/partials/pairing",

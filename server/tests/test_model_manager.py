@@ -64,7 +64,7 @@ MOONSHINE_SPANISH = CatalogModel(
     languages="Spanish only",
     quality="Fast",
     minimum_ram_gb=2,
-    marker_file=".localflow-model.json",
+    marker_file=".vocaphone-model.json",
     language_code="es",
     model_arch=1,
 )
@@ -78,7 +78,7 @@ SHERPA_TEST = CatalogModel(
     languages="English only",
     quality="Fast",
     minimum_ram_gb=2,
-    marker_file=".localflow-model.json",
+    marker_file=".vocaphone-model.json",
     archive_root="published-model",
     required_files=("model.int8.onnx", "tokens.txt"),
     model_type="sense_voice",
@@ -401,7 +401,7 @@ async def test_moonshine_download_uses_catalog_language_and_architecture(
     assert requested == {"language": "es", "model_arch": 1}
     installed = manager.installed_path("moonshine:es")
     assert installed is not None
-    metadata = (installed / ".localflow-model.json").read_text(encoding="utf-8")
+    metadata = (installed / ".vocaphone-model.json").read_text(encoding="utf-8")
     assert '"model_id": "moonshine:es"' in metadata
     assert '"language": "es"' in metadata
 
@@ -424,7 +424,7 @@ async def test_archive_download_extracts_validated_model(tmp_path: Path) -> None
     installed = manager.installed_path(catalog_model.id)
     assert installed is not None
     assert (installed / "model.int8.onnx").read_bytes() == b"onnx"
-    metadata = (installed / ".localflow-model.json").read_text(encoding="utf-8")
+    metadata = (installed / ".vocaphone-model.json").read_text(encoding="utf-8")
     assert '"model_type": "sense_voice"' in metadata
     assert '"language_codes": [' in metadata
     assert not (manager.models_dir / "sherpa-onnx" / "test-int8.download").exists()
@@ -471,7 +471,7 @@ async def test_sherpa_huggingface_download_fetches_only_required_files(
     assert installed is not None
     assert (installed / "model.int8.onnx").read_bytes() == b"onnx-bytes"
     assert not (installed / "README.md").exists()
-    metadata = (installed / ".localflow-model.json").read_text(encoding="utf-8")
+    metadata = (installed / ".vocaphone-model.json").read_text(encoding="utf-8")
     assert '"model_type": "nemo_ctc"' in metadata
     assert not (manager.models_dir / "sherpa-onnx" / "gigaam-test.partial").exists()
 

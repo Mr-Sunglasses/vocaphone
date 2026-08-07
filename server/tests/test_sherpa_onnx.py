@@ -35,7 +35,7 @@ def _catalog(
         languages="English only",
         quality="Fast",
         minimum_ram_gb=1,
-        marker_file=".localflow-model.json",
+        marker_file=".vocaphone-model.json",
         required_files=files,
         model_type=model_type,
         language_codes=("en",),
@@ -45,7 +45,7 @@ def _catalog(
 def _model_root(tmp_path: Path, model: CatalogModel) -> Path:
     root = tmp_path / model.key
     root.mkdir()
-    (root / ".localflow-model.json").write_text("{}")
+    (root / ".vocaphone-model.json").write_text("{}")
     for filename in model.required_files:
         # Some families (Qwen3-ASR) list files inside a nested tokenizer directory.
         (root / filename).parent.mkdir(parents=True, exist_ok=True)

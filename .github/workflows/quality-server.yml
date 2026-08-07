@@ -61,4 +61,4 @@ jobs:
         run: docker compose config --quiet
         working-directory: server
         env:
-          LOCALFLOW_TOKEN: test-token-with-at-least-thirty-two-characters
+          VOCAPHONE_TOKEN: test-token-with-at-least-thirty-two-characters

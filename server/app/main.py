@@ -104,7 +104,7 @@ def create_app(
             await asyncio.to_thread(close_engine, engine_provider.current())
 
     app = FastAPI(
-        title="Local Flow Gateway",
+        title="vocaphone gateway",
         version=VERSION,
         docs_url=None,
         redoc_url=None,
@@ -206,7 +206,7 @@ def select_engine(settings: Settings) -> TranscriptionEngine:
         "faster-whisper",
         "moonshine",
     }:
-        raise RuntimeError("LOCALFLOW_ENGINE is not a supported engine.")
+        raise RuntimeError("VOCAPHONE_ENGINE is not a supported engine.")
     manager = ModelManager(settings.resolved_models_dir())
     if settings.engine == "auto":
         from app.models.vocamac import VocaMacEngine

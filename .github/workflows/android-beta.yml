@@ -1,7 +1,7 @@
 name: Android beta APK
 
 # Pushing a tag like v0.1.0-beta.1 builds the release APK signed with the
-# Local Flow keystore and publishes it both as a workflow artifact and as a
+# vocaphone keystore and publishes it both as a workflow artifact and as a
 # prerelease on GitHub Releases. A release-signed APK installs cleanly on any
 # device running Android 13 (API 33) or newer without Play Protect flagging the
 # well-known debug key.
@@ -39,7 +39,7 @@ jobs:
       - name: Build signed release APK
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_FILE: ${{ runner.temp }}/local-flow-release.keystore
+          KEYSTORE_FILE: ${{ runner.temp }}/vocaphone-release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -53,8 +53,8 @@ jobs:
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: local-flow-apk
-          path: android/app/build/outputs/apk/release/local-flow-release.apk
+          name: vocaphone-apk
+          path: android/app/build/outputs/apk/release/vocaphone-release.apk
           if-no-files-found: error
           # The release below is the durable copy. This one only covers the
           # window before it is published, so it does not need 90 days of
@@ -66,7 +66,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cp android/app/build/outputs/apk/release/local-flow-release.apk local-flow.apk
+          cp android/app/build/outputs/apk/release/vocaphone-release.apk vocaphone.apk
 
           # --generate-notes lists the pull requests merged since the previous
           # beta. It will choose that starting point on its own, but naming the
@@ -82,10 +82,10 @@ jobs:
           # --notes is prepended to the generated list, so the install
           # instructions stay at the top where a beta tester looks first.
           gh release create "$GITHUB_REF_NAME" \
-            local-flow.apk \
+            vocaphone.apk \
             --repo "$GITHUB_REPOSITORY" \
-            --title "Local Flow Android $GITHUB_REF_NAME" \
+            --title "vocaphone Android $GITHUB_REF_NAME" \
             --prerelease \
             --generate-notes \
             "${notes_range[@]}" \
-            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install local-flow.apk\` or open the APK on the device."
+            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device."

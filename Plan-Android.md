@@ -1,15 +1,15 @@
-# Local Flow Android App Plan
+# vocaphone Android App Plan
 
 ## Summary
 
-Build a native Android 13+ app with full Local Flow prototype parity,
+Build a native Android 13+ app with full vocaphone prototype parity,
 distributed initially as a private APK and tested first on Google Pixel.
 
 Unlike iOS, the recommended Android experience is not a replacement keyboard.
 [Wispr Flow's documented Android design](https://wisprflow.ai/android) keeps
 Gboard or the user's existing keyboard and displays a floating dictation bubble
 over eligible text fields. It uses overlay and Accessibility permissions to
-insert text without keyboard switching or repeated app handoffs. Local Flow
+insert text without keyboard switching or repeated app handoffs. vocaphone
 will follow this product pattern while continuing to use the existing
 self-hosted gateway.
 
@@ -39,7 +39,7 @@ declaration and prominent disclosure for non-accessibility tools using
 - Add an `android/` Gradle project using Kotlin, Compose, Coroutines, OkHttp,
   DataStore, Room, and WorkManager.
 - Use `minSdk 33`, `targetSdk 36`, and a placeholder application ID of
-  `com.example.localflow.android`.
+  `com.vocahq.vocaphone`.
 - Pin dependencies through a Gradle version catalog and build with the Gradle
   wrapper and an Android-supported LTS JDK.
 - Keep Android source independent from Swift code while mirroring the existing
@@ -222,7 +222,7 @@ For the focused accessibility node:
   produce actionable repair UI.
 - The active engine and current microphone route are visible.
 - No audio, transcript, token, or surrounding field text appears in logs.
-- The full path is demonstrated against the real Local Flow gateway on a
+- The full path is demonstrated against the real vocaphone gateway on a
   physical Pixel before the Android milestone is considered complete.
 
 ## Assumptions and Defaults

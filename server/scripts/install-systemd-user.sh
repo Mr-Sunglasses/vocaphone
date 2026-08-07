@@ -1,13 +1,13 @@
 #!/bin/sh
 # Install a systemd --user unit that keeps the native Linux gateway running.
-# Requires: uv sync already done in server/ (creates .venv/bin/localflow-server).
+# Requires: uv sync already done in server/ (creates .venv/bin/vocaphone-server).
 set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 repository=$(CDPATH= cd -- "$script_dir/../.." && pwd)
-unit_name="com.example.localflow.gateway.service"
+unit_name="com.vocahq.vocaphone.gateway.service"
 template="$script_dir/$unit_name"
-program="$repository/server/.venv/bin/localflow-server"
+program="$repository/server/.venv/bin/vocaphone-server"
 unit_dir="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 destination="$unit_dir/$unit_name"
 
@@ -24,7 +24,7 @@ fi
 
 mkdir -p "$unit_dir"
 escaped_repository=$(printf '%s' "$repository" | sed 's/[\/&]/\\&/g')
-temporary=$(mktemp "${TMPDIR:-/tmp}/localflow-systemd.XXXXXX")
+temporary=$(mktemp "${TMPDIR:-/tmp}/vocaphone-systemd.XXXXXX")
 trap 'rm -f "$temporary"' EXIT
 sed -e "s/__REPOSITORY__/$escaped_repository/g" "$template" > "$temporary"
 mv "$temporary" "$destination"

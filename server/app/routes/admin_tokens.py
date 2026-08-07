@@ -46,7 +46,7 @@ async def revoke_admin_token(
         raise APIProblem(
             409,
             "bootstrap_token_not_revocable",
-            "Rotate LOCALFLOW_TOKEN or its token file instead of revoking it here.",
+            "Rotate VOCAPHONE_TOKEN or its token file instead of revoking it here.",
         )
     revoked = ctx.token_store.revoke(token_id)
     if not revoked:
@@ -62,7 +62,7 @@ async def rotate_admin_token(
         raise APIProblem(
             409,
             "bootstrap_token_not_rotatable",
-            "Rotate LOCALFLOW_TOKEN or its token file instead of rotating it here.",
+            "Rotate VOCAPHONE_TOKEN or its token file instead of rotating it here.",
         )
     rotated = ctx.token_store.rotate(token_id)
     if rotated is None:
@@ -95,7 +95,7 @@ async def ui_revoke_token(
         raise APIProblem(
             409,
             "bootstrap_token_not_revocable",
-            "Rotate LOCALFLOW_TOKEN or its token file instead of revoking it here.",
+            "Rotate VOCAPHONE_TOKEN or its token file instead of revoking it here.",
         )
     ctx.token_store.revoke(token_id)
     return HTMLResponse(tokens_fragment_str(ctx))
@@ -109,7 +109,7 @@ async def ui_rotate_token(
         raise APIProblem(
             409,
             "bootstrap_token_not_rotatable",
-            "Rotate LOCALFLOW_TOKEN or its token file instead of rotating it here.",
+            "Rotate VOCAPHONE_TOKEN or its token file instead of rotating it here.",
         )
     rotated = ctx.token_store.rotate(token_id)
     if rotated is None:

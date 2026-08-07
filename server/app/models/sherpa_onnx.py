@@ -18,7 +18,7 @@ from app.errors import (
 )
 from app.models.base import EngineHealth, EngineTranscription, TranscriptionOptions
 
-MODEL_METADATA = ".localflow-model.json"
+MODEL_METADATA = ".vocaphone-model.json"
 STREAMING_MODEL_TYPE = "streaming_zipformer"
 
 

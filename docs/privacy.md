@@ -18,7 +18,7 @@ is saved for transcription. The user can turn Quick Dictation off in the app.
 The gateway host stores randomized audio names under its private data directory.
 On success, original and normalized audio are deleted by default. Failed and
 abandoned sessions remain for the retry window (24 hours by default), after
-which `localflow-cleanup` removes them. SQLite stores lifecycle metadata and the
+which `vocaphone-cleanup` removes them. SQLite stores lifecycle metadata and the
 result needed for idempotent retry.
 
 ## Security controls
@@ -42,7 +42,7 @@ result needed for idempotent retry.
   environment variable; `/data` is the only persistent application volume
 
 The Compose source token is normally stored in the host-only `server/.env` file
-before Docker mounts it at `/run/secrets/localflow_token`. Keep that file at mode
+before Docker mounts it at `/run/secrets/vocaphone_token`. Keep that file at mode
 `600`, exclude it from backups shared with other people, and never commit it.
 
 Streaming (Moonshine's streaming tiers, or sherpa-onnx's streaming Zipformer
@@ -54,7 +54,7 @@ the gateway or written to ordinary logs.
 
 On Apple silicon, the managed WhisperKit service binds to a random
 `127.0.0.1` port and is never published to the LAN or tailnet. Only the
-authenticated Local Flow gateway is externally reachable; the sidecar receives
+authenticated vocaphone gateway is externally reachable; the sidecar receives
 the already-local normalized WAV and does not add a cloud hop.
 
 ## Network transport choices
@@ -80,7 +80,7 @@ third-party keyboard is available in a field.
 
 ## Per-device tokens
 
-`LOCALFLOW_TOKEN` (or its token file) remains a permanent bootstrap credential
+`VOCAPHONE_TOKEN` (or its token file) remains a permanent bootstrap credential
 that always authenticates and cannot be revoked through the API — whoever
 controls that file or environment variable can already read or rotate it
 directly. The WebUI Settings tab and the Overview pairing card can both create
@@ -106,7 +106,7 @@ bootstrap token or any other paired device.
 
 ## Diagnostics export
 
-The authenticated WebUI Settings tab and `uv run localflow-diagnostics` can export a
+The authenticated WebUI Settings tab and `uv run vocaphone-diagnostics` can export a
 redacted snapshot for a bug report: version, engine/model status, hardware and
 dependency detection, setup checklist, in-memory operational counters, and
 persistent configuration. Filesystem paths under the operator's home directory are

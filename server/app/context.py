@@ -17,7 +17,7 @@ from app.storage import SessionRepository
 from app.tokens import TokenStore
 
 VERSION = "0.2.0"
-TOKEN_FILE_HINT = "~/.config/localflow/token"
+TOKEN_FILE_HINT = "~/.config/vocaphone/token"
 BOOTSTRAP_TOKEN_ID = "bootstrap"
 
 

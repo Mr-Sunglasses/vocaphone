@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Local Flow talks only to a gateway the user runs, which is normally a LAN,
+  vocaphone talks only to a gateway the user runs, which is normally a LAN,
   mDNS or Tailscale host with no certificate. Those addresses cannot be
   enumerated here — a home server can be on any RFC 1918 address — so cleartext
   is permitted at the platform level and refused in the app instead:

@@ -29,7 +29,7 @@ from app.system import engine_requirement, engine_runs_on
                 languages="English only",
                 quality="Fast",
                 minimum_ram_gb=1,
-                marker_file=".localflow-model.json",
+                marker_file=".vocaphone-model.json",
                 required_files=("model.int8.onnx", "tokens.txt"),
                 model_type="sense_voice",
             ),

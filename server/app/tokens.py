@@ -1,6 +1,6 @@
 """Named, individually revocable bearer tokens for additional paired devices.
 
-`Settings.token` (from `LOCALFLOW_TOKEN` / the token file) remains a permanent
+`Settings.token` (from `VOCAPHONE_TOKEN` / the token file) remains a permanent
 bootstrap credential managed outside this store — whoever controls that file
 or environment variable can always read/rotate it directly, so trying to
 revoke it through the API would be theatre. Everything issued through

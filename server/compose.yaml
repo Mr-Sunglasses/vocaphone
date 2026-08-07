@@ -1,27 +1,27 @@
-name: localflow
+name: vocaphone
 
 services:
   gateway:
-    image: ${LOCALFLOW_IMAGE:-localflow-gateway:local}
+    image: ${VOCAPHONE_IMAGE:-vocaphone-gateway:local}
     build:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     init: true
-    network_mode: ${LOCALFLOW_NETWORK_MODE:-bridge}
+    network_mode: ${VOCAPHONE_NETWORK_MODE:-bridge}
     ports:
-      - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
+      - "${VOCAPHONE_PUBLISH_HOST:-127.0.0.1}:${VOCAPHONE_PUBLISH_PORT:-8765}:8765"
     environment:
-      LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
-      LOCALFLOW_DEBUG: ${LOCALFLOW_DEBUG:-false}
+      VOCAPHONE_TOKEN_FILE: /run/secrets/vocaphone_token
+      VOCAPHONE_DEBUG: ${VOCAPHONE_DEBUG:-false}
     secrets:
-      - localflow_token
+      - vocaphone_token
     volumes:
-      - localflow-data:/data
+      - vocaphone-data:/data
 
   gateway-native:
     profiles: ["native"]
-    image: localflow-gateway:native
+    image: vocaphone-gateway:native
     build:
       context: .
       dockerfile: Dockerfile
@@ -29,56 +29,56 @@ services:
         GGML_NATIVE: "ON"
     restart: unless-stopped
     init: true
-    network_mode: ${LOCALFLOW_NETWORK_MODE:-bridge}
+    network_mode: ${VOCAPHONE_NETWORK_MODE:-bridge}
     ports:
-      - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
+      - "${VOCAPHONE_PUBLISH_HOST:-127.0.0.1}:${VOCAPHONE_PUBLISH_PORT:-8765}:8765"
     environment:
-      LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
-      LOCALFLOW_DEBUG: ${LOCALFLOW_DEBUG:-false}
-    secrets: [localflow_token]
-    volumes: [localflow-data:/data]
+      VOCAPHONE_TOKEN_FILE: /run/secrets/vocaphone_token
+      VOCAPHONE_DEBUG: ${VOCAPHONE_DEBUG:-false}
+    secrets: [vocaphone_token]
+    volumes: [vocaphone-data:/data]
 
   gateway-cuda:
     profiles: ["cuda"]
-    image: localflow-gateway:cuda
+    image: vocaphone-gateway:cuda
     build:
       context: .
       dockerfile: Dockerfile.cuda
     restart: unless-stopped
     init: true
-    network_mode: ${LOCALFLOW_NETWORK_MODE:-bridge}
+    network_mode: ${VOCAPHONE_NETWORK_MODE:-bridge}
     ports:
-      - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
+      - "${VOCAPHONE_PUBLISH_HOST:-127.0.0.1}:${VOCAPHONE_PUBLISH_PORT:-8765}:8765"
     environment:
-      LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
-      LOCALFLOW_DEBUG: ${LOCALFLOW_DEBUG:-false}
+      VOCAPHONE_TOKEN_FILE: /run/secrets/vocaphone_token
+      VOCAPHONE_DEBUG: ${VOCAPHONE_DEBUG:-false}
       NVIDIA_VISIBLE_DEVICES: all
     gpus: all
-    secrets: [localflow_token]
-    volumes: [localflow-data:/data]
+    secrets: [vocaphone_token]
+    volumes: [vocaphone-data:/data]
 
   gateway-vulkan:
     profiles: ["vulkan"]
-    image: localflow-gateway:vulkan
+    image: vocaphone-gateway:vulkan
     build:
       context: .
       dockerfile: Dockerfile.vulkan
     restart: unless-stopped
     init: true
-    network_mode: ${LOCALFLOW_NETWORK_MODE:-bridge}
+    network_mode: ${VOCAPHONE_NETWORK_MODE:-bridge}
     ports:
-      - "${LOCALFLOW_PUBLISH_HOST:-127.0.0.1}:${LOCALFLOW_PUBLISH_PORT:-8765}:8765"
+      - "${VOCAPHONE_PUBLISH_HOST:-127.0.0.1}:${VOCAPHONE_PUBLISH_PORT:-8765}:8765"
     environment:
-      LOCALFLOW_TOKEN_FILE: /run/secrets/localflow_token
-      LOCALFLOW_DEBUG: ${LOCALFLOW_DEBUG:-false}
+      VOCAPHONE_TOKEN_FILE: /run/secrets/vocaphone_token
+      VOCAPHONE_DEBUG: ${VOCAPHONE_DEBUG:-false}
     devices:
       - /dev/dri:/dev/dri
-    secrets: [localflow_token]
-    volumes: [localflow-data:/data]
+    secrets: [vocaphone_token]
+    volumes: [vocaphone-data:/data]
 
 secrets:
-  localflow_token:
-    environment: LOCALFLOW_TOKEN
+  vocaphone_token:
+    environment: VOCAPHONE_TOKEN
 
 volumes:
-  localflow-data:
+  vocaphone-data:

@@ -37,24 +37,24 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --extra engines --no-install-project
 COPY app ./app
 RUN uv sync --frozen --no-dev --extra engines \
-    && groupadd --gid 10001 localflow \
-    && useradd --uid 10001 --gid localflow --no-create-home \
-      --home-dir /app --shell /usr/sbin/nologin localflow \
+    && groupadd --gid 10001 vocaphone \
+    && useradd --uid 10001 --gid vocaphone --no-create-home \
+      --home-dir /app --shell /usr/sbin/nologin vocaphone \
     && mkdir --parents /data \
-    && chown --recursive localflow:localflow /data /app
+    && chown --recursive vocaphone:vocaphone /data /app
 ENV PATH="/app/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
-    LOCALFLOW_BIND_HOST=0.0.0.0 \
-    LOCALFLOW_PORT=8765 \
-    LOCALFLOW_DATA_DIR=/data \
-    LOCALFLOW_MODELS_DIR=/data/models \
-    LOCALFLOW_CONFIG_FILE=/data/config/config.json \
-    LOCALFLOW_TOKEN_FILE=/run/secrets/localflow_token \
-    LOCALFLOW_WHISPER_BINARY=/usr/local/bin/whisper-cli \
-    LOCALFLOW_ENGINE=auto
-USER localflow
+    VOCAPHONE_BIND_HOST=0.0.0.0 \
+    VOCAPHONE_PORT=8765 \
+    VOCAPHONE_DATA_DIR=/data \
+    VOCAPHONE_MODELS_DIR=/data/models \
+    VOCAPHONE_CONFIG_FILE=/data/config/config.json \
+    VOCAPHONE_TOKEN_FILE=/run/secrets/vocaphone_token \
+    VOCAPHONE_WHISPER_BINARY=/usr/local/bin/whisper-cli \
+    VOCAPHONE_ENGINE=auto
+USER vocaphone
 EXPOSE 8765
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health/live', timeout=3)"]
-ENTRYPOINT ["localflow-server"]
+ENTRYPOINT ["vocaphone-server"]

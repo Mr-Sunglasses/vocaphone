@@ -1,6 +1,6 @@
 # Gateway deployment
 
-Local Flow uses the same HTTP API whether the gateway runs directly on macOS,
+vocaphone uses the same HTTP API whether the gateway runs directly on macOS,
 directly on Linux, or inside its Linux container. The meaningful differences are
 the available speech engines, acceleration, isolation, and operational
 portability.
@@ -14,7 +14,7 @@ portability.
 | Acceleration | Apple-native MLX and WhisperKit/Core ML paths | Host CPU (Python wheels); CUDA via Docker profiles | INT8 ONNX/OpenBLAS CPU; native CPU, CUDA, or Vulkan profiles |
 | Performance | Recommended on Mac; no Linux VM | No container overhead on Linux | Slightly more isolation cost; strong for CUDA images |
 | Portability | macOS LaunchAgent | systemd user unit | Reproducible across supported Linux architectures |
-| Persistence | Files below `~/.local/share/localflow` | Same as native macOS | Named volume mounted at `/data` |
+| Persistence | Files below `~/.local/share/vocaphone` | Same as native macOS | Named volume mounted at `/data` |
 | Updates | Pull code, `uv sync`, restart LaunchAgent | Pull code, `uv sync`, restart systemd unit | Pull/build image and recreate the service |
 
 ### Recommendation
@@ -48,7 +48,7 @@ not only end-to-end time.
 brew install ffmpeg whisperkit-cli whisper-cpp
 cd server
 uv sync --all-groups --extra engines --extra apple
-uv run localflow-server
+uv run vocaphone-server
 ```
 
 The default listener is `0.0.0.0:8765`, while the local WebUI is
@@ -56,24 +56,24 @@ The default listener is `0.0.0.0:8765`, while the local WebUI is
 override the listener:
 
 ```sh
-LOCALFLOW_BIND_HOST=127.0.0.1 uv run localflow-server
+VOCAPHONE_BIND_HOST=127.0.0.1 uv run vocaphone-server
 ```
 
 The first run creates a mode-600 token file at
-`~/.config/localflow/token`. Models default to
-`~/.local/share/localflow/models`, the session database lives in the parent
+`~/.config/vocaphone/token`. Models default to
+`~/.local/share/vocaphone/models`, the session database lives in the parent
 data directory, and WebUI choices are stored in
-`~/.config/localflow/config.json`.
+`~/.config/vocaphone/config.json`.
 
 ### Run at login
 
 ```sh
 cd server
 ./scripts/install-launch-agent.sh
-launchctl print "gui/$(id -u)/com.example.localflow.gateway"
+launchctl print "gui/$(id -u)/com.vocahq.vocaphone.gateway"
 ```
 
-Logs are written to `~/Library/Logs/LocalFlow/gateway.log` and
+Logs are written to `~/Library/Logs/Vocaphone/gateway.log` and
 `gateway-error.log`. Re-run the installer after changing the checkout location
 or gateway executable.
 
@@ -87,23 +87,23 @@ sudo apt install ffmpeg
 # https://docs.astral.sh/uv/ — curl -LsSf https://astral.sh/uv/install.sh | sh
 cd server
 uv sync --all-groups --extra engines
-uv run localflow-server
+uv run vocaphone-server
 ```
 
 Omit `--extra apple` on Linux. The default listener is `0.0.0.0:8765`. When
 Tailscale Serve is the only desired ingress, override the listener:
 
 ```sh
-LOCALFLOW_BIND_HOST=127.0.0.1 uv run localflow-server
+VOCAPHONE_BIND_HOST=127.0.0.1 uv run vocaphone-server
 ```
 
 Token, models, and config paths match the macOS native layout:
 
-- token: `~/.config/localflow/token`
-- models: `~/.local/share/localflow/models`
-- config: `~/.config/localflow/config.json`
+- token: `~/.config/vocaphone/token`
+- models: `~/.local/share/vocaphone/models`
+- config: `~/.config/vocaphone/config.json`
 
-Phone clients need the bearer token (`cat ~/.config/localflow/token`) and a
+Phone clients need the bearer token (`cat ~/.config/vocaphone/token`) and a
 reachable URL such as `http://192.168.1.20:8765` on a trusted LAN.
 
 ### Run as a systemd user service
@@ -111,8 +111,8 @@ reachable URL such as `http://192.168.1.20:8765` on a trusted LAN.
 ```sh
 cd server
 ./scripts/install-systemd-user.sh
-systemctl --user status com.example.localflow.gateway.service
-journalctl --user -u com.example.localflow.gateway.service -f
+systemctl --user status com.vocahq.vocaphone.gateway.service
+journalctl --user -u com.vocahq.vocaphone.gateway.service -f
 ```
 
 To keep the unit after logout:
@@ -136,13 +136,13 @@ The Compose project lives entirely in `server/`:
 ```sh
 cd server
 umask 077
-printf 'LOCALFLOW_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
-printf 'LOCALFLOW_PUBLISH_HOST=127.0.0.1\n' >> .env
-printf 'LOCALFLOW_PUBLISH_PORT=8765\n' >> .env
+printf 'VOCAPHONE_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
+printf 'VOCAPHONE_PUBLISH_HOST=127.0.0.1\n' >> .env
+printf 'VOCAPHONE_PUBLISH_PORT=8765\n' >> .env
 docker compose up --detach --build
 ```
 
-`LOCALFLOW_PUBLISH_HOST=127.0.0.1` is the safe default for Tailscale Serve. Set
+`VOCAPHONE_PUBLISH_HOST=127.0.0.1` is the safe default for Tailscale Serve. Set
 it to `0.0.0.0` only when direct LAN access is intentional and protected by the
 host firewall. Never forward the port from the public internet.
 
@@ -181,11 +181,11 @@ model, stored configuration, and session record is intentional.
 
 ### Persistent data and backup
 
-Compose mounts the `localflow_localflow-data` named volume at `/data`. Inspect it
+Compose mounts the `vocaphone_vocaphone-data` named volume at `/data`. Inspect it
 with:
 
 ```sh
-docker volume inspect localflow_localflow-data
+docker volume inspect vocaphone_vocaphone-data
 ```
 
 Stop the gateway before taking a filesystem-level backup so the SQLite database
@@ -227,11 +227,11 @@ Build one tag for both supported Linux architectures from the repository root:
 ```sh
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag ghcr.io/your-user/localflow-gateway:latest \
+  --tag ghcr.io/your-user/vocaphone-gateway:latest \
   --push server
 ```
 
-Set `LOCALFLOW_IMAGE` in `server/.env` to use that tag. Compose still includes a
+Set `VOCAPHONE_IMAGE` in `server/.env` to use that tag. Compose still includes a
 local build definition; use `docker compose pull` followed by
 `docker compose up --detach --no-build` when you explicitly want the registry
 image.
@@ -247,8 +247,8 @@ The native gateway already listens on all interfaces by default. For Docker,
 set the Compose publication in `server/.env`:
 
 ```dotenv
-LOCALFLOW_PUBLISH_HOST=0.0.0.0
-LOCALFLOW_PUBLISH_PORT=8765
+VOCAPHONE_PUBLISH_HOST=0.0.0.0
+VOCAPHONE_PUBLISH_PORT=8765
 ```
 
 Protect port 8765 with the host firewall, ensure the hostname resolves from the
@@ -265,12 +265,12 @@ a `192.168.x.x` address even after the change above. On Linux Docker Engine
 instead so discovery sees the real LAN IP directly:
 
 ```dotenv
-LOCALFLOW_NETWORK_MODE=host
+VOCAPHONE_NETWORK_MODE=host
 ```
 
-`LOCALFLOW_PUBLISH_HOST`/`LOCALFLOW_PUBLISH_PORT` are ignored in this mode —
+`VOCAPHONE_PUBLISH_HOST`/`VOCAPHONE_PUBLISH_PORT` are ignored in this mode —
 Compose discards the `ports:` mapping and the container binds straight onto the
-host per `LOCALFLOW_BIND_HOST` (`0.0.0.0` by default) and `LOCALFLOW_PORT`
+host per `VOCAPHONE_BIND_HOST` (`0.0.0.0` by default) and `VOCAPHONE_PORT`
 (`8765` by default). That means the host firewall is now the only thing
 standing between port 8765 and every interface on the box, including any
 public one — lock it down before enabling this.
@@ -285,7 +285,7 @@ tailscale serve status
 ```
 
 Enter the reported private HTTPS URL in the iPhone app. Tailscale identity is an
-additional network boundary; the Local Flow bearer token remains required. See
+additional network boundary; the vocaphone bearer token remains required. See
 [Private Tailscale connectivity](tailscale.md) for the complete setup.
 
 ### VPS or public DNS
@@ -297,3 +297,110 @@ hostname. Enter a URL such as `https://dictation.example.com/` in the app.
 Keep bearer authentication enabled at the gateway even if the reverse proxy has
 its own access control. Do not expose port 8765 directly or use unencrypted HTTP
 over the public internet.
+
+## Migrating from the Local Flow working name (v0.3.0)
+
+The v0.3.0 release replaced the **Local Flow** working name with **vocaphone**
+across all identifiers. This is a hard cutover — no compatibility aliases are
+provided. If you are upgrading from an earlier checkout, follow each step below.
+
+### Environment variables
+
+Rename every `LOCALFLOW_*` variable to `VOCAPHONE_*`:
+
+```sh
+# Before (obsolete)                # After (current)
+LOCALFLOW_TOKEN=…                   VOCAPHONE_TOKEN=…
+LOCALFLOW_BIND_HOST=127.0.0.1       VOCAPHONE_BIND_HOST=127.0.0.1
+LOCALFLOW_PUBLISH_HOST=127.0.0.1    VOCAPHONE_PUBLISH_HOST=127.0.0.1
+LOCALFLOW_PUBLISH_PORT=8765         VOCAPHONE_PUBLISH_PORT=8765
+LOCALFLOW_NETWORK_MODE=host         VOCAPHONE_NETWORK_MODE=host
+LOCALFLOW_IMAGE=…                   VOCAPHONE_IMAGE=…
+LOCALFLOW_ENGINE=…                  VOCAPHONE_ENGINE=…
+LOCALFLOW_WHISPER_BINARY=…          VOCAPHONE_WHISPER_BINARY=…
+LOCALFLOW_WHISPER_MODEL=…           VOCAPHONE_WHISPER_MODEL=…
+```
+
+Security defaults (loopback binding, mode-600 token files, per-device bearer
+authentication, success-audio deletion) are preserved unchanged.
+
+### Config and data paths
+
+Move existing data into the new locations or let the first run re-create them:
+
+| Old path | New path |
+| --- | --- |
+| `~/.config/localflow/token` | `~/.config/vocaphone/token` |
+| `~/.config/localflow/config.json` | `~/.config/vocaphone/config.json` |
+| `~/.local/share/localflow/` | `~/.local/share/vocaphone/` |
+| `~/Library/Logs/LocalFlow/` | `~/Library/Logs/Vocaphone/` |
+
+The token file and config are portable; copy them into the new location under
+the same permissions. Models can be moved or re-downloaded — the WebUI catalog
+keeps the same model URLs. If you move an existing sherpa-onnx or Moonshine
+model, rename its `.localflow-model.json` marker to `.vocaphone-model.json`;
+otherwise the gateway will treat that model as not installed.
+
+### Docker volume
+
+The Compose named volume was renamed from `localflow_localflow-data` to
+`vocaphone_vocaphone-data`. Docker named volumes cannot be renamed directly;
+copy the data into a newly created volume or let the gateway download it again:
+
+```sh
+cd server
+docker compose down
+docker volume create vocaphone_vocaphone-data
+docker run --rm \
+  -v localflow_localflow-data:/from:ro \
+  -v vocaphone_vocaphone-data:/to \
+  alpine sh -c 'cp -a /from/. /to/'
+# or omit the copy and let it download fresh:
+docker compose up --detach --build
+```
+
+### LaunchAgent / systemd units
+
+Stop and unload the old unit, then install the renamed one:
+
+**macOS:**
+```sh
+launchctl bootout "gui/$(id -u)/com.example.localflow.gateway"
+cd server && ./scripts/install-launch-agent.sh
+```
+
+**Linux:**
+```sh
+systemctl --user stop com.example.localflow.gateway.service
+systemctl --user disable com.example.localflow.gateway.service
+cd server && ./scripts/install-systemd-user.sh
+```
+
+### iOS / Android installations
+
+Due to changed bundle identifiers (`com.vocahq.vocaphone*`), App Group
+(`group.com.vocahq.vocaphone`), and application ID (`com.vocahq.vocaphone`),
+existing iOS and Android installations are not upgraded in place:
+
+- **iOS**: Delete the old app from the device. Rebuild the renamed Xcode project
+  (`ios/VocaPhone.xcodeproj`) with the new bundle IDs, re-register the App Group
+  capability, install, and pair again.
+- **iOS Apple Developer registration**: Register the new bundle identifiers and
+  App Group under your existing team in the Apple Developer portal. See
+  [decisions.md](decisions.md) for the final identifiers.
+- **Android**: Uninstall the old APK. Build the renamed
+  `com.vocahq.vocaphone` project and install the new APK. The Android Keystore
+  token ciphertext is not portable between application IDs — re-enter the token
+  and re-pair.
+
+### CLI entry points
+
+| Old command | New command |
+| --- | --- |
+| `uv run localflow-server` | `uv run vocaphone-server` |
+| `uv run localflow-status` | `uv run vocaphone-status` |
+| `uv run localflow-diagnostics` | `uv run vocaphone-diagnostics` |
+| `uv run localflow-cleanup` | `uv run vocaphone-cleanup` |
+
+The WebUI, API routes (`/v1/*`, `/health/*`), pairing protocol, and engine IDs
+are unchanged.

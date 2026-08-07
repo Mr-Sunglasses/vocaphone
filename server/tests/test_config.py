@@ -6,8 +6,8 @@ from app.config import Settings, format_host_port, local_webui_url
 
 
 def test_environment_defaults_to_all_interface_listener(monkeypatch: MonkeyPatch) -> None:
-    monkeypatch.setenv("LOCALFLOW_TOKEN", "test-" + ("x" * 48))
-    monkeypatch.delenv("LOCALFLOW_BIND_HOST", raising=False)
+    monkeypatch.setenv("VOCAPHONE_TOKEN", "test-" + ("x" * 48))
+    monkeypatch.delenv("VOCAPHONE_BIND_HOST", raising=False)
 
     settings = Settings.from_env()
 

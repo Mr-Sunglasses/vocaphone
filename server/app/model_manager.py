@@ -22,7 +22,7 @@ from app.catalog import (
 )
 
 CHUNK_SIZE = 1024 * 1024
-USER_AGENT = "localflow-gateway/0.2"
+USER_AGENT = "vocaphone-gateway/0.2"
 HF_BASE_URL = "https://huggingface.co"
 
 
@@ -276,7 +276,7 @@ class ModelManager:
                 "language_codes": list(model.language_codes),
                 "required_files": list(model.required_files),
             }
-            (partial_dir / ".localflow-model.json").write_text(
+            (partial_dir / ".vocaphone-model.json").write_text(
                 json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
             )
             if handle.cancel.is_set():
@@ -299,7 +299,7 @@ class ModelManager:
         Unlike `_run_huggingface_download` (which mirrors an entire folder for
         engines like MLX Audio and writes no marker), this fetches only the
         named files a sherpa-onnx model actually needs and writes the same
-        `.localflow-model.json` marker `_run_archive_download` does, since
+        `.vocaphone-model.json` marker `_run_archive_download` does, since
         some model families (GigaAM, Canary) ship as bare Hugging Face repos
         with no pre-packaged `.tar.bz2` release archive.
         """
@@ -328,7 +328,7 @@ class ModelManager:
                 "language_codes": list(model.language_codes),
                 "required_files": list(model.required_files),
             }
-            (partial_dir / ".localflow-model.json").write_text(
+            (partial_dir / ".vocaphone-model.json").write_text(
                 json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
             )
             if handle.cancel.is_set():
@@ -364,7 +364,7 @@ class ModelManager:
                 "model_path": str(relative_path),
                 "model_arch": int(model_arch),
             }
-            (partial_dir / ".localflow-model.json").write_text(
+            (partial_dir / ".vocaphone-model.json").write_text(
                 json.dumps(metadata, indent=2) + "\n", encoding="utf-8"
             )
             handle.state.downloaded_bytes = _directory_size(partial_dir)
@@ -534,7 +534,7 @@ def _download_moonshine_model(
         )
     except ImportError as error:
         raise RuntimeError(
-            "Moonshine support is not installed. Install localflow-gateway[engines]."
+            "Moonshine support is not installed. Install vocaphone-gateway[engines]."
         ) from error
     architecture = ModelArch(model_arch) if model_arch is not None else None
     return cast(

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/localflow"
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/vocaphone"
 token_file="$config_dir/token"
 
 mkdir -p "$config_dir"

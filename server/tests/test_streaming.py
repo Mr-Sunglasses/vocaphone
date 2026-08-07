@@ -19,7 +19,7 @@ TOKEN = "stream-" + ("x" * 48)
 def moonshine_engine(tmp_path: Path, model_arch: int = 5) -> MoonshineEngine:
     model_root = tmp_path / f"moonshine-{model_arch}"
     model_root.mkdir()
-    (model_root / ".localflow-model.json").write_text(
+    (model_root / ".vocaphone-model.json").write_text(
         '{"language":"en","model_path":"model","model_arch":' + str(model_arch) + "}",
         encoding="utf-8",
     )

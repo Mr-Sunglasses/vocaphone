@@ -264,7 +264,7 @@ def _server_transcription(
 ) -> str:
     if server.process.poll() is not None:
         raise _PersistentServerUnavailable("WhisperKit's local server stopped.")
-    boundary = f"localflow-{secrets.token_hex(12)}"
+    boundary = f"vocaphone-{secrets.token_hex(12)}"
     fields = [("model", model_path.name)]
     if language != "auto":
         fields.append(("language", language))

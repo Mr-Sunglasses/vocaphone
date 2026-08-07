@@ -14,7 +14,7 @@ def overview_fragment(status: AdminStatusResponse, pairing_html: str = "") -> st
     engine_hint = (
         "brew install whisper-cpp or whisperkit-cli"
         if is_mac
-        else "Install localflow-gateway[engines] (sherpa-onnx / faster-whisper) or use Docker"
+        else "Install vocaphone-gateway[engines] (sherpa-onnx / faster-whisper) or use Docker"
     )
     checks = [
         ("Gateway token configured", status.setup.token_configured, ""),

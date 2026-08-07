@@ -83,7 +83,7 @@ def test_qr_svg_contains_path_and_is_svg() -> None:
 
 
 def test_primary_gateway_base_url_prefers_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LOCALFLOW_PUBLIC_URL", "http://homelab.example:8765")
+    monkeypatch.setenv("VOCAPHONE_PUBLIC_URL", "http://homelab.example:8765")
     assert primary_gateway_base_url(8765) == "http://homelab.example:8765"
 
 

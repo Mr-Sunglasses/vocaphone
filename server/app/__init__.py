@@ -1,1 +1,1 @@
-"""Local Flow private transcription gateway."""
+"""vocaphone private transcription gateway."""
