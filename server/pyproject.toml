@@ -58,6 +58,13 @@ target-version = "py312"
 select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
 ignore = ["ASYNC240"]
 
+[tool.ruff.lint.flake8-bugbear]
+# `ctx: GatewayContext = Depends(get_context)` is the standard FastAPI DI
+# pattern for reaching GatewayContext from a route handler (see
+# app/context.py) — Depends() is a cheap, side-effect-free call, not the
+# mutable-default footgun B008 guards against.
+extend-immutable-calls = ["fastapi.Depends"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
