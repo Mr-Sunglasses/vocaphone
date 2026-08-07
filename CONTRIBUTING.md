@@ -1,11 +1,28 @@
 # Contributing
 
-Thanks for helping improve vocaphone. Changes should keep the privacy-first architecture, the documented
-network-exposure controls, and the iOS keyboard constraints intact.
+Thanks for helping improve vocaphone. Changes should keep the privacy-first
+architecture, the documented network-exposure controls, and the iOS keyboard
+constraints intact.
+
+By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+For usage questions and support routing, see [SUPPORT.md](SUPPORT.md). Report
+security issues privately via [SECURITY.md](SECURITY.md).
+
+## Ways to contribute
+
+- Report reproducible bugs with the [bug report](.github/ISSUE_TEMPLATE/bug_report.yml) template
+- Propose focused improvements with the [feature request](.github/ISSUE_TEMPLATE/feature_request.yml) template
+- Improve docs in `README.md` or `docs/`
+- Fix bugs or add tests for gateway, iOS, or Android behavior
+- Review pull requests for privacy, security, and platform-constraint regressions
+
+Look for issues labeled `good first issue` or `help wanted` when those labels
+are available.
 
 ## Development setup
 
 - Install Xcode, XcodeGen, `uv`, and FFmpeg.
+- For Android work, install a recent Android Studio / SDK and JDK 17+.
 - Run `xcodegen generate --spec project.yml` from `ios/` after changing
   `ios/project.yml`.
 - Never commit microphone recordings, bearer tokens, signing material, tailnet
@@ -54,6 +71,9 @@ Keyboard, microphone, background-audio, and insertion changes must also be
 verified on a physical iPhone. Describe the tested app, iOS version, and exact
 interaction sequence in the pull request.
 
+For Android changes, run the project unit tests from `android/` and note whether
+the floating bubble was exercised on a physical device.
+
 ## Pull requests
 
 - Keep changes focused and document user-visible behavior.
@@ -61,3 +81,13 @@ interaction sequence in the pull request.
 - Update README or `docs/` when setup, privacy, security, or architecture changes.
 - Do not weaken loopback gateway binding, bearer authentication, upload limits,
   retention, or explicit microphone indicators without discussing the tradeoff.
+- Use the pull request template checklist; skip checks that truly do not apply
+  and say why.
+
+## License
+
+Contributions are licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(AGPL-3.0), the same family of copyleft license used by
+[VocaMac](https://github.com/VocaHQ/vocamac) (AGPL-3.0) and
+[VocaLinux](https://github.com/VocaHQ/vocalinux) (GPL-3.0). By opening a pull
+request, you agree that your contribution may be distributed under that license.

@@ -8,7 +8,13 @@
 [![Platform: iOS + Android](https://img.shields.io/badge/platform-iOS%20%2B%20Android-lightgrey)](#how-it-works)
 [![Privacy: self-hosted](https://img.shields.io/badge/privacy-self--hosted%20%2F%20no%20cloud%20STT-success)](#privacy-and-platform-boundaries)
 [![Part of VocaHQ](https://img.shields.io/badge/family-VocaHQ-1a7f4e)](https://github.com/VocaHQ)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Contributing](https://img.shields.io/badge/guide-contributing-informational)](CONTRIBUTING.md)
+[![Support](https://img.shields.io/badge/guide-support-informational)](SUPPORT.md)
+[![Code of Conduct](https://img.shields.io/badge/contributor%20covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+[![Security policy](https://img.shields.io/badge/security-policy-red.svg)](SECURITY.md)
+[![GitHub Issues](https://img.shields.io/github/issues/VocaHQ/vocaphone)](https://github.com/VocaHQ/vocaphone/issues)
 
 Speak into your phone. Text shows up where you're typing. Transcription runs on
 hardware you control, not a cloud speech service.
@@ -38,9 +44,8 @@ subscription.
 | **Android** | Builds and passes unit tests; floating-bubble client not yet exercised end to end on a physical Pixel |
 | **Gateway** | Runs natively on macOS/Linux or via Docker Compose, with multiple local engine adapters |
 
-No open-source license has been selected yet. Until one is added, the
-repository is source-available for review but does not grant permission to copy,
-modify, or redistribute the code.
+Licensed under [AGPL-3.0](LICENSE): free to use, study, modify, and share, with
+copyleft that also covers modified versions offered as a network service.
 
 ## How it works
 
@@ -431,12 +436,24 @@ Plan-Android.md         Android implementation plan and acceptance criteria
 - The Android bubble stays hidden in password and payment fields, on system
   permission screens, and in any app the user excludes.
 
-## Contributing, security, and license
+## Contributing, support, security, and license
 
-Follow [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report
-suspected microphone, recording, token, gateway, or tailnet vulnerabilities
-through the private process in [SECURITY.md](SECURITY.md), not a public issue.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — setup, required checks, and pull request expectations
+- [SUPPORT.md](SUPPORT.md) — where to ask for help and what to include (or omit)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1
+- [SECURITY.md](SECURITY.md) — private vulnerability reporting
 
-No open-source license has been selected. Unless a license is added later, the
-repository is source-available for review but does not grant permission to copy,
-modify, or redistribute the code.
+Report suspected microphone, recording, token, gateway, or tailnet
+vulnerabilities through the private process in [SECURITY.md](SECURITY.md), not a
+public issue.
+
+### License
+
+vocaphone is licensed under the **GNU Affero General Public License v3.0**
+([AGPL-3.0](LICENSE)), matching [VocaMac](https://github.com/VocaHQ/vocamac) and
+staying in the same copyleft family as
+[VocaLinux](https://github.com/VocaHQ/vocalinux) (GPL-3.0).
+
+You may use, study, modify, and redistribute the software under AGPL-3.0. Because
+vocaphone includes a network gateway, AGPL also requires that modified versions
+offered as a network service make their corresponding source available.

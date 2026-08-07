@@ -15,6 +15,7 @@ body:
       options:
         - iOS containing app
         - Custom keyboard
+        - Android floating bubble
         - Native or Docker gateway
         - VocaMac, Handy, WhisperKit, or whisper.cpp adapter
         - Documentation or setup
