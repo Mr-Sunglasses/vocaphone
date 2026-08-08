@@ -426,9 +426,7 @@ physical-device verification.
 ios/                    Swift app, keyboard, Live Activity, shared state, tests
 android/                Kotlin app, dictation bubble, accessibility service, tests
 server/                 Git submodule → VocaHQ/vocagateway (gateway + WebUI)
-docs/                   Phone architecture, device setup, privacy, decisions
-Plan.md                 Original implementation plan and acceptance criteria
-Plan-Android.md         Android implementation plan and acceptance criteria
+docs/                   Architecture, device setup, privacy, decisions, historical plans
 ```
 
 ## Documentation
@@ -444,6 +442,8 @@ Plan-Android.md         Android implementation plan and acceptance criteria
 | [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
 | [Troubleshooting](docs/troubleshooting.md) | Keyboard, microphone, model, network, and Docker failures |
 | [Decisions](docs/decisions.md) | Current assumptions and choices still requiring confirmation |
+| [iOS plan](docs/Plan.md) | Original iOS implementation plan and acceptance criteria |
+| [Android plan](docs/Plan-Android.md) | Original Android implementation plan and acceptance criteria |
 | [Contributing](CONTRIBUTING.md) | Development workflow and required checks |
 | [Security](SECURITY.md) | Private vulnerability-reporting process |
 

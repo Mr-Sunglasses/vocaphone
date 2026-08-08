@@ -117,7 +117,7 @@ Do not silently decide these based only on developer convenience. Record the cho
 ```text
 /
 ├── README.md
-├── Plan.md
+├── docs/Plan.md
 ├── ios/
 │   ├── VocaPhone.xcodeproj
 │   ├── VocaPhoneApp/
