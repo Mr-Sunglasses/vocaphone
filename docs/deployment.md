@@ -142,6 +142,11 @@ printf 'VOCAPHONE_PUBLISH_PORT=8765\n' >> .env
 docker compose up --detach --build
 ```
 
+[`server/.env.example`](../server/.env.example) is the annotated template for
+the same file, covering the optional image tag, network mode and Swagger UI
+settings. Copy it and append a generated token rather than committing either
+file.
+
 `VOCAPHONE_PUBLISH_HOST=127.0.0.1` is the safe default for Tailscale Serve. Set
 it to `0.0.0.0` only when direct LAN access is intentional and protected by the
 host firewall. Never forward the port from the public internet.

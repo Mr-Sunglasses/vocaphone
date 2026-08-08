@@ -1,0 +1,235 @@
+# vocaphone (Android) — Gradle and adb, named.
+#
+# `just run` is the one to reach for: assemble the debug APK, install it on the
+# connected phone or running emulator, and launch it. `just ci` is what the
+# Quality (Android) workflow gates on.
+#
+# Every device recipe targets one device explicitly. With more than one
+# attached, name the one you want:
+#   ANDROID_SERIAL=emulator-5554 just run
+
+app_id := "com.vocahq.vocaphone"
+activity := app_id / ".ui.MainActivity"
+apk := "app/build/outputs/apk/debug/vocaphone-debug.apk"
+
+# List the available recipes.
+default:
+    @{{ just_executable() }} --list --unsorted
+
+# Assemble the debug APK.
+[group('build')]
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ANDROID_HOME="$({{ just_executable() }} _sdk)"
+    ./gradlew assembleDebug
+
+# Build, install and launch the app on a device or emulator.
+[group('run')]
+run: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    adb=("$({{ just_executable() }} _adb)" -s "$({{ just_executable() }} _serial)")
+    "${adb[@]}" install -r '{{ apk }}'
+    "${adb[@]}" shell am start -n '{{ activity }}'
+    echo "Launched {{ app_id }}. Console output: just logs"
+
+# Install the last built APK without rebuilding it.
+[group('run')]
+install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    adb=("$({{ just_executable() }} _adb)" -s "$({{ just_executable() }} _serial)")
+    "${adb[@]}" install -r '{{ apk }}'
+
+# Force-stop the app on the device.
+[group('run')]
+stop:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    adb=("$({{ just_executable() }} _adb)" -s "$({{ just_executable() }} _serial)")
+    "${adb[@]}" shell am force-stop {{ app_id }}
+
+# Stream the running app's logcat output.
+[group('run')]
+logs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    adb=("$({{ just_executable() }} _adb)" -s "$({{ just_executable() }} _serial)")
+    pid="$("${adb[@]}" shell pidof -s {{ app_id }} 2>/dev/null | tr -d '\r' || true)"
+    if [ -z "${pid}" ]; then
+        echo "{{ app_id }} is not running. Start it with: just run" >&2
+        exit 1
+    fi
+    "${adb[@]}" logcat --pid="${pid}"
+
+# Grant the runtime permissions the dictation bubble needs.
+[group('run')]
+permissions:
+    #!/usr/bin/env bash
+    # Saves re-doing the permission dance by hand after every fresh install.
+    # The accessibility service is not grantable this way and stays manual.
+    set -euo pipefail
+    adb=("$({{ just_executable() }} _adb)" -s "$({{ just_executable() }} _serial)")
+    for permission in RECORD_AUDIO POST_NOTIFICATIONS CAMERA; do
+        "${adb[@]}" shell pm grant {{ app_id }} "android.permission.${permission}" || true
+    done
+    # Overlay is an appop, not a runtime permission, so pm grant cannot set it.
+    "${adb[@]}" shell appops set {{ app_id }} SYSTEM_ALERT_WINDOW allow || true
+    echo "Enable the accessibility service by hand: Settings → Accessibility → vocaphone."
+
+# Run the unit tests; pass a filter, e.g. `just test '*DictationTest'`.
+[group('test')]
+test *filter:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ANDROID_HOME="$({{ just_executable() }} _sdk)"
+    filters=()
+    for pattern in {{ filter }}; do filters+=(--tests "${pattern}"); done
+    # macOS ships bash 3.2, where an empty array under `set -u` is an error.
+    ./gradlew testDebugUnitTest ${filters[@]+"${filters[@]}"}
+
+# Run Android Lint over the debug variant.
+[group('test')]
+lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ANDROID_HOME="$({{ just_executable() }} _sdk)"
+    ./gradlew lintDebug
+
+# Everything CI checks for Android: build, unit tests, lint, fresh Room schema.
+[group('test')]
+ci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ANDROID_HOME="$({{ just_executable() }} _sdk)"
+    ./gradlew assembleDebug testDebugUnitTest lintDebug
+    git diff --exit-code -- app/schemas \
+        || { echo "The checked-in Room schema is stale — commit app/schemas." >&2; exit 1; }
+
+# Deliberately not _adb: the point of this recipe is to work when nothing is
+# attached, which is exactly when _adb refuses. A comment inside a recipe body
+# would be echoed as a command, so it lives up here.
+#
+# List attached devices and emulators.
+[group('device')]
+devices:
+    @"$({{ just_executable() }} _sdk)/platform-tools/adb" devices -l
+
+# Delete Gradle build output.
+[group('build')]
+clean:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ANDROID_HOME="$({{ just_executable() }} _sdk)"
+    ./gradlew clean
+
+# Check that the toolchain this justfile needs is actually installed.
+[group('build')]
+doctor:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    ok=0
+    version=$(java -version 2>&1 | sed -n '1s/.*version "\([0-9]*\).*/\1/p')
+    if [ -n "${version}" ] && [ "${version}" -ge 17 ]; then
+        echo "ok       JDK ${version}"
+    else
+        echo "MISSING  JDK 17 or newer — brew install --cask temurin"
+        ok=1
+    fi
+    if sdk=$({{ just_executable() }} _sdk 2>/dev/null); then
+        echo "ok       Android SDK at ${sdk}"
+        if [ -x "${sdk}/platform-tools/adb" ]; then
+            echo "ok       adb"
+            adb="${sdk}/platform-tools/adb"
+            ready=$("${adb}" devices | sed -n '2,$p' | grep -c 'device$' || true)
+            other=$("${adb}" devices | sed -n '2,$p' | grep -c . || true)
+            echo "note     ${ready} ready device(s), $((other - ready)) attached but not ready"
+        else
+            echo "MISSING  platform-tools — install them from Android Studio's SDK Manager"
+            ok=1
+        fi
+    else
+        echo "MISSING  Android SDK — install Android Studio, or set ANDROID_HOME"
+        ok=1
+    fi
+    if [ "${ok}" -ne 0 ]; then
+        echo
+        echo "Install what is marked MISSING above, then run just doctor again."
+    fi
+    exit "${ok}"
+
+# Resolve the Android SDK the same way Gradle does: local.properties wins over
+# the environment, because that is the file Android Studio writes.
+[private]
+_sdk:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -f local.properties ]; then
+        dir=$(sed -n 's/^sdk\.dir=//p' local.properties | head -1)
+        if [ -n "${dir}" ] && [ -d "${dir}" ]; then
+            echo "${dir}"
+            exit 0
+        fi
+    fi
+    for candidate in "${ANDROID_HOME:-}" "${ANDROID_SDK_ROOT:-}" \
+        "${HOME}/Library/Android/sdk" "${HOME}/Android/Sdk"; do
+        if [ -n "${candidate}" ] && [ -d "${candidate}" ]; then
+            echo "${candidate}"
+            exit 0
+        fi
+    done
+    echo "No Android SDK found. Install Android Studio, then either let it write" >&2
+    echo "android/local.properties or export ANDROID_HOME=<sdk path>." >&2
+    exit 1
+
+# Resolve adb out of the SDK, so a machine without it on PATH still works.
+[private]
+_adb:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    adb="$({{ just_executable() }} _sdk)/platform-tools/adb"
+    if [ ! -x "${adb}" ]; then
+        echo "adb is missing from the SDK. Install platform-tools from Android" >&2
+        echo "Studio's SDK Manager." >&2
+        exit 1
+    fi
+    echo "${adb}"
+
+# Pick the device to act on, and say so out loud when the choice is ambiguous.
+[private]
+_serial:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    adb="$({{ just_executable() }} _adb)"
+    # Only "device" is ready. An emulator that is still booting, or one left
+    # half-dead by a previous run, reports "offline" — and adb counts it when
+    # it decides there is "more than one device/emulator", which is why every
+    # recipe passes -s instead of letting adb choose.
+    ready=$({ "${adb}" devices | sed -n '2,$p' | grep 'device$' || true; } | cut -f1)
+    count=$(printf '%s' "${ready}" | grep -c . || true)
+    if [ -n "${ANDROID_SERIAL:-}" ]; then
+        if printf '%s\n' "${ready}" | grep -qx "${ANDROID_SERIAL}"; then
+            echo "${ANDROID_SERIAL}"
+            exit 0
+        fi
+        echo "ANDROID_SERIAL=${ANDROID_SERIAL} is not a ready device. Attached:" >&2
+        "${adb}" devices -l | sed -n '2,$p' >&2
+        exit 1
+    fi
+    if [ "${count}" -eq 1 ]; then
+        printf '%s\n' "${ready}"
+        exit 0
+    fi
+    if [ "${count}" -eq 0 ]; then
+        echo "No ready device. Start an emulator, or plug in a phone with USB" >&2
+        echo "debugging enabled, then check: just devices" >&2
+        if "${adb}" devices | sed -n '2,$p' | grep -q .; then
+            echo "Something is attached but not ready yet:" >&2
+            "${adb}" devices -l | sed -n '2,$p' >&2
+        fi
+        exit 1
+    fi
+    echo "More than one ready device. Name the one you want:" >&2
+    printf '%s\n' "${ready}" | sed 's/^/  ANDROID_SERIAL=/;s/$/ just run/' >&2
+    exit 1

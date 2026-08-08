@@ -40,8 +40,12 @@ dev = [
   # over plain httpx; without it every run prints a deprecation warning.
   "httpx2>=2,<3",
   "mypy>=1.17,<2",
-  "pytest>=8.4,<9",
+  # 9.0.3 is the floor that clears CVE-2025-71176 (tmpdir handling), which
+  # `just package` audits for.
+  "pytest>=9.0.3,<10",
   "pytest-asyncio>=1.1,<2",
+  # `just unit` runs the suite across cores.
+  "pytest-xdist>=3.8,<4",
   "ruff>=0.12,<1",
 ]
 

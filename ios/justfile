@@ -1,0 +1,265 @@
+# vocaphone (iOS) — the xcodebuild incantations, named.
+#
+# `just run` is the one to reach for: regenerate the project, build it, boot a
+# simulator, install the app, launch it. `just test` is what CI runs.
+#
+# Pick a different simulator for any recipe with either of:
+#   just sim="iPhone 17 Pro" run
+#   VOCAPHONE_SIM="iPhone 16" just run
+
+project := "VocaPhone.xcodeproj"
+scheme := "VocaPhone"
+app_id := "com.vocahq.vocaphone"
+sim := env("VOCAPHONE_SIM", "iPhone 17")
+
+# Derived data lives in the repo (build/ is gitignored) so that `just clean` is
+# one directory removal instead of a hunt through ~/Library/Developer.
+derived := justfile_directory() / "build/DerivedData"
+device_derived := justfile_directory() / "build/DerivedDataDevice"
+
+# Index-while-building only feeds Xcode's editor and there are no Swift
+# packages to resolve, so both are pure overhead from the command line.
+sim_flags := "-project " + project + " -scheme " + scheme + " -sdk iphonesimulator" \
+    + " -configuration Debug -derivedDataPath '" + derived + "'" \
+    + " -disableAutomaticPackageResolution" \
+    + " CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO"
+
+app := derived / "Build/Products/Debug-iphonesimulator/VocaPhoneApp.app"
+
+# List the available recipes.
+default:
+    @{{ just_executable() }} --list --unsorted
+
+# Regenerate VocaPhone.xcodeproj from project.yml.
+[group('build')]
+gen:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v xcodegen >/dev/null 2>&1; then
+        echo "xcodegen is missing. Install it with: brew install xcodegen" >&2
+        exit 1
+    fi
+    xcodegen generate --spec project.yml
+
+# Open the project in Xcode (regenerating it first).
+[group('build')]
+edit: gen
+    open {{ project }}
+
+# Build the app for the simulator.
+[group('build')]
+build: gen
+    #!/usr/bin/env bash
+    set -euo pipefail
+    udid="$({{ just_executable() }} _udid)"
+    # -quiet drops roughly 1500 lines of per-file compile commands and still
+    # prints warnings and errors.
+    xcodebuild {{ sim_flags }} -destination "platform=iOS Simulator,id=${udid}" -quiet build
+
+# Build, install and launch the app on a simulator.
+[group('run')]
+run: gen
+    #!/usr/bin/env bash
+    set -euo pipefail
+    udid="$({{ just_executable() }} _udid)"
+    # A cold simulator spends over a minute in data migration, and the build
+    # needs no device at all, so let that minute overlap compilation.
+    xcrun simctl bootstatus "${udid}" -b >/dev/null &
+    boot=$!
+    xcodebuild {{ sim_flags }} -destination "platform=iOS Simulator,id=${udid}" -quiet build
+    wait "${boot}"
+    open -a Simulator
+    xcrun simctl install "${udid}" "{{ app }}"
+    xcrun simctl launch "${udid}" {{ app_id }} >/dev/null
+    echo "Launched {{ app_id }} on {{ sim }}. Console output: just logs"
+
+# Stop the app on the simulator.
+[group('run')]
+stop:
+    @xcrun simctl terminate "$({{ just_executable() }} _udid)" {{ app_id }} 2>/dev/null || true
+
+# Stream the app's and the keyboard's console output from the simulator.
+[group('run')]
+logs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    udid="$({{ just_executable() }} _udid)"
+    # simctl's own error for an unbooted device is four lines of CoreSimulator
+    # domain codes that never mention the actual problem.
+    if ! xcrun simctl list devices | grep -F "${udid}" | grep -q Booted; then
+        echo "{{ sim }} is not booted. Start the app first: just run" >&2
+        exit 1
+    fi
+    xcrun simctl spawn "${udid}" log stream --style compact --level debug \
+        --predicate 'processImagePath CONTAINS "VocaPhone"'
+
+# Open iOS Settings on the simulator, to add the keyboard under General → Keyboard.
+[group('run')]
+settings:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    udid="$({{ just_executable() }} _udid)"
+    # Unlike logs, this one is worth booting for: reaching Settings is the whole
+    # point, and bootstatus returns immediately when the device is already up.
+    xcrun simctl bootstatus "${udid}" -b >/dev/null
+    open -a Simulator
+    xcrun simctl launch "${udid}" com.apple.Preferences >/dev/null
+
+# Run the unit tests; pass identifiers to narrow, e.g. `just test VocaPhoneTests/KeyLayoutTests`.
+[group('test')]
+test *only: gen
+    #!/usr/bin/env bash
+    set -euo pipefail
+    udid="$({{ just_executable() }} _udid)"
+    filters=()
+    for id in {{ only }}; do filters+=("-only-testing:${id}"); done
+    xcrun simctl bootstatus "${udid}" -b >/dev/null &
+    boot=$!
+    xcodebuild {{ sim_flags }} -destination "platform=iOS Simulator,id=${udid}" \
+        -quiet build-for-testing
+    wait "${boot}"
+    # The test run keeps its full output: it is short and carries the failed
+    # expectation.
+    # macOS ships bash 3.2, where an empty array under `set -u` is an error.
+    xcodebuild {{ sim_flags }} -destination "platform=iOS Simulator,id=${udid}" \
+        ${filters[@]+"${filters[@]}"} test-without-building
+
+# Everything CI checks for iOS: a non-stale project, then a build and the tests.
+[group('test')]
+ci: gen
+    @git diff --exit-code -- {{ project }} || { echo "VocaPhone.xcodeproj is stale — commit the regenerated project." >&2; exit 1; }
+    @{{ just_executable() }} test
+
+# Build and install on a connected iPhone. Signing must already work in Xcode.
+[group('device')]
+device: gen
+    #!/usr/bin/env bash
+    set -euo pipefail
+    udid="${VOCAPHONE_DEVICE:-$({{ just_executable() }} _device_udid)}"
+    xcodebuild -project {{ project }} -scheme {{ scheme }} \
+        -destination "platform=iOS,id=${udid}" \
+        -configuration Debug \
+        -derivedDataPath '{{ device_derived }}' \
+        -disableAutomaticPackageResolution \
+        -allowProvisioningUpdates \
+        -quiet build
+    bundle="{{ device_derived }}/Build/Products/Debug-iphoneos/VocaPhoneApp.app"
+    xcrun devicectl device install app --device "${udid}" "${bundle}"
+    xcrun devicectl device process launch --device "${udid}" {{ app_id }}
+    echo "Keyboard, microphone, background audio and insertion changes still"
+    echo "need the manual pass in docs/device-setup.md."
+
+# List connected iPhones and their identifiers.
+[group('device')]
+devices:
+    xcrun devicectl list devices
+
+# Delete build output and derived data.
+[group('build')]
+clean:
+    rm -rf '{{ justfile_directory() }}/build'
+
+# Erase the simulator back to a clean install (drops the added keyboard).
+[group('run')]
+reset-sim:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    udid="$({{ just_executable() }} _udid)"
+    xcrun simctl shutdown "${udid}" 2>/dev/null || true
+    xcrun simctl erase "${udid}"
+
+# Check that the toolchain this justfile needs is actually installed.
+[group('build')]
+doctor:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    ok=0
+    if xcodebuild -version >/dev/null 2>&1; then
+        echo "ok       $(xcodebuild -version | tr '\n' ' ')"
+    else
+        echo "MISSING  Xcode command line tools — install Xcode, then: sudo xcode-select -s /Applications/Xcode.app"
+        ok=1
+    fi
+    if command -v xcodegen >/dev/null 2>&1; then
+        echo "ok       $(xcodegen --version 2>&1 | head -1)"
+    else
+        echo "MISSING  xcodegen — brew install xcodegen"
+        ok=1
+    fi
+    runtimes=$(xcrun simctl list runtimes available 2>/dev/null | grep -c 'iOS ' || true)
+    if [ "${runtimes}" -gt 0 ]; then
+        echo "ok       ${runtimes} iOS simulator runtime(s) installed"
+    else
+        echo "MISSING  no iOS simulator runtime — xcodebuild -downloadPlatform iOS"
+        ok=1
+    fi
+    if [ "${ok}" -ne 0 ]; then
+        echo
+        echo "Install what is marked MISSING above, then run just doctor again."
+    fi
+    exit "${ok}"
+
+# Resolve the simulator named by `sim`, creating it if this machine has none.
+[private]
+_udid:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # The trailing " (" keeps "iPhone 17" from matching "iPhone 17 Pro". The
+    # `|| true` is there because a grep that matches nothing is the normal case
+    # on a machine with no simulator yet, not a failure.
+    udid=$(
+        { xcrun simctl list devices available | grep -F '{{ sim }} (' || true; } \
+            | sed -n 's/.*(\([0-9A-F-]\{36\}\)).*/\1/p' \
+            | head -1
+    )
+    if [ -n "${udid}" ]; then
+        echo "${udid}"
+        exit 0
+    fi
+    device_type=$(
+        { xcrun simctl list devicetypes | grep -F '{{ sim }} (' || true; } \
+            | sed -n 's/.*(\(com\.apple\.CoreSimulator\.SimDeviceType\.[^)]*\)).*/\1/p' \
+            | head -1
+    )
+    runtime=$(
+        xcrun simctl list runtimes available \
+            | sed -n 's/.* - \(com\.apple\.CoreSimulator\.SimRuntime\.iOS[^ ]*\).*/\1/p' \
+            | tail -1
+    )
+    if [ -z "${device_type}" ]; then
+        echo "No simulator device type named '{{ sim }}'. Pick one from:" >&2
+        xcrun simctl list devicetypes | grep iPhone >&2
+        exit 1
+    fi
+    if [ -z "${runtime}" ]; then
+        echo "No iOS simulator runtime installed. Install one with:" >&2
+        echo "  xcodebuild -downloadPlatform iOS" >&2
+        exit 1
+    fi
+    echo "Creating simulator '{{ sim }}'" >&2
+    xcrun simctl create '{{ sim }}' "${device_type}" "${runtime}"
+
+# Resolve the single connected iPhone, or explain why it cannot.
+[private]
+_device_udid:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Each row of `devicectl list devices` carries exactly one UUID, the
+    # identifier that --device wants; the state column says whether it is
+    # plugged in right now.
+    udids=$(
+        { xcrun devicectl list devices 2>/dev/null | grep -i 'connected' || true; } \
+            | sed -n 's/.*[^0-9A-Fa-f-]\([0-9A-Fa-f]\{8\}-[0-9A-Fa-f]\{4\}-[0-9A-Fa-f]\{4\}-[0-9A-Fa-f]\{4\}-[0-9A-Fa-f]\{12\}\).*/\1/p'
+    )
+    count=$(printf '%s' "${udids}" | grep -c . || true)
+    if [ "${count}" -eq 1 ]; then
+        printf '%s\n' "${udids}"
+        exit 0
+    fi
+    if [ "${count}" -eq 0 ]; then
+        echo "No connected iPhone found. Unlock it, trust this Mac, then: just devices" >&2
+    else
+        echo "More than one device connected. Pick one from \`just devices\` and set:" >&2
+        echo "  VOCAPHONE_DEVICE=<identifier> just device" >&2
+    fi
+    exit 1

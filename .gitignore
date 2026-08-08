@@ -32,6 +32,14 @@ server/*.sqlite3
 *.p12
 *.mobileprovision
 
+# direnv: the repository-root .envrc is checked in and contains no secrets.
+# Every other .envrc is personal — server/.envrc in particular is easy to
+# create by copying server/.env, which carries a live bearer token.
+.direnv/
+.envrc
+.envrc.local
+!/.envrc
+
 # Android (see also android/.gitignore)
 .gradle/
 android/local.properties

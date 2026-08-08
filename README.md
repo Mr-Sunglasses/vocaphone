@@ -351,44 +351,35 @@ accessibility disclosure, and the supported gateway address forms.
 
 ## Build and test
 
-Gateway checks:
+Development uses [`just`](https://just.systems). Each application has a
+justfile, and the repository root aggregates them, so every recipe works from
+the root or from inside the application directory:
 
 ```sh
-cd server
-# On macOS add --extra apple for MLX / WhisperKit tooling in the dev environment.
-uv sync --all-groups --extra engines
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy app
-uv run pytest
-VOCAPHONE_TOKEN=test-token-with-at-least-thirty-two-characters docker compose config --quiet
+just ci               # all three applications, skipping absent toolchains
+just server test      # gateway: lint, types, dependency audit, tests, Compose
+just ios ci           # iOS: regenerate the project, build, run unit tests
+just android ci       # Android: assemble, unit tests, lint, Room schema
+just doctor           # what each toolchain is still missing
 ```
 
-Android checks:
+The recipes carry the same flags as the [CI workflows](.github/workflows/), so
+a green run locally means a green run there; the gateway's also audits
+dependencies, which CI leaves out. `just --list` shows the rest — running the
+apps (`just ios run`,
+`just android run`, `just server run`), streaming logs, installing onto a
+physical phone, and managing the container deployment.
 
-```sh
-cd android
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-./gradlew assembleDebug testDebugUnitTest lintDebug
-```
+Optional: with [direnv](https://direnv.net) installed, `direnv allow` once after
+cloning puts the gateway virtualenv and the Android SDK's `platform-tools` on
+`PATH` and exports `ANDROID_HOME`, so `pytest` and `adb` resolve without a
+prefix or a full path. Everything works without it — see
+[CONTRIBUTING.md](CONTRIBUTING.md#direnv-optional).
 
-iOS checks:
-
-```sh
-cd ios
-xcodegen generate --spec project.yml
-xcodebuild \
-  -project VocaPhone.xcodeproj \
-  -scheme VocaPhone \
-  -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 17' \
-  CODE_SIGNING_ALLOWED=NO \
-  test
-```
-
-The generated Xcode project is checked in. Regenerate it after changing
-`ios/project.yml`. Keyboard, microphone, background audio, and insertion changes
-still require physical-device verification.
+The generated Xcode project is checked in. Run `just ios gen` after changing
+`ios/project.yml` and commit the result; CI fails when it is stale. Keyboard,
+microphone, background audio, and insertion changes still require
+physical-device verification.
 
 ## Project layout
 
