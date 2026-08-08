@@ -201,11 +201,14 @@ WebUI (this host): http://127.0.0.1:8765/
 Network access: use this host's LAN or Tailscale IP with the same port
 Token: ~/.config/vocaphone/token
   (cat ~/.config/vocaphone/token — enter that value in the phone app)
+  or: just token  (prints a terminal QR for headless phone pairing)
 ```
 
 Open the WebUI, enter the token from `~/.config/vocaphone/token`, download a
 recommended model (SenseVoice Small INT8 or Parakeet TDT INT8 on CPU), select it,
-and confirm Overview shows **Ready for dictation**.
+and confirm Overview shows **Ready for dictation**. For headless phone pairing
+without the WebUI, run `just token` (or `just server token` from the repo root)
+on a TTY to print a scannable pairing QR.
 
 To keep the gateway running after the terminal closes (systemd user unit):
 
@@ -279,7 +282,13 @@ tailscale serve status
 
 ### Pair the phone with a QR code (iPhone or Android)
 
-Once the WebUI is open and authenticated on the gateway host:
+**Without the WebUI (headless):** on the gateway host, run `just token` (or
+`just server token` from the repo root). On a TTY it prints an ASCII QR that
+encodes the same pairing payload as the WebUI. Point the phone's camera at the
+terminal, or use `just token --plain` / `cat ~/.config/vocaphone/token` when you
+only need the secret.
+
+**From the WebUI:** once authenticated on the gateway host:
 
 1. Stay on **Overview** — the **Pair phone app** card shows a QR for a
    phone-reachable address (LAN IP preferred, or `VOCAPHONE_PUBLIC_URL` if set).
@@ -297,8 +306,9 @@ Once the WebUI is open and authenticated on the gateway host:
 You can still paste manually:
 
 1. **Gateway address** — the LAN, Tailscale, or HTTPS URL above.
-2. **Bearer token** — `cat ~/.config/vocaphone/token` for native installs, or the
-   `VOCAPHONE_TOKEN` value from `server/.env` for Docker.
+2. **Bearer token** — `just token --plain` or `cat ~/.config/vocaphone/token`
+   for native installs, or the `VOCAPHONE_TOKEN` value from `server/.env` for
+   Docker.
 
 Then use **Save and test** / **Test connection**. Tailscale is recommended for a
 private personal deployment, but it is not mandatory. Follow

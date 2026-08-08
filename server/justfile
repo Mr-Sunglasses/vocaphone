@@ -67,20 +67,10 @@ run:
 run-local:
     VOCAPHONE_BIND_HOST=127.0.0.1 uv run vocaphone-server
 
-# Print the bearer token to enter in the phone app
+# Print the bearer token; on a TTY also show a phone-scannable pairing QR
 [group('run')]
-token:
-    #!/usr/bin/env bash
-    file="${VOCAPHONE_TOKEN_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/vocaphone/token}"
-    if [ -n "${VOCAPHONE_TOKEN:-}" ]; then
-      echo "${VOCAPHONE_TOKEN}"
-      exit 0
-    fi
-    if [ ! -f "${file}" ]; then
-      echo "No token yet — the gateway writes one on first start: just run" >&2
-      exit 1
-    fi
-    cat "${file}"
+token *args='':
+    uv run vocaphone-token {{ args }}
 
 # Ask a running gateway for its health
 [group('run')]

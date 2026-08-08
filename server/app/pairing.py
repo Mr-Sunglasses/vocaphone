@@ -163,6 +163,23 @@ def primary_gateway_base_url(port: int) -> str | None:
     return urls[0] if urls else None
 
 
+def default_pairing_url(port: int, *, saved_pairing_url: str | None = None) -> str | None:
+    """URL a pairing QR should encode by default (WebUI and CLI).
+
+    Prefer a non-stale saved WebUI choice, then env overrides / discovery via
+    :func:`primary_gateway_base_url`. Ambient LAN or Tailscale IPs that no
+    longer appear in discovery are treated as stale — the same rule the
+    Overview card applies with :func:`forget_stale_lan_addresses` — without
+    writing config.
+    """
+    if saved_pairing_url:
+        if not is_ambient_lan_address(saved_pairing_url):
+            return saved_pairing_url
+        if saved_pairing_url in discover_gateway_base_urls(port):
+            return saved_pairing_url
+    return primary_gateway_base_url(port)
+
+
 def _local_ipv4_addresses() -> list[str]:
     found: set[str] = set()
     try:
@@ -255,3 +272,21 @@ def qr_svg_for_payload(payload: str, *, box_size: int = 6, border: int = 2) -> s
     image = qr.make_image()
     svg = image.to_string(encoding="unicode")
     return str(svg)
+
+
+def qr_ascii_for_payload(payload: str, *, border: int = 1, invert: bool = True) -> str:
+    """Return a terminal-scannable ASCII QR for *payload* (no Pillow)."""
+    import io
+
+    import qrcode
+
+    qr = qrcode.QRCode(
+        version=None,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        border=border,
+    )
+    qr.add_data(payload)
+    qr.make(fit=True)
+    buffer = io.StringIO()
+    qr.print_ascii(out=buffer, invert=invert)
+    return buffer.getvalue()

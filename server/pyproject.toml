@@ -32,6 +32,7 @@ vocaphone-server = "app.cli:serve"
 vocaphone-status = "app.cli:status"
 vocaphone-diagnostics = "app.cli:diagnostics"
 vocaphone-cleanup = "app.cli:cleanup"
+vocaphone-token = "app.cli:token"
 
 [dependency-groups]
 dev = [

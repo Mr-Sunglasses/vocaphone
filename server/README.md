@@ -85,10 +85,10 @@ uv run vocaphone-server
 
 Do not pass `--extra apple` on Linux. The first run creates
 `~/.config/vocaphone/token` with mode `600`. The banner prints the WebUI URL and
-token path; show the secret with `cat ~/.config/vocaphone/token`. Open
-`http://127.0.0.1:8765/`, enter the token, download a recommended model
-(SenseVoice Small INT8 or Parakeet TDT INT8 on CPU), select it, and confirm
-**Ready for dictation**.
+token path; show the secret (and a terminal pairing QR) with `just token` or
+`uv run vocaphone-token`. Open `http://127.0.0.1:8765/`, enter the token,
+download a recommended model (SenseVoice Small INT8 or Parakeet TDT INT8 on
+CPU), select it, and confirm **Ready for dictation**.
 
 To keep the gateway running after the terminal closes:
 
@@ -125,7 +125,10 @@ The code encodes a versioned JSON payload:
 
 Discovery prefers private Wi‑Fi addresses (for example `192.168.x.x`). Override
 with `VOCAPHONE_PUBLIC_URL` or `VOCAPHONE_PAIRING_URL` when automatic selection
-is wrong. The QR is only available through the authenticated WebUI/API.
+is wrong. The same payload is available without the WebUI: on a TTY,
+`just token` (or `uv run vocaphone-token`) prints an ASCII QR for headless
+setup; use `just token --plain` when you only want the secret (pipes always get
+plain output).
 
 The same card can create a named per-device token and immediately show its own
 QR instead of the shared bootstrap token, and a **Token to encode** dropdown
