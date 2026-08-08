@@ -18,6 +18,7 @@
 		28C271BC0195C62E93292A9C /* SessionRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B854354D06D0111DEB123E7A /* SessionRecordTests.swift */; };
 		2C362C9B71AA6A93A6D7E4DB /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36767643E0E4AA29BBB3D4FD /* SessionRecord.swift */; };
 		2D1CF0D6875DFD7D9BFD10FF /* DictationBarStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7842B22D05FB171B261101A /* DictationBarStyle.swift */; };
+		2D83B6984ABEA15D65169CEE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3BA012C76E8C374857732F67 /* Assets.xcassets */; };
 		2E93E016656B5EA74568DD4F /* PairingPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFB4BB0345784837C629340 /* PairingPayload.swift */; };
 		314748D93E078B40FEEEBEBE /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894063AE1B3DDA92C529268D /* AppConfiguration.swift */; };
 		31D729EBEF69158BAAFE66D0 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 98325CD266139FCDEE156D8F /* KeyboardViewController.swift */; };
@@ -140,6 +141,7 @@
 		36B96ADF2831E766F13F9565 /* VocaPhoneKeyboard-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "VocaPhoneKeyboard-Bridging-Header.h"; sourceTree = "<group>"; };
 		3785791C0D9A5ABA2506F1B7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		37C9B64B52A8D28D252CC3A5 /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		3BA012C76E8C374857732F67 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		3EC2C1575D306E7683092FBA /* KeyGridLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyGridLayoutTests.swift; sourceTree = "<group>"; };
 		4871EA8AAF829D7979EC9587 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		5118F8CFAAE127CD5FF92076 /* KeyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyView.swift; sourceTree = "<group>"; };
@@ -193,6 +195,7 @@
 		1839F58A312F2D4BB1A97941 /* VocaPhoneApp */ = {
 			isa = PBXGroup;
 			children = (
+				3BA012C76E8C374857732F67 /* Assets.xcassets */,
 				4871EA8AAF829D7979EC9587 /* Info.plist */,
 				CEA8F4B58D6EF52749026347 /* VocaPhoneApp.entitlements */,
 				AAF95B55221B170F0DA7CAE5 /* App */,
@@ -400,6 +403,7 @@
 			buildConfigurationList = 78C4D997AE0D4122C3839545 /* Build configuration list for PBXNativeTarget "VocaPhoneApp" */;
 			buildPhases = (
 				559581F3DAAD0A7B2649B8E4 /* Sources */,
+				5A4C83A3B7AA2104F01D6E1F /* Resources */,
 				B0BD28A8D44273B7701E428A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
@@ -463,6 +467,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5A4C83A3B7AA2104F01D6E1F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2D83B6984ABEA15D65169CEE /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		4BD0D6DD35B769E44E38EA81 /* Sources */ = {

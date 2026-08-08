@@ -162,17 +162,12 @@ def create_app(
             # Swagger UI's init call is loaded from an external, same-origin
             # script rather than inlined, because the CSP above sends
             # `script-src 'self'` with no `'unsafe-inline'`.
-            favicon = (
-                "data:image/svg+xml,&lt;svg xmlns='http://www.w3.org/2000/svg' "
-                "viewBox='0 0 100 100'&gt;&lt;text y='.9em' "
-                "font-size='90'&gt;&#127908;&lt;/text&gt;&lt;/svg&gt;"
-            )
             return HTMLResponse(f"""<!doctype html>
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link type="text/css" rel="stylesheet" href="/assets/swagger/swagger-ui.css">
-<link rel="icon" href="{favicon}">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <title>{app.title} - API docs</title>
 </head>
 <body>

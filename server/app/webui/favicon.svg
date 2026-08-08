@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 460" width="460" height="460" role="img" aria-label="vocaphone">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34BCAE"/>
+      <stop offset="1" stop-color="#4DBA64"/>
+    </linearGradient>
+  </defs>
+  <circle cx="229" cy="231.5" r="221.5" fill="url(#g)"/>
+  <path d="M 164 127 A 65 65 0 0 1 294 127 L 294 224 A 65 65 0 0 1 164 224 Z" fill="#070F1C"/>
+  <path d="M 144.87 202.02 A 87 87 0 1 0 312.13 202.02" fill="none" stroke="#070F1C" stroke-width="18" stroke-linecap="round"/>
+  <path d="M 228.5 313 L 228.5 382" fill="none" stroke="#070F1C" stroke-width="18" stroke-linecap="round"/>
+  <path d="M 170 382 L 287 382" fill="none" stroke="#070F1C" stroke-width="18" stroke-linecap="round"/>
+  <path d="M 95.71 141.40 A 165.6 141.6 0 0 0 95.71 310.60" fill="none" stroke="#070F1C" stroke-width="18" stroke-linecap="round"/>
+  <path d="M 361.29 141.40 A 165.6 141.6 0 0 1 361.29 310.60" fill="none" stroke="#070F1C" stroke-width="18" stroke-linecap="round"/>
+  <path d="M 123.12 168.78 A 129.0 99.2 0 0 0 123.12 283.22" fill="none" stroke="#070F1C" stroke-width="18" stroke-linecap="round"/>
+  <path d="M 333.88 168.78 A 129.0 99.2 0 0 1 333.88 283.22" fill="none" stroke="#070F1C" stroke-width="18" stroke-linecap="round"/>
+</svg>

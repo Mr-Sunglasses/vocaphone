@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="assets/vocaphone-logo-512.png" alt="" width="120" height="120">
+
 # vocaphone
 
 **Voice dictation for iPhone and Android.**
