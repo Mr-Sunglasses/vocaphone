@@ -18,8 +18,8 @@ android {
         applicationId = "com.vocahq.vocaphone"
         minSdk = 33
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.1.0-beta.5"
+        versionCode = 6
+        versionName = "0.1.0-beta.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
