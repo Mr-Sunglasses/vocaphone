@@ -39,6 +39,29 @@ Verification the same way CI should run it:
 `compileSdk` is 37 because current AndroidX releases require it. `targetSdk`
 stays at 36, which is what Play requires from 31 August 2026.
 
+## GitHub beta releases
+
+Pushing a tag such as `v0.1.0-beta.7` runs
+`.github/workflows/android-beta.yml`. Before tagging, bump `versionCode` and
+`versionName` in `app/build.gradle.kts`; the workflow refuses to publish when
+the tag and APK version do not match.
+
+The repository needs these GitHub Actions secrets: `KEYSTORE_BASE64`,
+`KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD`. The workflow builds,
+tests, lints, verifies the release signature against the pinned public
+certificate fingerprint, and attaches these files to the prerelease:
+
+- `vocaphone.apk`
+- `SHA256SUMS.txt`
+- `SIGNING-CERTIFICATE-SHA256.txt`
+
+After downloading all three files, verify the APK checksum with
+`sha256sum -c SHA256SUMS.txt` on Linux or
+`shasum -a 256 -c SHA256SUMS.txt` on macOS. Signing establishes a stable update
+identity and the checksum detects a damaged or changed download; neither
+suppresses Android's Play Protect scan or restricted-settings flow for apps
+installed outside an app store.
+
 ## First run
 
 The companion app walks through setup and re-checks it on every resume, so a

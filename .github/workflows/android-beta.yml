@@ -2,9 +2,8 @@ name: Android beta APK
 
 # Pushing a tag like v0.1.0-beta.1 builds the release APK signed with the
 # vocaphone keystore and publishes it both as a workflow artifact and as a
-# prerelease on GitHub Releases. A release-signed APK installs cleanly on any
-# device running Android 13 (API 33) or newer without Play Protect flagging the
-# well-known debug key.
+# prerelease on GitHub Releases. The workflow also publishes the APK checksum
+# and signing-certificate fingerprint so testers can verify what they install.
 on:
   push:
     tags:
@@ -48,13 +47,65 @@ jobs:
           # Passed through the environment rather than interpolated into the
           # script, so the keystore never becomes part of the command line.
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-          ./gradlew assembleRelease
+          ./gradlew assembleRelease testDebugUnitTest lintRelease
         working-directory: android
-      - name: Upload APK as workflow artifact
+      - name: Verify signature and prepare release assets
+        env:
+          # Public certificate fingerprint, not a signing secret. Pinning it
+          # prevents a valid APK signed by the wrong CI key from being released.
+          EXPECTED_CERT_SHA256: e6131446f8afeff13516f78036db9ea26aaa16e01b39f37182bf262ccd1d45b0
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          cp android/app/build/outputs/apk/release/vocaphone-release.apk \
+            release-assets/vocaphone.apk
+
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print \
+            | sort -V | tail -n 1)"
+          if [ -z "$apksigner" ]; then
+            echo "apksigner was not found under ANDROID_HOME" >&2
+            exit 1
+          fi
+          aapt="$(dirname "$apksigner")/aapt"
+          if [ ! -x "$aapt" ]; then
+            echo "aapt was not found next to apksigner" >&2
+            exit 1
+          fi
+
+          package_line="$("$aapt" dump badging release-assets/vocaphone.apk | sed -n '1p')"
+          package_name="$(printf '%s\n' "$package_line" \
+            | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+          version_name="$(printf '%s\n' "$package_line" \
+            | sed -n "s/.* versionName='\([^']*\)'.*/\1/p")"
+          if [ "$package_name" != "com.vocahq.vocaphone" ]; then
+            echo "Unexpected APK package: $package_name" >&2
+            exit 1
+          fi
+          if [ "v$version_name" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match APK version $version_name" >&2
+            exit 1
+          fi
+
+          verification="$("$apksigner" verify --verbose --print-certs release-assets/vocaphone.apk)"
+          printf '%s\n' "$verification"
+          certificate_sha256="$(printf '%s\n' "$verification" \
+            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          if [ "$certificate_sha256" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "Unexpected APK signing certificate: $certificate_sha256" >&2
+            exit 1
+          fi
+
+          formatted_certificate="$(printf '%s' "$certificate_sha256" \
+            | sed 's/../&:/g; s/:$//' | tr '[:lower:]' '[:upper:]')"
+          printf 'Package: %s\nVersion: %s\nSigning certificate SHA-256: %s\n' \
+            "$package_name" "$version_name" "$formatted_certificate" \
+            > release-assets/SIGNING-CERTIFICATE-SHA256.txt
+          (cd release-assets && sha256sum vocaphone.apk > SHA256SUMS.txt)
+      - name: Upload release files as workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: vocaphone-apk
-          path: android/app/build/outputs/apk/release/vocaphone-release.apk
+          name: vocaphone-release-assets
+          path: release-assets/
           if-no-files-found: error
           # The release below is the durable copy. This one only covers the
           # window before it is published, so it does not need 90 days of
@@ -66,7 +117,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cp android/app/build/outputs/apk/release/vocaphone-release.apk vocaphone.apk
 
           # --generate-notes lists the pull requests merged since the previous
           # beta. It will choose that starting point on its own, but naming the
@@ -82,10 +132,12 @@ jobs:
           # --notes is prepended to the generated list, so the install
           # instructions stay at the top where a beta tester looks first.
           gh release create "$GITHUB_REF_NAME" \
-            vocaphone.apk \
+            release-assets/vocaphone.apk \
+            release-assets/SHA256SUMS.txt \
+            release-assets/SIGNING-CERTIFICATE-SHA256.txt \
             --repo "$GITHUB_REPOSITORY" \
             --title "vocaphone Android $GITHUB_REF_NAME" \
             --prerelease \
             --generate-notes \
             "${notes_range[@]}" \
-            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device."
+            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store."
