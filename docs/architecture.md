@@ -9,12 +9,17 @@ vocaphone keyboard extension
   ↕ atomic App Group JSON + revision numbers
 vocaphone containing app
   ↕ bearer-authenticated HTTP/HTTPS through LAN, VPN, or reverse proxy
-FastAPI gateway on macOS or Linux (native or multi-architecture container)
+FastAPI gateway (VocaHQ/vocagateway submodule at server/)
+  on macOS or Linux (native or multi-architecture container)
   → bounded temporary audio → FFmpeg mono 16 kHz WAV
   → TranscriptionEngine adapter → VocaMac, Handy, MLX Audio, WhisperKit,
                                   sherpa-onnx, faster-whisper, Moonshine,
                                   or whisper.cpp
 ```
+
+The gateway implementation and its ops docs live in
+[vocagateway](https://github.com/VocaHQ/vocagateway); this repository vendors a
+pinned revision under `server/`.
 
 The App Group record is the source of truth. Polling is a wake-up strategy, not
 the data store. Audio references are opaque filenames; tokens, transcripts, and

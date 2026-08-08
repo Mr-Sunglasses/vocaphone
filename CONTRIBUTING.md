@@ -21,11 +21,17 @@ are available.
 
 ## Development setup
 
+- Clone with submodules: `git clone --recurse-submodules …` (or
+  `git submodule update --init --recursive` on an existing clone). The gateway
+  is the [vocagateway](https://github.com/VocaHQ/vocagateway) submodule at
+  `server/`.
 - Install [`just`](https://just.systems), Xcode, XcodeGen, `uv`, and FFmpeg.
 - For Android work, install a recent Android Studio / SDK and JDK 17+.
 - Run `just ios gen` after changing `ios/project.yml`, and commit the
   regenerated project. The other iOS recipes regenerate it for you; this one
   matters because CI fails when the checked-in project is stale.
+- Gateway-only changes belong in vocagateway (open the PR there, then bump the
+  submodule pin here if this repo needs the new revision).
 - Never commit microphone recordings, bearer tokens, signing material, tailnet
   hostnames, local database files, or Apple provisioning profiles.
 
@@ -42,6 +48,33 @@ just doctor              # what each application's toolchain is missing
 `just doctor` is the fastest way to find out what a fresh machine still needs;
 it reports all three toolchains and never fails, because nobody has all of them
 installed at once.
+
+### Gateway submodule pin (dev vs ship)
+
+The parent repository records a fixed `server/` SHA so clones and release builds
+are reproducible. That pin is what CI and shipped apps use.
+
+For day-to-day gateway work you can move the **local** checkout to the tip of
+`main` without changing what this repo ships:
+
+```sh
+just server-pin-status   # pin vs working tree vs origin/main
+just server-sync         # git submodule update --remote server (main tip)
+just server install      # after a sync, if dependencies moved
+just server run
+```
+
+`server-sync` only updates your working tree. It does **not** commit a new pin.
+When this repo should adopt a newer gateway (or a release tag), do it on purpose:
+
+```sh
+just server-sync         # or: cd server && git fetch --tags && git checkout vX.Y.Z
+git add server
+git commit -m "build: pin vocagateway to <sha or tag>"
+```
+
+Phone-only work can leave the recorded pin alone. Shipping builds must never run
+`server-sync` in CI; they check out the committed pin only.
 
 ### direnv (optional)
 
@@ -74,7 +107,7 @@ Each application has one recipe that runs everything its workflow gates on.
 Run the one for what you changed:
 
 ```sh
-just server install   # once, and after dependency changes
+just server install   # once, and after dependency changes (submodule)
 just server test      # lint, types, dependency audit, unit tests, Compose
 just ios ci           # regenerates the project, builds, runs the unit tests
 just android ci       # assembles, unit tests, lint, Room schema freshness
@@ -83,17 +116,9 @@ just android ci       # assembles, unit tests, lint, Room schema freshness
 `just ci` from the repository root runs all three and skips any whose toolchain
 is absent, which is what a contributor with only one platform installed wants.
 
-These recipes carry the same flags as the workflows in `.github/workflows/`, so
-a green run locally means a green run there. `just server test` goes further
-than its workflow does, adding a lockfile check and a dependency audit. Read
-the justfile when you need the underlying command; it is deliberately the only
-place they are written down.
-
-For container changes, also build the image:
-
-```sh
-just server image
-```
+iOS/Android recipes match the workflows in `.github/workflows/`. Gateway quality
+and container CI run in vocagateway; use `just server test` / `just server image`
+against the submodule when you change the pin or work on the gateway itself.
 
 When changing documentation, check local links and commands against the current
 repository layout, then run `git diff --check`. Do not publish machine-specific

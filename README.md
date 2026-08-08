@@ -153,6 +153,32 @@ benchmark conclusions.
 See [deployment choices](docs/deployment.md) for the complete comparison and
 operational commands.
 
+## Repository layout note
+
+The headless gateway lives in [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway)
+and is vendored here as the `server/` git submodule so the phone clients and
+future desktop apps share one implementation. Clone with submodules:
+
+```sh
+git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
+# existing clone:
+git submodule update --init --recursive
+```
+
+This repository records a fixed gateway commit (the pin) for reproducible
+clones and releases. For local development you can follow `main` without
+shipping that tip until you intentionally bump the pin:
+
+```sh
+just server-pin-status   # pin vs working tree vs origin/main
+just server-sync         # move server/ to the tip of main (local only)
+```
+
+Gateway CI, releases, and deep ops docs run in the vocagateway repository.
+Phone-side docs below still use `cd server` against the submodule checkout.
+See [CONTRIBUTING.md](CONTRIBUTING.md#gateway-submodule-pin-dev-vs-ship) for pin
+bumps and release tags.
+
 ## Quick start
 
 ### 1. Start the gateway natively on macOS
@@ -368,14 +394,17 @@ the root or from inside the application directory:
 ```sh
 just ci               # all three applications, skipping absent toolchains
 just server test      # gateway: lint, types, dependency audit, tests, Compose
+just server-sync      # optional: local server/ → tip of main (does not commit)
+just server-pin-status
 just ios ci           # iOS: regenerate the project, build, run unit tests
 just android ci       # Android: assemble, unit tests, lint, Room schema
 just doctor           # what each toolchain is still missing
 ```
 
-The recipes carry the same flags as the [CI workflows](.github/workflows/), so
-a green run locally means a green run there; the gateway's also audits
-dependencies, which CI leaves out. `just --list` shows the rest — running the
+iOS and Android CI live in this repository. Gateway quality and container
+builds run in [vocagateway](https://github.com/VocaHQ/vocagateway); `just server
+test` still exercises the submodule checkout locally. `just --list` shows the
+rest — running the
 apps (`just ios run`,
 `just android run`, `just server run`), streaming logs, installing onto a
 physical phone, and managing the container deployment.
@@ -396,11 +425,8 @@ physical-device verification.
 ```text
 ios/                    Swift app, keyboard, Live Activity, shared state, tests
 android/                Kotlin app, dictation bubble, accessibility service, tests
-server/app/             FastAPI gateway, engines, model manager, WebUI
-server/tests/           Gateway unit and integration tests
-server/compose.yaml     Canonical container deployment
-server/Dockerfile*      CPU, NVIDIA CUDA, and Vulkan images
-docs/                   Architecture, setup, operations, privacy, decisions
+server/                 Git submodule → VocaHQ/vocagateway (gateway + WebUI)
+docs/                   Phone architecture, device setup, privacy, decisions
 Plan.md                 Original implementation plan and acceptance criteria
 Plan-Android.md         Android implementation plan and acceptance criteria
 ```
@@ -410,10 +436,10 @@ Plan-Android.md         Android implementation plan and acceptance criteria
 | Guide | Covers |
 | --- | --- |
 | [Android client](android/README.md) | Building the APK, guided setup, the dictation bubble, and accessibility disclosure |
-| [Gateway reference](server/README.md) | Native service, Compose, models, configuration, health, and CLI commands |
-| [Deployment](docs/deployment.md) | Native-vs-Docker performance, startup, upgrades, persistence, and backups |
+| [Gateway reference](server/README.md) | Native service, Compose, models, configuration, health, and CLI commands ([vocagateway](https://github.com/VocaHQ/vocagateway)) |
+| [Deployment](server/docs/deployment.md) | Native-vs-Docker performance, startup, upgrades, persistence, and backups |
 | [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
-| [Tailscale](docs/tailscale.md) | Private HTTPS ingress and iPhone connectivity |
+| [Tailscale](server/docs/tailscale.md) | Private HTTPS ingress for the gateway |
 | [Architecture](docs/architecture.md) | Components, state transitions, engine boundary, and observability |
 | [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
 | [Troubleshooting](docs/troubleshooting.md) | Keyboard, microphone, model, network, and Docker failures |

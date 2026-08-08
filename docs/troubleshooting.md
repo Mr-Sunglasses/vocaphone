@@ -1,5 +1,11 @@
 # Troubleshooting
 
+Phone client issues are covered below. Gateway, model, Docker, and network
+failures for the transcription server are documented in
+[server/docs/troubleshooting.md](../server/docs/troubleshooting.md) (the
+[vocagateway](https://github.com/VocaHQ/vocagateway) submodule).
+
+
 ## Keyboard is missing
 
 Confirm the extension is signed with the containing app, then add vocaphone in

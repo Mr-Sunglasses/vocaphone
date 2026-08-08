@@ -5,12 +5,9 @@
 
 ## Verification
 
-- [ ] `uv run ruff check .`
-- [ ] `uv run ruff format --check .`
-- [ ] `uv run mypy app`
-- [ ] `uv run pytest`
-- [ ] Compose validation/container build, if deployment files changed
-- [ ] iOS simulator build/tests
+- [ ] `just ios ci` (or note why not)
+- [ ] `just android ci` (or note why not)
+- [ ] Gateway changes: PR against [vocagateway](https://github.com/VocaHQ/vocagateway) and submodule pin updated here if needed
 - [ ] Physical-device test, if keyboard, microphone, background audio, or insertion changed
 
 ## Privacy and security
