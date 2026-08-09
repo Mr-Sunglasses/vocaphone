@@ -96,9 +96,9 @@ fun GatewayScreen(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(SectionSpacing),
         ) {
-            SectionCard(
+            Section(
                 title = "Scan pairing QR",
                 supporting = "On the gateway host, open the WebUI Overview and scan the " +
                     "pairing QR. That fills the address and bearer token without typing.",
@@ -114,7 +114,7 @@ fun GatewayScreen(
                 )
             }
 
-            SectionCard(
+            Section(
                 title = "Gateway address",
                 supporting = "A private LAN or Tailscale host may use http://. Anything " +
                     "reachable from the internet must use https://. Or scan the WebUI QR above.",
@@ -196,7 +196,7 @@ fun GatewayScreen(
             }
 
             connection?.let { report ->
-                SectionCard(title = "Connection") {
+                Section(title = "Connection") {
                     StatusLine("Reachable", report.reachable)
                     StatusLine("Token accepted", report.tokenValid)
                     StatusLine("Engine ready", report.engineReady)

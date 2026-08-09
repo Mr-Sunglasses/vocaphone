@@ -29,7 +29,7 @@ final class RecordingCoordinator {
     private let liveActivity = LiveActivityManager.shared
     private let streamingBridge = StreamingAudioBridge()
 
-    var stateLabel: String { activeRecord?.state.rawValue ?? "idle" }
+    var stateLabel: String { (activeRecord?.state ?? .idle).displayName }
     var isRecording: Bool { activeRecord?.state == .recording && recorder.isRecording }
     var hasError: Bool { activeRecord?.error != nil }
     var transcript: String? { activeRecord?.transcript }

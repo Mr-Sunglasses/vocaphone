@@ -65,9 +65,9 @@ fun SettingsScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(SectionSpacing),
     ) {
-        SectionCard(
+        Section(
             title = "Gateway",
             supporting = settings.gatewayUrl.ifEmpty { "Not configured" },
         ) {
@@ -91,7 +91,7 @@ fun SettingsScreen(
             settings.modelLanguages,
             settings.modelDetectsLanguage,
         )
-        SectionCard(
+        Section(
             "Transcription language",
             supporting = listOfNotNull(settings.effectiveLanguage.detail, languageRestriction)
                 .joinToString("\n"),
@@ -109,7 +109,7 @@ fun SettingsScreen(
             )
         }
 
-        SectionCard(
+        Section(
             title = "Writing style",
             supporting = "${settings.style.detail}\n${settings.style.example}",
         ) {
@@ -121,13 +121,13 @@ fun SettingsScreen(
             )
         }
 
-        MicrophoneCard(
+        MicrophoneSection(
             selected = settings.microphone,
             status = microphone,
             onSelect = onMicrophone,
         )
 
-        SectionCard("Insertion") {
+        Section("Insertion") {
             ToggleRow(
                 title = "Insert automatically",
                 detail = "Write the transcript straight into the focused field. " +
@@ -137,7 +137,7 @@ fun SettingsScreen(
             )
         }
 
-        SectionCard("Floating bubble") {
+        Section("Floating bubble") {
             ChipChoiceRow(
                 options = BubbleBehavior.entries,
                 selected = settings.bubbleBehavior,
@@ -169,7 +169,7 @@ fun SettingsScreen(
             }
         }
 
-        SectionCard(
+        Section(
             title = "Audio retention",
             supporting = "Successful dictations delete their audio immediately. A " +
                 "failed one keeps it only this long, so Retry still works.",
@@ -182,7 +182,7 @@ fun SettingsScreen(
             )
         }
 
-        SectionCard(
+        Section(
             title = "Excluded apps",
             supporting = "${settings.excludedPackages.size} excluded. The bubble stays " +
                 "hidden and reads nothing in these apps.",
@@ -208,7 +208,7 @@ fun SettingsScreen(
             }
         }
 
-        SectionCard("Privacy") {
+        Section("Privacy") {
             Text(
                 "Audio and transcripts go only to the gateway you configured. There " +
                     "is no cloud transcription, no analytics, and nothing is written " +
@@ -217,7 +217,7 @@ fun SettingsScreen(
             )
         }
 
-        SectionCard(
+        Section(
             title = "About",
             supporting = "VocaPhone ${appInfo.versionName} (${appInfo.versionCode})",
         ) {
@@ -271,13 +271,13 @@ fun SettingsScreen(
  * a promise the current dictation cannot keep.
  */
 @Composable
-private fun MicrophoneCard(
+private fun MicrophoneSection(
     selected: MicrophonePreference,
     status: MicrophoneStatus,
     onSelect: (MicrophonePreference) -> Unit,
 ) {
     val attached = selected in status.available
-    SectionCard(
+    Section(
         title = "Microphone",
         supporting = if (attached) selected.detail else selected.unavailableDetail,
     ) {

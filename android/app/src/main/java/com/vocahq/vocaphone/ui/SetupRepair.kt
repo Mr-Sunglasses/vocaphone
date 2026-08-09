@@ -6,6 +6,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -29,7 +31,7 @@ import androidx.compose.ui.unit.dp
  * repair route here before this compiles, rather than silently going missing.
  */
 @Composable
-fun SetupRepairCard(
+fun SetupRepair(
     status: SetupStatus,
     onOpenGateway: () -> Unit,
     onAcceptDisclosure: () -> Unit,
@@ -54,14 +56,24 @@ fun SetupRepairCard(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (rows.isNotEmpty()) {
-            SectionCard(
-                title = if (missing.size == 1) {
-                    "One thing needs fixing"
-                } else {
-                    "${missing.size} things need fixing"
-                },
-                supporting = "Dictation stays paused until these are back.",
-            ) {
+            // A Notice, not a Section: this is the answer to "why won't Dictate
+            // press", it sits directly under that disabled button, and Section
+            // gave up its container precisely so that things like this can keep
+            // one.
+            Notice(tone = NoticeTone.Attention) {
+                Text(
+                    if (missing.size == 1) {
+                        "One thing needs fixing"
+                    } else {
+                        "${missing.size} things need fixing"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    "Dictation stays paused until these are back.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 rows.forEach { step ->
                     when (step) {
                         // Filtered out above; kept so the `when` stays exhaustive.
@@ -120,11 +132,11 @@ fun SetupRepairCard(
         }
 
         if (SetupStep.DISCLOSURE in missing) {
-            AccessibilityDisclosureCard(accepted = false, onAccept = onAcceptDisclosure)
+            AccessibilityDisclosure(accepted = false, onAccept = onAcceptDisclosure)
         }
 
         if (status.restrictedSettingsGuidance) {
-            RestrictedSettingsCard(
+            RestrictedSettingsHelp(
                 onOpenAccessibilitySettings = { context.openAccessibilitySettings() },
                 onOpenAppInfo = { context.openAppSettings() },
             )

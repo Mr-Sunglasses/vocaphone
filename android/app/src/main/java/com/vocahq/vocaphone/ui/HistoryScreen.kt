@@ -46,7 +46,7 @@ fun HistoryScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(SectionSpacing),
     ) {
         items(records, key = { it.sessionId }) { record ->
             HistoryRow(
@@ -75,7 +75,7 @@ private fun HistoryRow(
     val timestamp = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
         .format(Date(record.createdAt))
 
-    SectionCard(
+    Section(
         title = timestamp,
         supporting = buildString {
             append(TranscriptionLanguage.fromWire(record.language).displayName)

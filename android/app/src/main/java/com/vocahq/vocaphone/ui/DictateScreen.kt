@@ -70,9 +70,9 @@ fun DictateScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(SectionSpacing),
     ) {
-        SectionCard(
+        Section(
             title = "Dictate",
             supporting = "${settings.language.displayName} · ${settings.style.displayName}",
         ) {
@@ -153,13 +153,13 @@ fun DictateScreen(
 
         // Directly under the disabled button rather than at the foot of the
         // screen: this is the answer to why the button will not press.
-        SetupRepairCard(
+        SetupRepair(
             status = setup,
             onOpenGateway = onOpenGateway,
             onAcceptDisclosure = onAcceptDisclosure,
         )
 
-        SectionCard(
+        Section(
             title = "Scratchpad",
             supporting = "Transcripts are inserted at the cursor. Nothing here is uploaded.",
         ) {

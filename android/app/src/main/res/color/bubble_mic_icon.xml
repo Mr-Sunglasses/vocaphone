@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The glyph has to change colour with the fill under it, which is why this is a
+  state list and not a single tint: dark ink on the mint idle fill, white on the
+  red recording fill. A fixed white — what this used to be — is 1.8:1 on mint.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:color="@color/bubble_recording_icon" />
+    <item android:color="@color/on_brand_dark" />
+</selector>

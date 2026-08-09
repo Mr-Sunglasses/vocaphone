@@ -101,6 +101,11 @@ ci:
     status=0
     just_bin='{{ just_executable() }}'
 
+    # The brand rules need nothing but python3, so this leg always runs.
+    echo "==> brand"
+    python3 assets/generate.py --check || status=1
+    echo
+
     echo "==> server"
     if [ ! -f server/justfile ]; then
         echo "skipped  server submodule not checked out (git submodule update --init)"

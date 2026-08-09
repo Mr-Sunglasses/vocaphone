@@ -100,7 +100,7 @@ final class WaveformView: UIView {
     // MARK: - Rendering values
 
     /// Older bars fade out, which gives the meter a direction of travel without
-    /// needing a gradient layer over the top of it.
+    /// adding another visual layer.
     private func alpha(at index: Int) -> CGFloat {
         guard mode != .indeterminate else { return 0.85 }
         let position = CGFloat(index) / CGFloat(max(levels.count - 1, 1))
@@ -291,17 +291,9 @@ final class StatusIndicatorView: UIView {
     }
 }
 
-/// The bar's primary action. A gradient fill and a tinted shadow are what
-/// separate it from the flat system-blue control it replaces, and the press
-/// scale gives the tap the same feedback the keys have.
-final class GradientButton: UIButton {
-    /// The gradient rides on a subview rather than on the button's own layer.
-    /// Assigning a `UIButton.Configuration` rebuilds the internal view hierarchy
-    /// on top of any layer added in `init`, which hid the title behind the fill.
-    private let fillView = UIView()
-    private let gradient = CAGradientLayer()
-
-    var fillColors: [UIColor] = [] {
+/// The bar's primary action uses a solid fill and quiet press feedback.
+final class FlatButton: UIButton {
+    var fillColor: UIColor = .systemBlue {
         didSet { applyFill() }
     }
 
@@ -329,13 +321,8 @@ final class GradientButton: UIButton {
 
     init() {
         super.init(frame: .zero)
-        gradient.startPoint = CGPoint(x: 0, y: 0)
-        gradient.endPoint = CGPoint(x: 1, y: 1)
-        fillView.isUserInteractionEnabled = false
-        fillView.layer.addSublayer(gradient)
-        addSubview(fillView)
-        layer.shadowOffset = CGSize(width: 0, height: 3)
-        layer.shadowRadius = 7
+        layer.shadowOffset = CGSize(width: 0, height: 1)
+        layer.shadowRadius = 2
     }
 
     @available(*, unavailable)
@@ -345,15 +332,7 @@ final class GradientButton: UIButton {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        // Every configuration change can re-order the subviews, so the fill is
-        // pushed back down on each pass rather than only once.
-        sendSubviewToBack(fillView)
-        fillView.frame = bounds
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        gradient.frame = bounds
-        gradient.cornerRadius = bounds.height / 2
-        CATransaction.commit()
+        layer.cornerRadius = bounds.height / 2
         layer.shadowPath = UIBezierPath(
             roundedRect: bounds,
             cornerRadius: bounds.height / 2
@@ -361,14 +340,10 @@ final class GradientButton: UIButton {
     }
 
     private func applyFill() {
-        guard let first = fillColors.first else { return }
-        // Muted enough to read as unavailable, solid enough to keep the white
-        // label above it legible.
-        let resolved = isEnabled
-            ? fillColors
-            : fillColors.map { $0.withAlphaComponent(0.7) }
-        gradient.colors = resolved.map(\.cgColor)
-        layer.shadowColor = first.cgColor
-        layer.shadowOpacity = isEnabled ? 0.34 : 0
+        backgroundColor = isEnabled
+            ? fillColor
+            : fillColor.withAlphaComponent(KeyboardPalette.disabledFillAlpha)
+        layer.shadowColor = fillColor.cgColor
+        layer.shadowOpacity = isEnabled ? 0.16 : 0
     }
 }

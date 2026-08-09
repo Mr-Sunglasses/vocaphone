@@ -21,6 +21,33 @@ enum SessionState: String, Codable, CaseIterable, Sendable {
     case targetContextChanged
     case expired
 
+    /// What the state is called on screen. The raw values are wire and storage
+    /// identifiers, and the main screen was showing them to the reader verbatim
+    /// — "uploadFailedRecoverable" is a case name, not a sentence.
+    var displayName: String {
+        switch self {
+        case .idle: "Idle"
+        case .launchingApp: "Opening vocaphone"
+        case .awaitingReturn: "Waiting to return"
+        case .recording: "Recording"
+        case .finalizing: "Finishing"
+        case .uploading: "Uploading"
+        case .transcribing: "Transcribing"
+        case .readyToInsert: "Ready to insert"
+        case .inserting: "Inserting"
+        case .inserted: "Inserted"
+        case .completed: "Done"
+        case .canceled: "Canceled"
+        case .permissionDenied: "Microphone access denied"
+        case .serverUnavailable: "Gateway unreachable"
+        case .uploadFailedRecoverable: "Upload failed, can retry"
+        case .transcriptionFailedRecoverable: "Transcription failed, can retry"
+        case .transcriptionFailedPermanent: "Transcription failed"
+        case .targetContextChanged: "Text field changed"
+        case .expired: "Expired"
+        }
+    }
+
     var isTerminal: Bool {
         switch self {
         case .completed, .canceled, .permissionDenied, .transcriptionFailedPermanent,

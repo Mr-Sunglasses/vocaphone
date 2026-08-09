@@ -65,8 +65,10 @@ struct SetupView: View {
     private var introSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
+                BrandMark(size: 36)
+                    .padding(.bottom, 2)
                 Text("Dictate into any app")
-                    .font(.title3.bold())
+                    .font(.title3.weight(.semibold))
                 Text(
                     "vocaphone records on this iPhone and transcribes on a "
                         + "gateway you run yourself. Nothing is sent to a "
@@ -83,8 +85,10 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("\(status.completedStepCount) of \(status.stepCount) steps done")
                     .font(.subheadline.weight(.semibold))
+                // No completion colour of its own: the app's tint *is* the
+                // "this is fine" colour now, so switching to a second green at
+                // 100% only said that two greens exist.
                 ProgressView(value: status.progress)
-                    .tint(status.isComplete ? .green : .accentColor)
             }
             .padding(.vertical, 2)
             .accessibilityElement(children: .combine)
@@ -211,7 +215,7 @@ struct SetupView: View {
                 Text("Start dictating")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .brandProminentButton()
             .controlSize(.large)
             .disabled(!status.isReadyToDictate)
             .listRowBackground(Color.clear)
@@ -245,16 +249,16 @@ struct SetupView: View {
         }
     }
 
+    /// A closing note, so it is a footer rather than a paragraph in a cell.
     private var privacySection: some View {
         Section {
+        } footer: {
             Text(
                 "Audio stays on this phone until upload succeeds, and your "
                     + "gateway deletes it after a successful transcription by "
                     + "default. No third-party transcription or analytics "
                     + "service is involved."
             )
-            .font(.footnote)
-            .foregroundStyle(.secondary)
         }
     }
 
@@ -297,8 +301,7 @@ struct SetupStepLabel: View {
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
-                .foregroundStyle(isComplete ? .green : .secondary)
-                .font(.title3)
+                .foregroundStyle(isComplete ? Color.brand : .secondary)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
                 Text(step.title)

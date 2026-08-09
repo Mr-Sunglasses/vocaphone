@@ -49,7 +49,7 @@ struct DictationBarLayoutTests {
     /// long title must never end up drawn underneath the primary button.
     @Test func theActionButtonsKeepTheirColumnClear() {
         let bar = Self.makeBar(Self.model(.recording))
-        let primary = Self.descendants(of: bar).first { $0 is GradientButton }
+        let primary = Self.descendants(of: bar).first { $0 is FlatButton }
         let waveform = Self.descendants(of: bar).first { $0 is WaveformView }
         #expect(primary != nil)
         #expect(waveform != nil)
@@ -101,8 +101,7 @@ struct DictationBarLayoutTests {
                 .brand, .handoff, .listening, .working, .ready, .alert, .locked,
             ]
             for accent in accents {
-                #expect(palette.gradient(for: accent).count == 2)
-                #expect(palette.tint(for: accent) == palette.gradient(for: accent)[0])
+                #expect(palette.tint(for: accent) == palette.color(for: accent))
             }
         }
     }

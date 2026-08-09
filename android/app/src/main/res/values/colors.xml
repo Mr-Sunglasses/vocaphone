@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The palette for everything drawn outside Compose.
+
+  Compose owns the app's colours in ui/theme/Theme.kt, and nothing in res/ could
+  reach them — which is how the floating bubble ended up in Material's baseline
+  purple (#4F378B on #1C1B1F) while the rest of the app was brand green. These
+  four palette entries mirror Theme.kt's dark scheme exactly, and
+  ColorPaletteTest fails the build if they ever drift apart.
+-->
+<resources>
+
+    <!-- Mirrors of VocaPhoneDarkColors in ui/theme/Theme.kt. -->
+    <color name="on_surface_dark">#FFE3E4E1</color>
+    <color name="brand_dark">#FF77D0B2</color>
+    <color name="on_brand_dark">#FF003827</color>
+
+    <!--
+      The bubble is always dark, in both themes, because it floats over other
+      apps rather than over ours: what is behind it is some arbitrary screen, so
+      one treatment that stays legible everywhere beats following a theme that
+      has nothing to do with the app underneath.
+    -->
+
+    <!-- The dark surface at 95%. XML cannot re-alpha another colour, so the RGB
+         is repeated from Theme.kt here and ColorPaletteTest pins the two
+         together. That is also why there is no separate opaque
+         `surface_dark` resource: nothing would reference it. -->
+    <color name="bubble_chip">#F21B1C1B</color>
+    <color name="bubble_outline">#33FFFFFF</color>
+
+    <!-- Dismiss sits a step back from Finish, so it is the same ink at 70%. -->
+    <color name="bubble_secondary_icon">#B3E3E4E1</color>
+
+    <!--
+      Not colorScheme.error: that pair is tuned for text on our own surfaces,
+      where the dark scheme's #FFB4AB is a pink that only works as a foreground.
+      This is a fill on a near-black chip carrying a white glyph, and it has to
+      read as "recording" at a glance — 4.4:1 against the chip, 3.9:1 under the
+      glyph, where the old #B3261E managed only 2.6:1 against the chip.
+    -->
+    <color name="bubble_recording">#FFE5484D</color>
+    <color name="bubble_recording_icon">#FFFFFFFF</color>
+
+</resources>

@@ -15,7 +15,7 @@ struct VocaPhoneRecordingActivity: Widget {
             HStack(spacing: 14) {
                 Image(systemName: context.state.canFinish ? "waveform.circle.fill" : "checkmark.circle.fill")
                     .font(.system(size: 34))
-                    .foregroundStyle(context.state.canFinish ? .red : .green)
+                    .foregroundStyle(context.state.canFinish ? Color.red : Color.brand)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("vocaphone")
                         .font(.headline)
@@ -72,10 +72,10 @@ struct VocaPhoneRecordingActivity: Widget {
             } compactTrailing: {
                 Text(context.state.canFinish ? "REC" : "DONE")
                     .font(.caption2.bold())
-                    .foregroundStyle(context.state.canFinish ? .red : .green)
+                    .foregroundStyle(context.state.canFinish ? Color.red : Color.brand)
             } minimal: {
                 Image(systemName: context.state.canFinish ? "waveform" : "checkmark")
-                    .foregroundStyle(context.state.canFinish ? .red : .green)
+                    .foregroundStyle(context.state.canFinish ? Color.red : Color.brand)
             }
         }
     }

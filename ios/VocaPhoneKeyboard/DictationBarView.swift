@@ -45,7 +45,7 @@ final class DictationBarView: UIView {
 
     private let actionStack = UIStackView()
     private let secondaryStack = UIStackView()
-    private let primaryButton = GradientButton()
+    private let primaryButton = FlatButton()
     private var secondaryButtons: [UIButton] = []
     private var secondaryActions: [DictationAction] = []
 
@@ -121,7 +121,7 @@ final class DictationBarView: UIView {
             endFlash()
             setBody(model.body, animated: animated)
         }
-        configurePrimary(model.primary, animated: animated)
+        configurePrimary(model.primary, accent: model.accent, animated: animated)
         configureSecondaries(model.secondaries)
     }
 
@@ -202,13 +202,21 @@ final class DictationBarView: UIView {
 
     // MARK: - Buttons
 
-    private func configurePrimary(_ button: DictationButton, animated: Bool) {
-        let changed = renderedModel?.primary != button
+    /// The accent is part of the configuration, not just of the fill: the label
+    /// has to be dark on a light accent and light on a dark one, so an
+    /// accent-only change still has to rebuild this.
+    private func configurePrimary(
+        _ button: DictationButton,
+        accent: DictationAccent,
+        animated: Bool
+    ) {
+        let changed = renderedModel?.primary != button || renderedModel?.accent != accent
         primaryButton.isEnabled = button.isEnabled
         primaryButton.accessibilityLabel = button.title
         primaryButton.accessibilityHint = button.hint
         guard changed || primaryButton.configuration == nil else { return }
         let titleSize = metrics.titleFontSize
+        let labelColor = palette.labelColor(for: accent, enabled: button.isEnabled)
         let update = { [primaryButton] in
             var configuration = UIButton.Configuration.plain()
             configuration.title = button.title
@@ -221,16 +229,18 @@ final class DictationBarView: UIView {
             )
             configuration.imagePadding = 6
             configuration.contentInsets = .zero
-            configuration.baseForegroundColor = .white
+            configuration.baseForegroundColor = labelColor
             // UIKit dims a disabled button's own colours towards grey, which on
             // the muted fill left the label barely legible. The label and glyph
-            // stay white in every state and the fill alone carries "disabled".
-            configuration.imageColorTransformer = UIConfigurationColorTransformer { _ in .white }
+            // keep their colour in every state and the fill alone carries
+            // "disabled".
+            configuration.imageColorTransformer =
+                UIConfigurationColorTransformer { _ in labelColor }
             configuration.titleTextAttributesTransformer =
                 UIConfigurationTextAttributesTransformer { incoming in
                     var outgoing = incoming
                     outgoing.font = .systemFont(ofSize: titleSize - 1, weight: .semibold)
-                    outgoing.foregroundColor = UIColor.white
+                    outgoing.foregroundColor = labelColor
                     return outgoing
                 }
             primaryButton.configuration = configuration
@@ -450,7 +460,7 @@ final class DictationBarView: UIView {
         let tint = palette.tint(for: accent)
         // Standalone sublayers animate their colour implicitly; the bar's own
         // backing layer does not, so its border is animated by hand.
-        primaryButton.fillColors = palette.gradient(for: accent)
+        primaryButton.fillColor = tint
         indicator.color = tint
         waveform.color = tint
         crossfade(timerLabel, animated: animated) { self.timerLabel.textColor = tint }

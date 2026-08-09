@@ -47,7 +47,7 @@ fun SetupScreen(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(SectionSpacing),
     ) {
         Text("Set up VocaPhone", style = MaterialTheme.typography.headlineSmall)
         Text(
@@ -60,12 +60,12 @@ fun SetupScreen(
 
         SetupProgress(status)
 
-        AccessibilityDisclosureCard(
+        AccessibilityDisclosure(
             accepted = status.disclosureAccepted,
             onAccept = onAcceptDisclosure,
         )
 
-        SectionCard("Permissions") {
+        Section("Permissions") {
             ChecklistRow(
                 title = "Microphone",
                 detail = "Records only while you are dictating.",
@@ -104,13 +104,13 @@ fun SetupScreen(
         }
 
         if (status.restrictedSettingsGuidance) {
-            RestrictedSettingsCard(
+            RestrictedSettingsHelp(
                 onOpenAccessibilitySettings = { context.openAccessibilitySettings() },
                 onOpenAppInfo = { context.openAppSettings() },
             )
         }
 
-        SectionCard("Gateway", supporting = "Your self-hosted VocaPhone server.") {
+        Section("Gateway", supporting = "Your self-hosted VocaPhone server.") {
             ChecklistRow(
                 title = "Address and token",
                 // Echoing the saved address back is the confirmation that the
@@ -170,15 +170,16 @@ private fun SetupProgress(status: SetupStatus, modifier: Modifier = Modifier) {
  * states the limits, not just the purpose.
  */
 @Composable
-fun AccessibilityDisclosureCard(
+fun AccessibilityDisclosure(
     accepted: Boolean,
     onAccept: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SectionCard(
-        title = "How VocaPhone uses accessibility access",
-        modifier = modifier,
-    ) {
+    Notice(modifier = modifier) {
+        Text(
+            "How VocaPhone uses accessibility access",
+            style = MaterialTheme.typography.titleSmall,
+        )
         Text(
             "VocaPhone turns on Android's accessibility service for two things:\n\n" +
                 "• To tell whether the text field you are focused on can be dictated " +
@@ -212,15 +213,16 @@ fun AccessibilityDisclosureCard(
  * reverse order just lands on a menu with nothing useful in it.
  */
 @Composable
-fun RestrictedSettingsCard(
+fun RestrictedSettingsHelp(
     onOpenAccessibilitySettings: () -> Unit,
     onOpenAppInfo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SectionCard(
-        title = "Can't turn the accessibility service on?",
-        modifier = modifier,
-    ) {
+    Notice(modifier = modifier, tone = NoticeTone.Attention) {
+        Text(
+            "Can't turn the accessibility service on?",
+            style = MaterialTheme.typography.titleSmall,
+        )
         Text(
             "Android blocks apps installed outside an app store from using " +
                 "accessibility access, so the switch may be greyed out and " +

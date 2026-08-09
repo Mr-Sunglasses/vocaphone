@@ -24,17 +24,56 @@ arcs are *elliptical*, not circular — their radius falls from 165.6 to about
 never quite lands. The yoke, by contrast, is a true circle.
 
 The reconstruction renders within 1% of the source at 460px and stays sharp at
-any size.
+any size. `_paths("both")` and `mark_box("both")` still produce it, and
+`mark_box("both")` is worth keeping honest: it returns exactly the 349×329 box
+the reconstruction was measured to.
+
+### What ships is four arcs, not six
+
+The shipped mark drops the outer arc pair (`SHIPPED_ARCS = "inner"`). Six arcs
+is faithful to the avatar and wrong for an icon: the outer pair sits nearest the
+edge, blurs first, and costs the microphone about 20% of its drawn size to make
+room for. At 22px — a settings row, a notification — the six-arc mark collapses
+into a smudge, and the mic is what has to survive.
+
+So the avatar remains the source of the geometry, and the icon is a deliberate
+simplification of it rather than a reproduction.
+
+## The rules are checked, not remembered
+
+```sh
+python3 assets/generate.py --check     # also part of the root `just ci`
+```
+
+It asserts what the assets are supposed to satisfy: every variant's mark clears
+3:1 against the ground it is drawn on, the shipped mark draws four arcs and the
+six-arc reconstruction still measures 349×329, and the adaptive icon's mark fits
+inside Android's guaranteed-visible circle.
+
+The contrast rule earns its keep. The shared org pack in
+[VocaHQ/vocahq](https://github.com/VocaHQ/vocahq/tree/main/web/assets/brand)
+grew `-dark` variants that put the ink mark back on the brand field at **2.78:1**
+— slightly worse than the navy icon this replaced (2.98:1), and the same mistake.
+`--check` catches that shape of regression.
 
 ## Colours
 
 | Token | Value | Use |
 | --- | --- | --- |
-| Navy | `#070F1C` | the mark |
-| Teal | `#34BCAE` | gradient, top |
-| Green | `#4DBA64` | gradient, bottom |
+| Brand | `#0F6B57` | the flat field, and the primary action in every app |
+| Ink | `#0B1A15` | the mark on a light ground |
+| Light | `#F2F6F2` | the mark on the brand field |
 
-The gradient is a plain vertical linear gradient, top to bottom.
+The palette intentionally uses a single flat brand colour rather than a
+gradient, and the mark is **light on that field, never dark**. Navy `#070F1C`
+on `#0F6B57` — what this used to be — puts two dark colours against each other:
+they differ by a few percent of lightness, so the arcs vanish first and then the
+yoke. `Ink` is for light grounds only, and it is a green-biased near-black
+rather than the old navy so that the mark sits in the same palette as the apps
+drawn around it.
+
+The apps pair `Brand` with `#77D0B2` on dark surfaces; see the Compose theme in
+`android/…/ui/theme/Theme.kt` and `BrandPalette.swift` on iOS.
 
 ## Outputs
 
@@ -47,7 +86,31 @@ The gradient is a plain vertical linear gradient, top to bottom.
 | `vocaphone-play-store-512.png` | Play Console listing icon |
 | `../ios/VocaPhoneApp/Assets.xcassets/AppIcon.appiconset/` | iOS app icon |
 | `../android/app/src/main/res/drawable/ic_launcher_*.xml` | Android adaptive icon |
-| `../server/app/webui/favicon.svg` | gateway WebUI and API docs |
+
+Every path above is inside this repository. Nothing here writes outside it.
+
+### The gateway favicon lives in another repository
+
+`server/` is the [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway)
+submodule, so `app/webui/favicon.svg` is *its* file, committed and reviewed
+there. This generator still draws it — the geometry and the palette are here, and
+a second copy of the generator in the gateway repo would be the worse
+duplication — but only when you ask:
+
+```sh
+python3 assets/generate.py --favicon server/app/webui/favicon.svg
+cd server && git switch -c chore/refresh-favicon && git commit -am 'chore: refresh the favicon'
+```
+
+It used to be an ordinary entry in `SVGS`, which meant a routine run dirtied a
+second repository as a side effect — and vocaphone's own `git status` says
+nothing about it, so the easy mistake was to regenerate, commit here, and leave
+the favicon behind uncommitted in the submodule. Refreshing it is now a
+deliberate act with its own PR.
+
+The gateway takes a neutral disc rather than the brand field: it draws the mark
+small against its own dark chrome, where a green disc reads as a smudge of
+colour.
 
 The app icons are full-bleed squares rather than the round badge: iOS applies
 its own squircle mask and Android its own adaptive-icon mask, so a circle

@@ -6,45 +6,35 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group
-        android:translateX="21.002"
-        android:translateY="21.291"
-        android:scaleX="0.144413"
-        android:scaleY="0.144413">
+        android:translateX="19.996"
+        android:translateY="20.293"
+        android:scaleX="0.148815"
+        android:scaleY="0.148815">
         <path
-            android:fillColor="#070F1C"
+            android:fillColor="#F2F6F2"
             android:pathData="M 164 127 A 65 65 0 0 1 294 127 L 294 224 A 65 65 0 0 1 164 224 Z" />
         <path
-            android:strokeColor="#070F1C"
+            android:strokeColor="#F2F6F2"
             android:strokeWidth="18"
             android:strokeLineCap="round"
             android:pathData="M 144.87 202.02 A 87 87 0 1 0 312.13 202.02" />
         <path
-            android:strokeColor="#070F1C"
+            android:strokeColor="#F2F6F2"
             android:strokeWidth="18"
             android:strokeLineCap="round"
             android:pathData="M 228.5 313 L 228.5 382" />
         <path
-            android:strokeColor="#070F1C"
+            android:strokeColor="#F2F6F2"
             android:strokeWidth="18"
             android:strokeLineCap="round"
             android:pathData="M 170 382 L 287 382" />
         <path
-            android:strokeColor="#070F1C"
-            android:strokeWidth="18"
-            android:strokeLineCap="round"
-            android:pathData="M 95.71 141.40 A 165.6 141.6 0 0 0 95.71 310.60" />
-        <path
-            android:strokeColor="#070F1C"
-            android:strokeWidth="18"
-            android:strokeLineCap="round"
-            android:pathData="M 361.29 141.40 A 165.6 141.6 0 0 1 361.29 310.60" />
-        <path
-            android:strokeColor="#070F1C"
+            android:strokeColor="#F2F6F2"
             android:strokeWidth="18"
             android:strokeLineCap="round"
             android:pathData="M 123.12 168.78 A 129.0 99.2 0 0 0 123.12 283.22" />
         <path
-            android:strokeColor="#070F1C"
+            android:strokeColor="#F2F6F2"
             android:strokeWidth="18"
             android:strokeLineCap="round"
             android:pathData="M 333.88 168.78 A 129.0 99.2 0 0 1 333.88 283.22" />

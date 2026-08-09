@@ -23,7 +23,7 @@
         android:contentDescription="@string/bubble_dictate"
         android:padding="10dp"
         android:src="@drawable/ic_dictation"
-        android:tint="#FFFFFFFF" />
+        android:tint="@color/bubble_mic_icon" />
 
     <TextView
         android:id="@+id/bubble_status"
@@ -33,7 +33,7 @@
         android:ellipsize="end"
         android:maxWidth="180dp"
         android:maxLines="1"
-        android:textColor="#FFFFFFFF"
+        android:textColor="@color/on_surface_dark"
         android:textSize="13sp"
         android:visibility="gone" />
 
@@ -47,7 +47,7 @@
         android:padding="7dp"
         android:src="@drawable/ic_check"
         android:visibility="gone"
-        android:tint="#FFFFFFFF" />
+        android:tint="@color/on_surface_dark" />
 
     <ImageButton
         android:id="@+id/bubble_cancel"
@@ -58,5 +58,5 @@
         android:contentDescription="@string/bubble_cancel"
         android:padding="8dp"
         android:src="@drawable/ic_cancel"
-        android:tint="#B3FFFFFF" />
+        android:tint="@color/bubble_secondary_icon" />
 </LinearLayout>
