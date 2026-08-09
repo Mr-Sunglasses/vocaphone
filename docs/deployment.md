@@ -13,7 +13,7 @@ Canonical guides (after `git submodule update --init --recursive`):
 | Private Tailscale Serve | [server/docs/tailscale.md](../server/docs/tailscale.md) |
 | Gateway troubleshooting | [server/docs/troubleshooting.md](../server/docs/troubleshooting.md) |
 
-Phone-specific setup (signing, keyboard, bubble) stays in this repository:
+Phone-specific setup (signing and keyboard) stays in this repository:
 
 - [Device setup](device-setup.md)
 - [Android client](../android/README.md)

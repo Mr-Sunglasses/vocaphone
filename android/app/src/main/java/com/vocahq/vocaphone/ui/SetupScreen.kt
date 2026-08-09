@@ -1,10 +1,6 @@
 package com.vocahq.vocaphone.ui
 
 import android.Manifest
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -24,16 +20,14 @@ import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
 /**
- * Guided setup. Every step states what VocaPhone does with the access it asks
- * for, and the accessibility disclosure is a separate, explicit consent rather
- * than a line buried in a list.
+ * Guided setup for the IME path. VocaPhone does not request accessibility or
+ * overlay access; the keyboard inserts through Android's InputConnection.
  */
 @Composable
 fun SetupScreen(
     status: SetupStatus,
     settings: VocaPhoneSettings,
     onOpenGateway: () -> Unit,
-    onAcceptDisclosure: () -> Unit,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -51,8 +45,8 @@ fun SetupScreen(
     ) {
         Text("Set up VocaPhone", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "VocaPhone dictates into any app through a floating bubble. Your " +
-                "keyboard stays exactly as it is, and speech is transcribed only by " +
+            "VocaPhone is a voice keyboard. Turn it on and select it when you want " +
+                "to dictate into any text field. Your speech is transcribed only by " +
                 "the gateway you run yourself.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -61,11 +55,6 @@ fun SetupScreen(
         SetupProgress(status)
 
         ImeSetupCard(status.ime)
-
-        AccessibilityDisclosure(
-            accepted = status.disclosureAccepted,
-            onAccept = onAcceptDisclosure,
-        )
 
         Section("Permissions") {
             ChecklistRow(
@@ -82,41 +71,11 @@ fun SetupScreen(
                 actionLabel = "Grant",
                 onAction = { requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
             )
-            ChecklistRow(
-                title = "Display over other apps",
-                detail = "Draws the dictation bubble above the app you are typing in.",
-                satisfied = status.overlay,
-                actionLabel = "Open",
-                onAction = { context.openOverlaySettings() },
-            )
-            ChecklistRow(
-                title = "Accessibility service",
-                detail = "Finds the focused field and inserts your transcript.",
-                satisfied = status.accessibility,
-                actionLabel = "Open",
-                onAction = { context.openAccessibilitySettings() },
-            )
-            ChecklistRow(
-                title = "Unrestricted battery usage (optional)",
-                detail = "Stops Android ending a long dictation early.",
-                satisfied = status.batteryUnrestricted,
-                actionLabel = "Open",
-                onAction = { context.openBatterySettings() },
-            )
-        }
-
-        if (status.restrictedSettingsGuidance) {
-            RestrictedSettingsHelp(
-                onOpenAccessibilitySettings = { context.openAccessibilitySettings() },
-                onOpenAppInfo = { context.openAppSettings() },
-            )
         }
 
         Section("Gateway", supporting = "Your self-hosted VocaPhone server.") {
             ChecklistRow(
                 title = "Address and token",
-                // Echoing the saved address back is the confirmation that the
-                // gateway screen took what was typed into it.
                 detail = if (status.gatewayConfigured) {
                     settings.gatewayUrl
                 } else {
@@ -147,25 +106,21 @@ fun SetupScreen(
     }
 }
 
-/**
- * Discoverable handoff for the first IME build. This is informational during the
- * migration: the existing bubble checklist remains the release path for now.
- */
+/** Setup handoff for enabling and selecting the system keyboard. */
 @Composable
 internal fun ImeSetupCard(status: ImeSetupStatus, modifier: Modifier = Modifier) {
     val context = androidx.compose.ui.platform.LocalContext.current
     Notice(modifier = modifier) {
-        Text("Try the VocaPhone keyboard", style = MaterialTheme.typography.titleSmall)
+        Text("VocaPhone keyboard", style = MaterialTheme.typography.titleSmall)
         Text(
-            "This experimental path puts the microphone inside VocaPhone's keyboard " +
-                "and inserts through Android's text connection. It does not read the " +
-                "contents of the field.",
+            "The microphone lives inside VocaPhone's keyboard. It inserts through " +
+                "Android's text connection and does not read the contents of the field.",
             style = MaterialTheme.typography.bodyMedium,
         )
         Text(
             when {
                 status.selected -> "VocaPhone is the selected keyboard."
-                status.enabled -> "VocaPhone is enabled. Open the picker to select it."
+                status.enabled -> "VocaPhone is enabled. Select it from the keyboard picker."
                 else -> "VocaPhone is not enabled as a keyboard yet."
             },
             style = MaterialTheme.typography.labelLarge,
@@ -186,7 +141,7 @@ internal fun ImeSetupCard(status: ImeSetupStatus, modifier: Modifier = Modifier)
     }
 }
 
-/** How far through the checklist the user is, so the list has a visible end. */
+/** How far through setup the user is, so the list has a visible end. */
 @Composable
 private fun SetupProgress(status: SetupStatus, modifier: Modifier = Modifier) {
     Column(
@@ -203,139 +158,4 @@ private fun SetupProgress(status: SetupStatus, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth(),
         )
     }
-}
-
-/**
- * The prominent disclosure Play requires from a non-accessibility tool that uses
- * `AccessibilityService`. It is deliberately separate from the checklist and
- * states the limits, not just the purpose.
- */
-@Composable
-fun AccessibilityDisclosure(
-    accepted: Boolean,
-    onAccept: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Notice(modifier = modifier) {
-        Text(
-            "How VocaPhone uses accessibility access",
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Text(
-            "VocaPhone turns on Android's accessibility service for two things:\n\n" +
-                "• To tell whether the text field you are focused on can be dictated " +
-                "into, so the bubble appears only where it is useful.\n" +
-                "• To insert the transcript you asked for at your cursor, and to undo " +
-                "it if you change your mind.\n\n" +
-                "It reads the contents of a field only at the moment you insert into " +
-                "it, and only in memory. Field text is never stored, logged, or sent " +
-                "anywhere — not to the gateway, and not to us. The bubble stays " +
-                "hidden in password and payment fields, on system permission " +
-                "screens, and in any app you exclude.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        if (accepted) {
-            Text(
-                "You accepted this on this device.",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        } else {
-            PrimaryButton("I understand", onClick = onAccept, modifier = Modifier.fillMaxWidth())
-        }
-    }
-}
-
-/**
- * Shown when the accessibility switch is likely greyed out because VocaPhone
- * was installed outside an app store. The "Allow restricted settings" option
- * stays hidden until the switch has actually been tried and blocked once, so
- * that has to happen before App info's overflow menu is worth opening — the
- * reverse order just lands on a menu with nothing useful in it.
- */
-@Composable
-fun RestrictedSettingsHelp(
-    onOpenAccessibilitySettings: () -> Unit,
-    onOpenAppInfo: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Notice(modifier = modifier, tone = NoticeTone.Attention) {
-        Text(
-            "Can't turn the accessibility service on?",
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Text(
-            "Android blocks apps installed outside an app store from using " +
-                "accessibility access, so the switch may be greyed out and " +
-                "labelled \"Restricted setting\". VocaPhone cannot lift that " +
-                "itself — only you can, and the fix only appears after you've " +
-                "been blocked once:\n\n" +
-                "1. Open Accessibility settings below and try turning Local " +
-                "Flow on. It will refuse and show a \"Restricted setting\" " +
-                "message — that's expected, and it's what unlocks the next " +
-                "step.\n" +
-                "2. Open App info. Tap the ⋮ menu in the top-right corner and " +
-                "choose \"Allow restricted settings\". On some Samsung phones " +
-                "it appears as its own row on this page instead, without " +
-                "needing the menu.\n" +
-                "3. Confirm with your PIN, pattern or fingerprint.\n" +
-                "4. Come back to Accessibility settings and turn VocaPhone " +
-                "on — it will work this time.",
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        // Stacked rather than side by side: at a large display size two weighted
-        // buttons clip their labels to "1." and "2. App", which loses precisely
-        // the ordering the numbered steps above are asking the user to follow.
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PrimaryButton(
-                text = "1. Accessibility settings",
-                onClick = onOpenAccessibilitySettings,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            SecondaryButton(
-                text = "2. App info",
-                onClick = onOpenAppInfo,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-        Text(
-            "On Samsung phones running One UI 8.5, \"Allow restricted " +
-                "settings\" is currently missing from App info entirely for " +
-                "every sideloaded app — a Samsung bug, not something Local " +
-                "Flow can work around from here. If that's what you're " +
-                "seeing, granting accessibility from a computer over adb is " +
-                "the only way through right now; see the project's GitHub " +
-                "releases page for the exact command.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-internal fun Context.openOverlaySettings() {
-    startActivity(
-        Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.fromParts("package", packageName, null),
-        )
-    )
-}
-
-internal fun Context.openAccessibilitySettings() {
-    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-}
-
-internal fun Context.openBatterySettings() {
-    // The user-visible list, rather than the direct request dialog: Play treats
-    // an unprompted exemption request as a policy violation.
-    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-}
-
-internal fun Context.openAppSettings() {
-    startActivity(
-        Intent(
-            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.fromParts("package", packageName, null),
-        )
-    )
 }

@@ -5,29 +5,21 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -36,29 +28,22 @@ import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.settings.AudioRetention
-import com.vocahq.vocaphone.settings.BubbleBehavior
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
 @Composable
 fun SettingsScreen(
     settings: VocaPhoneSettings,
     setup: SetupStatus,
-    installedApps: List<InstalledApp>,
     microphone: MicrophoneStatus,
-    onLoadApps: () -> Unit,
     onLanguage: (TranscriptionLanguage) -> Unit,
     onStyle: (WritingStyle) -> Unit,
     onMicrophone: (MicrophonePreference) -> Unit,
-    onAutomaticInsertion: (Boolean) -> Unit,
-    onBubbleBehavior: (BubbleBehavior) -> Unit,
     onAudioRetention: (AudioRetention) -> Unit,
-    onToggleExcludedApp: (String) -> Unit,
     onOpenGateway: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val appInfo = remember { context.readAppInfo() }
-    LaunchedEffect(Unit) { onLoadApps() }
 
     Column(
         modifier = modifier
@@ -140,48 +125,6 @@ fun SettingsScreen(
             onSelect = onMicrophone,
         )
 
-        Section("Insertion") {
-            ToggleRow(
-                title = "Insert automatically",
-                detail = "Write the transcript straight into the focused field. " +
-                    "When off, it waits in History for you.",
-                checked = settings.automaticInsertion,
-                onCheckedChange = onAutomaticInsertion,
-            )
-        }
-
-        Section("Floating bubble") {
-            ChipChoiceRow(
-                options = BubbleBehavior.entries,
-                selected = settings.bubbleBehavior,
-                label = { it.displayName },
-                onSelect = onBubbleBehavior,
-            )
-            Text(
-                "The bubble never appears in password or payment fields, on system " +
-                    "permission screens, or in the apps you exclude below.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (!setup.accessibility || !setup.overlay) {
-                Text(
-                    "The bubble needs the accessibility service and display-over-other-apps.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-                SecondaryButton(
-                    text = "Repair",
-                    onClick = {
-                        if (!setup.overlay) {
-                            context.openOverlaySettings()
-                        } else {
-                            context.openAccessibilitySettings()
-                        }
-                    },
-                )
-            }
-        }
-
         Section(
             title = "Audio retention",
             supporting = "Successful dictations delete their audio immediately. A " +
@@ -195,37 +138,13 @@ fun SettingsScreen(
             )
         }
 
-        Section(
-            title = "Excluded apps",
-            supporting = "${settings.excludedPackages.size} excluded. The bubble stays " +
-                "hidden and reads nothing in these apps.",
-        ) {
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
-            ) {
-                items(installedApps, key = { it.packageName }) { app ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onToggleExcludedApp(app.packageName) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Checkbox(
-                            checked = app.packageName in settings.excludedPackages,
-                            onCheckedChange = { onToggleExcludedApp(app.packageName) },
-                        )
-                        Text(app.label, style = MaterialTheme.typography.bodyMedium)
-                    }
-                }
-            }
-        }
-
         Section("Privacy") {
             Text(
-                "Audio and transcripts go only to the gateway you configured. There " +
-                    "is no cloud transcription, no analytics, and nothing is written " +
-                    "to the clipboard unless you tap Copy.",
+                "VocaPhone's keyboard inserts through Android's text connection and " +
+                    "does not read the field. Audio and transcripts go only to the " +
+                    "gateway you configured. There is no cloud transcription, no " +
+                    "analytics, and nothing is written to the clipboard unless you " +
+                    "tap Copy.",
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
@@ -326,27 +245,4 @@ private fun Context.copyDiagnostics(text: String) {
 /** No browser is a plausible state on a stripped-down ROM, so failure is silent. */
 private fun Context.openUrl(url: String) {
     runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-}
-
-@Composable
-private fun ToggleRow(
-    title: String,
-    detail: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
 }

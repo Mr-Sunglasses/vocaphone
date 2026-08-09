@@ -63,20 +63,17 @@ logs:
     fi
     "${adb[@]}" logcat --pid="${pid}"
 
-# Grant the runtime permissions the dictation bubble needs.
+# Grant the runtime permissions used by the voice keyboard and QR pairing.
 [group('run')]
 permissions:
     #!/usr/bin/env bash
     # Saves re-doing the permission dance by hand after every fresh install.
-    # The accessibility service is not grantable this way and stays manual.
     set -euo pipefail
     adb=("$({{ just_executable() }} _adb)" -s "$({{ just_executable() }} _serial)")
     for permission in RECORD_AUDIO POST_NOTIFICATIONS CAMERA; do
         "${adb[@]}" shell pm grant {{ app_id }} "android.permission.${permission}" || true
     done
-    # Overlay is an appop, not a runtime permission, so pm grant cannot set it.
-    "${adb[@]}" shell appops set {{ app_id }} SYSTEM_ALERT_WINDOW allow || true
-    echo "Enable the accessibility service by hand: Settings → Accessibility → vocaphone."
+    echo "Enable and select VocaPhone in Settings → Keyboard / Input method."
 
 # Run the unit tests; pass a filter, e.g. `just test '*DictationTest'`.
 [group('test')]

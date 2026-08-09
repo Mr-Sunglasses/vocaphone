@@ -32,11 +32,12 @@ fun Context.readAppInfo(): AppInfo {
 }
 
 /**
- * Which store, if any, vouched for this install. It is the same signal guided
- * setup uses to predict a greyed-out accessibility switch, so it belongs in a
- * bug report.
+ * Which store, if any, vouched for this install. It is useful context in a bug
+ * report, but it does not gate setup or request any special access.
  */
-private fun Context.installerLabel(): String = when (val installer = installerPackage()) {
+private fun Context.installerLabel(): String = when (val installer = runCatching {
+    packageManager.getInstallSourceInfo(packageName).installingPackageName
+}.getOrNull()) {
     null -> "sideloaded"
     "com.android.vending" -> "Google Play"
     "org.fdroid.fdroid" -> "F-Droid"

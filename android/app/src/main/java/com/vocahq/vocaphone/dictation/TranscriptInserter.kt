@@ -24,8 +24,8 @@ data class InsertionReport(
 )
 
 /**
- * Implemented by the accessibility service. Kept as an interface so the
- * dictation pipeline can be exercised without one running.
+ * Implemented by the IME. Kept as an interface so the dictation pipeline can be
+ * exercised without the keyboard service running.
  */
 interface TranscriptInserter {
     suspend fun insert(transcript: String): InsertionReport

@@ -2,7 +2,7 @@ package com.vocahq.vocaphone.core
 
 import java.util.UUID
 
-/** What the bubble and the companion app are both driven by. */
+/** What the keyboard and the companion app are both driven by. */
 enum class DictationPhase {
     IDLE,
     LISTENING,
@@ -28,8 +28,6 @@ enum class DictationPhase {
 enum class MissingPermission {
     MICROPHONE,
     NOTIFICATIONS,
-    OVERLAY,
-    ACCESSIBILITY,
     GATEWAY_NOT_CONFIGURED,
     ;
 
@@ -37,8 +35,6 @@ enum class MissingPermission {
         get() = when (this) {
             MICROPHONE -> "Microphone access"
             NOTIFICATIONS -> "Notifications"
-            OVERLAY -> "Display over other apps"
-            ACCESSIBILITY -> "VocaPhone accessibility service"
             GATEWAY_NOT_CONFIGURED -> "Gateway address and token"
         }
 }
@@ -74,7 +70,7 @@ data class DictationState(
     val isRecording: Boolean get() = phase.holdsMicrophone
     val canRetry: Boolean get() = phase == DictationPhase.FAILED && failure?.recoverable == true
 
-    /** The user-visible line under the bubble and in the companion app. */
+    /** The user-visible status line in the keyboard and companion app. */
     val statusText: String
         get() = when (phase) {
             DictationPhase.IDLE -> "Tap to dictate"

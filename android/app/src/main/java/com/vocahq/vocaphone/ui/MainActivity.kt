@@ -58,11 +58,10 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
     val history by viewModel.history.collectAsStateWithLifecycle()
     val connection by viewModel.connection.collectAsStateWithLifecycle()
     val testing by viewModel.testing.collectAsStateWithLifecycle()
-    val installedApps by viewModel.installedApps.collectAsStateWithLifecycle()
     val microphone by viewModel.microphone.collectAsStateWithLifecycle()
 
-    // Overlay and accessibility are system toggles, so their state can change
-    // while the app is in the background; re-read them on every resume.
+    // The selected keyboard is a system setting, so its state can change while
+    // the app is in the background; re-read setup on every resume.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -139,7 +138,6 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
                 status = setup,
                 settings = settings,
                 onOpenGateway = { showingGateway = true },
-                onAcceptDisclosure = { viewModel.setDisclosureAccepted(true) },
                 onFinish = { viewModel.setOnboardingComplete(true) },
                 modifier = content,
             )
@@ -154,7 +152,6 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
                 onRetry = viewModel::retry,
                 onDismiss = viewModel::dismissDictation,
                 onOpenGateway = { showingGateway = true },
-                onAcceptDisclosure = { viewModel.setDisclosureAccepted(true) },
                 modifier = content,
             )
 
@@ -169,16 +166,11 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
             else -> SettingsScreen(
                 settings = settings,
                 setup = setup,
-                installedApps = installedApps,
                 microphone = microphone,
-                onLoadApps = viewModel::loadInstalledApps,
                 onLanguage = { viewModel.setLanguage(it) },
                 onStyle = { viewModel.setStyle(it) },
                 onMicrophone = { viewModel.setMicrophone(it) },
-                onAutomaticInsertion = { viewModel.setAutomaticInsertion(it) },
-                onBubbleBehavior = { viewModel.setBubbleBehavior(it) },
                 onAudioRetention = { viewModel.setAudioRetention(it) },
-                onToggleExcludedApp = viewModel::toggleExcludedApp,
                 onOpenGateway = { showingGateway = true },
                 modifier = content,
             )

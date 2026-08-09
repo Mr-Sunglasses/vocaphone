@@ -1,9 +1,6 @@
 package com.vocahq.vocaphone.ui
 
 import android.app.Application
-import android.content.Intent
-import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
@@ -21,9 +18,7 @@ import com.vocahq.vocaphone.dictation.DictationSource
 import com.vocahq.vocaphone.gateway.GatewayClient
 import com.vocahq.vocaphone.gateway.GatewayException
 import com.vocahq.vocaphone.settings.AudioRetention
-import com.vocahq.vocaphone.settings.BubbleBehavior
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,7 +26,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /** The outcome of a connection test, shown in full so nothing is guessed at. */
 data class ConnectionReport(
@@ -42,8 +36,6 @@ data class ConnectionReport(
     val streamingSupported: Boolean?,
     val message: String,
 )
-
-data class InstalledApp(val packageName: String, val label: String)
 
 /**
  * What the Microphone setting can offer right now. The route is only knowable
@@ -92,9 +84,6 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     private val _testing = MutableStateFlow(false)
     val testing: StateFlow<Boolean> = _testing.asStateFlow()
 
-    private val _installedApps = MutableStateFlow<List<InstalledApp>>(emptyList())
-    val installedApps: StateFlow<List<InstalledApp>> = _installedApps.asStateFlow()
-
     private val _microphone = MutableStateFlow(MicrophoneStatus())
     val microphone: StateFlow<MicrophoneStatus> = _microphone.asStateFlow()
 
@@ -138,7 +127,6 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
             _setup.value = SetupStatus.read(
                 context = getApplication(),
                 gatewayConfigured = configuration.isConfigured,
-                disclosureAccepted = configuration.disclosureAccepted,
             )
         }
     }
@@ -264,51 +252,11 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun setAutomaticInsertion(enabled: Boolean) =
-        viewModelScope.launch { container.settings.setAutomaticInsertion(enabled) }
-
-    fun setBubbleBehavior(behavior: BubbleBehavior) =
-        viewModelScope.launch { container.settings.setBubbleBehavior(behavior) }
-
     fun setAudioRetention(retention: AudioRetention) =
         viewModelScope.launch { container.settings.setAudioRetention(retention) }
 
-    fun setDisclosureAccepted(accepted: Boolean) = viewModelScope.launch {
-        container.settings.setDisclosureAccepted(accepted)
-        refreshSetup()
-    }
-
     fun setOnboardingComplete(complete: Boolean) =
         viewModelScope.launch { container.settings.setOnboardingComplete(complete) }
-
-    fun toggleExcludedApp(packageName: String) {
-        viewModelScope.launch {
-            val current = container.settings.current().excludedPackages
-            val updated = if (packageName in current) current - packageName else current + packageName
-            container.settings.setExcludedPackages(updated)
-        }
-    }
-
-    fun loadInstalledApps() {
-        if (_installedApps.value.isNotEmpty()) return
-        viewModelScope.launch {
-            _installedApps.value = withContext(Dispatchers.IO) { queryLauncherApps() }
-        }
-    }
-
-    private fun queryLauncherApps(): List<InstalledApp> {
-        val packageManager = getApplication<Application>().packageManager
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return packageManager
-            .queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0))
-            .mapNotNull { resolved ->
-                val info: ApplicationInfo = resolved.activityInfo?.applicationInfo ?: return@mapNotNull null
-                if (info.packageName == getApplication<Application>().packageName) return@mapNotNull null
-                InstalledApp(info.packageName, packageManager.getApplicationLabel(info).toString())
-            }
-            .distinctBy { it.packageName }
-            .sortedBy { it.label.lowercase() }
-    }
 
     // ----------------------------------------------------------- dictation
 

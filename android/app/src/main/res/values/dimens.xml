@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Keeps the bubble clear of the screen edge when it is first placed. -->
-    <dimen name="bubble_inset">148dp</dimen>
-</resources>

@@ -39,13 +39,10 @@ import kotlinx.coroutines.withContext
 
 /** Where a dictation was started from, which decides where its transcript goes. */
 enum class DictationSource {
-    /** The floating bubble: insert into whatever field is focused at Finish. */
-    BUBBLE,
-
     /** The companion app's scratchpad: the transcript stays in the app. */
     COMPANION_APP,
 
-    /** The experimental system keyboard: commit into its current InputConnection. */
+    /** The system keyboard: commit into its current InputConnection. */
     IME,
 }
 
@@ -63,25 +60,18 @@ class DictationController(
     private val _state = MutableStateFlow(DictationState())
     val state: StateFlow<DictationState> = _state.asStateFlow()
 
-    /** Set by the accessibility service while it is connected. */
-    @Volatile
-    var inserter: TranscriptInserter? = null
-
-    /** Set by the experimental IME while the keyboard service is connected. */
+    /** Set by the IME while the keyboard service is connected. */
     @Volatile
     var imeInserter: TranscriptInserter? = null
 
     private var pipeline: Job? = null
     private var capture: AudioCapture? = null
-    private var lastInsertion: AppliedInsertion? = null
 
     @Volatile
     private var finishRequested = false
 
     @Volatile
     private var cancelRequested = false
-
-    val canUndo: Boolean get() = lastInsertion != null
 
     /**
      * Starts a dictation unless one is already running. Missing permissions or
@@ -167,14 +157,6 @@ class DictationController(
 
     fun clearTransient() {
         if (!_state.value.phase.isBusy) reset()
-    }
-
-    /** Removes the last insertion when the exact text is still where it was put. */
-    suspend fun undoLast(): Boolean {
-        val insertion = lastInsertion ?: return false
-        val removed = inserter?.undo(insertion) ?: false
-        if (removed) lastInsertion = null
-        return removed
     }
 
     fun missingPermissions(configuration: VocaPhoneSettings): Set<MissingPermission> = buildSet {
@@ -423,7 +405,6 @@ class DictationController(
         source: DictationSource,
     ) {
         val target = when (source) {
-            DictationSource.BUBBLE -> inserter.takeIf { configuration.automaticInsertion }
             DictationSource.IME -> imeInserter
             DictationSource.COMPANION_APP -> null
         }
@@ -447,10 +428,9 @@ class DictationController(
         }
 
         _state.update { it.copy(phase = DictationPhase.INSERTING, transcript = transcript) }
-        // Reacquired here rather than at Start, so a dictation that followed the
-        // user into another app lands in the field they are actually looking at.
+        // The IME connection is reacquired here rather than at Start, so the
+        // transcript is committed to the editor still owned by the keyboard.
         val report = target.insert(transcript)
-        lastInsertion = report.applied
         history.recordSuccess(
             sessionId = sessionId.toString(),
             language = configuration.effectiveLanguage.wireValue,
@@ -470,7 +450,7 @@ class DictationController(
         )
         if (report.outcome == InsertionOutcome.INSERTED) {
             // "Inserted" is a confirmation, not a state the user acts on: after a
-            // moment the bubble or keyboard returns to its idle mic on its own.
+            // moment the keyboard returns to its idle mic on its own.
             scope.launch {
                 delay(INSERTED_LINGER_MILLIS)
                 _state.update { current ->
@@ -499,7 +479,7 @@ class DictationController(
             recoverable = error.recoverable,
             audioFile = wavFile,
             retentionHours = configuration.audioRetention.hours,
-            targetPackage = inserter?.currentTargetPackage(),
+            targetPackage = null,
         )
         _state.value = _state.value.copy(
             phase = DictationPhase.FAILED,
@@ -516,7 +496,7 @@ class DictationController(
         /** Below this, there is nothing a model could usefully transcribe. */
         const val MINIMUM_RECORDING_MILLIS = 300L
 
-        /** How long the "Inserted" confirmation stays before the bubble goes idle. */
+        /** How long the "Inserted" confirmation stays before the keyboard goes idle. */
         const val INSERTED_LINGER_MILLIS = 2_000L
     }
 }

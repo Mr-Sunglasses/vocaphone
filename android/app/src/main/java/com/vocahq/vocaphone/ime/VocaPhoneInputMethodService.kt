@@ -123,10 +123,8 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
             if (!committed) {
                 InsertionReport(InsertionOutcome.UNSUPPORTED_EDITOR)
             } else {
-                // InputConnection does not expose a portable undo range. The
-                // keyboard's first spike proves insertion only; undo remains owned
-                // by the existing accessibility destination until the IME contract
-                // grows a cursor-aware undo implementation.
+                // InputConnection does not expose a portable undo range. The IME
+                // proves insertion only; undo is intentionally not advertised.
                 InsertionReport(InsertionOutcome.INSERTED)
             }
         }

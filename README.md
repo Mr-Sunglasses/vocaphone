@@ -33,7 +33,7 @@ the same privacy-first dictation idea that already runs on Linux
 Longer term the goal is straightforward: set Voca up once and use it across
 whatever machines you own. Desktop plus phone is what makes that real.
 
-Dictate from an iPhone keyboard or an Android floating bubble. Audio goes to a
+Dictate from an iPhone or VocaPhone Android keyboard. Audio goes to a
 gateway on your Mac, Linux box, or home server. Local speech models turn it into
 text, and the transcript lands at your cursor. No accounts, no cloud STT, and no
 subscription.
@@ -43,7 +43,7 @@ subscription.
 | Client | State |
 | --- | --- |
 | **iOS** | End-to-end flow exercised on a physical iPhone 14 Pro: keyboard handoff, background recording, private Tailscale transcription, direct insertion |
-| **Android** | Builds and passes unit tests; floating-bubble client not yet exercised end to end on a physical Pixel |
+| **Android** | IME-only release path builds, passes unit tests/lint, and has been installed and selected on a physical Android device |
 | **Gateway** | Runs natively on macOS/Linux or via Docker Compose, with multiple local engine adapters |
 
 Licensed under [AGPL-3.0](LICENSE): free to use, study, modify, and share, with
@@ -57,9 +57,9 @@ versioned session state with the keyboard, and inserts through
 `UITextDocumentProxy`. Quick Dictation can keep the app ready for up to 10
 minutes so most later dictations skip another app switch.
 
-On Android, your own keyboard stays put. A floating bubble starts and stops
-dictation and inserts at the focused field, with the same styles and gateway as
-iOS.
+On Android, VocaPhone is a normal system keyboard. Select it when you want to
+dictate; it inserts through Android's `InputConnection` with the same styles and
+gateway as iOS.
 
 Both clients send recoverable audio to the same private gateway and insert the
 final transcript at the active cursor.
@@ -83,15 +83,14 @@ no analytics SDK and no third-party transcription.
 
 Same privacy stance as VocaLinux and VocaMac: free, offline first, and meant to
 stay that way. We also document the awkward platform bits honestly: iOS keyboard
-limits, Android accessibility consent, and what the bubble will never touch
-(password fields, payment screens, apps you exclude).
+limits and Android's keyboard/input-method boundaries.
 
 ## Highlights
 
 - Native SwiftUI app and UIKit keyboard with Start, Finish, Cancel, Retry, Undo,
   language/style status, next-keyboard control, and direct insertion
-- Native Kotlin/Compose Android client that keeps your own keyboard and dictates
-  through a floating bubble, with the same styles and gateway as the keyboard
+- Native Kotlin/Compose Android client with a permission-minimal VocaPhone voice
+  keyboard, the same styles and gateway as the iOS keyboard
 - 27 selectable transcription languages plus Automatic on both clients —
   including Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, Kannada,
   Malayalam, Punjabi, Assamese and Nepali — and four writing styles: Formal,
@@ -365,8 +364,8 @@ Complete the physical-device checklist in [device setup](docs/device-setup.md).
 
 ### 6. Or install the Android app
 
-Android keeps your existing keyboard and dictates through a floating bubble
-instead. Build and install the APK, then follow the guided setup in the app:
+Android adds VocaPhone as a selectable voice keyboard. Build and install the APK,
+then follow the guided setup in the app:
 
 ```sh
 cd android
@@ -379,11 +378,12 @@ adb uninstall io.github.mrsunglasses.localflow 2>/dev/null || true
 adb install -r app/build/outputs/apk/debug/vocaphone-debug.apk
 ```
 
-In the app: grant microphone, notifications, overlay, and accessibility; then
-enter the gateway address and bearer token from step 4 and run **Test connection**.
+In the app: grant microphone and notifications, enable and select VocaPhone in
+Android's keyboard settings, then enter the gateway address and bearer token from
+step 4 and run **Test connection**.
 
-See the [Android client guide](android/README.md) for permissions, the
-accessibility disclosure, and the supported gateway address forms.
+See the [Android client guide](android/README.md) for keyboard setup and the
+supported gateway address forms.
 
 ## Build and test
 
@@ -424,7 +424,7 @@ physical-device verification.
 
 ```text
 ios/                    Swift app, keyboard, Live Activity, shared state, tests
-android/                Kotlin app, dictation bubble, accessibility service, tests
+android/                Kotlin app, voice keyboard, foreground dictation service, tests
 server/                 Git submodule → VocaHQ/vocagateway (gateway + WebUI)
 docs/                   Architecture, device setup, privacy, decisions, historical plans
 ```
@@ -433,7 +433,7 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 
 | Guide | Covers |
 | --- | --- |
-| [Android client](android/README.md) | Building the APK, guided setup, the dictation bubble, and accessibility disclosure |
+| [Android client](android/README.md) | Building the APK, guided setup, voice keyboard, and privacy boundaries |
 | [Gateway reference](server/README.md) | Native service, Compose, models, configuration, health, and CLI commands ([vocagateway](https://github.com/VocaHQ/vocagateway)) |
 | [Deployment](server/docs/deployment.md) | Native-vs-Docker performance, startup, upgrades, persistence, and backups |
 | [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
@@ -449,7 +449,8 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 
 ## Privacy and platform boundaries
 
-- The keyboard never records audio and never uses clipboard insertion.
+- The iOS keyboard never records audio; Android's IME delegates capture to the
+  microphone foreground service and never uses clipboard insertion.
 - Quick Dictation standby buffers are discarded rather than saved or uploaded.
 - Successful audio is deleted by default; failed sessions expire after the
   configured retry window.
@@ -460,11 +461,8 @@ docs/                   Architecture, device setup, privacy, decisions, historic
   manually.
 - Secure fields and apps that disable third-party keyboards remain iOS platform
   limitations.
-- On Android, accessibility access is used only to identify the focused editable
-  field and to insert the transcript the user asked for; field contents are read
-  in memory at insertion time and never stored, logged, or uploaded.
-- The Android bubble stays hidden in password and payment fields, on system
-  permission screens, and in any app the user excludes.
+- On Android, the VocaPhone keyboard inserts through `InputConnection` and does
+  not read surrounding field contents. Sensitive input types disable dictation.
 
 ## Contributing, support, security, and license
 

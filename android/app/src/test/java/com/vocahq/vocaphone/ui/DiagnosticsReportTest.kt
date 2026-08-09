@@ -28,10 +28,8 @@ class DiagnosticsReportTest {
     private val ready = SetupStatus(
         microphone = true,
         notifications = true,
-        overlay = true,
-        accessibility = true,
+        keyboard = true,
         gatewayConfigured = true,
-        disclosureAccepted = true,
     )
 
     @Test

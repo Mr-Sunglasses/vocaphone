@@ -150,7 +150,7 @@ val SectionSpacing = 28.dp
 
 /**
  * An interruption: something the user has to read or act on before the screen
- * behaves normally — an accessibility disclosure, a blocked setting, a broken
+ * behaves normally — a blocked setting, a broken
  * step. These keep a container precisely because [Section] gave its up, so the
  * few things that genuinely need to stand out now can.
  */

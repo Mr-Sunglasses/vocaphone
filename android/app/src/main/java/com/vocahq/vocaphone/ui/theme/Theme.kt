@@ -40,7 +40,7 @@ private val VocaPhoneLightColors = lightColorScheme(
     // directly. Material's own components pick their own: NavigationBar takes
     // surfaceContainer and ModalBottomSheet surfaceContainerLow, so leaving those
     // unset left the bottom bar on every screen and the language sheet rendering
-    // the baseline purple-tinted #F3EDF7 -- the same bug as the bubble, in the
+    // the baseline purple-tinted #F3EDF7 -- the same bug as the old overlay, in the
     // most visible chrome in the app.
     surfaceContainerLowest = Color(0xFFFFFFFF),
     surfaceContainerLow = Color(0xFFF7F9F7),

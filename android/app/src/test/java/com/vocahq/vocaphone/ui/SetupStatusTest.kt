@@ -10,10 +10,8 @@ class SetupStatusTest {
     private val complete = SetupStatus(
         microphone = true,
         notifications = true,
-        overlay = true,
-        accessibility = true,
+        keyboard = true,
         gatewayConfigured = true,
-        disclosureAccepted = true,
     )
 
     @Test
@@ -24,18 +22,17 @@ class SetupStatusTest {
     }
 
     @Test
-    fun `battery is offered, never required`() {
-        assertFalse(complete.batteryUnrestricted)
+    fun `keyboard selection is required`() {
         assertTrue(complete.isReadyToDictate)
-        assertTrue(complete.copy(batteryUnrestricted = true).isReadyToDictate)
+        assertFalse(complete.copy(keyboard = false).isReadyToDictate)
     }
 
     @Test
     fun `remaining steps name what is left, in checklist order`() {
-        val status = complete.copy(disclosureAccepted = false, gatewayConfigured = false)
+        val status = complete.copy(keyboard = false, gatewayConfigured = false)
 
         assertFalse(status.isReadyToDictate)
-        assertEquals(listOf(SetupStep.DISCLOSURE, SetupStep.GATEWAY), status.remainingSteps)
+        assertEquals(listOf(SetupStep.KEYBOARD, SetupStep.GATEWAY), status.remainingSteps)
         assertEquals(status.stepCount - 2, status.completedStepCount)
     }
 

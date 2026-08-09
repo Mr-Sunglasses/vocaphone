@@ -28,8 +28,7 @@ import com.vocahq.vocaphone.core.TextInsertion
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
 /**
- * In-app dictation. The transcript lands in a scratchpad the user can edit,
- * rather than in another app's field, so nothing here needs accessibility access.
+ * In-app dictation. The transcript lands in a scratchpad the user can edit.
  */
 @Composable
 fun DictateScreen(
@@ -42,13 +41,11 @@ fun DictateScreen(
     onRetry: (String) -> Unit,
     onDismiss: () -> Unit,
     onOpenGateway: () -> Unit,
-    onAcceptDisclosure: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var scratchpad by remember { mutableStateOf(TextFieldValue()) }
 
-    // A finished in-app dictation is spliced at the cursor, exactly as the bubble
-    // would splice it into another app's field.
+    // A finished in-app dictation is spliced at the scratchpad cursor.
     LaunchedEffect(state.transcript, state.phase) {
         val transcript = state.transcript
         if (transcript != null && state.phase == DictationPhase.READY_TO_INSERT) {
@@ -156,7 +153,6 @@ fun DictateScreen(
         SetupRepair(
             status = setup,
             onOpenGateway = onOpenGateway,
-            onAcceptDisclosure = onAcceptDisclosure,
         )
 
         Section(

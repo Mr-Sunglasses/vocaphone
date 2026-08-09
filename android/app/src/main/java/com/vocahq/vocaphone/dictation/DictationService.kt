@@ -54,7 +54,7 @@ class DictationService : Service() {
                 )
                 val source = intent.getStringExtra(EXTRA_SOURCE)
                     ?.let { runCatching { DictationSource.valueOf(it) }.getOrNull() }
-                    ?: DictationSource.BUBBLE
+                    ?: DictationSource.COMPANION_APP
                 controller.start(source)
                 observeUntilIdle()
             }
@@ -154,9 +154,9 @@ class DictationService : Service() {
 
         /**
          * Starts recording. Newer Android versions refuse some background service
-         * starts even from an overlay tap, so the documented fallback is a
-         * no-animation activity that starts the service while visible and closes
-         * immediately — the user never leaves the app they are typing in.
+         * starts even when Android rejects a background launch, so the documented
+         * fallback is a no-animation activity that starts the service while
+         * visible and closes immediately.
          */
         fun start(context: Context, source: DictationSource) {
             val intent = Intent(context, DictationService::class.java)
@@ -190,7 +190,7 @@ class DictationLauncherActivity : android.app.Activity() {
         // animate and nothing for the user to see.
         val source = intent.getStringExtra(DictationService.EXTRA_SOURCE)
             ?.let { runCatching { DictationSource.valueOf(it) }.getOrNull() }
-            ?: DictationSource.BUBBLE
+            ?: DictationSource.COMPANION_APP
         ContextCompat.startForegroundService(
             this,
             Intent(this, DictationService::class.java)

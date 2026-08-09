@@ -73,7 +73,7 @@ object TokenVault {
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
-                // Dictation has to work from the bubble whenever the screen is on,
+                // Dictation has to work from the keyboard whenever the screen is on,
                 // including straight after a reboot, so no user-authentication
                 // requirement is attached to the key.
                 .setRandomizedEncryptionRequired(true)

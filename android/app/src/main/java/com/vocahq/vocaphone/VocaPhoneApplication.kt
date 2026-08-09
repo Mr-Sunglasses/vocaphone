@@ -14,9 +14,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * The bubble, the accessibility service, the microphone service and the
- * companion app all run in one process and share exactly one dictation, so the
- * container is held on the application rather than injected per component.
+ * The IME, microphone service and companion app all run in one process and
+ * share exactly one dictation, so the container is held on the application
+ * rather than injected per component.
  */
 class AppContainer(context: Context) {
 

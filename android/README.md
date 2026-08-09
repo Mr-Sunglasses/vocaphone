@@ -1,13 +1,13 @@
 # vocaphone for Android
 
-A native Android dictation client for the same self-hosted vocaphone gateway the
-iPhone app uses. Unlike iOS, it does **not** replace your keyboard. Gboard,
-Samsung Keyboard or whatever you already use stays active, and vocaphone shows a
-floating bubble over eligible text fields, inserting the transcript at your
-cursor when you finish.
+A native Android voice keyboard for the same self-hosted vocaphone gateway the
+iPhone app uses. VocaPhone appears as a normal Android input method: Gboard,
+Samsung Keyboard and other keyboards remain available, while VocaPhone can be
+selected whenever you want to dictate into an editable field. It inserts through
+Android's `InputConnection` and does not read the field.
 
-Distributed as a private APK. Google Play publication is deferred, but the
-accessibility disclosure and consent Play requires are present from the start.
+Distributed as a private APK. Google Play publication is deferred. The shipped
+APK does not request accessibility-service or overlay access.
 
 > Package name and application ID have been updated to `com.vocahq.vocaphone`; the APK
 > output is `vocaphone-debug.apk`.
@@ -59,68 +59,41 @@ After downloading all three files, verify the APK checksum with
 `sha256sum -c SHA256SUMS.txt` on Linux or
 `shasum -a 256 -c SHA256SUMS.txt` on macOS. Signing establishes a stable update
 identity and the checksum detects a damaged or changed download; neither
-suppresses Android's Play Protect scan or restricted-settings flow for apps
-installed outside an app store.
+changes Android's Play Protect treatment for apps installed outside an app store.
 
 ## First run
 
 The companion app walks through setup and re-checks it on every resume, so a
-permission revoked later shows up as an actionable repair prompt rather than a
-silent failure.
+permission revoked later or a keyboard selection changed in Android settings
+shows up as an actionable repair prompt rather than a silent failure.
 
 1. **Microphone** — recording only while you are dictating.
 2. **Notifications** — the ongoing recording notification Android requires for a
    microphone foreground service.
-3. **Display over other apps** — draws the bubble.
-4. **Accessibility service** — see the disclosure below.
-5. **Unrestricted battery usage** (optional) — stops Android ending a long
-   dictation early.
-6. **Gateway address and token** — either **Scan QR code** against the gateway
+3. **VocaPhone keyboard** — enable it in Android's keyboard settings, then select
+   it from the keyboard picker.
+4. **Gateway address and token** — either **Scan QR code** against the gateway
    WebUI Overview pairing card, or paste the URL and bearer token, then
    **Test connection**, which reports reachability, token validity, the active
    engine, whether it is ready, and whether it supports streaming.
 
-## Experimental keyboard spike
+## VocaPhone keyboard
 
-The Android build also contains an experimental VocaPhone keyboard. It is a
-feasibility path for the next permission-minimal release: the microphone lives
-inside the keyboard and the transcript is written through Android's
-`InputConnection`, without reading the field or using an overlay.
-
-The current beta keeps the existing bubble/accessibility path as the default, so
-this keyboard is not yet part of the required setup. To try it, open the
-**Try the VocaPhone keyboard** card in setup or Settings, enable the keyboard in
-Android's keyboard settings, then choose VocaPhone from the keyboard picker.
-The gateway, audio capture, streaming fallback and history are shared with the
-existing dictation pipeline.
-
-## How accessibility access is used
-
-vocaphone is not an accessibility tool, so it states plainly what it does with
-the service, and the app asks for separate consent before the checklist step:
-
-- To tell whether the focused text field can be dictated into, so the bubble
-  appears only where it is useful.
-- To insert the transcript you asked for at your cursor, and to undo it.
-
-Field contents are read **only** at the moment of insertion, and only in memory.
-They are never stored, logged, or sent anywhere — not to the gateway. The bubble
-stays hidden in password and payment fields, on system permission screens, and in
-any app you exclude in Settings.
+The microphone lives inside the keyboard and the transcript is written through
+Android's `InputConnection`. The keyboard only receives the editor connection
+provided by Android; it does not scrape or store surrounding field contents.
+VocaPhone refuses password and other sensitive input types through its input
+policy.
 
 ## Dictating
 
-- **Tap** the bubble to start, **tap again** to finish.
-- **Hold** it for push-to-talk; release to finish.
-- **Drag** it anywhere on screen.
-- **Long-press the ✕** to snooze the bubble for 15 minutes.
-- Recording follows you across apps, warns a minute before the five-minute cap,
-  and stops there. The transcript goes into whichever eligible field is focused
-  when you finish.
-- If the screen locks or no safe editable target remains, nothing is inserted —
-  the transcript waits in History instead of landing somewhere uncertain.
-- **Undo** removes an insertion only while the exact text is still where it was
-  written. If you or the app edited it, Undo is disabled rather than destructive.
+- Open an editable field and select **VocaPhone keyboard** from the keyboard
+  picker.
+- Tap **Dictate**, speak, then tap **Finish**. The keyboard shows recording state,
+  elapsed time, input level and a streaming partial transcript when available.
+- Recording warns a minute before the five-minute cap and stops there.
+- Password and other sensitive input types disable dictation rather than exposing
+  their contents to the keyboard.
 
 ## Choosing a microphone
 
@@ -171,30 +144,21 @@ the Android Tailscale VPN routes the traffic transparently.
 
 | Path | What lives there |
 | --- | --- |
-| `core/` | Styles, languages, microphone preference, endpoint validation, insertion arithmetic, field eligibility |
+| `core/` | Styles, languages, microphone preference, endpoint validation, insertion arithmetic, IME input policy |
 | `gateway/` | HTTP client and the streaming WebSocket |
 | `audio/` | `AudioRecord` capture, input routing, WAV writing, PCM conversion |
 | `dictation/` | The pipeline, the microphone foreground service, retry |
-| `accessibility/` | The accessibility service, insertion and undo |
-| `overlay/` | The floating bubble |
+| `ime/` | The system keyboard and `InputConnection` insertion |
 | `ui/` | The Compose companion app |
 | `settings/`, `data/`, `security/` | Preferences, history, the sealed token |
 
 ## Verified on hardware
 
-The full path — bubble tap, microphone foreground service, capture, batch
-delivery to a real whisper.cpp gateway over LAN HTTP, and direct insertion —
-has been exercised on a physical Pixel 6a running Android 17, dictating into
-Signal, WhatsApp, and Google search. Device testing surfaced three classes of
-editor quirk now covered by unit tests:
-
-- Fields that expose their placeholder as text (`isShowingHintText`, hint
-  matching, and a cursor-placement probe for WhatsApp, which reports the
-  placeholder with no hint and no flag).
-- whisper.cpp emitting `[BLANK_AUDIO]` for silence, filtered by
-  `TranscriptSanitizer` so markers never reach a field.
-- The bubble's lifecycle, now tied to keyboard visibility through
-  `BubblePolicy` (requires `flagRetrieveInteractiveWindows`).
+The IME install, enablement, selection and rendered keyboard have been exercised
+on a physical POCO F1 running Android 14. The signed release was installed and
+the device was restored to its previous keyboard afterwards. Unit tests cover
+the input policy, cursor insertion arithmetic, transcript sanitization and the
+gateway protocol.
 
 ## Not yet done
 
@@ -203,5 +167,4 @@ editor quirk now covered by unit tests:
 - The streaming path has only been exercised against MockWebServer; the test
   gateway's engine is batch-only. Verify against a Moonshine engine before
   relying on it.
-- Samsung and other OEM battery-management work comes after the stock-Android
-  path passes.
+- Samsung and other OEM keyboard behavior still needs a dedicated device pass.
