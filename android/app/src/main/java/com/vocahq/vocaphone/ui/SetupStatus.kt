@@ -34,6 +34,8 @@ data class SetupStatus(
     val batteryUnrestricted: Boolean = false,
     val gatewayConfigured: Boolean = false,
     val disclosureAccepted: Boolean = false,
+    /** Status of the optional IME feasibility spike; it is not yet required. */
+    val ime: ImeSetupStatus = ImeSetupStatus(),
     /** The accessibility switch is probably greyed out; see [RestrictedSettingsPolicy]. */
     val restrictedSettingsGuidance: Boolean = false,
 ) {
@@ -68,6 +70,7 @@ data class SetupStatus(
                 batteryUnrestricted = context.isBatteryUnrestricted(),
                 gatewayConfigured = gatewayConfigured,
                 disclosureAccepted = disclosureAccepted,
+                ime = ImeSetup.read(context),
                 restrictedSettingsGuidance = RestrictedSettingsPolicy.guidanceNeeded(
                     sdkInt = Build.VERSION.SDK_INT,
                     installerPackage = context.installerPackage(),

@@ -95,6 +95,8 @@ fun SettingsScreen(
             )
         }
 
+        ImeSetupCard(setup.ime)
+
         // One row rather than 27 wrapping chips, which pushed every setting below
         // this one off the screen. The full list, with search, lives in a sheet.
         var pickingLanguage by remember { mutableStateOf(false) }

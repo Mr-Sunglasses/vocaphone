@@ -80,6 +80,20 @@ silent failure.
    **Test connection**, which reports reachability, token validity, the active
    engine, whether it is ready, and whether it supports streaming.
 
+## Experimental keyboard spike
+
+The Android build also contains an experimental VocaPhone keyboard. It is a
+feasibility path for the next permission-minimal release: the microphone lives
+inside the keyboard and the transcript is written through Android's
+`InputConnection`, without reading the field or using an overlay.
+
+The current beta keeps the existing bubble/accessibility path as the default, so
+this keyboard is not yet part of the required setup. To try it, open the
+**Try the VocaPhone keyboard** card in setup or Settings, enable the keyboard in
+Android's keyboard settings, then choose VocaPhone from the keyboard picker.
+The gateway, audio capture, streaming fallback and history are shared with the
+existing dictation pipeline.
+
 ## How accessibility access is used
 
 vocaphone is not an accessibility tool, so it states plainly what it does with

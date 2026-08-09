@@ -44,6 +44,9 @@ enum class DictationSource {
 
     /** The companion app's scratchpad: the transcript stays in the app. */
     COMPANION_APP,
+
+    /** The experimental system keyboard: commit into its current InputConnection. */
+    IME,
 }
 
 /**
@@ -63,6 +66,10 @@ class DictationController(
     /** Set by the accessibility service while it is connected. */
     @Volatile
     var inserter: TranscriptInserter? = null
+
+    /** Set by the experimental IME while the keyboard service is connected. */
+    @Volatile
+    var imeInserter: TranscriptInserter? = null
 
     private var pipeline: Job? = null
     private var capture: AudioCapture? = null
@@ -399,10 +406,12 @@ class DictationController(
         configuration: VocaPhoneSettings,
         source: DictationSource,
     ) {
-        val target = inserter
-        val shouldInsert = source == DictationSource.BUBBLE &&
-            configuration.automaticInsertion &&
-            target != null
+        val target = when (source) {
+            DictationSource.BUBBLE -> inserter.takeIf { configuration.automaticInsertion }
+            DictationSource.IME -> imeInserter
+            DictationSource.COMPANION_APP -> null
+        }
+        val shouldInsert = target != null
 
         if (!shouldInsert) {
             _state.value = _state.value.copy(
@@ -445,7 +454,7 @@ class DictationController(
         )
         if (report.outcome == InsertionOutcome.INSERTED) {
             // "Inserted" is a confirmation, not a state the user acts on: after a
-            // moment the bubble returns to its idle mic on its own.
+            // moment the bubble or keyboard returns to its idle mic on its own.
             scope.launch {
                 delay(INSERTED_LINGER_MILLIS)
                 _state.update { current ->

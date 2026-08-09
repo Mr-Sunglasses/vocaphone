@@ -10,6 +10,9 @@
 -->
 <resources>
 
+    <color name="keyboard_surface">#212121</color>
+    <color name="keyboard_on_surface">#FFFFFFFF</color>
+
     <!-- Mirrors of VocaPhoneDarkColors in ui/theme/Theme.kt. -->
     <color name="on_surface_dark">#FFE3E4E1</color>
     <color name="brand_dark">#FF77D0B2</color>

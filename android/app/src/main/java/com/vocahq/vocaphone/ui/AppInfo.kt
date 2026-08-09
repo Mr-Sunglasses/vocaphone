@@ -71,6 +71,12 @@ fun diagnosticsReport(
             "missing ${setup.remainingSteps.joinToString { it.label }}"
         }
     )
+    appendLine()
+    appendLine("Keyboard: " + when {
+        setup.ime.selected -> "enabled and selected"
+        setup.ime.enabled -> "enabled, not selected"
+        else -> "not enabled"
+    })
 }
 
 /** Enough to debug a transport problem, without naming the host. */

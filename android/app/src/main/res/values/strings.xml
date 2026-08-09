@@ -2,6 +2,11 @@
 <resources>
     <string name="app_name">vocaphone</string>
 
+    <string name="ime_name">VocaPhone keyboard</string>
+    <string name="ime_dictate">Dictate</string>
+    <string name="ime_finish">Finish</string>
+    <string name="ime_cancel">Cancel</string>
+
     <string name="bubble_dictate">Dictate</string>
     <string name="bubble_finish">Finish dictation</string>
     <string name="bubble_cancel">Cancel dictation</string>

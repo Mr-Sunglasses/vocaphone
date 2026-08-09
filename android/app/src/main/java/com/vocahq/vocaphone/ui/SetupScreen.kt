@@ -60,6 +60,8 @@ fun SetupScreen(
 
         SetupProgress(status)
 
+        ImeSetupCard(status.ime)
+
         AccessibilityDisclosure(
             accepted = status.disclosureAccepted,
             onAccept = onAcceptDisclosure,
@@ -140,6 +142,45 @@ fun SetupScreen(
                 "Still to do: " + status.remainingSteps.joinToString { it.label },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * Discoverable handoff for the first IME build. This is informational during the
+ * migration: the existing bubble checklist remains the release path for now.
+ */
+@Composable
+internal fun ImeSetupCard(status: ImeSetupStatus, modifier: Modifier = Modifier) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Notice(modifier = modifier) {
+        Text("Try the VocaPhone keyboard", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "This experimental path puts the microphone inside VocaPhone's keyboard " +
+                "and inserts through Android's text connection. It does not read the " +
+                "contents of the field.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            when {
+                status.selected -> "VocaPhone is the selected keyboard."
+                status.enabled -> "VocaPhone is enabled. Open the picker to select it."
+                else -> "VocaPhone is not enabled as a keyboard yet."
+            },
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        SecondaryButton(
+            text = if (status.enabled) "Keyboard settings" else "Enable keyboard",
+            onClick = { ImeSetup.openSettings(context) },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (status.enabled && !status.selected) {
+            SecondaryButton(
+                text = "Choose VocaPhone keyboard",
+                onClick = { ImeSetup.showPicker(context) },
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
