@@ -2,7 +2,9 @@ package com.vocahq.vocaphone.audio
 
 import android.Manifest
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioFormat
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
@@ -41,11 +43,20 @@ class AudioCapture(
     @Volatile
     private var heldCommunicationDevice = false
 
+    @Volatile
+    private var audioFocusRequest: AudioFocusRequest? = null
+
     private val audioManager: AudioManager? get() = context.getSystemService(AudioManager::class.java)
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun start(): Boolean {
         if (!running.compareAndSet(false, true)) return true
+
+        if (!requestAudioFocus()) {
+            running.set(false)
+            onError(IllegalStateException("Another app is using the microphone."))
+            return false
+        }
 
         val minimum = AudioRecord.getMinBufferSize(
             CaptureFormat.SAMPLE_RATE,
@@ -54,6 +65,7 @@ class AudioCapture(
         )
         if (minimum <= 0) {
             running.set(false)
+            abandonAudioFocus()
             onError(IllegalStateException("This device cannot record 16 kHz mono audio."))
             return false
         }
@@ -71,6 +83,7 @@ class AudioCapture(
             )
         } catch (error: Throwable) {
             running.set(false)
+            abandonAudioFocus()
             onError(error)
             return false
         }
@@ -78,6 +91,7 @@ class AudioCapture(
         if (recorder.state != AudioRecord.STATE_INITIALIZED) {
             recorder.release()
             running.set(false)
+            abandonAudioFocus()
             onError(IllegalStateException("The microphone is not available right now."))
             return false
         }
@@ -102,7 +116,7 @@ class AudioCapture(
     }
 
     fun stop() {
-        if (!running.compareAndSet(true, false)) return
+        running.set(false)
         thread?.let { runCatching { it.join(500) } }
         thread = null
         record?.let { recorder ->
@@ -111,6 +125,43 @@ class AudioCapture(
         }
         record = null
         releaseCommunicationDevice()
+        abandonAudioFocus()
+    }
+
+    /**
+     * Capturing speech owns transient audio focus. A call, Siri or another
+     * exclusive microphone user therefore turns this dictation into an explicit
+     * interruption instead of leaving a foreground service that appears alive.
+     */
+    private fun requestAudioFocus(): Boolean {
+        val manager = audioManager ?: return true
+        val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build(),
+            )
+            .setOnAudioFocusChangeListener { change ->
+                if (change == AudioManager.AUDIOFOCUS_LOSS ||
+                    change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
+                    change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
+                ) {
+                    if (running.get()) {
+                        onError(IllegalStateException("Microphone access was interrupted."))
+                        running.set(false)
+                    }
+                }
+            }
+            .build()
+        audioFocusRequest = request
+        return manager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+
+    private fun abandonAudioFocus() {
+        val request = audioFocusRequest ?: return
+        audioFocusRequest = null
+        runCatching { audioManager?.abandonAudioFocusRequest(request) }
     }
 
     /**

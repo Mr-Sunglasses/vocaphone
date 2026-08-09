@@ -298,6 +298,22 @@ class DictationController(
             return
         }
 
+        captureError?.let { error ->
+            stream?.cancel()
+            wavFile.delete()
+            fail(
+                sessionId,
+                GatewayException(
+                    "audio_interrupted",
+                    error.message ?: "Microphone access was interrupted. Try again.",
+                    recoverable = false,
+                ),
+                wavFile = null,
+                configuration = configuration,
+            )
+            return
+        }
+
         _state.update { it.copy(phase = DictationPhase.FINALIZING, level = 0f) }
 
         if (writer.durationMillis < MINIMUM_RECORDING_MILLIS) {

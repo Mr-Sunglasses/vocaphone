@@ -6,6 +6,7 @@
     <string name="ime_dictate">Dictate</string>
     <string name="ime_finish">Finish</string>
     <string name="ime_cancel">Cancel</string>
+    <string name="ime_open_app">Open VocaPhone</string>
 
     <string name="bubble_dictate">Dictate</string>
     <string name="bubble_finish">Finish dictation</string>

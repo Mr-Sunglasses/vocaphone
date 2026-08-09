@@ -5,6 +5,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.ProgressBar
 import android.widget.TextView
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.VocaPhoneApplication
@@ -40,9 +41,13 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
 
     private var inputView: View? = null
     private var statusView: TextView? = null
+    private var partialView: TextView? = null
+    private var elapsedView: TextView? = null
+    private var progressView: ProgressBar? = null
     private var dictateButton: Button? = null
     private var lastState = DictationState()
     private var currentInputType: Int = 0
+    private var startedImeDictation = false
 
     override fun onCreate() {
         super.onCreate()
@@ -50,6 +55,7 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
         scope.launch {
             container.dictation.state.collect { state ->
                 lastState = state
+                if (!state.phase.isBusy) startedImeDictation = false
                 render(state)
             }
         }
@@ -60,6 +66,9 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
         .also { view ->
             inputView = view
             statusView = view.findViewById(R.id.ime_status)
+            partialView = view.findViewById(R.id.ime_partial)
+            elapsedView = view.findViewById(R.id.ime_elapsed)
+            progressView = view.findViewById(R.id.ime_progress)
             dictateButton = view.findViewById<Button>(R.id.ime_dictate).also { button ->
                 button.setOnClickListener { toggleDictation() }
             }
@@ -84,6 +93,11 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
     }
 
     override fun onDestroy() {
+        if (startedImeDictation && lastState.phase.isBusy) {
+            // Switching away from VocaPhone must not leave its microphone session
+            // alive after the keyboard that owns it has gone away.
+            container.dictation.cancel()
+        }
         if (container.dictation.imeInserter === this) {
             container.dictation.imeInserter = null
         }
@@ -129,7 +143,18 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
                 DictationService.send(this, DictationService.ACTION_FINISH)
             lastState.phase.isBusy ->
                 DictationService.send(this, DictationService.ACTION_CANCEL)
-            else -> DictationService.start(this, DictationSource.IME)
+            lastState.phase == DictationPhase.PERMISSION_REPAIR -> openCompanion()
+            lastState.phase == DictationPhase.FAILED -> openCompanion()
+            else -> {
+                startedImeDictation = true
+                DictationService.start(this, DictationSource.IME)
+            }
+        }
+    }
+
+    private fun openCompanion() {
+        packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
+            startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
 
@@ -142,15 +167,31 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
             state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone to finish setup."
             else -> state.statusText
         }
+        val recording = state.isRecording
+        partialView?.apply {
+            text = state.partialTranscript
+            visibility = if (recording && state.partialTranscript.isNotEmpty()) View.VISIBLE else View.GONE
+        }
+        elapsedView?.apply {
+            text = if (recording) "${state.recordedMillis / 1000}s" else ""
+            visibility = if (recording) View.VISIBLE else View.GONE
+        }
+        progressView?.apply {
+            progress = (state.level.coerceIn(0f, 1f) * 100).toInt()
+            visibility = if (recording) View.VISIBLE else View.GONE
+        }
         dictateButton?.apply {
             isEnabled = accepted && state.phase !in setOf(
                 DictationPhase.FINALIZING,
                 DictationPhase.UPLOADING,
                 DictationPhase.TRANSCRIBING,
+                DictationPhase.INSERTING,
             )
             text = when {
                 state.phase == DictationPhase.LISTENING -> getString(R.string.ime_finish)
                 state.phase.isBusy -> getString(R.string.ime_cancel)
+                state.phase == DictationPhase.PERMISSION_REPAIR || state.phase == DictationPhase.FAILED ->
+                    getString(R.string.ime_open_app)
                 else -> getString(R.string.ime_dictate)
             }
             contentDescription = text
