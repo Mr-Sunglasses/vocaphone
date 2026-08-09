@@ -1,53 +1,55 @@
 package com.vocahq.vocaphone.ime
 
-import android.inputmethodservice.InputMethodService
-import android.view.View
+import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
-import android.widget.Button
-import android.widget.ProgressBar
-import android.widget.TextView
-import com.vocahq.vocaphone.R
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.ImeInputPolicy
+import com.vocahq.vocaphone.core.ModelLanguageSupport
+import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptSanitizer
+import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.dictation.AppliedInsertion
 import com.vocahq.vocaphone.dictation.DictationService
 import com.vocahq.vocaphone.dictation.DictationSource
 import com.vocahq.vocaphone.dictation.InsertionOutcome
 import com.vocahq.vocaphone.dictation.InsertionReport
 import com.vocahq.vocaphone.dictation.TranscriptInserter
+import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
-/**
- * Feasibility-spike keyboard for system-wide dictation.
- *
- * This service deliberately stays small. It proves the important platform path:
- * the keyboard owns the focused InputConnection, while the existing dictation
- * controller continues to own capture, gateway delivery and retryable history.
- */
-class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
+/** VocaPhone's private, full typing keyboard with a dedicated dictation control. */
+class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptInserter {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val container by lazy { VocaPhoneApplication.container(this) }
+    private val visibleDictationState = MutableStateFlow(DictationState())
+    private val visibleSettings = MutableStateFlow(VocaPhoneSettings())
+    private val preferenceWrites by lazy {
+        KeyboardPreferenceCoordinator(scope) {
+            container.diagnostics.recordError("settings", DictationSource.IME.name)
+        }
+    }
 
-    private var inputView: View? = null
-    private var statusView: TextView? = null
-    private var partialView: TextView? = null
-    private var elapsedView: TextView? = null
-    private var progressView: ProgressBar? = null
-    private var dictateButton: Button? = null
     private var lastState = DictationState()
     private var currentInputType: Int = 0
     private var startedImeDictation = false
+    private var editorSession = 0
+    private var editorConfig by mutableStateOf(KeyboardEditorConfig.empty())
 
     override fun onCreate() {
         super.onCreate()
@@ -55,49 +57,66 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
         scope.launch {
             container.dictation.state.collect { state ->
                 lastState = state
+                visibleDictationState.value = state
                 if (!state.phase.isBusy) startedImeDictation = false
-                render(state)
+            }
+        }
+        scope.launch {
+            container.settings.settings.collect { settings ->
+                visibleSettings.value = settings
             }
         }
     }
 
-    override fun onCreateInputView(): View = layoutInflater
-        .inflate(R.layout.input_method_view, null)
-        .also { view ->
-            inputView = view
-            statusView = view.findViewById(R.id.ime_status)
-            partialView = view.findViewById(R.id.ime_partial)
-            elapsedView = view.findViewById(R.id.ime_elapsed)
-            progressView = view.findViewById(R.id.ime_progress)
-            dictateButton = view.findViewById<Button>(R.id.ime_dictate).also { button ->
-                button.setOnClickListener { toggleDictation() }
-            }
-            view.findViewById<Button>(R.id.ime_switch).setOnClickListener {
-                getSystemService(InputMethodManager::class.java)?.showInputMethodPicker()
-            }
-            render(lastState)
-        }
+    @Composable
+    override fun KeyboardContent() {
+        val dictationState by visibleDictationState.collectAsState()
+        val settings by visibleSettings.collectAsState()
+        val isPreferenceWritePending by preferenceWrites.pending.collectAsState()
+        VocaPhoneKeyboard(
+            dictationState = dictationState,
+            editor = editorConfig,
+            settings = settings,
+            isPreferenceWritePending = isPreferenceWritePending,
+            onCommand = ::handleCommand,
+            onMicTap = ::toggleDictation,
+            onOpenApp = ::openCompanion,
+            onLanguageSelected = ::setLanguage,
+            onStyleSelected = ::setStyle,
+        )
+    }
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         currentInputType = attribute?.inputType ?: 0
-        render(lastState)
+        editorSession += 1
+        val cursorCapsMode = runCatching {
+            currentInputConnection?.getCursorCapsMode(currentInputType) ?: 0
+        }.getOrDefault(0)
+        editorConfig = KeyboardEditorConfig.from(attribute, editorSession).let { config ->
+            if (cursorCapsMode != 0 && config.initialLayer == KeyboardLayer.LETTERS) {
+                config.copy(initialShift = ShiftState.ONCE)
+            } else {
+                config
+            }
+        }
     }
 
     override fun onFinishInput() {
-        // The InputConnection belongs to the editor that just lost focus. Do not
-        // leave its input type eligible while Android is transitioning elsewhere.
+        cancelOwnedDictation("editor_finished")
         currentInputType = 0
-        render(lastState)
+        editorSession += 1
+        editorConfig = KeyboardEditorConfig.empty().copy(sessionId = editorSession)
         super.onFinishInput()
     }
 
+    override fun onUnbindInput() {
+        cancelOwnedDictation("input_unbound")
+        super.onUnbindInput()
+    }
+
     override fun onDestroy() {
-        if (startedImeDictation && lastState.phase.isBusy) {
-            // Switching away from VocaPhone must not leave its microphone session
-            // alive after the keyboard that owns it has gone away.
-            container.dictation.cancel()
-        }
+        cancelOwnedDictation("keyboard_destroyed")
         if (container.dictation.imeInserter === this) {
             container.dictation.imeInserter = null
         }
@@ -118,36 +137,105 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
                 return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
             }
 
-            val committed = runCatching { connection.commitText(cleaned, 1) }
-                .getOrDefault(false)
-            if (!committed) {
-                InsertionReport(InsertionOutcome.UNSUPPORTED_EDITOR)
-            } else {
-                // InputConnection does not expose a portable undo range. The IME
-                // proves insertion only; undo is intentionally not advertised.
+            if (runCatching { connection.commitText(cleaned, 1) }.getOrDefault(false)) {
                 InsertionReport(InsertionOutcome.INSERTED)
+            } else {
+                InsertionReport(InsertionOutcome.UNSUPPORTED_EDITOR)
             }
         }
 
     override suspend fun undo(insertion: AppliedInsertion): Boolean = false
 
-    override fun currentTargetPackage(): String? =
-        currentInputEditorInfo?.packageName
+    override fun currentTargetPackage(): String? = currentInputEditorInfo?.packageName
+
+    private fun handleCommand(command: KeyboardCommand) {
+        when (command) {
+            is KeyboardCommand.CommitText -> currentInputConnection?.commitText(command.text, 1)
+            KeyboardCommand.DeleteBackward -> sendKey(KeyEvent.KEYCODE_DEL)
+            KeyboardCommand.PerformEditorAction -> performEditorAction()
+            KeyboardCommand.SwitchKeyboard -> switchKeyboard()
+            is KeyboardCommand.MoveCursor -> moveCursor(command.positions)
+        }
+    }
+
+    private fun performEditorAction() {
+        val actionId = editorConfig.editorActionId
+        val handled = actionId != null &&
+            currentInputConnection?.performEditorAction(actionId) == true
+        if (!handled) sendKey(KeyEvent.KEYCODE_ENTER)
+    }
+
+    private fun moveCursor(positions: Int) {
+        if (positions == 0) return
+        val keyCode = if (positions > 0) KeyEvent.KEYCODE_DPAD_RIGHT else KeyEvent.KEYCODE_DPAD_LEFT
+        repeat(abs(positions).coerceAtMost(MAX_CURSOR_STEPS_PER_EVENT)) { sendKey(keyCode) }
+    }
+
+    private fun sendKey(keyCode: Int) {
+        val connection = currentInputConnection ?: return
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+        connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+    }
+
+    private fun switchKeyboard() {
+        if (shouldOfferSwitchingToNextInputMethod()) {
+            switchToNextInputMethod(false)
+        } else {
+            getSystemService(InputMethodManager::class.java)?.showInputMethodPicker()
+        }
+    }
 
     private fun toggleDictation() {
         when {
-            !ImeInputPolicy.acceptsDictation(currentInputType) -> render(lastState)
-            lastState.phase == DictationPhase.LISTENING ->
+            preferenceWrites.isPending -> Unit
+            !ImeInputPolicy.acceptsDictation(currentInputType) -> {
+                container.diagnostics.recordAction("input_rejected", DictationSource.IME.name)
+            }
+            lastState.phase == DictationPhase.LISTENING -> {
+                container.diagnostics.recordAction("finish", DictationSource.IME.name)
                 DictationService.send(this, DictationService.ACTION_FINISH)
-            lastState.phase.isBusy ->
+            }
+            lastState.phase.isBusy -> {
                 DictationService.send(this, DictationService.ACTION_CANCEL)
-            lastState.phase == DictationPhase.PERMISSION_REPAIR -> openCompanion()
-            lastState.phase == DictationPhase.FAILED -> openCompanion()
+            }
+            lastState.phase == DictationPhase.PERMISSION_REPAIR ||
+                lastState.phase == DictationPhase.FAILED -> openCompanion()
             else -> {
                 startedImeDictation = true
                 DictationService.start(this, DictationSource.IME)
             }
         }
+    }
+
+    private fun setLanguage(language: TranscriptionLanguage) {
+        val settings = visibleSettings.value
+        if (!ModelLanguageSupport.isSelectable(
+                language,
+                settings.modelLanguages,
+                settings.modelDetectsLanguage,
+            )
+        ) {
+            return
+        }
+        persistPreference { container.settings.setLanguage(language) }
+    }
+
+    private fun setStyle(style: WritingStyle) {
+        persistPreference { container.settings.setStyle(style) }
+    }
+
+    private fun persistPreference(write: suspend () -> Unit) {
+        if (lastState.phase.isBusy) return
+        preferenceWrites.submit(write)
+    }
+
+    private fun cancelOwnedDictation(reason: String) {
+        if (!startedImeDictation || !lastState.phase.isBusy) return
+        container.diagnostics.recordAction(reason, DictationSource.IME.name)
+        startedImeDictation = false
+        // An editor connection is unsafe after this callback, so do not let a
+        // late gateway response insert into whichever field receives focus next.
+        container.dictation.cancel()
     }
 
     private fun openCompanion() {
@@ -156,43 +244,7 @@ class VocaPhoneInputMethodService : InputMethodService(), TranscriptInserter {
         }
     }
 
-    private fun render(state: DictationState) {
-        if (inputView == null) return
-
-        val accepted = ImeInputPolicy.acceptsDictation(currentInputType)
-        statusView?.text = when {
-            !accepted -> "Dictation is unavailable in password or non-text fields."
-            state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone to finish setup."
-            else -> state.statusText
-        }
-        val recording = state.isRecording
-        partialView?.apply {
-            text = state.partialTranscript
-            visibility = if (recording && state.partialTranscript.isNotEmpty()) View.VISIBLE else View.GONE
-        }
-        elapsedView?.apply {
-            text = if (recording) "${state.recordedMillis / 1000}s" else ""
-            visibility = if (recording) View.VISIBLE else View.GONE
-        }
-        progressView?.apply {
-            progress = (state.level.coerceIn(0f, 1f) * 100).toInt()
-            visibility = if (recording) View.VISIBLE else View.GONE
-        }
-        dictateButton?.apply {
-            isEnabled = accepted && state.phase !in setOf(
-                DictationPhase.FINALIZING,
-                DictationPhase.UPLOADING,
-                DictationPhase.TRANSCRIBING,
-                DictationPhase.INSERTING,
-            )
-            text = when {
-                state.phase == DictationPhase.LISTENING -> getString(R.string.ime_finish)
-                state.phase.isBusy -> getString(R.string.ime_cancel)
-                state.phase == DictationPhase.PERMISSION_REPAIR || state.phase == DictationPhase.FAILED ->
-                    getString(R.string.ime_open_app)
-                else -> getString(R.string.ime_dictate)
-            }
-            contentDescription = text
-        }
+    private companion object {
+        const val MAX_CURSOR_STEPS_PER_EVENT = 12
     }
 }

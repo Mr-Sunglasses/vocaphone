@@ -53,6 +53,7 @@ fun diagnosticsReport(
     info: AppInfo,
     settings: VocaPhoneSettings,
     setup: SetupStatus,
+    events: String = "",
 ): String = buildString {
     appendLine("VocaPhone ${info.versionName} (${info.versionCode})")
     appendLine("Android ${info.androidRelease} (SDK ${info.sdkInt}) · ${info.device}")
@@ -78,6 +79,11 @@ fun diagnosticsReport(
         setup.ime.enabled -> "enabled, not selected"
         else -> "not enabled"
     })
+    if (events.isNotBlank()) {
+        appendLine("Event log:")
+        append(events.trimEnd())
+        appendLine()
+    }
 }
 
 /** Enough to debug a transport problem, without naming the host. */

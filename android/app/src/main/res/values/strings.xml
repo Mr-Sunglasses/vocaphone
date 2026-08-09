@@ -3,9 +3,4 @@
     <string name="app_name">vocaphone</string>
 
     <string name="ime_name">VocaPhone keyboard</string>
-    <string name="ime_dictate">Dictate</string>
-    <string name="ime_finish">Finish</string>
-    <string name="ime_cancel">Cancel</string>
-    <string name="ime_open_app">Open VocaPhone</string>
-
 </resources>

@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.room.Room
 import com.vocahq.vocaphone.data.HistoryRepository
+import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
 import com.vocahq.vocaphone.settings.SettingsRepository
@@ -31,6 +32,9 @@ class AppContainer(context: Context) {
 
     val history = HistoryRepository(database.dictationRecordDao())
 
+    /** App-private and bounded; it never contains transcript or gateway data. */
+    val diagnostics = DiagnosticLog(context)
+
     /** App-private, no-backup storage: recordings never leave the device except to the gateway. */
     val audioDirectory = File(context.filesDir, "recordings")
 
@@ -38,6 +42,7 @@ class AppContainer(context: Context) {
         context = context.applicationContext,
         settings = settings,
         history = history,
+        diagnostics = diagnostics,
         audioDirectory = audioDirectory,
         scope = applicationScope,
     )

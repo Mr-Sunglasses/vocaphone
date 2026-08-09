@@ -15,6 +15,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +41,8 @@ fun SettingsScreen(
     onMicrophone: (MicrophonePreference) -> Unit,
     onAudioRetention: (AudioRetention) -> Unit,
     onOpenGateway: () -> Unit,
+    diagnosticEvents: () -> String,
+    onClearDiagnosticEvents: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -171,8 +174,9 @@ fun SettingsScreen(
                 },
             )
             Text(
-                "Diagnostics leave out your gateway's host name and never include " +
-                    "the token, so they are safe to paste into a public issue.",
+                "Diagnostics contain only bounded timestamps, state transitions, " +
+                    "error categories and build/source context. They never include " +
+                    "transcripts, typed text, audio, gateway hosts or tokens.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -181,7 +185,7 @@ fun SettingsScreen(
                     text = "Copy diagnostics",
                     onClick = {
                         context.copyDiagnostics(
-                            diagnosticsReport(appInfo, settings, setup)
+                            diagnosticsReport(appInfo, settings, setup, diagnosticEvents())
                         )
                     },
                     modifier = Modifier.weight(1f),
@@ -192,6 +196,7 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+            TextButton(onClick = onClearDiagnosticEvents) { Text("Clear event log") }
         }
     }
 }

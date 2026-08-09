@@ -140,6 +140,15 @@ the Android Tailscale VPN routes the traffic transparently.
   only the ciphertext and nonce are stored. Backup and device-to-device transfer
   are disabled.
 
+## Diagnostics
+
+**Settings → About → Copy diagnostics** exports the app version, Android/device
+context, setup state and a bounded event log. Events contain only timestamps,
+state transitions, error categories, build version and whether the companion app
+or keyboard initiated them. They never contain transcripts, typed text, audio,
+gateway hosts/URLs, tokens or arbitrary package names. **Clear event log** removes
+the app-private log from the device.
+
 ## Layout
 
 | Path | What lives there |
@@ -157,8 +166,8 @@ the Android Tailscale VPN routes the traffic transparently.
 The IME install, enablement, selection and rendered keyboard have been exercised
 on a physical POCO F1 running Android 14. The signed release was installed and
 the device was restored to its previous keyboard afterwards. Unit tests cover
-the input policy, cursor insertion arithmetic, transcript sanitization and the
-gateway protocol.
+the input policy, cursor insertion arithmetic, transcript sanitization, privacy
+log bounds and the gateway protocol.
 
 ## Not yet done
 

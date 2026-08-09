@@ -52,7 +52,10 @@ object ModelLanguageSupport {
             "Your gateway's model detects the language itself, so only Automatic applies. " +
                 "It reads full sentences well but returns the wrong alphabet on short phrases."
         modelLanguages.isEmpty() -> null
-        else -> "Your gateway's model covers ${modelLanguages.size} languages. " +
-            "The rest need a different model."
+        else -> {
+            val noun = if (modelLanguages.size == 1) "language" else "languages"
+            "Your gateway's model covers ${modelLanguages.size} $noun. " +
+                "The rest need a different model."
+        }
     }
 }

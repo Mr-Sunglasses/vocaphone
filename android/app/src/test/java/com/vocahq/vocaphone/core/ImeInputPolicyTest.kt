@@ -42,4 +42,13 @@ class ImeInputPolicyTest {
         assertFalse(ImeInputPolicy.acceptsDictation(InputType.TYPE_CLASS_PHONE))
         assertFalse(ImeInputPolicy.acceptsDictation(InputType.TYPE_CLASS_DATETIME))
     }
+
+    @Test
+    fun `number passwords are identified as sensitive`() {
+        assertTrue(
+            ImeInputPolicy.isSensitive(
+                InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD,
+            ),
+        )
+    }
 }

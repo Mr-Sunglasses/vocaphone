@@ -172,6 +172,8 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
                 onMicrophone = { viewModel.setMicrophone(it) },
                 onAudioRetention = { viewModel.setAudioRetention(it) },
                 onOpenGateway = { showingGateway = true },
+                diagnosticEvents = viewModel::diagnosticEvents,
+                onClearDiagnosticEvents = viewModel::clearDiagnosticEvents,
                 modifier = content,
             )
         }

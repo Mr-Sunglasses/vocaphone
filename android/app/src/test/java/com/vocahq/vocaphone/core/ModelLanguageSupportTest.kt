@@ -77,6 +77,8 @@ class ModelLanguageSupportTest {
         assertTrue(automatic!!.contains("detects the language itself"))
         val limited = ModelLanguageSupport.restriction(dolphin, false)
         assertTrue(limited!!.contains("${dolphin.size} languages"))
+        val oneLanguage = ModelLanguageSupport.restriction(setOf("en"), false)
+        assertTrue(oneLanguage!!.contains("1 language."))
     }
 
     /// What Settings shows must be what dictation does. The stored choice is

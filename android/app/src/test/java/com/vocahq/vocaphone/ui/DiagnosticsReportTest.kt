@@ -74,4 +74,17 @@ class DiagnosticsReportTest {
         assertTrue(report.contains("Setup: missing"))
         assertTrue(report.contains(SetupStep.MICROPHONE.label))
     }
+
+    @Test
+    fun `report can include the bounded operational event log`() {
+        val report = diagnosticsReport(
+            info,
+            configured,
+            ready,
+            events = "ts=1 build=0.1.0 event=state value=LISTENING source=IME\n",
+        )
+
+        assertTrue(report.contains("Event log:"))
+        assertTrue(report.contains("value=LISTENING source=IME"))
+    }
 }

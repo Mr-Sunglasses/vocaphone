@@ -16,6 +16,7 @@ import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.MissingPermission
 import com.vocahq.vocaphone.core.TranscriptSanitizer
 import com.vocahq.vocaphone.data.HistoryRepository
+import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.gateway.GatewayClient
 import com.vocahq.vocaphone.gateway.GatewayException
 import com.vocahq.vocaphone.gateway.StreamingUnavailableException
@@ -33,6 +34,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -54,6 +58,7 @@ class DictationController(
     private val context: Context,
     private val settings: SettingsRepository,
     private val history: HistoryRepository,
+    private val diagnostics: DiagnosticLog,
     private val audioDirectory: File,
     private val scope: CoroutineScope,
 ) {
@@ -68,10 +73,24 @@ class DictationController(
     private var capture: AudioCapture? = null
 
     @Volatile
+    private var activeSource: DictationSource? = null
+
+    @Volatile
     private var finishRequested = false
 
     @Volatile
     private var cancelRequested = false
+
+    init {
+        scope.launch {
+            state
+                .map { it.phase }
+                .distinctUntilChanged()
+                .collect { phase ->
+                    diagnostics.recordState(phase.name, activeSource?.name)
+                }
+        }
+    }
 
     /**
      * Starts a dictation unless one is already running. Missing permissions or
@@ -79,12 +98,15 @@ class DictationController(
      */
     fun start(source: DictationSource) {
         if (pipeline?.isActive == true) return
+        activeSource = source
+        diagnostics.recordAction("start", source.name)
         finishRequested = false
         cancelRequested = false
         pipeline = scope.launch {
             val configuration = settings.current()
             val missing = missingPermissions(configuration)
             if (missing.isNotEmpty()) {
+                diagnostics.recordError("setup", source.name)
                 _state.value = DictationState(
                     phase = DictationPhase.PERMISSION_REPAIR,
                     missingPermissions = missing,
@@ -93,6 +115,7 @@ class DictationController(
             }
             val token = settings.token()
             if (token.isNullOrEmpty()) {
+                diagnostics.recordError("setup", source.name)
                 _state.value = DictationState(
                     phase = DictationPhase.PERMISSION_REPAIR,
                     missingPermissions = setOf(MissingPermission.GATEWAY_NOT_CONFIGURED),
@@ -108,6 +131,7 @@ class DictationController(
     }
 
     fun cancel() {
+        diagnostics.recordAction("cancel", activeSource?.name)
         cancelRequested = true
         finishRequested = true
         capture?.stop()
@@ -281,6 +305,7 @@ class DictationController(
         }
 
         captureError?.let { error ->
+            diagnostics.recordError("audio", source.name)
             stream?.cancel()
             wavFile.delete()
             fail(
@@ -424,6 +449,7 @@ class DictationController(
                 targetPackage = target?.currentTargetPackage(),
                 insertedIntoField = false,
             )
+            diagnostics.recordAction("ready_to_insert", source.name)
             return
         }
 
@@ -438,6 +464,10 @@ class DictationController(
             transcript = transcript,
             targetPackage = report.applied?.packageName ?: target.currentTargetPackage(),
             insertedIntoField = report.outcome == InsertionOutcome.INSERTED,
+        )
+        diagnostics.recordAction(
+            if (report.outcome == InsertionOutcome.INSERTED) "inserted" else "insertion_failed",
+            source.name,
         )
         _state.value = _state.value.copy(
             phase = if (report.outcome == InsertionOutcome.INSERTED) {
@@ -470,6 +500,7 @@ class DictationController(
         wavFile: File?,
         configuration: VocaPhoneSettings,
     ) = withContext(NonCancellable) {
+        diagnostics.recordError(errorCategory(error), activeSource?.name)
         history.recordFailure(
             sessionId = sessionId.toString(),
             language = configuration.effectiveLanguage.wireValue,
@@ -490,6 +521,14 @@ class DictationController(
 
     private fun reset() {
         _state.value = DictationState()
+    }
+
+    private fun errorCategory(error: GatewayException): String = when {
+        error.code.startsWith("audio") -> "audio"
+        error.code.startsWith("microphone") -> "audio"
+        error.code.startsWith("insert") -> "insertion"
+        error.code == "permission_repair" -> "setup"
+        else -> "gateway"
     }
 
     private companion object {
