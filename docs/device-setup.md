@@ -76,3 +76,32 @@ Verify that:
 Also test Messages, Mail, Safari, WhatsApp, Slack, and ChatGPT where installed.
 Secure fields and apps that disable third-party keyboards are expected platform
 limitations and must fail without presenting a gateway error.
+
+## Quick Dictation reliability gate
+
+Run these checks on a physical iPhone after changing audio or App Group code:
+
+- Start and finish from the keyboard several times. Recording and transcript
+  states should update immediately; the slower polling path is only a fallback.
+- Expand the standby Dynamic Island and tap **Turn off Quick Dictation**. The
+  Live Activity and orange microphone indicator must disappear without opening
+  vocaphone, and the next keyboard dictation must open the app.
+- Force-quit vocaphone while Quick Dictation is ready, wait at least 7 seconds,
+  and tap Dictate. The keyboard must treat the heartbeat as stale and open the
+  app instead of claiming that standby is ready.
+- During standby and during an active recording, test a phone call or Siri, an
+  AirPods disconnect, and reconnecting an input. Readiness and the Live Activity
+  must clear whenever input is unavailable. An interrupted recording should
+  finish and preserve the audio captured before the interruption.
+- Hold the spacebar until **Cursor control** is announced, then drag left and
+  right. The insertion point should move without inserting a space. A normal
+  spacebar tap must still insert exactly one space.
+- With recording sounds disabled, confirm there are no cues. Enable them in
+  vocaphone Settings and confirm the short start/stop cues play but are absent
+  from the resulting transcript.
+- Disable Full Access and reopen the keyboard. The inline warning and locked
+  dictation action must appear; re-enable Full Access before continuing.
+- Export diagnostics from vocaphone Settings. Confirm the file contains only
+  timestamps, build information, process source, finite state/lifecycle events,
+  and errors—never dictated or typed text, audio, gateway addresses, tokens, or
+  microphone names. Clear diagnostics and confirm a new export has no old rows.

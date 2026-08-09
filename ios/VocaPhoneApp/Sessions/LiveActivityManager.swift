@@ -65,6 +65,10 @@ final class LiveActivityManager: @unchecked Sendable {
             ),
             staleDate: expiresAt
         )
+        DiagnosticLog.record(
+            .liveActivityStarted,
+            metadata: .phase(.standby)
+        )
     }
 
     /// Removes the standby Live Activity when Quick Dictation releases the
@@ -84,6 +88,10 @@ final class LiveActivityManager: @unchecked Sendable {
                 phase: .finished
             ),
             dismissalPolicy: .immediate
+        )
+        DiagnosticLog.record(
+            .liveActivityEnded,
+            metadata: .reason(.quickDictationOff)
         )
     }
 
@@ -105,6 +113,10 @@ final class LiveActivityManager: @unchecked Sendable {
                 startedAt: recordingStartedAt
             ),
             staleDate: nil
+        )
+        DiagnosticLog.record(
+            .liveActivityStarted,
+            metadata: .phase(.recording)
         )
     }
 
@@ -138,6 +150,10 @@ final class LiveActivityManager: @unchecked Sendable {
         activeSessionID = nil
         recordingStartedAt = nil
         beginTransition()
+        DiagnosticLog.record(
+            .liveActivityEnded,
+            metadata: .reason(.sessionFinished)
+        )
 
         guard standbyRequested, let standbyExpiresAt, standbyExpiresAt > Date() else {
             endAll(
@@ -283,6 +299,10 @@ final class LiveActivityManager: @unchecked Sendable {
         guard !activities.isEmpty else { return }
 
         logger.info("Ending \(activities.count) Live Activities before \(reason, privacy: .public)")
+        DiagnosticLog.record(
+            .liveActivityEnded,
+            metadata: .reason(.processExit)
+        )
         let content = ActivityContent(
             state: VocaPhoneActivityAttributes.ContentState(
                 status: "VocaPhone closed",

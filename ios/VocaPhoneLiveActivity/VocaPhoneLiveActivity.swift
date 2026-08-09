@@ -35,6 +35,12 @@ struct VocaPhoneRecordingActivity: Widget {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(.red)
+                } else if context.state.effectivePhase == .standby {
+                    Button(intent: StopQuickDictationIntent()) {
+                        Label("Turn off", systemImage: "mic.slash.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.brand)
                 }
             }
             .padding()
@@ -65,6 +71,13 @@ struct VocaPhoneRecordingActivity: Widget {
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
+                    } else if context.state.effectivePhase == .standby {
+                        Button(intent: StopQuickDictationIntent()) {
+                            Label("Turn off Quick Dictation", systemImage: "mic.slash.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.brand)
                     }
                 }
             } compactLeading: {

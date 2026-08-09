@@ -6,8 +6,17 @@ enum KeyboardOutput {
     case newline
     case deleteBackward
     case deleteWord
+    case moveCursor(Int)
     /// Carries the globe key itself so the keyboard picker can anchor to it.
     case nextInputMode(UIView, UIEvent?)
+}
+
+enum CursorTrackpad {
+    static let pointsPerCharacter: CGFloat = 10
+
+    static func step(forHorizontalTranslation translation: CGFloat) -> Int {
+        Int(translation / pointsPerCharacter)
+    }
 }
 
 @MainActor
@@ -67,18 +76,23 @@ final class KeyGridView: UIView {
     private var previewPool: [KeyPreviewView] = []
     private var tracked: [TrackedTouch] = []
     private var deleteTimer: Timer?
+    private var spaceTrackpadTimer: Timer?
     private var deleteRepeatCount = 0
     private var lastShiftTapAt: Date?
 
-    private final class TrackedTouch {
+    private final class TrackedTouch: @unchecked Sendable {
         let touch: UITouch
         var key: KeyView
         let allowsSlide: Bool
         var preview: KeyPreviewView?
+        let initialPoint: CGPoint
+        var lastCursorStep = 0
+        var isCursorTracking = false
 
-        init(touch: UITouch, key: KeyView) {
+        init(touch: UITouch, key: KeyView, initialPoint: CGPoint) {
             self.touch = touch
             self.key = key
+            self.initialPoint = initialPoint
             allowsSlide = key.spec.cap.isCharacter
         }
     }
@@ -259,6 +273,8 @@ final class KeyGridView: UIView {
     }
 
     private func releaseTouches() {
+        spaceTrackpadTimer?.invalidate()
+        spaceTrackpadTimer = nil
         for item in tracked {
             item.key.isHighlighted = false
             recycle(item.preview)
@@ -282,13 +298,15 @@ final class KeyGridView: UIView {
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         for touch in touches {
-            guard let key = key(at: touch.location(in: self), characterOnly: false)
+            let point = touch.location(in: self)
+            guard let key = key(at: point, characterOnly: false)
             else { continue }
-            let item = TrackedTouch(touch: touch, key: key)
+            let item = TrackedTouch(touch: touch, key: key, initialPoint: point)
             tracked.append(item)
             key.isHighlighted = true
             UIDevice.current.playInputClick()
             showPreview(for: item)
+            if key.spec.cap == .space { scheduleSpaceTrackpad(for: item) }
             if key.spec.cap.actsOnTouchDown {
                 performTouchDownAction(for: key, event: event)
             }
@@ -299,6 +317,11 @@ final class KeyGridView: UIView {
         for touch in touches {
             guard let item = tracked.first(where: { $0.touch === touch }) else { continue }
             let point = touch.location(in: self)
+
+            if item.key.spec.cap == .space {
+                handleSpaceMovement(item, point: point)
+                continue
+            }
 
             guard item.allowsSlide else {
                 // Function keys stay bound to their own touch but disengage when
@@ -333,7 +356,11 @@ final class KeyGridView: UIView {
         for touch in touches {
             guard let index = tracked.firstIndex(where: { $0.touch === touch }) else { continue }
             let item = tracked.remove(at: index)
-            let shouldCommit = commit && item.key.isHighlighted
+            if item.key.spec.cap == .space {
+                spaceTrackpadTimer?.invalidate()
+                spaceTrackpadTimer = nil
+            }
+            let shouldCommit = commit && item.key.isHighlighted && !item.isCursorTracking
             item.key.isHighlighted = false
             recycle(item.preview)
             item.preview = nil
@@ -372,6 +399,46 @@ final class KeyGridView: UIView {
         default:
             break
         }
+    }
+
+    private func scheduleSpaceTrackpad(for item: TrackedTouch) {
+        guard !UIAccessibility.isVoiceOverRunning else { return }
+        spaceTrackpadTimer?.invalidate()
+        spaceTrackpadTimer = Timer.scheduledTimer(withTimeInterval: 0.32, repeats: false) {
+            [weak self, weak item] _ in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let item,
+                      self.tracked.contains(where: { $0 === item }),
+                      item.key.isHighlighted
+                else { return }
+                item.isCursorTracking = true
+                item.lastCursorStep = 0
+                UISelectionFeedbackGenerator().selectionChanged()
+                UIAccessibility.post(notification: .announcement, argument: "Cursor control")
+            }
+        }
+    }
+
+    private func handleSpaceMovement(_ item: TrackedTouch, point: CGPoint) {
+        guard item.isCursorTracking else {
+            let distance = hypot(point.x - item.initialPoint.x, point.y - item.initialPoint.y)
+            if distance > 14 {
+                spaceTrackpadTimer?.invalidate()
+                spaceTrackpadTimer = nil
+            }
+            item.key.isHighlighted = item.key.hitRect.contains(point)
+            return
+        }
+
+        item.key.isHighlighted = true
+        let step = CursorTrackpad.step(
+            forHorizontalTranslation: point.x - item.initialPoint.x
+        )
+        let delta = step - item.lastCursorStep
+        guard delta != 0 else { return }
+        item.lastCursorStep = step
+        delegate?.keyGrid(self, didProduce: .moveCursor(delta))
     }
 
     private func toggleShift() {

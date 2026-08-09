@@ -188,6 +188,7 @@ struct SessionRecordTests {
     @Test func quickDictationAvailabilityExpires() {
         let now = Date(timeIntervalSince1970: 1_000)
         let availability = QuickDictationAvailability(
+            activatedAt: now,
             expiresAt: now.addingTimeInterval(600)
         )
         #expect(availability.isReady(at: now))

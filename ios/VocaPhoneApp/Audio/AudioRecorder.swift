@@ -2,6 +2,13 @@ import AVFAudio
 import Foundation
 import os
 
+enum AudioSessionLifecycleEvent: Equatable, Sendable {
+    case interruptionBegan
+    case interruptionEnded(shouldResume: Bool)
+    case mediaServicesReset
+    case inputUnavailable
+}
+
 @MainActor
 final class AudioRecorder: NSObject {
     private var engine: AVAudioEngine?
@@ -13,10 +20,11 @@ final class AudioRecorder: NSObject {
     private var outputURL: URL?
     private var meterTimer: Timer?
     private var limitTimer: Timer?
-    nonisolated(unsafe) private var routeChangeObserver: (any NSObjectProtocol)?
+    nonisolated(unsafe) private var lifecycleObservers: [any NSObjectProtocol] = []
     var onMeter: ((Float) -> Void)?
     var onMaximumDuration: (() -> Void)?
     var onInputRouteChanged: ((String?) -> Void)?
+    var onAudioSessionLifecycleEvent: ((AudioSessionLifecycleEvent) -> Void)?
     var microphonePreference: MicrophonePreference = .automatic
 
     /// Chunks of float32 PCM at the transcription sample rate, in order. Backed
@@ -28,20 +36,43 @@ final class AudioRecorder: NSObject {
 
     override init() {
         super.init()
-        routeChangeObserver = NotificationCenter.default.addObserver(
+        let center = NotificationCenter.default
+        let session = AVAudioSession.sharedInstance()
+        lifecycleObservers.append(center.addObserver(
             forName: AVAudioSession.routeChangeNotification,
-            object: AVAudioSession.sharedInstance(),
+            object: session,
+            queue: .main
+        ) { [weak self] notification in
+            let rawReason = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            MainActor.assumeIsolated {
+                self?.handleRouteChange(rawReason: rawReason)
+            }
+        })
+        lifecycleObservers.append(center.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: session,
+            queue: .main
+        ) { [weak self] notification in
+            let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let rawOptions = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            MainActor.assumeIsolated {
+                self?.handleInterruption(rawType: rawType, rawOptions: rawOptions)
+            }
+        })
+        lifecycleObservers.append(center.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: session,
             queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.publishCurrentInput()
+                self?.onAudioSessionLifecycleEvent?(.mediaServicesReset)
             }
-        }
+        })
     }
 
     deinit {
-        if let routeChangeObserver {
-            NotificationCenter.default.removeObserver(routeChangeObserver)
+        for observer in lifecycleObservers {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -64,6 +95,12 @@ final class AudioRecorder: NSObject {
         AVAudioApplication.requestRecordPermission { granted in
             Task { @MainActor in completion(granted) }
         }
+    }
+
+    /// Warms the same graph `start` will capture from. Recording feedback can
+    /// therefore play before the tap starts without paying a second setup cost.
+    func prepareForRecording() throws {
+        try ensureEngineRunning()
     }
 
     /// Starts writing from the already-running microphone engine. When Quick
@@ -297,6 +334,31 @@ final class AudioRecorder: NSObject {
 
     private func publishCurrentInput() {
         onInputRouteChanged?(currentInputName)
+    }
+
+    private func handleRouteChange(rawReason: UInt?) {
+        publishCurrentInput()
+        guard let rawReason,
+              AVAudioSession.RouteChangeReason(rawValue: rawReason) == .oldDeviceUnavailable,
+              AVAudioSession.sharedInstance().currentRoute.inputs.isEmpty
+        else { return }
+        onAudioSessionLifecycleEvent?(.inputUnavailable)
+    }
+
+    private func handleInterruption(rawType: UInt?, rawOptions: UInt?) {
+        guard let rawType,
+              let type = AVAudioSession.InterruptionType(rawValue: rawType)
+        else { return }
+        switch type {
+        case .began:
+            onAudioSessionLifecycleEvent?(.interruptionBegan)
+        case .ended:
+            let shouldResume = AVAudioSession.InterruptionOptions(rawValue: rawOptions ?? 0)
+                .contains(.shouldResume)
+            onAudioSessionLifecycleEvent?(.interruptionEnded(shouldResume: shouldResume))
+        @unknown default:
+            onAudioSessionLifecycleEvent?(.interruptionBegan)
+        }
     }
 }
 

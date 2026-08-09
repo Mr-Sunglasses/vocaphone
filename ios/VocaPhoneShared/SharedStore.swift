@@ -31,6 +31,13 @@ final class SharedStore: @unchecked Sendable {
         if record.state != .recording {
             try? fileManager.removeItem(at: meterURL(for: record.sessionID, directory: directory))
         }
+        notify(.sessionChanged)
+        if rootOverride == nil {
+            DiagnosticLog.record(
+                .sessionStateChanged,
+                metadata: .state(record.state)
+            )
+        }
     }
 
     /// Written several times a second while recording. An atomic write means a
@@ -170,11 +177,15 @@ final class SharedStore: @unchecked Sendable {
             .contentModificationDate ?? .distantPast
     }
 
-    func saveQuickDictationAvailability(_ availability: QuickDictationAvailability) throws {
+    func saveQuickDictationAvailability(
+        _ availability: QuickDictationAvailability,
+        notifyObservers: Bool = true
+    ) throws {
         let root = try rootDirectory()
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         let data = try encoder.encode(availability)
         try data.write(to: quickDictationURL(root: root), options: .atomic)
+        if notifyObservers { notify(.quickDictationChanged) }
     }
 
     func loadQuickDictationAvailability() throws -> QuickDictationAvailability? {
@@ -194,6 +205,7 @@ final class SharedStore: @unchecked Sendable {
         let fileURL = quickDictationURL(root: try rootDirectory())
         guard fileManager.fileExists(atPath: fileURL.path) else { return }
         try fileManager.removeItem(at: fileURL)
+        notify(.quickDictationChanged)
     }
 
     func saveKeyboardStatus(_ status: KeyboardStatus) throws {
@@ -201,6 +213,7 @@ final class SharedStore: @unchecked Sendable {
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
         let data = try encoder.encode(status)
         try data.write(to: keyboardStatusURL(root: root), options: .atomic)
+        notify(.keyboardStatusChanged)
     }
 
     func loadKeyboardStatus() throws -> KeyboardStatus? {
@@ -255,5 +268,10 @@ final class SharedStore: @unchecked Sendable {
               let level = try? decoder.decode(Float.self, from: data)
         else { return }
         record.meterLevel = min(max(level, 0), 1)
+    }
+
+    private func notify(_ notification: VocaPhoneDarwinNotification) {
+        guard rootOverride == nil else { return }
+        VocaPhoneDarwinCenter.post(notification)
     }
 }

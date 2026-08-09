@@ -29,6 +29,13 @@ struct SettingsView: View {
         KeyboardPreferences.microphonePreferenceKey,
         store: KeyboardPreferences.defaults
     ) private var microphonePreferenceRawValue = MicrophonePreference.automatic.rawValue
+    @AppStorage(
+        KeyboardPreferences.recordingSoundsKey,
+        store: KeyboardPreferences.defaults
+    ) private var recordingSoundsEnabled = false
+    @State private var diagnosticExportURL: URL?
+    @State private var isSharingDiagnostics = false
+    @State private var diagnosticsStatus: String?
 
     /// Every explanation on this screen is a `Section` footer, not a row.
     /// Explanatory paragraphs used to sit in rows of their own, so each one drew
@@ -42,11 +49,18 @@ struct SettingsView: View {
             transcriptionLanguageSection
             writingStyleSection
             microphoneSection
+            recordingFeedbackSection
             permissionsSection
+            diagnosticsSection
             privacySection
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $isSharingDiagnostics, onDismiss: removeDiagnosticExport) {
+            if let diagnosticExportURL {
+                DiagnosticShareSheet(activityItems: [diagnosticExportURL])
+            }
+        }
     }
 
     private var setupSection: some View {
@@ -210,6 +224,19 @@ struct SettingsView: View {
         }
     }
 
+    private var recordingFeedbackSection: some View {
+        Section {
+            Toggle("Play recording start and stop sounds", isOn: $recordingSoundsEnabled)
+        } header: {
+            Text("Recording feedback")
+        } footer: {
+            Text(
+                "Short, quiet tones play outside the captured audio, so they are not "
+                    + "included in the transcript. Haptic feedback remains available."
+            )
+        }
+    }
+
     private var permissionsSection: some View {
         Section {
             Button("Request microphone permission") {
@@ -227,6 +254,44 @@ struct SettingsView: View {
                     + "Full Access is used only for shared session state and communication "
                     + "with your configured gateway."
             )
+        }
+    }
+
+    private var diagnosticsSection: some View {
+        Section {
+            Button {
+                do {
+                    diagnosticExportURL = try DiagnosticLog.makeExportFile()
+                    diagnosticsStatus = nil
+                    isSharingDiagnostics = true
+                } catch {
+                    DiagnosticLog.record(
+                        .operationFailed,
+                        metadata: .error(.diagnosticExportFailed)
+                    )
+                    diagnosticsStatus = "The diagnostic export could not be prepared."
+                }
+            } label: {
+                Label("Export diagnostics", systemImage: "square.and.arrow.up")
+            }
+
+            Button(role: .destructive) {
+                DiagnosticLog.clear()
+                diagnosticsStatus = "Diagnostics cleared."
+            } label: {
+                Label("Clear diagnostics", systemImage: "trash")
+            }
+        } header: {
+            Text("Diagnostics")
+        } footer: {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(
+                    "The bounded export contains up to seven days of build information, app/keyboard "
+                        + "source, state transitions, and lifecycle errors only. It never "
+                        + "contains transcripts, typed text, audio, addresses, or credentials."
+                )
+                if let diagnosticsStatus { Text(diagnosticsStatus) }
+            }
         }
     }
 
@@ -256,6 +321,26 @@ struct SettingsView: View {
     private var validatedGatewayURL: URL? {
         GatewayEndpoint.validatedURL(from: gatewayURL)
     }
+
+    private func removeDiagnosticExport() {
+        if let diagnosticExportURL {
+            try? FileManager.default.removeItem(at: diagnosticExportURL)
+        }
+        diagnosticExportURL = nil
+    }
+}
+
+private struct DiagnosticShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(
+        _ uiViewController: UIActivityViewController,
+        context: Context
+    ) {}
 }
 
 /// The full language list, reached from Settings. Search matters at 27 entries,

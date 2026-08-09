@@ -4,6 +4,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private let store = SharedStore.shared
     private var activeSessionID: UUID?
     private var pollingTimer: Timer?
+    private var pollingInterval: TimeInterval?
+    private var darwinObservations: [VocaPhoneDarwinObservation] = []
     private var appLaunchFallbackTask: Task<Void, Never>?
     private var lastInsertedText: String?
     private var isPerformingInsertion = false
@@ -76,6 +78,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // A recreated extension instance can inherit a session the previous one
         // started, so scan once on appear and let `render` decide about polling.
         applyDocumentTraits()
+        installDarwinObservers()
         publishKeyboardStatus()
         refresh()
     }
@@ -92,6 +95,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         super.viewWillDisappear(animated)
         pollingTimer?.invalidate()
         pollingTimer = nil
+        pollingInterval = nil
+        darwinObservations.forEach { $0.invalidate() }
+        darwinObservations.removeAll()
         appLaunchFallbackTask?.cancel()
     }
 
@@ -111,6 +117,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         lastPublishedAt = now
         try? store.saveKeyboardStatus(
             KeyboardStatus(lastSeenAt: now, hasFullAccess: hasFullAccess)
+        )
+        DiagnosticLog.record(
+            .keyboardShown,
+            metadata: .fullAccess(hasFullAccess)
         )
     }
 
@@ -235,6 +245,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         case .deleteWord:
             deleteWordBackward()
             releaseUndoIfDetached()
+        case let .moveCursor(offset):
+            textDocumentProxy.adjustTextPosition(byCharacterOffset: offset)
+            lastSpaceInsertedAt = nil
+            releaseUndoIfDetached()
         case let .nextInputMode(anchor, event):
             // `handleInputModeList` also drives the long-press keyboard picker,
             // which `advanceToNextInputMode` alone cannot offer.
@@ -338,12 +352,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             activeSessionID = record.sessionID
             sessionTargetDocumentID = record.sourceDocumentID
             render(record)
-            if let availability = try? store.loadQuickDictationAvailability(),
-               availability.isReady()
-            {
+            let availability = try? store.loadQuickDictationAvailability()
+            if availability?.isReady() == true {
                 dictationBar.flash("Starting with Quick Dictation…")
                 scheduleContainingAppFallback(for: record)
             } else {
+                if availability != nil {
+                    DiagnosticLog.record(.quickDictationStale)
+                }
                 openContainingApp(for: record)
             }
         } catch {
@@ -464,6 +480,20 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
+    private func installDarwinObservers() {
+        guard darwinObservations.isEmpty else { return }
+        darwinObservations.append(
+            VocaPhoneDarwinCenter.observe(.sessionChanged) { [weak self] in
+                Task { @MainActor [weak self] in self?.refresh() }
+            }
+        )
+        darwinObservations.append(
+            VocaPhoneDarwinCenter.observe(.quickDictationChanged) { [weak self] in
+                Task { @MainActor [weak self] in self?.refresh() }
+            }
+        )
+    }
+
     /// The keyboard is the only writer that opens a session, so an idle keyboard
     /// has nothing to wait for. Polling runs only while a session is in flight,
     /// which keeps ordinary typing free of a four-times-a-second directory scan
@@ -473,16 +503,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         guard needsUpdates else {
             pollingTimer?.invalidate()
             pollingTimer = nil
+            pollingInterval = nil
             return
         }
+        let desiredInterval: TimeInterval = record?.state == .recording ? 0.25 : 1.5
+        if pollingInterval != desiredInterval {
+            pollingTimer?.invalidate()
+            pollingTimer = nil
+        }
         guard pollingTimer == nil else { return }
-        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: desiredInterval, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.refresh() }
         }
         // Common mode keeps session updates flowing while a touch is being
         // tracked on the key grid.
         RunLoop.main.add(timer, forMode: .common)
         pollingTimer = timer
+        pollingInterval = desiredInterval
     }
 
     private func refresh() {

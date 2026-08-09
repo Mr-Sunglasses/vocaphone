@@ -202,6 +202,7 @@ enum KeyboardPreferences {
     static let writingStyleKey = "writingStyle"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let microphonePreferenceKey = "microphonePreference"
+    static let recordingSoundsKey = "recordingSoundsEnabled"
     static let containingAppForegroundKey = "containingAppForeground"
     static let setupCompletedKey = "setupCompleted"
     static let firstDictationKey = "hasCompletedFirstDictation"
@@ -233,6 +234,11 @@ enum KeyboardPreferences {
         set {
             defaults?.set(newValue, forKey: quickDictationKey)
         }
+    }
+
+    static var recordingSoundsEnabled: Bool {
+        get { defaults?.bool(forKey: recordingSoundsKey) ?? false }
+        set { defaults?.set(newValue, forKey: recordingSoundsKey) }
     }
 
     static var writingStyle: WritingStyle {

@@ -21,13 +21,18 @@ final class RecordingCoordinator {
     private let store = SharedStore.shared
     private var pollingTask: Task<Void, Never>?
     private var pipelineTask: Task<Void, Never>?
+    private var pipelineSessionID: UUID?
     private var cancellationMonitorTask: Task<Void, Never>?
     private var quickDictationWatcherTask: Task<Void, Never>?
     private var startingSessionID: UUID?
     private var gatewayClient: GatewayClient?
     private var lastMicrophoneName: String?
+    private var audioSessionAvailable = true
+    private var audioLifecycleGeneration = 0
+    private var darwinObservations: [VocaPhoneDarwinObservation] = []
     private let liveActivity = LiveActivityManager.shared
     private let streamingBridge = StreamingAudioBridge()
+    private let soundFeedback = RecordingSoundFeedback()
 
     var stateLabel: String { (activeRecord?.state ?? .idle).displayName }
     var isRecording: Bool { activeRecord?.state == .recording && recorder.isRecording }
@@ -113,10 +118,16 @@ final class RecordingCoordinator {
             self.currentMicrophoneName = inputName
             if let inputName {
                 self.lastMicrophoneName = inputName
+                self.audioSessionAvailable = true
             }
         }
+        recorder.onAudioSessionLifecycleEvent = { [weak self] event in
+            self?.handleAudioSessionLifecycleEvent(event)
+        }
+        installDarwinObservers()
         loadGatewaySettings()
         refreshSetupStatus()
+        DiagnosticLog.record(.appStarted)
     }
 
     func handleDeepLink(_ url: URL) {
@@ -164,6 +175,7 @@ final class RecordingCoordinator {
                 + "recording=\(recorder.isRecording)"
         )
         guard KeyboardPreferences.quickDictationEnabled,
+              audioSessionAvailable,
               recorder.recordPermission == .granted,
               !recorder.isRecording,
               startingSessionID == nil
@@ -188,6 +200,10 @@ final class RecordingCoordinator {
         KeyboardPreferences.quickDictationEnabled = false
         clearQuickDictationReadiness(deactivateAudioSession: true)
         message = "Quick Dictation is off. The keyboard will open vocaphone next time."
+        DiagnosticLog.record(
+            .quickDictationStopped,
+            metadata: .reason(.userRequested)
+        )
     }
 
     func updateGateway(baseURL: URL, token: String) {
@@ -295,6 +311,8 @@ final class RecordingCoordinator {
 
     func cancel() {
         pipelineTask?.cancel()
+        pipelineTask = nil
+        pipelineSessionID = nil
         cancellationMonitorTask?.cancel()
         Task { await streamingBridge.cancel() }
         guard var record = activeRecord else { return }
@@ -396,6 +414,19 @@ final class RecordingCoordinator {
             }
 
             let directory = try localAudioDirectory()
+            try recorder.prepareForRecording()
+            await soundFeedback.play(.start)
+            guard let latestRecord = try store.load(id),
+                  [.launchingApp, .awaitingReturn].contains(latestRecord.state)
+            else {
+                if KeyboardPreferences.quickDictationEnabled, audioSessionAvailable {
+                    armQuickDictation()
+                } else {
+                    recorder.stopStandby(deactivateAudioSession: true)
+                }
+                return
+            }
+            record = latestRecord
             let audioURL = try recorder.start(sessionID: record.sessionID, directory: directory)
             if let client = gatewayClient, let chunks = recorder.pcmChunks {
                 await streamingBridge.start(
@@ -428,6 +459,24 @@ final class RecordingCoordinator {
             }
             beginPolling()
         } catch {
+            recorder.cancelSession(keepAudioSessionActive: false)
+            clearQuickDictationReadiness(deactivateAudioSession: true)
+            if var failedRecord = try? store.load(id),
+               [.launchingApp, .awaitingReturn].contains(failedRecord.state)
+            {
+                try? failedRecord.transition(to: .canceled)
+                failedRecord.error = SessionFailure(
+                    code: "recording_start_failed",
+                    message: "The microphone could not start. Try dictating again.",
+                    recoverable: false
+                )
+                try? store.save(failedRecord)
+                activeRecord = failedRecord
+            }
+            DiagnosticLog.record(
+                .operationFailed,
+                metadata: .error(.recordingStartFailed)
+            )
             message = "Recording could not start: \(error.localizedDescription)"
         }
     }
@@ -445,9 +494,14 @@ final class RecordingCoordinator {
     }
 
     private func startPipeline(_ record: SessionRecord) {
+        guard pipelineSessionID != record.sessionID else { return }
         pipelineTask?.cancel()
+        pipelineSessionID = record.sessionID
         pipelineTask = Task { [weak self] in
             await self?.finalizeAndTranscribe(record)
+            guard let self, self.pipelineSessionID == record.sessionID else { return }
+            self.pipelineSessionID = nil
+            self.pipelineTask = nil
         }
     }
 
@@ -455,38 +509,9 @@ final class RecordingCoordinator {
         pollingTask?.cancel()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(250))
-                guard let self, let current = self.activeRecord,
-                      let shared = try? self.store.load(current.sessionID)
-                else { continue }
-                // Four times a second the record is usually identical. Assigning
-                // it anyway would invalidate observers for no reason.
-                if shared != current {
-                    self.activeRecord = shared
-                }
-                switch shared.state {
-                case .finalizing:
-                    self.liveActivity.update(status: "Finishing", canFinish: false)
-                    self.startPipeline(shared)
-                    return
-                case .uploading where !self.recorder.isRecording:
-                    self.startPipeline(shared)
-                    return
-                case .canceled:
-                    let shouldRemainReady = self.shouldKeepQuickDictationReady(after: shared)
-                    self.recorder.cancelSession(keepAudioSessionActive: shouldRemainReady)
-                    if shouldRemainReady {
-                        self.armQuickDictation()
-                        self.message = "Recording canceled. Quick Dictation is still ready."
-                    } else {
-                        self.clearQuickDictationReadiness(deactivateAudioSession: true)
-                        self.message = "Recording canceled."
-                    }
-                    self.liveActivity.end(status: "Canceled", dismissAfter: 0)
-                    return
-                default:
-                    continue
-                }
+                try? await Task.sleep(for: .milliseconds(1_500))
+                guard let self else { return }
+                await self.handleSharedStateSignal()
             }
         }
     }
@@ -497,9 +522,13 @@ final class RecordingCoordinator {
         defer { cancellationMonitorTask?.cancel() }
         var record = incoming
         let shouldRemainReady = shouldKeepQuickDictationReady(after: record)
+        let wasRecording = recorder.isRecording
         let output = recorder.stopSession(
-            keepAudioSessionActive: shouldRemainReady
+            keepAudioSessionActive: true
         ) ?? resolvedAudioURL(for: record)
+        if wasRecording {
+            await soundFeedback.play(.stop)
+        }
         meterLevel = 0
         if shouldRemainReady {
             armQuickDictation()
@@ -625,7 +654,7 @@ final class RecordingCoordinator {
         cancellationMonitorTask?.cancel()
         cancellationMonitorTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(150))
+                try? await Task.sleep(for: .milliseconds(750))
                 guard let self,
                       let record = try? self.store.load(sessionID)
                 else { continue }
@@ -644,6 +673,10 @@ final class RecordingCoordinator {
         message failureMessage: String,
         recoverable: Bool = true
     ) async {
+        DiagnosticLog.record(
+            .operationFailed,
+            metadata: .error(diagnosticErrorCode(for: code, state: state))
+        )
         do {
             try record.transition(to: state)
             record.error = SessionFailure(code: code, message: failureMessage, recoverable: recoverable)
@@ -682,11 +715,13 @@ final class RecordingCoordinator {
 
     private func shouldKeepQuickDictationReady(after record: SessionRecord) -> Bool {
         KeyboardPreferences.quickDictationEnabled
+            && audioSessionAvailable
             && record.sourceDocumentID != "in-app-test"
     }
 
     private func armQuickDictation() {
         guard KeyboardPreferences.quickDictationEnabled,
+              audioSessionAvailable,
               !recorder.isRecording
         else { return }
 
@@ -704,8 +739,13 @@ final class RecordingCoordinator {
             quickDictationExpiresAt = availability.expiresAt
             beginQuickDictationWatcher(availability)
             liveActivity.startStandby(expiresAt: availability.expiresAt)
+            DiagnosticLog.record(.quickDictationArmed)
             debugQuickDictation("armed until \(availability.expiresAt)")
         } catch {
+            DiagnosticLog.record(
+                .operationFailed,
+                metadata: .error(.quickDictationArmFailed)
+            )
             debugQuickDictation("arming failed: \(error.localizedDescription)")
             clearQuickDictationReadiness(deactivateAudioSession: true)
             message = "Quick Dictation could not stay ready: \(error.localizedDescription)"
@@ -715,21 +755,30 @@ final class RecordingCoordinator {
     private func beginQuickDictationWatcher(_ availability: QuickDictationAvailability) {
         quickDictationWatcherTask?.cancel()
         quickDictationWatcherTask = Task { [weak self] in
+            var refreshedAvailability = availability
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(200))
+                try? await Task.sleep(for: .seconds(2))
                 guard let self else { return }
-                guard availability.isReady(), self.recorder.isStandbyActive else {
+                guard refreshedAvailability.expiresAt > Date(),
+                      self.recorder.isStandbyActive,
+                      self.audioSessionAvailable
+                else {
                     self.clearQuickDictationReadiness(deactivateAudioSession: true)
                     return
                 }
-                guard let pending = try? self.store.recent(limit: 8).first(where: {
-                    [.launchingApp, .awaitingReturn].contains($0.state)
-                        && $0.createdAt >= availability.activatedAt
-                        && $0.createdAt < availability.expiresAt
-                }) else { continue }
-
-                await self.startSession(id: pending.sessionID)
-                return
+                refreshedAvailability = refreshedAvailability.refreshingHeartbeat()
+                do {
+                    try self.store.saveQuickDictationAvailability(
+                        refreshedAvailability,
+                        notifyObservers: false
+                    )
+                } catch {
+                    self.clearQuickDictationReadiness(deactivateAudioSession: true)
+                    return
+                }
+                await self.startPendingQuickDictationIfNeeded(
+                    availability: refreshedAvailability
+                )
             }
         }
     }
@@ -764,6 +813,138 @@ final class RecordingCoordinator {
         return directory.appendingPathComponent(reference)
     }
 
+    private func installDarwinObservers() {
+        darwinObservations.append(
+            VocaPhoneDarwinCenter.observe(.sessionChanged) { [weak self] in
+                Task { @MainActor [weak self] in
+                    await self?.handleSharedStateSignal()
+                }
+            }
+        )
+        darwinObservations.append(
+            VocaPhoneDarwinCenter.observe(.keyboardStatusChanged) { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.refreshSetupStatus()
+                }
+            }
+        )
+        darwinObservations.append(
+            VocaPhoneDarwinCenter.observe(.stopQuickDictationRequested) { [weak self] in
+                Task { @MainActor [weak self] in
+                    DiagnosticLog.record(.stopQuickDictationRequested)
+                    self?.stopQuickDictation()
+                }
+            }
+        )
+    }
+
+    /// Fast path for keyboard and Live Activity writes. The 1.5-second polling
+    /// loop remains as recovery if iOS drops a Darwin notification or recreates
+    /// one process between the durable write and its signal.
+    private func handleSharedStateSignal() async {
+        guard let current = activeRecord, !current.state.isTerminal else {
+            await startPendingQuickDictationIfNeeded()
+            return
+        }
+        guard let shared = try? store.load(current.sessionID) else { return }
+        if shared != current { activeRecord = shared }
+
+        switch shared.state {
+        case .finalizing:
+            liveActivity.update(status: "Finishing", canFinish: false)
+            startPipeline(shared)
+        case .uploading where !recorder.isRecording && pipelineSessionID == nil:
+            startPipeline(shared)
+        case .canceled:
+            pipelineTask?.cancel()
+            pipelineTask = nil
+            pipelineSessionID = nil
+            await streamingBridge.cancel()
+            let shouldRemainReady = shouldKeepQuickDictationReady(after: shared)
+            recorder.cancelSession(keepAudioSessionActive: shouldRemainReady)
+            if shouldRemainReady {
+                armQuickDictation()
+                message = "Recording canceled. Quick Dictation is still ready."
+            } else {
+                clearQuickDictationReadiness(deactivateAudioSession: true)
+                message = "Recording canceled."
+            }
+            liveActivity.end(status: "Canceled", dismissAfter: 0)
+            await startPendingQuickDictationIfNeeded()
+        default:
+            if shared.state.isTerminal {
+                await startPendingQuickDictationIfNeeded()
+            }
+        }
+    }
+
+    private func startPendingQuickDictationIfNeeded(
+        availability suppliedAvailability: QuickDictationAvailability? = nil
+    ) async {
+        guard recorder.isStandbyActive, audioSessionAvailable else { return }
+        let availability = suppliedAvailability
+            ?? (try? store.loadQuickDictationAvailability())
+        guard let availability, availability.isReady() else { return }
+        guard let pending = try? store.recent(limit: 8).first(where: {
+            [.launchingApp, .awaitingReturn].contains($0.state)
+                && availability.acceptsRequest(createdAt: $0.createdAt)
+        }) else { return }
+        await startSession(id: pending.sessionID)
+    }
+
+    private func handleAudioSessionLifecycleEvent(_ event: AudioSessionLifecycleEvent) {
+        switch event {
+        case .interruptionBegan:
+            DiagnosticLog.record(.audioInterruptionBegan)
+            handleAudioLoss(reason: "Audio was interrupted. Finishing what was captured.")
+        case let .interruptionEnded(shouldResume):
+            audioLifecycleGeneration &+= 1
+            audioSessionAvailable = true
+            DiagnosticLog.record(
+                .audioInterruptionEnded,
+                metadata: .reason(shouldResume ? .resumeAllowed : .resumeNotAllowed)
+            )
+            if shouldResume,
+               KeyboardPreferences.containingAppIsForeground,
+               KeyboardPreferences.quickDictationEnabled
+            {
+                prepareQuickDictationIfEnabled()
+            }
+        case .mediaServicesReset:
+            DiagnosticLog.record(.audioMediaServicesReset)
+            handleAudioLoss(reason: "iPhone audio restarted. Finishing what was captured.")
+            let recoveryGeneration = audioLifecycleGeneration
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(1))
+                guard let self,
+                      self.audioLifecycleGeneration == recoveryGeneration
+                else { return }
+                self.audioSessionAvailable = true
+                if KeyboardPreferences.containingAppIsForeground,
+                   KeyboardPreferences.quickDictationEnabled
+                {
+                    self.prepareQuickDictationIfEnabled()
+                }
+            }
+        case .inputUnavailable:
+            DiagnosticLog.record(.audioInputUnavailable)
+            handleAudioLoss(reason: "The microphone input became unavailable.")
+        }
+    }
+
+    private func handleAudioLoss(reason: String) {
+        audioLifecycleGeneration &+= 1
+        audioSessionAvailable = false
+        if activeRecord?.state == .recording, recorder.isRecording {
+            message = reason
+            liveActivity.end(status: "Audio interrupted", dismissAfter: 0)
+            requestFinish()
+        } else {
+            clearQuickDictationReadiness(deactivateAudioSession: true)
+            message = reason
+        }
+    }
+
     private func loadGatewaySettings() {
         guard let value = UserDefaults.standard.string(forKey: "gatewayURL"),
               let baseURL = GatewayEndpoint.validatedURL(from: value),
@@ -782,6 +963,21 @@ final class RecordingCoordinator {
         }
         if error is URLError { return "server_unavailable" }
         return "transcription_failed"
+    }
+
+    private func diagnosticErrorCode(
+        for code: String,
+        state: SessionState
+    ) -> DiagnosticErrorCode {
+        switch code {
+        case "audio_missing": .audioMissing
+        case "gateway_not_configured": .gatewayNotConfigured
+        case "microphone_permission_denied": .microphonePermissionDenied
+        case "language_unsupported": .languageUnsupported
+        case "server_unavailable": .serverUnavailable
+        default:
+            state == .uploadFailedRecoverable ? .uploadFailed : .transcriptionFailed
+        }
     }
 
     private func debugQuickDictation(_ value: String) {
