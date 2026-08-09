@@ -115,13 +115,25 @@ class AudioCapture(
         }
     }
 
+    @Synchronized
     fun stop() {
         running.set(false)
-        thread?.let { runCatching { it.join(500) } }
+        val recorder = record
+        // AudioRecord.read is blocking. Stop the recorder first so the read loop
+        // wakes immediately; joining before stop made Finish wait up to 500 ms.
+        recorder?.let {
+            runCatching {
+                if (it.state == AudioRecord.STATE_INITIALIZED &&
+                    it.recordingState == AudioRecord.RECORDSTATE_RECORDING
+                ) {
+                    it.stop()
+                }
+            }
+        }
+        thread?.takeIf { it !== Thread.currentThread() }?.let { runCatching { it.join(500) } }
         thread = null
-        record?.let { recorder ->
-            runCatching { if (recorder.state == AudioRecord.STATE_INITIALIZED) recorder.stop() }
-            runCatching { recorder.release() }
+        recorder?.let {
+            runCatching { it.release() }
         }
         record = null
         releaseCommunicationDevice()

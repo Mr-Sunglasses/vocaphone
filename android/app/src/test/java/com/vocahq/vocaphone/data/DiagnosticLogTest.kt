@@ -18,6 +18,7 @@ class DiagnosticLogTest {
             )
 
             log.recordState("LISTENING", "IME")
+            log.recordTiming("finish_requested", "IME")
             log.recordError("settings", "IME")
             log.recordError("https://token@homelab.example:8765", "IME")
             log.recordAction("transcript=never persist this", "IME")
@@ -25,12 +26,31 @@ class DiagnosticLogTest {
             val output = log.read()
             assertTrue(output.contains("ts=1234"))
             assertTrue(output.contains("event=state value=LISTENING source=IME"))
+            assertTrue(output.contains("event=timing value=finish_requested source=IME"))
             assertTrue(output.contains("event=error value=settings source=IME"))
             assertTrue(output.contains("event=error value=unknown source=IME"))
             assertTrue(output.contains("event=action value=unknown source=IME"))
             assertFalse(output.contains("homelab"))
             assertFalse(output.contains("transcript"))
             assertFalse(output.contains("token"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `timing stages reject arbitrary values`() {
+        val directory = Files.createTempDirectory("vocaphone-diagnostics").toFile()
+        try {
+            val log = DiagnosticLog(directory.resolve("events.log"), nowMillis = { 4321L })
+            log.recordTiming("transcript_ready", "COMPANION_APP")
+            log.recordTiming("transcript=private", "COMPANION_APP")
+
+            val output = log.read()
+            assertTrue(output.contains("ts=4321"))
+            assertTrue(output.contains("event=timing value=transcript_ready"))
+            assertTrue(output.contains("event=timing value=unknown"))
+            assertFalse(output.contains("private"))
         } finally {
             directory.deleteRecursively()
         }

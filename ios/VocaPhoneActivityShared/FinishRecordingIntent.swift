@@ -22,6 +22,7 @@ struct FinishRecordingIntent: LiveActivityIntent {
               record.state == .recording
         else { return .result() }
 
+        DiagnosticLog.record(.finishRequested, source: .liveActivity)
         try record.transition(to: .finalizing)
         try SharedStore.shared.save(record)
         return .result()

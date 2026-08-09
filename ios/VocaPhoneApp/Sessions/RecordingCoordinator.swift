@@ -225,6 +225,7 @@ final class RecordingCoordinator {
                 ready: false
             )
             GatewayStatusPreferences.storeLanguageSupport(nil)
+            GatewayStatusPreferences.storeStreamingSupport(nil, for: nil)
             return
         }
         let client = GatewayClient(baseURL: baseURL, token: token)
@@ -240,6 +241,10 @@ final class RecordingCoordinator {
                 ready: health.engineReady
             )
             GatewayStatusPreferences.storeLanguageSupport(health)
+            GatewayStatusPreferences.storeStreamingSupport(
+                health.streamingSupported,
+                for: baseURL
+            )
         } catch let GatewayError.api(status, _) where status == 401 {
             GatewayStatusPreferences.store(
                 message: "Gateway reachable, but the pairing token was rejected.",
@@ -247,6 +252,7 @@ final class RecordingCoordinator {
                 ready: false
             )
             GatewayStatusPreferences.storeLanguageSupport(nil)
+            GatewayStatusPreferences.storeStreamingSupport(nil, for: nil)
         } catch {
             GatewayStatusPreferences.store(
                 message: "Gateway test failed: \(error.localizedDescription)",
@@ -254,6 +260,7 @@ final class RecordingCoordinator {
                 ready: false
             )
             GatewayStatusPreferences.storeLanguageSupport(nil)
+            GatewayStatusPreferences.storeStreamingSupport(nil, for: nil)
         }
     }
 
@@ -298,6 +305,7 @@ final class RecordingCoordinator {
 
     func requestFinish() {
         guard var record = activeRecord, record.state == .recording else { return }
+        DiagnosticLog.record(.finishRequested)
         do {
             try record.transition(to: .finalizing)
             try store.save(record)
@@ -429,14 +437,18 @@ final class RecordingCoordinator {
             record = latestRecord
             let audioURL = try recorder.start(sessionID: record.sessionID, directory: directory)
             if let client = gatewayClient, let chunks = recorder.pcmChunks {
-                await streamingBridge.start(
-                    client: client,
-                    sessionID: record.sessionID,
-                    language: record.language,
-                    style: record.style,
-                    sampleRate: Int(recorder.transcriptionSampleRate),
-                    chunks: chunks
-                )
+                if GatewayStatusPreferences.shouldAttemptStreaming(for: client.baseURL) {
+                    await streamingBridge.start(
+                        client: client,
+                        sessionID: record.sessionID,
+                        language: record.language,
+                        style: record.style,
+                        sampleRate: Int(recorder.transcriptionSampleRate),
+                        chunks: chunks
+                    )
+                } else {
+                    await streamingBridge.skipUnsupportedModel()
+                }
             }
             if record.state == .launchingApp {
                 try record.transition(to: .recording)
@@ -509,8 +521,11 @@ final class RecordingCoordinator {
         pollingTask?.cancel()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(1_500))
                 guard let self else { return }
+                guard let interval = SessionPollingPolicy.interval(for: self.activeRecord?.state)
+                else { return }
+                try? await Task.sleep(for: .milliseconds(Int(interval * 1_000)))
+                guard !Task.isCancelled else { return }
                 await self.handleSharedStateSignal()
             }
         }
@@ -526,8 +541,10 @@ final class RecordingCoordinator {
         let output = recorder.stopSession(
             keepAudioSessionActive: true
         ) ?? resolvedAudioURL(for: record)
+        DiagnosticLog.record(.captureStopped)
         if wasRecording {
-            await soundFeedback.play(.stop)
+            // Feedback is optional and should never sit in front of gateway work.
+            Task { await soundFeedback.play(.stop) }
         }
         meterLevel = 0
         if shouldRemainReady {
@@ -572,6 +589,7 @@ final class RecordingCoordinator {
                 try record.transition(to: .readyToInsert)
                 try store.save(record)
                 activeRecord = record
+                DiagnosticLog.record(.transcriptReady)
                 UserDefaults.standard.set(
                     "Gateway and streaming model are ready.",
                     forKey: GatewayStatusPreferences.healthMessageKey
@@ -591,13 +609,16 @@ final class RecordingCoordinator {
                 style: record.style
             )
             record.serverJobID = created.jobID
+            DiagnosticLog.record(.uploadStarted)
             _ = try await client.uploadAudio(sessionID: record.sessionID, fileURL: output)
+            DiagnosticLog.record(.uploadCompleted)
             try record.transition(to: .transcribing)
             try store.save(record)
             activeRecord = record
             message = "Transcribing on your gateway…"
             liveActivity.update(status: "Transcribing", canFinish: false)
 
+            DiagnosticLog.record(.transcriptionStarted)
             let finished = try await client.finish(sessionID: record.sessionID)
             guard let transcript = finished.transcript, !transcript.isEmpty else {
                 throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
@@ -607,6 +628,7 @@ final class RecordingCoordinator {
             try record.transition(to: .readyToInsert)
             try store.save(record)
             activeRecord = record
+            DiagnosticLog.record(.transcriptReady)
             UserDefaults.standard.set(
                 "Gateway and model are ready.",
                 forKey: GatewayStatusPreferences.healthMessageKey
@@ -838,9 +860,9 @@ final class RecordingCoordinator {
         )
     }
 
-    /// Fast path for keyboard and Live Activity writes. The 1.5-second polling
-    /// loop remains as recovery if iOS drops a Darwin notification or recreates
-    /// one process between the durable write and its signal.
+    /// Fast path for keyboard and Live Activity writes. Adaptive polling remains
+    /// as recovery if iOS drops a Darwin notification or recreates one process
+    /// between the durable write and its signal.
     private func handleSharedStateSignal() async {
         guard let current = activeRecord, !current.state.isTerminal else {
             await startPendingQuickDictationIfNeeded()
@@ -999,6 +1021,8 @@ private actor StreamingAudioBridge {
     private var stream: GatewayAudioStream?
     private var pump: Task<Void, Never>?
     private var failed = false
+    private var ready = false
+    private var fallbackRecorded = false
 
     func start(
         client: GatewayClient,
@@ -1007,40 +1031,74 @@ private actor StreamingAudioBridge {
         style: String,
         sampleRate: Int,
         chunks: AsyncStream<Data>
-    ) async {
+    ) {
         cancel()
-        guard let opened = try? await client.startAudioStream(
-            sessionID: sessionID,
-            language: language,
-            style: style,
-            sampleRate: sampleRate
-        ) else { return }
-
-        stream = opened
         failed = false
+        DiagnosticLog.record(.streamHandshakeStarted)
         pump = Task { [weak self] in
+            let opened: GatewayAudioStream
+            do {
+                opened = try await client.startAudioStream(
+                    sessionID: sessionID,
+                    language: language,
+                    style: style,
+                    sampleRate: sampleRate
+                )
+            } catch {
+                guard !Task.isCancelled else { return }
+                await self?.recordFallbackIfNeeded()
+                return
+            }
+            guard !Task.isCancelled else {
+                opened.cancel()
+                return
+            }
+            await self?.attach(opened)
+            DiagnosticLog.record(.streamReady)
             for await chunk in chunks {
+                guard !Task.isCancelled else { break }
                 await self?.deliver(chunk)
             }
         }
     }
 
+    func skipUnsupportedModel() {
+        cancel()
+        recordFallbackIfNeeded()
+    }
+
     /// Returns a transcript only when the whole recording reached the gateway.
     /// Any loss makes the stream untrustworthy, so the caller uploads instead.
     func finish(droppedChunks: Int) async -> String? {
+        guard droppedChunks == 0 else {
+            cancelPendingNegotiation()
+            recordFallbackIfNeeded()
+            return nil
+        }
+        guard ready else {
+            cancelPendingNegotiation()
+            recordFallbackIfNeeded()
+            return nil
+        }
         // The recorder finished the chunk stream before calling this, so the
         // pump terminates once it has drained what is still buffered.
         await pump?.value
         pump = nil
-        guard droppedChunks == 0, !failed, let stream else {
-            cancel()
+        guard !failed, let stream else {
+            stream?.cancel()
+            self.stream = nil
+            ready = false
+            recordFallbackIfNeeded()
             return nil
         }
         self.stream = nil
+        ready = false
         do {
+            DiagnosticLog.record(.transcriptionStarted)
             return try await stream.finish()
         } catch {
             stream.cancel()
+            recordFallbackIfNeeded()
             return nil
         }
     }
@@ -1051,6 +1109,28 @@ private actor StreamingAudioBridge {
         stream?.cancel()
         stream = nil
         failed = false
+        ready = false
+        fallbackRecorded = false
+    }
+
+    private func cancelPendingNegotiation() {
+        pump?.cancel()
+        pump = nil
+        stream?.cancel()
+        stream = nil
+        failed = false
+        ready = false
+    }
+
+    private func attach(_ opened: GatewayAudioStream) {
+        stream = opened
+        ready = true
+    }
+
+    private func recordFallbackIfNeeded() {
+        guard !fallbackRecorded else { return }
+        fallbackRecorded = true
+        DiagnosticLog.record(.batchFallback)
     }
 
     private func deliver(_ chunk: Data) async {

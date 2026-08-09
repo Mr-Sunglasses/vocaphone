@@ -26,6 +26,10 @@ enum GatewayStatusPreferences {
     static let healthMessageKey = "gatewayHealthMessage"
     static let engineKey = "gatewayEngine"
     static let engineReadyKey = "gatewayEngineReady"
+    static let streamingSupportedKey = "gatewayStreamingSupported"
+    static let streamingSupportKnownKey = "gatewayStreamingSupportKnown"
+    static let streamingSupportCheckedAtKey = "gatewayStreamingSupportCheckedAt"
+    static let streamingSupportBaseURLKey = "gatewayStreamingSupportBaseURL"
 
     /// Both the setup checklist and the settings screen read this state, so the
     /// writes live in one place rather than being duplicated per view.
@@ -45,6 +49,33 @@ enum GatewayStatusPreferences {
     static func storeLanguageSupport(_ health: GatewayHealth?) {
         KeyboardPreferences.modelLanguages = Set(health?.languages ?? [])
         KeyboardPreferences.modelDetectsLanguage = health?.detectsLanguageAutomatically ?? false
+    }
+
+    static func storeStreamingSupport(_ supported: Bool?, for baseURL: URL?) {
+        let defaults = UserDefaults.standard
+        guard let supported, let baseURL else {
+            defaults.removeObject(forKey: streamingSupportedKey)
+            defaults.set(false, forKey: streamingSupportKnownKey)
+            defaults.removeObject(forKey: streamingSupportCheckedAtKey)
+            defaults.removeObject(forKey: streamingSupportBaseURLKey)
+            return
+        }
+        defaults.set(supported, forKey: streamingSupportedKey)
+        defaults.set(true, forKey: streamingSupportKnownKey)
+        defaults.set(Date(), forKey: streamingSupportCheckedAtKey)
+        defaults.set(baseURL.absoluteString, forKey: streamingSupportBaseURLKey)
+    }
+
+    static func shouldAttemptStreaming(for baseURL: URL, now: Date = Date()) -> Bool {
+        let defaults = UserDefaults.standard
+        let supported = defaults.bool(forKey: streamingSupportedKey)
+        return GatewayStreamingPolicy.shouldAttemptStreaming(
+            supported: defaults.bool(forKey: streamingSupportKnownKey) ? supported : nil,
+            checkedAt: defaults.object(forKey: streamingSupportCheckedAtKey) as? Date,
+            cachedBaseURL: defaults.string(forKey: streamingSupportBaseURLKey),
+            currentBaseURL: baseURL,
+            now: now
+        )
     }
 }
 

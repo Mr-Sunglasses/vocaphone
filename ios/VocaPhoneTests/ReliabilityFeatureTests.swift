@@ -2,6 +2,54 @@ import Foundation
 import Testing
 
 struct ReliabilityFeatureTests {
+    @Test func latencySensitiveSessionStatesUseResponsiveFallbackPolling() {
+        for state in [
+            SessionState.recording,
+            .finalizing,
+            .uploading,
+            .transcribing,
+        ] {
+            #expect(
+                SessionPollingPolicy.interval(for: state)
+                    == SessionPollingPolicy.responsiveInterval
+            )
+        }
+        #expect(
+            SessionPollingPolicy.interval(for: .readyToInsert)
+                == SessionPollingPolicy.relaxedInterval
+        )
+        #expect(SessionPollingPolicy.interval(for: .completed) == nil)
+    }
+
+    @Test func freshBatchCapabilitySkipsOnlyTheMatchingGateway() throws {
+        let gateway = try #require(URL(string: "http://gateway.local:8765"))
+        let checkedAt = Date(timeIntervalSince1970: 10_000)
+
+        #expect(!GatewayStreamingPolicy.shouldAttemptStreaming(
+            supported: false,
+            checkedAt: checkedAt,
+            cachedBaseURL: gateway.absoluteString,
+            currentBaseURL: gateway,
+            now: checkedAt.addingTimeInterval(30)
+        ))
+        #expect(GatewayStreamingPolicy.shouldAttemptStreaming(
+            supported: false,
+            checkedAt: checkedAt,
+            cachedBaseURL: "http://another-gateway.local:8765",
+            currentBaseURL: gateway,
+            now: checkedAt.addingTimeInterval(30)
+        ))
+        #expect(GatewayStreamingPolicy.shouldAttemptStreaming(
+            supported: false,
+            checkedAt: checkedAt,
+            cachedBaseURL: gateway.absoluteString,
+            currentBaseURL: gateway,
+            now: checkedAt.addingTimeInterval(
+                GatewayStreamingPolicy.capabilityFreshnessInterval + 1
+            )
+        ))
+    }
+
     @Test func multipleDarwinObserversReceiveTheSameSignal() {
         let semaphore = DispatchSemaphore(value: 0)
         let callbackQueue = DispatchQueue(
@@ -101,16 +149,18 @@ struct ReliabilityFeatureTests {
         DiagnosticLog.append(
             DiagnosticEntry(
                 timestamp: Date(timeIntervalSince1970: 10_000),
+                uptimeMilliseconds: 42_123,
                 source: .keyboard,
-                event: .sessionStateChanged,
+                event: .finishRequested,
                 metadata: .state(.recording)
             ),
             to: file
         )
 
         let contents = String(decoding: try Data(contentsOf: file), as: UTF8.self)
-        #expect(contents.contains("sessionStateChanged"))
+        #expect(contents.contains("finishRequested"))
         #expect(contents.contains("recording"))
+        #expect(contents.contains("42123"))
         #expect(!contents.localizedCaseInsensitiveContains("transcript"))
         #expect(!contents.localizedCaseInsensitiveContains("audioPath"))
         #expect(!contents.localizedCaseInsensitiveContains("token"))

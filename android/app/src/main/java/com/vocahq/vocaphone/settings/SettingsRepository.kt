@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -50,6 +51,7 @@ data class VocaPhoneSettings(
     val lastEngine: String = "",
     val lastEngineReady: Boolean = false,
     val lastStreamingSupported: Boolean = false,
+    val lastEngineCheckedAtMillis: Long? = null,
     /**
      * Languages the gateway's loaded model covers, empty when it made no claim.
      * Drives which options the language picker offers rather than what it hides.
@@ -94,11 +96,17 @@ class SettingsRepository(private val context: Context) {
             preferences[Keys.GATEWAY_URL] = url
             preferences[Keys.TOKEN_CIPHERTEXT] = sealed.ciphertext
             preferences[Keys.TOKEN_NONCE] = sealed.nonce
+            preferences.clearEngineStatus()
         }
     }
 
     /** Corrects the address while leaving the sealed token exactly as it is. */
-    suspend fun setGatewayUrl(url: String) = put(Keys.GATEWAY_URL, url)
+    suspend fun setGatewayUrl(url: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.GATEWAY_URL] = url
+            preferences.clearEngineStatus()
+        }
+    }
 
     suspend fun clearGateway() {
         context.dataStore.edit { preferences ->
@@ -108,6 +116,7 @@ class SettingsRepository(private val context: Context) {
             preferences.remove(Keys.LAST_ENGINE)
             preferences.remove(Keys.LAST_ENGINE_READY)
             preferences.remove(Keys.LAST_STREAMING)
+            preferences.remove(Keys.LAST_ENGINE_CHECKED_AT)
             preferences.remove(Keys.MODEL_LANGUAGES)
             preferences.remove(Keys.MODEL_DETECTS_LANGUAGE)
         }
@@ -129,6 +138,7 @@ class SettingsRepository(private val context: Context) {
         engine: String,
         ready: Boolean,
         streamingSupported: Boolean,
+        checkedAtMillis: Long = System.currentTimeMillis(),
         modelLanguages: Set<String> = emptySet(),
         modelDetectsLanguage: Boolean = false,
     ) {
@@ -136,6 +146,7 @@ class SettingsRepository(private val context: Context) {
             preferences[Keys.LAST_ENGINE] = engine
             preferences[Keys.LAST_ENGINE_READY] = ready
             preferences[Keys.LAST_STREAMING] = streamingSupported
+            preferences[Keys.LAST_ENGINE_CHECKED_AT] = checkedAtMillis
             preferences[Keys.MODEL_LANGUAGES] = modelLanguages
             preferences[Keys.MODEL_DETECTS_LANGUAGE] = modelDetectsLanguage
         }
@@ -156,6 +167,7 @@ class SettingsRepository(private val context: Context) {
         lastEngine = this[Keys.LAST_ENGINE].orEmpty(),
         lastEngineReady = this[Keys.LAST_ENGINE_READY] ?: false,
         lastStreamingSupported = this[Keys.LAST_STREAMING] ?: false,
+        lastEngineCheckedAtMillis = this[Keys.LAST_ENGINE_CHECKED_AT],
         modelLanguages = this[Keys.MODEL_LANGUAGES].orEmpty(),
         modelDetectsLanguage = this[Keys.MODEL_DETECTS_LANGUAGE] ?: false,
     )
@@ -172,7 +184,17 @@ class SettingsRepository(private val context: Context) {
         val LAST_ENGINE = stringPreferencesKey("last_engine")
         val LAST_ENGINE_READY = booleanPreferencesKey("last_engine_ready")
         val LAST_STREAMING = booleanPreferencesKey("last_streaming_supported")
+        val LAST_ENGINE_CHECKED_AT = longPreferencesKey("last_engine_checked_at")
         val MODEL_LANGUAGES = stringSetPreferencesKey("model_languages")
         val MODEL_DETECTS_LANGUAGE = booleanPreferencesKey("model_detects_language")
+    }
+
+    private fun androidx.datastore.preferences.core.MutablePreferences.clearEngineStatus() {
+        remove(Keys.LAST_ENGINE)
+        remove(Keys.LAST_ENGINE_READY)
+        remove(Keys.LAST_STREAMING)
+        remove(Keys.LAST_ENGINE_CHECKED_AT)
+        remove(Keys.MODEL_LANGUAGES)
+        remove(Keys.MODEL_DETECTS_LANGUAGE)
     }
 }

@@ -15,6 +15,7 @@ class DiagnosticLog(
     private val buildVersion: String = "unknown",
     private val nowMillis: () -> Long = System::currentTimeMillis,
 ) {
+    private var lineCount: Int? = null
 
     constructor(context: Context) : this(
         file = File(context.filesDir, "diagnostics/events.log"),
@@ -36,6 +37,12 @@ class DiagnosticLog(
         append(event = "action", value = action, source = source)
     }
 
+    /** Millisecond timestamps around the content-free dictation pipeline. */
+    @Synchronized
+    fun recordTiming(stage: String, source: String?) {
+        append(event = "timing", value = stage, source = source)
+    }
+
     @Synchronized
     fun read(): String = runCatching { file.takeIf(File::isFile)?.readText().orEmpty() }
         .getOrDefault("")
@@ -43,6 +50,7 @@ class DiagnosticLog(
     @Synchronized
     fun clear() {
         file.delete()
+        lineCount = 0
     }
 
     /** Keep values single-line and bounded even if a future call site is wrong. */
@@ -60,16 +68,26 @@ class DiagnosticLog(
             "source=${knownSource(source)}",
         ).joinToString(" ") + "\n"
 
-        val existing = runCatching { file.takeIf(File::isFile)?.readLines().orEmpty() }
-            .getOrDefault(emptyList())
-        val lines = (existing + line.trimEnd()).takeLast(MAX_EVENTS).toMutableList()
+        runCatching {
+            file.parentFile?.mkdirs()
+            val existingCount = lineCount ?: file.takeIf(File::isFile)
+                ?.useLines { lines -> lines.count { it.isNotBlank() } }
+                .orZero()
+            file.appendText(line)
+            lineCount = existingCount + 1
+            if (lineCount.orZero() > MAX_EVENTS || file.length() > MAX_BYTES) {
+                trim()
+            }
+        }
+    }
+
+    private fun trim() {
+        val lines = file.readLines().takeLast(MAX_EVENTS).toMutableList()
         while (lines.joinToString("\n").toByteArray(Charsets.UTF_8).size > MAX_BYTES && lines.isNotEmpty()) {
             lines.removeAt(0)
         }
-        runCatching {
-            file.parentFile?.mkdirs()
-            file.writeText(lines.joinToString("\n") + if (lines.isNotEmpty()) "\n" else "")
-        }
+        file.writeText(lines.joinToString("\n") + if (lines.isNotEmpty()) "\n" else "")
+        lineCount = lines.size
     }
 
     private fun knownEvent(value: String): String = value.takeIf { it in EVENTS } ?: "unknown"
@@ -78,6 +96,7 @@ class DiagnosticLog(
         "state" -> value.takeIf { it in STATES } ?: "unknown"
         "error" -> value.takeIf { it in ERROR_CATEGORIES } ?: "unknown"
         "action" -> value.takeIf { it in ACTIONS } ?: "unknown"
+        "timing" -> value.takeIf { it in TIMING_STAGES } ?: "unknown"
         else -> "unknown"
     }
 
@@ -88,7 +107,7 @@ class DiagnosticLog(
         const val MAX_EVENTS = 200
         const val MAX_BYTES = 48 * 1024
         const val MAX_VALUE_LENGTH = 64
-        val EVENTS = setOf("state", "error", "action")
+        val EVENTS = setOf("state", "error", "action", "timing")
         val SOURCES = setOf("IME", "COMPANION_APP", "none")
         val ERROR_CATEGORIES = setOf("audio", "gateway", "insertion", "settings", "setup", "unknown")
         val ACTIONS = setOf(
@@ -104,6 +123,19 @@ class DiagnosticLog(
             "keyboard_destroyed",
             "unknown",
         )
+        val TIMING_STAGES = setOf(
+            "finish_requested",
+            "capture_stopped",
+            "stream_handshake_started",
+            "stream_ready",
+            "batch_fallback",
+            "upload_started",
+            "upload_completed",
+            "transcription_started",
+            "transcript_ready",
+            "insertion_started",
+            "insertion_completed",
+        )
         val STATES = setOf(
             "IDLE",
             "LISTENING",
@@ -118,6 +150,8 @@ class DiagnosticLog(
         )
     }
 }
+
+private fun Int?.orZero(): Int = this ?: 0
 
 private fun packageVersion(context: Context): String = runCatching {
     context.packageManager.getPackageInfo(context.packageName, 0).versionName

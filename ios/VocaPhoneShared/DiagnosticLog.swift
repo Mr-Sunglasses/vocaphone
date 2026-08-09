@@ -32,6 +32,17 @@ enum DiagnosticEvent: String, Codable, Sendable {
     case audioInputUnavailable
     case liveActivityStarted
     case liveActivityEnded
+    case finishRequested
+    case captureStopped
+    case streamHandshakeStarted
+    case streamReady
+    case batchFallback
+    case uploadStarted
+    case uploadCompleted
+    case transcriptionStarted
+    case transcriptReady
+    case insertionStarted
+    case insertionCompleted
     case operationFailed
 }
 
@@ -111,6 +122,10 @@ struct DiagnosticEntry: Codable, Equatable, Sendable {
 
     let schemaVersion: Int
     let timestamp: Date
+    /// Monotonic across processes for one device boot, with enough resolution
+    /// to distinguish notification, capture, upload and insertion delays.
+    /// Optional so diagnostics written by earlier builds still decode.
+    let uptimeMilliseconds: UInt64?
     let source: DiagnosticSource
     let event: DiagnosticEvent
     let metadata: DiagnosticMetadata
@@ -119,12 +134,16 @@ struct DiagnosticEntry: Codable, Equatable, Sendable {
 
     init(
         timestamp: Date = Date(),
+        uptimeMilliseconds: UInt64? = nil,
         source: DiagnosticSource,
         event: DiagnosticEvent,
         metadata: DiagnosticMetadata = .empty
     ) {
         schemaVersion = Self.schemaVersion
         self.timestamp = timestamp
+        self.uptimeMilliseconds = uptimeMilliseconds ?? UInt64(
+            (ProcessInfo.processInfo.systemUptime * 1_000).rounded()
+        )
         self.source = source
         self.event = event
         self.metadata = metadata

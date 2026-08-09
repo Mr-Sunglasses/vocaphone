@@ -168,3 +168,45 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
 enum SessionTransitionError: Error, Equatable {
     case invalid(from: SessionState, to: SessionState)
 }
+
+/// Polling is only a recovery path for a dropped Darwin notification. Keep it
+/// responsive while the user is waiting for Finish or insertion, then relax it
+/// for states that require an explicit user action rather than background work.
+enum SessionPollingPolicy {
+    static let responsiveInterval: TimeInterval = 0.25
+    static let relaxedInterval: TimeInterval = 1.5
+
+    static func interval(for state: SessionState?) -> TimeInterval? {
+        guard let state, !state.isTerminal else { return nil }
+        switch state {
+        case .recording, .finalizing, .uploading, .transcribing:
+            return responsiveInterval
+        default:
+            return relaxedInterval
+        }
+    }
+}
+
+/// A recent health response is authoritative enough to avoid opening a socket
+/// that the selected model explicitly cannot use. Unknown or stale capability
+/// data still negotiates normally, so changing models in the gateway recovers
+/// without requiring the app to be re-paired.
+enum GatewayStreamingPolicy {
+    static let capabilityFreshnessInterval: TimeInterval = 5 * 60
+
+    static func shouldAttemptStreaming(
+        supported: Bool?,
+        checkedAt: Date?,
+        cachedBaseURL: String?,
+        currentBaseURL: URL,
+        now: Date = Date()
+    ) -> Bool {
+        guard let supported,
+              let checkedAt,
+              cachedBaseURL == currentBaseURL.absoluteString,
+              now.timeIntervalSince(checkedAt) >= 0,
+              now.timeIntervalSince(checkedAt) <= capabilityFreshnessInterval
+        else { return true }
+        return supported
+    }
+}

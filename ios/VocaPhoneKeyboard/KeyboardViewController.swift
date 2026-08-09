@@ -163,6 +163,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
               var record = try? store.load(id),
               record.state == .recording
         else { return }
+        DiagnosticLog.record(.finishRequested)
         transition(&record, to: .finalizing)
     }
 
@@ -398,6 +399,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             after: textDocumentProxy.documentContextAfterInput
         )
         do {
+            DiagnosticLog.record(.insertionStarted)
             try record.transition(to: .inserting)
             try store.save(record)
             textDocumentProxy.insertText(prepared)
@@ -406,6 +408,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try store.save(record)
             try record.transition(to: .completed)
             try store.save(record)
+            DiagnosticLog.record(.insertionCompleted)
             activeSessionID = nil
             sessionTargetDocumentID = nil
             render(record)
@@ -506,7 +509,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             pollingInterval = nil
             return
         }
-        let desiredInterval: TimeInterval = record?.state == .recording ? 0.25 : 1.5
+        guard let desiredInterval = SessionPollingPolicy.interval(for: record?.state) else {
+            pollingTimer?.invalidate()
+            pollingTimer = nil
+            pollingInterval = nil
+            return
+        }
         if pollingInterval != desiredInterval {
             pollingTimer?.invalidate()
             pollingTimer = nil
