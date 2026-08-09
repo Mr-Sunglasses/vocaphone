@@ -82,6 +82,17 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyMedium,
             )
             SecondaryButton("Gateway settings", onClick = onOpenGateway)
+            SecondaryButton(
+                text = "Open web dashboard",
+                onClick = { context.openUrl(settings.gatewayUrl) },
+                enabled = settings.gatewayUrl.isNotEmpty(),
+            )
+            Text(
+                "For more customization, including choosing the speech-to-text model, " +
+                    "open your gateway's web dashboard.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         // One row rather than 27 wrapping chips, which pushed every setting below

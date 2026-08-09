@@ -50,7 +50,7 @@ struct SettingsView: View {
     }
 
     private var setupSection: some View {
-        Section("Setup") {
+        Section {
             NavigationLink {
                 GatewaySetupView()
             } label: {
@@ -80,6 +80,18 @@ struct SettingsView: View {
                 Label("Guided setup", systemImage: "checklist")
             }
 
+            if let dashboardURL = validatedGatewayURL {
+                Link(destination: dashboardURL) {
+                    Label("Open web dashboard", systemImage: "arrow.up.right.square")
+                }
+            } else {
+                Button {} label: {
+                    Label("Open web dashboard", systemImage: "arrow.up.right.square")
+                }
+                    .disabled(true)
+                    .accessibilityHint("Configure a transcription gateway first")
+            }
+
             if !gatewayEngine.isEmpty {
                 LabeledContent("Model") {
                     Text(gatewayEngine)
@@ -87,6 +99,13 @@ struct SettingsView: View {
                         .textSelection(.enabled)
                 }
             }
+        } header: {
+            Text("Setup")
+        } footer: {
+            Text(
+                "For more customization, including choosing the speech-to-text model, "
+                    + "open your gateway's web dashboard."
+            )
         }
     }
 
@@ -232,6 +251,10 @@ struct SettingsView: View {
 
     private var selectedMicrophonePreference: MicrophonePreference {
         MicrophonePreference(rawValue: microphonePreferenceRawValue) ?? .automatic
+    }
+
+    private var validatedGatewayURL: URL? {
+        GatewayEndpoint.validatedURL(from: gatewayURL)
     }
 }
 
