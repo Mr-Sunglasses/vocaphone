@@ -1,67 +1,308 @@
 import ActivityKit
 import Foundation
+import os
+import UIKit
 
+@MainActor
 final class LiveActivityManager: @unchecked Sendable {
     static let shared = LiveActivityManager()
 
-    private init() {}
+    private var activeSessionID: String?
+    private var recordingStartedAt: Date?
+    private var standbyExpiresAt: Date?
+    private var standbyRequested = false
+    private var transitionGeneration = 0
+    private var pendingStandbyTask: Task<Void, Never>?
+    private var activityMutationTask: Task<Void, Never>?
+    private var lifecycleObservers: [NSObjectProtocol] = []
+    private var isAppExiting = false
+    private let logger = Logger(
+        subsystem: "com.vocahq.vocaphone",
+        category: "LiveActivity"
+    )
 
-    @MainActor
+    private init() {
+        let center = NotificationCenter.default
+        lifecycleObservers.append(
+            center.addObserver(
+                forName: UIScene.didDisconnectNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.endBeforeProcessExit(reason: "scene disconnected")
+                }
+            }
+        )
+        lifecycleObservers.append(
+            center.addObserver(
+                forName: UIApplication.willTerminateNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.endBeforeProcessExit(reason: "app terminating")
+                }
+            }
+        )
+    }
+
+    /// Keeps a branded Live Activity in the Dynamic Island while Quick
+    /// Dictation owns the microphone in standby. If a recording is still being
+    /// processed, remember the request and return to Ready after it finishes.
+    func startStandby(expiresAt: Date) {
+        isAppExiting = false
+        standbyRequested = true
+        standbyExpiresAt = expiresAt
+        guard activeSessionID == nil else { return }
+
+        beginTransition()
+        present(
+            state: VocaPhoneActivityAttributes.ContentState(
+                status: "Ready to dictate",
+                canFinish: false,
+                phase: .standby
+            ),
+            staleDate: expiresAt
+        )
+    }
+
+    /// Removes the standby Live Activity when Quick Dictation releases the
+    /// microphone. An active recording keeps its own activity until completion.
+    func stopStandby() {
+        standbyRequested = false
+        standbyExpiresAt = nil
+        pendingStandbyTask?.cancel()
+        pendingStandbyTask = nil
+        guard activeSessionID == nil else { return }
+
+        beginTransition()
+        endAll(
+            state: VocaPhoneActivityAttributes.ContentState(
+                status: "Quick Dictation off",
+                canFinish: false,
+                phase: .finished
+            ),
+            dismissalPolicy: .immediate
+        )
+    }
+
     func start(sessionID: UUID) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        let attributes = VocaPhoneActivityAttributes(
-            sessionID: sessionID.uuidString,
-            startedAt: Date()
-        )
-        let content = ActivityContent(
+        isAppExiting = false
+        standbyRequested = false
+        standbyExpiresAt = nil
+        activeSessionID = sessionID.uuidString
+        recordingStartedAt = Date()
+        beginTransition()
+        present(
             state: VocaPhoneActivityAttributes.ContentState(
                 status: "Recording",
-                canFinish: true
+                canFinish: true,
+                phase: .recording,
+                sessionID: activeSessionID,
+                startedAt: recordingStartedAt
             ),
             staleDate: nil
         )
-
-        do {
-            _ = try Activity.request(
-                attributes: attributes,
-                content: content,
-                pushType: nil
-            )
-        } catch {
-            // Dictation must continue even when Live Activities are disabled or
-            // the system declines to present one.
-        }
     }
 
     func update(status: String, canFinish: Bool) {
-        let content = ActivityContent(
+        guard activeSessionID != nil else { return }
+
+        beginTransition()
+        present(
             state: VocaPhoneActivityAttributes.ContentState(
                 status: status,
-                canFinish: canFinish
+                canFinish: canFinish,
+                phase: canFinish ? .recording : .processing,
+                sessionID: activeSessionID,
+                startedAt: recordingStartedAt
             ),
             staleDate: nil
         )
-        Task {
-            for activity in Activity<VocaPhoneActivityAttributes>.activities {
-                await activity.update(content)
+    }
+
+    func end(status: String, dismissAfter seconds: TimeInterval = 2) {
+        guard activeSessionID != nil else { return }
+
+        let finishedState = VocaPhoneActivityAttributes.ContentState(
+            status: status,
+            canFinish: false,
+            phase: .finished,
+            sessionID: activeSessionID,
+            startedAt: recordingStartedAt
+        )
+
+        activeSessionID = nil
+        recordingStartedAt = nil
+        beginTransition()
+
+        guard standbyRequested, let standbyExpiresAt, standbyExpiresAt > Date() else {
+            endAll(
+                state: finishedState,
+                dismissalPolicy: seconds > 0
+                    ? .after(Date().addingTimeInterval(seconds))
+                    : .immediate
+            )
+            return
+        }
+
+        guard seconds > 0 else {
+            present(
+                state: VocaPhoneActivityAttributes.ContentState(
+                    status: "Ready to dictate",
+                    canFinish: false,
+                    phase: .standby
+                ),
+                staleDate: standbyExpiresAt
+            )
+            return
+        }
+
+        present(state: finishedState, staleDate: nil)
+        let generation = transitionGeneration
+        pendingStandbyTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(for: .seconds(seconds))
+            guard !Task.isCancelled,
+                  self.transitionGeneration == generation,
+                  self.standbyRequested,
+                  self.activeSessionID == nil
+            else { return }
+
+            self.pendingStandbyTask = nil
+            self.beginTransition()
+            guard let expiresAt = self.standbyExpiresAt, expiresAt > Date() else {
+                self.endAll(state: finishedState, dismissalPolicy: .immediate)
+                return
+            }
+            self.present(
+                state: VocaPhoneActivityAttributes.ContentState(
+                    status: "Ready to dictate",
+                    canFinish: false,
+                    phase: .standby
+                ),
+                staleDate: expiresAt
+            )
+        }
+    }
+
+    private func beginTransition() {
+        pendingStandbyTask?.cancel()
+        pendingStandbyTask = nil
+        transitionGeneration &+= 1
+    }
+
+    private func present(
+        state: VocaPhoneActivityAttributes.ContentState,
+        staleDate: Date?
+    ) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+
+        let content = ActivityContent(state: state, staleDate: staleDate)
+        enqueueActivityMutation {
+            if !Activity<VocaPhoneActivityAttributes>.activities.isEmpty {
+                var isPrimary = true
+                for activity in Activity<VocaPhoneActivityAttributes>.activities {
+                    if isPrimary {
+                        isPrimary = false
+                        await activity.update(content)
+                    } else {
+                        await activity.end(content, dismissalPolicy: .immediate)
+                    }
+                }
+                return
+            }
+
+            let attributes = VocaPhoneActivityAttributes(
+                // Kept for compatibility with activities created by older builds;
+                // current views read the mutable session ID from ContentState.
+                sessionID: state.sessionID ?? UUID().uuidString,
+                startedAt: state.startedAt ?? Date()
+            )
+            do {
+                _ = try Activity.request(
+                    attributes: attributes,
+                    content: content,
+                    pushType: nil
+                )
+            } catch {
+                // Dictation must continue when the system declines to present
+                // a Live Activity.
             }
         }
     }
 
-    func end(status: String, dismissAfter seconds: TimeInterval = 2) {
+    private func endAll(
+        state: VocaPhoneActivityAttributes.ContentState,
+        dismissalPolicy: ActivityUIDismissalPolicy
+    ) {
+        let content = ActivityContent(state: state, staleDate: nil)
+        enqueueActivityMutation {
+            for activity in Activity<VocaPhoneActivityAttributes>.activities {
+                await activity.end(content, dismissalPolicy: dismissalPolicy)
+            }
+        }
+    }
+
+    /// ActivityKit mutations are asynchronous. Keeping them ordered prevents a
+    /// late "off" operation from ending a newly rearmed standby activity.
+    private func enqueueActivityMutation(
+        _ mutation: @escaping @MainActor @Sendable () async -> Void
+    ) {
+        let precedingMutation = activityMutationTask
+        activityMutationTask = Task { @MainActor [weak self] in
+            await precedingMutation?.value
+            guard let self, !Task.isCancelled, !self.isAppExiting else { return }
+            await mutation()
+        }
+    }
+
+    /// A Live Activity belongs to the system and otherwise survives its app.
+    /// Scene disconnection is the force-quit signal for a scene-based app; the
+    /// termination notification is a fallback while background audio keeps the
+    /// process running. ActivityKit's end operation is asynchronous, so briefly
+    /// servicing the main run loop gives it time to reach the system before iOS
+    /// tears down this process.
+    private func endBeforeProcessExit(reason: String) {
+        guard !isAppExiting else { return }
+        isAppExiting = true
+        standbyRequested = false
+        standbyExpiresAt = nil
+        activeSessionID = nil
+        recordingStartedAt = nil
+        beginTransition()
+        activityMutationTask?.cancel()
+        activityMutationTask = nil
+        try? SharedStore.shared.clearQuickDictationAvailability()
+        KeyboardPreferences.containingAppIsForeground = false
+
+        let activities = Activity<VocaPhoneActivityAttributes>.activities
+        guard !activities.isEmpty else { return }
+
+        logger.info("Ending \(activities.count) Live Activities before \(reason, privacy: .public)")
         let content = ActivityContent(
             state: VocaPhoneActivityAttributes.ContentState(
-                status: status,
-                canFinish: false
+                status: "VocaPhone closed",
+                canFinish: false,
+                phase: .finished
             ),
             staleDate: nil
         )
-        let dismissalDate = Date().addingTimeInterval(seconds)
-        Task {
+        Task { @MainActor in
             for activity in Activity<VocaPhoneActivityAttributes>.activities {
-                await activity.end(content, dismissalPolicy: .after(dismissalDate))
+                await activity.end(content, dismissalPolicy: .immediate)
             }
         }
+
+        let deadline = Date().addingTimeInterval(0.75)
+        while Date() < deadline {
+            RunLoop.current.run(
+                until: min(deadline, Date().addingTimeInterval(0.01))
+            )
+        }
+        logger.info("Finished the exit dismissal window")
     }
 }

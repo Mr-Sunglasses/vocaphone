@@ -52,6 +52,7 @@
 		62F20884ED82C44DD050F3E5 /* KeyGridLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EC2C1575D306E7683092FBA /* KeyGridLayoutTests.swift */; };
 		6565BFD7DC56DDCECDBC0D7C /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F34BD131F1AB394941AC87 /* KeyboardStatus.swift */; };
 		68E7553DB227208E27DF3A8F /* KeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5118F8CFAAE127CD5FF92076 /* KeyView.swift */; };
+		6BDE1B7BE51A2350AFE05074 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0AC0739F69438AEC347C44A4 /* Assets.xcassets */; };
 		76E660378F845C250AEA0673 /* AudioCapturePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B15DE10A5F8F90C87D4BA48A /* AudioCapturePipeline.swift */; };
 		7E3D8E857A83184E74B15433 /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0A752EC9784F6FD2274150 /* GatewayEndpoint.swift */; };
 		8468AAFD83E231AD9BB99792 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CDCC7453FC149EBB02E3FB58 /* KeychainStore.swift */; };
@@ -137,6 +138,7 @@
 
 /* Begin PBXFileReference section */
 		0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickDictationAvailability.swift; sourceTree = "<group>"; };
+		0AC0739F69438AEC347C44A4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		17B4671FC8BBA4DD4FD5AA8C /* GatewaySetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewaySetupView.swift; sourceTree = "<group>"; };
 		2678D836274997421A54E901 /* AudioCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureTests.swift; sourceTree = "<group>"; };
 		28ECEDA044D2B1021710F205 /* TranscriptHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptHistoryView.swift; sourceTree = "<group>"; };
@@ -283,6 +285,7 @@
 		6E5439F0105EB13C54C7549C /* VocaPhoneLiveActivity */ = {
 			isa = PBXGroup;
 			children = (
+				0AC0739F69438AEC347C44A4 /* Assets.xcassets */,
 				8ACA0C7140D6C997C12CFDD1 /* Info.plist */,
 				786DEF44BDB4C70935762971 /* VocaPhoneLiveActivity.entitlements */,
 				C3D3E1455AD292ED6DA1DFAC /* VocaPhoneLiveActivity.swift */,
@@ -361,6 +364,7 @@
 			buildConfigurationList = 970B6C1D70C8230EA7CE042E /* Build configuration list for PBXNativeTarget "VocaPhoneLiveActivity" */;
 			buildPhases = (
 				9FC4E35F75A19502E114669C /* Sources */,
+				6EACADC991277F91AA96F64E /* Resources */,
 			);
 			buildRules = (
 			);
@@ -483,6 +487,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				2D83B6984ABEA15D65169CEE /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		6EACADC991277F91AA96F64E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6BDE1B7BE51A2350AFE05074 /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -636,7 +648,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.VocaPhoneTests;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -655,7 +667,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.liveactivity;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -675,7 +687,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneKeyboard/VocaPhoneKeyboard-Bridging-Header.h";
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -693,7 +705,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -711,7 +723,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -727,7 +739,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.VocaPhoneTests;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -796,6 +808,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -857,6 +870,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -875,7 +889,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.liveactivity;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -895,7 +909,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneKeyboard/VocaPhoneKeyboard-Bridging-Header.h";
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};

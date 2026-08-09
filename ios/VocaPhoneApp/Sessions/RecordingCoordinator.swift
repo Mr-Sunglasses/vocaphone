@@ -307,7 +307,6 @@ final class RecordingCoordinator {
                 try store.save(record)
             }
             activeRecord = record
-            liveActivity.end(status: "Canceled", dismissAfter: 0)
             if shouldRemainReady {
                 armQuickDictation()
                 message = "Recording canceled. Quick Dictation is still ready."
@@ -315,6 +314,7 @@ final class RecordingCoordinator {
                 clearQuickDictationReadiness(deactivateAudioSession: true)
                 message = "Recording canceled."
             }
+            liveActivity.end(status: "Canceled", dismissAfter: 0)
         } catch {
             message = "Could not cancel the session."
         }
@@ -421,6 +421,10 @@ final class RecordingCoordinator {
             if record.sourceDocumentID != "in-app-test" {
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
                 liveActivity.start(sessionID: record.sessionID)
+            } else {
+                // The microphone test stays entirely inside the app and never
+                // needs a Dynamic Island handoff.
+                liveActivity.stopStandby()
             }
             beginPolling()
         } catch {
@@ -699,6 +703,7 @@ final class RecordingCoordinator {
             try store.saveQuickDictationAvailability(availability)
             quickDictationExpiresAt = availability.expiresAt
             beginQuickDictationWatcher(availability)
+            liveActivity.startStandby(expiresAt: availability.expiresAt)
             debugQuickDictation("armed until \(availability.expiresAt)")
         } catch {
             debugQuickDictation("arming failed: \(error.localizedDescription)")
@@ -732,6 +737,7 @@ final class RecordingCoordinator {
     private func clearQuickDictationReadiness(deactivateAudioSession: Bool) {
         clearQuickDictationMarker()
         recorder.stopStandby(deactivateAudioSession: deactivateAudioSession)
+        liveActivity.stopStandby()
     }
 
     private func clearQuickDictationMarker() {

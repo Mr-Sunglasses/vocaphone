@@ -10,6 +10,7 @@ settings:
     SWIFT_STRICT_CONCURRENCY: minimal
     CURRENT_PROJECT_VERSION: 17
     MARKETING_VERSION: 0.1.0
+    TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: A83WCPTTT9
 targets:
@@ -23,6 +24,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone
+        TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: VocaPhoneApp/VocaPhoneApp.entitlements
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: VocaPhoneApp/Info.plist
@@ -41,6 +43,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone.keyboard
+        TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: VocaPhoneKeyboard/VocaPhoneKeyboard-Bridging-Header.h
         GENERATE_INFOPLIST_FILE: NO
@@ -57,6 +60,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone.liveactivity
+        TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: VocaPhoneLiveActivity/Info.plist
@@ -87,6 +91,7 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        TARGETED_DEVICE_FAMILY: "1"
 schemes:
   VocaPhone:
     build:
