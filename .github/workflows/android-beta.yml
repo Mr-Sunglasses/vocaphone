@@ -89,7 +89,7 @@ jobs:
           verification="$("$apksigner" verify --verbose --print-certs release-assets/vocaphone.apk)"
           printf '%s\n' "$verification"
           certificate_sha256="$(printf '%s\n' "$verification" \
-            | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+            | sed -n 's/.*certificate SHA-256 digest: //p')"
           if [ "$certificate_sha256" != "$EXPECTED_CERT_SHA256" ]; then
             echo "Unexpected APK signing certificate: $certificate_sha256" >&2
             exit 1
