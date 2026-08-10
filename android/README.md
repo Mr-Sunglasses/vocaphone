@@ -43,7 +43,7 @@ stays at 36, which is what Play requires from 31 August 2026.
 
 ## GitHub beta releases
 
-Pushing a tag such as `v0.1.0-beta.7` runs
+Pushing a tag such as `v0.1.0-beta.8` runs
 `.github/workflows/android-beta.yml`. Before tagging, bump `versionCode` and
 `versionName` in `app/build.gradle.kts`; the workflow refuses to publish when
 the tag and APK version do not match.
