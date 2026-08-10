@@ -15,10 +15,12 @@ APK does not request accessibility-service or overlay access.
 ## Requirements
 
 - Android 13 (API 33) or newer. Google Pixel is the baseline device.
-- A reachable vocaphone gateway. See the [root README](../README.md).
-- To build: JDK 17+ (the JDK bundled with Android Studio works) and the Android
-  SDK. Everything else is pinned in `gradle/libs.versions.toml` and fetched by
-  the Gradle wrapper.
+- A reachable vocaphone gateway, unless you choose on-device transcription.
+- To build: JDK 17+ (the JDK bundled with Android Studio works), the Android
+  SDK, CMake 3.22.1 and NDK 27.2.12479018. Everything else is pinned in
+  `gradle/libs.versions.toml` and fetched by the Gradle wrapper.
+- Clone with `git clone --recurse-submodules`; the pinned `whisper.cpp` source
+  is required for the native local engine.
 
 ## Build
 
@@ -76,6 +78,24 @@ shows up as an actionable repair prompt rather than a silent failure.
    WebUI Overview pairing card, or paste the URL and bearer token, then
    **Test connection**, which reports reachability, token validity, the active
    engine, whether it is ready, and whether it supports streaming.
+
+To use the phone without a gateway, choose **On-device option** during setup or
+under Settings, download a model, and tap **Use**.
+
+The catalog carries 32 whisper.cpp GGML builds from Tiny through Large v3,
+including the q5 and q8 quantizations — a 574 MB Large v3 Turbo q5 is a far
+better use of a phone than a full Small — and 12 sherpa-onnx models across seven
+families (Moonshine, Parakeet TDT, SenseVoice, Dolphin, Canary, NeMo CTC and
+Paraformer) covering English, Chinese, Japanese, Russian and European sets that
+small whisper builds handle poorly. Only models this phone has the memory for are
+offered, and sherpa-onnx models need an Arm ABI because its JNI library ships
+prebuilt; whisper.cpp is compiled from source and runs on an x86_64 emulator too.
+
+Every file of every model is pinned by exact byte length and SHA-256 at an
+immutable upstream revision. A download is hashed as it streams, committed into
+place only once each file matches, and then marked as digest-verified. Later
+launches and dictations re-check sizes and that marker rather than rehashing
+gigabytes; changing a pin in a new build invalidates the marker.
 
 ## VocaPhone keyboard
 
@@ -155,6 +175,7 @@ the app-private log from the device.
 | --- | --- |
 | `core/` | Styles, languages, microphone preference, endpoint validation, insertion arithmetic, IME input policy |
 | `gateway/` | HTTP client and the streaming WebSocket |
+| `local/` | SHA-pinned model catalog, atomic downloads, native whisper.cpp loading and inference |
 | `audio/` | `AudioRecord` capture, input routing, WAV writing, PCM conversion |
 | `dictation/` | The pipeline, the microphone foreground service, retry |
 | `ime/` | The system keyboard and `InputConnection` insertion |
@@ -176,4 +197,8 @@ log bounds and the gateway protocol.
 - The streaming path has only been exercised against MockWebServer; the test
   gateway's engine is batch-only. Verify against a Moonshine engine before
   relying on it.
+- The native CMake build and a real-device local-model transcription smoke test
+  still need to run in an environment with a complete Android NDK/CMake install;
+  CI is configured to install those toolchains, while local unit/lint checks
+  cover the Kotlin paths.
 - Samsung and other OEM keyboard behavior still needs a dedicated device pass.

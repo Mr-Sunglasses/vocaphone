@@ -59,6 +59,7 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
     val testing by viewModel.testing.collectAsStateWithLifecycle()
     val microphone by viewModel.microphone.collectAsStateWithLifecycle()
+    val localModels by viewModel.localModels.collectAsStateWithLifecycle()
 
     // The selected keyboard is a system setting, so its state can change while
     // the app is in the background; re-read setup on every resume.
@@ -137,7 +138,11 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
             showSetup -> SetupScreen(
                 status = setup,
                 settings = settings,
+                localModels = localModels,
                 onOpenGateway = { showingGateway = true },
+                onLocalModel = viewModel::setLocalModel,
+                onDownloadLocalModel = viewModel::downloadLocalModel,
+                onCancelLocalModelDownload = viewModel::cancelLocalModelDownload,
                 onFinish = { viewModel.setOnboardingComplete(true) },
                 modifier = content,
             )
@@ -171,6 +176,12 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
                 onStyle = { viewModel.setStyle(it) },
                 onMicrophone = { viewModel.setMicrophone(it) },
                 onAudioRetention = { viewModel.setAudioRetention(it) },
+                localModels = localModels,
+                onLocalTranscriptionEnabled = viewModel::setLocalTranscriptionEnabled,
+                onLocalModel = viewModel::setLocalModel,
+                onDownloadLocalModel = viewModel::downloadLocalModel,
+                onCancelLocalModelDownload = viewModel::cancelLocalModelDownload,
+                onDeleteLocalModel = viewModel::deleteLocalModel,
                 onOpenGateway = { showingGateway = true },
                 diagnosticEvents = viewModel::diagnosticEvents,
                 onClearDiagnosticEvents = viewModel::clearDiagnosticEvents,

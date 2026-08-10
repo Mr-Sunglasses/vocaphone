@@ -291,13 +291,31 @@ enum KeyboardPreferences {
         set { defaults?.set(newValue, forKey: modelDetectsLanguageKey) }
     }
 
+    /// The language claim that governs the picker.
+    ///
+    /// With on-device transcription on, the gateway's last engine report is
+    /// irrelevant and often wrong in both directions: it can hide languages the
+    /// local model supports, or offer ones it does not.
+    private static var activeLocalModel: LocalModelDescriptor? {
+        guard LocalTranscriptionPreferences.enabled else { return nil }
+        return LocalModelCatalog.descriptor(for: LocalTranscriptionPreferences.modelIdentifier)
+    }
+
+    static var activeModelLanguages: Set<String> {
+        activeLocalModel?.languageCodes ?? modelLanguages
+    }
+
+    static var activeModelDetectsLanguage: Bool {
+        activeLocalModel?.detectsLanguageAutomatically ?? modelDetectsLanguage
+    }
+
     /// The language to actually dictate in, after discarding a stored choice the
     /// current model cannot honour.
     static var effectiveTranscriptionLanguage: TranscriptionLanguage {
         ModelLanguageSupport.resolve(
             transcriptionLanguage,
-            modelLanguages: modelLanguages,
-            detectsLanguageAutomatically: modelDetectsLanguage
+            modelLanguages: activeModelLanguages,
+            detectsLanguageAutomatically: activeModelDetectsLanguage
         )
     }
 

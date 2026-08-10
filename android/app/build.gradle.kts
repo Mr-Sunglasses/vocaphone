@@ -22,6 +22,20 @@ android {
         versionName = "0.1.0-beta.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+    }
+
+    if (!project.hasProperty("skipNative")) {
+        ndkVersion = "27.2.12479018"
+        externalNativeBuild {
+            cmake {
+                path = file("src/main/cpp/whisper/CMakeLists.txt")
+                version = "3.22.1"
+            }
+        }
     }
 
     signingConfigs {

@@ -46,6 +46,7 @@ fun LanguagePickerSheet(
     selected: TranscriptionLanguage,
     modelLanguages: Set<String>,
     detectsLanguageAutomatically: Boolean,
+    onDevice: Boolean = false,
     onSelect: (TranscriptionLanguage) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -63,7 +64,11 @@ fun LanguagePickerSheet(
     val available = TranscriptionLanguage.entries.filter { matches(it) && selectable(it) }
     val unavailable = TranscriptionLanguage.entries.filter { matches(it) && !selectable(it) }
     val restriction =
-        ModelLanguageSupport.restriction(modelLanguages, detectsLanguageAutomatically)
+        ModelLanguageSupport.restriction(
+            modelLanguages,
+            detectsLanguageAutomatically,
+            onDevice = onDevice,
+        )
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(

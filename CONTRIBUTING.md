@@ -25,6 +25,11 @@ are available.
   `git submodule update --init --recursive` on an existing clone). The gateway
   is the [vocagateway](https://github.com/VocaHQ/vocagateway) submodule at
   `server/`.
+- Install [Git LFS](https://git-lfs.com/) before cloning and run `git lfs
+  install`. After cloning an existing checkout, run `git lfs pull`; this
+  downloads the iOS Sherpa ONNX and ONNX Runtime archives that are too large
+  for regular Git blobs. `git lfs ls-files` should list the five native
+  archives under `ios/ThirdParty/SherpaOnnx/`.
 - Install [`just`](https://just.systems), Xcode, XcodeGen, `uv`, and FFmpeg.
 - For Android work, install a recent Android Studio / SDK and JDK 17+.
 - Run `just ios gen` after changing `ios/project.yml`, and commit the
@@ -34,6 +39,11 @@ are available.
   submodule pin here if this repo needs the new revision).
 - Never commit microphone recordings, bearer tokens, signing material, tailnet
   hostnames, local database files, or Apple provisioning profiles.
+
+The shared `ios/VocaPhone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`
+file pins WhisperKit and its transitive Swift packages for reproducible iOS
+builds. Keep it committed when Swift package dependencies change. Do not
+commit Xcode user data under `xcuserdata/`.
 
 Each application owns a justfile, and the repository root aggregates them, so
 recipes work from either place:

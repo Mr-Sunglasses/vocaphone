@@ -2,3 +2,6 @@
 	path = server
 	url = https://github.com/VocaHQ/vocagateway.git
 	branch = main
+[submodule "android/third_party/whisper.cpp"]
+	path = android/third_party/whisper.cpp
+	url = https://github.com/ggml-org/whisper.cpp.git

@@ -300,8 +300,8 @@ final class DictationBarView: UIView {
         static func current(selected: TranscriptionLanguage) -> LanguageMenuKey {
             LanguageMenuKey(
                 selected: selected,
-                modelLanguages: KeyboardPreferences.modelLanguages,
-                detectsLanguage: KeyboardPreferences.modelDetectsLanguage,
+                modelLanguages: KeyboardPreferences.activeModelLanguages,
+                detectsLanguage: KeyboardPreferences.activeModelDetectsLanguage,
                 recents: KeyboardPreferences.recentTranscriptionLanguages
             )
         }

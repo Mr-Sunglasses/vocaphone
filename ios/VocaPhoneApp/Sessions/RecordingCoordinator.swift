@@ -33,6 +33,8 @@ final class RecordingCoordinator {
     private let liveActivity = LiveActivityManager.shared
     private let streamingBridge = StreamingAudioBridge()
     private let soundFeedback = RecordingSoundFeedback()
+    private var localSherpaSession: SherpaIncrementalSession?
+    let localModels = LocalModelManager()
 
     var stateLabel: String { (activeRecord?.state ?? .idle).displayName }
     var isRecording: Bool { activeRecord?.state == .recording && recorder.isRecording }
@@ -72,11 +74,17 @@ final class RecordingCoordinator {
     /// permission can be revoked from Settings while the app is suspended.
     func refreshSetupStatus() {
         let address = UserDefaults.standard.string(forKey: "gatewayURL") ?? ""
+        let localReady: Bool = {
+            guard LocalTranscriptionPreferences.enabled,
+                  let modelID = LocalTranscriptionPreferences.modelIdentifier
+            else { return false }
+            return localModels.isDownloaded(modelID)
+        }()
         let refreshed = SetupStatus(
-            gatewayReady: UserDefaults.standard.bool(
+            gatewayReady: localReady || UserDefaults.standard.bool(
                 forKey: GatewayStatusPreferences.engineReadyKey
             ),
-            gatewayAddress: address,
+            gatewayAddress: localReady ? "" : address,
             microphone: microphoneAccess,
             keyboard: KeyboardSetupState.resolve(
                 try? store.loadKeyboardStatus(),
@@ -323,6 +331,8 @@ final class RecordingCoordinator {
         pipelineSessionID = nil
         cancellationMonitorTask?.cancel()
         Task { await streamingBridge.cancel() }
+        localSherpaSession?.cancel()
+        localSherpaSession = nil
         guard var record = activeRecord else { return }
         let shouldRemainReady = shouldKeepQuickDictationReady(after: record)
         recorder.cancelSession(keepAudioSessionActive: shouldRemainReady)
@@ -435,7 +445,28 @@ final class RecordingCoordinator {
                 return
             }
             record = latestRecord
-            let audioURL = try recorder.start(sessionID: record.sessionID, directory: directory)
+            let shouldUseSherpaIncremental = LocalTranscriptionPreferences.enabled
+                && LocalTranscriptionPreferences.modelIdentifier.flatMap {
+                    LocalModelCatalog.descriptor(for: $0)?.engine == .sherpaOnnx
+                } == true
+            let audioURL = try recorder.start(
+                sessionID: record.sessionID,
+                directory: directory,
+                includeLocalModelChunks: shouldUseSherpaIncremental
+            )
+            if shouldUseSherpaIncremental, let chunks = recorder.localPcmChunks {
+                do {
+                    localSherpaSession = try localModels.startSherpaIncrementalSession(
+                        chunks: chunks,
+                        language: record.language
+                    )
+                } catch {
+                    // Keep the intact WAV fallback. The normal finish path will
+                    // retry the same selected model in batch mode if preparing
+                    // the incremental engine fails.
+                    localSherpaSession = nil
+                }
+            }
             if let client = gatewayClient, let chunks = recorder.pcmChunks {
                 if GatewayStatusPreferences.shouldAttemptStreaming(for: client.baseURL) {
                     await streamingBridge.start(
@@ -561,6 +592,16 @@ final class RecordingCoordinator {
             )
             return
         }
+
+        // Local inference deliberately happens before the gateway guard. A
+        // device configured for on-device transcription must still work with no
+        // gateway URL, token, network, or server health result at all.
+        if LocalTranscriptionPreferences.enabled {
+            await streamingBridge.cancel()
+            await finalizeLocally(&record, audioURL: output)
+            return
+        }
+
         guard let client = gatewayClient else {
             await streamingBridge.cancel()
             await fail(
@@ -668,6 +709,65 @@ final class RecordingCoordinator {
                 state: state,
                 code: code,
                 message: "The recording is preserved. Return to the keyboard to retry."
+            )
+        }
+    }
+
+    private func finalizeLocally(_ record: inout SessionRecord, audioURL: URL) async {
+        do {
+            if record.state == .finalizing || record.canRetry {
+                try record.transition(to: .uploading)
+            }
+            try store.save(record)
+            activeRecord = record
+            message = "Transcribing on this iPhone…"
+            liveActivity.update(status: "Transcribing on device", canFinish: false)
+            try record.transition(to: .transcribing)
+            try store.save(record)
+            activeRecord = record
+
+            let incremental = localSherpaSession
+            localSherpaSession = nil
+            let text: String
+            if let incremental {
+                let incrementalText = await incremental.finish()
+                if incrementalText.isEmpty {
+                    // A model can still produce no tokens for a boundary split;
+                    // preserve the old whole-file retry as a last resort.
+                    text = try await localModels.transcribe(
+                        audioURL: audioURL,
+                        language: record.language
+                    )
+                } else {
+                    text = incrementalText
+                }
+            } else {
+                text = try await localModels.transcribe(
+                    audioURL: audioURL,
+                    language: record.language
+                )
+            }
+            record.transcript = TranscriptStyler.apply(
+                text,
+                style: WritingStyle(rawValue: record.style) ?? .casual,
+                language: record.language
+            )
+            record.error = nil
+            try record.transition(to: .readyToInsert)
+            try store.save(record)
+            activeRecord = record
+            DiagnosticLog.record(.transcriptReady)
+            try? FileManager.default.removeItem(at: audioURL)
+            markTranscriptDelivered(for: record)
+            liveActivity.end(status: "Transcript ready")
+            message = "Transcribed privately on this iPhone."
+        } catch {
+            if Task.isCancelled || error is CancellationError { return }
+            await fail(
+                &record,
+                state: .transcriptionFailedRecoverable,
+                code: "local_transcription_failed",
+                message: "On-device transcription failed. The recording is preserved; retry after checking the selected model."
             )
         }
     }
@@ -882,6 +982,8 @@ final class RecordingCoordinator {
             pipelineTask = nil
             pipelineSessionID = nil
             await streamingBridge.cancel()
+            localSherpaSession?.cancel()
+            localSherpaSession = nil
             let shouldRemainReady = shouldKeepQuickDictationReady(after: shared)
             recorder.cancelSession(keepAudioSessionActive: shouldRemainReady)
             if shouldRemainReady {

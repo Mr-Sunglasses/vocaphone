@@ -156,14 +156,30 @@ operational commands.
 
 The headless gateway lives in [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway)
 and is vendored here as the `server/` git submodule so the phone clients and
-future desktop apps share one implementation. Clone with submodules:
+future desktop apps share one implementation. The iOS Sherpa ONNX and ONNX
+Runtime archives are tracked with Git LFS, so install Git LFS before cloning.
+Clone with submodules and LFS:
 
 ```sh
+# macOS: brew install git-lfs; other platforms: https://git-lfs.com/
+git lfs install
+# new clone:
 git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
-# existing clone:
+cd vocaphone
+git lfs pull
 git submodule update --init --recursive
 ```
 
+For an existing clone, run these commands from the repository root:
+
+```sh
+git lfs install
+git lfs pull
+git submodule update --init --recursive
+```
+
+Without Git LFS, those framework paths contain small pointer files instead of
+the native archives and the iOS project cannot link its local model engine.
 This repository records a fixed gateway commit (the pin) for reproducible
 clones and releases. For local development you can follow `main` without
 shipping that tip until you intentionally bump the pin:

@@ -211,8 +211,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val settings = visibleSettings.value
         if (!ModelLanguageSupport.isSelectable(
                 language,
-                settings.modelLanguages,
-                settings.modelDetectsLanguage,
+                settings.activeModelLanguages,
+                settings.activeModelDetectsLanguage,
             )
         ) {
             return

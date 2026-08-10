@@ -7,6 +7,7 @@ import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
+import com.vocahq.vocaphone.local.LocalModelManager
 import com.vocahq.vocaphone.settings.SettingsRepository
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -38,14 +39,21 @@ class AppContainer(context: Context) {
     /** App-private, no-backup storage: recordings never leave the device except to the gateway. */
     val audioDirectory = File(context.filesDir, "recordings")
 
+    val localModels = LocalModelManager(context.applicationContext)
+
     val dictation = DictationController(
         context = context.applicationContext,
         settings = settings,
         history = history,
         diagnostics = diagnostics,
         audioDirectory = audioDirectory,
+        localModels = localModels,
         scope = applicationScope,
     )
+
+    init {
+        applicationScope.launch { localModels.refresh() }
+    }
 
     fun purgeExpiredAudio() {
         applicationScope.launch { history.purgeExpiredAudio(audioDirectory) }

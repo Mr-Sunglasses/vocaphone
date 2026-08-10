@@ -17,6 +17,7 @@ final class AudioRecorder: NSObject {
     private var tap: CaptureTap?
     private var pipeline: AudioCapturePipeline?
     private var chunkContinuation: AsyncStream<Data>.Continuation?
+    private var localChunkContinuation: AsyncStream<Data>.Continuation?
     private var outputURL: URL?
     private var meterTimer: Timer?
     private var limitTimer: Timer?
@@ -32,6 +33,10 @@ final class AudioRecorder: NSObject {
     /// abandoned rather than growing without limit, and the intact file on disk
     /// becomes the fallback.
     private(set) var pcmChunks: AsyncStream<Data>?
+    /// A separate, lossless-enough queue for on-device Sherpa. Unlike the
+    /// gateway queue, it is sized for the complete recording so model loading
+    /// or a slower first decode cannot discard the beginning of the transcript.
+    private(set) var localPcmChunks: AsyncStream<Data>?
     private(set) var lastDroppedChunkCount = 0
 
     override init() {
@@ -105,7 +110,11 @@ final class AudioRecorder: NSObject {
 
     /// Starts writing from the already-running microphone engine. When Quick
     /// Dictation is armed, this does not stop or rebuild the audio graph.
-    func start(sessionID: UUID, directory: URL) throws -> URL {
+    func start(
+        sessionID: UUID,
+        directory: URL,
+        includeLocalModelChunks: Bool = false
+    ) throws -> URL {
         guard !isRecording else { throw RecordingError.alreadyRecording }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let output = directory
@@ -132,17 +141,33 @@ final class AudioRecorder: NSObject {
         }
         guard let continuation else { throw RecordingError.inputUnavailable }
 
+        var localContinuation: AsyncStream<Data>.Continuation?
+        let localStream: AsyncStream<Data>?
+        if includeLocalModelChunks {
+            localStream = AsyncStream<Data>(bufferingPolicy: .bufferingOldest(2_048)) {
+                localContinuation = $0
+            }
+        } else {
+            localStream = nil
+        }
+
         ring.reset()
         try pipeline.start(writingTo: output) { data in
-            switch continuation.yield(data) {
+            let gatewayAccepted = switch continuation.yield(data) {
             case .enqueued: true
             default: false
             }
+            if let localContinuation {
+                _ = localContinuation.yield(data)
+            }
+            return gatewayAccepted
         }
 
         self.pipeline = pipeline
         chunkContinuation = continuation
         pcmChunks = stream
+        localChunkContinuation = localContinuation
+        localPcmChunks = localStream
         lastDroppedChunkCount = 0
         outputURL = output
         tap.isCapturing = true
@@ -212,6 +237,9 @@ final class AudioRecorder: NSObject {
         chunkContinuation?.finish()
         chunkContinuation = nil
         pcmChunks = nil
+        localChunkContinuation?.finish()
+        localChunkContinuation = nil
+        localPcmChunks = nil
         pipeline = nil
         outputURL = nil
         stopTimers()

@@ -217,11 +217,12 @@ struct SetupStatus: Equatable, Sendable {
         case .gateway:
             if gatewayReady {
                 return gatewayAddress.isEmpty
-                    ? "Gateway, token, and model are ready."
+                    ? (LocalTranscriptionPreferences.enabled
+                        ? "On-device speech-to-text model is ready."
+                        : "Gateway, token, and model are ready.")
                     : "Ready at \(gatewayAddress)."
             }
-            return "Scan the pairing QR code from your gateway's WebUI, or enter "
-                + "its address and token by hand."
+            return "Connect a gateway, or choose and download an on-device model below."
         case .microphone:
             switch microphone {
             case .granted:

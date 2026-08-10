@@ -44,6 +44,7 @@ struct SettingsView: View {
     var body: some View {
         List {
             setupSection
+            localModelsSection
             insertionSection
             quickDictationSection
             transcriptionLanguageSection
@@ -118,9 +119,32 @@ struct SettingsView: View {
         } footer: {
             Text(
                 "For more customization, including choosing the speech-to-text model, "
-                    + "open your gateway's web dashboard."
+                + "open your gateway's web dashboard."
             )
         }
+    }
+
+    @ViewBuilder private var localModelsSection: some View {
+        Section {
+            Toggle(
+                "Use on-device transcription",
+                isOn: Binding(
+                    get: { LocalTranscriptionPreferences.enabled },
+                    set: { LocalTranscriptionPreferences.enabled = $0 }
+                )
+            )
+        } header: {
+            Text("On-device models")
+        } footer: {
+            Text(
+                "Models run privately on this iPhone through WhisperKit/Core ML. "
+                    + "Every file, including the tokenizer, is pinned and checked with "
+                    + "SHA-256 before it can load, so transcription needs no network at "
+                    + "all. The keyboard extension never loads the model itself."
+            )
+        }
+
+        LocalModelPicker(manager: coordinator.localModels)
     }
 
     private var insertionSection: some View {

@@ -11,3 +11,5 @@
 *.lock text eol=lf
 
 *.xcuserstate binary
+
+ios/ThirdParty/**/*.a filter=lfs diff=lfs merge=lfs -text

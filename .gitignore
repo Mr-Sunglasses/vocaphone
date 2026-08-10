@@ -25,6 +25,8 @@ server/*.sqlite3
 *.m4a
 *.caf
 *.wav
+# The one exception: a speech fixture the on-device engine test transcribes.
+!android/app/src/androidTest/assets/*.wav
 .env
 .env.*
 !.env.example

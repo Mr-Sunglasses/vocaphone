@@ -13,6 +13,10 @@ settings:
     TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: A83WCPTTT9
+packages:
+  WhisperKit:
+    url: https://github.com/argmaxinc/WhisperKit.git
+    from: 0.16.0
 targets:
   VocaPhoneApp:
     type: application
@@ -21,6 +25,9 @@ targets:
       - VocaPhoneApp
       - VocaPhoneShared
       - VocaPhoneActivityShared
+    resources:
+      - VocaPhoneApp/Models/local_model_pins.json
+      - VocaPhoneApp/Models/sherpa_model_pins.json
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone
@@ -29,7 +36,16 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: VocaPhoneApp/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h
+        HEADER_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models $(PROJECT_DIR)/ThirdParty/SherpaOnnx/sherpa-onnx.xcframework/Headers"
+        OTHER_LDFLAGS: "$(inherited) -lc++"
     dependencies:
+      - package: WhisperKit
+        product: WhisperKit
+      - framework: ThirdParty/SherpaOnnx/sherpa-onnx.xcframework
+        embed: false
+      - framework: ThirdParty/SherpaOnnx/onnxruntime.xcframework
+        embed: false
       - target: VocaPhoneKeyboard
         embed: true
       - target: VocaPhoneLiveActivity

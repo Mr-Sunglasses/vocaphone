@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,6 +30,8 @@ import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.WritingStyle
+import com.vocahq.vocaphone.local.LocalModelDescriptor
+import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
@@ -40,6 +44,12 @@ fun SettingsScreen(
     onStyle: (WritingStyle) -> Unit,
     onMicrophone: (MicrophonePreference) -> Unit,
     onAudioRetention: (AudioRetention) -> Unit,
+    localModels: LocalModelState,
+    onLocalTranscriptionEnabled: (Boolean) -> Unit,
+    onLocalModel: (LocalModelDescriptor) -> Unit,
+    onDownloadLocalModel: (LocalModelDescriptor) -> Unit,
+    onCancelLocalModelDownload: () -> Unit,
+    onDeleteLocalModel: (LocalModelDescriptor) -> Unit,
     onOpenGateway: () -> Unit,
     diagnosticEvents: () -> String,
     onClearDiagnosticEvents: () -> Unit,
@@ -83,14 +93,46 @@ fun SettingsScreen(
             )
         }
 
+        Section(
+            title = "On-device models",
+            supporting = "Run speech-to-text privately on this phone. The gateway is not used while this is enabled.",
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Use on-device transcription")
+                    Text(
+                        "Downloads are checked with SHA-256 before they are accepted.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = settings.localTranscriptionEnabled,
+                    onCheckedChange = onLocalTranscriptionEnabled,
+                )
+            }
+            LocalModelPicker(
+                state = localModels,
+                selectedModelId = settings.localModelId,
+                onSelect = onLocalModel,
+                onDownload = onDownloadLocalModel,
+                onCancelDownload = onCancelLocalModelDownload,
+                onDelete = onDeleteLocalModel,
+            )
+        }
+
         ImeSetupCard(setup.ime)
 
         // One row rather than 27 wrapping chips, which pushed every setting below
         // this one off the screen. The full list, with search, lives in a sheet.
         var pickingLanguage by remember { mutableStateOf(false) }
         val languageRestriction = ModelLanguageSupport.restriction(
-            settings.modelLanguages,
-            settings.modelDetectsLanguage,
+            settings.activeModelLanguages,
+            settings.activeModelDetectsLanguage,
+            onDevice = settings.localTranscriptionEnabled,
         )
         Section(
             "Transcription language",
@@ -103,8 +145,9 @@ fun SettingsScreen(
         if (pickingLanguage) {
             LanguagePickerSheet(
                 selected = settings.effectiveLanguage,
-                modelLanguages = settings.modelLanguages,
-                detectsLanguageAutomatically = settings.modelDetectsLanguage,
+                modelLanguages = settings.activeModelLanguages,
+                detectsLanguageAutomatically = settings.activeModelDetectsLanguage,
+                onDevice = settings.localTranscriptionEnabled,
                 onSelect = onLanguage,
                 onDismiss = { pickingLanguage = false },
             )
@@ -144,7 +187,8 @@ fun SettingsScreen(
         Section("Privacy") {
             Text(
                 "VocaPhone's keyboard inserts through Android's text connection and " +
-                    "does not read the field. Audio and transcripts go only to the " +
+                    "does not read the field. When on-device transcription is enabled, " +
+                    "audio never leaves this phone; otherwise it goes only to the " +
                     "gateway you configured. There is no cloud transcription, no " +
                     "analytics, and nothing is written to the clipboard unless you " +
                     "tap Copy.",

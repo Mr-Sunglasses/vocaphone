@@ -28,7 +28,7 @@ runs:
         # The runner image already ships the command-line and platform tools, so
         # the default package install is a redownload of what is on disk. The
         # action still accepts the licences, which is the part the build needs.
-        packages: ''
+        packages: 'cmake;3.22.1 ndk;27.2.12479018'
     - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
       with:
         cache-read-only: ${{ inputs.cache-read-only }}

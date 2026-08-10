@@ -17,6 +17,8 @@ import com.vocahq.vocaphone.dictation.DictationService
 import com.vocahq.vocaphone.dictation.DictationSource
 import com.vocahq.vocaphone.gateway.GatewayClient
 import com.vocahq.vocaphone.gateway.GatewayException
+import com.vocahq.vocaphone.local.LocalModelDescriptor
+import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +27,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** The outcome of a connection test, shown in full so nothing is guessed at. */
@@ -74,6 +78,7 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val dictation = container.dictation.state
+    val localModels: StateFlow<LocalModelState> = container.localModels.state
 
     private val _setup = MutableStateFlow(SetupStatus())
     val setup: StateFlow<SetupStatus> = _setup.asStateFlow()
@@ -88,6 +93,7 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     val microphone: StateFlow<MicrophoneStatus> = _microphone.asStateFlow()
 
     private val audioManager = application.getSystemService(AudioManager::class.java)
+    private var localModelDownloadJob: Job? = null
 
     /**
      * Headsets are plugged and unplugged while the settings screen is open, so the
@@ -113,6 +119,8 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
 
     override fun onCleared() {
         audioManager?.unregisterAudioDeviceCallback(deviceCallback)
+        container.localModels.cancelDownload()
+        localModelDownloadJob?.cancel()
         super.onCleared()
     }
 
@@ -126,7 +134,10 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
             val configuration = container.settings.current()
             _setup.value = SetupStatus.read(
                 context = getApplication(),
-                gatewayConfigured = configuration.isConfigured,
+                gatewayConfigured = configuration.isConfigured || (
+                    configuration.localTranscriptionEnabled &&
+                        container.localModels.isDownloaded(configuration.localModelId)
+                    ),
             )
         }
     }
@@ -257,6 +268,45 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setOnboardingComplete(complete: Boolean) =
         viewModelScope.launch { container.settings.setOnboardingComplete(complete) }
+
+    fun setLocalTranscriptionEnabled(enabled: Boolean) =
+        viewModelScope.launch {
+            container.settings.setLocalTranscriptionEnabled(enabled)
+            refreshSetup()
+        }
+
+    fun setLocalModel(model: LocalModelDescriptor) {
+        viewModelScope.launch {
+            container.settings.setLocalModel(model.id)
+            container.settings.setLocalTranscriptionEnabled(true)
+            refreshSetup()
+        }
+    }
+
+    fun downloadLocalModel(model: LocalModelDescriptor) {
+        cancelLocalModelDownload()
+        val job = viewModelScope.launch {
+            try {
+                container.localModels.download(model)
+            } catch (_: CancellationException) {
+                // Cancellation is an explicit user action, not a failed download.
+            }
+        }
+        localModelDownloadJob = job
+        job.invokeOnCompletion {
+            if (localModelDownloadJob === job) localModelDownloadJob = null
+        }
+    }
+
+    fun cancelLocalModelDownload() {
+        container.localModels.cancelDownload()
+        localModelDownloadJob?.cancel()
+        localModelDownloadJob = null
+    }
+
+    fun deleteLocalModel(model: LocalModelDescriptor) {
+        viewModelScope.launch { runCatching { container.localModels.delete(model) } }
+    }
 
     // ----------------------------------------------------------- dictation
 

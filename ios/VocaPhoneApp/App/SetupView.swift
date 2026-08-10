@@ -70,8 +70,8 @@ struct SetupView: View {
                 Text("Dictate into any app")
                     .font(.title3.weight(.semibold))
                 Text(
-                    "vocaphone records on this iPhone and transcribes on a "
-                        + "gateway you run yourself. Nothing is sent to a "
+                    "vocaphone records on this iPhone and transcribes through "
+                        + "your gateway or privately on this phone. Nothing is sent to a "
                         + "third-party transcription service. Four steps and "
                         + "you are done."
                 )
@@ -111,13 +111,23 @@ struct SetupView: View {
     }
 
     private var gatewayStep: some View {
-        NavigationLink {
-            GatewaySetupView()
-        } label: {
-            SetupStepLabel(
-                step: .gateway,
-                detail: status.detail(for: .gateway),
-                isComplete: status.isSatisfied(.gateway)
+        VStack(alignment: .leading, spacing: 10) {
+            NavigationLink {
+                GatewaySetupView()
+            } label: {
+                SetupStepLabel(
+                    step: .gateway,
+                    detail: status.detail(for: .gateway),
+                    isComplete: status.isSatisfied(.gateway)
+                )
+            }
+            Text("Or use an on-device model")
+                .font(.subheadline.weight(.semibold))
+                .padding(.leading, 32)
+            LocalModelPicker(
+                manager: coordinator.localModels,
+                leadingPadding: 32,
+                onChange: { coordinator.refreshSetupStatus() }
             )
         }
     }
@@ -183,7 +193,7 @@ struct SetupView: View {
             stepAction("Start test recording") { coordinator.startInAppTest() }
                 .disabled(!canRunTestDictation)
             if !canRunTestDictation {
-                Text("Finish the gateway and microphone steps first.")
+                Text("Finish the transcription source and microphone steps first.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 32)

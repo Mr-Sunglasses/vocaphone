@@ -15,6 +15,7 @@ import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.MissingPermission
 import com.vocahq.vocaphone.core.TranscriptSanitizer
+import com.vocahq.vocaphone.core.TranscriptStyler
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.gateway.GatewayClient
@@ -22,6 +23,8 @@ import com.vocahq.vocaphone.gateway.GatewayException
 import com.vocahq.vocaphone.gateway.GatewayAudioStream
 import com.vocahq.vocaphone.gateway.GatewayStreamingPolicy
 import com.vocahq.vocaphone.gateway.StreamingUnavailableException
+import com.vocahq.vocaphone.local.LocalModelManager
+import com.vocahq.vocaphone.local.SherpaIncrementalSession
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.settings.SettingsRepository
 import java.io.File
@@ -68,6 +71,7 @@ class DictationController(
     private val history: HistoryRepository,
     private val diagnostics: DiagnosticLog,
     private val audioDirectory: File,
+    private val localModels: LocalModelManager,
     private val scope: CoroutineScope,
 ) {
     private val _state = MutableStateFlow(DictationState())
@@ -121,8 +125,8 @@ class DictationController(
                 )
                 return@launch
             }
-            val token = settings.token()
-            if (token.isNullOrEmpty()) {
+            val token = if (configuration.localTranscriptionEnabled) null else settings.token()
+            if (!configuration.localTranscriptionEnabled && token.isNullOrEmpty()) {
                 diagnostics.recordError("setup", source.name)
                 _state.value = DictationState(
                     phase = DictationPhase.PERMISSION_REPAIR,
@@ -168,23 +172,32 @@ class DictationController(
                 return@launch
             }
             val configuration = settings.current()
-            val token = settings.token() ?: return@launch
-            val client = GatewayClient(configuration.gatewayUrl, token)
             _state.value = DictationState(
                 sessionId = UUID.fromString(sessionId),
                 phase = DictationPhase.UPLOADING,
                 language = configuration.effectiveLanguage,
                 style = configuration.style,
             )
-            deliverBatch(
-                client = client,
-                sessionId = UUID.fromString(sessionId),
-                wavFile = audio,
-                language = record.language,
-                style = record.style,
-                configuration = configuration,
-                source = DictationSource.COMPANION_APP,
-            )
+            if (configuration.localTranscriptionEnabled) {
+                deliverLocal(
+                    sessionId = UUID.fromString(sessionId),
+                    wavFile = audio,
+                    language = record.language,
+                    configuration = configuration,
+                    source = DictationSource.COMPANION_APP,
+                )
+            } else {
+                val token = settings.token() ?: return@launch
+                deliverBatch(
+                    client = GatewayClient(configuration.gatewayUrl, token),
+                    sessionId = UUID.fromString(sessionId),
+                    wavFile = audio,
+                    language = record.language,
+                    style = record.style,
+                    configuration = configuration,
+                    source = DictationSource.COMPANION_APP,
+                )
+            }
         }
     }
 
@@ -195,7 +208,9 @@ class DictationController(
     fun missingPermissions(configuration: VocaPhoneSettings): Set<MissingPermission> = buildSet {
         if (!hasPermission(Manifest.permission.RECORD_AUDIO)) add(MissingPermission.MICROPHONE)
         if (!hasPermission(Manifest.permission.POST_NOTIFICATIONS)) add(MissingPermission.NOTIFICATIONS)
-        if (!configuration.isConfigured) add(MissingPermission.GATEWAY_NOT_CONFIGURED)
+        if (!configuration.isConfigured && !configuration.localTranscriptionEnabled) {
+            add(MissingPermission.GATEWAY_NOT_CONFIGURED)
+        }
     }
 
     private fun hasPermission(permission: String) =
@@ -208,15 +223,32 @@ class DictationController(
     private suspend fun runDictation(
         source: DictationSource,
         configuration: VocaPhoneSettings,
-        token: String,
+        token: String?,
         sessionId: UUID,
     ) {
         audioDirectory.mkdirs()
         val wavFile = File(audioDirectory, "$sessionId.wav")
-        val client = GatewayClient(configuration.gatewayUrl, token)
+        val client = token?.let { GatewayClient(configuration.gatewayUrl, it) }
         val sessionFinishSignal = finishSignal
         val frames = Channel<ShortArray>(capacity = FILE_FRAME_BUFFER_CAPACITY)
-        val shouldAttemptStreaming = GatewayStreamingPolicy.shouldAttemptStreaming(
+        val selectedLocalModelID = configuration.localModelId.takeIf { it.isNotEmpty() }
+        val incrementalSession = if (configuration.localTranscriptionEnabled) {
+            selectedLocalModelID?.let { modelID ->
+                localModels.startIncrementalSession(
+                    modelID = modelID,
+                    language = configuration.effectiveLanguage.wireValue,
+                    scope = scope,
+                )
+            }
+        } else {
+            null
+        }
+        val incrementalReference = AtomicReference<SherpaIncrementalSession?>(incrementalSession)
+        val incrementalFallback = AtomicBoolean(false)
+        if (incrementalSession != null) {
+            diagnostics.recordTiming("local_incremental_started", source.name)
+        }
+        val shouldAttemptStreaming = client != null && GatewayStreamingPolicy.shouldAttemptStreaming(
             supported = configuration.lastStreamingSupported,
             checkedAtMillis = configuration.lastEngineCheckedAtMillis,
         )
@@ -262,6 +294,7 @@ class DictationController(
         )
         capture = recorder
         if (!recorder.start()) {
+            incrementalReference.getAndSet(null)?.cancel()
             frames.close()
             streamFrames?.close()
             writer.close()
@@ -293,6 +326,12 @@ class DictationController(
         val drain = scope.launch(Dispatchers.IO) {
             for (frame in frames) {
                 writer.write(frame, frame.size)
+                incrementalReference.get()?.let { session ->
+                    if (!session.offer(frame) && incrementalReference.compareAndSet(session, null)) {
+                        incrementalFallback.set(true)
+                        session.cancel()
+                    }
+                }
                 val level = PcmConversion.level(frame, frame.size)
                 _state.update { current ->
                     if (current.phase != DictationPhase.LISTENING) {
@@ -312,7 +351,7 @@ class DictationController(
 
         val streamPump = streamFrames?.let { channel ->
             scope.launch(Dispatchers.IO) {
-                val candidate = client.openStream(
+                val candidate = client!!.openStream(
                     sessionId = sessionId,
                     language = configuration.effectiveLanguage.wireValue,
                     style = configuration.style.wireValue,
@@ -379,6 +418,7 @@ class DictationController(
         }
 
         if (cancelRequested) {
+            incrementalReference.getAndSet(null)?.cancel()
             stream?.cancel()
             wavFile.delete()
             reset()
@@ -386,6 +426,7 @@ class DictationController(
         }
 
         captureError.get()?.let { error ->
+            incrementalReference.getAndSet(null)?.cancel()
             diagnostics.recordError("audio", source.name)
             stream?.cancel()
             wavFile.delete()
@@ -405,6 +446,7 @@ class DictationController(
         _state.update { it.copy(phase = DictationPhase.FINALIZING, level = 0f) }
 
         if (writer.durationMillis < MINIMUM_RECORDING_MILLIS) {
+            incrementalReference.getAndSet(null)?.cancel()
             stream?.cancel()
             wavFile.delete()
             fail(
@@ -412,6 +454,42 @@ class DictationController(
                 GatewayException("audio_empty", "That was too short to transcribe.", recoverable = false),
                 wavFile = null,
                 configuration = configuration,
+            )
+            return
+        }
+
+        if (configuration.localTranscriptionEnabled) {
+            val session = incrementalReference.getAndSet(null)
+            var preparedTranscript: String? = null
+            var timingRecorded = false
+            if (session != null) {
+                _state.update { it.copy(phase = DictationPhase.TRANSCRIBING, streaming = false) }
+                diagnostics.recordTiming("local_transcription_started", source.name)
+                timingRecorded = true
+                preparedTranscript = try {
+                    session.finish().takeIf(String::isNotBlank)?.also {
+                        diagnostics.recordTiming("local_incremental_ready", source.name)
+                    } ?: run {
+                        incrementalFallback.set(true)
+                        null
+                    }
+                } catch (_: Throwable) {
+                    session.cancel()
+                    incrementalFallback.set(true)
+                    null
+                }
+            }
+            if (incrementalSession != null && incrementalFallback.get()) {
+                diagnostics.recordTiming("local_incremental_fallback", source.name)
+            }
+            deliverLocal(
+                sessionId = sessionId,
+                wavFile = wavFile,
+                language = configuration.effectiveLanguage.wireValue,
+                configuration = configuration,
+                source = source,
+                preparedTranscript = preparedTranscript,
+                transcriptionTimingRecorded = timingRecorded,
             )
             return
         }
@@ -433,6 +511,9 @@ class DictationController(
                 recordBatchFallback()
                 null
             }
+            // The gateway has already applied the requested writing style to
+            // streamed output. Local inference is styled in deliverLocal below;
+            // applying it here would style gateway text twice.
             val cleaned = TranscriptSanitizer.clean(transcript)
             if (transcript != null && cleaned.isEmpty()) {
                 wavFile.delete()
@@ -452,7 +533,7 @@ class DictationController(
         }
 
         deliverBatch(
-            client,
+            checkNotNull(client),
             sessionId,
             wavFile,
             configuration.effectiveLanguage.wireValue,
@@ -525,6 +606,58 @@ class DictationController(
             fail(sessionId, error, wavFile, configuration)
         }
     }
+
+    private suspend fun deliverLocal(
+        sessionId: UUID,
+        wavFile: File,
+        language: String,
+        configuration: VocaPhoneSettings,
+        source: DictationSource,
+        preparedTranscript: String? = null,
+        transcriptionTimingRecorded: Boolean = false,
+    ) {
+        try {
+            _state.update { it.copy(phase = DictationPhase.TRANSCRIBING, streaming = false) }
+            if (!transcriptionTimingRecorded) {
+                diagnostics.recordTiming("local_transcription_started", source.name)
+            }
+            val modelID = configuration.localModelId.takeIf { it.isNotEmpty() }
+                ?: error("Choose and download an on-device model first.")
+            val transcript = styleLocalTranscript(
+                preparedTranscript ?: localModels.transcribe(wavFile, modelID, language),
+                configuration,
+            )
+            if (transcript.isEmpty()) {
+                throw GatewayException.emptyTranscript()
+            }
+            wavFile.delete()
+            deliver(transcript, sessionId, configuration, source)
+        } catch (error: Throwable) {
+            fail(
+                sessionId,
+                GatewayException(
+                    code = if (error is com.vocahq.vocaphone.local.LocalModelIntegrityException) {
+                        "local_model_integrity"
+                    } else {
+                        "local_transcription_failed"
+                    },
+                    userMessage = error.message ?: "On-device transcription failed. Download the model again and retry.",
+                    recoverable = true,
+                ),
+                wavFile,
+                configuration,
+            )
+        }
+    }
+
+    private fun styleLocalTranscript(
+        transcript: String?,
+        configuration: VocaPhoneSettings,
+    ): String = TranscriptStyler.apply(
+        TranscriptSanitizer.clean(transcript),
+        configuration.style,
+        configuration.effectiveLanguage.wireValue,
+    )
 
     private suspend fun deliver(
         transcript: String,

@@ -456,7 +456,7 @@ private fun LanguagePreferencePanel(
     onSelected: (TranscriptionLanguage) -> Unit,
     onClose: () -> Unit,
 ) {
-    val languages = remember(settings.modelLanguages, settings.modelDetectsLanguage) {
+    val languages = remember(settings.activeModelLanguages, settings.activeModelDetectsLanguage) {
         TranscriptionLanguage.entries.sortedWith(
             compareBy<TranscriptionLanguage>(
                 { language ->
@@ -464,8 +464,8 @@ private fun LanguagePreferencePanel(
                         language == TranscriptionLanguage.AUTOMATIC -> 0
                         ModelLanguageSupport.isSelectable(
                             language,
-                            settings.modelLanguages,
-                            settings.modelDetectsLanguage,
+                            settings.activeModelLanguages,
+                            settings.activeModelDetectsLanguage,
                         ) -> 1
                         else -> 2
                     }
@@ -475,8 +475,9 @@ private fun LanguagePreferencePanel(
         )
     }
     val restriction = ModelLanguageSupport.restriction(
-        settings.modelLanguages,
-        settings.modelDetectsLanguage,
+        settings.activeModelLanguages,
+        settings.activeModelDetectsLanguage,
+        onDevice = settings.localTranscriptionEnabled,
     )
 
     PreferencePanelShell(
@@ -494,8 +495,8 @@ private fun LanguagePreferencePanel(
             items(languages, key = TranscriptionLanguage::wireValue) { language ->
                 val selectable = ModelLanguageSupport.isSelectable(
                     language,
-                    settings.modelLanguages,
-                    settings.modelDetectsLanguage,
+                    settings.activeModelLanguages,
+                    settings.activeModelDetectsLanguage,
                 )
                 LanguageOptionRow(
                     language = language,

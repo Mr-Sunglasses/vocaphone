@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          submodules: recursive
           # The release notes step walks back to the previous beta tag, which
           # needs the tags and the history connecting them. Only the commits
           # are needed, so skip fetching every blob in that history.

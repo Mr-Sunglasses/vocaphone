@@ -43,19 +43,28 @@ object ModelLanguageSupport {
             TranscriptionLanguage.AUTOMATIC
         }
 
-    /** Why the picker is restricted, or null when it is not. */
+    /**
+     * Why the picker is restricted, or null when it is not.
+     *
+     * [onDevice] only changes which model the sentence blames, but pointing a
+     * user at their gateway when the constraint comes from the model on their
+     * phone sends them to the wrong screen.
+     */
     fun restriction(
         modelLanguages: Set<String>,
         detectsLanguageAutomatically: Boolean,
-    ): String? = when {
-        detectsLanguageAutomatically ->
-            "Your gateway's model detects the language itself, so only Automatic applies. " +
-                "It reads full sentences well but returns the wrong alphabet on short phrases."
-        modelLanguages.isEmpty() -> null
-        else -> {
-            val noun = if (modelLanguages.size == 1) "language" else "languages"
-            "Your gateway's model covers ${modelLanguages.size} $noun. " +
-                "The rest need a different model."
+        onDevice: Boolean = false,
+    ): String? {
+        val owner = if (onDevice) "The on-device model" else "Your gateway's model"
+        return when {
+            detectsLanguageAutomatically ->
+                "$owner detects the language itself, so only Automatic applies. " +
+                    "It reads full sentences well but returns the wrong alphabet on short phrases."
+            modelLanguages.isEmpty() -> null
+            else -> {
+                val noun = if (modelLanguages.size == 1) "language" else "languages"
+                "$owner covers ${modelLanguages.size} $noun. The rest need a different model."
+            }
         }
     }
 }

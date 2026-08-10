@@ -12,6 +12,8 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelLanguageSupport
+import com.vocahq.vocaphone.local.LocalModelCatalog
+import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.security.TokenVault
@@ -58,6 +60,8 @@ data class VocaPhoneSettings(
      */
     val modelLanguages: Set<String> = emptySet(),
     val modelDetectsLanguage: Boolean = false,
+    val localTranscriptionEnabled: Boolean = false,
+    val localModelId: String = "",
 ) {
 
     /**
@@ -66,8 +70,28 @@ data class VocaPhoneSettings(
      * the wrong-language failure this whole mechanism exists to prevent.
      */
     val effectiveLanguage: TranscriptionLanguage
-        get() = ModelLanguageSupport.resolve(language, modelLanguages, modelDetectsLanguage)
+        get() = ModelLanguageSupport.resolve(
+            language,
+            activeModelLanguages,
+            activeModelDetectsLanguage,
+        )
+
+    /**
+     * The language claim that governs the picker. With on-device transcription on
+     * the gateway's last engine report is irrelevant and often wrong in both
+     * directions: it can hide languages the local model supports, or offer ones
+     * it does not.
+     */
+    private val localModel: LocalModelDescriptor?
+        get() = if (localTranscriptionEnabled) LocalModelCatalog.find(localModelId) else null
+
+    val activeModelLanguages: Set<String>
+        get() = localModel?.languageCodes ?: modelLanguages
+
+    val activeModelDetectsLanguage: Boolean
+        get() = localModel?.detectsLanguage ?: modelDetectsLanguage
     val isConfigured: Boolean get() = gatewayUrl.isNotEmpty() && hasToken
+    val hasLocalModelSelection: Boolean get() = localModelId.isNotEmpty()
 }
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "vocaphone")
@@ -134,6 +158,11 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setOnboardingComplete(complete: Boolean) = put(Keys.ONBOARDING_COMPLETE, complete)
 
+    suspend fun setLocalTranscriptionEnabled(enabled: Boolean) =
+        put(Keys.LOCAL_TRANSCRIPTION_ENABLED, enabled)
+
+    suspend fun setLocalModel(modelId: String) = put(Keys.LOCAL_MODEL_ID, modelId)
+
     suspend fun recordEngineStatus(
         engine: String,
         ready: Boolean,
@@ -170,6 +199,8 @@ class SettingsRepository(private val context: Context) {
         lastEngineCheckedAtMillis = this[Keys.LAST_ENGINE_CHECKED_AT],
         modelLanguages = this[Keys.MODEL_LANGUAGES].orEmpty(),
         modelDetectsLanguage = this[Keys.MODEL_DETECTS_LANGUAGE] ?: false,
+        localTranscriptionEnabled = this[Keys.LOCAL_TRANSCRIPTION_ENABLED] ?: false,
+        localModelId = this[Keys.LOCAL_MODEL_ID].orEmpty(),
     )
 
     private object Keys {
@@ -187,6 +218,8 @@ class SettingsRepository(private val context: Context) {
         val LAST_ENGINE_CHECKED_AT = longPreferencesKey("last_engine_checked_at")
         val MODEL_LANGUAGES = stringSetPreferencesKey("model_languages")
         val MODEL_DETECTS_LANGUAGE = booleanPreferencesKey("model_detects_language")
+        val LOCAL_TRANSCRIPTION_ENABLED = booleanPreferencesKey("local_transcription_enabled")
+        val LOCAL_MODEL_ID = stringPreferencesKey("local_model_id")
     }
 
     private fun androidx.datastore.preferences.core.MutablePreferences.clearEngineStatus() {
