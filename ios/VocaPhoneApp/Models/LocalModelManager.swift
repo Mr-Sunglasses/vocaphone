@@ -18,14 +18,6 @@ final class LocalModelManager {
     private var sherpaRecognizer: SherpaRecognizer?
     private var loadedModelID: String?
     private var loadedLanguage: String?
-    private let downloadSession: URLSession = {
-        let configuration = URLSessionConfiguration.default
-        configuration.waitsForConnectivity = true
-        configuration.timeoutIntervalForRequest = 300
-        configuration.timeoutIntervalForResource = 24 * 60 * 60
-        return URLSession(configuration: configuration)
-    }()
-
     private var modelsDirectory: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?
@@ -69,18 +61,163 @@ final class LocalModelManager {
     /// Tracks bytes across tokenizer and model files so the picker can show
     /// meaningful progress rather than waiting for a whole multi-hundred-MB
     /// file to finish.
-    private final class DownloadProgress {
+    private actor DownloadProgress {
         let totalBytes: Int64
         var completedBytes: Int64 = 0
+        private var activeFileBytes: Int64 = 0
+        private var activeFileExpectedBytes: Int64 = 0
+        private var activeFileGeneration = 0
 
         init(totalBytes: Int64) {
             self.totalBytes = totalBytes
         }
 
-        func add(_ bytes: Int64) -> Double {
-            completedBytes += bytes
+        func addCompleted(_ bytes: Int64) -> Double {
+            completedBytes += max(0, bytes)
+            return fraction
+        }
+
+        func beginFile(expectedBytes: Int64) -> Int {
+            activeFileGeneration += 1
+            activeFileBytes = 0
+            activeFileExpectedBytes = max(0, expectedBytes)
+            return activeFileGeneration
+        }
+
+        func updateFile(bytesWritten: Int64, generation: Int) -> Double? {
+            guard generation == activeFileGeneration else { return nil }
+            activeFileBytes = min(
+                max(0, bytesWritten),
+                activeFileExpectedBytes
+            )
+            return fraction
+        }
+
+        func completeFile(generation: Int) -> Double {
+            guard generation == activeFileGeneration else { return fraction }
+            completedBytes += activeFileExpectedBytes
+            activeFileBytes = 0
+            activeFileExpectedBytes = 0
+            return fraction
+        }
+
+        func resetFile(generation: Int) -> Double {
+            guard generation == activeFileGeneration else { return fraction }
+            activeFileBytes = 0
+            activeFileExpectedBytes = 0
+            return fraction
+        }
+
+        private var fraction: Double {
             guard totalBytes > 0 else { return 0 }
-            return min(1, Double(completedBytes) / Double(totalBytes))
+            return min(
+                1,
+                Double(completedBytes + activeFileBytes) / Double(totalBytes)
+            )
+        }
+    }
+
+    /// A download task writes into a system-managed temporary file instead of
+    /// delivering one byte at a time through an AsyncBytes data task. This is
+    /// important for multi-hundred-megabyte Core ML weights: the old path made
+    /// every byte cross back through the main actor before it could be written.
+    private final class FileDownloadDelegate: NSObject, URLSessionDownloadDelegate,
+        @unchecked Sendable {
+        private let progressHandler: @Sendable (Int64) -> Void
+        private let lock = NSLock()
+        private var task: URLSessionDownloadTask?
+        private var continuation: CheckedContinuation<(URL, URLResponse), Error>?
+        private var lastReportedBytes: Int64 = 0
+
+        init(progressHandler: @escaping @Sendable (Int64) -> Void) {
+            self.progressHandler = progressHandler
+        }
+
+        func start(
+            session: URLSession,
+            request: URLRequest
+        ) async throws -> (URL, URLResponse) {
+            try await withTaskCancellationHandler(operation: {
+                try await withCheckedThrowingContinuation {
+                    (continuation: CheckedContinuation<(URL, URLResponse), Error>) in
+                    lock.lock()
+                    self.continuation = continuation
+                    let task = session.downloadTask(with: request)
+                    self.task = task
+                    let isCancelled = Task.isCancelled
+                    lock.unlock()
+
+                    if isCancelled {
+                        task.cancel()
+                    } else {
+                        task.resume()
+                    }
+                }
+            }, onCancel: { [weak self] in
+                self?.cancel()
+            })
+        }
+
+        func cancel() {
+            lock.lock()
+            let task = self.task
+            lock.unlock()
+            task?.cancel()
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            downloadTask: URLSessionDownloadTask,
+            didWriteData bytesWritten: Int64,
+            totalBytesWritten: Int64,
+            totalBytesExpectedToWrite: Int64
+        ) {
+            report(totalBytesWritten)
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            downloadTask: URLSessionDownloadTask,
+            didFinishDownloadingTo location: URL
+        ) {
+            report(downloadTask.countOfBytesReceived)
+            let persistentLocation = FileManager.default.temporaryDirectory
+                .appendingPathComponent("vocaphone-download-\(UUID().uuidString)")
+            do {
+                try FileManager.default.moveItem(at: location, to: persistentLocation)
+                finish(.success((persistentLocation, downloadTask.response ?? URLResponse())))
+            } catch {
+                finish(.failure(error))
+            }
+        }
+
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            didCompleteWithError error: Error?
+        ) {
+            guard let error else { return }
+            finish(.failure(error))
+        }
+
+        private func report(_ totalBytesWritten: Int64) {
+            lock.lock()
+            let shouldReport = totalBytesWritten > lastReportedBytes
+            lastReportedBytes = max(lastReportedBytes, totalBytesWritten)
+            lock.unlock()
+            if shouldReport { progressHandler(totalBytesWritten) }
+        }
+
+        private func finish(_ result: Result<(URL, URLResponse), Error>) {
+            lock.lock()
+            guard let continuation else {
+                lock.unlock()
+                return
+            }
+            self.continuation = nil
+            task = nil
+            lock.unlock()
+            continuation.resume(with: result)
         }
     }
 
@@ -338,7 +475,9 @@ final class LocalModelManager {
         let fingerprint = LocalModelIntegrity.fingerprint(of: tokenizer.files)
         if (try? LocalModelIntegrity.verifySizes(in: destination, files: tokenizer.files)) != nil,
            LocalModelIntegrity.markerMatches(fingerprint, in: destination) {
-            progress = progressTracker.add(tokenizer.files.reduce(Int64(0)) { $0 + $1.size })
+            progress = await progressTracker.addCompleted(
+                tokenizer.files.reduce(Int64(0)) { $0 + $1.size }
+            )
             return
         }
 
@@ -361,6 +500,7 @@ final class LocalModelManager {
             try await downloadFile(
                 from: url,
                 to: staging.appendingPathComponent(file.path),
+                expectedBytes: file.size,
                 progressTracker: progressTracker
             )
         }
@@ -409,6 +549,7 @@ final class LocalModelManager {
                 from: url,
                 to: destination,
                 keepingPartialExtension: true,
+                expectedBytes: file.size,
                 progressTracker: progressTracker
             )
             try LocalModelIntegrity.verify(file: temporaryFile, against: file)
@@ -435,6 +576,7 @@ final class LocalModelManager {
         from url: URL,
         to destination: URL,
         keepingPartialExtension: Bool = false,
+        expectedBytes: Int64,
         progressTracker: DownloadProgress
     ) async throws -> URL {
         let fileManager = FileManager.default
@@ -446,36 +588,89 @@ final class LocalModelManager {
             : destination
         try? fileManager.removeItem(at: target)
 
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 300
-        let (bytes, response) = try await downloadSession.bytes(for: request)
-        guard let httpResponse = response as? HTTPURLResponse,
-              200..<300 ~= httpResponse.statusCode
-        else {
-            throw LocalModelManagerError.downloadFailed(
-                path: url.lastPathComponent,
-                statusCode: (response as? HTTPURLResponse)?.statusCode
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            try Task.checkCancellation()
+            let generation = await progressTracker.beginFile(expectedBytes: expectedBytes)
+            let delegate = FileDownloadDelegate { [weak self] bytesWritten in
+                Task { @MainActor [weak self] in
+                    guard let value = await progressTracker.updateFile(
+                        bytesWritten: bytesWritten,
+                        generation: generation
+                    ) else { return }
+                    self?.progress = value
+                }
+            }
+            let configuration = URLSessionConfiguration.default
+            configuration.waitsForConnectivity = true
+            configuration.timeoutIntervalForRequest = 15 * 60
+            configuration.timeoutIntervalForResource = 24 * 60 * 60
+            // Model downloads are explicitly user-initiated. Do not let Low
+            // Data Mode or the system's expensive-network policy silently defer
+            // or suspend a multi-hundred-megabyte download.
+            configuration.allowsExpensiveNetworkAccess = true
+            configuration.allowsConstrainedNetworkAccess = true
+            let session = URLSession(
+                configuration: configuration,
+                delegate: delegate,
+                delegateQueue: nil
             )
-        }
-        fileManager.createFile(atPath: target.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: target)
-        defer { try? handle.close() }
 
-        var buffer = Data()
-        buffer.reserveCapacity(64 * 1024)
-        for try await byte in bytes {
-            buffer.append(byte)
-            if buffer.count >= 64 * 1024 {
-                try handle.write(contentsOf: buffer)
-                progress = progressTracker.add(Int64(buffer.count))
-                buffer.removeAll(keepingCapacity: true)
+            do {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 15 * 60
+                let (temporaryFile, response) = try await delegate.start(
+                    session: session,
+                    request: request
+                )
+                defer { session.invalidateAndCancel() }
+                try Task.checkCancellation()
+                guard let httpResponse = response as? HTTPURLResponse,
+                      200..<300 ~= httpResponse.statusCode
+                else {
+                    try? fileManager.removeItem(at: temporaryFile)
+                    throw LocalModelManagerError.downloadFailed(
+                        path: url.lastPathComponent,
+                        statusCode: (response as? HTTPURLResponse)?.statusCode
+                    )
+                }
+                try fileManager.moveItem(at: temporaryFile, to: target)
+                progress = await progressTracker.completeFile(generation: generation)
+                return target
+            } catch {
+                session.invalidateAndCancel()
+                progress = await progressTracker.resetFile(generation: generation)
+                guard attempt < maxAttempts, isRetryableDownloadError(error) else {
+                    throw error
+                }
+                message = "Network interruption. Retrying \(url.lastPathComponent)…"
+                try await Task.sleep(nanoseconds: UInt64(attempt) * 750_000_000)
             }
         }
-        if !buffer.isEmpty {
-            try handle.write(contentsOf: buffer)
-            progress = progressTracker.add(Int64(buffer.count))
+
+        throw LocalModelManagerError.downloadFailed(
+            path: url.lastPathComponent,
+            statusCode: nil
+        )
+    }
+
+    private func isRetryableDownloadError(_ error: Error) -> Bool {
+        if error is CancellationError { return false }
+        if let error = error as? URLError {
+            return [
+                .timedOut,
+                .networkConnectionLost,
+                .notConnectedToInternet,
+                .cannotFindHost,
+                .cannotConnectToHost,
+                .dnsLookupFailed,
+                .resourceUnavailable
+            ].contains(error.code)
         }
-        return target
+        if case let LocalModelManagerError.downloadFailed(_, statusCode) = error {
+            return [408, 425, 429, 500, 502, 503, 504].contains(statusCode)
+        }
+        return false
     }
 
     private func fileURL(
