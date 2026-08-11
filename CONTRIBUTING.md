@@ -154,6 +154,38 @@ physical device; `just android run` installs and launches on one, and
 - Use the pull request template checklist; skip checks that truly do not apply
   and say why.
 
+### On-demand PR builds (`/build`)
+
+Maintainers can comment one of these on a pull request (same idea as VocaMac's
+DMG `/build`):
+
+| Comment | Result |
+| --- | --- |
+| `/build` | Android release APK + iOS ad-hoc IPA (IPA only if signing secrets are set) |
+| `/build android` | Android release APK only |
+| `/build ios` | iOS ad-hoc IPA only |
+| `/build-quick` | Android debug APK only (no release keystore) |
+
+The workflow reacts with a rocket, posts a started note, uploads artifacts, and
+replies with download links. Only `OWNER` / `MEMBER` / `COLLABORATOR` comments
+trigger it, so fork PRs need a maintainer to run the build.
+
+Android uses the same release keystore as beta tags, so the APK replaces an
+installed beta. Install with `adb install -r …` or by opening the APK on the
+device.
+
+iOS needs these repository secrets for an IPA (ad-hoc profiles must include the
+tester's device UDID):
+
+- `IOS_CERTIFICATE_P12_BASE64`
+- `IOS_CERTIFICATE_PASSWORD`
+- `IOS_PROVISION_PROFILE_APP_BASE64`
+- `IOS_PROVISION_PROFILE_KEYBOARD_BASE64`
+- `IOS_PROVISION_PROFILE_LIVEACTIVITY_BASE64`
+
+Without those secrets, `/build` still produces the Android APK and notes that
+iOS was skipped. You can also run the workflow manually under Actions → PR Build.
+
 ## License
 
 Contributions are licensed under the [GNU Affero General Public License v3.0](LICENSE)

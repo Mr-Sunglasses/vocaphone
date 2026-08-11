@@ -1,0 +1,677 @@
+name: PR Build
+
+# Triggered by commenting "/build" (or "/build android", "/build ios",
+# "/build-quick") on a pull request. Builds installable artifacts from the PR
+# head and posts download links back on the PR.
+#
+# Android uses the same release keystore as beta tags, so the APK upgrades over
+# an installed beta. iOS exports an ad-hoc IPA when the Apple signing secrets
+# below are set; otherwise that leg is skipped and the PR comment says so.
+#
+# iOS secrets (all required for an IPA):
+#   IOS_CERTIFICATE_P12_BASE64
+#   IOS_CERTIFICATE_PASSWORD
+#   IOS_PROVISION_PROFILE_APP_BASE64
+#   IOS_PROVISION_PROFILE_KEYBOARD_BASE64
+#   IOS_PROVISION_PROFILE_LIVEACTIVITY_BASE64
+
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number to build
+        required: true
+        type: string
+      platforms:
+        description: android, ios, or all
+        required: false
+        default: all
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+      quick:
+        description: Build an unsigned Android debug APK only (faster)
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+concurrency:
+  # One build per PR — re-commenting /build cancels any in-progress build.
+  group: pr-build-${{ github.event.issue.number || inputs.pr_number }}
+  cancel-in-progress: true
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  HOMEBREW_NO_INSTALL_CLEANUP: '1'
+  HOMEBREW_NO_ENV_HINTS: '1'
+  IOS_TEAM_ID: A83WCPTTT9
+
+jobs:
+  prepare:
+    name: Prepare
+    if: >-
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.issue.pull_request &&
+       (github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR') &&
+       (contains(github.event.comment.body, '/build')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      ref: ${{ steps.pr.outputs.ref }}
+      sha: ${{ steps.pr.outputs.sha }}
+      short_sha: ${{ steps.pr.outputs.short_sha }}
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+      head_repo: ${{ steps.pr.outputs.head_repo }}
+      want_android: ${{ steps.parse.outputs.want_android }}
+      want_ios: ${{ steps.parse.outputs.want_ios }}
+      quick: ${{ steps.parse.outputs.quick }}
+      command: ${{ steps.parse.outputs.command }}
+      allowed: ${{ steps.parse.outputs.allowed }}
+    steps:
+      - name: Parse build request
+        id: parse
+        env:
+          DISPATCH_PLATFORMS: ${{ inputs.platforms || '' }}
+          DISPATCH_QUICK: ${{ inputs.quick || false }}
+          DISPATCH_PR_NUMBER: ${{ inputs.pr_number || '' }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            let wantAndroid = true;
+            let wantIos = true;
+            let quick = false;
+            let command = '/build';
+
+            if (context.eventName === 'workflow_dispatch') {
+              const platforms = (process.env.DISPATCH_PLATFORMS || 'all').toLowerCase();
+              quick = process.env.DISPATCH_QUICK === 'true';
+              wantAndroid = platforms === 'all' || platforms === 'android';
+              wantIos = !quick && (platforms === 'all' || platforms === 'ios');
+              command = quick ? '/build-quick' : (platforms === 'all' ? '/build' : `/build ${platforms}`);
+            } else {
+              const body = context.payload.comment.body.trim();
+              // Exact command forms only — avoids matching "/building" or prose.
+              const match = body.match(/^\/build(-quick)?(?:\s+(android|ios|all))?\s*$/i);
+              if (!match) {
+                core.setOutput('allowed', 'false');
+                core.setOutput('want_android', 'false');
+                core.setOutput('want_ios', 'false');
+                core.setOutput('quick', 'false');
+                core.setOutput('command', '');
+                return;
+              }
+              quick = Boolean(match[1]);
+              const platform = (match[2] || 'all').toLowerCase();
+              wantAndroid = platform === 'all' || platform === 'android';
+              wantIos = !quick && (platform === 'all' || platform === 'ios');
+              command = body.split(/\s+/).slice(0, 2).join(' ').toLowerCase();
+            }
+
+            // /build-quick is Android debug only — no iOS signing, no release keystore.
+            if (quick) {
+              wantAndroid = true;
+              wantIos = false;
+            }
+
+            core.setOutput('allowed', 'true');
+            core.setOutput('want_android', wantAndroid ? 'true' : 'false');
+            core.setOutput('want_ios', wantIos ? 'true' : 'false');
+            core.setOutput('quick', quick ? 'true' : 'false');
+            core.setOutput('command', command);
+
+      - name: Ignore non-command comments
+        if: steps.parse.outputs.allowed != 'true'
+        run: echo "Comment is not an exact /build command; nothing to do."
+
+      - name: React to comment
+        if: steps.parse.outputs.allowed == 'true' && github.event_name == 'issue_comment'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            await github.rest.reactions.createForIssueComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: context.payload.comment.id,
+              content: 'rocket'
+            });
+
+      - name: Resolve pull request
+        id: pr
+        if: steps.parse.outputs.allowed == 'true'
+        env:
+          DISPATCH_PR_NUMBER: ${{ inputs.pr_number || '' }}
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const prNumber = context.eventName === 'workflow_dispatch'
+              ? Number(process.env.DISPATCH_PR_NUMBER)
+              : context.issue.number;
+            if (!Number.isFinite(prNumber) || prNumber <= 0) {
+              throw new Error(`Invalid pull request number: ${prNumber}`);
+            }
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: prNumber
+            });
+            core.setOutput('ref', pr.head.ref);
+            core.setOutput('sha', pr.head.sha);
+            core.setOutput('short_sha', pr.head.sha.substring(0, 7));
+            core.setOutput('pr_number', String(prNumber));
+            core.setOutput('head_repo', pr.head.repo.full_name);
+
+      - name: Post build-started comment
+        if: steps.parse.outputs.allowed == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const parts = [];
+            if ('${{ steps.parse.outputs.want_android }}' === 'true') {
+              parts.push('${{ steps.parse.outputs.quick }}' === 'true'
+                ? 'Android debug APK'
+                : 'Android release APK');
+            }
+            if ('${{ steps.parse.outputs.want_ios }}' === 'true') {
+              parts.push('iOS ad-hoc IPA (if signing secrets are configured)');
+            }
+            const what = parts.join(' + ') || 'nothing';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number('${{ steps.pr.outputs.pr_number }}'),
+              body: [
+                `PR Build started for \`${{ steps.pr.outputs.short_sha }}\` (\`${{ steps.parse.outputs.command }}\`)`,
+                '',
+                `Building: ${what}.`,
+                '',
+                `[Watch the build →](${runUrl})`
+              ].join('\n')
+            });
+
+  android:
+    name: Android
+    needs: prepare
+    if: needs.prepare.outputs.allowed == 'true' && needs.prepare.outputs.want_android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.prepare.outputs.head_repo }}
+          ref: ${{ needs.prepare.outputs.sha }}
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-android
+        with:
+          # PR builds read main's cache and never save their own copy.
+          cache-read-only: true
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - name: Build Android APK
+        id: build
+        env:
+          QUICK: ${{ needs.prepare.outputs.quick }}
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_FILE: ${{ runner.temp }}/vocaphone-release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+        working-directory: android
+        run: |
+          set -euo pipefail
+          assets="${GITHUB_WORKSPACE}/pr-assets"
+          mkdir -p "$assets"
+          if [ "$QUICK" = "true" ]; then
+            ./gradlew assembleDebug
+            src=app/build/outputs/apk/debug/vocaphone-debug.apk
+            out="vocaphone-pr.${PR_NUMBER}+${SHORT_SHA}-debug.apk"
+          else
+            if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ] \
+              || [ -z "${KEY_ALIAS:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
+              echo "Release signing secrets are missing; cannot build a phone-installable APK." >&2
+              echo "Configure KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD," >&2
+              echo "or comment /build-quick for an unsigned debug APK." >&2
+              exit 1
+            fi
+            # Passed through the environment rather than interpolated into the
+            # script, so the keystore never becomes part of the command line.
+            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+            ./gradlew assembleRelease
+            src=app/build/outputs/apk/release/vocaphone-release.apk
+            out="vocaphone-pr.${PR_NUMBER}+${SHORT_SHA}.apk"
+          fi
+          cp "$src" "$assets/$out"
+          (
+            cd "$assets"
+            sha256sum "$out" > SHA256SUMS.txt
+          )
+          {
+            echo "apk_name=$out"
+            echo "apk_size=$(du -h "$assets/$out" | cut -f1)"
+            echo "apk_sha=$(cut -d' ' -f1 "$assets/SHA256SUMS.txt")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload Android APK
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.build.outputs.apk_name }}
+          path: pr-assets/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Record Android artifact metadata
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/pr-build-meta"
+          {
+            echo "apk_name=${{ steps.build.outputs.apk_name }}"
+            echo "apk_size=${{ steps.build.outputs.apk_size }}"
+            echo "apk_sha=${{ steps.build.outputs.apk_sha }}"
+            echo "artifact_id=${{ steps.upload.outputs.artifact-id }}"
+            echo "quick=${{ needs.prepare.outputs.quick }}"
+          } > "${{ runner.temp }}/pr-build-meta/android.env"
+
+      - name: Upload Android metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr-build-meta-android
+          path: ${{ runner.temp }}/pr-build-meta/android.env
+          retention-days: 1
+          if-no-files-found: error
+
+  ios:
+    name: iOS
+    needs: prepare
+    if: needs.prepare.outputs.allowed == 'true' && needs.prepare.outputs.want_ios == 'true'
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Check iOS signing secrets
+        id: secrets
+        env:
+          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISION_PROFILE_APP_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_APP_BASE64 }}
+          IOS_PROVISION_PROFILE_KEYBOARD_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_KEYBOARD_BASE64 }}
+          IOS_PROVISION_PROFILE_LIVEACTIVITY_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_LIVEACTIVITY_BASE64 }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in IOS_CERTIFICATE_P12_BASE64 IOS_CERTIFICATE_PASSWORD \
+            IOS_PROVISION_PROFILE_APP_BASE64 IOS_PROVISION_PROFILE_KEYBOARD_BASE64 \
+            IOS_PROVISION_PROFILE_LIVEACTIVITY_BASE64; do
+            if [ -z "${!name}" ]; then
+              echo "missing $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "iOS ad-hoc signing secrets are not configured; skipping IPA."
+            mkdir -p "${{ runner.temp }}/pr-build-meta"
+            {
+              echo "skipped=true"
+              echo "reason=missing-signing-secrets"
+            } > "${{ runner.temp }}/pr-build-meta/ios.env"
+            exit 0
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload iOS skip metadata
+        if: steps.secrets.outputs.configured != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr-build-meta-ios
+          path: ${{ runner.temp }}/pr-build-meta/ios.env
+          retention-days: 1
+          if-no-files-found: error
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.secrets.outputs.configured == 'true'
+        with:
+          repository: ${{ needs.prepare.outputs.head_repo }}
+          ref: ${{ needs.prepare.outputs.sha }}
+          lfs: true
+          persist-credentials: false
+
+      - name: Install xcodegen
+        if: steps.secrets.outputs.configured == 'true'
+        run: brew install xcodegen
+
+      - name: Import signing certificate and profiles
+        if: steps.secrets.outputs.configured == 'true'
+        id: signing
+        env:
+          IOS_CERTIFICATE_P12_BASE64: ${{ secrets.IOS_CERTIFICATE_P12_BASE64 }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISION_PROFILE_APP_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_APP_BASE64 }}
+          IOS_PROVISION_PROFILE_KEYBOARD_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_KEYBOARD_BASE64 }}
+          IOS_PROVISION_PROFILE_LIVEACTIVITY_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_LIVEACTIVITY_BASE64 }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/pr-build.keychain"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$IOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/ios-cert.p12"
+          security import "$RUNNER_TEMP/ios-cert.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$IOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security \
+            -T /usr/bin/productbuild
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          # shellcheck disable=SC2046 # security prints one quoted path per line
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | xargs)
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+
+          install_profile() {
+            local b64="$1"
+            local label="$2"
+            local path="$RUNNER_TEMP/${label}.mobileprovision"
+            echo "$b64" | base64 --decode > "$path"
+            local uuid name
+            uuid=$(security cms -D -i "$path" | plutil -extract UUID raw -)
+            name=$(security cms -D -i "$path" | plutil -extract Name raw -)
+            cp "$path" "$HOME/Library/MobileDevice/Provisioning Profiles/${uuid}.mobileprovision"
+            echo "${label}_name=$name" >> "$GITHUB_OUTPUT"
+            echo "Installed profile ${label}: ${name} (${uuid})"
+          }
+
+          install_profile "$IOS_PROVISION_PROFILE_APP_BASE64" app
+          install_profile "$IOS_PROVISION_PROFILE_KEYBOARD_BASE64" keyboard
+          install_profile "$IOS_PROVISION_PROFILE_LIVEACTIVITY_BASE64" liveactivity
+
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Generate Xcode project
+        if: steps.secrets.outputs.configured == 'true'
+        working-directory: ios
+        run: xcodegen generate --spec project.yml
+
+      - name: Archive and export IPA
+        if: steps.secrets.outputs.configured == 'true'
+        id: build
+        env:
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+          APP_PROFILE: ${{ steps.signing.outputs.app_name }}
+          KEYBOARD_PROFILE: ${{ steps.signing.outputs.keyboard_name }}
+          LIVEACTIVITY_PROFILE: ${{ steps.signing.outputs.liveactivity_name }}
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+          ARCHIVE_PATH: ${{ runner.temp }}/VocaPhone.xcarchive
+          EXPORT_PATH: ${{ runner.temp }}/ipa
+        working-directory: ios
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>ad-hoc</string>
+            <key>teamID</key>
+            <string>${IOS_TEAM_ID}</string>
+            <key>signingStyle</key>
+            <string>manual</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>stripSwiftSymbols</key>
+            <true/>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.vocahq.vocaphone</key>
+              <string>${APP_PROFILE}</string>
+              <key>com.vocahq.vocaphone.keyboard</key>
+              <string>${KEYBOARD_PROFILE}</string>
+              <key>com.vocahq.vocaphone.liveactivity</key>
+              <string>${LIVEACTIVITY_PROFILE}</string>
+            </dict>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild \
+            -project VocaPhone.xcodeproj \
+            -scheme VocaPhone \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            -archivePath "$ARCHIVE_PATH" \
+            -disableAutomaticPackageResolution \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            MARKETING_VERSION="0.1.0-pr.${PR_NUMBER}" \
+            CURRENT_PROJECT_VERSION="${PR_NUMBER}" \
+            archive
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+          ipa=$(find "$EXPORT_PATH" -name '*.ipa' | head -1)
+          if [ -z "$ipa" ]; then
+            echo "No IPA produced under $EXPORT_PATH" >&2
+            ls -la "$EXPORT_PATH" >&2 || true
+            exit 1
+          fi
+
+          mkdir -p "$GITHUB_WORKSPACE/pr-assets"
+          out="vocaphone-pr.${PR_NUMBER}+${SHORT_SHA}.ipa"
+          cp "$ipa" "$GITHUB_WORKSPACE/pr-assets/$out"
+          (
+            cd "$GITHUB_WORKSPACE/pr-assets"
+            shasum -a 256 "$out" | awk '{print $1 "  " $2}' > SHA256SUMS.txt
+          )
+          {
+            echo "ipa_name=$out"
+            echo "ipa_size=$(du -h "$GITHUB_WORKSPACE/pr-assets/$out" | cut -f1)"
+            echo "ipa_sha=$(awk '{print $1}' "$GITHUB_WORKSPACE/pr-assets/SHA256SUMS.txt")"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload iOS IPA
+        id: upload
+        if: steps.secrets.outputs.configured == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ steps.build.outputs.ipa_name }}
+          path: pr-assets/
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Record iOS artifact metadata
+        if: steps.secrets.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "${{ runner.temp }}/pr-build-meta"
+          {
+            echo "skipped=false"
+            echo "ipa_name=${{ steps.build.outputs.ipa_name }}"
+            echo "ipa_size=${{ steps.build.outputs.ipa_size }}"
+            echo "ipa_sha=${{ steps.build.outputs.ipa_sha }}"
+            echo "artifact_id=${{ steps.upload.outputs.artifact-id }}"
+          } > "${{ runner.temp }}/pr-build-meta/ios.env"
+
+      - name: Upload iOS metadata
+        if: steps.secrets.outputs.configured == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pr-build-meta-ios
+          path: ${{ runner.temp }}/pr-build-meta/ios.env
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Delete temporary keychain
+        if: always() && steps.secrets.outputs.configured == 'true'
+        run: security delete-keychain "${KEYCHAIN_PATH:-}" 2>/dev/null || true
+
+  notify:
+    name: Notify
+    needs: [prepare, android, ios]
+    if: >-
+      always() &&
+      needs.prepare.result == 'success' &&
+      needs.prepare.outputs.allowed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Download build metadata
+        continue-on-error: true
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
+        with:
+          pattern: pr-build-meta-*
+          path: meta
+          merge-multiple: true
+
+      - name: Post result comment
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        env:
+          WANT_ANDROID: ${{ needs.prepare.outputs.want_android }}
+          WANT_IOS: ${{ needs.prepare.outputs.want_ios }}
+          ANDROID_RESULT: ${{ needs.android.result }}
+          IOS_RESULT: ${{ needs.ios.result }}
+          SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+          PR_REF: ${{ needs.prepare.outputs.ref }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          COMMAND: ${{ needs.prepare.outputs.command }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            function readEnvFile(filePath) {
+              if (!fs.existsSync(filePath)) return {};
+              const out = {};
+              for (const line of fs.readFileSync(filePath, 'utf8').split('\n')) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith('#')) continue;
+                const idx = trimmed.indexOf('=');
+                if (idx === -1) continue;
+                out[trimmed.slice(0, idx)] = trimmed.slice(idx + 1);
+              }
+              return out;
+            }
+
+            const androidMeta = readEnvFile(path.join('meta', 'android.env'));
+            const iosMeta = readEnvFile(path.join('meta', 'ios.env'));
+
+            const wantAndroid = process.env.WANT_ANDROID === 'true';
+            const wantIos = process.env.WANT_IOS === 'true';
+            const androidResult = process.env.ANDROID_RESULT || 'skipped';
+            const iosResult = process.env.IOS_RESULT || 'skipped';
+
+            const androidFailed = wantAndroid && androidResult === 'failure';
+            const iosFailed = wantIos && iosResult === 'failure';
+            const failed = androidFailed || iosFailed;
+
+            const lines = [];
+            if (failed) {
+              lines.push(`PR Build failed for \`${process.env.SHORT_SHA}\``);
+              lines.push('');
+              if (androidFailed) lines.push(`- Android: failed`);
+              if (iosFailed) lines.push(`- iOS: failed`);
+              lines.push('');
+              lines.push(`[View build logs →](${runUrl})`);
+              lines.push('');
+              lines.push('Fix the issue and comment `/build` to retry.');
+            } else {
+              lines.push(`PR Build ready for \`${process.env.SHORT_SHA}\``);
+              lines.push('');
+              lines.push(`| | |`);
+              lines.push(`|---|---|`);
+              lines.push(`| **Branch** | \`${process.env.PR_REF}\` |`);
+              lines.push(`| **Commit** | \`${process.env.SHORT_SHA}\` |`);
+              lines.push(`| **Command** | \`${process.env.COMMAND}\` |`);
+
+              if (wantAndroid && androidResult === 'success' && androidMeta.apk_name) {
+                const url = `${runUrl}/artifacts/${androidMeta.artifact_id}`;
+                lines.push(`| **Android APK** | [\`${androidMeta.apk_name}\`](${url}) (${androidMeta.apk_size}) |`);
+                lines.push(`| **Android signed** | ${androidMeta.quick === 'true' ? 'debug (unsigned)' : 'release keystore'} |`);
+              } else if (wantAndroid) {
+                lines.push(`| **Android** | skipped (${androidResult}) |`);
+              }
+
+              if (wantIos) {
+                if (iosMeta.skipped === 'true') {
+                  lines.push(`| **iOS IPA** | skipped — add ad-hoc signing secrets (see CONTRIBUTING) |`);
+                } else if (iosResult === 'success' && iosMeta.ipa_name) {
+                  const url = `${runUrl}/artifacts/${iosMeta.artifact_id}`;
+                  lines.push(`| **iOS IPA** | [\`${iosMeta.ipa_name}\`](${url}) (${iosMeta.ipa_size}) |`);
+                } else {
+                  lines.push(`| **iOS** | skipped (${iosResult}) |`);
+                }
+              }
+
+              lines.push('');
+              if (wantAndroid && androidMeta.apk_name) {
+                lines.push('### Android install');
+                lines.push('1. Download the APK artifact above');
+                lines.push('2. `adb install -r vocaphone-pr.*.apk` or open the APK on the device');
+                lines.push('3. Enable the keyboard under Settings → Keyboard / Input method');
+                lines.push('');
+              }
+              if (wantIos && iosMeta.skipped !== 'true' && iosMeta.ipa_name) {
+                lines.push('### iOS install');
+                lines.push('1. Download the IPA artifact above');
+                lines.push('2. Install with Apple Configurator, Xcode Devices, or `ideviceinstaller`');
+                lines.push('3. Your device UDID must be on the ad-hoc provisioning profiles');
+                lines.push('');
+              }
+
+              if (androidMeta.apk_sha || iosMeta.ipa_sha) {
+                lines.push('<details><summary>SHA-256 checksums</summary>');
+                lines.push('');
+                lines.push('```');
+                if (androidMeta.apk_sha) lines.push(`${androidMeta.apk_sha}  ${androidMeta.apk_name}`);
+                if (iosMeta.ipa_sha) lines.push(`${iosMeta.ipa_sha}  ${iosMeta.ipa_name}`);
+                lines.push('```');
+                lines.push('</details>');
+                lines.push('');
+              }
+
+              lines.push('Comment `/build`, `/build android`, `/build ios`, or `/build-quick` to rebuild.');
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.PR_NUMBER),
+              body: lines.join('\n')
+            });
+
+            if (failed) {
+              core.setFailed('One or more PR build legs failed');
+            }
