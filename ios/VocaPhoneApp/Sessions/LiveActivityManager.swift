@@ -205,6 +205,36 @@ final class LiveActivityManager: @unchecked Sendable {
         }
     }
 
+    /// Clears a Live Activity left behind by a process that never got to end it
+    /// — a jetsam kill or a crash during recording. The activity belongs to the
+    /// system, so it survives its app and keeps offering Finish for a session
+    /// that no longer exists; the only place that can notice is the next launch.
+    ///
+    /// The caller establishes that no session is live. This adds what only the
+    /// manager knows: an activity this process is itself driving is not an
+    /// orphan, and neither is a standby one that was deliberately armed.
+    func discardOrphanedActivities() {
+        guard activeSessionID == nil, !standbyRequested else { return }
+        let orphans = Activity<VocaPhoneActivityAttributes>.activities
+        guard !orphans.isEmpty else { return }
+
+        isAppExiting = false
+        logger.info("Discarding \(orphans.count) orphaned Live Activities")
+        DiagnosticLog.record(
+            .liveActivityEnded,
+            metadata: .reason(.orphanRecovered)
+        )
+        beginTransition()
+        endAll(
+            state: VocaPhoneActivityAttributes.ContentState(
+                status: "Recording ended",
+                canFinish: false,
+                phase: .finished
+            ),
+            dismissalPolicy: .immediate
+        )
+    }
+
     private func beginTransition() {
         pendingStandbyTask?.cancel()
         pendingStandbyTask = nil

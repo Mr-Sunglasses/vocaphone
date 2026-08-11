@@ -136,6 +136,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             keyGrid.plane = Self.initialPlane(
                 for: textDocumentProxy.keyboardType ?? .default
             )
+            // A waiting transcript parks itself when the cursor leaves its field
+            // and re-arms when it comes back. Both were left to the next poll,
+            // so the bar could still offer Insert for a field the user had
+            // already left, and stayed on "Waiting for its own field" for over a
+            // second after they returned to it.
+            if activeSessionID != nil { refresh() }
         }
         updateAutomaticShift()
     }
@@ -439,19 +445,33 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
+    /// Quick Dictation records without leaving the host app, so opening
+    /// vocaphone is the failure path, not the plan. It fires only once the
+    /// request looks genuinely unanswered: unclaimed after the short window, or
+    /// claimed but still not recording by the deadline. Warming the microphone
+    /// graph regularly outruns the short window on its own — a first on-device
+    /// model load, or another app still letting go of the input — and switching
+    /// apps there aborted dictations that were about to start.
     private func scheduleContainingAppFallback(for record: SessionRecord) {
         appLaunchFallbackTask?.cancel()
         appLaunchFallbackTask = Task { [weak self] in
             let milliseconds = Int(
                 AppConfiguration.quickDictationLaunchFallbackSeconds * 1_000
             )
-            try? await Task.sleep(for: .milliseconds(milliseconds))
-            guard !Task.isCancelled,
-                  let self,
-                  let current = try? self.store.load(record.sessionID),
-                  [.launchingApp, .awaitingReturn].contains(current.state)
-            else { return }
-            self.openContainingApp(for: current)
+            let deadline = Date().addingTimeInterval(
+                AppConfiguration.quickDictationClaimedLaunchDeadlineSeconds
+            )
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(milliseconds))
+                guard !Task.isCancelled,
+                      let self,
+                      let current = try? self.store.load(record.sessionID),
+                      [.launchingApp, .awaitingReturn].contains(current.state)
+                else { return }
+                guard current.claimedAt == nil || Date() >= deadline else { continue }
+                self.openContainingApp(for: current)
+                return
+            }
         }
     }
 
@@ -536,6 +556,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 appLaunchFallbackTask?.cancel()
                 appLaunchFallbackTask = nil
             }
+            guard !expireIfStale(record) else { return }
+            latchSessionTarget()
             handle(record)
             return
         }
@@ -546,12 +568,40 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             render(nil)
             return
         }
+        // Adoption is how a session survives the keyboard being torn down for
+        // the hand-off, so it must not also resurrect one nobody is waiting for.
+        guard !expireIfStale(recent) else { return }
         activeSessionID = recent.sessionID
         // A recreated instance cannot compare its identifiers with ones the
         // previous instance stored, so the field the user has returned to
         // becomes the session's insertion target.
         sessionTargetDocumentID = currentDocumentID
         handle(recent)
+    }
+
+    /// Retires a session that is waiting for something no longer coming, and
+    /// hands the bar back to the user. Reports whether it did, so callers stop
+    /// rendering a record they have just made terminal.
+    private func expireIfStale(_ record: SessionRecord) -> Bool {
+        guard SessionExpiryPolicy.expireIfStale(record, in: store) != nil else { return false }
+        if activeSessionID == record.sessionID {
+            activeSessionID = nil
+            sessionTargetDocumentID = nil
+        }
+        appLaunchFallbackTask?.cancel()
+        appLaunchFallbackTask = nil
+        render(nil)
+        return true
+    }
+
+    /// iOS can withhold the document identifier while the keyboard is loading,
+    /// and a session adopted in that window kept a nil target for its whole
+    /// life — which silently disabled the wrong-field guard rather than
+    /// tightening it. Latch the first identifier that becomes known instead,
+    /// and never a later one, so the target still names one field.
+    private func latchSessionTarget() {
+        guard sessionTargetDocumentID == nil, let current = currentDocumentID else { return }
+        sessionTargetDocumentID = current
     }
 
     private func handle(_ incoming: SessionRecord) {

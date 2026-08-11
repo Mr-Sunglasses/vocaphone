@@ -59,11 +59,30 @@ class DictationService : Service() {
                 observeUntilIdle()
             }
 
-            ACTION_FINISH -> controller.finish()
-            ACTION_CANCEL -> controller.cancel()
+            ACTION_FINISH -> {
+                controller.finish()
+                stopUnlessHoldingMicrophone()
+            }
+
+            ACTION_CANCEL -> {
+                controller.cancel()
+                stopUnlessHoldingMicrophone()
+            }
+
             else -> stopSelf()
         }
         return START_NOT_STICKY
+    }
+
+    /**
+     * The microphone is released as soon as capture ends, and this service stops
+     * itself there — so Finish and Cancel sent during upload or transcription
+     * arrive at a *new* instance with no recording to hold. It has no observer
+     * to stop it later, and a started service runs until something does, so
+     * every cancel after the microphone was released leaked one.
+     */
+    private fun stopUnlessHoldingMicrophone() {
+        if (observer == null) stopSelf()
     }
 
     private fun observeUntilIdle() {
@@ -72,13 +91,16 @@ class DictationService : Service() {
         observer = scope.launch {
             // Capture starts a moment after `start` returns, so the service must
             // wait for the microphone to actually be held before it treats an idle
-            // state as the end of the dictation. A recording that never begins —
-            // a revoked permission, a microphone another app has — falls through
-            // the timeout instead of leaving the service running.
-            val started = withTimeoutOrNull(START_TIMEOUT_MILLIS) {
-                controller.state.first { it.phase.holdsMicrophone }
+            // state as the end of the dictation. The timeout is the last resort;
+            // a start that resolves without ever recording says so, and waiting
+            // it out held a microphone foreground service — an ongoing "VocaPhone
+            // is recording" notification and the system's microphone indicator —
+            // for ten seconds over a dictation that never began. Tapping the mic
+            // before the gateway is configured did exactly that.
+            val settled = withTimeoutOrNull(START_TIMEOUT_MILLIS) {
+                controller.state.first { DictationStartWatch.hasSettled(it.phase) }
             }
-            if (started != null) {
+            if (settled?.phase?.holdsMicrophone == true) {
                 controller.state
                     .onEach { notificationManager().notify(NOTIFICATION_ID, notification(it.statusText)) }
                     .first { !it.phase.holdsMicrophone }
@@ -176,6 +198,26 @@ class DictationService : Service() {
         fun send(context: Context, action: String) {
             context.startService(Intent(context, DictationService::class.java).setAction(action))
         }
+    }
+}
+
+/**
+ * Whether a start attempt has resolved, either way.
+ *
+ * [DictationService] holds a microphone foreground service from before capture
+ * begins until it can see the microphone actually being held, so it needs to
+ * recognise the outcomes that never reach the microphone at all — otherwise the
+ * only thing that ends the wait is a timeout the user spends looking at a
+ * recording notification.
+ */
+internal object DictationStartWatch {
+    fun hasSettled(phase: DictationPhase): Boolean = when (phase) {
+        // Capture is running, which is what the service exists to cover.
+        DictationPhase.LISTENING, DictationPhase.FINALIZING -> true
+        // Resolved without ever recording: a permission to repair, or a
+        // microphone that could not be opened.
+        DictationPhase.PERMISSION_REPAIR, DictationPhase.FAILED -> true
+        else -> false
     }
 }
 

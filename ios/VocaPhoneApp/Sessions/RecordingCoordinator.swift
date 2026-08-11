@@ -151,7 +151,14 @@ final class RecordingCoordinator {
         case "dictate":
             if let requested = try? store.load(id) {
                 activeRecord = requested
-                message = "Starting the recording requested by the keyboard…"
+                // The hand-off can arrive after the keyboard already gave up on
+                // it. Announcing a recording that `startSession` will decline to
+                // start left the app insisting it was listening when it was not.
+                if [.launchingApp, .awaitingReturn].contains(requested.state) {
+                    message = "Starting the recording requested by the keyboard…"
+                } else if requested.state == .expired {
+                    message = "That dictation timed out. Tap Dictate again."
+                }
             }
             Task { await startSession(id: id) }
         case "retry":
@@ -369,7 +376,16 @@ final class RecordingCoordinator {
 
     func recoverRecentSession() async {
         pruneSharedStorage()
-        guard let record = try? store.mostRecent() else {
+        let recovered = try? store.mostRecent()
+        // A Live Activity belongs to the system and outlives its app, so a
+        // jetsam kill or a crash mid-recording strands one in the Dynamic
+        // Island still offering Finish for a session that no longer exists.
+        // Nothing else notices, because the process that owned it is gone.
+        // Whether an activity is genuinely orphaned is the manager's own
+        // question — a stale record still says `recording` in exactly the case
+        // this is here to clean up, so it cannot be answered from one.
+        liveActivity.discardOrphanedActivities()
+        guard let record = recovered else {
             activeRecord = nil
             message = nil
             return
@@ -381,14 +397,24 @@ final class RecordingCoordinator {
                 message = "The transcript was inserted successfully."
             case .canceled:
                 message = "Recording canceled."
+            case .expired:
+                message = "The last dictation timed out and was discarded."
             default:
                 message = record.error?.message
             }
             return
         }
-        if [.launchingApp, .awaitingReturn].contains(record.state),
-           Date().timeIntervalSince(record.updatedAt) <= 120
+        // Never against a capture this process is still making: the watchdog is
+        // for a recorder that is gone, and the audio is the one thing here that
+        // cannot be recreated.
+        if !recorder.isRecording,
+           let expired = SessionExpiryPolicy.expireIfStale(record, in: store)
         {
+            activeRecord = expired
+            message = "The last dictation timed out and was discarded."
+            return
+        }
+        if [.launchingApp, .awaitingReturn].contains(record.state) {
             message = "Starting the recording requested by the keyboard…"
             await startSession(id: record.sessionID)
             return
@@ -414,6 +440,13 @@ final class RecordingCoordinator {
                 return
             }
             guard [.launchingApp, .awaitingReturn].contains(record.state) else { return }
+            // Claim the request before anything slow, so the keyboard's launch
+            // fallback knows this app has it. Warming the microphone can take
+            // seconds — a first on-device model load, another app releasing the
+            // input — and without the claim the keyboard opens vocaphone on top
+            // of a Quick Dictation that was seconds from recording.
+            record.claimedAt = Date()
+            try? store.save(record)
             clearQuickDictationMarker()
             activeRecord = record
             let granted = await withCheckedContinuation { continuation in
@@ -995,7 +1028,11 @@ final class RecordingCoordinator {
             startPipeline(shared)
         case .uploading where !recorder.isRecording && pipelineSessionID == nil:
             startPipeline(shared)
-        case .canceled:
+        // Expiry is the keyboard acting as watchdog for an app that stopped
+        // answering. It has to tear down exactly as far as a cancel does:
+        // retiring only the record would leave this recorder holding the
+        // microphone for a session no other process believes in.
+        case .canceled, .expired:
             pipelineTask?.cancel()
             pipelineTask = nil
             pipelineSessionID = nil
@@ -1004,14 +1041,20 @@ final class RecordingCoordinator {
             localSherpaSession = nil
             let shouldRemainReady = shouldKeepQuickDictationReady(after: shared)
             recorder.cancelSession(keepAudioSessionActive: shouldRemainReady)
+            let headline = shared.state == .expired
+                ? "The dictation timed out and was discarded."
+                : "Recording canceled."
             if shouldRemainReady {
                 armQuickDictation()
-                message = "Recording canceled. Quick Dictation is still ready."
+                message = headline + " Quick Dictation is still ready."
             } else {
                 clearQuickDictationReadiness(deactivateAudioSession: true)
-                message = "Recording canceled."
+                message = headline
             }
-            liveActivity.end(status: "Canceled", dismissAfter: 0)
+            liveActivity.end(
+                status: shared.state == .expired ? "Timed out" : "Canceled",
+                dismissAfter: 0
+            )
             await startPendingQuickDictationIfNeeded()
         default:
             if shared.state.isTerminal {
@@ -1079,7 +1122,13 @@ final class RecordingCoordinator {
         audioSessionAvailable = false
         if activeRecord?.state == .recording, recorder.isRecording {
             message = reason
-            liveActivity.end(status: "Audio interrupted", dismissAfter: 0)
+            // Ending the activity here retired the manager's session, which
+            // then silently dropped every later update: the Dynamic Island
+            // disappeared the instant a call arrived, while the app went on to
+            // transcribe what it had already captured, and the transcript
+            // arrived with nothing outside the app to say so. What was captured
+            // is still being finished, so the activity follows it there.
+            liveActivity.update(status: "Audio interrupted", canFinish: false)
             requestFinish()
         } else {
             clearQuickDictationReadiness(deactivateAudioSession: true)

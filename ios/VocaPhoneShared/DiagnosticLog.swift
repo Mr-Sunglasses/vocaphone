@@ -22,6 +22,7 @@ enum DiagnosticEvent: String, Codable, Sendable {
     case appStarted
     case keyboardShown
     case sessionStateChanged
+    case sessionExpired
     case quickDictationArmed
     case quickDictationStopped
     case quickDictationStale
@@ -51,6 +52,9 @@ enum DiagnosticReason: String, Codable, Sendable {
     case quickDictationOff
     case sessionFinished
     case processExit
+    /// A Live Activity outlived the process that created it — a jetsam kill or
+    /// a crash mid-recording — and was cleared on the next launch.
+    case orphanRecovered
     case resumeAllowed
     case resumeNotAllowed
 }

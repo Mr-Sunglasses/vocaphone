@@ -87,6 +87,14 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// no other app to return to, so the hand-off guidance must be suppressed.
     /// Optional so records written before this field still decode.
     var startedInContainingApp: Bool?
+    /// When the containing app took ownership of a hand-off, written before the
+    /// microphone is warm. The keyboard's launch fallback waits on this: warming
+    /// the graph can take longer than the fallback window — a first on-device
+    /// model load, or a microphone another app is still releasing — and opening
+    /// vocaphone anyway pulls the user out of the app they are typing in for a
+    /// Quick Dictation that was about to succeed. Optional so records written
+    /// before this field still decode.
+    var claimedAt: Date?
 
     init(
         sessionID: UUID = UUID(),
@@ -108,6 +116,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         self.style = style
         meterLevel = 0
         startedInContainingApp = nil
+        claimedAt = nil
     }
 
     mutating func transition(to next: SessionState, now: Date = Date()) throws {
@@ -133,21 +142,30 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         .serverUnavailable, .uploadFailedRecoverable, .transcriptionFailedRecoverable,
     ]
 
+    /// Every waiting state can also expire. Each of them is waiting on another
+    /// process that can silently never answer — a host app that swallowed the
+    /// hand-off, a containing app iOS killed mid-recording, a gateway that
+    /// stopped replying — and without a way out the record stays non-terminal
+    /// for the life of the install. See `SessionExpiryPolicy`.
     private static let allowedTransitions: [SessionState: Set<SessionState>] = [
         .idle: [.launchingApp, .canceled],
-        .launchingApp: [.awaitingReturn, .recording, .permissionDenied, .canceled],
-        .awaitingReturn: [.recording, .permissionDenied, .canceled],
+        .launchingApp: [.awaitingReturn, .recording, .permissionDenied, .canceled, .expired],
+        .awaitingReturn: [.recording, .permissionDenied, .canceled, .expired],
         .recording: [.finalizing, .canceled, .expired],
         // A capture can be known unusable before anything is ever sent: a
         // microphone another app silenced yields a file that no amount of
         // retrying will turn into a transcript.
         .finalizing: [
             .uploading, .uploadFailedRecoverable, .transcriptionFailedPermanent, .canceled,
+            .expired,
         ],
-        .uploading: [.transcribing, .readyToInsert, .serverUnavailable, .uploadFailedRecoverable, .canceled],
+        .uploading: [
+            .transcribing, .readyToInsert, .serverUnavailable, .uploadFailedRecoverable,
+            .canceled, .expired,
+        ],
         .transcribing: [
             .readyToInsert, .transcriptionFailedRecoverable,
-            .transcriptionFailedPermanent, .serverUnavailable,
+            .transcriptionFailedPermanent, .serverUnavailable, .canceled, .expired,
         ],
         .readyToInsert: [.inserting, .targetContextChanged, .canceled, .expired],
         // The transcript survives a detour into another text field. Returning to
@@ -172,6 +190,76 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
 
 enum SessionTransitionError: Error, Equatable {
     case invalid(from: SessionState, to: SessionState)
+}
+
+/// How long a session may sit in one state before every process should stop
+/// treating it as live.
+///
+/// A session that nothing retires stays non-terminal forever, and the keyboard
+/// adopts the newest non-terminal session on *every* appearance in *every* app.
+/// That is how a hand-off the host app silently refused becomes a permanent
+/// "Opening vocaphone" bar, and how a transcript abandoned yesterday gets
+/// auto-inserted into an unrelated field today.
+///
+/// The windows are generous on purpose: expiring is a watchdog for a process
+/// that is gone, never a deadline for a slow one.
+enum SessionExpiryPolicy {
+    /// The containing app claims a hand-off within seconds. Two minutes still
+    /// covers a cold launch behind Face ID and a first on-device model load.
+    static let handoffWindow: TimeInterval = 120
+    /// Capture is hard-capped by `maximumRecordingSeconds`, so anything past
+    /// that plus a wide margin means the recorder is gone, not slow.
+    static let captureWindow: TimeInterval = AppConfiguration.maximumRecordingSeconds + 120
+    /// Upload and transcription run on the user's own gateway or on device.
+    static let processingWindow: TimeInterval = 10 * 60
+    /// A transcript waiting for a tap stays useful for a while, but not for the
+    /// rest of the install — it is offered by whichever field is focused next.
+    static let pendingUserActionWindow: TimeInterval = 60 * 60
+
+    static func window(for state: SessionState) -> TimeInterval? {
+        switch state {
+        case .launchingApp, .awaitingReturn:
+            handoffWindow
+        case .recording:
+            captureWindow
+        case .finalizing, .uploading, .transcribing:
+            processingWindow
+        case .readyToInsert, .targetContextChanged, .serverUnavailable,
+             .uploadFailedRecoverable, .transcriptionFailedRecoverable:
+            pendingUserActionWindow
+        // `idle`, `inserting` and `inserted` last microseconds inside a single
+        // process, and the terminal states need no watchdog at all.
+        default:
+            nil
+        }
+    }
+
+    static func isStale(_ record: SessionRecord, now: Date = Date()) -> Bool {
+        guard let window = window(for: record.state) else { return false }
+        return now.timeIntervalSince(record.updatedAt) > window
+    }
+
+    /// Retires a stale session durably, so the other process learns about it
+    /// through the shared record rather than each one keeping its own timer.
+    /// Returns the expired record, or nil when the session is still live.
+    @discardableResult
+    static func expireIfStale(
+        _ record: SessionRecord,
+        in store: SharedStore,
+        now: Date = Date()
+    ) -> SessionRecord? {
+        guard isStale(record, now: now) else { return nil }
+        var expiring = record
+        do {
+            try expiring.transition(to: .expired, now: now)
+            try store.save(expiring)
+        } catch {
+            // A state with no expiry path keeps whatever recovery it offers.
+            return nil
+        }
+        DiagnosticLog.record(.sessionExpired, metadata: .state(record.state))
+        return expiring
+    }
 }
 
 /// Polling is only a recovery path for a dropped Darwin notification. Keep it

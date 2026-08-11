@@ -96,6 +96,16 @@ class DictationController(
     @Volatile
     private var cancelRequested = false
 
+    /**
+     * Which dictation owns [state]. `fail` finishes its history write under
+     * `NonCancellable`, so a cancel — or the dictation the user starts straight
+     * after one — can land while a failure is still being reported. The late
+     * write then put a FAILED phase on top of a session that was recording
+     * perfectly well. Every start, retry and reset takes the next generation,
+     * and a write from an older one is dropped.
+     */
+    private val generation = AtomicInteger()
+
     init {
         scope.launch {
             state
@@ -117,6 +127,7 @@ class DictationController(
         diagnostics.recordAction("start", source.name)
         finishSignal = CompletableDeferred()
         cancelRequested = false
+        val generation = nextGeneration()
         pipeline = scope.launch {
             val configuration = settings.current()
             val missing = missingPermissions(configuration)
@@ -137,7 +148,7 @@ class DictationController(
                 )
                 return@launch
             }
-            runDictation(source, configuration, token, UUID.randomUUID())
+            runDictation(source, configuration, token, UUID.randomUUID(), generation)
         }
     }
 
@@ -160,6 +171,7 @@ class DictationController(
     /** Re-sends audio that was preserved for a recoverable failure. */
     fun retry(sessionId: String) {
         if (pipeline?.isActive == true) return
+        val generation = nextGeneration()
         pipeline = scope.launch {
             val record = history.find(sessionId) ?: return@launch
             val audio = record.audioPath?.let(::File)
@@ -188,6 +200,7 @@ class DictationController(
                     language = record.language,
                     configuration = configuration,
                     source = DictationSource.COMPANION_APP,
+                    generation = generation,
                 )
             } else {
                 val token = settings.token() ?: return@launch
@@ -199,6 +212,7 @@ class DictationController(
                     style = record.style,
                     configuration = configuration,
                     source = DictationSource.COMPANION_APP,
+                    generation = generation,
                 )
             }
         }
@@ -228,6 +242,7 @@ class DictationController(
         configuration: VocaPhoneSettings,
         token: String?,
         sessionId: UUID,
+        generation: Int,
     ) {
         audioDirectory.mkdirs()
         val wavFile = File(audioDirectory, "$sessionId.wav")
@@ -313,6 +328,7 @@ class DictationController(
                 ),
                 wavFile = null,
                 configuration = configuration,
+                generation = generation,
             )
             return
         }
@@ -460,6 +476,7 @@ class DictationController(
                     ),
                     wavFile = null,
                     configuration = configuration,
+                    generation = generation,
                 )
                 return
             }
@@ -476,6 +493,7 @@ class DictationController(
                 GatewayException("audio_empty", "That was too short to transcribe.", recoverable = false),
                 wavFile = null,
                 configuration = configuration,
+                generation = generation,
             )
             return
         }
@@ -497,6 +515,7 @@ class DictationController(
                 ),
                 wavFile = null,
                 configuration = configuration,
+                generation = generation,
             )
             return
         }
@@ -531,6 +550,7 @@ class DictationController(
                 language = configuration.effectiveLanguage.wireValue,
                 configuration = configuration,
                 source = source,
+                generation = generation,
                 preparedTranscript = preparedTranscript,
                 transcriptionTimingRecorded = timingRecorded,
             )
@@ -548,7 +568,7 @@ class DictationController(
             } catch (error: GatewayException) {
                 if (!error.recoverable) {
                     wavFile.delete()
-                    fail(sessionId, error, wavFile = null, configuration = configuration)
+                    fail(sessionId, error, wavFile = null, configuration = configuration, generation = generation)
                     return
                 }
                 recordBatchFallback()
@@ -560,7 +580,7 @@ class DictationController(
             val cleaned = TranscriptSanitizer.clean(transcript)
             if (transcript != null && cleaned.isEmpty()) {
                 wavFile.delete()
-                fail(sessionId, GatewayException.emptyTranscript(), null, configuration)
+                fail(sessionId, GatewayException.emptyTranscript(), null, configuration, generation)
                 return
             }
             if (cleaned.isNotEmpty()) {
@@ -583,6 +603,7 @@ class DictationController(
             configuration.style.wireValue,
             configuration,
             source,
+            generation,
         )
     }
 
@@ -624,6 +645,7 @@ class DictationController(
         style: String,
         configuration: VocaPhoneSettings,
         source: DictationSource,
+        generation: Int,
     ) {
         try {
             _state.update { it.copy(phase = DictationPhase.UPLOADING) }
@@ -646,7 +668,7 @@ class DictationController(
             wavFile.delete()
             deliver(transcript, sessionId, configuration, source)
         } catch (error: GatewayException) {
-            fail(sessionId, error, wavFile, configuration)
+            fail(sessionId, error, wavFile, configuration, generation)
         }
     }
 
@@ -656,6 +678,7 @@ class DictationController(
         language: String,
         configuration: VocaPhoneSettings,
         source: DictationSource,
+        generation: Int,
         preparedTranscript: String? = null,
         transcriptionTimingRecorded: Boolean = false,
     ) {
@@ -689,6 +712,7 @@ class DictationController(
                 ),
                 wavFile,
                 configuration,
+                generation,
             )
         }
     }
@@ -783,6 +807,7 @@ class DictationController(
         error: GatewayException,
         wavFile: File?,
         configuration: VocaPhoneSettings,
+        generation: Int,
     ) = withContext(NonCancellable) {
         diagnostics.recordError(errorCategory(error), activeSource?.name)
         history.recordFailure(
@@ -796,6 +821,12 @@ class DictationController(
             retentionHours = configuration.audioRetention.hours,
             targetPackage = null,
         )
+        // The history write above is the durable half and always runs: the audio
+        // is preserved and Retry has to find it. Reporting the failure on screen
+        // is the half that can arrive too late — this block is `NonCancellable`,
+        // so a cancel, or the dictation started right after it, can have taken
+        // the state over while the write was in flight.
+        if (this@DictationController.generation.get() != generation) return@withContext
         _state.value = _state.value.copy(
             phase = DictationPhase.FAILED,
             level = 0f,
@@ -803,7 +834,11 @@ class DictationController(
         )
     }
 
+    /** Retires whatever owned the state, so nothing older can write to it. */
+    private fun nextGeneration(): Int = generation.incrementAndGet()
+
     private fun reset() {
+        nextGeneration()
         _state.value = DictationState()
     }
 

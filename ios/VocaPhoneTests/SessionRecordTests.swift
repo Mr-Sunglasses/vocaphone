@@ -163,6 +163,159 @@ struct SessionRecordTests {
         #expect(try store.mostRecent() == nil)
     }
 
+    /// The bar offers Cancel in every live state, so every live state has to
+    /// accept it. Transcription did not, and the tap reported "The session
+    /// changed. Please try again." while the session carried on regardless.
+    @Test func cancelIsAcceptedWhereverTheBarOffersIt() throws {
+        for abandonAfter in [
+            SessionState.launchingApp, .awaitingReturn, .recording, .finalizing,
+            .uploading, .transcribing, .readyToInsert, .targetContextChanged,
+        ] {
+            var record = SessionRecord()
+            for state in Self.route(to: abandonAfter) {
+                try record.transition(to: state)
+            }
+            #expect(record.state == abandonAfter)
+            try record.transition(to: .canceled)
+            #expect(record.state.isTerminal)
+        }
+    }
+
+    /// The shortest legal sequence of transitions that arrives at `state`.
+    private static func route(to state: SessionState) -> [SessionState] {
+        let pipeline: [SessionState] = [
+            .launchingApp, .recording, .finalizing, .uploading, .transcribing,
+            .readyToInsert, .targetContextChanged,
+        ]
+        if state == .awaitingReturn { return [.launchingApp, .awaitingReturn] }
+        guard let end = pipeline.firstIndex(of: state) else { return [state] }
+        return Array(pipeline.prefix(through: end))
+    }
+
+    // MARK: - Expiry
+
+    /// The keyboard adopts the newest non-terminal session every time it
+    /// appears, in any app. A hand-off nobody completed therefore has to become
+    /// terminal on its own, or it is a permanent "Opening vocaphone" bar.
+    @Test func anUncompletedHandoffExpiresRatherThanWaitingForever() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        for state in [SessionState.launchingApp, .awaitingReturn] {
+            var record = SessionRecord(now: start)
+            try record.transition(to: .launchingApp, now: start)
+            if state == .awaitingReturn {
+                try record.transition(to: .awaitingReturn, now: start)
+            }
+
+            let withinWindow = start.addingTimeInterval(
+                SessionExpiryPolicy.handoffWindow - 1
+            )
+            #expect(!SessionExpiryPolicy.isStale(record, now: withinWindow))
+            #expect(SessionExpiryPolicy.isStale(
+                record,
+                now: start.addingTimeInterval(SessionExpiryPolicy.handoffWindow + 1)
+            ))
+        }
+    }
+
+    /// The audio the user is speaking must never be retired underneath them, so
+    /// the capture window has to clear the hard recording cap by a wide margin.
+    @Test func aLiveRecordingOutlastsTheCapItIsAlreadyBoundedBy() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var record = SessionRecord(now: start)
+        try record.transition(to: .launchingApp, now: start)
+        try record.transition(to: .recording, now: start)
+
+        #expect(!SessionExpiryPolicy.isStale(
+            record,
+            now: start.addingTimeInterval(AppConfiguration.maximumRecordingSeconds + 60)
+        ))
+        #expect(SessionExpiryPolicy.isStale(
+            record,
+            now: start.addingTimeInterval(SessionExpiryPolicy.captureWindow + 1)
+        ))
+    }
+
+    /// A transcript in flight belongs to the field it was dictated for, and the
+    /// hand-off back to that field is measured in seconds. Keeping it offered
+    /// indefinitely is what let yesterday's dictation land in today's field.
+    @Test func anAbandonedTranscriptStopsBeingOfferedEventually() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var record = SessionRecord(now: start)
+        for state in [
+            SessionState.launchingApp, .recording, .finalizing, .uploading,
+            .transcribing, .readyToInsert,
+        ] {
+            try record.transition(to: state, now: start)
+        }
+
+        #expect(!SessionExpiryPolicy.isStale(record, now: start.addingTimeInterval(60)))
+        #expect(SessionExpiryPolicy.isStale(
+            record,
+            now: start.addingTimeInterval(SessionExpiryPolicy.pendingUserActionWindow + 1)
+        ))
+    }
+
+    /// Terminal states have already stopped; expiring them again would rewrite
+    /// finished history and re-notify every observer.
+    @Test func settledSessionsAreNeverExpiredAgain() {
+        for state in SessionState.allCases where state.isTerminal {
+            #expect(SessionExpiryPolicy.window(for: state) == nil)
+        }
+    }
+
+    /// Expiry is durable so the other process learns about it from the shared
+    /// record rather than each one running its own timer.
+    @Test func expiringWritesThroughSoBothProcessesAgree() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedStore(rootOverride: directory)
+        let start = Date(timeIntervalSince1970: 1_000)
+        var record = SessionRecord(now: start)
+        try record.transition(to: .launchingApp, now: start)
+        try store.save(record)
+
+        let fresh = SessionExpiryPolicy.expireIfStale(
+            record,
+            in: store,
+            now: start.addingTimeInterval(10)
+        )
+        #expect(fresh == nil)
+        #expect(try store.load(record.sessionID)?.state == .launchingApp)
+
+        let expired = SessionExpiryPolicy.expireIfStale(
+            record,
+            in: store,
+            now: start.addingTimeInterval(SessionExpiryPolicy.handoffWindow + 1)
+        )
+        #expect(expired?.state == .expired)
+        #expect(try store.load(record.sessionID)?.state == .expired)
+    }
+
+    /// The keyboard's launch fallback reads this to tell "the app never heard
+    /// me" from "the app is warming the microphone", which is the difference
+    /// between rescuing a dictation and yanking the user out of their app.
+    @Test func aClaimedHandoffRoundTripsAndDefaultsToUnclaimed() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedStore(rootOverride: directory)
+
+        var record = SessionRecord()
+        try record.transition(to: .launchingApp)
+        try store.save(record)
+        #expect(try store.load(record.sessionID)?.claimedAt == nil)
+
+        record.claimedAt = Date(timeIntervalSince1970: 2_000)
+        try store.save(record)
+        #expect(
+            try store.load(record.sessionID)?.claimedAt
+                == Date(timeIntervalSince1970: 2_000)
+        )
+        // Claiming is not a state change: the hand-off is still outstanding.
+        #expect(try store.load(record.sessionID)?.state == .launchingApp)
+    }
+
     /// Writes `count` sessions with explicit, increasing modification dates so
     /// recency ordering is deterministic rather than dependent on filesystem
     /// timestamp resolution. Returns identifiers oldest to newest.
