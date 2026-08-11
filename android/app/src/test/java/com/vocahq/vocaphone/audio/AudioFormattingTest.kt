@@ -43,6 +43,37 @@ class PcmConversionTest {
         assertEquals(0f, PcmConversion.level(ShortArray(0)), 0f)
         assertEquals(1f, PcmConversion.level(ShortArray(160) { Short.MIN_VALUE }), 1e-6f)
     }
+
+    @Test
+    fun `peak reports the loudest sample regardless of its sign`() {
+        assertEquals(0, PcmConversion.peak(ShortArray(160)))
+        assertEquals(0, PcmConversion.peak(ShortArray(0)))
+        assertEquals(900, PcmConversion.peak(shortArrayOf(12, -900, 40)))
+        assertEquals(32_768, PcmConversion.peak(shortArrayOf(0, Short.MIN_VALUE)))
+    }
+
+    @Test
+    fun `peak reads only the requested sample count`() {
+        val samples = shortArrayOf(5, 7, 30_000, 30_000)
+        assertEquals(7, PcmConversion.peak(samples, count = 2))
+    }
+}
+
+class SilentCaptureTest {
+
+    /**
+     * A microphone Android has taken away delivers exact zeros. A microphone
+     * that is merely in a quiet room does not: its noise floor sits far above
+     * the two least-significant bits this allows for.
+     */
+    @Test
+    fun `a silenced capture is told apart from a quiet room`() {
+        assertTrue(!SilentCapture.heardSomething(PcmConversion.peak(ShortArray(160))))
+        assertTrue(!SilentCapture.heardSomething(SilentCapture.PEAK_THRESHOLD))
+        assertTrue(SilentCapture.heardSomething(SilentCapture.PEAK_THRESHOLD + 1))
+        // A whisper two hundred times quieter than full scale still counts.
+        assertTrue(SilentCapture.heardSomething(PcmConversion.peak(shortArrayOf(0, -160, 0))))
+    }
 }
 
 class WavWriterTest {

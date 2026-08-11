@@ -32,6 +32,16 @@ object PcmConversion {
         return into
     }
 
+    /** The loudest absolute sample in a frame, 0…32768. */
+    fun peak(samples: ShortArray, count: Int = samples.size): Int {
+        var peak = 0
+        for (index in 0 until count) {
+            val magnitude = kotlin.math.abs(samples[index].toInt())
+            if (magnitude > peak) peak = magnitude
+        }
+        return peak
+    }
+
     /** Root-mean-square amplitude in 0…1, for the recording meter only. */
     fun level(samples: ShortArray, count: Int = samples.size): Float {
         if (count <= 0) return 0f
@@ -42,6 +52,20 @@ object PcmConversion {
         }
         return kotlin.math.sqrt(sum / count).toFloat().coerceIn(0f, 1f)
     }
+}
+
+/**
+ * Android hands an app whose microphone another app has taken a stream of exact
+ * zeros and reports nothing at all — no error, no callback on some devices. A
+ * working microphone always has a noise floor, so a whole recording this quiet
+ * is that silencing rather than a quiet room, and saying so beats reporting an
+ * empty transcript the user cannot act on.
+ */
+object SilentCapture {
+    /** Two least-significant bits: below any noise floor, above a dithered zero. */
+    const val PEAK_THRESHOLD = 2
+
+    fun heardSomething(peak: Int): Boolean = peak > PEAK_THRESHOLD
 }
 
 /**

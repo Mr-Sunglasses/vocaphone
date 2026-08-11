@@ -7,11 +7,44 @@ import android.media.AudioFormat
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioRecord
+import android.media.AudioRecordingConfiguration
 import android.media.MediaRecorder
 import android.os.Process
 import androidx.annotation.RequiresPermission
 import com.vocahq.vocaphone.core.MicrophonePreference
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.delay
+
+/**
+ * Why a capture ended without the user asking it to. Android surfaces all of
+ * these as an ordinary failure, but each one means another app took the input
+ * rather than that recording is broken — so whatever was captured first is
+ * still the user's words.
+ */
+enum class MicrophoneInterruption {
+    /** A call, an assistant, or another exclusive user took audio focus. */
+    FOCUS_LOST,
+
+    /** Android is feeding this capture zeros because another app holds the input. */
+    SILENCED,
+
+    /** The capture session was torn down underneath the read loop. */
+    CAPTURE_LOST,
+}
+
+/**
+ * A microphone another app is holding, as opposed to one that does not work.
+ * The distinction is what lets an interrupted dictation keep its audio instead
+ * of discarding a sentence the user already finished saying.
+ */
+class MicrophoneInterruptedException(
+    val interruption: MicrophoneInterruption,
+    message: String,
+) : IllegalStateException(message)
 
 /**
  * Microphone capture on its own high-priority thread. The read loop only copies
@@ -46,17 +79,25 @@ class AudioCapture(
     @Volatile
     private var audioFocusRequest: AudioFocusRequest? = null
 
+    /**
+     * The first reason capture ended. Focus loss, silencing and a dead recorder
+     * arrive together when another app takes the microphone, and only the one
+     * that arrived first explains anything.
+     */
+    private val reported = AtomicReference<Throwable?>(null)
+
+    @Volatile
+    private var watchdog: ScheduledExecutorService? = null
+
+    @Volatile
+    private var silenceCallback: AudioManager.AudioRecordingCallback? = null
+
     private val audioManager: AudioManager? get() = context.getSystemService(AudioManager::class.java)
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    fun start(): Boolean {
+    suspend fun start(): Boolean {
         if (!running.compareAndSet(false, true)) return true
-
-        if (!requestAudioFocus()) {
-            running.set(false)
-            onError(IllegalStateException("Another app is using the microphone."))
-            return false
-        }
+        reported.set(null)
 
         val minimum = AudioRecord.getMinBufferSize(
             CaptureFormat.SAMPLE_RATE,
@@ -65,7 +106,6 @@ class AudioCapture(
         )
         if (minimum <= 0) {
             running.set(false)
-            abandonAudioFocus()
             onError(IllegalStateException("This device cannot record 16 kHz mono audio."))
             return false
         }
@@ -73,52 +113,35 @@ class AudioCapture(
         // overrun the buffer and drop the middle of a sentence.
         val bufferBytes = maxOf(minimum * 4, frameSamples * CaptureFormat.BYTES_PER_SAMPLE * 8)
 
-        val recorder = try {
-            AudioRecord(
-                MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                CaptureFormat.SAMPLE_RATE,
-                AudioFormat.CHANNEL_IN_MONO,
-                AudioFormat.ENCODING_PCM_16BIT,
-                bufferBytes,
-            )
-        } catch (error: Throwable) {
-            running.set(false)
-            abandonAudioFocus()
-            onError(error)
-            return false
+        // Focus is how a call announces itself mid-dictation, not permission to
+        // record. Refusing to start without it would fail dictations that would
+        // have worked, so a refusal is noted and capture is attempted anyway.
+        requestAudioFocus()
+
+        // Another app letting go of the microphone — a call ending, a screen
+        // recorder handing it back — is not instantaneous, and Android reports
+        // that gap as an ordinary failure. Retrying across it turns a lost
+        // dictation into a slightly delayed one.
+        repeat(START_ATTEMPTS) { attempt ->
+            if (attempt > 0) delay(START_RETRY_MILLIS)
+            // `stop` during the wait means the dictation is already over; a
+            // later attempt would open a recorder nothing would ever close.
+            if (!running.get()) return false
+            if (openRecorder(bufferBytes)) return true
         }
 
-        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-            recorder.release()
-            running.set(false)
-            abandonAudioFocus()
-            onError(IllegalStateException("The microphone is not available right now."))
-            return false
-        }
-
-        record = recorder
-        return try {
-            applyPreference(recorder)
-            recorder.startRecording()
-            if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
-                throw IllegalStateException("Another app is using the microphone.")
-            }
-            thread = Thread({ readLoop(recorder) }, "vocaphone-capture").apply {
-                priority = Thread.MAX_PRIORITY
-                start()
-            }
-            true
-        } catch (error: Throwable) {
-            stop()
-            onError(error)
-            false
-        }
+        running.set(false)
+        releaseCommunicationDevice()
+        abandonAudioFocus()
+        onError(unavailableMicrophone())
+        return false
     }
 
     @Synchronized
     fun stop() {
         running.set(false)
         val recorder = record
+        stopSilenceWatch(recorder)
         // AudioRecord.read is blocking. Stop the recorder first so the read loop
         // wakes immediately; joining before stop made Finish wait up to 500 ms.
         recorder?.let {
@@ -141,12 +164,77 @@ class AudioCapture(
     }
 
     /**
-     * Capturing speech owns transient audio focus. A call, Siri or another
-     * exclusive microphone user therefore turns this dictation into an explicit
-     * interruption instead of leaving a foreground service that appears alive.
+     * One attempt at owning the input. Returns false — having cleaned up after
+     * itself — when the microphone was not available this time round.
      */
-    private fun requestAudioFocus(): Boolean {
-        val manager = audioManager ?: return true
+    @Synchronized
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    private fun openRecorder(bufferBytes: Int): Boolean {
+        val recorder = try {
+            AudioRecord(
+                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                CaptureFormat.SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                bufferBytes,
+            )
+        } catch (_: Throwable) {
+            return false
+        }
+        if (recorder.state != AudioRecord.STATE_INITIALIZED) {
+            runCatching { recorder.release() }
+            return false
+        }
+
+        return try {
+            applyPreference(recorder)
+            recorder.startRecording()
+            if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+                throw IllegalStateException("The microphone did not start.")
+            }
+            record = recorder
+            watchForSilencing(recorder)
+            thread = Thread({ readLoop(recorder) }, "vocaphone-capture").apply {
+                priority = Thread.MAX_PRIORITY
+                start()
+            }
+            true
+        } catch (_: Throwable) {
+            record = null
+            stopSilenceWatch(recorder)
+            runCatching { recorder.stop() }
+            runCatching { recorder.release() }
+            releaseCommunicationDevice()
+            false
+        }
+    }
+
+    /**
+     * "Could not start" means different things to the user depending on who else
+     * is holding the input, so the cause is read once here rather than guessed
+     * at by every surface that shows the message.
+     */
+    private fun unavailableMicrophone(): MicrophoneInterruptedException {
+        val mode = runCatching { audioManager?.mode }.getOrNull()
+        val inCall = mode == AudioManager.MODE_IN_CALL || mode == AudioManager.MODE_IN_COMMUNICATION
+        return MicrophoneInterruptedException(
+            MicrophoneInterruption.SILENCED,
+            if (inCall) {
+                "The microphone is busy with a call. Try again once the call ends."
+            } else {
+                "Another app is using the microphone. Stop that recording and try again."
+            },
+        )
+    }
+
+    /**
+     * Capturing speech asks for transient exclusive focus, which is how a call
+     * or a voice assistant announces itself mid-dictation. Whether the request
+     * is granted is deliberately not acted on: focus is advisory, and the
+     * microphone is frequently usable without it.
+     */
+    private fun requestAudioFocus() {
+        val manager = audioManager ?: return
         val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -155,25 +243,94 @@ class AudioCapture(
                     .build(),
             )
             .setOnAudioFocusChangeListener { change ->
-                if (change == AudioManager.AUDIOFOCUS_LOSS ||
-                    change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT ||
-                    change == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK
-                ) {
-                    if (running.get()) {
-                        onError(IllegalStateException("Microphone access was interrupted."))
-                        running.set(false)
-                    }
+                when (change) {
+                    // The user's attention has moved to a call or an assistant,
+                    // so capture ends here and says why it did.
+                    AudioManager.AUDIOFOCUS_LOSS,
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+                    -> interrupt(
+                        MicrophoneInterruption.FOCUS_LOST,
+                        "Something else needed the microphone. Try dictating again.",
+                    )
+                    // Ducking asks a player to turn itself down. A recording has
+                    // no volume to turn down, so a notification chime or a
+                    // navigation prompt must not end a dictation.
+                    else -> Unit
                 }
             }
             .build()
         audioFocusRequest = request
-        return manager.requestAudioFocus(request) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        manager.requestAudioFocus(request)
     }
 
     private fun abandonAudioFocus() {
         val request = audioFocusRequest ?: return
         audioFocusRequest = null
         runCatching { audioManager?.abandonAudioFocusRequest(request) }
+    }
+
+    /**
+     * Android 10 and later let two apps hold the microphone at once and simply
+     * feed the loser digital silence, reporting no error anywhere. Without this
+     * the dictation looks healthy for its whole length and then produces an
+     * empty transcript, so the silencing is turned into the interruption it is.
+     */
+    private fun watchForSilencing(recorder: AudioRecord) {
+        val executor = Executors.newSingleThreadScheduledExecutor { runnable ->
+            Thread(runnable, "vocaphone-capture-watch")
+        }
+        val callback = object : AudioManager.AudioRecordingCallback() {
+            override fun onRecordingConfigChanged(configs: List<AudioRecordingConfiguration>) {
+                if (!running.get() || configs.none { it.isClientSilenced }) return
+                // A route change can silence a capture for a few frames on its
+                // way somewhere else. Only silence that is still there a moment
+                // later is another app holding the input.
+                runCatching {
+                    executor.schedule(
+                        ::confirmSilenced,
+                        SILENCE_CONFIRMATION_MILLIS,
+                        TimeUnit.MILLISECONDS,
+                    )
+                }
+            }
+        }
+        watchdog = executor
+        silenceCallback = callback
+        runCatching { recorder.registerAudioRecordingCallback(executor, callback) }
+    }
+
+    private fun confirmSilenced() {
+        if (!running.get()) return
+        val silenced = runCatching {
+            record?.activeRecordingConfiguration?.isClientSilenced
+        }.getOrNull() ?: return
+        if (!silenced) return
+        interrupt(
+            MicrophoneInterruption.SILENCED,
+            "Another app took the microphone. Try again once it has finished.",
+        )
+    }
+
+    private fun stopSilenceWatch(recorder: AudioRecord?) {
+        silenceCallback?.let { callback ->
+            silenceCallback = null
+            runCatching { recorder?.unregisterAudioRecordingCallback(callback) }
+        }
+        watchdog?.let { executor ->
+            watchdog = null
+            runCatching { executor.shutdownNow() }
+        }
+    }
+
+    /**
+     * Ends capture for a reason that is not the user's doing. Only the first
+     * reason is reported: everything after it is a consequence of it.
+     */
+    private fun interrupt(reason: MicrophoneInterruption, message: String) {
+        val error = MicrophoneInterruptedException(reason, message)
+        if (!reported.compareAndSet(null, error)) return
+        running.set(false)
+        onError(error)
     }
 
     /**
@@ -225,13 +382,39 @@ class AudioCapture(
             }
             when (count) {
                 0 -> continue
+                // A dead object is the microphone being reclaimed, which is an
+                // interruption rather than a fault in this recording.
+                AudioRecord.ERROR_DEAD_OBJECT -> {
+                    interrupt(
+                        MicrophoneInterruption.CAPTURE_LOST,
+                        "Another app took the microphone. Try again once it has finished.",
+                    )
+                    return
+                }
+
                 AudioRecord.ERROR_INVALID_OPERATION, AudioRecord.ERROR_BAD_VALUE,
-                AudioRecord.ERROR_DEAD_OBJECT, AudioRecord.ERROR,
+                AudioRecord.ERROR,
                 -> {
-                    if (running.get()) onError(IllegalStateException("Microphone capture stopped."))
+                    if (running.get()) {
+                        interrupt(
+                            MicrophoneInterruption.CAPTURE_LOST,
+                            "Microphone capture stopped unexpectedly. Try dictating again.",
+                        )
+                    }
                     return
                 }
             }
         }
+    }
+
+    private companion object {
+        /** Attempts at a microphone another app is in the middle of releasing. */
+        const val START_ATTEMPTS = 3
+
+        /** Long enough for a call teardown or a recorder handoff to complete. */
+        const val START_RETRY_MILLIS = 150L
+
+        /** Silence still present after this is another app, not a route change. */
+        const val SILENCE_CONFIRMATION_MILLIS = 400L
     }
 }

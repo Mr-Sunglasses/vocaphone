@@ -38,6 +38,30 @@ class DiagnosticLogTest {
         }
     }
 
+    /**
+     * A microphone failure is only diagnosable after the fact if the log says
+     * which one it was: the call or the screen recording that took the input is
+     * gone by the time anyone reads this.
+     */
+    @Test
+    fun `microphone failures are logged by cause rather than as one category`() {
+        val directory = Files.createTempDirectory("vocaphone-diagnostics").toFile()
+        try {
+            val log = DiagnosticLog(directory.resolve("events.log"), nowMillis = { 99L })
+
+            log.recordError("audio_focus_lost", "IME")
+            log.recordError("audio_silenced", "COMPANION_APP")
+            log.recordError("audio_capture_lost", "IME")
+
+            val output = log.read()
+            assertTrue(output.contains("event=error value=audio_focus_lost source=IME"))
+            assertTrue(output.contains("event=error value=audio_silenced source=COMPANION_APP"))
+            assertTrue(output.contains("event=error value=audio_capture_lost source=IME"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test
     fun `timing stages reject arbitrary values`() {
         val directory = Files.createTempDirectory("vocaphone-diagnostics").toFile()

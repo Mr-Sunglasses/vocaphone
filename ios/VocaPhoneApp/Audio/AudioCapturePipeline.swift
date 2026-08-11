@@ -11,6 +11,11 @@ enum CaptureFormat {
     /// Roughly 100 ms of audio per chunk. Small enough to keep streaming
     /// latency low, large enough to avoid a WebSocket frame every drain tick.
     static let chunkSampleCount = 1_600
+    /// A recording whose loudest sample never reached this is digital silence,
+    /// which is what a microphone another app has taken delivers. A working
+    /// microphone in a quiet room still has a noise floor far above two
+    /// sixteen-bit least-significant bits.
+    static let silenceThreshold: Float = 2 / 32_768
 }
 
 /// Single-producer, single-consumer float ring buffer with preallocated
@@ -99,6 +104,7 @@ final class AudioCapturePipeline: @unchecked Sendable {
     private var file: AVAudioFile?
     private var carry: [Float] = []
     private let meter = OSAllocatedUnfairLock(initialState: Float(0))
+    private let peak = OSAllocatedUnfairLock(initialState: Float(0))
     private let dropped = OSAllocatedUnfairLock(initialState: 0)
     private var emit: ((Data) -> Bool)?
 
@@ -106,6 +112,9 @@ final class AudioCapturePipeline: @unchecked Sendable {
     /// untrustworthy, so the caller falls back to uploading the intact file.
     var droppedChunkCount: Int { dropped.withLock { $0 } }
     var meterLevel: Float { meter.withLock { $0 } }
+    /// The loudest sample of the whole recording, which is what separates a
+    /// microphone another app silenced from one that simply heard a quiet room.
+    var peakLevel: Float { peak.withLock { $0 } }
 
     init?(sourceSampleRate: Double, ring: PCMRingBuffer) {
         guard let source = AVAudioFormat(
@@ -177,6 +186,7 @@ final class AudioCapturePipeline: @unchecked Sendable {
         }
         dropped.withLock { $0 = 0 }
         meter.withLock { $0 = 0 }
+        peak.withLock { $0 = 0 }
 
         let source = DispatchSource.makeTimerSource(queue: queue)
         // A 25 ms cadence against a two-second ring leaves ample margin even if
@@ -222,6 +232,9 @@ final class AudioCapturePipeline: @unchecked Sendable {
         inputBuffer.frameLength = AVAudioFrameCount(sampleCount)
 
         meter.withLock { $0 = Self.normalizedLevel(scratch, count: sampleCount) }
+        var loudest: Float = 0
+        vDSP_maxmgv(scratch, 1, &loudest, vDSP_Length(sampleCount))
+        peak.withLock { [loudest] in $0 = max($0, loudest) }
 
         var suppliedInput = false
         var conversionError: NSError?

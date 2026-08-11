@@ -38,6 +38,9 @@ final class AudioRecorder: NSObject {
     /// or a slower first decode cannot discard the beginning of the transcript.
     private(set) var localPcmChunks: AsyncStream<Data>?
     private(set) var lastDroppedChunkCount = 0
+    /// The loudest sample of the recording that just finished. Zero means iOS
+    /// handed this app silence, not that the user said nothing quietly.
+    private(set) var lastPeakLevel: Float = 0
 
     override init() {
         super.init()
@@ -102,10 +105,50 @@ final class AudioRecorder: NSObject {
         }
     }
 
+    /// Attempts at a microphone another app is in the middle of releasing.
+    private static let startAttempts = 3
+    /// Long enough for a call teardown or a broadcast handoff to complete.
+    private static let startRetryMilliseconds = 150
+
     /// Warms the same graph `start` will capture from. Recording feedback can
     /// therefore play before the tap starts without paying a second setup cost.
-    func prepareForRecording() throws {
-        try ensureEngineRunning()
+    ///
+    /// Another app letting go of the microphone — a call ending, a screen
+    /// recording stopping — is not instantaneous, and iOS reports that gap as an
+    /// ordinary activation failure. Retrying across it turns a dictation that
+    /// would have been lost into one that starts a moment late.
+    func prepareForRecording() async throws {
+        var lastError: (any Error)?
+        for attempt in 0..<Self.startAttempts {
+            if attempt > 0 {
+                try? await Task.sleep(for: .milliseconds(Self.startRetryMilliseconds))
+            }
+            do {
+                try ensureEngineRunning()
+                return
+            } catch {
+                lastError = error
+            }
+        }
+        throw Self.startFailure(lastError)
+    }
+
+    /// The same activation failure means different things to the user depending
+    /// on who else holds the input, so it is read once here rather than shown
+    /// raw as an unexplained Core Audio message.
+    private static func startFailure(_ error: (any Error)?) -> any Error {
+        guard let error else { return RecordingError.inputUnavailable }
+        if error is RecordingError { return error }
+        guard let code = AVAudioSession.ErrorCode(rawValue: (error as NSError).code) else {
+            return error
+        }
+        switch code {
+        case .isBusy, .cannotStartRecording, .cannotInterruptOthers,
+             .siriIsRecording, .insufficientPriority, .resourceNotAvailable:
+            return RecordingError.microphoneBusy
+        default:
+            return error
+        }
     }
 
     /// Starts writing from the already-running microphone engine. When Quick
@@ -234,6 +277,7 @@ final class AudioRecorder: NSObject {
         // caller uploads it.
         pipeline?.finish()
         lastDroppedChunkCount = (pipeline?.droppedChunkCount ?? 0) + (ring?.overflowCount ?? 0)
+        lastPeakLevel = pipeline?.peakLevel ?? 0
         chunkContinuation?.finish()
         chunkContinuation = nil
         pcmChunks = nil
@@ -419,6 +463,7 @@ enum RecordingError: LocalizedError {
     case alreadyRecording
     case inputUnavailable
     case iPhoneMicrophoneUnavailable
+    case microphoneBusy
 
     var errorDescription: String? {
         switch self {
@@ -428,6 +473,9 @@ enum RecordingError: LocalizedError {
             "The microphone input is unavailable."
         case .iPhoneMicrophoneUnavailable:
             "The iPhone microphone is not currently available."
+        case .microphoneBusy:
+            "Another app or a call is using the microphone. "
+                + "Stop that recording, or wait for the call to end, and try again."
         }
     }
 }

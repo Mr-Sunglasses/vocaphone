@@ -8,7 +8,10 @@ import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.vocahq.vocaphone.audio.AudioCapture
 import com.vocahq.vocaphone.audio.CaptureFormat
+import com.vocahq.vocaphone.audio.MicrophoneInterruptedException
+import com.vocahq.vocaphone.audio.MicrophoneInterruption
 import com.vocahq.vocaphone.audio.PcmConversion
+import com.vocahq.vocaphone.audio.SilentCapture
 import com.vocahq.vocaphone.audio.WavWriter
 import com.vocahq.vocaphone.core.DictationFailure
 import com.vocahq.vocaphone.core.DictationPhase
@@ -299,12 +302,14 @@ class DictationController(
             streamFrames?.close()
             writer.close()
             wavFile.delete()
+            // Nothing was captured, so there is nothing for Retry to re-send.
+            // The user's next step is to start again, not to resend silence.
             fail(
                 sessionId,
                 GatewayException(
                     "microphone_unavailable",
                     captureError.get()?.message ?: "The microphone is not available right now.",
-                    recoverable = true,
+                    recoverable = false,
                 ),
                 wavFile = null,
                 configuration = configuration,
@@ -323,9 +328,17 @@ class DictationController(
 
         // Frames are drained off the capture thread: file writes and socket sends
         // must never stall the AudioRecord read loop.
+        val heardSomething = AtomicBoolean(false)
         val drain = scope.launch(Dispatchers.IO) {
             for (frame in frames) {
                 writer.write(frame, frame.size)
+                // Only until the first real sample arrives: past that the
+                // recording is known to contain audio and the scan is waste.
+                if (!heardSomething.get() &&
+                    SilentCapture.heardSomething(PcmConversion.peak(frame, frame.size))
+                ) {
+                    heardSomething.set(true)
+                }
                 incrementalReference.get()?.let { session ->
                     if (!session.offer(frame) && incrementalReference.compareAndSet(session, null)) {
                         incrementalFallback.set(true)
@@ -426,21 +439,30 @@ class DictationController(
         }
 
         captureError.get()?.let { error ->
-            incrementalReference.getAndSet(null)?.cancel()
-            diagnostics.recordError("audio", source.name)
-            stream?.cancel()
-            wavFile.delete()
-            fail(
-                sessionId,
-                GatewayException(
-                    "audio_interrupted",
-                    error.message ?: "Microphone access was interrupted. Try again.",
-                    recoverable = false,
-                ),
-                wavFile = null,
-                configuration = configuration,
-            )
-            return
+            diagnostics.recordError(audioErrorCategory(error), source.name)
+            // Another app taking the microphone does not invalidate the audio
+            // recorded before it did. A sentence the user already finished
+            // saying is transcribed rather than thrown away; only a capture
+            // that produced nothing usable is reported as a failure.
+            val salvageable = error is MicrophoneInterruptedException &&
+                heardSomething.get() &&
+                writer.durationMillis >= MINIMUM_RECORDING_MILLIS
+            if (!salvageable) {
+                incrementalReference.getAndSet(null)?.cancel()
+                stream?.cancel()
+                wavFile.delete()
+                fail(
+                    sessionId,
+                    GatewayException(
+                        "audio_interrupted",
+                        error.message ?: "Microphone access was interrupted. Try again.",
+                        recoverable = false,
+                    ),
+                    wavFile = null,
+                    configuration = configuration,
+                )
+                return
+            }
         }
 
         _state.update { it.copy(phase = DictationPhase.FINALIZING, level = 0f) }
@@ -452,6 +474,27 @@ class DictationController(
             fail(
                 sessionId,
                 GatewayException("audio_empty", "That was too short to transcribe.", recoverable = false),
+                wavFile = null,
+                configuration = configuration,
+            )
+            return
+        }
+
+        // A recording of exact digital zeros is what Android gives an app whose
+        // microphone another app holds. Transcribing it would spend the wait to
+        // report an empty transcript, which says nothing the user can act on.
+        if (!heardSomething.get()) {
+            incrementalReference.getAndSet(null)?.cancel()
+            stream?.cancel()
+            wavFile.delete()
+            fail(
+                sessionId,
+                GatewayException(
+                    "microphone_silenced",
+                    "Another app was using the microphone, so VocaPhone recorded silence. " +
+                        "Stop that recording and try again.",
+                    recoverable = false,
+                ),
                 wavFile = null,
                 configuration = configuration,
             )
@@ -765,12 +808,29 @@ class DictationController(
     }
 
     private fun errorCategory(error: GatewayException): String = when {
+        error.code == "microphone_silenced" -> "audio_silenced"
         error.code.startsWith("audio") -> "audio"
         error.code.startsWith("microphone") -> "audio"
         error.code.startsWith("insert") -> "insertion"
         error.code == "permission_repair" -> "setup"
         else -> "gateway"
     }
+
+    /**
+     * Which microphone failure this was. The on-device log is the only record
+     * that survives the call or the screen recording that caused it, so the
+     * cause is kept rather than flattened into a single "audio" category.
+     */
+    private fun audioErrorCategory(error: Throwable): String =
+        if (error !is MicrophoneInterruptedException) {
+            "audio"
+        } else {
+            when (error.interruption) {
+                MicrophoneInterruption.FOCUS_LOST -> "audio_focus_lost"
+                MicrophoneInterruption.SILENCED -> "audio_silenced"
+                MicrophoneInterruption.CAPTURE_LOST -> "audio_capture_lost"
+            }
+        }
 
     private companion object {
         /** Below this, there is nothing a model could usefully transcribe. */

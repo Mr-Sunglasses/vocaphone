@@ -88,6 +88,42 @@ struct AudioCaptureTests {
         #expect(abs(emittedSamples - 16_000) < 400)
         #expect(pipeline.droppedChunkCount == 0)
         #expect(pipeline.meterLevel > 0)
+        #expect(pipeline.peakLevel > CaptureFormat.silenceThreshold)
+    }
+
+    /// Digital silence is what iOS hands an app whose microphone another app
+    /// has taken. It has to be told apart from a quiet room, because one is
+    /// worth explaining to the user and the other is just a short recording.
+    @Test func pipelineTellsSilenceApartFromAQuietRoom() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let sourceRate: Double = 48_000
+        func peak(of samples: [Float], named name: String) throws -> Float {
+            let ring = PCMRingBuffer(capacity: Int(sourceRate * 2))
+            let pipeline = try #require(
+                AudioCapturePipeline(sourceSampleRate: sourceRate, ring: ring)
+            )
+            try pipeline.start(writingTo: directory.appendingPathComponent(name)) { _ in true }
+            samples.withUnsafeBufferPointer {
+                #expect(ring.write($0.baseAddress!, count: samples.count))
+            }
+            pipeline.finish()
+            return pipeline.peakLevel
+        }
+
+        let count = Int(sourceRate)
+        let silenced = try peak(of: [Float](repeating: 0, count: count), named: "silence.wav")
+        #expect(silenced <= CaptureFormat.silenceThreshold)
+
+        // A murmur a hundred times quieter than a normal voice is still speech.
+        var murmur = [Float](repeating: 0, count: count)
+        for index in 0..<count {
+            murmur[index] = sin(Float(index) * 0.05) * 0.01
+        }
+        #expect(try peak(of: murmur, named: "murmur.wav") > CaptureFormat.silenceThreshold)
     }
 
     @Test func pipelineCountsChunksTheTransportRefuses() throws {

@@ -109,7 +109,20 @@ class DiagnosticLog(
         const val MAX_VALUE_LENGTH = 64
         val EVENTS = setOf("state", "error", "action", "timing")
         val SOURCES = setOf("IME", "COMPANION_APP", "none")
-        val ERROR_CATEGORIES = setOf("audio", "gateway", "insertion", "settings", "setup", "unknown")
+        // Microphone failures are split by cause: after the fact, the call or
+        // the screen recording that took the input is long gone, and "audio" on
+        // its own cannot tell those apart from a broken recorder.
+        val ERROR_CATEGORIES = setOf(
+            "audio",
+            "audio_focus_lost",
+            "audio_silenced",
+            "audio_capture_lost",
+            "gateway",
+            "insertion",
+            "settings",
+            "setup",
+            "unknown",
+        )
         val ACTIONS = setOf(
             "start",
             "cancel",

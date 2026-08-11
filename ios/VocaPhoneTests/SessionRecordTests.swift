@@ -16,6 +16,20 @@ struct SessionRecordTests {
         }
     }
 
+    /// A microphone another app silenced produces a file that no retry can turn
+    /// into a transcript, so finishing must be able to fail permanently without
+    /// first pretending the recording is worth uploading.
+    @Test func aCaptureKnownUnusableFailsWithoutBeingUploaded() throws {
+        var record = SessionRecord()
+        try record.transition(to: .launchingApp)
+        try record.transition(to: .recording)
+        try record.transition(to: .finalizing)
+        try record.transition(to: .transcriptionFailedPermanent)
+
+        #expect(record.state.isTerminal)
+        #expect(!record.canRetry)
+    }
+
     @Test func sharedStoreRoundTripsAtomically() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

@@ -138,7 +138,12 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         .launchingApp: [.awaitingReturn, .recording, .permissionDenied, .canceled],
         .awaitingReturn: [.recording, .permissionDenied, .canceled],
         .recording: [.finalizing, .canceled, .expired],
-        .finalizing: [.uploading, .uploadFailedRecoverable, .canceled],
+        // A capture can be known unusable before anything is ever sent: a
+        // microphone another app silenced yields a file that no amount of
+        // retrying will turn into a transcript.
+        .finalizing: [
+            .uploading, .uploadFailedRecoverable, .transcriptionFailedPermanent, .canceled,
+        ],
         .uploading: [.transcribing, .readyToInsert, .serverUnavailable, .uploadFailedRecoverable, .canceled],
         .transcribing: [
             .readyToInsert, .transcriptionFailedRecoverable,

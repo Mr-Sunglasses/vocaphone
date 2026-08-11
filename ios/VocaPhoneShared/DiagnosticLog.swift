@@ -66,6 +66,9 @@ enum DiagnosticErrorCode: String, Codable, Sendable {
     case gatewayNotConfigured
     case languageUnsupported
     case microphonePermissionDenied
+    /// Recording succeeded but another app held the input, so it captured only
+    /// silence. Distinct from a permission problem, which the user fixes once.
+    case microphoneSilenced
     case quickDictationArmFailed
     case recordingStartFailed
     case serverUnavailable

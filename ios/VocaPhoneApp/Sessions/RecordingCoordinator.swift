@@ -432,7 +432,7 @@ final class RecordingCoordinator {
             }
 
             let directory = try localAudioDirectory()
-            try recorder.prepareForRecording()
+            try await recorder.prepareForRecording()
             await soundFeedback.play(.start)
             guard let latestRecord = try store.load(id),
                   [.launchingApp, .awaitingReturn].contains(latestRecord.state)
@@ -589,6 +589,24 @@ final class RecordingCoordinator {
                 state: .uploadFailedRecoverable,
                 code: "audio_missing",
                 message: "The recording file is missing."
+            )
+            return
+        }
+
+        // A recording of digital silence is what iOS hands an app whose
+        // microphone another app took mid-session. Transcribing it would spend
+        // the whole wait to report an empty transcript, which tells the user
+        // nothing they can act on.
+        if wasRecording, recorder.lastPeakLevel <= CaptureFormat.silenceThreshold {
+            await streamingBridge.cancel()
+            try? FileManager.default.removeItem(at: output)
+            await fail(
+                &record,
+                state: .transcriptionFailedPermanent,
+                code: "microphone_silenced",
+                message: "Another app or a call was using the microphone, so only "
+                    + "silence was recorded. Try again once it has finished.",
+                recoverable: false
             )
             return
         }
@@ -1097,6 +1115,7 @@ final class RecordingCoordinator {
         case "audio_missing": .audioMissing
         case "gateway_not_configured": .gatewayNotConfigured
         case "microphone_permission_denied": .microphonePermissionDenied
+        case "microphone_silenced": .microphoneSilenced
         case "language_unsupported": .languageUnsupported
         case "server_unavailable": .serverUnavailable
         default:
