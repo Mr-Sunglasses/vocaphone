@@ -1,0 +1,17 @@
+{
+  "name": "VocaPhone",
+  "short_name": "VocaPhone",
+  "description": "Private voice typing that runs on your phone or your optional VocaGateway.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#f4f1e8",
+  "theme_color": "#f4f1e8",
+  "icons": [
+    {
+      "src": "/assets/vocaphone-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Build and install VocaPhone on an iPhone, choose an on-device speech-to-text model, and enable the private voice keyboard."
+    />
+    <meta name="theme-color" content="#f4f1e8" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://vocaphone.vocahq.com/iphone/" />
+    <meta property="og:title" content="Install VocaPhone on iPhone" />
+    <meta
+      property="og:description"
+      content="Build from source, install the keyboard, and run speech-to-text on your iPhone."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://vocaphone.vocahq.com/iphone/" />
+    <meta property="og:image" content="https://vocaphone.vocahq.com/assets/social-card.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>Install VocaPhone on iPhone</title>
+    <link rel="icon" href="../assets/vocaphone-logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="../favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="../styles.css" />
+    <script src="../script.js" defer></script>
+  </head>
+  <body class="guide-body">
+    <a class="skip-link" href="#guide-content">Skip to setup</a>
+
+    <header class="menu-bar guide-menu-bar">
+      <a class="brand-link" href="/" aria-label="VocaPhone home">
+        <img src="../assets/vocaphone-logo.svg" alt="" width="32" height="32" />
+        <span>vocaphone</span>
+      </a>
+      <a class="guide-back" href="/">← back to the website</a>
+    </header>
+
+    <main class="guide-main" id="guide-content">
+      <section class="guide-hero dot-field">
+        <div>
+          <span class="section-tag">iPhone · build from source</span>
+          <h1>private voice typing,<br />on your iPhone.</h1>
+          <p>
+            VocaPhone currently requires iOS 17 or newer, a Mac with Xcode, an
+            Apple signing team, and a physical iPhone. There is no App Store or
+            TestFlight build yet.
+          </p>
+        </div>
+        <aside class="guide-summary" aria-label="Before you begin">
+          <span>before you begin</span>
+          <strong>iOS 17+</strong>
+          <strong>macOS + Xcode</strong>
+          <strong>Apple signing</strong>
+          <strong>physical iPhone</strong>
+        </aside>
+      </section>
+
+      <section class="guide-content" aria-labelledby="steps-title">
+        <div class="guide-intro">
+          <span class="section-tag">the short path</span>
+          <h2 id="steps-title">install, choose a model, dictate.</h2>
+          <p>
+            The gateway is optional. Choose and download an on-device model during
+            setup if you want speech-to-text to stay entirely on the iPhone.
+          </p>
+        </div>
+
+        <ol class="guide-steps">
+          <li class="guide-step">
+            <span>01</span>
+            <div>
+              <h3>Get the source</h3>
+              <p>Clone the repository with Git LFS so the native model runtimes are present.</p>
+              <pre><code>git lfs install
+git clone https://github.com/VocaHQ/vocaphone.git
+cd vocaphone
+git lfs pull</code></pre>
+            </div>
+          </li>
+
+          <li class="guide-step">
+            <span>02</span>
+            <div>
+              <h3>Prepare Apple signing</h3>
+              <p>
+                Open <code>ios/VocaPhone.xcodeproj</code>, choose your Apple
+                development team, and configure matching App Group capabilities
+                for the app, keyboard, and Live Activity targets. If the VocaHQ
+                identifiers are unavailable to your team, replace them consistently
+                in the project configuration and entitlements first.
+              </p>
+            </div>
+          </li>
+
+          <li class="guide-step">
+            <span>03</span>
+            <div>
+              <h3>Install on a physical iPhone</h3>
+              <p>
+                Connect the iPhone, select it as the run destination, build
+                VocaPhoneApp, open the installed app, and grant microphone access.
+              </p>
+            </div>
+          </li>
+
+          <li class="guide-step">
+            <span>04</span>
+            <div>
+              <h3>Choose on-device speech-to-text</h3>
+              <p>
+                In VocaPhone setup, choose an on-device model, download it, and
+                wait for its integrity check to finish. No gateway address or token
+                is needed for this mode.
+              </p>
+            </div>
+          </li>
+
+          <li class="guide-step">
+            <span>05</span>
+            <div>
+              <h3>Enable the keyboard</h3>
+              <p>
+                Open <strong>Settings → General → Keyboard → Keyboards</strong>, add
+                VocaPhone, and enable Full Access so the keyboard and containing app
+                can share the current dictation state.
+              </p>
+            </div>
+          </li>
+
+          <li class="guide-step">
+            <span>06</span>
+            <div>
+              <h3>Try a real text field</h3>
+              <p>
+                Open Notes, select the VocaPhone keyboard, dictate, finish the
+                recording, and return to insert the transcript. iOS does not permit
+                keyboard extensions to access the microphone, so the companion app
+                owns recording while the model still runs on the iPhone.
+              </p>
+            </div>
+          </li>
+        </ol>
+
+        <aside class="guide-callout" aria-labelledby="optional-gateway-title">
+          <div>
+            <span class="section-tag">optional path</span>
+            <h2 id="optional-gateway-title">want larger models or shared compute?</h2>
+            <p>
+              Pair VocaGateway after the phone works. Gateway mode sends the
+              recording to hardware you configured; it is self-hosted, but it is
+              not on-device. Protect the connection with a trusted LAN, private
+              encrypted network, or HTTPS.
+            </p>
+          </div>
+          <a class="button button-secondary" href="https://github.com/VocaHQ/vocagateway">
+            explore VocaGateway <span aria-hidden="true">↗</span>
+          </a>
+        </aside>
+
+        <div class="guide-source-links">
+          <p>Need the complete developer and physical-device details?</p>
+          <a href="https://github.com/VocaHQ/vocaphone/blob/main/docs/device-setup.md">
+            read the verified device checklist <span aria-hidden="true">↗</span>
+          </a>
+          <a href="https://github.com/VocaHQ/vocaphone#build-and-test">
+            read the build documentation <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="guide-footer">
+      <a class="brand-link" href="/">
+        <img src="../assets/vocaphone-logo.svg" alt="" width="34" height="34" />
+        <span>vocaphone</span>
+      </a>
+      <span>open source · private by design · gateway optional</span>
+    </footer>
+  </body>
+</html>

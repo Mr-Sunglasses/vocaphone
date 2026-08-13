@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="VocaPhone is a private voice keyboard for iPhone and Android. Run speech-to-text directly on your phone, or connect to VocaGateway on hardware you control for more models and shared compute."
+    />
+    <meta name="theme-color" content="#f4f1e8" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://vocaphone.vocahq.com/" />
+    <meta property="og:title" content="VocaPhone — voice typing that stays yours" />
+    <meta
+      property="og:description"
+      content="A private, open-source voice keyboard that runs speech-to-text on your phone or through your own optional VocaGateway."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="VocaPhone" />
+    <meta property="og:url" content="https://vocaphone.vocahq.com/" />
+    <meta property="og:image" content="https://vocaphone.vocahq.com/assets/social-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="VocaPhone private voice typing running on an Android phone"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="VocaPhone — voice typing that stays yours" />
+    <meta
+      name="twitter:description"
+      content="Private, open-source voice typing that runs on your phone or your optional VocaGateway."
+    />
+    <meta name="twitter:image" content="https://vocaphone.vocahq.com/assets/social-card.png" />
+    <meta
+      name="twitter:image:alt"
+      content="VocaPhone private voice typing running on an Android phone"
+    />
+    <title>VocaPhone — voice typing that stays yours</title>
+    <link rel="icon" href="assets/vocaphone-logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+    <link rel="manifest" href="site.webmanifest" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <header class="menu-bar" data-menu-bar>
+      <a class="brand-link" href="#top" aria-label="VocaPhone home">
+        <img src="assets/vocaphone-logo.svg" alt="" width="32" height="32" />
+        <span>vocaphone</span>
+      </a>
+
+      <button
+        class="menu-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="site-navigation"
+        data-menu-toggle
+      >
+        <span class="sr-only">Open navigation</span>
+        <span></span>
+        <span></span>
+      </button>
+
+      <nav id="site-navigation" class="site-nav" aria-label="Main navigation" data-navigation>
+        <a href="#why">why it feels different</a>
+        <a href="#how">how it works</a>
+        <a href="#gateway">gateway</a>
+        <a href="#questions">questions</a>
+      </nav>
+
+      <div class="system-strip" aria-hidden="true">
+        <span class="signal">⌁</span>
+        <span>gateway optional</span>
+        <span data-local-time>10:09</span>
+      </div>
+
+      <a
+        class="header-cta"
+        href="#install"
+      >
+        get vocaphone
+        <span aria-hidden="true">↗</span>
+      </a>
+    </header>
+
+    <main id="main-content">
+      <section class="hero dot-field" id="top" aria-labelledby="hero-title">
+        <div class="hero-decor" aria-hidden="true">
+          <div class="floating-card privacy-note">
+            <span class="paperclip">⌇</span>
+            <p>nothing leaves<br />your phone.</p>
+            <span class="scribble">on-device mode</span>
+          </div>
+
+          <div class="floating-card mini-message">
+            <span class="message-label">new message</span>
+            <p>running 5 mins late — start without me!</p>
+            <span class="message-caret"></span>
+          </div>
+
+          <div class="floating-card local-card">
+            <div class="mini-window-bar">
+              <span></span><span></span><span></span>
+              <b>on-device model</b>
+            </div>
+            <div class="local-status">
+              <span class="status-dot"></span>
+              <div>
+                <strong>ready offline</strong>
+                <small>running on this phone</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="floating-card language-note">
+            <span>27 languages + automatic</span>
+            <b>English</b>
+            <b>Español</b>
+            <b>Français</b>
+            <b>日本語</b>
+            <b>हिन्दी</b>
+            <b>العربية</b>
+          </div>
+
+          <div class="floating-folder folder-one"><span></span><b>my words</b></div>
+          <div class="floating-folder folder-two"><span></span><b>voice notes</b></div>
+          <div class="ascii-face face-one">( •ᴗ• )</div>
+          <div class="ascii-face face-two">{ speak → text }</div>
+          <div class="wave-doodle wave-one">
+            <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </div>
+
+        <div class="hero-copy reveal">
+          <img class="hero-mark" src="assets/vocaphone-mark.svg" alt="" />
+          <p class="eyebrow">private speech-to-text, running on your phone</p>
+          <h1 id="hero-title">vocaphone</h1>
+          <p class="hero-lede">voice typing that never has to leave your phone.</p>
+          <div class="hero-actions">
+            <a
+              class="button button-primary"
+              href="https://github.com/VocaHQ/vocaphone/releases"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
+                <path d="M9 7h6M10 17h4" />
+              </svg>
+              get the android beta
+            </a>
+            <a class="button button-secondary" href="#how">
+              see how it works
+              <span aria-hidden="true">↓</span>
+            </a>
+          </div>
+          <p class="hero-note">27 language choices · support depends on model · gateway optional</p>
+        </div>
+
+        <div class="hero-demo window reveal" data-tilt-window aria-hidden="true">
+          <div class="window-bar">
+            <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+            <span>Messages</span>
+            <div class="window-bar-actions" aria-hidden="true">⌁　⋯</div>
+          </div>
+          <div class="message-stage">
+            <div class="contact-row">
+              <div class="contact-avatar">m</div>
+              <div>
+                <strong>Maya</strong>
+                <span>iMessage</span>
+              </div>
+            </div>
+            <div class="message-space">
+              <div class="message-bubble">See you at the studio?</div>
+            </div>
+            <div class="composer">
+              <span class="typed-copy" data-demo-copy>yes — I’ll be there around six.</span>
+              <span class="cursor" aria-hidden="true"></span>
+              <span class="composer-send" aria-hidden="true">↑</span>
+            </div>
+            <div class="keyboard-mockup">
+              <div class="dictation-bar">
+                <div class="dictation-state">
+                  <span class="live-dot"></span>
+                  <strong>Listening</strong>
+                  <small>0:08</small>
+                </div>
+                <div class="live-wave">
+                  <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+                </div>
+                <span class="dictation-finish">Finish</span>
+              </div>
+              <div class="key-row" aria-hidden="true">
+                <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>R</kbd><kbd>T</kbd><kbd>Y</kbd><kbd>U</kbd><kbd>I</kbd><kbd>O</kbd><kbd>P</kbd>
+              </div>
+              <div class="key-row key-row-narrow" aria-hidden="true">
+                <kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>F</kbd><kbd>G</kbd><kbd>H</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd>
+              </div>
+              <div class="key-row key-row-bottom" aria-hidden="true">
+                <kbd>123</kbd><kbd class="space-key">VocaPhone</kbd><kbd>return</kbd>
+              </div>
+            </div>
+          </div>
+          <div class="window-caption">speak here. text appears there.</div>
+          <div class="local-sticker">transcribed on<br /><strong>this phone</strong></div>
+        </div>
+      </section>
+
+      <div class="word-ribbon">
+        <div>
+          <span>speak</span><b>✦</b><span>transcribe</span><b>✦</b><span>insert</span><b>✦</b><span>anywhere</span><b>✦</b>
+          <span aria-hidden="true">speak</span><b aria-hidden="true">✦</b><span aria-hidden="true">transcribe</span><b aria-hidden="true">✦</b><span aria-hidden="true">insert</span><b aria-hidden="true">✦</b><span aria-hidden="true">anywhere</span><b aria-hidden="true">✦</b>
+        </div>
+      </div>
+
+      <section class="story-shell" id="why" aria-labelledby="why-title">
+        <div class="section-heading reveal">
+          <span class="section-tag">why it feels different</span>
+          <h2 id="why-title">your phone.<br />or your own hardware.</h2>
+          <p>
+            Run speech-to-text entirely on your phone, or choose VocaGateway
+            when you want more models and shared compute on hardware you control.
+          </p>
+        </div>
+
+        <article class="story-row reveal">
+          <div class="story-copy">
+            <div class="story-number">01</div>
+            <p class="tiny-label">say it once</p>
+            <h3>text lands where you’re already typing.</h3>
+            <p>
+              Dictate from the VocaPhone keyboard and keep going in Messages,
+              Notes, email, or any other text field. No copy-and-paste detour.
+            </p>
+            <div class="audio-signature" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+          </div>
+
+          <div class="story-visual" aria-hidden="true">
+            <div class="window insert-window">
+              <div class="window-bar compact">
+                <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+                <span>Notes</span>
+                <span aria-hidden="true">share</span>
+              </div>
+              <div class="note-page">
+                <span class="note-date">TODAY, 6:42 PM</span>
+                <h4>Tomorrow</h4>
+                <p>
+                  Pick up the keys, call the electrician, and move dinner to
+                  <mark>seven thirty.</mark><span class="text-caret"></span>
+                </p>
+              </div>
+            </div>
+            <div class="speech-chip">“move dinner to seven thirty”</div>
+            <div class="arrow-scribble" aria-hidden="true">↳</div>
+          </div>
+        </article>
+
+        <article class="story-row story-row-reverse reveal">
+          <div class="story-copy">
+            <div class="story-number">02</div>
+            <p class="tiny-label">keep it on the phone</p>
+            <h3>your voice never needs to leave your hand.</h3>
+            <p>
+              Turn on on-device transcription and VocaPhone runs the model right
+              on your iPhone or Android phone. After the model is downloaded,
+              dictation works offline. A gateway is available, but never required.
+            </p>
+            <ul class="clean-list">
+              <li><span>✓</span> audio stays on this phone</li>
+              <li><span>✓</span> gateway mode stays optional</li>
+              <li><span>✓</span> successful recordings are deleted</li>
+            </ul>
+          </div>
+
+          <div class="story-visual route-visual" aria-hidden="true">
+            <div class="route-card phone-route">
+              <span class="route-icon">phone</span>
+              <strong>your voice</strong>
+              <small>recorded on this phone</small>
+            </div>
+            <div class="route-line"><span>inside this phone</span></div>
+            <div class="route-card model-route">
+              <span class="route-icon">model</span>
+              <strong>on-device model</strong>
+              <small>private speech-to-text</small>
+            </div>
+            <div class="route-line route-line-short"><span>transcript</span></div>
+            <div class="route-card text-route">
+              <span class="route-icon">Aa</span>
+              <strong>your cursor</strong>
+              <small>ready to keep typing</small>
+            </div>
+            <div class="privacy-stamp">on-device<br />stays offline</div>
+          </div>
+        </article>
+
+        <article class="story-row reveal">
+          <div class="story-copy">
+            <div class="story-number">03</div>
+            <p class="tiny-label">sound like yourself</p>
+            <h3>your language. your style. your words.</h3>
+            <p>
+              Choose from 27 languages plus automatic detection, pick a writing
+              style, and teach VocaPhone the names and phrases you use most.
+              Available languages are filtered to what your selected model can
+              actually transcribe.
+            </p>
+          </div>
+
+          <div class="story-visual language-visual" aria-hidden="true">
+            <div class="window language-window">
+              <div class="window-bar compact">
+                <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+                <span>VocaPhone preferences</span>
+                <span aria-hidden="true">⌘ ,</span>
+              </div>
+              <div class="preference-panel">
+                <div class="preference-row">
+                  <div><strong>language</strong><small>what are we listening for?</small></div>
+                  <span class="preference-select">Automatic⌄</span>
+                </div>
+                <div class="language-cloud">
+                  <span>English</span><span>हिन्दी</span><span>বাংলা</span><span>தமிழ்</span><span>తెలుగు</span><span>मराठी</span><span>ગુજરાતી</span><span>اردو</span><span>ಕನ್ನಡ</span><span>+ 18</span>
+                </div>
+                <div class="preference-row">
+                  <div><strong>writing style</strong><small>how should it sound?</small></div>
+                  <div class="segmented-control" aria-hidden="true">
+                    <span>formal</span><span class="active">casual</span><span>excited</span>
+                  </div>
+                </div>
+                <div class="custom-words">
+                  <span>custom words</span>
+                  <b>VocaHQ</b><b>Tailscale</b><b>Kanishk</b><i>＋</i>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="how-section dot-field" id="how" aria-labelledby="how-title">
+        <div class="section-heading section-heading-centered reveal">
+          <span class="section-tag">the on-device version</span>
+          <h2 id="how-title">download once.<br />dictate anywhere.</h2>
+        </div>
+
+        <div class="steps-grid">
+          <article class="step-card reveal">
+            <div class="step-topline"><span>1</span><b>download once</b></div>
+            <div class="step-art model-art" aria-hidden="true">
+              <div class="model-download-card">
+                <div class="model-file-icon">W</div>
+                <div>
+                  <strong>Whisper Small</strong>
+                  <small>saved on this phone</small>
+                </div>
+                <div class="model-progress"><i></i></div>
+                <span>✓ SHA-256 verified</span>
+              </div>
+            </div>
+            <h3>choose your model</h3>
+            <p>Download a model that fits your phone. Every file is integrity-checked before it runs.</p>
+          </article>
+
+          <article class="step-card featured-step reveal">
+            <div class="step-topline"><span>2</span><b>speak</b></div>
+            <div class="step-art mic-art" aria-hidden="true">
+              <div class="mic-circle">
+                <svg viewBox="0 0 24 24">
+                  <rect x="8" y="3" width="8" height="12" rx="4" />
+                  <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+                </svg>
+              </div>
+              <div class="orbit-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+            <h3>say what you mean</h3>
+            <p>Use the voice keyboard and speak naturally in your own rhythm.</p>
+          </article>
+
+          <article class="step-card reveal">
+            <div class="step-topline"><span>3</span><b>keep typing</b></div>
+            <div class="step-art text-art" aria-hidden="true">
+              <div class="text-page">
+                <i></i><i></i><i></i><i></i>
+                <span>Aa</span>
+              </div>
+              <div class="check-sticker">done ✓</div>
+            </div>
+            <h3>keep it on-device</h3>
+            <p>Audio becomes text locally, then the successful recording is removed.</p>
+          </article>
+        </div>
+
+        <p class="platform-honesty reveal">
+          <span>tiny honest detail:</span> iOS keyboards cannot use the microphone,
+          so VocaPhone records in its companion app and returns the finished text
+          to the keyboard. The model still runs on the iPhone.
+        </p>
+      </section>
+
+      <section class="real-proof-section" aria-labelledby="real-proof-title">
+        <div class="real-proof-copy reveal">
+          <span class="section-tag">real app, real phone</span>
+          <h2 id="real-proof-title">the privacy claim has an interface.</h2>
+          <p>
+            These are unedited VocaPhone screens from Android. On-device mode is
+            visible, selectable, and usable without configuring a gateway.
+          </p>
+          <ul class="clean-list">
+            <li><span>✓</span> choose and verify a local speech-to-text model</li>
+            <li><span>✓</span> dictate directly in the app or from the keyboard</li>
+            <li><span>✓</span> keep the optional gateway as a separate mode</li>
+          </ul>
+        </div>
+
+        <div class="real-proof-gallery">
+          <figure class="real-phone-proof real-phone-proof-main reveal">
+            <div class="real-phone-shell">
+              <span class="real-phone-camera" aria-hidden="true"></span>
+              <img
+                src="assets/screenshots/android-models.jpg"
+                width="576"
+                height="1280"
+                decoding="async"
+                alt="VocaPhone Android settings with on-device transcription enabled and downloadable local speech-to-text models"
+              />
+            </div>
+            <figcaption><b>on-device models</b><span>verified after download</span></figcaption>
+          </figure>
+
+          <figure class="real-phone-proof real-phone-proof-secondary reveal">
+            <div class="real-phone-shell">
+              <span class="real-phone-camera" aria-hidden="true"></span>
+              <img
+                src="assets/screenshots/android-dictate.jpg"
+                width="576"
+                height="1280"
+                decoding="async"
+                alt="VocaPhone Android Dictate screen with a transcript in its private scratchpad"
+              />
+            </div>
+            <figcaption><b>private dictation</b><span>text lands at your cursor</span></figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <section class="gateway-section" id="gateway" aria-labelledby="gateway-title">
+        <div class="gateway-window window reveal">
+          <div class="window-bar">
+            <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+            <span>choose where speech-to-text runs</span>
+            <span aria-hidden="true">private by design</span>
+          </div>
+
+          <div class="gateway-copy">
+            <span class="section-tag">gateway is optional</span>
+            <h2 id="gateway-title">two local paths.<br />you choose the hardware.</h2>
+            <p>
+              Keep everything on your phone for the simplest offline setup. Or run
+              VocaGateway on your Mac, Linux machine, or home server when you want
+              broader model and engine choices, more processing power, or one shared
+              transcription setup for your devices.
+            </p>
+
+            <div class="gateway-paths">
+              <article class="gateway-path gateway-path-phone">
+                <span>01</span>
+                <div>
+                  <strong>on-device</strong>
+                  <p>The model and audio stay on your phone. After the model download, transcription works offline.</p>
+                </div>
+              </article>
+              <article class="gateway-path gateway-path-server">
+                <span>02</span>
+                <div>
+                  <strong>your VocaGateway</strong>
+                  <p>Your phone sends the recording to the gateway you configured. It runs a local speech engine and returns the transcript.</p>
+                </div>
+              </article>
+            </div>
+
+            <a class="button gateway-button" href="https://github.com/VocaHQ/vocagateway">
+              explore VocaGateway on GitHub <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+
+          <div class="gateway-visual" aria-hidden="true">
+            <div class="gateway-mode-label">gateway mode</div>
+            <div class="gateway-device gateway-phone">
+              <span>phone</span>
+              <div class="gateway-mini-wave"><i></i><i></i><i></i><i></i><i></i></div>
+              <small>bounded recording</small>
+            </div>
+            <div class="gateway-connection">
+              <span>trusted LAN<br />or Tailscale</span>
+              <i></i>
+            </div>
+            <div class="gateway-device gateway-server">
+              <div class="gateway-server-bar"><i></i><i></i><i></i></div>
+              <span>VocaGateway</span>
+              <strong>local model ready</strong>
+              <small>Mac · Linux · Docker</small>
+            </div>
+            <div class="gateway-return">transcript returns →</div>
+            <div class="gateway-qr">
+              <div><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <span>pair by QR<br />token protected</span>
+            </div>
+            <p class="gateway-privacy-note">
+              Gateway mode is self-hosted, but it is not on-device: audio travels
+              to the gateway you chose. Use a trusted LAN, an encrypted private
+              network, or HTTPS.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="platform-section" aria-labelledby="platform-title">
+        <div class="platform-intro reveal">
+          <span class="section-tag">pick your phone</span>
+          <h2 id="platform-title">native on both sides.</h2>
+          <p>
+            One privacy stance, built around the way each phone actually works.
+          </p>
+        </div>
+
+        <div class="platform-grid">
+          <article class="platform-card ios-card reveal">
+            <div class="platform-card-head">
+              <span class="platform-symbol">●</span>
+              <span>iPhone</span>
+              <small>build from source</small>
+            </div>
+            <div class="phone-frame iphone-frame" aria-hidden="true">
+              <div class="phone-island"></div>
+              <div class="phone-screen">
+                <div class="phone-app-title"><img src="assets/vocaphone-logo.svg" alt="" /><span>VocaPhone</span><i>•••</i></div>
+                <div class="ready-pill"><i></i> On-device model ready</div>
+                <div class="phone-copy">Dictate without sending your voice anywhere.</div>
+                <div class="phone-button">Start dictating</div>
+                <div class="phone-history"><b>recent</b><span>“send the revised notes…”</span><span>“let’s meet on friday…”</span></div>
+              </div>
+            </div>
+            <p>WhisperKit/Core ML models run on the iPhone with no network or gateway needed for transcription.</p>
+            <a href="/iphone/">iPhone setup <span>↗</span></a>
+          </article>
+
+          <article class="platform-card android-card reveal">
+            <div class="platform-card-head">
+              <span class="platform-symbol">◆</span>
+              <span>Android</span>
+              <small>beta available</small>
+            </div>
+            <div class="phone-frame android-frame real-android-frame" aria-hidden="true">
+              <div class="phone-camera"></div>
+              <img
+                src="assets/screenshots/android-keyboard.jpg"
+                width="576"
+                height="1280"
+                decoding="async"
+                alt=""
+              />
+            </div>
+            <p>Native whisper.cpp and sherpa-onnx models run inside the Android phone and insert text directly.</p>
+            <a href="https://github.com/VocaHQ/vocaphone/releases">get the beta <span>↗</span></a>
+          </article>
+        </div>
+      </section>
+
+      <section class="open-source-section" aria-labelledby="open-title">
+        <div class="manifesto-window window reveal">
+          <div class="window-bar">
+            <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+            <span>the whole point.txt</span>
+            <span aria-hidden="true">edited</span>
+          </div>
+          <div class="manifesto-copy">
+            <span class="section-tag">the whole point</span>
+            <h2 id="open-title">your everyday words shouldn’t need a business model.</h2>
+            <p>
+              VocaPhone is free, open source, and built to run speech-to-text
+              directly on your phone. No gateway is required. No account. No
+              subscription. No analytics SDK quietly keeping score. VocaGateway
+              is the optional, self-hosted path for more models or shared compute.
+            </p>
+            <a class="text-link" href="https://github.com/VocaHQ/vocaphone">
+              read the code on GitHub <span>↗</span>
+            </a>
+          </div>
+          <div class="manifesto-aside" aria-hidden="true">
+            <div class="license-stamp">AGPL<br /><small>licensed</small></div>
+            <div class="ascii-terminal">
+              <span>$ who owns the words?</span>
+              <strong>you do.</strong>
+              <i>█</i>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="faq-section" id="questions" aria-labelledby="questions-title">
+        <div class="faq-heading reveal">
+          <span class="section-tag">questions, answered</span>
+          <h2 id="questions-title">the useful bits.</h2>
+          <div class="faq-doodle" aria-hidden="true">( ?_? )</div>
+        </div>
+        <div class="faq-list reveal">
+          <details open>
+            <summary>Does my voice ever have to leave my phone?<span aria-hidden="true">＋</span></summary>
+            <p>
+              No. In on-device mode, recording and speech-to-text both happen on
+              the phone. After a transcript is safely stored, the successful audio
+              file is deleted. If you deliberately choose gateway mode, audio goes
+              to the gateway you configured. Use a trusted LAN, encrypted private
+              network, or HTTPS to protect it in transit.
+            </p>
+          </details>
+          <details>
+            <summary>Do I need to set up a gateway?<span aria-hidden="true">＋</span></summary>
+            <p>
+              No. Download an on-device model once and VocaPhone can transcribe
+              without a gateway, account, or network connection. If you want larger
+              models, more engines, or shared hardware, you can self-host
+              <a href="https://github.com/VocaHQ/vocagateway">VocaGateway</a> on a
+              Mac, Linux machine, or home server and pair your phone by QR.
+            </p>
+          </details>
+          <details>
+            <summary>Which languages can I use?<span aria-hidden="true">＋</span></summary>
+            <p>
+              VocaPhone offers 27 language choices plus Automatic. Actual support
+              depends on the speech-to-text model you select, and the app hides
+              choices that the active model cannot handle.
+            </p>
+          </details>
+          <details>
+            <summary>Does it work inside every app?<span aria-hidden="true">＋</span></summary>
+            <p>
+              It works wherever the operating system allows a custom keyboard and
+              editable text field. Password fields and some security-sensitive
+              screens may force the system keyboard instead.
+            </p>
+          </details>
+          <details>
+            <summary>Why does the iPhone app open when I dictate?<span aria-hidden="true">＋</span></summary>
+            <p>
+              Apple does not let keyboard extensions access the microphone. The
+              companion app records, shares the finished session with the keyboard,
+              and lets the keyboard insert the transcript at your cursor.
+            </p>
+          </details>
+          <details>
+            <summary>What do I need to run it?<span aria-hidden="true">＋</span></summary>
+            <p>
+              After setup, private on-device dictation needs only your phone and a
+              downloaded model it supports. Android has a public beta. iPhone
+              currently requires a Mac, Xcode, Apple signing, and a physical iPhone
+              for the initial source build. Gateway hardware remains optional.
+            </p>
+          </details>
+          <details>
+            <summary>Is it free?<span aria-hidden="true">＋</span></summary>
+            <p>
+              Yes. VocaPhone is free and AGPL-3.0 licensed. There is no VocaPhone
+              account, subscription, or paid cloud speech service.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section class="install-section dot-field" id="install" aria-labelledby="install-title">
+        <div class="section-heading section-heading-centered reveal">
+          <span class="section-tag">availability</span>
+          <h2 id="install-title">pick your phone.<br />know the setup.</h2>
+          <p>VocaPhone is in beta. Here is exactly what each platform needs today.</p>
+        </div>
+
+        <div class="install-grid">
+          <article class="install-card reveal">
+            <div class="install-card-heading">
+              <span class="platform-symbol">◆</span>
+              <div><h3>Android</h3><p>public beta</p></div>
+            </div>
+            <ul class="install-facts">
+              <li><b>Requires</b><span>Android 13 or newer</span></li>
+              <li><b>Install</b><span>Download and sideload the signed APK</span></li>
+              <li><b>Privacy</b><span>On-device model or optional gateway</span></li>
+            </ul>
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocaphone/releases">
+              open Android releases <span aria-hidden="true">↗</span>
+            </a>
+            <p class="install-note">
+              Download <code>vocaphone.apk</code> and verify it with the
+              <code>SHA256SUMS.txt</code> included in the same release.
+            </p>
+          </article>
+
+          <article class="install-card reveal">
+            <div class="install-card-heading">
+              <span class="platform-symbol">●</span>
+              <div><h3>iPhone</h3><p>build from source</p></div>
+            </div>
+            <ul class="install-facts">
+              <li><b>Requires</b><span>iOS 17 or newer</span></li>
+              <li><b>Install</b><span>Xcode, Apple signing, and a connected iPhone</span></li>
+              <li><b>Privacy</b><span>On-device model or optional gateway</span></li>
+            </ul>
+            <a class="button button-secondary" href="/iphone/">
+              follow the iPhone guide <span aria-hidden="true">→</span>
+            </a>
+            <p class="install-note">There is no App Store or TestFlight build today.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="download-section dot-field" id="download" aria-labelledby="download-title">
+        <div class="download-decor" aria-hidden="true">
+          <div class="floating-folder download-folder"><span></span><b>your words</b></div>
+          <div class="download-note">works with<br />27 languages<br /><small>+ automatic</small></div>
+          <div class="download-wave audio-signature"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          <div class="download-face">(˶ᵔ ᵕ ᵔ˶)</div>
+        </div>
+        <div class="download-copy reveal">
+          <img src="assets/vocaphone-logo.svg" alt="" width="88" height="88" />
+          <p class="eyebrow">ready when you are</p>
+          <h2 id="download-title">say less.<br />type more.</h2>
+          <p>Download a model to your phone and turn speech into text without sending your voice anywhere.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocaphone/releases">get Android beta <span>↗</span></a>
+            <a class="button button-secondary" href="/iphone/">build for iPhone <span>↗</span></a>
+          </div>
+          <span class="download-fineprint">no gateway required · free &amp; open source · AGPL-3.0</span>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-brand">
+        <img src="assets/vocaphone-logo.svg" alt="" width="52" height="52" />
+        <div><strong>vocaphone</strong><span>voice typing that stays on your phone.</span></div>
+      </div>
+      <nav aria-label="Footer navigation">
+        <div>
+          <p>product</p>
+          <a href="#why">why VocaPhone</a>
+          <a href="#how">how it works</a>
+          <a href="https://github.com/VocaHQ/vocaphone/releases">releases</a>
+        </div>
+        <div>
+          <p>resources</p>
+          <a href="https://github.com/VocaHQ/vocaphone">GitHub</a>
+          <a href="https://github.com/VocaHQ/vocagateway">VocaGateway</a>
+          <a href="https://github.com/VocaHQ/vocaphone/blob/main/docs/privacy.md">privacy</a>
+          <a href="https://github.com/VocaHQ/vocaphone/blob/main/SUPPORT.md">support</a>
+        </div>
+        <div>
+          <p>say hello</p>
+          <a href="https://github.com/VocaHQ">VocaHQ</a>
+          <a href="mailto:hello@vocahq.com">hello@vocahq.com</a>
+        </div>
+      </nav>
+      <div class="footer-bottom">
+        <span>© <span data-current-year>2026</span> VocaHQ</span>
+        <span>built in the open, for the words you say in private.</span>
+      </div>
+    </footer>
+  </body>
+</html>
