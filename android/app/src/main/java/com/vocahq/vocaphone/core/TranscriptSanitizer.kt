@@ -37,8 +37,79 @@ object TranscriptSanitizer {
         // line breaks the writing style may have produced.
         return withoutMarkers
             .split('\n')
-            .joinToString("\n") { line -> line.replace(Regex("""[ \t]{2,}"""), " ").trim() }
+            .joinToString("\n") { line ->
+                collapseRepetition(line.replace(Regex("""[ \t]{2,}"""), " ").trim())
+            }
             .trim()
             .trim('\n')
     }
+
+    /** Longest run treated as a loop. Beyond this it is prose, not a stutter. */
+    private const val MAX_PHRASE_WORDS = 8
+
+    /**
+     * Collapses the repetition loop an attention model falls into when it runs
+     * out of audio it can make sense of — a phrase emitted over and over until
+     * the window ends. It is the single most recognizable way a transcript goes
+     * wrong, and unlike a bracketed marker there is no token to look for.
+     *
+     * The thresholds differ by length on purpose. A repeated phrase of two or
+     * more words is almost never something a person said three times running,
+     * so one copy is kept. A single word genuinely is — "no no no no" is a
+     * sentence — so it takes more repeats to look like a loop, and two copies
+     * survive to record that the emphasis was there.
+     */
+    private fun collapseRepetition(line: String): String {
+        if (line.isEmpty()) return line
+        val words = line.split(' ').filter { it.isNotEmpty() }
+        if (words.size < 4) return line
+
+        val result = mutableListOf<String>()
+        var index = 0
+        while (index < words.size) {
+            var phrase = 0
+            var repeats = 0
+            // Ascending, keeping the last match, so the longest repeating unit
+            // wins: "thank you thank you thank you" is one phrase three times
+            // over, not six unrelated words.
+            for (length in 1..minOf(MAX_PHRASE_WORDS, (words.size - index) / 2)) {
+                val count = countRepeats(words, index, length)
+                if (count >= if (length == 1) 4 else 3) {
+                    phrase = length
+                    repeats = count
+                }
+            }
+            if (phrase == 0) {
+                result += words[index]
+                index++
+                continue
+            }
+            // Taken from the source rather than the first copy repeated, so the
+            // survivors keep the punctuation they arrived with.
+            val kept = if (phrase == 1) 2 else 1
+            for (offset in 0 until phrase * kept) result += words[index + offset]
+            index += phrase * repeats
+        }
+        return result.joinToString(" ")
+    }
+
+    /** How many times the [length]-word unit at [start] repeats back to back. */
+    private fun countRepeats(words: List<String>, start: Int, length: Int): Int {
+        var repeats = 1
+        var next = start + length
+        while (next + length <= words.size) {
+            for (offset in 0 until length) {
+                if (wordKey(words[start + offset]) != wordKey(words[next + offset])) return repeats
+            }
+            repeats++
+            next += length
+        }
+        return repeats
+    }
+
+    /**
+     * Case and punctuation are exactly what differ between the copies in a loop
+     * — "Thank you." then "thank you," — so neither can take part in matching.
+     */
+    private fun wordKey(word: String): String = word.lowercase().filter(Char::isLetterOrDigit)
 }

@@ -6,7 +6,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -49,6 +51,7 @@ fun LocalModelPicker(
     val recommended = remember(state.totalRamGB) {
         LocalModelCatalog.recommended(state.totalRamGB)
     }
+    val selectedModel = usable.firstOrNull { it.id == selectedModelId }
     val installedModels = usable.filter { it.id in state.downloaded }
     val availableModels = usable.filter { it.id !in state.downloaded }
     var availableModelsExpanded by remember { mutableStateOf(false) }
@@ -60,6 +63,19 @@ fun LocalModelPicker(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         return
+    }
+
+    // Above the lists rather than below them: a phone running a model its CPU
+    // cannot keep up with is the reason someone opens this screen, and the
+    // remedy is one tap rather than a sentence to act on later.
+    if (selectedModel != null && selectedModel.sizeBytes > recommended.sizeBytes) {
+        OversizedModelNotice(
+            recommended = recommended,
+            installed = recommended.id in state.downloaded,
+            busy = state.downloading != null || state.preparing != null,
+            onSelect = onSelect,
+            onDownload = onDownload,
+        )
     }
 
     if (installedModels.isNotEmpty()) {
@@ -115,6 +131,48 @@ fun LocalModelPicker(
             it,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * Offered when the chosen model is larger than what this phone is rated for.
+ *
+ * Whisper encodes a full thirty-second window whatever the utterance, so an
+ * oversized model costs the same on a two-second dictation as on a long one and
+ * an older CPU pays that cost every time. The selection is the user's, so this
+ * offers the smaller model rather than switching to it.
+ */
+@Composable
+private fun OversizedModelNotice(
+    recommended: LocalModelDescriptor,
+    installed: Boolean,
+    busy: Boolean,
+    onSelect: (LocalModelDescriptor) -> Unit,
+    onDownload: (LocalModelDescriptor) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            "The selected model is larger than this phone is rated for, which can " +
+                "make every dictation take much longer. ${recommended.displayName} is " +
+                "the fastest good match.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        SecondaryButton(
+            text = if (installed) {
+                "Switch to ${recommended.displayName}"
+            } else {
+                "Download ${recommended.displayName}"
+            },
+            onClick = { if (installed) onSelect(recommended) else onDownload(recommended) },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
@@ -215,6 +273,19 @@ private fun ModelRow(
         }
 
         when {
+            state.preparing == model.displayName -> {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text(
+                        "Loading model… Please wait.",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
             state.downloading == model.id -> {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -241,7 +312,7 @@ private fun ModelRow(
             model.id !in state.downloaded -> SecondaryButton(
                 text = "Download",
                 onClick = { onDownload(model) },
-                enabled = state.downloading == null,
+                enabled = state.downloading == null && state.preparing == null,
                 modifier = Modifier.fillMaxWidth(),
             )
             else -> {
@@ -265,6 +336,7 @@ private fun ModelRow(
                     SecondaryButton(
                         text = "Use this model",
                         onClick = { onSelect(model) },
+                        enabled = state.preparing == null,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }

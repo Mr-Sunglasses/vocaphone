@@ -20,6 +20,17 @@ enum class DictationPhase {
         get() = this == LISTENING || this == FINALIZING || this == UPLOADING ||
             this == TRANSCRIBING || this == INSERTING
 
+    /**
+     * The dictation no longer owns work that needs the foreground service.
+     *
+     * Derived from [isBusy] rather than listed again: spelled out separately,
+     * the two enumerations cover the same phases and a phase added to one would
+     * quietly go missing from the other, leaving the service either stopped
+     * mid-transcription or never stopped at all.
+     */
+    val isTerminal: Boolean
+        get() = !isBusy
+
     val holdsMicrophone: Boolean
         get() = this == LISTENING || this == FINALIZING
 }
@@ -66,6 +77,12 @@ data class DictationState(
     val failure: DictationFailure? = null,
     val missingPermissions: Set<MissingPermission> = emptySet(),
     val inputRouteLabel: String? = null,
+    /**
+     * A more specific line than the phase alone can give. Currently only the
+     * on-device model being loaded, which is the one wait long enough that
+     * "Transcribing" reads as the app having hung.
+     */
+    val statusDetail: String? = null,
 ) {
     val isRecording: Boolean get() = phase.holdsMicrophone
     val canRetry: Boolean get() = phase == DictationPhase.FAILED && failure?.recoverable == true
@@ -77,7 +94,7 @@ data class DictationState(
             DictationPhase.LISTENING -> "Listening"
             DictationPhase.FINALIZING -> "Finishing"
             DictationPhase.UPLOADING -> "Sending to your gateway"
-            DictationPhase.TRANSCRIBING -> "Transcribing"
+            DictationPhase.TRANSCRIBING -> statusDetail ?: "Transcribing"
             DictationPhase.READY_TO_INSERT -> "Ready to insert"
             DictationPhase.INSERTING -> "Inserting"
             DictationPhase.INSERTED -> "Inserted"

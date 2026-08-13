@@ -80,7 +80,8 @@ class SherpaLongAudioTest {
             prepare = {},
             decode = { samples ->
                 decodedSizes += samples.size
-                outputs.removeFirst().also { firstChunkDecoded.complete(Unit) }
+                SherpaTranscript(outputs.removeFirst())
+                    .also { firstChunkDecoded.complete(Unit) }
             },
         )
         val frame = ShortArray(SherpaLongAudio.SAMPLE_RATE / 10) { 4_000 }
@@ -88,7 +89,7 @@ class SherpaLongAudioTest {
         withTimeout(5_000) { firstChunkDecoded.await() }
         repeat(130) { assertTrue(session.offer(frame)) }
 
-        assertEquals("one boundary two three", session.finish())
+        assertEquals("one boundary two three", session.finish().text)
         assertEquals(3, decodedSizes.size)
         assertTrue(decodedSizes.dropLast(1).all { it <= 10 * SherpaLongAudio.SAMPLE_RATE })
         assertTrue(decodedSizes.last() < 10 * SherpaLongAudio.SAMPLE_RATE)
@@ -102,17 +103,19 @@ class SherpaLongAudioTest {
             samples = FloatArray(10 * SherpaLongAudio.SAMPLE_RATE),
             decodeOnce = { samples ->
                 decodedSizes += samples.size
-                if (samples.size > 6 * SherpaLongAudio.SAMPLE_RATE) {
-                    ""
-                } else if (shortResult++ == 0) {
-                    "first half"
-                } else {
-                    "second half"
-                }
+                SherpaTranscript(
+                    if (samples.size > 6 * SherpaLongAudio.SAMPLE_RATE) {
+                        ""
+                    } else if (shortResult++ == 0) {
+                        "first half"
+                    } else {
+                        "second half"
+                    },
+                )
             },
         )
 
-        assertEquals("first half second half", transcript)
+        assertEquals("first half second half", transcript.text)
         assertEquals(listOf(160_000, 80_000, 80_000), decodedSizes)
     }
 

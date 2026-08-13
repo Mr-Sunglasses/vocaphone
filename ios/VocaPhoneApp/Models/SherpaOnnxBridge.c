@@ -29,7 +29,9 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     const char *model4,
     const char *tokens,
     const char *language,
-    int32_t threads
+    int32_t threads,
+    const char *decoding_method,
+    int32_t max_active_paths
 ) {
     SherpaOnnxOfflineRecognizerConfig config;
     memset(&config, 0, sizeof(config));
@@ -38,8 +40,10 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     config.model_config.tokens = tokens;
     config.model_config.num_threads = threads;
     config.model_config.provider = "cpu";
-    config.decoding_method = "greedy_search";
-    config.max_active_paths = 4;
+    config.decoding_method = decoding_method == NULL || decoding_method[0] == '\0'
+        ? "greedy_search"
+        : decoding_method;
+    config.max_active_paths = max_active_paths > 0 ? max_active_paths : 4;
     config.hotwords_score = 1.5f;
 
     switch (family) {
@@ -99,8 +103,14 @@ int VocaPhoneSherpaDecode(
     const float *samples,
     int32_t sample_count,
     char *output,
-    int32_t output_capacity
+    int32_t output_capacity,
+    char *language,
+    int32_t language_capacity
 ) {
+    // Emptied up front so a caller never reads a stale or uninitialised buffer
+    // on any of the paths below that return without decoding.
+    if (language != NULL && language_capacity > 0) language[0] = '\0';
+
     struct VocaPhoneSherpaContext *context =
         (struct VocaPhoneSherpaContext *)recognizer;
     if (context == NULL || context->recognizer == NULL ||
@@ -119,7 +129,14 @@ int VocaPhoneSherpaDecode(
     int copied = result == NULL
         ? -1
         : copy_text(result->text, output, output_capacity);
-    if (result != NULL) SherpaOnnxDestroyOfflineRecognizerResult(result);
+    if (result != NULL) {
+        // Optional in the struct and left null by every family except
+        // SenseVoice, so it is never dereferenced without checking.
+        if (language != NULL && language_capacity > 0 && result->lang != NULL) {
+            copy_text(result->lang, language, language_capacity);
+        }
+        SherpaOnnxDestroyOfflineRecognizerResult(result);
+    }
     SherpaOnnxDestroyOfflineStream(stream);
     return copied;
 }

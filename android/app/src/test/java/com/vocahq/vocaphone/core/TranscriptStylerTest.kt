@@ -25,6 +25,41 @@ class TranscriptStylerTest {
     }
 
     @Test
+    fun `automatic language recognizes unpunctuated danda scripts`() {
+        val hindi = "मैं कल बाजार जाऊंगा"
+        assertEquals(
+            "a detected language punctuates by script",
+            "मैं कल बाजार जाऊंगा।",
+            TranscriptStyler.apply(hindi, WritingStyle.FORMAL, "hi"),
+        )
+        assertEquals(
+            "automatic falls back to the script when an engine omits its language",
+            "मैं कल बाजार जाऊंगा।",
+            TranscriptStyler.apply(hindi, WritingStyle.FORMAL, "auto"),
+        )
+        assertEquals(
+            "আমি কাল যাব।",
+            TranscriptStyler.apply("আমি কাল যাব", WritingStyle.FORMAL, "auto"),
+        )
+        assertEquals(
+            "ਮੈਂ ਕੱਲ੍ਹ ਜਾਵਾਂਗਾ।",
+            TranscriptStyler.apply("ਮੈਂ ਕੱਲ੍ਹ ਜਾਵਾਂਗਾ", WritingStyle.FORMAL, "auto"),
+        )
+    }
+
+    @Test
+    fun `hindi normalizes sentence dots without touching protected dots or ellipses`() {
+        assertEquals(
+            "मूल्य 22.5 है। U.S. टीम example.com देखें... ठीक है।",
+            TranscriptStyler.apply(
+                "मूल्य 22.5 है. U.S. टीम example.com देखें... ठीक है.",
+                WritingStyle.FORMAL,
+                "auto",
+            ),
+        )
+    }
+
+    @Test
     fun `local styling uses language punctuation`() {
         assertEquals(
             "家に帰りました！ジョンが電話してきました！",

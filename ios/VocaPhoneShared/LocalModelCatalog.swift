@@ -13,6 +13,22 @@ enum SherpaFamily: String, Codable, Sendable {
     case canary
     case nemoCtc
     case paraformer
+
+    /// Whether this family accepts `modified_beam_search`.
+    ///
+    /// This is not a preference. sherpa-onnx validates the decoding method when
+    /// the recognizer is built, and every family except the transducer answers
+    /// an unsupported one with `exit(-1)` — not an exception, not an error
+    /// return, but the process gone. So the method has to be decided from the
+    /// family and never from the user's setting alone.
+    var supportsBeamSearch: Bool { self == .nemoTransducer }
+
+    static let greedySearch = "greedy_search"
+
+    /// The only safe way to turn a quality setting into a decoding method.
+    func decodingMethod(for quality: TranscriptionQuality) -> String {
+        supportsBeamSearch ? quality.sherpaDecodingMethod : Self.greedySearch
+    }
 }
 
 struct LocalModelDescriptor: Identifiable, Codable, Sendable, Equatable {
@@ -31,6 +47,15 @@ struct LocalModelDescriptor: Identifiable, Codable, Sendable, Equatable {
     let englishOnly: Bool
     let languageCodesOverride: Set<String>
     let detectsLanguageAutomatically: Bool
+
+    /// Whether a custom word list can reach this model at all.
+    ///
+    /// Whisper's decoder reads previous text tokens, which is the slot a
+    /// vocabulary prompt goes into. The sherpa families have no equivalent: the
+    /// CTC and non-autoregressive ones condition on audio alone, and the two
+    /// that could be biased — the Parakeet transducers — need a BPE vocabulary
+    /// file that their upstream repositories do not publish.
+    var supportsCustomVocabulary: Bool { engine == .whisperKit }
 
     init(
         id: String,

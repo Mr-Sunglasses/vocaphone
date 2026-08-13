@@ -26,8 +26,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * Holds the microphone foreground-service type for the whole dictation and shows
- * the ongoing recording notification Android requires while it does.
+ * Holds a foreground service for the whole dictation and shows the ongoing
+ * notification while capture or on-device transcription is running.
  */
 class DictationService : Service() {
 
@@ -75,11 +75,11 @@ class DictationService : Service() {
     }
 
     /**
-     * The microphone is released as soon as capture ends, and this service stops
-     * itself there — so Finish and Cancel sent during upload or transcription
-     * arrive at a *new* instance with no recording to hold. It has no observer
-     * to stop it later, and a started service runs until something does, so
-     * every cancel after the microphone was released leaked one.
+     * Keep the service alive through delivery and local inference. In particular,
+     * Whisper is CPU-heavy; stopping the foreground service at the microphone
+     * boundary lets Android treat the same process as background work just as
+     * decoding begins. The observer below owns the service lifetime and stops it
+     * at a terminal dictation state.
      */
     private fun stopUnlessHoldingMicrophone() {
         if (observer == null) stopSelf()
@@ -103,10 +103,8 @@ class DictationService : Service() {
             if (settled?.phase?.holdsMicrophone == true) {
                 controller.state
                     .onEach { notificationManager().notify(NOTIFICATION_ID, notification(it.statusText)) }
-                    .first { !it.phase.holdsMicrophone }
+                    .first { it.phase.isTerminal }
             }
-            // The microphone is released the moment capture ends; delivery and
-            // insertion continue without a foreground service.
             stopForegroundAndSelf()
         }
     }
@@ -138,7 +136,7 @@ class DictationService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_dictation)
-            .setContentTitle("VocaPhone is recording")
+            .setContentTitle("VocaPhone is working")
             .setContentText(status)
             .setOngoing(true)
             .setSilent(true)
@@ -155,7 +153,7 @@ class DictationService : Service() {
             "Recording",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Shown while VocaPhone is holding the microphone."
+            description = "Shown while VocaPhone is recording or transcribing."
             setShowBadge(false)
         }
         notificationManager().createNotificationChannel(channel)
@@ -204,11 +202,9 @@ class DictationService : Service() {
 /**
  * Whether a start attempt has resolved, either way.
  *
- * [DictationService] holds a microphone foreground service from before capture
- * begins until it can see the microphone actually being held, so it needs to
- * recognise the outcomes that never reach the microphone at all — otherwise the
- * only thing that ends the wait is a timeout the user spends looking at a
- * recording notification.
+ * [DictationService] starts before capture begins, so it needs to recognise the
+ * outcomes that never reach the microphone at all — otherwise the only thing
+ * that ends the wait is a timeout the user spends looking at a notification.
  */
 internal object DictationStartWatch {
     fun hasSettled(phase: DictationPhase): Boolean = when (phase) {

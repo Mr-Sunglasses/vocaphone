@@ -11,6 +11,24 @@ struct TranscriptStylerTests {
         #expect(TranscriptStyler.apply(source, style: .excited) == "Hello there! How are you!")
     }
 
+    @Test func automaticLanguageRecognizesUnpunctuatedDandaScripts() {
+        let hindi = "मैं कल बाजार जाऊंगा"
+        #expect(TranscriptStyler.apply(hindi, style: .formal, language: "hi") == "मैं कल बाजार जाऊंगा।")
+        #expect(TranscriptStyler.apply(hindi, style: .formal, language: "auto") == "मैं कल बाजार जाऊंगा।")
+        #expect(TranscriptStyler.apply("আমি কাল যাব", style: .formal, language: "auto") == "আমি কাল যাব।")
+        #expect(TranscriptStyler.apply("ਮੈਂ ਕੱਲ੍ਹ ਜਾਵਾਂਗਾ", style: .formal, language: "auto") == "ਮੈਂ ਕੱਲ੍ਹ ਜਾਵਾਂਗਾ।")
+    }
+
+    @Test func hindiNormalizesSentenceDotsWithoutTouchingProtectedDotsOrEllipses() {
+        #expect(
+            TranscriptStyler.apply(
+                "मूल्य 22.5 है. U.S. टीम example.com देखें... ठीक है.",
+                style: .formal,
+                language: "auto"
+            ) == "मूल्य 22.5 है। U.S. टीम example.com देखें... ठीक है।"
+        )
+    }
+
     @Test func localStylingKeepsProtectedSpansIntact() {
         #expect(
             TranscriptStyler.apply(

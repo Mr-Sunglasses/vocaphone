@@ -74,7 +74,10 @@ enum TranscriptStyler {
 
         let punctuation = punctuation(for: language, text: source)
         let masked = mask(source)
-        let normalized = normalizeSpacing(masked.text)
+        let normalized = normalizeSentenceTerminators(
+            normalizeSpacing(masked.text),
+            punctuation: punctuation
+        )
         let result: String
         switch style {
         case .raw:
@@ -114,7 +117,7 @@ enum TranscriptStyler {
             if text.contains(where: { "。、！？".contains($0) }) { base = cjk }
             else if text.contains(where: { "،؟".contains($0) }) { base = arabic }
             else if text.contains("۔") { base = urdu }
-            else if text.contains("।") { base = danda }
+            else if text.contains("।") || containsDandaScript(text) { base = danda }
             else { base = latin }
         }
         var seen = Set<Character>()
@@ -127,6 +130,20 @@ enum TranscriptStyler {
             terminators: merged,
             join: base.join
         )
+    }
+
+    /// Devanagari, Bengali/Assamese, and Gurmukhi conventionally use danda.
+    /// This is the fallback when Automatic was selected and an engine did not
+    /// expose the language it detected.
+    private static func containsDandaScript(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            switch scalar.value {
+            case 0x0900...0x097F, 0x0980...0x09FF, 0x0A00...0x0A7F:
+                true
+            default:
+                false
+            }
+        }
     }
 
     private static func mask(_ text: String) -> Masked {
@@ -166,6 +183,33 @@ enum TranscriptStyler {
                 with: "$1",
                 options: .regularExpression
             )
+    }
+
+    /// A model often emits an ASCII full stop even when it correctly decoded
+    /// Hindi text. Once the script is known, canonicalize sentence boundaries
+    /// while leaving masked URLs, decimals, abbreviations, and ellipses intact.
+    private static func normalizeSentenceTerminators(
+        _ text: String,
+        punctuation: Punctuation
+    ) -> String {
+        guard punctuation.terminator == "।" else { return text }
+        let characters = Array(text)
+        var result = ""
+        result.reserveCapacity(text.count)
+        for index in characters.indices {
+            let character = characters[index]
+            guard character == "." else {
+                result.append(character)
+                continue
+            }
+            let previous = index > characters.startIndex ? characters[index - 1] : nil
+            let nextIndex = index + 1
+            let next = nextIndex < characters.endIndex ? characters[nextIndex] : nil
+            let isEllipsis = previous == "." || next == "."
+            let isSentenceBoundary = next == nil || next?.isWhitespace == true
+            result.append(isSentenceBoundary && !isEllipsis ? "।" : character)
+        }
+        return result
     }
 
     private static func ensureTerminator(_ text: String, punctuation: Punctuation) -> String {

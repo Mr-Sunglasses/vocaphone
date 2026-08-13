@@ -33,6 +33,20 @@ struct SettingsView: View {
         KeyboardPreferences.recordingSoundsKey,
         store: KeyboardPreferences.defaults
     ) private var recordingSoundsEnabled = false
+    // The App Group store, not the keyboard's: on-device decoding happens in
+    // this app, and the keyboard has no use for either of these.
+    @AppStorage(
+        LocalTranscriptionPreferences.qualityKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var transcriptionQualityRawValue = TranscriptionQuality.default.rawValue
+    @AppStorage(
+        LocalTranscriptionPreferences.vocabularyKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var savedCustomVocabulary = ""
+    @State private var customVocabularyDraft = ""
+    /// A `List` row re-runs `onAppear` when it scrolls back into view, and
+    /// reloading the draft there would throw away a half-typed word.
+    @State private var hasLoadedVocabularyDraft = false
     @State private var diagnosticExportURL: URL?
     @State private var isSharingDiagnostics = false
     @State private var diagnosticsStatus: String?
@@ -145,6 +159,110 @@ struct SettingsView: View {
         }
 
         LocalModelPicker(manager: coordinator.localModels)
+
+        Section {
+            Picker("Accuracy", selection: $transcriptionQualityRawValue) {
+                ForEach(TranscriptionQuality.allCases) { quality in
+                    Text(quality.displayName).tag(quality.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: transcriptionQualityRawValue) { _, _ in reloadLocalEngine() }
+            if let loading = coordinator.localModels.loadingMessage {
+                Text(loading).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("On-device accuracy")
+        } footer: {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(selectedTranscriptionQuality.detail)
+                Text(
+                    "This governs models running on this iPhone. Transcription on "
+                        + "your gateway is unaffected."
+                )
+            }
+        }
+
+        customWordsSection
+    }
+
+    /// Saved on request rather than on every keystroke: the terms are parsed at
+    /// inference time, and a half-typed name being persisted mid-word is a
+    /// spelling nobody asked to be biased toward.
+    @ViewBuilder private var customWordsSection: some View {
+        Section {
+            TextEditor(text: $customVocabularyDraft)
+                .frame(minHeight: 88)
+                .font(.body)
+            Button("Save words") { savedCustomVocabulary = customVocabularyDraft }
+                .disabled(customVocabularyDraft == savedCustomVocabulary)
+        } header: {
+            Text("Custom words")
+        } footer: {
+            let terms = CustomVocabulary.terms(customVocabularyDraft)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(
+                    "Names, places and jargon an on-device Whisper model is unlikely "
+                        + "to know. One per line, or separated by commas."
+                )
+                Text(
+                    terms.isEmpty
+                        ? "No custom words. Transcription is unchanged."
+                        : "\(terms.count) word\(terms.count == 1 ? "" : "s") will bias the "
+                            + "decoder. This nudges spelling rather than guaranteeing it, and "
+                            + "a very long list starts to crowd out the speech itself."
+                )
+                // Said plainly rather than letting the list quietly do nothing:
+                // only Whisper's decoder has somewhere to put a vocabulary.
+                if let unsupported = unsupportedVocabularyModel, !terms.isEmpty {
+                    Text(
+                        "\(unsupported) cannot use these words. Only Whisper models take a "
+                            + "vocabulary; the list is kept for when you switch back to one."
+                    )
+                    .foregroundStyle(.red)
+                }
+            }
+        }
+        .onAppear {
+            guard !hasLoadedVocabularyDraft else { return }
+            customVocabularyDraft = savedCustomVocabulary
+            hasLoadedVocabularyDraft = true
+        }
+    }
+
+    private var selectedTranscriptionQuality: TranscriptionQuality {
+        TranscriptionQuality.fromStored(transcriptionQualityRawValue)
+    }
+
+    /// A sherpa engine has its decoding method baked in, so changing the
+    /// accuracy rebuilds it. Doing that here means it happens while the user is
+    /// still on this screen rather than in front of the next dictation. Best
+    /// effort: the dictation that follows attempts the same load and reports
+    /// whatever went wrong where the user is looking.
+    private func reloadLocalEngine() {
+        guard LocalTranscriptionPreferences.enabled,
+              let descriptor = LocalModelCatalog.descriptor(
+                  for: LocalTranscriptionPreferences.modelIdentifier
+              )
+        else { return }
+        Task { @MainActor in
+            try? await coordinator.localModels.prepare(
+                descriptor,
+                language: KeyboardPreferences.effectiveTranscriptionLanguage.rawValue
+            )
+        }
+    }
+
+    /// The selected on-device model when it cannot take a vocabulary, so the
+    /// word list can say so instead of silently doing nothing.
+    private var unsupportedVocabularyModel: String? {
+        guard LocalTranscriptionPreferences.enabled,
+              let descriptor = LocalModelCatalog.descriptor(
+                  for: LocalTranscriptionPreferences.modelIdentifier
+              ),
+              !descriptor.supportsCustomVocabulary
+        else { return nil }
+        return descriptor.displayName
     }
 
     private var insertionSection: some View {

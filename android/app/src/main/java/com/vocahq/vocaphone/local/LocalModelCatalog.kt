@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.local
 
 import android.os.Build
+import com.vocahq.vocaphone.core.TranscriptionQuality
 
 /** Native engines that can run without the gateway. */
 enum class LocalModelEngine { WHISPER, SHERPA_ONNX }
@@ -14,14 +15,36 @@ enum class LocalModelEngine { WHISPER, SHERPA_ONNX }
  * on which field was filled in and reads the type from the ONNX metadata, rather
  * than logging "Invalid model_type" against a value it does not recognize.
  */
-enum class SherpaFamily(val sherpaModelType: String = "") {
-    NEMO_TRANSDUCER("nemo_transducer"),
+enum class SherpaFamily(
+    val sherpaModelType: String = "",
+    /**
+     * Whether this family accepts `modified_beam_search`.
+     *
+     * This is not a preference. sherpa-onnx validates the decoding method when
+     * the recognizer is built, and every family except the transducer answers an
+     * unsupported one with `exit(-1)` — not an exception, not an error return,
+     * but the process gone. In the IME that is the keyboard vanishing mid-
+     * sentence, so the method has to be decided from the family and never from
+     * the user's setting alone.
+     */
+    val supportsBeamSearch: Boolean = false,
+) {
+    NEMO_TRANSDUCER("nemo_transducer", supportsBeamSearch = true),
     SENSE_VOICE,
     MOONSHINE,
     DOLPHIN_CTC,
     CANARY,
     NEMO_CTC,
     PARAFORMER,
+    ;
+
+    /** The only safe way to turn a quality setting into a decoding method. */
+    fun decodingMethod(quality: TranscriptionQuality): String =
+        if (supportsBeamSearch) quality.sherpaDecodingMethod else GREEDY_SEARCH
+
+    companion object {
+        const val GREEDY_SEARCH = "greedy_search"
+    }
 }
 
 /** One file of a model, pinned by exact byte length and SHA-256. */
@@ -59,6 +82,17 @@ data class LocalModelDescriptor(
 
     /** The single file a whisper.cpp context is initialized from. */
     val primaryFile: PinnedFile get() = files.first()
+
+    /**
+     * Whether a custom word list can reach this model at all.
+     *
+     * Whisper's decoder reads previous text tokens, which is the slot a
+     * vocabulary prompt goes into. The sherpa families have no equivalent: the
+     * CTC and non-autoregressive ones condition on audio alone, and the two
+     * that could be biased — the Parakeet transducers — need a BPE vocabulary
+     * file that their upstream repositories do not publish.
+     */
+    val supportsCustomVocabulary: Boolean get() = engine == LocalModelEngine.WHISPER
 }
 
 /**
@@ -163,10 +197,22 @@ object LocalModelCatalog {
 
     fun find(id: String): LocalModelDescriptor? = all.firstOrNull { it.id == id }
 
-    fun recommended(totalRamGB: Long): LocalModelDescriptor = when {
-        totalRamGB >= 12 -> find("large-v3-turbo")
-        totalRamGB >= 6 -> find("large-v3-turbo-q5_0")
-        totalRamGB >= 4 -> find("small-q5_1")
+    /**
+     * A model fitting in RAM does not mean the CPU can transcribe with it at an
+     * interactive speed. Older high-RAM phones report no media performance
+     * class, so keep their default conservative while leaving every model that
+     * fits available as an explicit choice.
+     */
+    fun recommended(
+        totalRamGB: Long,
+        mediaPerformanceClass: Int = Build.VERSION.MEDIA_PERFORMANCE_CLASS,
+    ): LocalModelDescriptor = when {
+        totalRamGB >= 12 && mediaPerformanceClass >= 34 -> find("large-v3-turbo")
+        totalRamGB >= 6 && mediaPerformanceClass >= 31 -> find("large-v3-turbo-q5_0")
+        // RAM only says that a model fits. Older high-RAM phones such as the
+        // POCO F1 still need the smaller encoder to finish at a usable speed.
+        totalRamGB >= 4 && mediaPerformanceClass >= 31 -> find("small-q5_1")
+        totalRamGB >= 4 -> find("base-q5_1")
         totalRamGB >= 3 -> find("base-q5_1")
         else -> find("tiny-q5_1")
     } ?: all.first()

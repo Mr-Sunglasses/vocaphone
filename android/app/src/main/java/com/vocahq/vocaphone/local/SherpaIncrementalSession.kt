@@ -17,11 +17,12 @@ import kotlinx.coroutines.channels.Channel
 internal class SherpaIncrementalSession(
     scope: CoroutineScope,
     private val prepare: suspend () -> Unit,
-    private val decode: suspend (FloatArray) -> String,
+    private val decode: suspend (FloatArray) -> SherpaTranscript,
 ) {
     private val accepting = AtomicBoolean(true)
     private val frames = Channel<ShortArray>(capacity = MAX_RECORDING_FRAMES)
-    private val result: Deferred<String> = scope.async(Dispatchers.Default) { transcribe() }
+    private val result: Deferred<SherpaTranscript> =
+        scope.async(Dispatchers.Default) { transcribe() }
 
     init {
         result.invokeOnCompletion { accepting.set(false) }
@@ -31,7 +32,7 @@ internal class SherpaIncrementalSession(
     fun offer(frame: ShortArray): Boolean =
         accepting.get() && frames.trySend(frame).isSuccess
 
-    suspend fun finish(): String {
+    suspend fun finish(): SherpaTranscript {
         accepting.set(false)
         frames.close()
         return result.await()
@@ -43,12 +44,12 @@ internal class SherpaIncrementalSession(
         result.cancel()
     }
 
-    private suspend fun transcribe(): String {
+    private suspend fun transcribe(): SherpaTranscript {
         prepare()
         val audio = FloatSampleBuffer(
             initialCapacity = SherpaLongAudio.STREAMING_WINDOW_SECONDS * SherpaLongAudio.SAMPLE_RATE,
         )
-        var transcript = ""
+        var transcript = SherpaTranscript.EMPTY
         var overlapsPrevious = false
 
         for (frame in frames) {
@@ -57,9 +58,8 @@ internal class SherpaIncrementalSession(
                 if (audio.size < STREAMING_WINDOW_SAMPLES) break
                 val available = audio.toFloatArray()
                 val split = SherpaLongAudio.nextStreamingSplit(available) ?: break
-                transcript = SherpaTranscriptMerger.append(
-                    existing = transcript,
-                    next = decode(available.copyOfRange(0, split.endExclusive)),
+                transcript = transcript.append(
+                    decode(available.copyOfRange(0, split.endExclusive)),
                     deduplicateOverlap = overlapsPrevious,
                 )
                 audio.discardPrefix(split.nextStart)
@@ -68,13 +68,12 @@ internal class SherpaIncrementalSession(
         }
 
         if (audio.size > 0) {
-            transcript = SherpaTranscriptMerger.append(
-                existing = transcript,
-                next = decode(audio.toFloatArray()),
+            transcript = transcript.append(
+                decode(audio.toFloatArray()),
                 deduplicateOverlap = overlapsPrevious,
             )
         }
-        return transcript.trim()
+        return transcript.copy(text = transcript.text.trim())
     }
 
     private class FloatSampleBuffer(initialCapacity: Int) {

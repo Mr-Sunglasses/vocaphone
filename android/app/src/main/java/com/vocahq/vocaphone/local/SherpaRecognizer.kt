@@ -10,6 +10,7 @@ import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTransducerModelConfig
+import com.vocahq.vocaphone.core.TranscriptionQuality
 import java.io.File
 
 /**
@@ -22,31 +23,31 @@ import java.io.File
 internal class SherpaRecognizer private constructor(
     private val recognizer: OfflineRecognizer,
 ) {
-    fun transcribe(samples: FloatArray): String {
-        var transcript = ""
+    fun transcribe(samples: FloatArray): SherpaTranscript {
+        var transcript = SherpaTranscript.EMPTY
         SherpaLongAudio.chunks(samples).forEach { chunk ->
-            val chunkText = transcribeChunk(samples.copyOfRange(chunk.start, chunk.endExclusive))
-            transcript = SherpaTranscriptMerger.append(
-                existing = transcript,
-                next = chunkText,
-                deduplicateOverlap = chunk.overlapsPrevious,
-            )
+            val chunkResult = transcribeChunk(samples.copyOfRange(chunk.start, chunk.endExclusive))
+            transcript = transcript.append(chunkResult, deduplicateOverlap = chunk.overlapsPrevious)
         }
-        return transcript.trim()
+        return transcript.copy(text = transcript.text.trim())
     }
 
     /** One already-bounded chunk used by the during-recording pipeline. */
-    fun transcribeChunk(samples: FloatArray): String = SherpaEmptyChunkRecovery.decode(
+    fun transcribeChunk(samples: FloatArray): SherpaTranscript = SherpaEmptyChunkRecovery.decode(
         samples = samples,
         decodeOnce = ::decode,
     )
 
-    private fun decode(samples: FloatArray): String {
+    private fun decode(samples: FloatArray): SherpaTranscript {
         val stream = recognizer.createStream()
         return try {
             stream.acceptWaveform(samples, SherpaLongAudio.SAMPLE_RATE)
             recognizer.decode(stream)
-            recognizer.getResult(stream).text.trim()
+            val result = recognizer.getResult(stream)
+            SherpaTranscript(
+                text = result.text.trim(),
+                language = SherpaTranscript.languageCode(result.lang),
+            )
         } finally {
             stream.release()
         }
@@ -64,6 +65,7 @@ internal class SherpaRecognizer private constructor(
             directory: File,
             language: String,
             threads: Int,
+            quality: TranscriptionQuality,
         ): SherpaRecognizer {
             val family = requireNotNull(model.sherpaFamily) {
                 "${model.displayName} has no sherpa-onnx family"
@@ -133,15 +135,55 @@ internal class SherpaRecognizer private constructor(
                 modelType = family.sherpaModelType,
             )
 
+            // Never `quality.sherpaDecodingMethod` on its own: a family that
+            // does not support beam search answers it by killing the process.
+            val decodingMethod = family.decodingMethod(quality)
             return SherpaRecognizer(
                 OfflineRecognizer(
                     assetManager = null,
                     config = OfflineRecognizerConfig(
                         modelConfig = modelConfig,
-                        decodingMethod = "greedy_search",
+                        decodingMethod = decodingMethod,
+                        maxActivePaths = quality.sherpaMaxActivePaths,
                     ),
                 ),
             )
+        }
+    }
+}
+
+/**
+ * A decoded chunk, and the language the model said it was.
+ *
+ * Only SenseVoice fills the language in — it decodes a `<|en|>`-style tag as its
+ * first token. The other families leave it empty, and the writing styles then
+ * fall back to inspecting the text, exactly as they always have.
+ */
+internal data class SherpaTranscript(val text: String, val language: String = "") {
+
+    /** The first language anything reported wins; later chunks rarely disagree. */
+    fun append(next: SherpaTranscript, deduplicateOverlap: Boolean): SherpaTranscript =
+        SherpaTranscript(
+            text = SherpaTranscriptMerger.append(text, next.text, deduplicateOverlap),
+            language = language.ifEmpty { next.language },
+        )
+
+    companion object {
+        val EMPTY = SherpaTranscript("")
+
+        /**
+         * Turns SenseVoice's `<|en|>` token into `en`.
+         *
+         * Anything that does not look like a language code becomes empty rather
+         * than being passed on: the first token is a language tag by convention
+         * and not by guarantee, and a bogus code would pick the wrong
+         * punctuation with more confidence than no code at all.
+         */
+        fun languageCode(raw: String?): String {
+            val trimmed = raw?.trim()?.removeSurrounding("<|", "|>")?.trim().orEmpty()
+            return trimmed.takeIf { it.length in 2..3 && it.all(Char::isLetter) }
+                ?.lowercase()
+                .orEmpty()
         }
     }
 }
@@ -155,17 +197,19 @@ internal class SherpaRecognizer private constructor(
 internal object SherpaEmptyChunkRecovery {
     private const val MIN_RETRY_SECONDS = 6
 
-    fun decode(samples: FloatArray, decodeOnce: (FloatArray) -> String): String {
-        val firstAttempt = decodeOnce(samples).trim()
-        if (firstAttempt.isNotEmpty() || samples.size <= MIN_RETRY_SECONDS * SherpaLongAudio.SAMPLE_RATE) {
+    fun decode(
+        samples: FloatArray,
+        decodeOnce: (FloatArray) -> SherpaTranscript,
+    ): SherpaTranscript {
+        val firstAttempt = decodeOnce(samples)
+        if (firstAttempt.text.isNotEmpty() ||
+            samples.size <= MIN_RETRY_SECONDS * SherpaLongAudio.SAMPLE_RATE
+        ) {
             return firstAttempt
         }
 
         val midpoint = samples.size / 2
-        return SherpaTranscriptMerger.append(
-            existing = decodeOnce(samples.copyOfRange(0, midpoint)),
-            next = decodeOnce(samples.copyOfRange(midpoint, samples.size)),
-            deduplicateOverlap = false,
-        )
+        return decodeOnce(samples.copyOfRange(0, midpoint))
+            .append(decodeOnce(samples.copyOfRange(midpoint, samples.size)), deduplicateOverlap = false)
     }
 }

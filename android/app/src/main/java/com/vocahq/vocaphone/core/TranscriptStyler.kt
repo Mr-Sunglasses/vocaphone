@@ -42,7 +42,7 @@ object TranscriptStyler {
 
         val punctuation = punctuation(language, source)
         val masked = mask(source)
-        val normalized = normalizeSpacing(masked.text)
+        val normalized = normalizeSentenceTerminators(normalizeSpacing(masked.text), punctuation)
         val result = when (style) {
             WritingStyle.CLEAN -> ensureTerminator(normalized, punctuation)
             WritingStyle.FORMAL -> ensureTerminator(
@@ -80,10 +80,17 @@ object TranscriptStyler {
                 text.any { it in "。、！？" } -> cjk
                 text.any { it in "،؟" } -> arabic
                 text.contains('۔') -> urdu
-                text.contains('।') -> danda
+                text.contains('।') || containsDandaScript(text) -> danda
                 else -> latin
             }
         }.copy(terminators = universalTerminators + terminatorsFor(language, text))
+    }
+
+    /** Automatic-language fallback for scripts that conventionally use danda. */
+    private fun containsDandaScript(text: String): Boolean = text.any { character ->
+        character.code in 0x0900..0x097F ||
+            character.code in 0x0980..0x09FF ||
+            character.code in 0x0A00..0x0A7F
     }
 
     private fun terminatorsFor(language: String, text: String): String = when {
@@ -114,6 +121,28 @@ object TranscriptStyler {
         .replace(Regex("\\s+"), " ")
         .trim()
         .replace(Regex("\\s+([.!?。！？।۔،,;:])"), "$1")
+
+    /**
+     * Models often emit an ASCII full stop for correctly decoded Hindi. Once
+     * the script is known, normalize sentence boundaries while masked URLs,
+     * decimals, abbreviations, and ellipses remain untouched.
+     */
+    private fun normalizeSentenceTerminators(text: String, punctuation: Punctuation): String {
+        if (punctuation.terminator != "।") return text
+        return buildString(text.length) {
+            text.forEachIndexed { index, character ->
+                if (character != '.') {
+                    append(character)
+                    return@forEachIndexed
+                }
+                val previous = text.getOrNull(index - 1)
+                val next = text.getOrNull(index + 1)
+                val isEllipsis = previous == '.' || next == '.'
+                val isSentenceBoundary = next == null || next.isWhitespace()
+                append(if (isSentenceBoundary && !isEllipsis) '।' else character)
+            }
+        }
+    }
 
     private fun ensureTerminator(text: String, punctuation: Punctuation): String {
         if (text.isEmpty() || punctuation.terminator.isEmpty()) return text

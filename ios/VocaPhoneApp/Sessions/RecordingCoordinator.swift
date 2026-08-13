@@ -676,7 +676,7 @@ final class RecordingCoordinator {
             if let transcript = await streamingBridge.finish(
                 droppedChunks: recorder.lastDroppedChunkCount
             ) {
-                record.transcript = transcript
+                record.transcript = TranscriptSanitizer.clean(transcript)
                 record.error = nil
                 try record.transition(to: .readyToInsert)
                 try store.save(record)
@@ -715,7 +715,7 @@ final class RecordingCoordinator {
             guard let transcript = finished.transcript, !transcript.isEmpty else {
                 throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
             }
-            record.transcript = transcript
+            record.transcript = TranscriptSanitizer.clean(transcript)
             record.error = nil
             try record.transition(to: .readyToInsert)
             try store.save(record)
@@ -779,29 +779,43 @@ final class RecordingCoordinator {
 
             let incremental = localSherpaSession
             localSherpaSession = nil
-            let text: String
+            let transcribed: LocalModelManager.LocalTranscription
             if let incremental {
-                let incrementalText = await incremental.finish()
-                if incrementalText.isEmpty {
+                let incrementalResult = await incremental.finish()
+                if incrementalResult.text.isEmpty {
                     // A model can still produce no tokens for a boundary split;
                     // preserve the old whole-file retry as a last resort.
-                    text = try await localModels.transcribe(
+                    transcribed = try await localModels.transcribe(
                         audioURL: audioURL,
                         language: record.language
                     )
                 } else {
-                    text = incrementalText
+                    transcribed = .init(
+                        text: incrementalResult.text,
+                        language: incrementalResult.language
+                    )
                 }
             } else {
-                text = try await localModels.transcribe(
+                transcribed = try await localModels.transcribe(
                     audioURL: audioURL,
                     language: record.language
                 )
             }
+            let text = transcribed.text
+            // Sanitize before styling: the styler capitalizes sentences and adds
+            // terminators, and doing that to `[BLANK_AUDIO]` only makes it look
+            // more like something the user meant to say.
+            //
+            // The styles punctuate by script, so the language has to be the one
+            // actually spoken. With Automatic selected the record only says
+            // "auto", and a model that detected Hindi would otherwise have its
+            // Devanagari finished with a Latin full stop.
             record.transcript = TranscriptStyler.apply(
-                text,
+                TranscriptSanitizer.clean(text),
                 style: WritingStyle(rawValue: record.style) ?? .casual,
-                language: record.language
+                language: transcribed.language.isEmpty
+                    ? record.language
+                    : transcribed.language
             )
             record.error = nil
             try record.transition(to: .readyToInsert)

@@ -18,7 +18,8 @@ final class SherpaRecognizer: @unchecked Sendable {
         model: LocalModelDescriptor,
         directory: URL,
         language: String,
-        threads: Int
+        threads: Int,
+        quality: TranscriptionQuality
     ) throws -> SherpaRecognizer {
         guard let family = model.sherpaFamily else {
             throw LocalModelManagerError.unsupportedModel(model.id)
@@ -63,16 +64,22 @@ final class SherpaRecognizer: @unchecked Sendable {
             languageHint = ""
         }
 
+        // Never `quality.sherpaDecodingMethod` on its own: a family that does
+        // not support beam search answers it by killing the process.
+        let decodingMethod = family.decodingMethod(for: quality)
         let native: UnsafeMutableRawPointer? = models[0].withCString { model1 in
             models[1].withCString { model2 in
                 models[2].withCString { model3 in
                     models[3].withCString { model4 in
                         tokens.withCString { tokensPointer in
                             languageHint.withCString { languagePointer in
-                                VocaPhoneSherpaCreate(
-                                    Int32(family.bridgeValue), model1, model2, model3, model4,
-                                    tokensPointer, languagePointer, Int32(threads)
-                                )
+                                decodingMethod.withCString { decodingMethodPointer in
+                                    VocaPhoneSherpaCreate(
+                                        Int32(family.bridgeValue), model1, model2, model3, model4,
+                                        tokensPointer, languagePointer, Int32(threads),
+                                        decodingMethodPointer, quality.sherpaMaxActivePaths
+                                    )
+                                }
                             }
                         }
                     }
@@ -85,40 +92,54 @@ final class SherpaRecognizer: @unchecked Sendable {
         return SherpaRecognizer(native: native)
     }
 
-    func transcribe(_ samples: [Float]) -> String {
-        let transcript = SherpaLongAudio.chunks(samples).reduce(into: "") { transcript, chunk in
-            let bounded = Array(samples[chunk.start..<chunk.endExclusive])
-            let text = SherpaEmptyChunkRecovery.decode(samples: bounded, decodeOnce: decode)
-            transcript = SherpaTranscriptMerger.append(
-                existing: transcript,
-                next: text,
-                deduplicateOverlap: chunk.overlapsPrevious
-            )
-        }
-        return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+    func transcribe(_ samples: [Float]) -> SherpaTranscript {
+        let transcript = SherpaLongAudio.chunks(samples)
+            .reduce(into: SherpaTranscript.empty) { transcript, chunk in
+                let bounded = Array(samples[chunk.start..<chunk.endExclusive])
+                let decoded = SherpaEmptyChunkRecovery.decode(samples: bounded, decodeOnce: decode)
+                transcript = transcript.appending(
+                    decoded, deduplicateOverlap: chunk.overlapsPrevious
+                )
+            }
+        return SherpaTranscript(
+            text: transcript.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            language: transcript.language
+        )
     }
 
-    func transcribeChunk(_ samples: [Float]) -> String {
+    func transcribeChunk(_ samples: [Float]) -> SherpaTranscript {
         SherpaEmptyChunkRecovery.decode(samples: samples, decodeOnce: decode)
     }
 
-    private func decode(_ samples: [Float]) -> String {
-        guard !samples.isEmpty else { return "" }
+    private func decode(_ samples: [Float]) -> SherpaTranscript {
+        guard !samples.isEmpty else { return .empty }
         var output = [CChar](repeating: 0, count: 131_072)
+        // Only ever holds a short tag such as "<|en|>".
+        var languageOutput = [CChar](repeating: 0, count: 32)
         let result = samples.withUnsafeBufferPointer { sampleBuffer in
             output.withUnsafeMutableBufferPointer { outputBuffer in
-                VocaPhoneSherpaDecode(
-                    native,
-                    sampleBuffer.baseAddress,
-                    Int32(samples.count),
-                    outputBuffer.baseAddress,
-                    Int32(outputBuffer.count)
-                )
+                languageOutput.withUnsafeMutableBufferPointer { languageBuffer in
+                    VocaPhoneSherpaDecode(
+                        native,
+                        sampleBuffer.baseAddress,
+                        Int32(samples.count),
+                        outputBuffer.baseAddress,
+                        Int32(outputBuffer.count),
+                        languageBuffer.baseAddress,
+                        Int32(languageBuffer.count)
+                    )
+                }
             }
         }
-        guard result >= 0 else { return "" }
-        let bytes = output.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
-        return String(decoding: bytes, as: UTF8.self)
+        guard result >= 0 else { return .empty }
+        return SherpaTranscript(
+            text: Self.string(from: output),
+            language: SherpaTranscript.languageCode(Self.string(from: languageOutput))
+        )
+    }
+
+    private static func string(from buffer: [CChar]) -> String {
+        String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }
 }
 
@@ -139,16 +160,19 @@ private extension SherpaFamily {
 private enum SherpaEmptyChunkRecovery {
     private static let minimumRetrySamples = 6 * SherpaLongAudio.sampleRate
 
-    static func decode(samples: [Float], decodeOnce: ([Float]) -> String) -> String {
-        guard !SherpaLongAudio.isEffectivelySilent(samples) else { return "" }
-        let first = decodeOnce(samples).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard first.isEmpty, samples.count > minimumRetrySamples else { return first }
-        let midpoint = samples.count / 2
-        return SherpaTranscriptMerger.append(
-            existing: decodeOnce(Array(samples[..<midpoint])),
-            next: decodeOnce(Array(samples[midpoint...])),
-            deduplicateOverlap: false
+    static func decode(
+        samples: [Float], decodeOnce: ([Float]) -> SherpaTranscript
+    ) -> SherpaTranscript {
+        guard !SherpaLongAudio.isEffectivelySilent(samples) else { return .empty }
+        let attempt = decodeOnce(samples)
+        let first = SherpaTranscript(
+            text: attempt.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            language: attempt.language
         )
+        guard first.text.isEmpty, samples.count > minimumRetrySamples else { return first }
+        let midpoint = samples.count / 2
+        return decodeOnce(Array(samples[..<midpoint]))
+            .appending(decodeOnce(Array(samples[midpoint...])), deduplicateOverlap: false)
     }
 }
 
@@ -156,7 +180,7 @@ private enum SherpaEmptyChunkRecovery {
 /// remains authoritative, but Sherpa's expensive offline work is spread over
 /// the recording instead of making the user wait for the whole file at finish.
 final class SherpaIncrementalSession: @unchecked Sendable {
-    private let task: Task<String, Never>
+    private let task: Task<SherpaTranscript, Never>
 
     init(chunks: AsyncStream<Data>, recognizer: SherpaRecognizer) {
         task = Task.detached(priority: .userInitiated) {
@@ -164,31 +188,29 @@ final class SherpaIncrementalSession: @unchecked Sendable {
         }
     }
 
-    func finish() async -> String { await task.value }
+    func finish() async -> SherpaTranscript { await task.value }
 
     func cancel() { task.cancel() }
 
     private static func transcribe(
         chunks: AsyncStream<Data>,
         recognizer: SherpaRecognizer
-    ) async -> String {
+    ) async -> SherpaTranscript {
         var samples: [Float] = []
         samples.reserveCapacity(
             SherpaLongAudio.streamingWindowSeconds * SherpaLongAudio.sampleRate
         )
-        var transcript = ""
+        var transcript = SherpaTranscript.empty
         var overlapsPrevious = false
 
         for await data in chunks {
-            guard !Task.isCancelled else { return transcript.trimmingCharacters(in: .whitespacesAndNewlines) }
+            guard !Task.isCancelled else { return Self.trimmed(transcript) }
             samples.append(contentsOf: Self.floatSamples(in: data))
 
             while let split = SherpaLongAudio.nextStreamingSplit(samples) {
                 let bounded = Array(samples[..<split.endExclusive])
-                let text = recognizer.transcribeChunk(bounded)
-                transcript = SherpaTranscriptMerger.append(
-                    existing: transcript,
-                    next: text,
+                transcript = transcript.appending(
+                    recognizer.transcribeChunk(bounded),
                     deduplicateOverlap: overlapsPrevious
                 )
                 samples.removeFirst(split.nextStart)
@@ -197,13 +219,19 @@ final class SherpaIncrementalSession: @unchecked Sendable {
         }
 
         if !samples.isEmpty {
-            transcript = SherpaTranscriptMerger.append(
-                existing: transcript,
-                next: recognizer.transcribeChunk(samples),
+            transcript = transcript.appending(
+                recognizer.transcribeChunk(samples),
                 deduplicateOverlap: overlapsPrevious
             )
         }
-        return transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.trimmed(transcript)
+    }
+
+    private static func trimmed(_ transcript: SherpaTranscript) -> SherpaTranscript {
+        SherpaTranscript(
+            text: transcript.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            language: transcript.language
+        )
     }
 
     private static func floatSamples(in data: Data) -> [Float] {

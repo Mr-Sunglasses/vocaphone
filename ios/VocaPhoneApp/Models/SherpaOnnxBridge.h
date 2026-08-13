@@ -13,6 +13,9 @@ enum VocaPhoneSherpaFamily {
     VocaPhoneSherpaParaformer = 6,
 };
 
+/// `decoding_method` is one of sherpa-onnx's literals — "greedy_search" or
+/// "modified_beam_search" — and `max_active_paths` is the beam width the latter
+/// searches. Only the transducer families act on either.
 VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     int family,
     const char *model1,
@@ -21,15 +24,22 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     const char *model4,
     const char *tokens,
     const char *language,
-    int32_t threads
+    int32_t threads,
+    const char *decoding_method,
+    int32_t max_active_paths
 );
 
+/// `language` receives the model's own language label when it reports one — of
+/// the families VocaPhone ships, only SenseVoice does, as a `<|en|>`-style tag.
+/// It is set to an empty string otherwise, and may be NULL if not wanted.
 int VocaPhoneSherpaDecode(
     VocaPhoneSherpaRecognizer recognizer,
     const float *samples,
     int32_t sample_count,
     char *output,
-    int32_t output_capacity
+    int32_t output_capacity,
+    char *language,
+    int32_t language_capacity
 );
 
 void VocaPhoneSherpaDestroy(VocaPhoneSherpaRecognizer recognizer);

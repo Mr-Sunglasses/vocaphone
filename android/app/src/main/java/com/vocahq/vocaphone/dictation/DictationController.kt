@@ -27,6 +27,7 @@ import com.vocahq.vocaphone.gateway.GatewayAudioStream
 import com.vocahq.vocaphone.gateway.GatewayStreamingPolicy
 import com.vocahq.vocaphone.gateway.StreamingUnavailableException
 import com.vocahq.vocaphone.local.LocalModelManager
+import com.vocahq.vocaphone.local.LocalTranscription
 import com.vocahq.vocaphone.local.SherpaIncrementalSession
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.settings.SettingsRepository
@@ -256,6 +257,7 @@ class DictationController(
                     modelID = modelID,
                     language = configuration.effectiveLanguage.wireValue,
                     scope = scope,
+                    quality = configuration.transcriptionQuality,
                 )
             }
         } else {
@@ -522,19 +524,21 @@ class DictationController(
 
         if (configuration.localTranscriptionEnabled) {
             val session = incrementalReference.getAndSet(null)
-            var preparedTranscript: String? = null
+            var preparedTranscript: LocalTranscription? = null
             var timingRecorded = false
             if (session != null) {
                 _state.update { it.copy(phase = DictationPhase.TRANSCRIBING, streaming = false) }
                 diagnostics.recordTiming("local_transcription_started", source.name)
                 timingRecorded = true
                 preparedTranscript = try {
-                    session.finish().takeIf(String::isNotBlank)?.also {
-                        diagnostics.recordTiming("local_incremental_ready", source.name)
-                    } ?: run {
-                        incrementalFallback.set(true)
-                        null
-                    }
+                    session.finish()
+                        .takeIf { it.text.isNotBlank() }
+                        ?.let { LocalTranscription(it.text, it.language) }
+                        ?.also { diagnostics.recordTiming("local_incremental_ready", source.name) }
+                        ?: run {
+                            incrementalFallback.set(true)
+                            null
+                        }
                 } catch (_: Throwable) {
                     session.cancel()
                     incrementalFallback.set(true)
@@ -679,9 +683,22 @@ class DictationController(
         configuration: VocaPhoneSettings,
         source: DictationSource,
         generation: Int,
-        preparedTranscript: String? = null,
+        preparedTranscript: LocalTranscription? = null,
         transcriptionTimingRecorded: Boolean = false,
     ) {
+        // Loading a model is seconds of silence with nothing on screen to explain
+        // it, and changing the accuracy setting makes it happen again. Mirroring
+        // it into the status line is the difference between a wait and a hang.
+        val preparingJob = scope.launch {
+            localModels.state.collect { models ->
+                _state.update { state ->
+                    state.copy(
+                        statusDetail = models.preparing?.let { "Loading $it… Please wait." }
+                            ?: "Transcribing on this phone… Please wait.",
+                    )
+                }
+            }
+        }
         try {
             _state.update { it.copy(phase = DictationPhase.TRANSCRIBING, streaming = false) }
             if (!transcriptionTimingRecorded) {
@@ -689,10 +706,15 @@ class DictationController(
             }
             val modelID = configuration.localModelId.takeIf { it.isNotEmpty() }
                 ?: error("Choose and download an on-device model first.")
-            val transcript = styleLocalTranscript(
-                preparedTranscript ?: localModels.transcribe(wavFile, modelID, language),
-                configuration,
-            )
+            val local = preparedTranscript
+                ?: localModels.transcribe(
+                    wavFile,
+                    modelID,
+                    language,
+                    configuration.transcriptionQuality,
+                    configuration.customVocabulary,
+                )
+            val transcript = styleLocalTranscript(local, configuration)
             if (transcript.isEmpty()) {
                 throw GatewayException.emptyTranscript()
             }
@@ -714,16 +736,25 @@ class DictationController(
                 configuration,
                 generation,
             )
+        } finally {
+            preparingJob.cancel()
+            _state.update { it.copy(statusDetail = null) }
         }
     }
 
+    /**
+     * The styles punctuate by script, so the language they are given has to be
+     * the one that was actually spoken. With Automatic selected the request only
+     * says "auto", and a model that detected Hindi would otherwise have its
+     * Devanagari finished with a Latin full stop.
+     */
     private fun styleLocalTranscript(
-        transcript: String?,
+        local: LocalTranscription,
         configuration: VocaPhoneSettings,
     ): String = TranscriptStyler.apply(
-        TranscriptSanitizer.clean(transcript),
+        TranscriptSanitizer.clean(local.text),
         configuration.style,
-        configuration.effectiveLanguage.wireValue,
+        local.language.ifEmpty { configuration.effectiveLanguage.wireValue },
     )
 
     private suspend fun deliver(

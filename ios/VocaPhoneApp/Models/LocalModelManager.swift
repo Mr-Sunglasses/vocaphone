@@ -18,6 +18,9 @@ final class LocalModelManager {
     private var sherpaRecognizer: SherpaRecognizer?
     private var loadedModelID: String?
     private var loadedLanguage: String?
+    /// Sherpa only: WhisperKit takes its decoding options per call, so quality
+    /// never invalidates a loaded Whisper model.
+    private var loadedQuality: TranscriptionQuality?
     private var modelsDirectory: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?
@@ -706,6 +709,7 @@ final class LocalModelManager {
             sherpaRecognizer = nil
             loadedModelID = nil
             loadedLanguage = nil
+            loadedQuality = nil
         }
         try? FileManager.default.removeItem(at: folder)
         downloadedModelIDs.remove(descriptor.id)
@@ -718,7 +722,19 @@ final class LocalModelManager {
         }
     }
 
-    func transcribe(audioURL: URL, language: String) async throws -> String {
+    /// What an on-device engine produced, and the language it actually decoded.
+    ///
+    /// The language matters because the writing styles punctuate by script — a
+    /// Devanagari sentence ends in a danda, not a full stop — and with Automatic
+    /// selected the request says only "auto". WhisperKit detects and reports;
+    /// the sherpa bridge does not expose it, so it leaves this empty and the
+    /// styler falls back to inspecting the text.
+    struct LocalTranscription: Sendable {
+        let text: String
+        let language: String
+    }
+
+    func transcribe(audioURL: URL, language: String) async throws -> LocalTranscription {
         guard let id = LocalTranscriptionPreferences.modelIdentifier,
               let descriptor = LocalModelCatalog.descriptor(for: id)
         else { throw LocalModelManagerError.modelNotDownloaded("none") }
@@ -733,6 +749,7 @@ final class LocalModelManager {
         case .sherpaOnnx:
             needsLoad = loadedModelID != id
                 || loadedLanguage != resolvedLanguage
+                || loadedQuality != LocalTranscriptionPreferences.quality
                 || sherpaRecognizer == nil
         }
         if needsLoad {
@@ -747,8 +764,11 @@ final class LocalModelManager {
         }
         if needsLoad { await Task.yield() }
 
-        let samples = try Self.loadSamples(from: audioURL)
-        guard !samples.isEmpty else { throw LocalModelManagerError.modelNotDownloaded("empty audio") }
+        let loaded = try Self.loadSamples(from: audioURL)
+        guard !loaded.isEmpty else { throw LocalModelManagerError.modelNotDownloaded("empty audio") }
+        // Safe here and not on the incremental path: this is the whole recording,
+        // so one gain covers all of it.
+        let samples = SpeechAudioConditioning.condition(loaded)
 
         switch descriptor.engine {
         case .whisperKit:
@@ -768,13 +788,34 @@ final class LocalModelManager {
                 folder: folder,
                 tokenizerFolder: tokenizerFolder
             )
+            let requested = descriptor.englishOnly ? "en" : (language == "auto" ? nil : language)
+            let quality = LocalTranscriptionPreferences.quality
+            // Tokenized here rather than stored, because the tokens only mean
+            // anything against the tokenizer of the model that is loaded.
+            let promptText = CustomVocabulary.whisperPrompt(
+                LocalTranscriptionPreferences.customVocabulary
+            )
+            let promptTokens = promptText.isEmpty
+                ? nil
+                : whisperKit.tokenizer?.encode(text: promptText)
             let options = DecodingOptions(
                 task: .transcribe,
-                language: descriptor.englishOnly ? "en" : (language == "auto" ? nil : language),
+                language: requested,
                 temperature: 0,
+                temperatureFallbackCount: quality.whisperKitTemperatureFallbackCount,
                 usePrefillPrompt: true,
                 usePrefillCache: true,
+                // WhisperKit derives this from `usePrefillPrompt`, so leaving it
+                // unset with prefill on resolves it to false — and a nil language
+                // then falls back to English rather than being detected. Automatic
+                // has to ask for detection in so many words.
+                detectLanguage: requested == nil,
                 skipSpecialTokens: true,
+                promptTokens: promptTokens,
+                // WhisperKit defaults this off where Whisper itself defaults it
+                // on. Leaving it off lets a window open on a blank token, which
+                // is how a pause becomes a leading empty segment.
+                suppressBlank: true,
                 chunkingStrategy: .vad
             )
             let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: options)
@@ -783,7 +824,9 @@ final class LocalModelManager {
             guard !text.isEmpty else {
                 throw LocalModelManagerError.modelNotDownloaded("empty transcript")
             }
-            return text
+            // Only meaningful when "auto" was asked for; otherwise it echoes the
+            // request back, which is the same answer either way.
+            return LocalTranscription(text: text, language: results.first?.language ?? "")
 
         case .sherpaOnnx:
             let sherpaRecognizer = try ensureSherpaRecognizer(
@@ -791,13 +834,13 @@ final class LocalModelManager {
                 folder: folder,
                 resolvedLanguage: resolvedLanguage
             )
-            let text = await Task.detached(priority: .userInitiated) {
+            let decoded = await Task.detached(priority: .userInitiated) {
                 sherpaRecognizer.transcribe(samples)
             }.value
-            guard !text.isEmpty else {
+            guard !decoded.text.isEmpty else {
                 throw LocalModelManagerError.modelNotDownloaded("empty transcript")
             }
-            return text
+            return LocalTranscription(text: decoded.text, language: decoded.language)
         }
     }
 
@@ -837,8 +880,12 @@ final class LocalModelManager {
     ) throws -> SherpaRecognizer {
         let files = try LocalModelIntegrity.sherpaModel(for: descriptor.id).files
         try LocalModelIntegrity.verifySizes(in: folder, files: files)
+        // Sherpa bakes the decoding method into the recognizer, so a change of
+        // quality means building a new one.
+        let quality = LocalTranscriptionPreferences.quality
         if loadedModelID != descriptor.id
             || loadedLanguage != resolvedLanguage
+            || loadedQuality != quality
             || sherpaRecognizer == nil
         {
             whisperKit = nil
@@ -849,10 +896,12 @@ final class LocalModelManager {
                 // ONNX Runtime's CPU pool benefits from a bounded number of
                 // workers on iPhone; using every logical core throttles long
                 // recordings and competes with audio/UI work.
-                threads: max(2, min(ProcessInfo.processInfo.processorCount - 2, 4))
+                threads: max(2, min(ProcessInfo.processInfo.processorCount - 2, 4)),
+                quality: quality
             )
             loadedModelID = descriptor.id
             loadedLanguage = resolvedLanguage
+            loadedQuality = quality
         }
         guard let sherpaRecognizer else {
             throw LocalModelManagerError.engineLoadFailed(descriptor.id)

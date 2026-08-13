@@ -15,6 +15,7 @@ import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.core.TranscriptionLanguage
+import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.security.TokenVault
 import kotlinx.coroutines.flow.Flow
@@ -62,6 +63,14 @@ data class VocaPhoneSettings(
     val modelDetectsLanguage: Boolean = false,
     val localTranscriptionEnabled: Boolean = false,
     val localModelId: String = "",
+    /** Governs the on-device engines only; the gateway decides for itself. */
+    val transcriptionQuality: TranscriptionQuality = TranscriptionQuality.DEFAULT,
+    /**
+     * Names and jargon to bias an on-device Whisper model toward, as the user
+     * typed them. Parsed by [com.vocahq.vocaphone.core.CustomVocabulary] rather
+     * than stored pre-split, so the text they see back is the text they wrote.
+     */
+    val customVocabulary: String = "",
 ) {
 
     /**
@@ -163,6 +172,12 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setLocalModel(modelId: String) = put(Keys.LOCAL_MODEL_ID, modelId)
 
+    suspend fun setTranscriptionQuality(quality: TranscriptionQuality) =
+        put(Keys.TRANSCRIPTION_QUALITY, quality.storedValue)
+
+    suspend fun setCustomVocabulary(vocabulary: String) =
+        put(Keys.CUSTOM_VOCABULARY, vocabulary)
+
     suspend fun recordEngineStatus(
         engine: String,
         ready: Boolean,
@@ -201,6 +216,8 @@ class SettingsRepository(private val context: Context) {
         modelDetectsLanguage = this[Keys.MODEL_DETECTS_LANGUAGE] ?: false,
         localTranscriptionEnabled = this[Keys.LOCAL_TRANSCRIPTION_ENABLED] ?: false,
         localModelId = this[Keys.LOCAL_MODEL_ID].orEmpty(),
+        transcriptionQuality = TranscriptionQuality.fromStored(this[Keys.TRANSCRIPTION_QUALITY]),
+        customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),
     )
 
     private object Keys {
@@ -220,6 +237,8 @@ class SettingsRepository(private val context: Context) {
         val MODEL_DETECTS_LANGUAGE = booleanPreferencesKey("model_detects_language")
         val LOCAL_TRANSCRIPTION_ENABLED = booleanPreferencesKey("local_transcription_enabled")
         val LOCAL_MODEL_ID = stringPreferencesKey("local_model_id")
+        val TRANSCRIPTION_QUALITY = stringPreferencesKey("transcription_quality")
+        val CUSTOM_VOCABULARY = stringPreferencesKey("custom_vocabulary")
     }
 
     private fun androidx.datastore.preferences.core.MutablePreferences.clearEngineStatus() {

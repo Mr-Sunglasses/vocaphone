@@ -42,7 +42,7 @@ class LocalEngineEndToEndTest {
         LocalModelIntegrity.verifySizes(model, directory)
         assertTrue(File(directory, LocalModelIntegrity.VERIFIED_MARKER).isFile)
 
-        val transcript = manager.transcribe(speech(), model.id, "en")
+        val transcript = manager.transcribe(speech(), model.id, "en").text
         assertTrue("empty transcript from $directory", transcript.isNotBlank())
         assertTrue(
             "unexpected transcript: $transcript",
@@ -50,7 +50,7 @@ class LocalEngineEndToEndTest {
         )
 
         // A second pass must reuse the loaded context rather than reloading.
-        assertEquals(transcript, manager.transcribe(speech(), model.id, "en"))
+        assertEquals(transcript, manager.transcribe(speech(), model.id, "en").text)
     }
 
     /**

@@ -36,9 +36,8 @@ class DictationStartWatchTest {
     }
 
     /**
-     * These arrive after the microphone has been released, and the service has
-     * already stopped itself by then. Reaching one without passing through
-     * LISTENING would mean capture never happened.
+     * These arrive after the microphone has been released. Reaching one without
+     * passing through LISTENING would mean capture never happened.
      */
     @Test
     fun `phases past the microphone do not stand in for it`() {
@@ -51,5 +50,14 @@ class DictationStartWatchTest {
         )) {
             assertFalse("$phase", DictationStartWatch.hasSettled(phase))
         }
+    }
+
+    @Test
+    fun `terminal phases release the foreground service after inference`() {
+        assertTrue(DictationPhase.READY_TO_INSERT.isTerminal)
+        assertTrue(DictationPhase.INSERTED.isTerminal)
+        assertTrue(DictationPhase.FAILED.isTerminal)
+        assertFalse(DictationPhase.TRANSCRIBING.isTerminal)
+        assertFalse(DictationPhase.INSERTING.isTerminal)
     }
 }

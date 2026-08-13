@@ -1,3 +1,5 @@
+import Foundation
+
 /// Keeps offline encoders away from unbounded long-recording sequences. The
 /// boundary search prefers a quiet 100 ms frame around ten seconds and retains
 /// a short overlap when continuous speech cannot be split cleanly.
@@ -130,6 +132,49 @@ enum SherpaLongAudio {
         // This is deliberately below the boundary-search silence floor. It
         // skips only near-digital-silence chunks and keeps quiet speech.
         return maximum < 0.006
+    }
+}
+
+/// A decoded chunk, and the language the model said it was.
+///
+/// Only SenseVoice fills the language in — it decodes a `<|en|>`-style tag as
+/// its first token. The other families leave it empty, and the writing styles
+/// then fall back to inspecting the text, exactly as they always have.
+struct SherpaTranscript: Sendable, Equatable {
+    let text: String
+    let language: String
+
+    init(text: String, language: String = "") {
+        self.text = text
+        self.language = language
+    }
+
+    static let empty = SherpaTranscript(text: "")
+
+    /// The first language anything reported wins; later chunks rarely disagree.
+    func appending(_ next: SherpaTranscript, deduplicateOverlap: Bool) -> SherpaTranscript {
+        SherpaTranscript(
+            text: SherpaTranscriptMerger.append(
+                existing: text, next: next.text, deduplicateOverlap: deduplicateOverlap
+            ),
+            language: language.isEmpty ? next.language : language
+        )
+    }
+
+    /// Turns SenseVoice's `<|en|>` token into `en`.
+    ///
+    /// Anything that does not look like a language code becomes empty rather
+    /// than being passed on: the first token is a language tag by convention and
+    /// not by guarantee, and a bogus code would pick the wrong punctuation with
+    /// more confidence than no code at all.
+    static func languageCode(_ raw: String?) -> String {
+        var trimmed = (raw ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("<|"), trimmed.hasSuffix("|>"), trimmed.count > 4 {
+            trimmed = String(trimmed.dropFirst(2).dropLast(2))
+        }
+        trimmed = trimmed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (2...3).contains(trimmed.count), trimmed.allSatisfy(\.isLetter) else { return "" }
+        return trimmed.lowercased()
     }
 }
 

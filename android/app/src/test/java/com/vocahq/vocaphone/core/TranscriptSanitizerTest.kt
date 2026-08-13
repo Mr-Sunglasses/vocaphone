@@ -48,4 +48,41 @@ class TranscriptSanitizerTest {
         assertEquals("", TranscriptSanitizer.clean(null))
         assertEquals("", TranscriptSanitizer.clean("   "))
     }
+
+    @Test
+    fun `a repeated phrase collapses to one copy`() {
+        assertEquals(
+            "Thank you.",
+            TranscriptSanitizer.clean("Thank you. Thank you. Thank you. Thank you."),
+        )
+        assertEquals(
+            "Let me know Ship it tomorrow",
+            TranscriptSanitizer.clean("Let me know Let me know Let me know Ship it tomorrow"),
+        )
+    }
+
+    @Test
+    fun `a repeated single word keeps the emphasis it may have carried`() {
+        assertEquals("no no", TranscriptSanitizer.clean("no no no no no no"))
+        // Three is within what a person says, so it is left exactly as dictated.
+        assertEquals("no no no", TranscriptSanitizer.clean("no no no"))
+    }
+
+    @Test
+    fun `ordinary prose with repeated words is not collapsed`() {
+        val sentence = "I think that that meeting was the one we moved"
+        assertEquals(sentence, TranscriptSanitizer.clean(sentence))
+        val listing = "one two three four five six seven eight"
+        assertEquals(listing, TranscriptSanitizer.clean(listing))
+    }
+
+    @Test
+    fun `a loop is matched across the punctuation that differs between copies`() {
+        assertEquals(
+            "Okay then,",
+            TranscriptSanitizer.clean("Okay then, okay then. Okay then!"),
+        )
+        // The single-word rule still keeps two, whatever the punctuation was.
+        assertEquals("Okay, okay.", TranscriptSanitizer.clean("Okay, okay. Okay! okay,"))
+    }
 }
