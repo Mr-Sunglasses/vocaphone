@@ -187,7 +187,6 @@ Worth doing in the same pass if the layout files are already open:
 
 Cut. Gboard has them; they do not belong here:
 
-- Glide / swipe typing
 - Autocorrect and grammar
 - Clipboard history with pins
 - GIFs, stickers, bitmoji, Emoji Kitchen

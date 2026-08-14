@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.ui
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -17,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,16 +32,33 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.ui.theme.VocaPhoneTheme
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
+    private val launchIntents = MutableStateFlow<Intent?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        launchIntents.value = intent
         enableEdgeToEdge()
         setContent {
+            val launchIntent by launchIntents.collectAsStateWithLifecycle()
             VocaPhoneTheme {
-                VocaPhoneApp()
+                VocaPhoneApp(launchIntent = launchIntent)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        launchIntents.value = intent
+    }
+
+    companion object {
+        const val EXTRA_OPEN_SETTINGS = "open_settings"
+        const val EXTRA_OPEN_MODELS = "open_models"
+        const val EXTRA_SETTINGS_PAGE = "settings_page"
     }
 }
 
@@ -51,7 +70,10 @@ private enum class Destination(val label: String, @param:DrawableRes val icon: I
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
+fun VocaPhoneApp(
+    viewModel: VocaPhoneViewModel = viewModel(),
+    launchIntent: android.content.Intent? = null,
+) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val setup by viewModel.setup.collectAsStateWithLifecycle()
     val dictation by viewModel.dictation.collectAsStateWithLifecycle()
@@ -73,7 +95,19 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
     }
 
     var destination by remember { mutableStateOf(Destination.DICTATE) }
+    var settingsPage by remember { mutableStateOf(SettingsPage.HOME) }
     var showingGateway by remember { mutableStateOf(false) }
+
+    LaunchedEffect(launchIntent) {
+        val incoming = launchIntent ?: return@LaunchedEffect
+        if (!incoming.getBooleanExtra(MainActivity.EXTRA_OPEN_SETTINGS, false)) return@LaunchedEffect
+        destination = Destination.SETTINGS
+        settingsPage = SettingsPage.fromExtra(
+            incoming.getStringExtra(MainActivity.EXTRA_SETTINGS_PAGE)
+                ?: incoming.takeIf { it.getBooleanExtra(MainActivity.EXTRA_OPEN_MODELS, false) }
+                    ?.let { "models" },
+        )
+    }
 
     val showSetup = !settings.onboardingComplete && !showingGateway
 
@@ -85,19 +119,28 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
                         when {
                             showingGateway -> "Gateway"
                             showSetup -> "Setup"
+                            destination == Destination.SETTINGS -> settingsPage.title
                             else -> destination.label
                         }
                     )
                 },
                 navigationIcon = {
-                    // The gateway screen is pushed on top of setup, so it needs a
-                    // visible way back; the system gesture alone is not discoverable.
-                    if (showingGateway) {
-                        IconButton(onClick = { showingGateway = false }) {
-                            Icon(
-                                painterResource(R.drawable.ic_back),
-                                contentDescription = "Back",
-                            )
+                    when {
+                        showingGateway -> {
+                            IconButton(onClick = { showingGateway = false }) {
+                                Icon(
+                                    painterResource(R.drawable.ic_back),
+                                    contentDescription = "Back",
+                                )
+                            }
+                        }
+                        destination == Destination.SETTINGS && settingsPage != SettingsPage.HOME -> {
+                            IconButton(onClick = { settingsPage = SettingsPage.HOME }) {
+                                Icon(
+                                    painterResource(R.drawable.ic_back),
+                                    contentDescription = "Back",
+                                )
+                            }
                         }
                     }
                 },
@@ -109,7 +152,12 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
                     Destination.entries.forEach { entry ->
                         NavigationBarItem(
                             selected = destination == entry,
-                            onClick = { destination = entry },
+                            onClick = {
+                                if (destination == Destination.SETTINGS && entry == Destination.SETTINGS) {
+                                    settingsPage = SettingsPage.HOME
+                                }
+                                destination = entry
+                            },
                             icon = { Icon(painterResource(entry.icon), contentDescription = entry.label) },
                             label = { Text(entry.label) },
                         )
@@ -140,6 +188,7 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
                 settings = settings,
                 localModels = localModels,
                 onOpenGateway = { showingGateway = true },
+                onLocalTranscriptionEnabled = viewModel::setLocalTranscriptionEnabled,
                 onLocalModel = viewModel::setLocalModel,
                 onDownloadLocalModel = viewModel::downloadLocalModel,
                 onDownloadAndUseLocalModel = viewModel::downloadAndUseLocalModel,
@@ -182,7 +231,13 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
                 onNumberRow = { viewModel.setNumberRowEnabled(it) },
                 onKeyboardHeight = { viewModel.setKeyboardHeight(it) },
                 onSuggestions = { viewModel.setSuggestionsEnabled(it) },
+                onCorrections = { viewModel.setCorrectionsEnabled(it) },
+                onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },
+                onAsciiEmoji = { viewModel.setAsciiEmojiEnabled(it) },
+                onSwipeTyping = { viewModel.setSwipeTypingEnabled(it) },
                 onClipboardChip = { viewModel.setClipboardChipEnabled(it) },
+                onClipboardHistory = { viewModel.setClipboardHistoryEnabled(it) },
+                onClearClipboardHistory = { viewModel.clearClipboardHistory() },
                 localModels = localModels,
                 onLocalTranscriptionEnabled = viewModel::setLocalTranscriptionEnabled,
                 onLocalModel = viewModel::setLocalModel,
@@ -191,9 +246,10 @@ fun VocaPhoneApp(viewModel: VocaPhoneViewModel = viewModel()) {
                 onCancelLocalModelDownload = viewModel::cancelLocalModelDownload,
                 onDeleteLocalModel = viewModel::deleteLocalModel,
                 onOpenGateway = { showingGateway = true },
-                onTryDictation = { destination = Destination.DICTATE },
                 diagnosticEvents = viewModel::diagnosticEvents,
                 onClearDiagnosticEvents = viewModel::clearDiagnosticEvents,
+                page = settingsPage,
+                onPageChange = { settingsPage = it },
                 modifier = content,
             )
         }

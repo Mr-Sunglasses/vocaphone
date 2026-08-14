@@ -120,15 +120,17 @@ input types through its input policy.
 Typing extras, all local to the phone:
 
 - Optional number row and Compact / Default / Tall key height under Settings → Keyboard
-- English word completions and next-word guesses (off in passwords)
-- A paste chip for the current clipboard before you start typing
-- Emoji categories, recents, and search
-- Long-press letters for accents, double-space for a period
+- English word completions, next-word guesses, and spelling corrections (off in passwords)
+- Swipe typing across letter keys, using the on-phone English word list.
+  Suggestions and swipe are English only; there is no language pack to download.
+- Clipboard chip (tap to paste, long press to dismiss) and optional clip history
+- Emoji categories, recents, and optional ASCII emoticons
+- Long-press letters for accents, long-press 1-0 for symbols, double-space for a period
 - The globe key is gone; Android's keyboard switcher still changes IMEs
 
-Suggestions may read about 32 characters before the cursor. The clipboard chip
-reads the current clip only while the keyboard is visible. Dictation still never
-uses the clipboard, and nothing from either path is logged.
+Suggestions may read about 32 characters around the cursor. The clipboard chip
+and history stay on the phone. Dictation still never uses the clipboard, and
+nothing from either path is logged.
 
 ## Dictating
 

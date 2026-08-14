@@ -22,6 +22,7 @@ internal data class KeyboardEditorConfig(
     val leadingPunctuation: String,
     val dictationAllowed: Boolean,
     val sensitive: Boolean,
+    val shiftSync: Int = 0,
 ) {
     companion object {
         fun empty() = KeyboardEditorConfig(
@@ -35,6 +36,12 @@ internal data class KeyboardEditorConfig(
             sensitive = false,
         )
 
+        fun shiftFromCapsMode(capsMode: Int): ShiftState = when {
+            capsMode and InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS != 0 -> ShiftState.LOCKED
+            capsMode != 0 -> ShiftState.ONCE
+            else -> ShiftState.OFF
+        }
+
         fun from(info: EditorInfo?, sessionId: Int): KeyboardEditorConfig {
             val inputType = info?.inputType ?: InputType.TYPE_NULL
             val inputClass = inputType and InputType.TYPE_MASK_CLASS
@@ -46,11 +53,11 @@ internal data class KeyboardEditorConfig(
 
                 else -> KeyboardLayer.LETTERS
             }
-            val initialShift = if (
-                info?.initialCapsMode != 0 ||
-                inputType and CAPITALIZATION_FLAGS != 0
-            ) {
-                ShiftState.ONCE
+            // Only the cursor's current caps mode matters. CAP_SENTENCES on the
+            // inputType is almost always set, and treating that as "shift on"
+            // capitalizes every letter after a dictation or mid-sentence tap.
+            val initialShift = if (initialLayer == KeyboardLayer.LETTERS) {
+                shiftFromCapsMode(info?.initialCapsMode ?: 0)
             } else {
                 ShiftState.OFF
             }
@@ -91,10 +98,5 @@ internal data class KeyboardEditorConfig(
                 else -> ReturnKeyKind.ENTER to null
             }
         }
-
-        private const val CAPITALIZATION_FLAGS =
-            InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or
-                InputType.TYPE_TEXT_FLAG_CAP_WORDS or
-                InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
     }
 }

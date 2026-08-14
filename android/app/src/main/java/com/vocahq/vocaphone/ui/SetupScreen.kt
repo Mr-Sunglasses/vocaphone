@@ -16,7 +16,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
@@ -31,6 +30,7 @@ fun SetupScreen(
     settings: VocaPhoneSettings,
     localModels: LocalModelState,
     onOpenGateway: () -> Unit,
+    onLocalTranscriptionEnabled: (Boolean) -> Unit,
     onLocalModel: (LocalModelDescriptor) -> Unit,
     onDownloadLocalModel: (LocalModelDescriptor) -> Unit,
     onDownloadAndUseLocalModel: (LocalModelDescriptor) -> Unit,
@@ -84,35 +84,27 @@ fun SetupScreen(
             supporting = "Download a model for this phone, or use a gateway. " +
                 "Every on-device file is SHA-256 checked before it can load.",
         ) {
-            FeaturedCard {
-                val localName = LocalModelCatalog.find(settings.localModelId)?.displayName
-                Text(
-                    when {
-                        settings.localTranscriptionEnabled && localName != null -> "On this phone"
-                        status.gatewayConfigured -> "Gateway"
-                        else -> "No speech source yet"
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    when {
-                        settings.localTranscriptionEnabled && localName != null -> localName
-                        status.gatewayConfigured -> settings.gatewayUrl
-                        else -> "Pick a recommended model below, or add a gateway."
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                SecondaryButton("Gateway settings", onClick = onOpenGateway)
-            }
-            LocalModelPicker(
-                state = localModels,
-                selectedModelId = settings.localModelId,
-                onSelect = onLocalModel,
-                onDownload = onDownloadLocalModel,
-                onDownloadAndUse = onDownloadAndUseLocalModel,
-                onCancelDownload = onCancelLocalModelDownload,
+            SpeechSourceCard(
+                settings = settings,
+                onOpenGateway = onOpenGateway,
+                onLocalTranscriptionEnabled = onLocalTranscriptionEnabled,
             )
+            if (settings.localTranscriptionEnabled) {
+                LocalModelPicker(
+                    state = localModels,
+                    selectedModelId = settings.localModelId,
+                    onSelect = onLocalModel,
+                    onDownload = onDownloadLocalModel,
+                    onDownloadAndUse = onDownloadAndUseLocalModel,
+                    onCancelDownload = onCancelLocalModelDownload,
+                )
+            } else {
+                Text(
+                    "On-device models are off while you use a gateway.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            }
         }
 
         PrimaryButton(

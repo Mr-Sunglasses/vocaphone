@@ -216,6 +216,10 @@ fun GatewayScreen(
                 }
             }
 
+            TextButton(onClick = { context.openHttpUrl(GATEWAY_GUIDE_URL) }) {
+                Text("How to run a gateway")
+            }
+
             if (settings.isConfigured) {
                 TextButton(onClick = onClear) { Text("Remove gateway and delete stored token") }
             }

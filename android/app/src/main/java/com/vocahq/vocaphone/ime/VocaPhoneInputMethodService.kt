@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedTextRequest
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,7 +44,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private val visibleDictationState = MutableStateFlow(DictationState())
     private val visibleSettings = MutableStateFlow(VocaPhoneSettings())
     private val visibleClipboard = MutableStateFlow<ClipboardChip?>(null)
-    private val visibleBeforeCursor = MutableStateFlow("")
+    private val visibleEditorText = MutableStateFlow(EditorTextWindow())
     private val suggestionDictionary by lazy { SuggestionDictionary.load(assets) }
     private val emojiCatalog by lazy { EmojiCatalog.load(assets) }
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -57,7 +58,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var lastState = DictationState()
     private var currentInputType: Int = 0
     private var startedImeDictation = false
-    private var pastedClipboardText: String? = null
+    private var ignoredClipboardText: String? = null
+    private var lastRecordedClip: String? = null
     private var editorSession = 0
     private var editorConfig by mutableStateOf(KeyboardEditorConfig.empty())
 
@@ -85,23 +87,27 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val settings by visibleSettings.collectAsState()
         val isPreferenceWritePending by preferenceWrites.pending.collectAsState()
         val clipboard by visibleClipboard.collectAsState()
-        val textBeforeCursor by visibleBeforeCursor.collectAsState()
+        val editorText by visibleEditorText.collectAsState()
         VocaPhoneKeyboard(
             dictationState = dictationState,
             editor = editorConfig,
             settings = settings,
             isPreferenceWritePending = isPreferenceWritePending,
             clipboard = clipboard,
-            textBeforeCursor = textBeforeCursor,
+            editorText = editorText,
             suggestions = suggestionDictionary,
             emojiCatalog = emojiCatalog,
             onCommand = ::handleCommand,
             onMicTap = ::toggleDictation,
-            onOpenApp = ::openCompanion,
+            onOpenApp = { openCompanion() },
+            onOpenSettings = ::openCompanion,
             onLanguageSelected = ::setLanguage,
             onStyleSelected = ::setStyle,
             onSuggestionPicked = ::commitSuggestion,
-            onPasteClipboard = ::pasteClipboard,
+            onPasteClipboard = { pasteClipboard(it) },
+            onDismissClipboard = ::dismissClipboard,
+            onRemoveClipboardHistory = ::removeClipboardHistory,
+            onClearClipboardHistory = ::clearClipboardHistory,
             onEmojiUsed = ::recordEmojiRecent,
         )
     }
@@ -114,19 +120,19 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             currentInputConnection?.getCursorCapsMode(currentInputType) ?: 0
         }.getOrDefault(0)
         editorConfig = KeyboardEditorConfig.from(attribute, editorSession).let { config ->
-            if (cursorCapsMode != 0 && config.initialLayer == KeyboardLayer.LETTERS) {
-                config.copy(initialShift = ShiftState.ONCE)
+            if (config.initialLayer == KeyboardLayer.LETTERS) {
+                config.copy(initialShift = KeyboardEditorConfig.shiftFromCapsMode(cursorCapsMode))
             } else {
                 config
             }
         }
-        refreshBeforeCursor()
+        refreshEditorText()
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         startClipboardWatch()
-        refreshBeforeCursor()
+        refreshEditorText()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -151,7 +157,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             candidatesStart,
             candidatesEnd,
         )
-        refreshBeforeCursor()
+        refreshEditorText()
     }
 
     override fun onFinishInput() {
@@ -191,6 +197,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             }
 
             if (runCatching { connection.commitText(cleaned, 1) }.getOrDefault(false)) {
+                syncShiftFromCursor()
+                refreshEditorText()
                 InsertionReport(InsertionOutcome.INSERTED)
             } else {
                 InsertionReport(InsertionOutcome.UNSUPPORTED_EDITOR)
@@ -211,6 +219,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 currentInputConnection?.setComposingText(command.text, 1)
             KeyboardCommand.FinishComposing -> currentInputConnection?.finishComposingText()
             KeyboardCommand.DeleteBackward -> sendKey(KeyEvent.KEYCODE_DEL)
+            is KeyboardCommand.DeleteSurrounding -> {
+                val connection = currentInputConnection ?: return
+                connection.finishComposingText()
+                if (command.before > 0 || command.after > 0) {
+                    connection.deleteSurroundingText(command.before, command.after)
+                }
+            }
             KeyboardCommand.PerformEditorAction -> {
                 currentInputConnection?.finishComposingText()
                 performEditorAction()
@@ -225,37 +240,103 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 connection.deleteSurroundingText(1, 0)
                 connection.commitText(". ", 1)
             }
+            KeyboardCommand.CycleSelectionCase -> cycleSelectionCase()
         }
-        refreshBeforeCursor()
+        refreshEditorText()
     }
 
-    private fun commitSuggestion(word: String) {
-        currentInputConnection?.commitText("$word ", 1)
-        refreshBeforeCursor()
+    private fun commitSuggestion(word: String, replaceWord: Boolean) {
+        val connection = currentInputConnection ?: return
+        if (replaceWord) {
+            connection.finishComposingText()
+            val before = runCatching {
+                connection.getTextBeforeCursor(32, 0)?.toString().orEmpty()
+            }.getOrDefault("")
+            val after = runCatching {
+                connection.getTextAfterCursor(32, 0)?.toString().orEmpty()
+            }.getOrDefault("")
+            val span = SuggestionEngine.replaceableWord(before, after)
+            if (span != null) {
+                connection.deleteSurroundingText(span.beforeLength, span.afterLength)
+            }
+        }
+        // Leave composing alone so commitText replaces "hel" with "hello ".
+        // Finishing first commits the stub, then this would insert in front of it.
+        connection.commitText("$word ", 1)
+        syncShiftFromCursor()
+        refreshEditorText()
     }
 
-    private fun pasteClipboard() {
-        val text = visibleClipboard.value?.fullText ?: return
+    private fun pasteClipboard(text: String = visibleClipboard.value?.fullText.orEmpty()) {
+        if (text.isEmpty()) return
         currentInputConnection?.finishComposingText()
         currentInputConnection?.commitText(text, 1)
-        pastedClipboardText = text
+        ignoredClipboardText = text
+        if (visibleClipboard.value?.fullText == text) visibleClipboard.value = null
+        syncShiftFromCursor()
+        refreshEditorText()
+    }
+
+    private fun dismissClipboard() {
+        ignoredClipboardText = visibleClipboard.value?.fullText ?: return
         visibleClipboard.value = null
-        refreshBeforeCursor()
+    }
+
+    private fun removeClipboardHistory(text: String) {
+        persistPreference { container.settings.removeClipboardHistory(text) }
+    }
+
+    private fun clearClipboardHistory() {
+        persistPreference { container.settings.clearClipboardHistory() }
     }
 
     private fun recordEmojiRecent(emoji: String) {
         persistPreference { container.settings.recordEmojiRecent(emoji) }
     }
 
-    private fun refreshBeforeCursor() {
+    private fun cycleSelectionCase() {
+        val connection = currentInputConnection ?: return
+        connection.finishComposingText()
+        val selected = runCatching {
+            connection.getSelectedText(0)?.toString().orEmpty()
+        }.getOrDefault("")
+        if (selected.none { it.isLetter() }) return
+        val next = CaseCycle.next(selected)
+        val start = runCatching {
+            connection.getExtractedText(ExtractedTextRequest(), 0)?.selectionStart
+        }.getOrNull()
+        connection.commitText(next, 1)
+        if (start != null && start >= 0) {
+            connection.setSelection(start, start + next.length)
+        }
+    }
+
+    private fun refreshEditorText() {
+        val selected = runCatching {
+            currentInputConnection?.getSelectedText(0)?.toString().orEmpty()
+        }.getOrDefault("")
         if (!visibleSettings.value.suggestionsEnabled || editorConfig.sensitive) {
-            visibleBeforeCursor.value = ""
+            visibleEditorText.value = EditorTextWindow(selected = selected)
             return
         }
         val before = runCatching {
             currentInputConnection?.getTextBeforeCursor(32, 0)?.toString().orEmpty()
         }.getOrDefault("")
-        visibleBeforeCursor.value = before
+        val after = runCatching {
+            currentInputConnection?.getTextAfterCursor(32, 0)?.toString().orEmpty()
+        }.getOrDefault("")
+        visibleEditorText.value = EditorTextWindow(before, after, selected)
+    }
+
+    private fun syncShiftFromCursor() {
+        if (editorConfig.initialLayer != KeyboardLayer.LETTERS) return
+        val capsMode = runCatching {
+            currentInputConnection?.getCursorCapsMode(currentInputType) ?: 0
+        }.getOrDefault(0)
+        editorConfig = editorConfig.copy(
+            initialShift = KeyboardEditorConfig.shiftFromCapsMode(capsMode),
+            shiftSync = editorConfig.shiftSync + 1,
+        )
     }
 
     private fun startClipboardWatch() {
@@ -273,7 +354,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private fun refreshClipboard() {
         mainHandler.post {
             val settings = visibleSettings.value
-            if (!settings.clipboardChipEnabled || editorConfig.sensitive) {
+            if (editorConfig.sensitive) {
                 visibleClipboard.value = null
                 return@post
             }
@@ -288,7 +369,17 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             val text = runCatching {
                 manager.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
             }.getOrNull()?.trim().orEmpty()
-            visibleClipboard.value = text.takeIf { it.isNotEmpty() && it != pastedClipboardText }?.let { value ->
+            if (
+                text.isNotEmpty() &&
+                settings.clipboardHistoryEnabled &&
+                text != lastRecordedClip
+            ) {
+                lastRecordedClip = text
+                persistPreference { container.settings.recordClipboardHistory(text) }
+            }
+            visibleClipboard.value = text.takeIf {
+                settings.clipboardChipEnabled && it.isNotEmpty() && it != ignoredClipboardText
+            }?.let { value ->
                 ClipboardChip(
                     preview = value.replace('\n', ' ').take(24),
                     fullText = value,
@@ -374,10 +465,17 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         container.dictation.cancel()
     }
 
-    private fun openCompanion() {
-        packageManager.getLaunchIntentForPackage(packageName)?.let { intent ->
-            startActivity(intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+    private fun openCompanion(page: String? = null) {
+        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return
+        intent.addFlags(
+            android.content.Intent.FLAG_ACTIVITY_NEW_TASK or
+                android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP,
+        )
+        intent.putExtra(com.vocahq.vocaphone.ui.MainActivity.EXTRA_OPEN_SETTINGS, true)
+        if (!page.isNullOrEmpty()) {
+            intent.putExtra(com.vocahq.vocaphone.ui.MainActivity.EXTRA_SETTINGS_PAGE, page)
         }
+        startActivity(intent)
     }
 
     private companion object {

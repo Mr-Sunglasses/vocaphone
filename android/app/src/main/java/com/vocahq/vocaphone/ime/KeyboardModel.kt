@@ -52,10 +52,65 @@ internal sealed interface KeyboardCommand {
     data class CommitText(val text: String) : KeyboardCommand
     data class SetComposingText(val text: String) : KeyboardCommand
     data object DeleteBackward : KeyboardCommand
+    data class DeleteSurrounding(val before: Int, val after: Int) : KeyboardCommand
     data object PerformEditorAction : KeyboardCommand
     data class MoveCursor(val positions: Int) : KeyboardCommand
     data object DoubleSpacePeriod : KeyboardCommand
     data object FinishComposing : KeyboardCommand
+    data object CycleSelectionCase : KeyboardCommand
+}
+
+/** Hold-delete starts on characters, then words, then the rest of the line. */
+internal object DeleteHold {
+    const val REPEAT_DELAY_MS = 380L
+    const val CHAR_INTERVAL_MS = 55L
+    const val WORD_AFTER_MS = 1_000L
+    const val LINE_AFTER_MS = 2_200L
+    const val WORD_INTERVAL_MS = 130L
+    const val LINE_INTERVAL_MS = 200L
+
+    enum class Stage { CHAR, WORD, LINE }
+
+    fun stage(heldMs: Long): Stage = when {
+        heldMs < WORD_AFTER_MS -> Stage.CHAR
+        heldMs < LINE_AFTER_MS -> Stage.WORD
+        else -> Stage.LINE
+    }
+
+    fun interval(heldMs: Long): Long = when (stage(heldMs)) {
+        Stage.CHAR -> CHAR_INTERVAL_MS
+        Stage.WORD -> WORD_INTERVAL_MS
+        Stage.LINE -> LINE_INTERVAL_MS
+    }
+
+    fun command(
+        heldMs: Long,
+        swipeUndo: Boolean,
+        before: CharSequence,
+        after: CharSequence,
+    ): KeyboardCommand {
+        if (swipeUndo) {
+            val span = SuggestionEngine.replaceableWord(before, after)
+            return if (span != null) {
+                KeyboardCommand.DeleteSurrounding(span.beforeLength, span.afterLength)
+            } else {
+                KeyboardCommand.DeleteBackward
+            }
+        }
+        return when (stage(heldMs)) {
+            Stage.CHAR -> KeyboardCommand.DeleteBackward
+            Stage.WORD -> {
+                val count = SuggestionEngine.wordBefore(before)
+                if (count > 0) KeyboardCommand.DeleteSurrounding(count, 0)
+                else KeyboardCommand.DeleteBackward
+            }
+            Stage.LINE -> {
+                val count = SuggestionEngine.lineBefore(before)
+                if (count > 0) KeyboardCommand.DeleteSurrounding(count, 0)
+                else KeyboardCommand.DeleteBackward
+            }
+        }
+    }
 }
 
 internal data class KeyboardReduction(
@@ -80,7 +135,104 @@ internal object KeyboardChrome {
 
     fun suggestionsForStrip(suggestions: List<String>, startedTyping: Boolean): List<String> =
         if (startedTyping) suggestions else emptyList()
+
+    fun suggestionReplacesWord(
+        composing: String,
+        swipeChoicesActive: Boolean,
+        stripReplacesWord: Boolean,
+    ): Boolean = composing.isEmpty() && (swipeChoicesActive || stripReplacesWord)
+
+    /** True only while the cursor is still sitting after the swiped word and its space. */
+    fun swipeWordArmed(word: String?, before: CharSequence, after: CharSequence): Boolean {
+        if (word.isNullOrEmpty()) return false
+        val span = SuggestionEngine.replaceableWord(before, after) ?: return false
+        return span.afterLength == 0 &&
+            span.beforeLength > span.word.length &&
+            span.word.equals(word, ignoreCase = true)
+    }
+
+    fun swipeAlternatives(
+        committed: String,
+        swipeMatches: List<String>,
+        similar: List<String>,
+        limit: Int = 3,
+    ): List<String> {
+        val skip = committed.lowercase()
+        return (swipeMatches.drop(1) + similar)
+            .filter { it.lowercase() != skip }
+            .distinctBy { it.lowercase() }
+            .take(limit)
+    }
 }
+
+internal data class SuggestionStrip(
+    val words: List<String>,
+    val replacesWord: Boolean = false,
+)
+
+internal data class WordSpan(
+    val word: String,
+    val beforeLength: Int,
+    val afterLength: Int,
+)
+
+internal data class EditorTextWindow(
+    val before: String = "",
+    val after: String = "",
+    val selected: String = "",
+)
+
+/** Shift on a selection: camel → title → ALL CAPS → lower. */
+internal object CaseCycle {
+    fun next(text: String): String {
+        if (text.none { it.isLetter() }) return text
+        val options = linkedSetOf(
+            camel(text),
+            title(text),
+            text.uppercase(Locale.ROOT),
+            text.lowercase(Locale.ROOT),
+        ).toList()
+        val index = options.indexOf(text)
+        return options[(index + 1).mod(options.size)]
+    }
+
+    private fun title(text: String): String = mapWords(text) { index, word ->
+        if (index == 0) capitalize(word) else word.lowercase(Locale.ROOT)
+    }
+
+    private fun camel(text: String): String = mapWords(text) { index, word ->
+        if (index == 0) word.lowercase(Locale.ROOT) else capitalize(word)
+    }
+
+    private fun capitalize(word: String): String {
+        val letter = word.indexOfFirst { it.isLetter() }
+        if (letter < 0) return word
+        return word.substring(0, letter) +
+            word[letter].uppercaseChar() +
+            word.substring(letter + 1).lowercase(Locale.ROOT)
+    }
+
+    private fun mapWords(text: String, transform: (Int, String) -> String): String {
+        val out = StringBuilder(text.length)
+        var wordIndex = 0
+        var i = 0
+        while (i < text.length) {
+            if (isWordChar(text[i])) {
+                val start = i
+                while (i < text.length && isWordChar(text[i])) i++
+                out.append(transform(wordIndex++, text.substring(start, i)))
+            } else {
+                out.append(text[i])
+                i++
+            }
+        }
+        return out.toString()
+    }
+
+    private fun isWordChar(character: Char): Boolean =
+        character.isLetterOrDigit() || character == '\''
+}
+
 
 /** Pure keyboard-state reducer so behavior stays testable outside the IME process. */
 internal object KeyboardReducer {

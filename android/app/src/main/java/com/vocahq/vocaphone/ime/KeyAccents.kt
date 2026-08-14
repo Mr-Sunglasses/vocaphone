@@ -43,4 +43,12 @@ internal object KeyAccents {
         if (shift == ShiftState.OFF) return options
         return options.map { it.uppercase(Locale.ROOT) }
     }
+
+    /** Light corner mark on 1-0, matching the long-press symbol. */
+    fun hint(key: KeyboardKey): String? {
+        if (key.type != KeyboardKeyType.CHARACTER) return null
+        val digit = key.output
+        if (digit.length != 1 || !digit[0].isDigit()) return null
+        return variants[digit]?.firstOrNull()
+    }
 }

@@ -1,11 +1,21 @@
 package com.vocahq.vocaphone.ui
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import com.vocahq.vocaphone.core.GatewayEndpoint
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
 const val PROJECT_URL = "https://github.com/VocaHQ/vocaphone"
+
+/** Quick start, engines, and pairing for a self-hosted gateway. */
+const val GATEWAY_GUIDE_URL = "https://github.com/VocaHQ/vocagateway"
+
+/** No browser is a plausible state on a stripped-down ROM, so failure is silent. */
+fun Context.openHttpUrl(url: String) {
+    runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+}
 
 /** What the About card shows, read once from the platform. */
 data class AppInfo(

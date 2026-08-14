@@ -76,4 +76,37 @@ class KeyboardEditorConfigTest {
         assertEquals(ReturnKeyKind.ENTER, config.returnKey)
         assertNull(config.editorActionId)
     }
+
+    @Test
+    fun `sentence-cap flag alone does not force shift mid sentence`() {
+        val config = KeyboardEditorConfig.from(
+            EditorInfo().apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                initialCapsMode = 0
+            },
+            sessionId = 1,
+        )
+        assertEquals(ShiftState.OFF, config.initialShift)
+    }
+
+    @Test
+    fun `cursor caps mode turns shift on once`() {
+        val config = KeyboardEditorConfig.from(
+            EditorInfo().apply {
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+                initialCapsMode = InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            },
+            sessionId = 1,
+        )
+        assertEquals(ShiftState.ONCE, config.initialShift)
+    }
+
+    @Test
+    fun `all-caps fields lock shift`() {
+        assertEquals(
+            ShiftState.LOCKED,
+            KeyboardEditorConfig.shiftFromCapsMode(InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS),
+        )
+        assertEquals(ShiftState.OFF, KeyboardEditorConfig.shiftFromCapsMode(0))
+    }
 }

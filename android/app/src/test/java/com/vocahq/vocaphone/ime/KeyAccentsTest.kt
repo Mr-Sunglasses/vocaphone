@@ -32,4 +32,11 @@ class KeyAccentsTest {
         val key = KeyboardKey(id = "e", label = "e", output = "e")
         assertEquals("é", KeyAccents.forKey(key, ShiftState.OFF)[1])
     }
+
+    @Test
+    fun numberKeysShowTheLongPressHint() {
+        assertEquals("!", KeyAccents.hint(KeyboardKey(id = "1", label = "1", output = "1")))
+        assertEquals(")", KeyAccents.hint(KeyboardKey(id = "0", label = "0", output = "0")))
+        assertEquals(null, KeyAccents.hint(KeyboardKey(id = "e", label = "e", output = "e")))
+    }
 }

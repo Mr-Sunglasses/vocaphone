@@ -22,6 +22,23 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
+internal object ClipboardHistory {
+    const val MAX_ITEMS = 20
+    const val MAX_ITEM_CHARS = 4_000
+    const val SEPARATOR = "\u001e"
+
+    fun remember(existing: List<String>, incoming: String): List<String> {
+        val text = incoming.trim().take(MAX_ITEM_CHARS)
+        if (text.isEmpty()) return existing
+        return (listOf(text) + existing.filter { it != text }).take(MAX_ITEMS)
+    }
+
+    fun encode(items: List<String>): String = items.joinToString(SEPARATOR)
+
+    fun decode(stored: String?): List<String> =
+        stored?.split(SEPARATOR)?.filter { it.isNotEmpty() }.orEmpty()
+}
+
 enum class KeyboardHeight(
     val storedValue: String,
     val keyHeightDp: Int,
@@ -97,7 +114,13 @@ data class VocaPhoneSettings(
     val numberRowEnabled: Boolean = false,
     val keyboardHeight: KeyboardHeight = KeyboardHeight.DEFAULT,
     val suggestionsEnabled: Boolean = true,
+    val correctionsEnabled: Boolean = true,
+    val numberKeyHintsEnabled: Boolean = true,
+    val asciiEmojiEnabled: Boolean = true,
+    val swipeTypingEnabled: Boolean = true,
     val clipboardChipEnabled: Boolean = true,
+    val clipboardHistoryEnabled: Boolean = true,
+    val clipboardHistory: List<String> = emptyList(),
     val emojiRecents: List<String> = emptyList(),
 ) {
 
@@ -212,7 +235,37 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setSuggestionsEnabled(enabled: Boolean) = put(Keys.SUGGESTIONS, enabled)
 
+    suspend fun setCorrectionsEnabled(enabled: Boolean) = put(Keys.CORRECTIONS, enabled)
+
+    suspend fun setNumberKeyHintsEnabled(enabled: Boolean) = put(Keys.NUMBER_KEY_HINTS, enabled)
+
+    suspend fun setAsciiEmojiEnabled(enabled: Boolean) = put(Keys.ASCII_EMOJI, enabled)
+
+    suspend fun setSwipeTypingEnabled(enabled: Boolean) = put(Keys.SWIPE_TYPING, enabled)
+
     suspend fun setClipboardChipEnabled(enabled: Boolean) = put(Keys.CLIPBOARD_CHIP, enabled)
+
+    suspend fun setClipboardHistoryEnabled(enabled: Boolean) = put(Keys.CLIPBOARD_HISTORY_ENABLED, enabled)
+
+    suspend fun recordClipboardHistory(text: String) {
+        context.dataStore.edit { preferences ->
+            val current = ClipboardHistory.decode(preferences[Keys.CLIPBOARD_HISTORY])
+            preferences[Keys.CLIPBOARD_HISTORY] = ClipboardHistory.encode(
+                ClipboardHistory.remember(current, text),
+            )
+        }
+    }
+
+    suspend fun removeClipboardHistory(text: String) {
+        context.dataStore.edit { preferences ->
+            val next = ClipboardHistory.decode(preferences[Keys.CLIPBOARD_HISTORY]).filter { it != text }
+            preferences[Keys.CLIPBOARD_HISTORY] = ClipboardHistory.encode(next)
+        }
+    }
+
+    suspend fun clearClipboardHistory() {
+        context.dataStore.edit { it.remove(Keys.CLIPBOARD_HISTORY) }
+    }
 
     suspend fun recordEmojiRecent(emoji: String) {
         context.dataStore.edit { preferences ->
@@ -265,7 +318,13 @@ class SettingsRepository(private val context: Context) {
         numberRowEnabled = this[Keys.NUMBER_ROW] ?: false,
         keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
         suggestionsEnabled = this[Keys.SUGGESTIONS] ?: true,
+        correctionsEnabled = this[Keys.CORRECTIONS] ?: true,
+        numberKeyHintsEnabled = this[Keys.NUMBER_KEY_HINTS] ?: true,
+        asciiEmojiEnabled = this[Keys.ASCII_EMOJI] ?: true,
+        swipeTypingEnabled = this[Keys.SWIPE_TYPING] ?: true,
         clipboardChipEnabled = this[Keys.CLIPBOARD_CHIP] ?: true,
+        clipboardHistoryEnabled = this[Keys.CLIPBOARD_HISTORY_ENABLED] ?: true,
+        clipboardHistory = ClipboardHistory.decode(this[Keys.CLIPBOARD_HISTORY]),
         emojiRecents = decodeEmojiRecents(this[Keys.EMOJI_RECENTS]),
     )
 
@@ -291,7 +350,13 @@ class SettingsRepository(private val context: Context) {
         val NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
         val KEYBOARD_HEIGHT = stringPreferencesKey("keyboard_height")
         val SUGGESTIONS = booleanPreferencesKey("keyboard_suggestions")
+        val CORRECTIONS = booleanPreferencesKey("keyboard_corrections")
+        val NUMBER_KEY_HINTS = booleanPreferencesKey("keyboard_number_key_hints")
+        val ASCII_EMOJI = booleanPreferencesKey("keyboard_ascii_emoji")
+        val SWIPE_TYPING = booleanPreferencesKey("keyboard_swipe_typing")
         val CLIPBOARD_CHIP = booleanPreferencesKey("keyboard_clipboard_chip")
+        val CLIPBOARD_HISTORY_ENABLED = booleanPreferencesKey("keyboard_clipboard_history")
+        val CLIPBOARD_HISTORY = stringPreferencesKey("keyboard_clipboard_history_items")
         val EMOJI_RECENTS = stringPreferencesKey("keyboard_emoji_recents")
     }
 

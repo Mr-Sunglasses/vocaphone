@@ -4,6 +4,7 @@ import android.content.res.AssetManager
 
 internal enum class EmojiCategory(val id: String, val label: String, val icon: String) {
     RECENTS("recents", "Recents", "🕒"),
+    ASCII("ascii", "Text", ":)"),
     SMILEYS("smileys", "Smileys", "😀"),
     PEOPLE("people", "People", "👋"),
     ANIMALS("animals", "Animals", "🐻"),
@@ -17,6 +18,9 @@ internal enum class EmojiCategory(val id: String, val label: String, val icon: S
 
     companion object {
         val browsable = entries.filter { it != RECENTS }
+
+        fun browsable(asciiEnabled: Boolean): List<EmojiCategory> =
+            if (asciiEnabled) browsable else browsable.filter { it != ASCII }
     }
 }
 
@@ -44,7 +48,15 @@ internal object EmojiCatalog {
         }
 
     fun inCategory(entries: List<EmojiEntry>, category: EmojiCategory): List<EmojiEntry> {
-        if (category == EmojiCategory.RECENTS) return emptyList()
+        if (category == EmojiCategory.RECENTS || category == EmojiCategory.ASCII) return emptyList()
         return entries.filter { it.category == category.id }
     }
+
+    val asciiEmoticons: List<String> = listOf(
+        ":)", ":-)", ":D", ":-D", ":(", ":-(", ";)", ";-)", ":P", ":-P",
+        ":o", ":-o", ":/", ":-/", ":|", ":-|", ":'(", ":'-(", ":')", ":*",
+        "<3", "</3", "^_^", "^^", "-_-", "o_o", "O_O", "T_T", "T.T",
+        ">:)", ">:(", ":3", "xD", "XD", "8)", "8-|", ":$",
+        "¯\\_(ツ)_/¯",
+    )
 }

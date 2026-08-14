@@ -166,6 +166,7 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
                 } else {
                     container.settings.setGateway(validation.url, trimmed)
                 }
+                container.settings.setLocalTranscriptionEnabled(false)
                 refreshSetup()
                 testConnection()
                 onResult(null)
@@ -292,8 +293,26 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setSuggestionsEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setSuggestionsEnabled(enabled) }
 
+    fun setCorrectionsEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setCorrectionsEnabled(enabled) }
+
+    fun setNumberKeyHintsEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setNumberKeyHintsEnabled(enabled) }
+
+    fun setAsciiEmojiEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setAsciiEmojiEnabled(enabled) }
+
+    fun setSwipeTypingEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setSwipeTypingEnabled(enabled) }
+
     fun setClipboardChipEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setClipboardChipEnabled(enabled) }
+
+    fun setClipboardHistoryEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setClipboardHistoryEnabled(enabled) }
+
+    fun clearClipboardHistory() =
+        viewModelScope.launch { container.settings.clearClipboardHistory() }
 
     fun setOnboardingComplete(complete: Boolean) =
         viewModelScope.launch { container.settings.setOnboardingComplete(complete) }

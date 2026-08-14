@@ -27,4 +27,12 @@ class EmojiCatalogTest {
         )
         assertTrue(EmojiCatalog.inCategory(catalog, EmojiCategory.FOOD).isEmpty())
     }
+
+    @Test
+    fun `ascii category is a built-in emoticon list`() {
+        assertTrue(EmojiCatalog.asciiEmoticons.contains(":)"))
+        assertTrue(EmojiCatalog.asciiEmoticons.contains("¯\\_(ツ)_/¯"))
+        assertTrue(EmojiCategory.browsable(asciiEnabled = true).contains(EmojiCategory.ASCII))
+        assertTrue(EmojiCategory.ASCII !in EmojiCategory.browsable(asciiEnabled = false))
+    }
 }

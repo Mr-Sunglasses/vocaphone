@@ -14,7 +14,7 @@ enum class SetupStep(val label: String) {
     MICROPHONE("Microphone"),
     NOTIFICATIONS("Notifications"),
     KEYBOARD("VocaPhone keyboard"),
-    GATEWAY("Gateway"),
+    GATEWAY("Speech source"),
 }
 
 /** Everything guided setup checks, re-read every time the app is resumed. */

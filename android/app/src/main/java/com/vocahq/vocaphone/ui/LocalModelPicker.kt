@@ -1,23 +1,29 @@
 package com.vocahq.vocaphone.ui
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.local.LocalModelCatalog
@@ -38,6 +45,7 @@ import com.vocahq.vocaphone.local.LocalModelState
  * Recommended and installed models stay on screen. Everything else is reached
  * through search and filters rather than a raw dump or a hidden catalog.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocalModelPicker(
     state: LocalModelState,
@@ -47,6 +55,7 @@ fun LocalModelPicker(
     onDownloadAndUse: (LocalModelDescriptor) -> Unit = onDownload,
     onCancelDownload: () -> Unit = {},
     onDelete: ((LocalModelDescriptor) -> Unit)? = null,
+    usingGateway: Boolean = false,
 ) {
     val usable = remember(state.totalRamGB) {
         LocalModelCatalog.usableOnDevice(state.totalRamGB).sortedBy { it.sizeBytes }
@@ -60,6 +69,7 @@ fun LocalModelPicker(
     var engineFilter by remember { mutableStateOf(ModelEngineFilter.ALL) }
     var sizeFilter by remember { mutableStateOf(ModelSizeFilter.ANY) }
     var languageFilter by remember { mutableStateOf(ModelLanguageFilter.ANY) }
+    var inspecting by remember { mutableStateOf<LocalModelDescriptor?>(null) }
 
     val filtered = remember(usable, query, engineFilter, sizeFilter, languageFilter) {
         filterModelCatalog(usable, query, engineFilter, sizeFilter, languageFilter)
@@ -80,6 +90,14 @@ fun LocalModelPicker(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         return
+    }
+
+    if (usingGateway) {
+        Text(
+            "Speech is going through your gateway. Using a model here switches to this phone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 
     if (state.downloading != null || state.preparing != null) {
@@ -137,19 +155,12 @@ fun LocalModelPicker(
 
     if (installedModels.isNotEmpty()) {
         ModelSectionHeading("Installed")
-        installedModels.forEach { model ->
-            ModelCard(
-                model = model,
-                state = state,
-                selected = selectedModelId == model.id,
-                recommended = model.id == recommended.id,
-                busy = busy,
-                onSelect = onSelect,
-                onDownload = onDownload,
-                onCancelDownload = onCancelDownload,
-                onDelete = onDelete,
-            )
-        }
+        ModelTileGrid(
+            models = installedModels,
+            state = state,
+            selectedModelId = selectedModelId,
+            onInspect = { inspecting = it },
+        )
     }
 
     ModelSectionHeading(
@@ -166,19 +177,12 @@ fun LocalModelPicker(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        else -> availableModels.forEach { model ->
-            ModelCard(
-                model = model,
-                state = state,
-                selected = selectedModelId == model.id,
-                recommended = model.id == recommended.id,
-                busy = busy,
-                onSelect = onSelect,
-                onDownload = onDownload,
-                onCancelDownload = onCancelDownload,
-                onDelete = onDelete,
-            )
-        }
+        else -> ModelTileGrid(
+            models = availableModels,
+            state = state,
+            selectedModelId = selectedModelId,
+            onInspect = { inspecting = it },
+        )
     }
 
     state.message?.let {
@@ -186,6 +190,21 @@ fun LocalModelPicker(
             it,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    inspecting?.let { model ->
+        ModelDetailSheet(
+            model = model,
+            state = state,
+            selected = selectedModelId == model.id,
+            recommended = model.id == recommended.id,
+            busy = busy,
+            onSelect = onSelect,
+            onDownloadAndUse = onDownloadAndUse,
+            onCancelDownload = onCancelDownload,
+            onDelete = onDelete,
+            onDismiss = { inspecting = null },
         )
     }
 }
@@ -307,82 +326,139 @@ private fun ModelSectionHeading(title: String) {
 }
 
 @Composable
-private fun ModelCard(
+private fun ModelTileGrid(
+    models: List<LocalModelDescriptor>,
+    state: LocalModelState,
+    selectedModelId: String,
+    onInspect: (LocalModelDescriptor) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        models.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                row.forEach { model ->
+                    ModelTile(
+                        model = model,
+                        selected = model.id == selectedModelId,
+                        installed = model.id in state.downloaded,
+                        downloading = state.downloading == model.id,
+                        progress = state.progress,
+                        onClick = { onInspect(model) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModelTile(
+    model: LocalModelDescriptor,
+    selected: Boolean,
+    installed: Boolean,
+    downloading: Boolean,
+    progress: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = modifier.fillMaxHeight(),
+        onClick = onClick,
+        color = if (selected) colors.primaryContainer else colors.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
+        border = if (selected) BorderStroke(1.dp, colors.primary) else null,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                model.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                "${model.sizeLabel} · ${model.engineLabel()}",
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.onSurfaceVariant,
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                when {
+                    downloading -> "Downloading $progress%"
+                    selected -> "In use"
+                    installed -> "Installed"
+                    else -> model.languages
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = if (selected || downloading) colors.primary else colors.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelDetailSheet(
     model: LocalModelDescriptor,
     state: LocalModelState,
     selected: Boolean,
     recommended: Boolean,
     busy: Boolean,
     onSelect: (LocalModelDescriptor) -> Unit,
-    onDownload: (LocalModelDescriptor) -> Unit,
+    onDownloadAndUse: (LocalModelDescriptor) -> Unit,
     onCancelDownload: () -> Unit,
     onDelete: ((LocalModelDescriptor) -> Unit)?,
+    onDismiss: () -> Unit,
 ) {
-    val installed = model.id in state.downloaded
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (installed && !selected && state.preparing == null) {
-                    Modifier.clickable { onSelect(model) }
-                } else {
-                    Modifier
-                },
-            ),
-        color = if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        },
-        shape = MaterialTheme.shapes.large,
-        border = if (selected) {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
-        } else {
-            null
-        },
-    ) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(model.displayName, style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        model.catalogMeta(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                if (recommended) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.secondaryContainer,
-                        shape = MaterialTheme.shapes.extraSmall,
-                    ) {
-                        Text(
-                            "Recommended",
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        )
-                    }
-                }
+            Text(model.displayName, style = MaterialTheme.typography.titleLarge)
+            if (recommended) {
+                Text(
+                    "Recommended for this phone",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
+            Text(
+                model.catalogMeta(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                "Needs at least ${model.minimumRamGB} GB of RAM.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             ModelActions(
                 model = model,
                 state = state,
                 selected = selected,
                 busy = busy,
                 useLabel = "Use this model",
-                downloadLabel = "Download",
+                downloadLabel = "Download and use",
                 onSelect = onSelect,
-                onDownload = if (installed) onSelect else onDownload,
+                onDownload = onDownloadAndUse,
                 onCancelDownload = onCancelDownload,
                 onDelete = onDelete,
             )
