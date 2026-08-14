@@ -66,10 +66,43 @@ test("all local image assets exist", () => {
 test("production metadata is complete", () => {
   assert.match(html, /rel="canonical" href="https:\/\/vocaphone\.vocahq\.com\/"/);
   assert.match(html, /property="og:url" content="https:\/\/vocaphone\.vocahq\.com\/"/);
-  assert.match(html, /property="og:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/social-card\.png"/);
-  assert.match(html, /name="twitter:card" content="summary_large_image"/);
+  for (const tag of [
+    /property="og:type" content="website"/,
+    /property="og:locale" content="en_US"/,
+    /property="og:site_name" content="VocaPhone"/,
+    /property="og:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
+    /property="og:image:secure_url"\s+content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
+    /property="og:image:type" content="image\/png"/,
+    /property="og:image:width" content="1200"/,
+    /property="og:image:height" content="630"/,
+    /property="og:image:alt"\s+content="VocaPhone voice typing that stays yours, on-device first with an optional gateway"/,
+    /name="twitter:card" content="summary_large_image"/,
+    /name="twitter:title" content="VocaPhone — voice typing that stays yours"/,
+    /name="twitter:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
+    /name="twitter:image:alt"\s+content="VocaPhone voice typing that stays yours, on-device first with an optional gateway"/,
+  ]) {
+    assert.match(html, tag);
+  }
+
+  for (const tag of [
+    /property="og:site_name" content="VocaPhone"/,
+    /property="og:locale" content="en_US"/,
+    /property="og:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
+    /property="og:image:secure_url"\s+content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
+    /property="og:image:type" content="image\/png"/,
+    /property="og:image:width" content="1200"/,
+    /property="og:image:height" content="630"/,
+    /property="og:image:alt"\s+content="VocaPhone private voice typing, on-device first with an optional self-hosted gateway"/,
+    /name="twitter:title" content="Install VocaPhone on iPhone"/,
+    /name="twitter:description"\s+content="Build VocaPhone from source, install the private keyboard, and run speech-to-text on your iPhone\."/,
+    /name="twitter:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
+    /name="twitter:image:alt"\s+content="VocaPhone private voice typing, on-device first with an optional self-hosted gateway"/,
+  ]) {
+    assert.match(iphoneHtml, tag);
+  }
 
   for (const asset of [
+    "assets/og-image.png",
     "assets/social-card.png",
     "assets/apple-touch-icon.png",
     "favicon.ico",
