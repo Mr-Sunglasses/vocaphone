@@ -92,7 +92,9 @@ limits and Android's keyboard/input-method boundaries.
 - Native Kotlin/Compose Android client with a permission-minimal VocaPhone voice
   keyboard, the same styles and gateway as the iOS keyboard
 - 27 selectable transcription languages plus Automatic on both clients —
-  including Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, Kannada,
+  English, Mandarin Chinese, Spanish, French, German, Russian, Portuguese,
+  Italian, Dutch, Polish, Ukrainian, Arabic, Japanese, Korean and Vietnamese,
+  along with Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, Kannada,
   Malayalam, Punjabi, Assamese and Nepali — and four writing styles: Formal,
   Casual, Very Casual, and Excited, with sentence punctuation that follows the
   script rather than assuming a Latin full stop
@@ -387,11 +389,13 @@ then follow the guided setup in the app:
 cd android
 # macOS default; on Linux try $HOME/Android/Sdk
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-./gradlew assembleDebug
+# "full" is the flavor to develop against; "fdroid" is the from-source-only
+# build described under Build flavors below.
+./gradlew assembleFullDebug
 # Uninstall any pre-rename Local Flow build first — application IDs differ, so
 # `adb install -r` will side-install next to io.github.mrsunglasses.localflow.
 adb uninstall io.github.mrsunglasses.localflow 2>/dev/null || true
-adb install -r app/build/outputs/apk/debug/vocaphone-debug.apk
+adb install -r app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
 ```
 
 In the app: grant microphone and notifications, enable and select VocaPhone in

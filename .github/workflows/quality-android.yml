@@ -49,7 +49,7 @@ jobs:
           # and evicting the entry everything else restores from.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      - run: ./gradlew assembleDebug testDebugUnitTest lintDebug
+      - run: ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
         working-directory: android
       - name: Fail if the checked-in Room schema is stale
         run: git diff --exit-code -- app/schemas

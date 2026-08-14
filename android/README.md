@@ -28,18 +28,32 @@ APK does not request accessibility-service or overlay access.
 cd android
 # macOS default SDK path; on Linux Android Studio usually uses $HOME/Android/Sdk
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/vocaphone-debug.apk
+./gradlew assembleFullDebug
+adb install -r app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
 ```
 
 Verification the same way CI should run it:
 
 ```sh
-./gradlew assembleDebug testDebugUnitTest lintDebug
+./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
 ```
 
 `compileSdk` is 37 because current AndroidX releases require it. `targetSdk`
 stays at 36, which is what Play requires from 31 August 2026.
+
+## Build flavors
+
+Every Gradle task name carries a flavor, because there are two:
+
+| Flavor | Speech engines | Use it for |
+| --- | --- | --- |
+| `full` | whisper.cpp, plus sherpa-onnx via the prebuilt JNI libraries in `app/src/full/jniLibs` | Everyday development and the GitHub beta releases |
+| `fdroid` | whisper.cpp only, compiled from `third_party/whisper.cpp` | F-Droid, which builds every byte it distributes from source |
+
+`full` is the default, so Android Studio selects it on import. The flavors differ
+only in whether the prebuilt sherpa-onnx libraries are present; shared code asks
+`LocalModelCatalog.sherpaAvailable` rather than assuming either way, and the
+sherpa models are hidden from the picker when the library is absent.
 
 ## GitHub beta releases
 

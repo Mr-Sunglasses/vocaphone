@@ -1,0 +1,28 @@
+Speak into your phone and the text shows up where you are already typing. VocaPhone is a system keyboard: switch to it in any app, dictate, and the transcript is inserted at your cursor through Android's normal input method interface.
+
+Transcription never touches a cloud speech service. It runs either on your own device or on a machine you already own and administer via a self-hosted gateway. There are no accounts, no analytics SDK, and no subscription.
+
+<b>Two ways to transcribe</b>
+
+- On device. Download a Whisper model once and dictate with no network at all. The speech engine is whisper.cpp, compiled from source as part of the app. Models range from a few tens of megabytes to several gigabytes, and the app recommends one that fits your phone's memory. Where available, the catalog also includes sherpa-onnx models such as Parakeet.
+- Through your own gateway. Point the app at VocaGateway running on your Mac, Linux desktop, or home server, and that machine does the work. This is the faster option for large models and lets a phone use hardware it does not have.
+
+You choose the network path to your gateway: a trusted LAN, a private Tailscale network, or HTTPS behind your own reverse proxy. Access uses bearer tokens issued per device, which you can name and revoke individually, and pairing can be done by scanning a QR code.
+
+<b>Dictation</b>
+
+- 27 selectable languages plus automatic detection: English, Mandarin Chinese, Spanish, French, German, Russian, Portuguese, Italian, Dutch, Polish, Ukrainian, Arabic, Japanese, Korean and Vietnamese, along with Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, Kannada, Malayalam, Punjabi, Assamese and Nepali
+- Four writing styles: Formal, Casual, Very Casual and Excited, with punctuation that follows the script rather than assuming a Latin full stop
+- Start, finish, cancel, retry and undo, all from the keyboard
+- Automatic microphone routing, or pick an input explicitly, with the microphone in use shown in the app
+- Bluetooth headset microphones are supported
+
+<b>Permissions</b>
+
+The keyboard writes through InputConnection and never reads the contents of the field you are typing into. Camera access is requested only when you tap "Scan QR" to pair with a gateway, and the microphone is used only while a dictation is running, with a foreground service notification for the duration.
+
+<b>About this build</b>
+
+The build distributed here is compiled entirely from source. It leaves out the optional sherpa-onnx speech engine, which upstream ships as a prebuilt binary library, so on-device transcription uses the Whisper model catalog. Gateway transcription is unaffected and can use any engine your gateway supports. On supported builds, sherpa-onnx models such as Parakeet are available alongside Whisper.
+
+VocaPhone is part of the Voca family alongside VocaLinux and VocaMac, and is in active development. Expect rough edges and please report them on the issue tracker.

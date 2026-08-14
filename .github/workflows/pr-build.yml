@@ -237,8 +237,8 @@ jobs:
           assets="${GITHUB_WORKSPACE}/pr-assets"
           mkdir -p "$assets"
           if [ "$QUICK" = "true" ]; then
-            ./gradlew assembleDebug
-            src=app/build/outputs/apk/debug/vocaphone-debug.apk
+            ./gradlew assembleFullDebug
+            src=app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
             out="vocaphone-pr.${PR_NUMBER}+${SHORT_SHA}-debug.apk"
           else
             if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ] \
@@ -251,8 +251,8 @@ jobs:
             # Passed through the environment rather than interpolated into the
             # script, so the keystore never becomes part of the command line.
             printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-            ./gradlew assembleRelease
-            src=app/build/outputs/apk/release/vocaphone-release.apk
+            ./gradlew assembleFullRelease
+            src=app/build/outputs/apk/full/release/vocaphone-fullRelease.apk
             out="vocaphone-pr.${PR_NUMBER}+${SHORT_SHA}.apk"
           fi
           cp "$src" "$assets/$out"

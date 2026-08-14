@@ -10,7 +10,10 @@
 
 app_id := "com.vocahq.vocaphone"
 activity := app_id / ".ui.MainActivity"
-apk := "app/build/outputs/apk/debug/vocaphone-debug.apk"
+# The "full" flavor is what you develop against: it carries the prebuilt
+# sherpa-onnx engine. "fdroid" is the from-source-only build F-Droid ships, and
+# every recipe here names its flavor because Gradle cannot guess between them.
+apk := "app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk"
 
 # List the available recipes.
 default:
@@ -22,7 +25,7 @@ build:
     #!/usr/bin/env bash
     set -euo pipefail
     export ANDROID_HOME="$({{ just_executable() }} _sdk)"
-    ./gradlew assembleDebug
+    ./gradlew assembleFullDebug
 
 # Build, install and launch the app on a device or emulator.
 [group('run')]
@@ -84,7 +87,7 @@ test *filter:
     filters=()
     for pattern in {{ filter }}; do filters+=(--tests "${pattern}"); done
     # macOS ships bash 3.2, where an empty array under `set -u` is an error.
-    ./gradlew testDebugUnitTest ${filters[@]+"${filters[@]}"}
+    ./gradlew testFullDebugUnitTest ${filters[@]+"${filters[@]}"}
 
 # Run Android Lint over the debug variant.
 [group('test')]
@@ -92,7 +95,7 @@ lint:
     #!/usr/bin/env bash
     set -euo pipefail
     export ANDROID_HOME="$({{ just_executable() }} _sdk)"
-    ./gradlew lintDebug
+    ./gradlew lintFullDebug
 
 # Everything CI checks for Android: build, unit tests, lint, fresh Room schema.
 [group('test')]
@@ -100,7 +103,7 @@ ci:
     #!/usr/bin/env bash
     set -euo pipefail
     export ANDROID_HOME="$({{ just_executable() }} _sdk)"
-    ./gradlew assembleDebug testDebugUnitTest lintDebug
+    ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
     git diff --exit-code -- app/schemas \
         || { echo "The checked-in Room schema is stale — commit app/schemas." >&2; exit 1; }
 

@@ -18,13 +18,34 @@ android {
         applicationId = "com.vocahq.vocaphone"
         minSdk = 33
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.1.0-beta.9"
+        versionCode = 10
+        versionName = "0.1.0-beta.10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
+    }
+
+    flavorDimensions += "distribution"
+
+    productFlavors {
+        // Everything the project ships itself. sherpa-onnx reaches Android as a
+        // prebuilt JNI library, so its .so files live in this flavor's source
+        // set rather than in src/main.
+        create("full") {
+            dimension = "distribution"
+            isDefault = true
+            buildConfigField("boolean", "SHERPA_ONNX", "true")
+        }
+        // F-Droid builds every byte it ships from source, which rules out the
+        // prebuilt sherpa-onnx and ONNX Runtime libraries. This flavor drops
+        // them and leaves whisper.cpp, which is compiled from the pinned
+        // submodule, as the on-device engine.
+        create("fdroid") {
+            dimension = "distribution"
+            buildConfigField("boolean", "SHERPA_ONNX", "false")
         }
     }
 
@@ -63,12 +84,16 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
+            // Builders without the keystore -- F-Droid, or anyone checking out
+            // the tree -- get an unsigned release APK instead of a Gradle
+            // failure over a signing config that could not be populated.
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
         }
     }
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     androidComponents {

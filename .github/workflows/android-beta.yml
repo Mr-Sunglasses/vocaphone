@@ -48,7 +48,7 @@ jobs:
           # Passed through the environment rather than interpolated into the
           # script, so the keystore never becomes part of the command line.
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-          ./gradlew assembleRelease testDebugUnitTest lintRelease
+          ./gradlew assembleFullRelease testFullDebugUnitTest lintFullRelease
         working-directory: android
       - name: Verify signature and prepare release assets
         env:
@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release-assets
-          cp android/app/build/outputs/apk/release/vocaphone-release.apk \
+          cp android/app/build/outputs/apk/full/release/vocaphone-fullRelease.apk \
             release-assets/vocaphone.apk
 
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print \

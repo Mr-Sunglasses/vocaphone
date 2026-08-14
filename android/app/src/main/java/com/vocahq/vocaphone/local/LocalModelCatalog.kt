@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.local
 
 import android.os.Build
 import com.vocahq.vocaphone.core.TranscriptionQuality
+import com.vocahq.vocaphone.BuildConfig
 
 /** Native engines that can run without the gateway. */
 enum class LocalModelEngine { WHISPER, SHERPA_ONNX }
@@ -187,12 +188,15 @@ object LocalModelCatalog {
     val all: List<LocalModelDescriptor> = whisper + SherpaModelCatalog.all
 
     /**
-     * sherpa-onnx ships as a prebuilt JNI library, and the tree only carries the
-     * two Arm ABIs. An x86_64 emulator still runs every whisper.cpp model
-     * because that one is built from source for whatever ABI Gradle asks for.
+     * sherpa-onnx ships as a prebuilt JNI library, so it is absent from builds
+     * that compile everything from source (the `fdroid` flavor), and the tree
+     * only carries the two Arm ABIs for the flavors that do include it. An
+     * x86_64 emulator still runs every whisper.cpp model because that one is
+     * built from source for whatever ABI Gradle asks for.
      */
     val sherpaAvailable: Boolean by lazy {
-        Build.SUPPORTED_ABIS?.any { it == "arm64-v8a" || it == "armeabi-v7a" } == true
+        BuildConfig.SHERPA_ONNX &&
+            Build.SUPPORTED_ABIS?.any { it == "arm64-v8a" || it == "armeabi-v7a" } == true
     }
 
     fun find(id: String): LocalModelDescriptor? = all.firstOrNull { it.id == id }

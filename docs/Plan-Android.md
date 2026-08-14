@@ -73,8 +73,10 @@ written.
 
 ## Verification gates
 
-- `./gradlew assembleDebug testDebugUnitTest lintDebug` is green.
-- `./gradlew assembleRelease` is green with release shrinking enabled.
+- `./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug` is green.
+- `./gradlew assembleFullRelease` is green with release shrinking enabled.
+- `./gradlew assembleFdroidRelease` is green, and the APK it produces carries no
+  prebuilt native library.
 - The merged/release manifest contains no accessibility-service declaration,
   overlay permission, battery-exemption permission, or launcher-app query.
 - A signed release installs on the baseline device, appears in the IME list,
