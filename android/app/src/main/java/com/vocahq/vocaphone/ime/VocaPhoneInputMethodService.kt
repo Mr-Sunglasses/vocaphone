@@ -1,8 +1,11 @@
 package com.vocahq.vocaphone.ime
 
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.os.Handler
+import android.os.Looper
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,6 +42,12 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private val container by lazy { VocaPhoneApplication.container(this) }
     private val visibleDictationState = MutableStateFlow(DictationState())
     private val visibleSettings = MutableStateFlow(VocaPhoneSettings())
+    private val visibleClipboard = MutableStateFlow<ClipboardChip?>(null)
+    private val visibleBeforeCursor = MutableStateFlow("")
+    private val suggestionDictionary by lazy { SuggestionDictionary.load(assets) }
+    private val emojiCatalog by lazy { EmojiCatalog.load(assets) }
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener { refreshClipboard() }
     private val preferenceWrites by lazy {
         KeyboardPreferenceCoordinator(scope) {
             container.diagnostics.recordError("settings", DictationSource.IME.name)
@@ -48,6 +57,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var lastState = DictationState()
     private var currentInputType: Int = 0
     private var startedImeDictation = false
+    private var pastedClipboardText: String? = null
     private var editorSession = 0
     private var editorConfig by mutableStateOf(KeyboardEditorConfig.empty())
 
@@ -64,6 +74,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         scope.launch {
             container.settings.settings.collect { settings ->
                 visibleSettings.value = settings
+                refreshClipboard()
             }
         }
     }
@@ -73,16 +84,25 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val dictationState by visibleDictationState.collectAsState()
         val settings by visibleSettings.collectAsState()
         val isPreferenceWritePending by preferenceWrites.pending.collectAsState()
+        val clipboard by visibleClipboard.collectAsState()
+        val textBeforeCursor by visibleBeforeCursor.collectAsState()
         VocaPhoneKeyboard(
             dictationState = dictationState,
             editor = editorConfig,
             settings = settings,
             isPreferenceWritePending = isPreferenceWritePending,
+            clipboard = clipboard,
+            textBeforeCursor = textBeforeCursor,
+            suggestions = suggestionDictionary,
+            emojiCatalog = emojiCatalog,
             onCommand = ::handleCommand,
             onMicTap = ::toggleDictation,
             onOpenApp = ::openCompanion,
             onLanguageSelected = ::setLanguage,
             onStyleSelected = ::setStyle,
+            onSuggestionPicked = ::commitSuggestion,
+            onPasteClipboard = ::pasteClipboard,
+            onEmojiUsed = ::recordEmojiRecent,
         )
     }
 
@@ -100,6 +120,38 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 config
             }
         }
+        refreshBeforeCursor()
+    }
+
+    override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
+        super.onStartInputView(info, restarting)
+        startClipboardWatch()
+        refreshBeforeCursor()
+    }
+
+    override fun onFinishInputView(finishingInput: Boolean) {
+        stopClipboardWatch()
+        visibleClipboard.value = null
+        super.onFinishInputView(finishingInput)
+    }
+
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int,
+    ) {
+        super.onUpdateSelection(
+            oldSelStart,
+            oldSelEnd,
+            newSelStart,
+            newSelEnd,
+            candidatesStart,
+            candidatesEnd,
+        )
+        refreshBeforeCursor()
     }
 
     override fun onFinishInput() {
@@ -116,6 +168,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     override fun onDestroy() {
+        stopClipboardWatch()
         cancelOwnedDictation("keyboard_destroyed")
         if (container.dictation.imeInserter === this) {
             container.dictation.imeInserter = null
@@ -150,11 +203,97 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun handleCommand(command: KeyboardCommand) {
         when (command) {
-            is KeyboardCommand.CommitText -> currentInputConnection?.commitText(command.text, 1)
+            is KeyboardCommand.CommitText -> {
+                currentInputConnection?.finishComposingText()
+                currentInputConnection?.commitText(command.text, 1)
+            }
+            is KeyboardCommand.SetComposingText ->
+                currentInputConnection?.setComposingText(command.text, 1)
+            KeyboardCommand.FinishComposing -> currentInputConnection?.finishComposingText()
             KeyboardCommand.DeleteBackward -> sendKey(KeyEvent.KEYCODE_DEL)
-            KeyboardCommand.PerformEditorAction -> performEditorAction()
-            KeyboardCommand.SwitchKeyboard -> switchKeyboard()
-            is KeyboardCommand.MoveCursor -> moveCursor(command.positions)
+            KeyboardCommand.PerformEditorAction -> {
+                currentInputConnection?.finishComposingText()
+                performEditorAction()
+            }
+            is KeyboardCommand.MoveCursor -> {
+                currentInputConnection?.finishComposingText()
+                moveCursor(command.positions)
+            }
+            KeyboardCommand.DoubleSpacePeriod -> {
+                val connection = currentInputConnection ?: return
+                connection.finishComposingText()
+                connection.deleteSurroundingText(1, 0)
+                connection.commitText(". ", 1)
+            }
+        }
+        refreshBeforeCursor()
+    }
+
+    private fun commitSuggestion(word: String) {
+        currentInputConnection?.commitText("$word ", 1)
+        refreshBeforeCursor()
+    }
+
+    private fun pasteClipboard() {
+        val text = visibleClipboard.value?.fullText ?: return
+        currentInputConnection?.finishComposingText()
+        currentInputConnection?.commitText(text, 1)
+        pastedClipboardText = text
+        visibleClipboard.value = null
+        refreshBeforeCursor()
+    }
+
+    private fun recordEmojiRecent(emoji: String) {
+        persistPreference { container.settings.recordEmojiRecent(emoji) }
+    }
+
+    private fun refreshBeforeCursor() {
+        if (!visibleSettings.value.suggestionsEnabled || editorConfig.sensitive) {
+            visibleBeforeCursor.value = ""
+            return
+        }
+        val before = runCatching {
+            currentInputConnection?.getTextBeforeCursor(32, 0)?.toString().orEmpty()
+        }.getOrDefault("")
+        visibleBeforeCursor.value = before
+    }
+
+    private fun startClipboardWatch() {
+        val manager = getSystemService(ClipboardManager::class.java) ?: return
+        manager.removePrimaryClipChangedListener(clipboardListener)
+        manager.addPrimaryClipChangedListener(clipboardListener)
+        refreshClipboard()
+    }
+
+    private fun stopClipboardWatch() {
+        getSystemService(ClipboardManager::class.java)
+            ?.removePrimaryClipChangedListener(clipboardListener)
+    }
+
+    private fun refreshClipboard() {
+        mainHandler.post {
+            val settings = visibleSettings.value
+            if (!settings.clipboardChipEnabled || editorConfig.sensitive) {
+                visibleClipboard.value = null
+                return@post
+            }
+            val manager = getSystemService(ClipboardManager::class.java)
+            val description = manager?.primaryClipDescription
+            val isText = description?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true ||
+                description?.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML) == true
+            if (!isText) {
+                visibleClipboard.value = null
+                return@post
+            }
+            val text = runCatching {
+                manager.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
+            }.getOrNull()?.trim().orEmpty()
+            visibleClipboard.value = text.takeIf { it.isNotEmpty() && it != pastedClipboardText }?.let { value ->
+                ClipboardChip(
+                    preview = value.replace('\n', ' ').take(24),
+                    fullText = value,
+                )
+            }
         }
     }
 
@@ -177,14 +316,6 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         connection.sendKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
     }
 
-    private fun switchKeyboard() {
-        if (shouldOfferSwitchingToNextInputMethod()) {
-            switchToNextInputMethod(false)
-        } else {
-            getSystemService(InputMethodManager::class.java)?.showInputMethodPicker()
-        }
-    }
-
     private fun toggleDictation() {
         when {
             preferenceWrites.isPending -> Unit
@@ -198,9 +329,14 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             lastState.phase.isBusy -> {
                 DictationService.send(this, DictationService.ACTION_CANCEL)
             }
-            lastState.phase == DictationPhase.PERMISSION_REPAIR ||
-                lastState.phase == DictationPhase.FAILED -> openCompanion()
+            lastState.phase == DictationPhase.PERMISSION_REPAIR -> openCompanion()
             else -> {
+                if (lastState.phase == DictationPhase.FAILED ||
+                    lastState.phase == DictationPhase.READY_TO_INSERT ||
+                    lastState.phase == DictationPhase.INSERTED
+                ) {
+                    container.dictation.clearTransient()
+                }
                 startedImeDictation = true
                 DictationService.start(this, DictationSource.IME)
             }

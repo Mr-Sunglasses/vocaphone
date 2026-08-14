@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.ime
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -77,6 +78,48 @@ class KeyboardReducerTest {
         assertEquals(KeyboardCommand.DeleteBackward, delete.command)
         assertEquals(KeyboardCommand.PerformEditorAction, enter.command)
         assertEquals(ShiftState.ONCE, enter.state.shift)
+    }
+
+    @Test
+    fun `double tapping space inserts a period`() {
+        val afterSpace = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            spaceKey(),
+            nowMillis = 1_000,
+        )
+        val second = KeyboardReducer.press(afterSpace.state, spaceKey(), nowMillis = 1_100)
+
+        assertEquals(KeyboardCommand.DoubleSpacePeriod, second.command)
+        assertEquals(ShiftState.ONCE, second.state.shift)
+        assertFalse(second.state.lastWasSpace)
+    }
+
+    @Test
+    fun `letter keys compose when suggestions are on`() {
+        val first = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            character("h"),
+            nowMillis = 1_000,
+            composeWords = true,
+        )
+        val second = KeyboardReducer.press(first.state, character("i"), nowMillis = 1_010, composeWords = true)
+
+        assertEquals(KeyboardCommand.SetComposingText("h"), first.command)
+        assertEquals(KeyboardCommand.SetComposingText("hi"), second.command)
+        assertEquals("hi", second.state.composing)
+    }
+
+    @Test
+    fun `delete while composing shortens the composing word`() {
+        val typed = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF, composing = "hi"),
+            KeyboardKey("delete", "Delete", type = KeyboardKeyType.DELETE),
+            nowMillis = 1_000,
+            composeWords = true,
+        )
+
+        assertEquals(KeyboardCommand.SetComposingText("h"), typed.command)
+        assertEquals("h", typed.state.composing)
     }
 
     private fun character(value: String) = KeyboardKey(

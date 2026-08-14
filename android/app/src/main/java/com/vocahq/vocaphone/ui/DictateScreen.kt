@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.TextInsertion
+import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
 /**
@@ -71,7 +72,15 @@ fun DictateScreen(
     ) {
         Section(
             title = "Dictate",
-            supporting = "${settings.language.displayName} · ${settings.style.displayName}",
+            supporting = listOf(
+                settings.language.displayName,
+                settings.style.displayName,
+                if (settings.localTranscriptionEnabled) {
+                    LocalModelCatalog.find(settings.localModelId)?.displayName ?: "On this phone"
+                } else {
+                    settings.gatewayUrl.ifEmpty { "No gateway" }
+                },
+            ).joinToString(" · "),
         ) {
             Text(state.statusText, style = MaterialTheme.typography.bodyLarge)
 

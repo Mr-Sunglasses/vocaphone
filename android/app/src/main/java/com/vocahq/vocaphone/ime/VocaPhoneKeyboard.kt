@@ -2,12 +2,24 @@ package com.vocahq.vocaphone.ime
 
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -50,6 +62,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
@@ -61,11 +75,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.ModelLanguageSupport
@@ -73,6 +89,8 @@ import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.ui.theme.VocaPhoneTheme
+import kotlin.math.PI
+import kotlin.math.sin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -91,11 +109,18 @@ internal fun VocaPhoneKeyboard(
     editor: KeyboardEditorConfig,
     settings: VocaPhoneSettings,
     isPreferenceWritePending: Boolean,
+    clipboard: ClipboardChip?,
+    textBeforeCursor: String,
+    suggestions: SuggestionDictionary?,
+    emojiCatalog: List<EmojiEntry>,
     onCommand: (KeyboardCommand) -> Unit,
     onMicTap: () -> Unit,
     onOpenApp: () -> Unit,
     onLanguageSelected: (TranscriptionLanguage) -> Unit,
     onStyleSelected: (WritingStyle) -> Unit,
+    onSuggestionPicked: (String) -> Unit,
+    onPasteClipboard: () -> Unit,
+    onEmojiUsed: (String) -> Unit,
 ) {
     var keyboardState by remember(editor.sessionId) {
         mutableStateOf(
@@ -106,11 +131,46 @@ internal fun VocaPhoneKeyboard(
         )
     }
     var preferencePanel by remember(editor.sessionId) { mutableStateOf<PreferencePanel?>(null) }
+    var emojiCategory by remember(editor.sessionId) { mutableStateOf(EmojiCategory.SMILEYS) }
 
     LaunchedEffect(dictationState.phase, editor.dictationAllowed) {
         if (dictationState.phase != DictationPhase.IDLE || !editor.dictationAllowed) {
             preferencePanel = null
         }
+    }
+
+    val composeWords = settings.suggestionsEnabled && !editor.sensitive
+    val keyHeight = settings.keyboardHeight.keyHeightDp.dp
+    val letterRows = KeyboardLayouts.letterRowCount(settings.numberRowEnabled)
+    val keyAreaHeight = keyHeight * letterRows + RowGap * (letterRows - 1)
+    val suggestionItems = remember(
+        composeWords,
+        keyboardState.composing,
+        textBeforeCursor,
+        suggestions,
+    ) {
+        if (!composeWords || suggestions == null) {
+            emptyList()
+        } else if (keyboardState.composing.isNotEmpty()) {
+            suggestions.complete(keyboardState.composing)
+        } else {
+            suggestions.next(SuggestionEngine.lastWord(textBeforeCursor).orEmpty())
+        }
+    }
+    val clipboardChip = clipboard.takeIf { settings.clipboardChipEnabled && !editor.sensitive }
+    val startedTyping = KeyboardChrome.startedTyping(keyboardState.composing, textBeforeCursor)
+    val stripClipboard = KeyboardChrome.clipboardForStrip(clipboardChip)
+    val stripSuggestions = KeyboardChrome.suggestionsForStrip(suggestionItems, startedTyping)
+
+    fun handleKey(key: KeyboardKey) {
+        val reduction = KeyboardReducer.press(
+            state = keyboardState,
+            key = key,
+            nowMillis = SystemClock.uptimeMillis(),
+            composeWords = composeWords,
+        )
+        keyboardState = reduction.state
+        reduction.command?.let(onCommand)
     }
 
     VocaPhoneTheme {
@@ -127,9 +187,30 @@ internal fun VocaPhoneKeyboard(
                     state = dictationState,
                     editor = editor,
                     settings = settings,
+                    barHeight = settings.keyboardHeight.dictationBarDp.dp,
                     isPreferenceWritePending = isPreferenceWritePending,
+                    clipboard = stripClipboard.takeIf {
+                        preferencePanel == null && keyboardState.layer != KeyboardLayer.EMOJI
+                    },
+                    suggestions = stripSuggestions.takeIf {
+                        preferencePanel == null && keyboardState.layer != KeyboardLayer.EMOJI
+                    }.orEmpty(),
+                    emojiCategory = emojiCategory.takeIf {
+                        preferencePanel == null && keyboardState.layer == KeyboardLayer.EMOJI
+                    },
+                    hasEmojiRecents = settings.emojiRecents.isNotEmpty(),
+                    onEmojiCategory = { emojiCategory = it },
                     onMicTap = onMicTap,
                     onOpenApp = onOpenApp,
+                    onPaste = onPasteClipboard,
+                    onSuggestion = { word ->
+                        keyboardState = keyboardState.copy(
+                            composing = "",
+                            lastWasSpace = true,
+                            capitalizeAfterSpace = false,
+                        )
+                        onSuggestionPicked(word)
+                    },
                     activePreferencePanel = preferencePanel,
                     onLanguageChipTapped = {
                         preferencePanel = if (preferencePanel == PreferencePanel.LANGUAGE) {
@@ -150,6 +231,7 @@ internal fun VocaPhoneKeyboard(
                 when (preferencePanel) {
                     PreferencePanel.LANGUAGE -> LanguagePreferencePanel(
                         settings = settings,
+                        height = keyAreaHeight,
                         enabled = !isPreferenceWritePending,
                         onSelected = { language ->
                             preferencePanel = null
@@ -159,6 +241,7 @@ internal fun VocaPhoneKeyboard(
                     )
                     PreferencePanel.STYLE -> StylePreferencePanel(
                         selected = settings.style,
+                        height = keyAreaHeight,
                         enabled = !isPreferenceWritePending,
                         onSelected = { style ->
                             preferencePanel = null
@@ -166,130 +249,239 @@ internal fun VocaPhoneKeyboard(
                         },
                         onClose = { preferencePanel = null },
                     )
-                    null -> KeyboardRows(
-                        rows = KeyboardLayouts.rows(keyboardState.layer, editor),
-                        state = keyboardState,
-                        editor = editor,
-                        onKey = { key ->
-                            val reduction = KeyboardReducer.press(
-                                state = keyboardState,
-                                key = key,
-                                nowMillis = SystemClock.uptimeMillis(),
-                            )
-                            keyboardState = reduction.state
-                            reduction.command?.let(onCommand)
-                        },
-                        onCursorMove = { onCommand(KeyboardCommand.MoveCursor(it)) },
-                    )
+                    null -> if (keyboardState.layer == KeyboardLayer.EMOJI) {
+                        EmojiLayer(
+                            height = keyAreaHeight,
+                            keyHeight = keyHeight,
+                            editor = editor,
+                            state = keyboardState,
+                            catalog = emojiCatalog,
+                            recents = settings.emojiRecents,
+                            category = emojiCategory,
+                            onEmoji = { glyph ->
+                                handleKey(
+                                    KeyboardKey(
+                                        id = "emoji-$glyph",
+                                        label = glyph,
+                                        output = glyph,
+                                    ),
+                                )
+                                onEmojiUsed(glyph)
+                            },
+                            onKey = ::handleKey,
+                            onCursorMove = { positions ->
+                                keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
+                                onCommand(KeyboardCommand.MoveCursor(positions))
+                            },
+                        )
+                    } else {
+                        val rows = KeyboardLayouts.rows(
+                            keyboardState.layer,
+                            editor,
+                            numberRow = settings.numberRowEnabled,
+                        )
+                        val fittedKeyHeight = if (rows.size <= 1) {
+                            keyHeight
+                        } else {
+                            ((keyAreaHeight - RowGap * (rows.size - 1)) / rows.size)
+                                .coerceAtLeast(36.dp)
+                        }
+                        KeyboardRows(
+                            rows = rows,
+                            state = keyboardState,
+                            editor = editor,
+                            keyHeight = fittedKeyHeight,
+                            onKey = ::handleKey,
+                            onCursorMove = { positions ->
+                                keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
+                                onCommand(KeyboardCommand.MoveCursor(positions))
+                            },
+                        )
+                    }
                 }
             }
         }
     }
 }
 
+private val RowGap = 5.dp
+
 @Composable
 private fun DictationBar(
     state: DictationState,
     editor: KeyboardEditorConfig,
     settings: VocaPhoneSettings,
+    barHeight: Dp,
     isPreferenceWritePending: Boolean,
+    clipboard: ClipboardChip?,
+    suggestions: List<String>,
+    emojiCategory: EmojiCategory?,
+    hasEmojiRecents: Boolean,
+    onEmojiCategory: (EmojiCategory) -> Unit,
     onMicTap: () -> Unit,
     onOpenApp: () -> Unit,
+    onPaste: () -> Unit,
+    onSuggestion: (String) -> Unit,
     activePreferencePanel: PreferencePanel?,
     onLanguageChipTapped: () -> Unit,
     onStyleChipTapped: () -> Unit,
 ) {
     val view = LocalView.current
+    val idle = state.phase == DictationPhase.IDLE
     val status = when {
         editor.sensitive -> "Private field"
         !editor.dictationAllowed -> "Typing only"
-        state.phase == DictationPhase.IDLE -> "VocaPhone"
+        idle -> "VocaPhone"
         state.phase == DictationPhase.LISTENING -> "Listening · ${formatDuration(state.recordedMillis)}"
         else -> state.statusText
     }
     val detail = when {
         editor.sensitive -> "Dictation is off here"
         !editor.dictationAllowed -> "Dictation is available in text fields"
-        state.phase == DictationPhase.IDLE -> "Tap the mic to dictate"
+        idle -> ""
         state.phase == DictationPhase.LISTENING && state.partialTranscript.isNotBlank() ->
             state.partialTranscript.replace('\n', ' ').take(64)
         state.phase == DictationPhase.LISTENING -> state.inputRouteLabel ?: "Tap the mic again to finish"
         state.phase.isBusy -> "You can keep typing while VocaPhone works"
         state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone to finish setup"
-        state.phase == DictationPhase.FAILED -> "Tap for help"
+        state.phase == DictationPhase.FAILED -> "Tap the mic to try again"
         else -> "Ready"
     }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp)
-            .padding(horizontal = 6.dp),
+            .height(barHeight)
+            .padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Surface(
             modifier = Modifier
-                .size(42.dp)
+                .size(36.dp)
                 .semantics {
                     role = Role.Button
                     contentDescription = "Open VocaPhone"
                 },
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = MaterialTheme.colorScheme.primary,
             onClick = {
                 view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                 onOpenApp()
             },
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = "V",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Black,
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    contentDescription = null,
+                    modifier = Modifier.size(28.dp),
                 )
             }
         }
 
-        if (state.phase == DictationPhase.IDLE && editor.dictationAllowed) {
-            PreferenceControls(
-                settings = settings,
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .semantics { liveRegion = LiveRegionMode.Polite },
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            when {
+                state.isRecording -> {
+                    Spacer(Modifier.weight(1f))
+                    Waveform(level = state.level)
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.End,
+                        )
+                        if (detail.isNotEmpty()) {
+                            Text(
+                                text = detail,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.End,
+                            )
+                        }
+                    }
+                }
+                !idle || !editor.dictationAllowed -> {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+                        Text(
+                            text = status,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        if (detail.isNotEmpty()) {
+                            Text(
+                                text = detail,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                }
+                emojiCategory != null -> EmojiCategoryRow(
+                    selected = emojiCategory,
+                    hasRecents = hasEmojiRecents,
+                    onSelect = onEmojiCategory,
+                    modifier = Modifier.weight(1f),
+                )
+                clipboard != null -> ClipboardChipButton(
+                    preview = clipboard.preview,
+                    onClick = onPaste,
+                    modifier = Modifier.weight(1f),
+                )
+                suggestions.isNotEmpty() -> suggestions.take(3).forEach { word ->
+                    SuggestionChip(
+                        label = word,
+                        onClick = { onSuggestion(word) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                else -> Spacer(Modifier.weight(1f))
+            }
+        }
+
+        if (idle && editor.dictationAllowed && emojiCategory == null) {
+            ToolbarIconButton(
+                contentDescription = "Transcription language, ${settings.effectiveLanguage.displayName}",
+                active = activePreferencePanel == PreferencePanel.LANGUAGE,
                 enabled = !isPreferenceWritePending,
-                activePanel = activePreferencePanel,
-                onLanguageTapped = onLanguageChipTapped,
-                onStyleTapped = onStyleChipTapped,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 8.dp),
-            )
-        } else {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 10.dp)
-                    .semantics { liveRegion = LiveRegionMode.Polite },
-                verticalArrangement = Arrangement.Center,
+                onClick = onLanguageChipTapped,
+            ) {
+                KeyboardIcon(
+                    glyph = Glyph.GLOBE,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            ToolbarIconButton(
+                contentDescription = "Writing style, ${settings.style.displayName}",
+                active = activePreferencePanel == PreferencePanel.STYLE,
+                enabled = !isPreferenceWritePending,
+                onClick = onStyleChipTapped,
             ) {
                 Text(
-                    text = status,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = detail,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    text = "Aa",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
                 )
             }
-        }
-
-        if (state.isRecording) {
-            Waveform(level = state.level)
-            Spacer(Modifier.width(8.dp))
         }
 
         MicButton(
@@ -301,142 +493,31 @@ private fun DictationBar(
 }
 
 @Composable
-private fun PreferenceControls(
-    settings: VocaPhoneSettings,
-    enabled: Boolean,
-    activePanel: PreferencePanel?,
-    onLanguageTapped: () -> Unit,
-    onStyleTapped: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.height(40.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        LanguagePreferenceChip(
-            selected = settings.effectiveLanguage,
-            enabled = enabled,
-            active = activePanel == PreferencePanel.LANGUAGE,
-            onClick = onLanguageTapped,
-            modifier = Modifier.weight(0.9f),
-        )
-        StylePreferenceChip(
-            selected = settings.style,
-            enabled = enabled,
-            active = activePanel == PreferencePanel.STYLE,
-            onClick = onStyleTapped,
-            modifier = Modifier.weight(1.1f),
-        )
-    }
-}
-
-@Composable
-private fun LanguagePreferenceChip(
-    selected: TranscriptionLanguage,
-    enabled: Boolean,
-    active: Boolean,
+private fun ToolbarIconButton(
+    contentDescription: String,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(modifier) {
-        PreferenceChip(
-            label = selected.shortLabel,
-            accessibilityLabel = "Transcription language",
-            accessibilityValue = selected.displayName,
-            enabled = enabled,
-            active = active,
-            leading = {
-                KeyboardIcon(
-                    glyph = Glyph.GLOBE,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(17.dp),
-                )
-            },
-            onClick = onClick,
-        )
-    }
-}
-
-@Composable
-private fun StylePreferenceChip(
-    selected: WritingStyle,
-    enabled: Boolean,
-    active: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(modifier) {
-        PreferenceChip(
-            label = selected.displayName,
-            accessibilityLabel = "Writing style",
-            accessibilityValue = selected.displayName,
-            enabled = enabled,
-            active = active,
-            leading = {
-                Text(
-                    text = "Aa",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                )
-            },
-            onClick = onClick,
-        )
-    }
-}
-
-@Composable
-private fun PreferenceChip(
-    label: String,
-    accessibilityLabel: String,
-    accessibilityValue: String,
-    enabled: Boolean,
-    active: Boolean,
-    leading: @Composable () -> Unit,
-    onClick: () -> Unit,
+    active: Boolean = false,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
 ) {
     Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .height(36.dp)
+            .size(36.dp)
             .semantics {
-                contentDescription = "$accessibilityLabel, $accessibilityValue"
+                role = Role.Button
+                this.contentDescription = contentDescription
+                if (!enabled) disabled()
             },
-        shape = RoundedCornerShape(14.dp),
+        shape = CircleShape,
         color = if (active) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
             MaterialTheme.colorScheme.surfaceContainerHigh
         },
-        contentColor = if (active) {
-            MaterialTheme.colorScheme.onPrimaryContainer
-        } else {
-            MaterialTheme.colorScheme.onSurface
-        },
         enabled = enabled,
         onClick = onClick,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            leading()
-            Text(
-                text = label,
-                modifier = Modifier.weight(1f),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = if (active) "▴" else "▾",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 10.sp,
-            )
-        }
+        Box(contentAlignment = Alignment.Center) { content() }
     }
 }
 
@@ -452,6 +533,7 @@ private fun SelectedMark() {
 @Composable
 private fun LanguagePreferencePanel(
     settings: VocaPhoneSettings,
+    height: Dp,
     enabled: Boolean,
     onSelected: (TranscriptionLanguage) -> Unit,
     onClose: () -> Unit,
@@ -483,6 +565,7 @@ private fun LanguagePreferencePanel(
     PreferencePanelShell(
         title = "Transcription language",
         subtitle = restriction ?: "Choose the language used for voice dictation",
+        height = height,
         onClose = onClose,
     ) {
         LazyColumn(
@@ -560,6 +643,7 @@ private fun LanguageOptionRow(
 @Composable
 private fun StylePreferencePanel(
     selected: WritingStyle,
+    height: Dp,
     enabled: Boolean,
     onSelected: (WritingStyle) -> Unit,
     onClose: () -> Unit,
@@ -567,6 +651,7 @@ private fun StylePreferencePanel(
     PreferencePanelShell(
         title = "Writing style",
         subtitle = "Controls punctuation and capitalization only",
+        height = height,
         onClose = onClose,
     ) {
         Column(
@@ -656,13 +741,14 @@ private fun RowScope.StyleOptionCard(
 private fun PreferencePanelShell(
     title: String,
     subtitle: String,
+    height: Dp,
     onClose: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(207.dp)
+            .height(height)
             .padding(horizontal = 4.dp),
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -741,8 +827,7 @@ private fun MicButton(
         !enabled -> "Dictation unavailable"
         recording -> "Finish dictation"
         processing -> "Cancel dictation"
-        state.phase == DictationPhase.PERMISSION_REPAIR || state.phase == DictationPhase.FAILED ->
-            "Open VocaPhone"
+        state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone"
         else -> "Start dictation"
     }
     val container = when {
@@ -760,13 +845,13 @@ private fun MicButton(
 
     Surface(
         modifier = Modifier
-            .size(width = 64.dp, height = 44.dp)
+            .size(40.dp)
             .semantics {
                 role = Role.Button
                 contentDescription = description
                 if (!enabled) disabled()
             },
-        shape = RoundedCornerShape(18.dp),
+        shape = CircleShape,
         color = container,
         enabled = enabled,
         onClick = {
@@ -791,13 +876,23 @@ private fun MicButton(
 @Composable
 private fun Waveform(level: Float) {
     val color = MaterialTheme.colorScheme.primary
-    val amplitudes = floatArrayOf(0.45f, 0.75f, 1f, 0.68f, 0.4f)
-    Canvas(Modifier.size(width = 30.dp, height = 24.dp)) {
-        val normalized = level.coerceIn(0.08f, 1f)
-        val barWidth = 2.dp.toPx()
-        val gap = (size.width - barWidth * amplitudes.size) / (amplitudes.size - 1)
-        amplitudes.forEachIndexed { index, amplitude ->
-            val height = size.height * (0.18f + 0.72f * normalized * amplitude)
+    val phase by rememberInfiniteTransition(label = "wave").animateFloat(
+        initialValue = 0f,
+        targetValue = (PI * 2).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 650, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "phase",
+    )
+    val bars = 7
+    Canvas(Modifier.size(width = 44.dp, height = 28.dp)) {
+        val normalized = level.coerceIn(0.14f, 1f)
+        val barWidth = 2.6.dp.toPx()
+        val gap = (size.width - barWidth * bars) / (bars - 1)
+        repeat(bars) { index ->
+            val pulse = ((sin(phase + index * 0.75f) + 1f) / 2f)
+            val height = size.height * (0.16f + 0.84f * normalized * (0.28f + 0.72f * pulse))
             val x = index * (barWidth + gap) + barWidth / 2
             drawLine(
                 color = color,
@@ -811,10 +906,185 @@ private fun Waveform(level: Float) {
 }
 
 @Composable
+private fun ClipboardChipButton(
+    preview: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .height(32.dp)
+            .semantics {
+                role = Role.Button
+                contentDescription = "Clipboard, $preview"
+            },
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            KeyboardIcon(
+                glyph = Glyph.CLIPBOARD,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(
+                text = preview,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SuggestionChip(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier
+            .height(32.dp)
+            .semantics {
+                role = Role.Button
+                contentDescription = label
+            },
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        onClick = onClick,
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EmojiLayer(
+    height: Dp,
+    keyHeight: Dp,
+    editor: KeyboardEditorConfig,
+    state: KeyboardState,
+    catalog: List<EmojiEntry>,
+    recents: List<String>,
+    category: EmojiCategory,
+    onEmoji: (String) -> Unit,
+    onKey: (KeyboardKey) -> Unit,
+    onCursorMove: (Int) -> Unit,
+) {
+    val bottomRow = KeyboardLayouts.rows(KeyboardLayer.EMOJI, editor)
+    val glyphs = if (category == EmojiCategory.RECENTS) {
+        recents
+    } else {
+        EmojiCatalog.inCategory(catalog, category).map { it.glyph }
+    }
+    Column(Modifier.fillMaxWidth()) {
+        EmojiGrid(
+            glyphs = glyphs,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height((height - keyHeight - RowGap).coerceAtLeast(48.dp)),
+            onEmoji = onEmoji,
+        )
+        KeyboardRows(
+            rows = bottomRow,
+            state = state,
+            editor = editor,
+            keyHeight = keyHeight,
+            onKey = onKey,
+            onCursorMove = onCursorMove,
+        )
+    }
+}
+
+@Composable
+private fun EmojiCategoryRow(
+    selected: EmojiCategory,
+    hasRecents: Boolean,
+    onSelect: (EmojiCategory) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val categories = buildList {
+        if (hasRecents) add(EmojiCategory.RECENTS)
+        addAll(EmojiCategory.browsable)
+    }
+    LazyRow(
+        modifier = modifier
+            .height(36.dp)
+            .padding(horizontal = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        items(categories, key = { it.id }) { category ->
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (category == selected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHigh
+                },
+                onClick = { onSelect(category) },
+            ) {
+                Text(
+                    text = category.icon,
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .semantics { contentDescription = category.label },
+                    fontSize = 16.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmojiGrid(
+    glyphs: List<String>,
+    modifier: Modifier,
+    onEmoji: (String) -> Unit,
+) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = 42.dp),
+        modifier = modifier.padding(horizontal = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        gridItems(glyphs, key = { it }) { glyph ->
+            Box(
+                modifier = Modifier
+                    .height(42.dp)
+                    .clickable { onEmoji(glyph) }
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = glyph
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(glyph, fontSize = 22.sp)
+            }
+        }
+    }
+}
+
+@Composable
 private fun KeyboardRows(
     rows: List<KeyboardRow>,
     state: KeyboardState,
     editor: KeyboardEditorConfig,
+    keyHeight: Dp,
     onKey: (KeyboardKey) -> Unit,
     onCursorMove: (Int) -> Unit,
 ) {
@@ -822,13 +1092,13 @@ private fun KeyboardRows(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(RowGap),
     ) {
         rows.forEach { row ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .height(keyHeight),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 if (row.leadingSpace > 0f) Spacer(Modifier.weight(row.leadingSpace))
@@ -837,7 +1107,17 @@ private fun KeyboardRows(
                         key = key,
                         state = state,
                         editor = editor,
+                        keyHeight = keyHeight,
                         onPress = { onKey(key) },
+                        onCommitText = { text ->
+                            onKey(
+                                KeyboardKey(
+                                    id = "variant-$text",
+                                    label = text,
+                                    output = text,
+                                ),
+                            )
+                        },
                         onCursorMove = onCursorMove,
                         modifier = Modifier.weight(key.weight),
                     )
@@ -853,15 +1133,20 @@ private fun RowScope.KeyButton(
     key: KeyboardKey,
     state: KeyboardState,
     editor: KeyboardEditorConfig,
+    keyHeight: Dp,
     onPress: () -> Unit,
+    onCommitText: (String) -> Unit,
     onCursorMove: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
-    val previewOffset = with(LocalDensity.current) { -56.dp.roundToPx() }
+    val previewOffset = with(LocalDensity.current) { -(keyHeight + 8.dp).roundToPx() }
     val currentOnPress = rememberUpdatedState(onPress)
+    val currentOnCommitText = rememberUpdatedState(onCommitText)
     val currentOnCursorMove = rememberUpdatedState(onCursorMove)
     var pressed by remember(key.id) { mutableStateOf(false) }
+    var accentIndex by remember(key.id) { mutableStateOf(-1) }
+    val accents = remember(key.id, state.shift) { KeyAccents.forKey(key, state.shift) }
     val isReturnAction = key.type == KeyboardKeyType.RETURN && editor.returnKey != ReturnKeyKind.ENTER
     val activeShift = key.type == KeyboardKeyType.SHIFT && state.shift != ShiftState.OFF
     val background = when {
@@ -885,16 +1170,24 @@ private fun RowScope.KeyButton(
     } else {
         key.label
     }
-    val gesture = if (key.type == KeyboardKeyType.SPACE) {
-        Modifier.spacebarGesture(
+    val gesture = when {
+        key.type == KeyboardKeyType.SPACE -> Modifier.spacebarGesture(
             pointerKey = key.id,
             onTap = { currentOnPress.value() },
             onCursorMove = { currentOnCursorMove.value(it) },
             onPressedChange = { pressed = it },
             onHaptic = { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) },
         )
-    } else {
-        Modifier.keyGesture(
+        key.type == KeyboardKeyType.CHARACTER && accents.isNotEmpty() -> Modifier.accentGesture(
+            pointerKey = key.id,
+            variantCount = accents.size,
+            onTap = { currentOnPress.value() },
+            onVariant = { index -> currentOnCommitText.value(accents[index]) },
+            onPressedChange = { pressed = it },
+            onAccentIndex = { accentIndex = it },
+            onHaptic = { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) },
+        )
+        else -> Modifier.keyGesture(
             pointerKey = key.id,
             repeat = key.type == KeyboardKeyType.DELETE,
             onPress = { currentOnPress.value() },
@@ -905,7 +1198,7 @@ private fun RowScope.KeyButton(
 
     Box(
         modifier = modifier
-            .height(48.dp)
+            .height(keyHeight)
             .shadow(1.dp, RoundedCornerShape(7.dp))
             .clip(RoundedCornerShape(7.dp))
             .background(if (pressed) background.copy(alpha = 0.72f) else background)
@@ -934,14 +1227,42 @@ private fun RowScope.KeyButton(
                 offset = IntOffset(0, previewOffset),
                 properties = PopupProperties(focusable = false, clippingEnabled = false),
             ) {
-                Surface(
-                    modifier = Modifier.size(width = 42.dp, height = 52.dp),
-                    shape = RoundedCornerShape(9.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    shadowElevation = 5.dp,
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(previewLabel, fontSize = 27.sp, color = foreground)
+                if (accentIndex >= 0 && accents.isNotEmpty()) {
+                    Surface(
+                        shape = RoundedCornerShape(9.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        shadowElevation = 5.dp,
+                    ) {
+                        Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+                            accents.forEachIndexed { index, glyph ->
+                                Box(
+                                    modifier = Modifier
+                                        .padding(2.dp)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(
+                                            if (index == accentIndex) {
+                                                MaterialTheme.colorScheme.primaryContainer
+                                            } else {
+                                                Color.Transparent
+                                            },
+                                        )
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                ) {
+                                    Text(glyph, fontSize = 20.sp, color = foreground)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Surface(
+                        modifier = Modifier.size(width = 42.dp, height = 52.dp),
+                        shape = RoundedCornerShape(9.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                        shadowElevation = 5.dp,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(previewLabel, fontSize = 27.sp, color = foreground)
+                        }
                     }
                 }
             }
@@ -1021,6 +1342,60 @@ private fun Modifier.spacebarGesture(
     }
 }
 
+private fun Modifier.accentGesture(
+    pointerKey: String,
+    variantCount: Int,
+    onTap: () -> Unit,
+    onVariant: (Int) -> Unit,
+    onPressedChange: (Boolean) -> Unit,
+    onAccentIndex: (Int) -> Unit,
+    onHaptic: () -> Unit,
+) = pointerInput(pointerKey, variantCount) {
+    val step = 28.dp.toPx()
+    coroutineScope {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            down.consume()
+            onPressedChange(true)
+            onHaptic()
+            var showing = false
+            var index = 0
+            val hold = launch {
+                delay(380L)
+                showing = true
+                onAccentIndex(0)
+                onHaptic()
+            }
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) {
+                    change.consume()
+                    break
+                }
+                if (showing) {
+                    val delta = change.position.x - down.position.x
+                    val next = (delta / step).toInt().coerceIn(0, variantCount - 1)
+                    if (next != index) {
+                        index = next
+                        onAccentIndex(index)
+                        onHaptic()
+                    }
+                }
+                change.consume()
+            }
+            hold.cancel()
+            onPressedChange(false)
+            if (showing) {
+                onVariant(index)
+            } else {
+                onTap()
+            }
+            onAccentIndex(-1)
+        }
+    }
+}
+
 @Composable
 private fun KeyContent(
     key: KeyboardKey,
@@ -1035,7 +1410,6 @@ private fun KeyContent(
             tint,
         )
         KeyboardKeyType.DELETE -> KeyboardIcon(Glyph.DELETE, tint)
-        KeyboardKeyType.KEYBOARD_SWITCH -> KeyboardIcon(Glyph.GLOBE, tint)
         KeyboardKeyType.RETURN -> when (returnKey) {
             ReturnKeyKind.ENTER -> KeyboardIcon(Glyph.ENTER, tint)
             ReturnKeyKind.SEARCH -> KeyboardIcon(Glyph.SEARCH, tint)
@@ -1073,6 +1447,7 @@ private enum class Glyph {
     NEXT,
     PREVIOUS,
     DONE,
+    CLIPBOARD,
 }
 
 @Composable
@@ -1172,6 +1547,24 @@ private fun KeyboardIcon(
                 drawLine(tint, Offset(w * 0.15f, h * 0.52f), Offset(w * 0.42f, h * 0.78f), stroke.width)
                 drawLine(tint, Offset(w * 0.42f, h * 0.78f), Offset(w * 0.86f, h * 0.26f), stroke.width)
             }
+            Glyph.CLIPBOARD -> {
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.22f, h * 0.22f),
+                    size = Size(w * 0.56f, h * 0.68f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()),
+                    style = stroke,
+                )
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.34f, h * 0.1f),
+                    size = Size(w * 0.32f, h * 0.2f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(1.5.dp.toPx()),
+                    style = stroke,
+                )
+                drawLine(tint, Offset(w * 0.34f, h * 0.48f), Offset(w * 0.66f, h * 0.48f), stroke.width)
+                drawLine(tint, Offset(w * 0.34f, h * 0.64f), Offset(w * 0.58f, h * 0.64f), stroke.width)
+            }
         }
     }
 }
@@ -1206,7 +1599,6 @@ private fun keyDescription(
         KeyboardLayer.SYMBOLS -> "Show symbols keyboard"
         null -> "Switch keyboard layer"
     }
-    KeyboardKeyType.KEYBOARD_SWITCH -> "Switch keyboard"
 }
 
 private fun formatDuration(millis: Long): String {

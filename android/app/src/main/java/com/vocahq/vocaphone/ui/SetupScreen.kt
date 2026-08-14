@@ -7,17 +7,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
@@ -34,6 +33,7 @@ fun SetupScreen(
     onOpenGateway: () -> Unit,
     onLocalModel: (LocalModelDescriptor) -> Unit,
     onDownloadLocalModel: (LocalModelDescriptor) -> Unit,
+    onDownloadAndUseLocalModel: (LocalModelDescriptor) -> Unit,
     onCancelLocalModelDownload: () -> Unit,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
@@ -52,9 +52,8 @@ fun SetupScreen(
     ) {
         Text("Set up VocaPhone", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "VocaPhone is a voice keyboard. Turn it on and select it when you want " +
-                "to dictate into any text field. Choose either your self-hosted " +
-                "gateway or an on-device speech-to-text model.",
+            "Turn on the keyboard, grant the microphone, then download a model " +
+                "or point the app at a gateway you control.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -80,36 +79,38 @@ fun SetupScreen(
             )
         }
 
-        Section("Transcription source", supporting = "A gateway or a verified local model.") {
-            ChecklistRow(
-                title = if (settings.localTranscriptionEnabled) "On-device model" else "Address and token",
-                detail = if (status.gatewayConfigured) {
-                    if (settings.localTranscriptionEnabled) {
-                        "On device: ${settings.localModelId}"
-                    } else {
-                        settings.gatewayUrl
-                    }
-                } else {
-                    "A LAN, Tailscale or HTTPS gateway you control."
-                },
-                satisfied = status.gatewayConfigured,
-                actionLabel = "Set up",
-                onAction = onOpenGateway,
-            )
-            if (status.gatewayConfigured) {
-                TextButton(onClick = onOpenGateway) { Text("Change or test gateway") }
-            }
-        }
-
-        Section(
-            "On-device option",
-            supporting = "Download a model to dictate without a gateway. Every file is SHA-256 checked before it can load.",
+        SettingsCategory(
+            title = "Speech",
+            supporting = "Download a model for this phone, or use a gateway. " +
+                "Every on-device file is SHA-256 checked before it can load.",
         ) {
+            FeaturedCard {
+                val localName = LocalModelCatalog.find(settings.localModelId)?.displayName
+                Text(
+                    when {
+                        settings.localTranscriptionEnabled && localName != null -> "On this phone"
+                        status.gatewayConfigured -> "Gateway"
+                        else -> "No speech source yet"
+                    },
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    when {
+                        settings.localTranscriptionEnabled && localName != null -> localName
+                        status.gatewayConfigured -> settings.gatewayUrl
+                        else -> "Pick a recommended model below, or add a gateway."
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                SecondaryButton("Gateway settings", onClick = onOpenGateway)
+            }
             LocalModelPicker(
                 state = localModels,
                 selectedModelId = settings.localModelId,
                 onSelect = onLocalModel,
                 onDownload = onDownloadLocalModel,
+                onDownloadAndUse = onDownloadAndUseLocalModel,
                 onCancelDownload = onCancelLocalModelDownload,
             )
         }

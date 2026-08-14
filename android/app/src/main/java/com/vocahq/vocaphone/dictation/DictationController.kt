@@ -490,13 +490,9 @@ class DictationController(
             incrementalReference.getAndSet(null)?.cancel()
             stream?.cancel()
             wavFile.delete()
-            fail(
-                sessionId,
-                GatewayException("audio_empty", "That was too short to transcribe.", recoverable = false),
-                wavFile = null,
-                configuration = configuration,
-                generation = generation,
-            )
+            // A tap that captured nothing is not a failure the user has to
+            // dismiss. The next mic tap should start a fresh dictation.
+            if (this.generation.get() == generation) reset()
             return
         }
 

@@ -57,7 +57,11 @@ the controller. The controller:
 
 Password and other sensitive input types are rejected by the IME input policy.
 The keyboard never reads surrounding editor text to decide whether to show the
-microphone or to construct an insertion.
+microphone or to construct an insertion. With Suggestions enabled it may read
+about 32 characters before the cursor, only in non-sensitive fields, so it can
+guess the next word. That text stays on the device and is never logged. The
+clipboard paste chip reads the current clip only while the input view is
+showing; dictation still never uses the clipboard.
 
 ## Privacy and diagnostics
 
@@ -89,3 +93,8 @@ back the restricted-settings and overlay friction this architecture removes.
 Local speech models are also not bundled in the phone client yet; transcription
 continues to run on the user-controlled gateway where model choice and resource
 limits can be managed centrally.
+
+Daily-driver QWERTY changes (number row, height, suggestions, emoji search,
+clipboard chip) are proposed in
+[Plan-Android-Keyboard-UX.md](Plan-Android-Keyboard-UX.md) and are not part of
+this architecture document until accepted.

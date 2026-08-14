@@ -75,16 +75,19 @@ private fun HistoryRow(
     val timestamp = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
         .format(Date(record.createdAt))
 
-    Section(
-        title = timestamp,
-        supporting = buildString {
-            append(TranscriptionLanguage.fromWire(record.language).displayName)
-            append(" · ")
-            append(WritingStyle.fromWire(record.style).displayName)
-            if (record.insertedIntoField) append(" · inserted")
-            if (record.audioPath != null) append(" · audio kept for retry")
-        },
-    ) {
+    FeaturedCard {
+        Text(timestamp, style = MaterialTheme.typography.titleSmall)
+        Text(
+            buildString {
+                append(TranscriptionLanguage.fromWire(record.language).displayName)
+                append(" · ")
+                append(WritingStyle.fromWire(record.style).displayName)
+                if (record.insertedIntoField) append(" · inserted")
+                if (record.audioPath != null) append(" · audio kept for retry")
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (failed) {
             Text(
                 record.errorMessage ?: "This dictation failed.",

@@ -22,6 +22,29 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
+enum class KeyboardHeight(
+    val storedValue: String,
+    val keyHeightDp: Int,
+    val dictationBarDp: Int,
+) {
+    COMPACT("compact", 42, 48),
+    DEFAULT("default", 48, 52),
+    TALL("tall", 56, 58),
+    ;
+
+    val displayName: String
+        get() = when (this) {
+            COMPACT -> "Compact"
+            DEFAULT -> "Default"
+            TALL -> "Tall"
+        }
+
+    companion object {
+        fun fromStored(value: String?): KeyboardHeight =
+            entries.firstOrNull { it.storedValue == value } ?: DEFAULT
+    }
+}
+
 /** How long a failed recording is kept so the user can still press Retry. */
 enum class AudioRetention(val hours: Int) {
     ONE_HOUR(1),
@@ -71,6 +94,11 @@ data class VocaPhoneSettings(
      * than stored pre-split, so the text they see back is the text they wrote.
      */
     val customVocabulary: String = "",
+    val numberRowEnabled: Boolean = false,
+    val keyboardHeight: KeyboardHeight = KeyboardHeight.DEFAULT,
+    val suggestionsEnabled: Boolean = true,
+    val clipboardChipEnabled: Boolean = true,
+    val emojiRecents: List<String> = emptyList(),
 ) {
 
     /**
@@ -178,6 +206,22 @@ class SettingsRepository(private val context: Context) {
     suspend fun setCustomVocabulary(vocabulary: String) =
         put(Keys.CUSTOM_VOCABULARY, vocabulary)
 
+    suspend fun setNumberRowEnabled(enabled: Boolean) = put(Keys.NUMBER_ROW, enabled)
+
+    suspend fun setKeyboardHeight(height: KeyboardHeight) = put(Keys.KEYBOARD_HEIGHT, height.storedValue)
+
+    suspend fun setSuggestionsEnabled(enabled: Boolean) = put(Keys.SUGGESTIONS, enabled)
+
+    suspend fun setClipboardChipEnabled(enabled: Boolean) = put(Keys.CLIPBOARD_CHIP, enabled)
+
+    suspend fun recordEmojiRecent(emoji: String) {
+        context.dataStore.edit { preferences ->
+            val current = decodeEmojiRecents(preferences[Keys.EMOJI_RECENTS])
+            val next = listOf(emoji) + current.filter { it != emoji }
+            preferences[Keys.EMOJI_RECENTS] = next.take(MAX_EMOJI_RECENTS).joinToString("\n")
+        }
+    }
+
     suspend fun recordEngineStatus(
         engine: String,
         ready: Boolean,
@@ -218,6 +262,11 @@ class SettingsRepository(private val context: Context) {
         localModelId = this[Keys.LOCAL_MODEL_ID].orEmpty(),
         transcriptionQuality = TranscriptionQuality.fromStored(this[Keys.TRANSCRIPTION_QUALITY]),
         customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),
+        numberRowEnabled = this[Keys.NUMBER_ROW] ?: false,
+        keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
+        suggestionsEnabled = this[Keys.SUGGESTIONS] ?: true,
+        clipboardChipEnabled = this[Keys.CLIPBOARD_CHIP] ?: true,
+        emojiRecents = decodeEmojiRecents(this[Keys.EMOJI_RECENTS]),
     )
 
     private object Keys {
@@ -239,6 +288,18 @@ class SettingsRepository(private val context: Context) {
         val LOCAL_MODEL_ID = stringPreferencesKey("local_model_id")
         val TRANSCRIPTION_QUALITY = stringPreferencesKey("transcription_quality")
         val CUSTOM_VOCABULARY = stringPreferencesKey("custom_vocabulary")
+        val NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
+        val KEYBOARD_HEIGHT = stringPreferencesKey("keyboard_height")
+        val SUGGESTIONS = booleanPreferencesKey("keyboard_suggestions")
+        val CLIPBOARD_CHIP = booleanPreferencesKey("keyboard_clipboard_chip")
+        val EMOJI_RECENTS = stringPreferencesKey("keyboard_emoji_recents")
+    }
+
+    private companion object {
+        const val MAX_EMOJI_RECENTS = 30
+
+        fun decodeEmojiRecents(stored: String?): List<String> =
+            stored?.split('\n')?.filter { it.isNotEmpty() }.orEmpty()
     }
 
     private fun androidx.datastore.preferences.core.MutablePreferences.clearEngineStatus() {

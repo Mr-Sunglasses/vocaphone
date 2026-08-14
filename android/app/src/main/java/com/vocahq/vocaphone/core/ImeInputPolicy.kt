@@ -19,7 +19,7 @@ object ImeInputPolicy {
         return !isSensitive(inputType)
     }
 
-    /** Used only to explain why the mic is hidden; no editor contents are read. */
+    /** Used only to explain why the mic is hidden. Suggestions also stay off here. */
     fun isSensitive(inputType: Int): Boolean {
         val inputClass = inputType and InputType.TYPE_MASK_CLASS
         val variation = inputType and InputType.TYPE_MASK_VARIATION

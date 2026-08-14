@@ -79,8 +79,8 @@ shows up as an actionable repair prompt rather than a silent failure.
    **Test connection**, which reports reachability, token validity, the active
    engine, whether it is ready, and whether it supports streaming.
 
-To use the phone without a gateway, choose **On-device option** during setup or
-under Settings, download a model, and tap **Use**.
+To use the phone without a gateway, open **Speech** during setup or in Settings,
+download the recommended model with **Download and use**, or search the catalog.
 
 The catalog carries 32 whisper.cpp GGML builds from Tiny through Large v3,
 including the q5 and q8 quantizations — a 574 MB Large v3 Turbo q5 is a far
@@ -100,10 +100,21 @@ gigabytes; changing a pin in a new build invalidates the marker.
 ## VocaPhone keyboard
 
 The microphone lives inside the keyboard and the transcript is written through
-Android's `InputConnection`. The keyboard only receives the editor connection
-provided by Android; it does not scrape or store surrounding field contents.
-VocaPhone refuses password and other sensitive input types through its input
-policy.
+Android's `InputConnection`. VocaPhone refuses password and other sensitive
+input types through its input policy.
+
+Typing extras, all local to the phone:
+
+- Optional number row and Compact / Default / Tall key height under Settings → Keyboard
+- English word completions and next-word guesses (off in passwords)
+- A paste chip for the current clipboard before you start typing
+- Emoji categories, recents, and search
+- Long-press letters for accents, double-space for a period
+- The globe key is gone; Android's keyboard switcher still changes IMEs
+
+Suggestions may read about 32 characters before the cursor. The clipboard chip
+reads the current clip only while the keyboard is visible. Dictation still never
+uses the clipboard, and nothing from either path is logged.
 
 ## Dictating
 
