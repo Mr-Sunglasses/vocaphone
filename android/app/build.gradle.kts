@@ -18,8 +18,8 @@ android {
         applicationId = "com.vocahq.vocaphone"
         minSdk = 33
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.1.0-beta.11"
+        versionCode = 12
+        versionName = "0.1.0-beta.12"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -105,6 +105,10 @@ android {
     }
 
     compileOptions {
+        // The bytecode level is not the reproducibility knob: F-Droid rebuilds
+        // this APK on JDK 21, and byte-identical output requires compiling with
+        // the same JDK, whatever the target level. The project builds on JDK 21
+        // (gradle-daemon-jvm.properties, setup-android) for that reason.
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -132,6 +136,9 @@ android {
 
 kotlin {
     compilerOptions {
+        // Kept at 17 on purpose, matching compileOptions above; see the comment
+        // there on why the compiling JDK (21), not this level, is what has to
+        // agree with the F-Droid buildserver.
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
 }

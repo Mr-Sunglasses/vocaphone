@@ -31,7 +31,9 @@ are available.
   for regular Git blobs. `git lfs ls-files` should list the five native
   archives under `ios/ThirdParty/SherpaOnnx/`.
 - Install [`just`](https://just.systems), Xcode, XcodeGen, `uv`, and FFmpeg.
-- For Android work, install a recent Android Studio / SDK and JDK 17+.
+- For Android work, install a recent Android Studio / SDK and JDK 21 (the exact
+  major version matters: F-Droid rebuilds the APK on JDK 21, so reproducible
+  builds require the same javac).
 - Run `just ios gen` after changing `ios/project.yml`, and commit the
   regenerated project. The other iOS recipes regenerate it for you; this one
   matters because CI fails when the checked-in project is stale.
