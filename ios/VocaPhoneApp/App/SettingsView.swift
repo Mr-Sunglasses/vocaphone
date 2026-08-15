@@ -120,6 +120,10 @@ struct KeyboardSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var hapticsEnabled = true
     @AppStorage(
+        KeyboardPreferences.emojiSuggestionsKey,
+        store: KeyboardPreferences.defaults
+    ) private var emojiSuggestionsEnabled = true
+    @AppStorage(
         KeyboardPreferences.swipeTypingKey,
         store: KeyboardPreferences.defaults
     ) private var swipeTypingEnabled = false
@@ -253,6 +257,7 @@ struct KeyboardSettingsView: View {
     private var typingDetailSection: some View {
         Section {
             Toggle("Smart punctuation", isOn: $smartPunctuationEnabled)
+            Toggle("Emoji suggestions", isOn: $emojiSuggestionsEnabled)
             Toggle("Keyboard haptics", isOn: $hapticsEnabled)
             Toggle("Swipe to type", isOn: $swipeTypingEnabled)
         } footer: {
@@ -261,6 +266,13 @@ struct KeyboardSettingsView: View {
                     "Smart punctuation curls quotes, turns two hyphens into an em "
                         + "dash and three dots into an ellipsis — except where the "
                         + "field asks it not to, such as a code or address field."
+                )
+                Text(
+                    "Emoji suggestions offer one emoji beside the word candidates "
+                        + "when a word has an obvious one — typing “lol” offers 😂. "
+                        + "Tapping it replaces the word. It never takes a word "
+                        + "suggestion's place, and words without an obvious emoji "
+                        + "get none."
                 )
                 // Said plainly rather than leaving people to wonder why their
                 // keyboard is silent.

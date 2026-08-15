@@ -38,6 +38,9 @@ final class TypingStripView: UIScrollView {
     private(set) var candidates: [TypingCandidate] = []
     private let row = UIStackView()
     private var buttons: [UIButton] = []
+    /// Kept so a reused button can be re-sized when it changes from carrying a
+    /// word to carrying a glyph.
+    private var minimumWidths: [NSLayoutConstraint] = []
     /// Set when the chips change, so the next layout pass puts the row back at
     /// its centred resting position rather than wherever the last set was
     /// scrolled to.
@@ -49,6 +52,10 @@ final class TypingStripView: UIScrollView {
     /// A one-letter suggestion in a capsule sized to its text is a dot. Every
     /// chip is at least wide enough to look like something worth aiming at.
     private static let minimumChipWidth: CGFloat = 62
+    /// A glyph needs less room than a word to read as a target, and on a 320 pt
+    /// strip those points are the difference between the emoji being offered
+    /// and being scrolled off the end of the row.
+    private static let minimumGlyphChipWidth: CGFloat = 48
     private static let chipTextInset: CGFloat = 14
 
     init(palette: KeyboardPalette, metrics: DictationBarMetrics) {
@@ -143,9 +150,10 @@ final class TypingStripView: UIScrollView {
                     : .identity
             }
             row.addArrangedSubview(button)
-            button.widthAnchor
+            let minimum = button.widthAnchor
                 .constraint(greaterThanOrEqualToConstant: Self.minimumChipWidth)
-                .isActive = true
+            minimum.isActive = true
+            minimumWidths.append(minimum)
             buttons.append(button)
         }
         for (index, button) in buttons.enumerated() {
@@ -154,6 +162,9 @@ final class TypingStripView: UIScrollView {
                 continue
             }
             button.isHidden = false
+            minimumWidths[index].constant = candidates[index].kind == .emoji
+                ? Self.minimumGlyphChipWidth
+                : Self.minimumChipWidth
             configure(button, with: candidates[index])
         }
         needsScrollReset = true
@@ -168,6 +179,7 @@ final class TypingStripView: UIScrollView {
         configuration.title = candidate.kind == .literal
             ? "“\(candidate.text)”"
             : candidate.text
+        let isEmoji = candidate.kind == .emoji
         configuration.cornerStyle = .capsule
         configuration.contentInsets = NSDirectionalEdgeInsets(
             top: 0,
@@ -196,10 +208,11 @@ final class TypingStripView: UIScrollView {
                 var outgoing = incoming
                 // Medium rather than regular: a chip is a control, and at this
                 // size regular reads as body text that happens to be in a pill.
-                outgoing.font = .systemFont(
-                    ofSize: size,
-                    weight: isEmphasised ? .semibold : .medium
-                )
+                // A glyph rather than a word: it carries no weight and reads
+                // at the size the keys use, not the size of a label.
+                outgoing.font = isEmoji
+                    ? .systemFont(ofSize: size + 4)
+                    : .systemFont(ofSize: size, weight: isEmphasised ? .semibold : .medium)
                 outgoing.foregroundColor = label
                 return outgoing
             }
@@ -219,6 +232,8 @@ final class TypingStripView: UIScrollView {
         case .completion: "Completes the word."
         case .correction: "Replaces the word."
         case .prediction: "Inserts this word next."
+        case .emoji: "Replaces the word with this emoji."
+        case .swipeAlternate: "Replaces the swiped word."
         }
     }
 

@@ -239,6 +239,7 @@ enum KeyboardPreferences {
     static let nextWordPredictionKey = "nextWordPredictionEnabled"
     static let learnAsITypeKey = "learnAsITypeEnabled"
     static let smartPunctuationKey = "smartPunctuationEnabled"
+    static let emojiSuggestionsKey = "emojiSuggestionsEnabled"
     static let keyboardHapticsKey = "keyboardHapticsEnabled"
     static let swipeTypingKey = "swipeTypingEnabled"
     static let numberRowKey = "numberRowEnabled"
@@ -332,6 +333,14 @@ enum KeyboardPreferences {
     static var smartPunctuationEnabled: Bool {
         get { boolean(smartPunctuationKey, default: true) }
         set { defaults?.set(newValue, forKey: smartPunctuationKey) }
+    }
+
+    /// An emoji offered beside the word candidates while typing — "lol" offers
+    /// 😂. On by default: it adds a chip the user may ignore and never changes
+    /// text on its own, which is the bar for a suggestion being on.
+    static var emojiSuggestionsEnabled: Bool {
+        get { boolean(emojiSuggestionsKey, default: true) }
+        set { defaults?.set(newValue, forKey: emojiSuggestionsKey) }
     }
 
     /// A no-op without Full Access, because a keyboard extension cannot reach

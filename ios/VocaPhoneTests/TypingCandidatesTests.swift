@@ -343,3 +343,95 @@ struct TypingCandidatesTests {
         #expect(TypingCandidates.matchingCase(of: "teh", applyingTo: "the") == "the")
     }
 }
+// MARK: - Emoji
+
+/// The emoji chip is an extra, not a competitor. The three word slots are what
+/// the strip is for, and spending one on decoration is a bad trade even when
+/// the emoji is right.
+@Suite struct EmojiCandidateTests {
+    private func context(_ composition: String, emoji: String?) -> TypingCandidates.Context {
+        var context = TypingCandidates.Context()
+        context.composition = composition
+        context.emojiSuggestion = emoji
+        context.isKnownToChecker = true
+        context.isInWordList = true
+        return context
+    }
+
+    @Test func theEmojiIsAppendedAfterTheWordCandidates() {
+        var ctx = context("lol", emoji: "😂")
+        ctx.listCompletions = ["lolly", "lollipop"]
+        let strip = TypingCandidates.strip(ctx)
+        #expect(strip.candidates.last?.kind == .emoji)
+        #expect(strip.candidates.last?.text == "😂")
+        // Every word candidate that would have been shown is still shown.
+        let words = strip.candidates.filter { $0.kind != .emoji }
+        #expect(words.count == 2)
+        #expect(words.allSatisfy { $0.text != "😂" })
+    }
+
+    @Test func aWordWithNoEmojiIsUnchanged() {
+        let strip = TypingCandidates.strip(context("ship", emoji: nil))
+        #expect(!strip.candidates.contains { $0.kind == .emoji })
+    }
+
+    @Test func theSettingRemovesTheChipEntirely() {
+        var ctx = context("lol", emoji: "😂")
+        ctx.emojiEnabled = false
+        #expect(!TypingCandidates.strip(ctx).candidates.contains { $0.kind == .emoji })
+    }
+
+    /// Nothing is being typed, so there is no word for an emoji to stand for.
+    /// The prediction row is about the *next* word.
+    @Test func predictionsNeverCarryAnEmoji() {
+        var ctx = context("", emoji: "😂")
+        ctx.predictions = ["the", "a"]
+        #expect(!TypingCandidates.strip(ctx).candidates.contains { $0.kind == .emoji })
+    }
+
+    /// A word with a curated emoji is never autocorrected away.
+    ///
+    /// Most triggers are informal and absent from the shipped word list, so
+    /// without this the keyboard offers 😱 for "omg" and then replaces it with
+    /// a dictionary word on the next space — disagreeing with itself, in a way
+    /// the user only discovers after sending the message.
+    @Test func aWordWithAnEmojiIsNotCorrectedAway() {
+        var ctx = context("omg", emoji: "😱")
+        ctx.isKnownToChecker = false
+        ctx.isInWordList = false
+        ctx.systemGuesses = ["org"]
+        #expect(TypingCandidates.autocorrection(ctx) == nil)
+        #expect(TypingCandidates.strip(ctx).autocorrection == nil)
+        // The literal chip exists to warn about a pending replacement, so with
+        // nothing pending it does not take a slot either.
+        #expect(!TypingCandidates.strip(ctx).candidates.contains { $0.kind == .literal })
+    }
+
+    /// The exemption is the *word*, not the setting. Turning the chip off stops
+    /// a chip being drawn; it does not make "omg" a typo again.
+    @Test func theExemptionSurvivesTheSettingBeingOff() {
+        var ctx = context("omg", emoji: "😱")
+        ctx.emojiEnabled = false
+        ctx.isKnownToChecker = false
+        ctx.isInWordList = false
+        ctx.systemGuesses = ["org"]
+        #expect(TypingCandidates.autocorrection(ctx) == nil)
+    }
+
+    /// And a genuine typo that happens to be near a trigger is still corrected.
+    @Test func aTypoWithNoEmojiIsStillCorrected() {
+        var ctx = context("teh", emoji: nil)
+        ctx.isKnownToChecker = false
+        ctx.isInWordList = false
+        ctx.systemGuesses = ["the"]
+        #expect(TypingCandidates.autocorrection(ctx) == "the")
+    }
+
+    /// The strip is off entirely in a password or code field, and the emoji
+    /// must not be the one thing that survives that.
+    @Test func aFieldThatRefusesIntelligenceGetsNoEmoji() {
+        var ctx = context("lol", emoji: "😂")
+        ctx.allowsTypingIntelligence = false
+        #expect(TypingCandidates.strip(ctx).candidates.isEmpty)
+    }
+}

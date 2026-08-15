@@ -137,7 +137,13 @@ targets:
       - path: VocaPhoneKeyboard/TypingWordList.swift
       - path: VocaPhoneKeyboard/SpellChecking.swift
       - path: VocaPhoneKeyboard/SmartPunctuation.swift
+      # The curated word-to-emoji table is the whole feature, so it is the part
+      # worth pinning: which words are in it, and which are deliberately not.
+      - path: VocaPhoneKeyboard/EmojiSuggestions.swift
       - path: VocaPhoneKeyboard/SwipeRecognizer.swift
+      # Replacing a swiped word is arithmetic over the space the swipe left
+      # behind, and both bugs it replaces were off by exactly that character.
+      - path: VocaPhoneKeyboard/SwipeAlternates.swift
       - path: VocaPhoneKeyboard/EmojiCatalog.swift
       # The state-to-interface mapping for the dictation bar is pure, so every
       # session state can be checked without standing up the extension.

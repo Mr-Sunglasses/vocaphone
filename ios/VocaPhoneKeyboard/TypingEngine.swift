@@ -144,6 +144,17 @@ final class TypingEngine {
     /// edit this keyboard did not make itself.
     func reconcile(documentBefore: String?) {
         composer.reconcile(documentBefore: documentBefore)
+        // The swipe's own insertion is what triggers the first of these. The
+        // word is still the tail of the document, so its alternates stand —
+        // reconciling the composer to an empty composition must not take them
+        // down with it.
+        if let pendingSwipe,
+           SwipeAlternates.isArmed(word: pendingSwipe.word, documentBefore: documentBefore)
+        {
+            publishSwipeAlternates()
+            return
+        }
+        pendingSwipe = nil
         refresh(documentBefore: documentBefore)
     }
 
@@ -151,17 +162,20 @@ final class TypingEngine {
 
     func insert(_ text: String, origin: WordComposer.Origin = .typed, documentBefore: String?) {
         pendingRevert = nil
+        pendingSwipe = nil
         composer.insert(text, origin: origin)
         refresh(documentBefore: documentBefore)
     }
 
     func deleteBackward(documentBefore: String?) {
         pendingRevert = nil
+        pendingSwipe = nil
         composer.deleteBackward()
         refresh(documentBefore: documentBefore)
     }
 
     func resetComposition(origin: WordComposer.Origin = .typed, documentBefore: String?) {
+        pendingSwipe = nil
         composer.reset(origin: origin)
         refresh(documentBefore: documentBefore)
     }
@@ -202,19 +216,50 @@ final class TypingEngine {
     /// dictionary, and correcting its answer would be two guesses stacked.
     func noteSwipeWord(_ word: String, alternates: [String]) {
         composer.adopt(word, origin: .swipe)
-        swipeAlternates = alternates
+        // Kept beside the composer rather than inside it. The document reads
+        // "word " and the composer describes the word the cursor is inside, so
+        // after a swipe the composition is empty and correct — see
+        // ``SwipeAlternates``.
+        pendingSwipe = PendingSwipe(word: word, alternates: alternates)
         pendingRevert = nil
+        publishSwipeAlternates()
+    }
+
+    /// The swiped word still standing before the cursor, if there is one.
+    var pendingSwipeWord: String? { pendingSwipe?.word }
+    var pendingSwipeAlternates: [String] { pendingSwipe?.alternates ?? [] }
+
+    private func publishSwipeAlternates() {
+        guard let pendingSwipe else { return }
         publish(
             TypingStrip(
-                candidates: alternates.prefix(TypingCandidates.slotCount).map {
-                    TypingCandidate(text: $0, kind: .correction)
-                },
+                candidates: pendingSwipe.alternates
+                    .prefix(TypingCandidates.slotCount)
+                    .map {
+                        // Shown in the case they would be inserted in, so a
+                        // swipe made with shift on does not offer lowercase
+                        // chips that arrive capitalised.
+                        TypingCandidate(
+                            text: TypingCandidates.matchingCase(
+                                of: pendingSwipe.word,
+                                applyingTo: $0
+                            ),
+                            kind: .swipeAlternate
+                        )
+                    },
                 autocorrection: nil
             )
         )
     }
 
-    private var swipeAlternates: [String] = []
+    private struct PendingSwipe {
+        let word: String
+        let alternates: [String]
+    }
+
+    /// Cleared the moment the document stops ending in the swiped word, which
+    /// is any keystroke, any deletion, or a cursor that has moved on.
+    private var pendingSwipe: PendingSwipe?
 
     /// Counts a completed word toward learning. A word typed three times and
     /// never reverted is a word the user means.
@@ -371,6 +416,10 @@ final class TypingEngine {
         context.isKnownToChecker = checked?.isKnown ?? false
         context.isInWordList = wordList.contains(composition)
         context.assertedWords = assertedWords
+        // Exact word only, so nothing appears while the user is partway into a
+        // different one.
+        context.emojiSuggestion = EmojiSuggestions.glyph(for: composition)
+        context.emojiEnabled = KeyboardPreferences.emojiSuggestionsEnabled
         context.suggestionsEnabled = KeyboardPreferences.typingSuggestionsEnabled
         context.autocorrectEnabled = KeyboardPreferences.autocorrectIsActive
         context.predictionEnabled = KeyboardPreferences.nextWordPredictionEnabled

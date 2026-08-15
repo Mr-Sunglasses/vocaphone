@@ -1250,6 +1250,41 @@ extension KeyboardViewController: DictationBarViewDelegate {
         case .prediction:
             textDocumentProxy.insertText(candidate.text + " ")
             typing.resetComposition(origin: .suggestion, documentBefore: documentBefore)
+        case .swipeAlternate:
+            // The swiped word is already in the document with the space that
+            // followed it, so the replacement covers both and puts a space
+            // back. Deleting only the composition — which is empty by now,
+            // because the cursor sits past that space — is what left the
+            // rejected word in place with the alternate after it.
+            // Checked against the document, not against remembered state: the
+            // document wins here as it does everywhere else in this
+            // subsystem, and a replacement that cannot see the word it is
+            // replacing must not delete four characters on faith.
+            guard let swiped = typing.pendingSwipeWord,
+                  SwipeAlternates.isArmed(word: swiped, documentBefore: documentBefore)
+            else { break }
+            let alternates = SwipeAlternates.alternates(
+                after: candidate.text,
+                replacing: swiped,
+                from: typing.pendingSwipeAlternates
+            )
+            for _ in 0..<SwipeAlternates.deletionCount(replacing: swiped) {
+                textDocumentProxy.deleteBackward()
+            }
+            textDocumentProxy.insertText(candidate.text + " ")
+            // Re-armed on the new word, so a second thought is another tap
+            // rather than a retype.
+            typing.noteSwipeWord(candidate.text, alternates: alternates)
+        case .emoji:
+            // The emoji stands in for the word, exactly as the system keyboard
+            // does it: "lol" becomes 😂 rather than "lol 😂".
+            let typed = typing.composer.text
+            for _ in 0..<typed.count { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(candidate.text + " ")
+            // Deliberately not learned. `noteCompletedWord` teaches the
+            // keyboard vocabulary, and an emoji is not a word it should start
+            // completing letters into.
+            typing.resetComposition(origin: .suggestion, documentBefore: documentBefore)
         }
         lastSpaceInsertedAt = nil
         releaseUndoIfDetached()
