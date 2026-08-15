@@ -25,15 +25,26 @@ The App Group record is the source of truth. Polling is a wake-up strategy, not
 the data store. Audio references are opaque filenames; tokens, transcripts, and
 absolute paths are never written to ordinary logs.
 
+`SessionRecord.processingLocation` is optional and additive. It is how the
+keyboard and the Live Activity name the place transcription is happening without
+asking the app, and its absence is a real state — a record written before the
+field existed, or a session interrupted before the app claimed it. Every reader
+answers that with neutral wording ("Transcribing") rather than guessing a route,
+and version-1 records without the field continue to decode unchanged. Nothing on
+the gateway wire format changed.
+
 ## Recorded request flow
 
 1. The keyboard creates a UUID session and atomically writes `launchingApp`.
 2. If a nonexpired Quick Dictation marker exists, the already-running app sees
    the request while its background input is active. Otherwise the keyboard
    opens `vocaphone://dictate?session=<uuid>` after a short fallback delay.
-3. The app validates the session, switches its persistent audio input from
-   discarding buffers to writing a WAV recording, and writes `recording` plus
-   bounded meter updates. The audio graph is not rebuilt between dictations.
+3. The app validates the session, claims it, and resolves which speech-to-text
+   route the session will take — `onDevice` or `gateway` — writing that
+   `processingLocation` into the record before any audio moves. It then switches
+   its persistent audio input from discarding buffers to writing a WAV
+   recording, and writes `recording` plus bounded meter updates. The audio graph
+   is not rebuilt between dictations.
 4. The user manually returns to the original app.
 5. Finish changes shared state to `finalizing`.
 6. The app negotiates streaming support on the authenticated WebSocket itself,
@@ -55,6 +66,46 @@ feature off.
 
 Persisting `inserting` before touching the document intentionally favors
 avoiding duplicate text if the extension terminates at the worst moment.
+
+## Typing intelligence (iOS keyboard)
+
+Completion, correction and next-word prediction run entirely inside the keyboard
+extension. Nothing about them touches the gateway, the App Group session record,
+or the network.
+
+```
+keystroke ─▶ WordComposer ─▶ TypingEngine ─▶ TypingCandidates ─▶ TypingStripView
+                  ▲               │
+     documentContextBeforeInput   ├─ UITextChecker (system dictionaries)
+        (reconcile only)          ├─ UILexicon (the user's own replacements)
+                                  ├─ TypingWordList (shipped, frequency-ordered)
+                                  └─ LearnedWords (App Group, capped at 2 000)
+```
+
+Three constraints shape the design:
+
+1. **There is no composing region.** `UITextDocumentProxy` has no marked-text
+   API, so replacing a word is *n* × `deleteBackward()` plus one `insertText`,
+   applied in a single run loop turn and never while a dictation insertion is in
+   flight. `WordComposer` is the keyboard's own record of the current word;
+   `documentContextBeforeInput` only ever *reconciles* it, because that window is
+   bounded and can be `nil` while the keyboard loads.
+2. **`UITextChecker` is main-actor.** The SDK marks it `NS_SWIFT_UI_ACTOR`, so it
+   cannot be pushed onto a background queue. Keystrokes stay unblocked by
+   ordering instead: text is inserted synchronously on touch-up and the
+   computation is enqueued as a separate main-actor task, which a generation
+   counter cancels if the user has typed on, and a 64-entry LRU cache usually
+   skips entirely. `TypingWordList` provides a pure-Swift fallback that *can*
+   leave the main actor if device measurement ever demands it.
+3. **The extension has a hard memory ceiling.** One checker, one word list, a
+   bounded cache and a capped learned-word store.
+
+The word list, the bigram table and the emoji catalog live once at
+`assets/keyboard/` in the repository root. The iOS keyboard target references
+that directory from `project.yml`; the Android build merges the same directory
+through `sourceSets` in `app/build.gradle.kts`. Two hand-maintained copies would
+drift, and nothing would notice until the platforms started suggesting different
+words.
 
 ## Server states
 

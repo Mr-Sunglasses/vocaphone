@@ -7,6 +7,16 @@ enum KeyboardOutput {
     case deleteBackward
     case deleteWord
     case moveCursor(Int)
+    /// A traced word and the alternates that lost to it, for the strip.
+    case swipeWord(String, alternates: [String])
+    /// Hold the plane key to reach the emoji panel.
+    ///
+    /// A dedicated emoji key does not fit: the bottom row balances on ten
+    /// columns, and a fourth function key beside the plane switch, the globe and
+    /// the punctuation pair leaves the spacebar about half a key wide. iOS has
+    /// the same problem and answers it by not putting a comma and full stop on
+    /// that row at all — which this keyboard does, and people use them.
+    case emojiPanel
     /// Carries the globe key itself so the keyboard picker can anchor to it.
     case nextInputMode(UIView, UIEvent?)
 }
@@ -23,6 +33,10 @@ enum CursorTrackpad {
 protocol KeyGridViewDelegate: AnyObject {
     func keyGrid(_ grid: KeyGridView, didProduce output: KeyboardOutput)
     func keyGridDidChangeShift(_ grid: KeyGridView)
+    /// Whether a held Delete may keep going. Only the controller can see the
+    /// document, and the system keyboard stops at the start of a line rather
+    /// than eating the paragraph behind it.
+    func keyGridShouldContinueDeleting(_ grid: KeyGridView) -> Bool
 }
 
 /// The typing area. Owns hit testing, so keys can be slid between and their
@@ -55,8 +69,22 @@ final class KeyGridView: UIView {
         didSet { if returnKeyTitle != oldValue { updateKeys() } }
     }
 
-    var leadingPunctuation = "," {
+    /// The punctuation pair on the letters plane, or `nil` for none — which is
+    /// the plain QWERTY case, matching the system keyboard.
+    var leadingPunctuation: String? {
         didSet { if leadingPunctuation != oldValue { rebuild() } }
+    }
+
+    /// The word list the swipe recogniser ranks against. Set by the controller
+    /// once the list has loaded; with no list there is no swipe, which is the
+    /// correct failure — a recogniser with nothing to recognise against would
+    /// commit nonsense.
+    var swipeWordList: TypingWordList?
+
+    /// The field's own keyboard type, which decides whether a long press on `.`
+    /// offers domains.
+    var keyboardType: UIKeyboardType = .default {
+        didSet { if keyboardType != oldValue { rebuild() } }
     }
 
     var shiftState: ShiftState = .on {
@@ -74,6 +102,13 @@ final class KeyGridView: UIView {
     /// are kept and simply hidden; only a metrics or palette change discards them.
     private var planeCache: [KeyPlane: (rows: [KeyRow], views: [KeyView])] = [:]
     private var previewPool: [KeyPreviewView] = []
+    /// The fading stroke drawn under the finger while a swipe is in flight.
+    /// Created once and kept above the keys; it never takes a touch.
+    private lazy var swipeTrail = SwipeTrailView(color: palette.swipeTrail)
+    /// One popover, reused. Only one finger can be holding a letter at a time in
+    /// any interaction that makes sense, and allocating a view per long press
+    /// would churn labels the pool exists to avoid.
+    private var alternativesView: KeyAlternativesView?
     private var tracked: [TrackedTouch] = []
     private var deleteTimer: Timer?
     private var spaceTrackpadTimer: Timer?
@@ -88,6 +123,14 @@ final class KeyGridView: UIView {
         let initialPoint: CGPoint
         var lastCursorStep = 0
         var isCursorTracking = false
+        /// Fires the accent popover if the finger is still on the key. Cancelled
+        /// by movement, by lifting, and by anything that tears the grid down.
+        var longPressTimer: Timer?
+        var isChoosingAlternative = false
+        /// Sampled points, once the finger has travelled far enough for this to
+        /// be a swipe rather than a slide to correct a target.
+        var swipePath: [CGPoint] = []
+        var isSwiping = false
 
         init(touch: UITouch, key: KeyView, initialPoint: CGPoint) {
             self.touch = touch
@@ -120,6 +163,8 @@ final class KeyGridView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // The trail is drawn in the grid's own coordinates, so it spans it.
+        swipeTrail.frame = bounds
         let available = bounds.width - 2 * metrics.sideInset
         // Every row resolves against the width of one letter column from the
         // ten-key reference row, which is what keeps columns aligned vertically.
@@ -231,6 +276,8 @@ final class KeyGridView: UIView {
         planeCache.removeAll()
         previewPool.forEach { $0.removeFromSuperview() }
         previewPool.removeAll()
+        alternativesView?.removeFromSuperview()
+        alternativesView = nil
         keyViews.removeAll()
         rows.removeAll()
         activatePlane()
@@ -256,6 +303,8 @@ final class KeyGridView: UIView {
             for row in built {
                 for spec in row.keys {
                     let key = KeyView(spec: spec, metrics: metrics, palette: palette)
+                    key.alternativesKeyboardType = keyboardType
+                    key.accessibilityDelegate = self
                     addSubview(key)
                     views.append(key)
                 }
@@ -267,20 +316,38 @@ final class KeyGridView: UIView {
         rows = entry.rows
         keyViews = entry.views
         keyViews.forEach { $0.isHidden = false }
+        // Re-added rather than merely kept: `addSubview` moves it back above the
+        // keys this plane has just installed. Previews and the accent popover
+        // still come out on top, because both bring themselves to the front.
+        swipeTrail.color = palette.swipeTrail
+        addSubview(swipeTrail)
         updateKeys()
         invalidateIntrinsicContentSize()
         setNeedsLayout()
     }
 
+    /// Abandons everything in flight — held keys, delete repeat, an open accent
+    /// popover. The keyboard calls this when it leaves the screen, because iOS
+    /// does not always deliver `touchesCancelled` for a keyboard that is being
+    /// dismissed, and a popover left behind reappears over the next field.
+    func endActiveInteractions() {
+        endDeleteRepeat()
+        releaseTouches()
+    }
+
     private func releaseTouches() {
         spaceTrackpadTimer?.invalidate()
         spaceTrackpadTimer = nil
+        swipeTrail.cancel()
         for item in tracked {
+            item.longPressTimer?.invalidate()
+            item.longPressTimer = nil
             item.key.isHighlighted = false
             recycle(item.preview)
             item.preview = nil
         }
         tracked.removeAll()
+        dismissAlternatives()
     }
 
     private func updateKeys() {
@@ -304,9 +371,11 @@ final class KeyGridView: UIView {
             let item = TrackedTouch(touch: touch, key: key, initialPoint: point)
             tracked.append(item)
             key.isHighlighted = true
-            UIDevice.current.playInputClick()
+            KeyboardHaptics.shared.keyPress()
             showPreview(for: item)
             if key.spec.cap == .space { scheduleSpaceTrackpad(for: item) }
+            scheduleAlternatives(for: item)
+            schedulePlaneLongPress(for: item)
             if key.spec.cap.actsOnTouchDown {
                 performTouchDownAction(for: key, event: event)
             }
@@ -318,9 +387,23 @@ final class KeyGridView: UIView {
             guard let item = tracked.first(where: { $0.touch === touch }) else { continue }
             let point = touch.location(in: self)
 
+            if item.isChoosingAlternative {
+                handleAlternativeMovement(item, point: point)
+                continue
+            }
+
             if item.key.spec.cap == .space {
                 handleSpaceMovement(item, point: point)
                 continue
+            }
+
+            // Sliding to a neighbour is a correction, not a hold, so it retires
+            // the pending popover rather than firing it under a different key.
+            if item.longPressTimer != nil,
+               hypot(point.x - item.initialPoint.x, point.y - item.initialPoint.y) > 12
+            {
+                item.longPressTimer?.invalidate()
+                item.longPressTimer = nil
             }
 
             guard item.allowsSlide else {
@@ -334,6 +417,39 @@ final class KeyGridView: UIView {
                     isInside ? startDeleteTimer() : endDeleteRepeat()
                 }
                 continue
+            }
+
+            if swipeTypingIsAvailable, item.allowsSlide {
+                let travelled = hypot(
+                    point.x - item.initialPoint.x,
+                    point.y - item.initialPoint.y
+                )
+                if !item.isSwiping, travelled > SwipeRecognizer.activationDistance {
+                    // Only now is this a swipe. Below the threshold it is the
+                    // slide-to-correct-a-target gesture the keyboard already
+                    // had, and stealing that would break ordinary typing.
+                    item.isSwiping = true
+                    item.swipePath = [item.initialPoint]
+                    recycle(item.preview)
+                    item.preview = nil
+                    // The trail starts at the key the finger came from, not at
+                    // the point where the threshold was crossed: the first
+                    // letter is part of the word, and a stroke that began in
+                    // mid-air would look like a dropped frame.
+                    swipeTrail.begin(at: item.initialPoint)
+                    bringSubviewToFront(swipeTrail)
+                    KeyboardHaptics.shared.swipeBegan()
+                }
+                if item.isSwiping {
+                    item.swipePath.append(point)
+                    swipeTrail.extend(to: point)
+                    if let key = key(at: point, characterOnly: true), key !== item.key {
+                        item.key.isHighlighted = false
+                        item.key = key
+                        key.isHighlighted = true
+                    }
+                    continue
+                }
             }
 
             guard let key = key(at: point, characterOnly: true), key !== item.key else { continue }
@@ -360,11 +476,36 @@ final class KeyGridView: UIView {
                 spaceTrackpadTimer?.invalidate()
                 spaceTrackpadTimer = nil
             }
+            item.longPressTimer?.invalidate()
+            item.longPressTimer = nil
             let shouldCommit = commit && item.key.isHighlighted && !item.isCursorTracking
             item.key.isHighlighted = false
             recycle(item.preview)
             item.preview = nil
             if item.key.spec.cap == .delete { endDeleteRepeat() }
+            if item.isSwiping {
+                item.key.isHighlighted = false
+                let path = item.swipePath
+                item.swipePath = []
+                item.isSwiping = false
+                // A committed swipe lets its trail fade out under the word that
+                // just appeared; a cancelled one takes the trail with it.
+                if commit {
+                    swipeTrail.end()
+                    commitSwipe(path)
+                } else {
+                    swipeTrail.cancel()
+                }
+                continue
+            }
+            if item.isChoosingAlternative {
+                let choice = alternativesView?.highlightedOption
+                dismissAlternatives()
+                guard commit, let choice else { continue }
+                delegate?.keyGrid(self, didProduce: .text(choice))
+                if shiftState == .on { shiftState = .off }
+                continue
+            }
             guard shouldCommit, !item.key.spec.cap.actsOnTouchDown else { continue }
             commitKey(item.key)
         }
@@ -414,7 +555,7 @@ final class KeyGridView: UIView {
                 else { return }
                 item.isCursorTracking = true
                 item.lastCursorStep = 0
-                UISelectionFeedbackGenerator().selectionChanged()
+                KeyboardHaptics.shared.selectionChanged()
                 UIAccessibility.post(notification: .announcement, argument: "Cursor control")
             }
         }
@@ -439,6 +580,145 @@ final class KeyGridView: UIView {
         guard delta != 0 else { return }
         item.lastCursorStep = step
         delegate?.keyGrid(self, didProduce: .moveCursor(delta))
+    }
+
+    // MARK: - Swipe
+
+    private var swipeTypingIsAvailable: Bool {
+        KeyboardPreferences.swipeTypingEnabled
+            && swipeWordList?.isEmpty == false
+            && !UIAccessibility.isVoiceOverRunning
+    }
+
+    /// The letter centres of the current plane, which is what the recogniser
+    /// scores against. Rebuilt per swipe rather than cached: it is thirty
+    /// lookups, and a cache would go stale on every layout change.
+    private func swipeKeys() -> [SwipeRecognizer.Key] {
+        keyViews.compactMap { key in
+            guard case let .character(text) = key.spec.cap,
+                  let character = text.lowercased().first,
+                  character.isLetter
+            else { return nil }
+            return SwipeRecognizer.Key(character: character, centre: CGPoint(
+                x: key.frame.midX,
+                y: key.frame.midY
+            ))
+        }
+    }
+
+    private func commitSwipe(_ path: [CGPoint]) {
+        guard let wordList = swipeWordList else { return }
+        let recognizer = SwipeRecognizer(keys: swipeKeys())
+        guard recognizer.isUsable else { return }
+        let trace = recognizer.trace(path)
+        let candidates = recognizer.candidates(for: trace, in: wordList)
+        guard let best = candidates.first else { return }
+        KeyboardHaptics.shared.swipeCommitted()
+        delegate?.keyGrid(
+            self,
+            didProduce: .swipeWord(best, alternates: Array(candidates.dropFirst()))
+        )
+        if shiftState == .on { shiftState = .off }
+    }
+
+    // MARK: - Accent alternatives
+
+    /// Arms the long press, when the key has something to offer.
+    ///
+    /// VoiceOver is excluded outright rather than adapted: a screen reader's
+    /// focus model has no finger to hold, and the alternatives are reachable
+    /// through the key's accessibility custom actions instead — see
+    /// ``KeyView/refresh()``.
+    /// Holding the plane key opens the emoji panel. Armed separately from the
+    /// accent popover, because the plane key is not a character key.
+    private func schedulePlaneLongPress(for item: TrackedTouch) {
+        guard case .plane = item.key.spec.cap, !UIAccessibility.isVoiceOverRunning else { return }
+        item.longPressTimer?.invalidate()
+        item.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) {
+            [weak self, weak item] _ in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let item,
+                      self.tracked.contains(where: { $0 === item })
+                else { return }
+                item.longPressTimer = nil
+                item.key.isHighlighted = false
+                // The touch is consumed: lifting must not also switch planes,
+                // which is what the same key does on a tap.
+                self.tracked.removeAll { $0 === item }
+                KeyboardHaptics.shared.selectionChanged()
+                self.delegate?.keyGrid(self, didProduce: .emojiPanel)
+            }
+        }
+    }
+
+    private func scheduleAlternatives(for item: TrackedTouch) {
+        guard !UIAccessibility.isVoiceOverRunning,
+              metrics.showsPreview,
+              case let .character(base) = item.key.spec.cap,
+              KeyAlternatives.hasOptions(for: base, keyboardType: keyboardType)
+        else { return }
+        item.longPressTimer?.invalidate()
+        item.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) {
+            [weak self, weak item] _ in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let item,
+                      self.tracked.contains(where: { $0 === item }),
+                      item.key.isHighlighted
+                else { return }
+                self.presentAlternatives(for: item)
+            }
+        }
+    }
+
+    private func presentAlternatives(for item: TrackedTouch) {
+        guard case let .character(base) = item.key.spec.cap else { return }
+        let options = KeyAlternatives.options(
+            for: base,
+            shift: shiftState,
+            keyboardType: keyboardType
+        )
+        guard options.count > 1 else { return }
+
+        // The magnified preview and the popover say the same thing; keeping both
+        // would stack two surfaces over one key.
+        recycle(item.preview)
+        item.preview = nil
+
+        let popover = alternativesView ?? {
+            let created = KeyAlternativesView(palette: palette, metrics: metrics)
+            addSubview(created)
+            alternativesView = created
+            return created
+        }()
+        popover.isHidden = false
+        popover.show(options, palette: palette, metrics: metrics)
+
+        let size = popover.size(for: options)
+        let frame = item.key.frame
+        // Anchored above the key and nudged inside the grid, so a popover on the
+        // "a" or the "l" never hangs off the edge.
+        let x = min(max(frame.midX - size.width / 2, 2), max(bounds.width - size.width - 2, 2))
+        popover.frame = CGRect(x: x, y: frame.minY - size.height - 6, width: size.width, height: size.height)
+        bringSubviewToFront(popover)
+
+        item.isChoosingAlternative = true
+        item.longPressTimer = nil
+        KeyboardHaptics.shared.selectionChanged()
+    }
+
+    private func handleAlternativeMovement(_ item: TrackedTouch, point: CGPoint) {
+        guard let popover = alternativesView else { return }
+        let local = convert(point, to: popover)
+        if popover.highlightOption(atX: local.x) {
+            KeyboardHaptics.shared.selectionChanged()
+        }
+    }
+
+    private func dismissAlternatives() {
+        alternativesView?.isHidden = true
+        for item in tracked { item.isChoosingAlternative = false }
     }
 
     private func toggleShift() {
@@ -466,29 +746,54 @@ final class KeyGridView: UIView {
 
     // MARK: - Delete repeat
 
+    /// The first repeat waits; the ones after it accelerate.
+    ///
+    /// The old behaviour was a flat 0.08 s from the first repeat, which is
+    /// faster than the system keyboard at the start — so a hold meant to remove
+    /// two letters removed five — and slower than it once a long deletion is
+    /// genuinely under way.
+    private static let deleteInitialDelay: TimeInterval = 0.45
+    private static let deleteSlowestInterval: TimeInterval = 0.16
+    private static let deleteFastestInterval: TimeInterval = 0.045
+    /// After this many repeats a hold is clearly a bulk deletion, and whole
+    /// words go rather than letters.
+    private static let deleteWordThreshold = 16
+
     private func startDeleteTimer() {
         deleteTimer?.invalidate()
         deleteRepeatCount = 0
-        deleteTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) {
-            [weak self] _ in
-            MainActor.assumeIsolated { self?.beginDeleteRepeat() }
+        deleteTimer = Timer.scheduledTimer(
+            withTimeInterval: Self.deleteInitialDelay,
+            repeats: false
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.scheduleNextDelete() }
         }
     }
 
-    private func beginDeleteRepeat() {
+    /// One repeat at a time, rescheduled at the ramped interval — a repeating
+    /// timer cannot change its own period.
+    private func scheduleNextDelete() {
         deleteTimer?.invalidate()
-        deleteTimer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) {
+        guard delegate?.keyGridShouldContinueDeleting(self) ?? true else {
+            // The start of a line. Stopping here is what keeps a held Delete
+            // from swallowing the paragraph above; continuing past it takes a
+            // fresh press, which is the system's behaviour.
+            endDeleteRepeat()
+            return
+        }
+        deleteRepeatCount += 1
+        let output: KeyboardOutput = deleteRepeatCount > Self.deleteWordThreshold
+            ? .deleteWord
+            : .deleteBackward
+        delegate?.keyGrid(self, didProduce: output)
+
+        // Eased from slow to fast over the first dozen repeats.
+        let progress = min(CGFloat(deleteRepeatCount) / 12, 1)
+        let interval = Self.deleteSlowestInterval
+            - (Self.deleteSlowestInterval - Self.deleteFastestInterval) * Double(progress)
+        deleteTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) {
             [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                self.deleteRepeatCount += 1
-                // Sustained holds escalate to whole words, so clearing a long
-                // field does not take dozens of seconds.
-                let output: KeyboardOutput = self.deleteRepeatCount > 18
-                    ? .deleteWord
-                    : .deleteBackward
-                self.delegate?.keyGrid(self, didProduce: output)
-            }
+            MainActor.assumeIsolated { self?.scheduleNextDelete() }
         }
     }
 
@@ -548,6 +853,17 @@ final class KeyGridView: UIView {
             return
         }
         previewPool.append(preview)
+    }
+}
+
+extension KeyGridView: KeyViewAccessibilityDelegate {
+    func keyView(_ key: KeyView, didChooseAlternative text: String) {
+        delegate?.keyGrid(self, didProduce: .text(text))
+        if shiftState == .on { shiftState = .off }
+    }
+
+    func keyViewDidRequestEmojiPanel(_ key: KeyView) {
+        delegate?.keyGrid(self, didProduce: .emojiPanel)
     }
 }
 

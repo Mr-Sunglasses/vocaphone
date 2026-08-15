@@ -59,6 +59,24 @@ enum SessionState: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// Where a session's speech-to-text actually runs.
+///
+/// Written by the containing app when it claims a hand-off, because that is the
+/// only process that knows which route is selected *and* the only one that can
+/// resolve it before any audio moves. The keyboard and the Live Activity read
+/// it so that all three surfaces name the same place.
+///
+/// There is no `unknown` case on purpose. An absent value is a real state — a
+/// record written before this field existed, or a session interrupted before the
+/// app claimed it — and it is answered with neutral wording rather than a guess.
+enum SessionProcessingLocation: String, Codable, Sendable {
+    /// A downloaded speech-to-text model running on this iPhone.
+    case onDevice
+    /// The self-hosted gateway the user configured. Deliberately not "your Mac":
+    /// a gateway may be a Linux box, a home server, or a VPS.
+    case gateway
+}
+
 struct SessionFailure: Codable, Equatable, Sendable {
     let code: String
     let message: String
@@ -95,6 +113,12 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// Quick Dictation that was about to succeed. Optional so records written
     /// before this field still decode.
     var claimedAt: Date?
+    /// Where transcription runs for this session, resolved by the containing app
+    /// when it claims the request. Optional so records written before this field
+    /// still decode — and so that an interrupted session says "Transcribing"
+    /// rather than naming a route nobody confirmed. See
+    /// ``SessionProcessingLocation``.
+    var processingLocation: SessionProcessingLocation?
 
     init(
         sessionID: UUID = UUID(),
@@ -117,6 +141,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         meterLevel = 0
         startedInContainingApp = nil
         claimedAt = nil
+        processingLocation = nil
     }
 
     mutating func transition(to next: SessionState, now: Date = Date()) throws {

@@ -126,14 +126,39 @@ struct KeyGridLayoutTests {
         #expect(pad.gridHeight > portrait.gridHeight)
     }
 
-    @Test func emailFieldsSwapTheCommaForAnAtSign() {
+    /// A plain QWERTY bottom row is `123`, the globe, space and return — the
+    /// same four keys the system keyboard has there, and nothing else. The
+    /// comma and full stop this keyboard used to add were two keys' worth of
+    /// spacebar, and they are not what anyone reaching for that row expects.
+    @Test func thePlainLettersPlaneHasNoPunctuationOnTheBottomRow() {
         let grid = Self.makeGrid()
-        #expect(grid.keyViews.map(\.spec.cap).contains(.character(",")))
+        let caps = grid.keyViews.map(\.spec.cap)
+        #expect(!caps.contains(.character(",")))
+        #expect(!caps.contains(.character(".")))
+
+        let bottomRow = Self.rowsByPosition(in: grid)[3].map(\.spec.cap)
+        #expect(bottomRow == [.plane(.numbers), .globe, .space, .newline])
+    }
+
+    /// Email and URL fields get their separator back, because that is also what
+    /// the system keyboard does: `@` and `.` for email, `/` and `.` for a URL.
+    @Test func emailAndUrlFieldsGetTheirSeparatorBack() {
+        let grid = Self.makeGrid()
 
         grid.leadingPunctuation = "@"
-        let caps = grid.keyViews.map(\.spec.cap)
+        var caps = grid.keyViews.map(\.spec.cap)
         #expect(caps.contains(.character("@")))
-        #expect(!caps.contains(.character(",")))
+        #expect(caps.contains(.character(".")))
+
+        grid.leadingPunctuation = "/"
+        caps = grid.keyViews.map(\.spec.cap)
+        #expect(caps.contains(.character("/")))
+        #expect(!caps.contains(.character("@")))
+
+        grid.leadingPunctuation = nil
+        caps = grid.keyViews.map(\.spec.cap)
+        #expect(!caps.contains(.character("/")))
+        #expect(!caps.contains(.character(".")))
     }
 
     @Test func shiftResolvesCharacterCaseAndSpokenLabel() {

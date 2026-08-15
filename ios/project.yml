@@ -25,6 +25,27 @@ targets:
       - VocaPhoneApp
       - VocaPhoneShared
       - VocaPhoneActivityShared
+      # The keyboard's own views, so Settings can show a live preview of the
+      # thing being configured. Nobody can picture 39pt against 49pt from prose.
+      # The controller stays out: it is a `UIInputViewController` and has no
+      # meaning outside the extension.
+      - path: VocaPhoneKeyboard/KeyLayout.swift
+      - path: VocaPhoneKeyboard/KeyView.swift
+      - path: VocaPhoneKeyboard/KeyGridView.swift
+      - path: VocaPhoneKeyboard/KeyAlternatives.swift
+      # The grid draws a swipe trail and asks for haptics, so the preview needs
+      # both to link.
+      - path: VocaPhoneKeyboard/SwipeTrailView.swift
+      - path: VocaPhoneKeyboard/KeyboardHaptics.swift
+      - path: VocaPhoneKeyboard/DictationPresentation.swift
+      - path: VocaPhoneKeyboard/DictationBarStyle.swift
+      - path: VocaPhoneKeyboard/DictationBarView.swift
+      - path: VocaPhoneKeyboard/DictationBarComponents.swift
+      - path: VocaPhoneKeyboard/TypingStripView.swift
+      - path: VocaPhoneKeyboard/TypingCandidates.swift
+      - path: VocaPhoneKeyboard/WordComposer.swift
+      - path: VocaPhoneKeyboard/TypingWordList.swift
+      - path: VocaPhoneKeyboard/SwipeRecognizer.swift
     resources:
       - VocaPhoneApp/Models/local_model_pins.json
       - VocaPhoneApp/Models/sherpa_model_pins.json
@@ -56,6 +77,13 @@ targets:
     sources:
       - VocaPhoneKeyboard
       - VocaPhoneShared
+    # One copy in the repository, shared with the Android keyboard, which reaches
+    # the same two files through `sourceSets` in android/app/build.gradle.kts.
+    # Two hand-maintained word lists drift, and nothing notices until the
+    # platforms start suggesting different words.
+      - path: ../assets/keyboard
+        name: SharedKeyboardData
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone.keyboard
@@ -93,17 +121,46 @@ targets:
       - path: VocaPhoneKeyboard/KeyLayout.swift
       - path: VocaPhoneKeyboard/KeyView.swift
       - path: VocaPhoneKeyboard/KeyGridView.swift
+      # The trail's ageing and taper is pure arithmetic over sampled points, and
+      # the view around it is what the grid links against.
+      - path: VocaPhoneKeyboard/SwipeTrailView.swift
+      # Whether a buzz is allowed at all is a rule, not a device capability.
+      - path: VocaPhoneKeyboard/KeyboardHaptics.swift
+      # The accent map and its popover are pure data plus one measured view.
+      - path: VocaPhoneKeyboard/KeyAlternatives.swift
+      # Typing intelligence. The composer, the ranking and the autocorrect rules
+      # are pure; the checker sits behind a protocol so tests never depend on
+      # the user's own device dictionaries.
+      - path: VocaPhoneKeyboard/WordComposer.swift
+      - path: VocaPhoneKeyboard/TypingCandidates.swift
+      - path: VocaPhoneKeyboard/TypingFieldPolicy.swift
+      - path: VocaPhoneKeyboard/TypingWordList.swift
+      - path: VocaPhoneKeyboard/SpellChecking.swift
+      - path: VocaPhoneKeyboard/SmartPunctuation.swift
+      - path: VocaPhoneKeyboard/SwipeRecognizer.swift
+      - path: VocaPhoneKeyboard/EmojiCatalog.swift
       # The state-to-interface mapping for the dictation bar is pure, so every
       # session state can be checked without standing up the extension.
       - path: VocaPhoneKeyboard/DictationPresentation.swift
       - path: VocaPhoneKeyboard/DictationBarStyle.swift
       - path: VocaPhoneKeyboard/DictationBarView.swift
       - path: VocaPhoneKeyboard/DictationBarComponents.swift
+      - path: VocaPhoneKeyboard/TypingStripView.swift
       # The realtime capture path is the highest-risk code in the app.
       - path: VocaPhoneApp/Audio/AudioCapturePipeline.swift
       # Guided setup decides what the app claims is done, and every signal it
       # reads can be undone from iOS Settings. The model behind it is pure.
       - path: VocaPhoneApp/App/SetupStatus.swift
+      # Which transcription route is selected, whether it is ready, and what the
+      # interface is allowed to claim about where audio goes.
+      - path: VocaPhoneApp/App/TranscriptionSourceStatus.swift
+      # The home screen's single session card, derived rather than assembled in
+      # the view, so every session state can be checked without an audio stack.
+      - path: VocaPhoneApp/App/HomePresentation.swift
+      - path: VocaPhoneApp/App/DesignSystem.swift
+      # Search, filter and day-grouping for the transcript library. The grouping
+      # arithmetic is the part that goes wrong at midnight and across zones.
+      - path: VocaPhoneApp/App/TranscriptHistoryModel.swift
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

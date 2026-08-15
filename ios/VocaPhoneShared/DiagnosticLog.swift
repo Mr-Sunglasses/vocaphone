@@ -44,6 +44,12 @@ enum DiagnosticEvent: String, Codable, Sendable {
     case transcriptReady
     case insertionStarted
     case insertionCompleted
+    /// Automatic insertion was declined, with the reason. A transcript that
+    /// silently fails to appear is the hardest thing in this product to report
+    /// and the hardest to reproduce: it depends on whether iOS kept the
+    /// keyboard extension alive and on whether the host app kept the same
+    /// document identifier. Without this line there is nothing to look at.
+    case insertionSkipped
     case operationFailed
 }
 
@@ -57,6 +63,15 @@ enum DiagnosticReason: String, Codable, Sendable {
     case orphanRecovered
     case resumeAllowed
     case resumeNotAllowed
+    /// The field the cursor is in is not the field the transcript was dictated
+    /// for, so the session parked itself instead of inserting.
+    case targetFieldChanged
+    /// The transcript came back empty — everything in it was a model
+    /// annotation, or the sanitizer had nothing left after cleaning it.
+    case transcriptEmpty
+    /// An insertion was already running. Re-entrancy, not a failure: the text
+    /// is going in from the first call.
+    case insertionInFlight
 }
 
 enum DiagnosticPhase: String, Codable, Sendable {
@@ -86,6 +101,10 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
     let phase: DiagnosticPhase?
     let errorCode: DiagnosticErrorCode?
     let hasFullAccess: Bool?
+    /// Whole megabytes of headroom the process had left. A count and nothing
+    /// else — a keyboard extension is killed for exceeding its budget, and
+    /// without this number the only symptom is a keyboard that will not open.
+    let megabytesAvailable: Int?
 
     static let empty = DiagnosticMetadata()
 
@@ -94,13 +113,15 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
         reason: DiagnosticReason? = nil,
         phase: DiagnosticPhase? = nil,
         errorCode: DiagnosticErrorCode? = nil,
-        hasFullAccess: Bool? = nil
+        hasFullAccess: Bool? = nil,
+        megabytesAvailable: Int? = nil
     ) {
         self.state = state
         self.reason = reason
         self.phase = phase
         self.errorCode = errorCode
         self.hasFullAccess = hasFullAccess
+        self.megabytesAvailable = megabytesAvailable
     }
 
     static func state(_ state: SessionState) -> DiagnosticMetadata {
@@ -121,6 +142,10 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
 
     static func fullAccess(_ hasFullAccess: Bool) -> DiagnosticMetadata {
         DiagnosticMetadata(hasFullAccess: hasFullAccess)
+    }
+
+    static func megabytesAvailable(_ megabytes: Int) -> DiagnosticMetadata {
+        DiagnosticMetadata(megabytesAvailable: megabytes)
     }
 }
 

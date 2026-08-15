@@ -10,7 +10,8 @@ struct DictationPresentationTests {
         autoInsert: Bool = false,
         canRetry: Bool = false,
         canUndo: Bool = false,
-        hasFullAccess: Bool = true
+        hasFullAccess: Bool = true,
+        location: SessionProcessingLocation? = nil
     ) -> DictationBarModel {
         DictationBarModel.make(
             DictationContext(
@@ -20,7 +21,8 @@ struct DictationPresentationTests {
                 errorMessage: errorMessage,
                 autoInsertsTranscripts: autoInsert,
                 canRetry: canRetry,
-                canUndo: canUndo
+                canUndo: canUndo,
+                processingLocation: location
             )
         )
     }
@@ -148,6 +150,102 @@ struct DictationPresentationTests {
         #expect(DictationBarModel.elapsedText(65) == "1:05")
         #expect(DictationBarModel.elapsedText(600) == "10:00")
         #expect(DictationBarModel.elapsedText(-4) == "0:00")
+    }
+
+    // MARK: - Processing location
+
+    /// Where the work is happening, in the bar's own words. The keyboard is
+    /// frequently the only surface the user is looking at while this runs.
+    @Test func theBarNamesWhereTranscriptionIsHappening() {
+        #expect(Self.model(.transcribing, location: .onDevice).title
+            == "Transcribing on this iPhone")
+        #expect(Self.model(.transcribing, location: .gateway).title
+            == "Transcribing on your gateway")
+        #expect(Self.model(.uploading, location: .gateway).title == "Sending to your gateway")
+        #expect(Self.model(.uploading, location: .onDevice).title == "Preparing on this iPhone")
+        #expect(Self.model(.finalizing, location: .onDevice).title == "Finishing recording")
+    }
+
+    /// A record written before the field existed, or a session interrupted
+    /// before the app claimed it, has no route to name. Neutral wording is the
+    /// answer; a guess would be a claim about where the user's audio went.
+    @Test func anUnknownRouteStaysNeutralRatherThanGuessing() {
+        let model = Self.model(.transcribing, location: nil)
+        #expect(model.title == "Transcribing")
+        #expect(!model.title.contains("iPhone"))
+        #expect(!model.title.contains("gateway"))
+    }
+
+    @Test func noStateEverClaimsAMac() {
+        for state in SessionState.allCases {
+            for location in [SessionProcessingLocation.onDevice, .gateway, nil] {
+                let model = Self.model(state, errorMessage: nil, location: location)
+                #expect(!model.title.localizedCaseInsensitiveContains("your Mac"))
+                if case let .message(text) = model.body {
+                    #expect(!text.localizedCaseInsensitiveContains("your Mac"))
+                }
+            }
+        }
+    }
+
+    // MARK: - Semantics
+
+    /// One role per meaning. Recording red belongs to capture alone, and the
+    /// hand-off is an ordinary expected step rather than a fourth colour.
+    @Test func eachStateTakesItsOwnSemanticRole() {
+        #expect(Self.model(.recording).accent == .recording)
+        for state in [SessionState.finalizing, .uploading, .transcribing, .targetContextChanged] {
+            #expect(Self.model(state).accent == .working)
+        }
+        for state in [
+            SessionState.serverUnavailable, .transcriptionFailedPermanent, .permissionDenied,
+        ] {
+            #expect(Self.model(state).accent == .error)
+        }
+        for state in [SessionState.launchingApp, .awaitingReturn] {
+            #expect(Self.model(state).accent == .brand)
+        }
+        #expect(Self.model(.idle, hasFullAccess: false).accent == .locked)
+        // Only capture is ever recording-red.
+        for state in SessionState.allCases where state != .recording {
+            #expect(Self.model(state).accent != .recording)
+        }
+    }
+
+    /// iOS offers no link to the Full Access switch, so the exact path is the
+    /// only thing that gets the user there.
+    @Test func theLockedBarGivesTheExactSettingsPath() {
+        let model = Self.model(.idle, hasFullAccess: false)
+        guard case let .message(text) = model.body else {
+            Issue.record("the locked bar should explain itself")
+            return
+        }
+        // The switch to turn on leads, so a narrow bar truncates the tail of
+        // the path rather than the instruction. The containing app spells the
+        // path out in full — see `AppConfiguration.fullAccessSettingsPath`.
+        #expect(text.hasPrefix("Turn on Allow Full Access"))
+        #expect(text.contains("Settings"))
+        #expect(text.contains("Keyboard"))
+        #expect(AppConfiguration.fullAccessSettingsPath.contains("Keyboards › vocaphone"))
+    }
+
+    // MARK: - Announcements
+
+    /// Milestones announce; polling does not. The bar re-renders up to four
+    /// times a second, and announcing every render would make VoiceOver unusable
+    /// during a dictation.
+    @Test func onlyMeaningfulTransitionsAnnounceThemselves() {
+        #expect(Self.model(.recording).announcement == "Recording started")
+        #expect(Self.model(.readyToInsert).announcement == "Transcript ready")
+        #expect(Self.model(.completed).announcement == "Text inserted")
+        #expect(Self.model(.transcriptionFailedPermanent).announcement != nil)
+
+        // Nothing to interrupt for: the user asked for these, or they are
+        // intermediate steps toward one that does announce.
+        #expect(Self.model(.idle).announcement == nil)
+        #expect(Self.model(.launchingApp).announcement == nil)
+        #expect(Self.model(.transcribing).announcement == nil)
+        #expect(Self.model(.inserting).announcement == nil)
     }
 
     @Test func barHeightsLeaveMoreRoomForKeysThanTheCardAndToolbarDid() {

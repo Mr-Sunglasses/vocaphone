@@ -2,7 +2,9 @@ import Foundation
 
 /// A step guided setup walks through, in the order the checklist presents them.
 enum SetupStep: String, CaseIterable, Identifiable, Sendable {
-    case gateway
+    /// A choice between two real routes, not a requirement to stand up a server.
+    /// See ``TranscriptionSourceStatus``.
+    case source
     case microphone
     case keyboard
     case firstDictation
@@ -12,7 +14,7 @@ enum SetupStep: String, CaseIterable, Identifiable, Sendable {
     /// Short enough to read as a list inside a single sentence.
     var label: String {
         switch self {
-        case .gateway: "Gateway"
+        case .source: "Transcription source"
         case .microphone: "Microphone"
         case .keyboard: "Keyboard"
         case .firstDictation: "Test dictation"
@@ -21,7 +23,7 @@ enum SetupStep: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .gateway: "Connect your transcription gateway"
+        case .source: "Choose where speech becomes text"
         case .microphone: "Allow microphone access"
         case .keyboard: "Add the keyboard with Full Access"
         case .firstDictation: "Try one dictation"
@@ -30,7 +32,7 @@ enum SetupStep: String, CaseIterable, Identifiable, Sendable {
 
     var symbolName: String {
         switch self {
-        case .gateway: "server.rack"
+        case .source: "waveform.badge.magnifyingglass"
         case .microphone: "mic"
         case .keyboard: "keyboard"
         case .firstDictation: "waveform"
@@ -135,15 +137,14 @@ enum MicrophoneAccess: Sendable {
 /// Everything guided setup checks, re-read whenever the app returns to the
 /// foreground: every one of these can be undone from iOS Settings.
 struct SetupStatus: Equatable, Sendable {
-    var gatewayReady = false
-    var gatewayAddress = ""
+    var source = TranscriptionSourceStatus()
     var microphone: MicrophoneAccess = .undetermined
     var keyboard: KeyboardSetupState = .notAdded
     var hasDictatedOnce = false
 
     func isSatisfied(_ step: SetupStep) -> Bool {
         switch step {
-        case .gateway: gatewayReady
+        case .source: source.isReady
         case .microphone: microphone == .granted
         case .keyboard: keyboard.isReady
         case .firstDictation: hasDictatedOnce
@@ -181,10 +182,8 @@ struct SetupStatus: Equatable, Sendable {
             return "vocaphone needs \(blockingSteps.count) more steps"
         }
         switch first {
-        case .gateway:
-            return gatewayAddress.isEmpty
-                ? "No transcription gateway yet"
-                : "Your gateway is not responding"
+        case .source:
+            return source.attentionHeadline
         case .microphone:
             return microphone == .denied
                 ? "Microphone access is turned off"
@@ -214,15 +213,11 @@ struct SetupStatus: Equatable, Sendable {
     /// that had never been granted Full Access.
     func detail(for step: SetupStep) -> String {
         switch step {
-        case .gateway:
-            if gatewayReady {
-                return gatewayAddress.isEmpty
-                    ? (LocalTranscriptionPreferences.enabled
-                        ? "On-device speech-to-text model is ready."
-                        : "Gateway, token, and model are ready.")
-                    : "Ready at \(gatewayAddress)."
-            }
-            return "Connect a gateway, or choose and download an on-device model below."
+        case .source:
+            return source.isReady
+                ? "\(source.title). \(source.readinessDetail)"
+                : "Download a speech-to-text model for this iPhone, or pair the "
+                    + "self-hosted gateway you run. Either one is enough."
         case .microphone:
             switch microphone {
             case .granted:
@@ -256,7 +251,7 @@ struct SetupStatus: Equatable, Sendable {
             }
         case .firstDictation:
             return hasDictatedOnce
-                ? "A transcript has come back from your gateway."
+                ? "A transcript has come back through \(source.title.lowercased())."
                 : "Record a few seconds here to prove the whole chain works "
                     + "before you rely on it in another app."
         }

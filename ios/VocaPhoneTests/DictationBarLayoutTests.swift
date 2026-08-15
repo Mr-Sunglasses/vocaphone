@@ -76,7 +76,7 @@ struct DictationBarLayoutTests {
             let showsMeter = waveforms.contains { !$0.isHidden && $0.alpha > 0 }
             let wantsMeter = switch model.body {
             case .waveform: true
-            case .controls, .message: false
+            case .controls, .message, .candidates: false
             }
             #expect(showsMeter == wantsMeter)
         }
@@ -94,11 +94,43 @@ struct DictationBarLayoutTests {
         #expect(Self.descendants(of: bar).count == before)
     }
 
+    /// A 320pt phone and a 430pt phone are both compact-width, so the metrics
+    /// cannot tell them apart. On the narrow one the fixed action column left
+    /// "Gateway unavailable" about 80pt to live in, and it truncated to
+    /// "Gateway una…" — a state name that names no state.
+    @Test func theActionColumnGivesWayOnANarrowPhone() {
+        func primaryWidth(barWidth: CGFloat) -> CGFloat {
+            let metrics = DictationBarMetrics.resolved(
+                for: UITraitCollection { $0.verticalSizeClass = .regular },
+                preference: .standard
+            )
+            let bar = DictationBarView(metrics: metrics, palette: KeyboardPalette(isDark: false))
+            bar.frame = CGRect(
+                x: 0,
+                y: 0,
+                width: barWidth,
+                height: metrics.height(expanded: true)
+            )
+            bar.apply(Self.model(.serverUnavailable), animated: false)
+            bar.layoutIfNeeded()
+            let primary = Self.descendants(of: bar).first { $0 is FlatButton }
+            return primary?.bounds.width ?? 0
+        }
+
+        // 320 and 393 point phones, less the keyboard's own side insets.
+        let narrow = primaryWidth(barWidth: 308)
+        let reference = primaryWidth(barWidth: 381)
+
+        #expect(narrow < reference)
+        // …but never so far that the primary stops being a comfortable target.
+        #expect(narrow >= 88)
+    }
+
     @Test func bothAppearancesResolveEveryAccent() {
         for isDark in [true, false] {
             let palette = KeyboardPalette(isDark: isDark)
             let accents: [DictationAccent] = [
-                .brand, .handoff, .listening, .working, .ready, .alert, .locked,
+                .brand, .recording, .working, .ready, .error, .locked,
             ]
             for accent in accents {
                 #expect(palette.tint(for: accent) == palette.color(for: accent))

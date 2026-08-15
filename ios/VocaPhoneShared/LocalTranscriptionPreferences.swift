@@ -8,6 +8,7 @@ enum LocalTranscriptionPreferences {
     static let modelKey = "localTranscriptionModel"
     static let qualityKey = "localTranscriptionQuality"
     static let vocabularyKey = "localTranscriptionVocabulary"
+    static let transcriptRetentionKey = "transcriptRetention"
 
     nonisolated(unsafe) private static let defaults = UserDefaults(
         suiteName: AppConfiguration.appGroupIdentifier
@@ -34,6 +35,12 @@ enum LocalTranscriptionPreferences {
     /// Names and jargon to bias an on-device Whisper model toward, exactly as
     /// the user typed them. `CustomVocabulary` does the parsing, so the text
     /// they see back is the text they wrote.
+    /// How long finished transcripts are kept on this iPhone.
+    static var transcriptRetention: TranscriptRetention {
+        get { TranscriptRetention.fromStored(defaults?.string(forKey: transcriptRetentionKey)) }
+        set { defaults?.set(newValue.rawValue, forKey: transcriptRetentionKey) }
+    }
+
     static var customVocabulary: String {
         get { defaults?.string(forKey: vocabularyKey) ?? "" }
         set { defaults?.set(newValue, forKey: vocabularyKey) }

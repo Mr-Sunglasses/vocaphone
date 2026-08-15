@@ -36,7 +36,6 @@ final class RecordingCoordinator {
     private var localSherpaSession: SherpaIncrementalSession?
     let localModels = LocalModelManager()
 
-    var stateLabel: String { (activeRecord?.state ?? .idle).displayName }
     var isRecording: Bool { activeRecord?.state == .recording && recorder.isRecording }
     var hasError: Bool { activeRecord?.error != nil }
     var transcript: String? { activeRecord?.transcript }
@@ -73,18 +72,8 @@ final class RecordingCoordinator {
     /// exposes no API for whether a keyboard extension is installed, and a
     /// permission can be revoked from Settings while the app is suspended.
     func refreshSetupStatus() {
-        let address = UserDefaults.standard.string(forKey: "gatewayURL") ?? ""
-        let localReady: Bool = {
-            guard LocalTranscriptionPreferences.enabled,
-                  let modelID = LocalTranscriptionPreferences.modelIdentifier
-            else { return false }
-            return localModels.isDownloaded(modelID)
-        }()
         let refreshed = SetupStatus(
-            gatewayReady: localReady || UserDefaults.standard.bool(
-                forKey: GatewayStatusPreferences.engineReadyKey
-            ),
-            gatewayAddress: localReady ? "" : address,
+            source: transcriptionSource,
             microphone: microphoneAccess,
             keyboard: KeyboardSetupState.resolve(
                 try? store.loadKeyboardStatus(),
@@ -97,6 +86,63 @@ final class RecordingCoordinator {
         // every observer, so the comparison earns its keep.
         guard refreshed != setupStatus else { return }
         setupStatus = refreshed
+    }
+
+    /// The selected route and everything known about whether it can work.
+    ///
+    /// Both routes are described whichever one is selected, so the summary can
+    /// say what switching would get you without presenting the unselected route
+    /// as broken.
+    var transcriptionSource: TranscriptionSourceStatus {
+        let modelID = LocalTranscriptionPreferences.modelIdentifier
+        let descriptor = modelID.flatMap(LocalModelCatalog.descriptor(for:))
+        return TranscriptionSourceStatus(
+            selected: Self.selectedProcessingLocation(),
+            onDeviceModelName: descriptor?.displayName,
+            // Downloaded means every pinned file, tokenizer included, passed its
+            // SHA-256 check. Nothing short of that may claim offline readiness.
+            isOnDeviceReady: modelID.map(localModels.isDownloaded) ?? false,
+            gatewayAddress: UserDefaults.standard.string(forKey: "gatewayURL") ?? "",
+            isGatewayReady: UserDefaults.standard.bool(
+                forKey: GatewayStatusPreferences.engineReadyKey
+            ),
+            gatewayMessage: UserDefaults.standard.string(
+                forKey: GatewayStatusPreferences.healthMessageKey
+            ) ?? ""
+        )
+    }
+
+    /// The route the *next* piece of work will take.
+    ///
+    /// One switch decides it, so every surface that reports a location agrees
+    /// with the one that performs the work. It is read at claim time rather than
+    /// stored per preference change, because a route switched between two
+    /// dictations must not rewrite the one already in flight.
+    static func selectedProcessingLocation() -> SessionProcessingLocation {
+        LocalTranscriptionPreferences.enabled ? .onDevice : .gateway
+    }
+
+    /// Removes one transcript from this iPhone.
+    ///
+    /// If it is the session currently on screen, the home card lets go of it
+    /// too — a card describing a transcript that no longer exists is worse than
+    /// an empty one.
+    func deleteTranscript(_ id: UUID) async {
+        await Task.detached(priority: .userInitiated) {
+            try? SharedStore.shared.delete(id)
+        }.value
+        if activeRecord?.sessionID == id {
+            activeRecord = nil
+            message = nil
+        }
+    }
+
+    func deleteAllTranscripts() async {
+        await Task.detached(priority: .userInitiated) {
+            try? SharedStore.shared.deleteAllSessions()
+        }.value
+        activeRecord = nil
+        message = nil
     }
 
     nonisolated func loadRecentTranscripts(limit: Int = 50) async -> [SessionRecord] {
@@ -165,6 +211,24 @@ final class RecordingCoordinator {
             retrySession(id: id)
         default:
             message = "The keyboard sent an unsupported action."
+        }
+    }
+
+    /// Sends the preserved recording again, from the home screen rather than
+    /// from the keyboard's deep link. The audio outlives a failed upload or a
+    /// failed transcription, and Retry is the action that spends it — a new
+    /// recording is the one that throws it away.
+    func retryPreservedRecording() {
+        guard var record = activeRecord, record.canRetry else { return }
+        do {
+            record.error = nil
+            try record.transition(to: .uploading)
+            try store.save(record)
+            activeRecord = record
+            message = "Retrying with the preserved recording…"
+            startPipeline(record)
+        } catch {
+            message = "The preserved recording is no longer retryable."
         }
     }
 
@@ -307,6 +371,7 @@ final class RecordingCoordinator {
             language: KeyboardPreferences.effectiveTranscriptionLanguage.rawValue,
             style: KeyboardPreferences.writingStyle.rawValue
         )
+        record.processingLocation = Self.selectedProcessingLocation()
         do {
             try record.transition(to: .launchingApp)
             try store.save(record)
@@ -325,7 +390,7 @@ final class RecordingCoordinator {
             try record.transition(to: .finalizing)
             try store.save(record)
             activeRecord = record
-            liveActivity.update(status: "Finishing", canFinish: false)
+            liveActivity.update(status: "Finishing recording", canFinish: false)
             startPipeline(record)
         } catch {
             message = "Could not finish the recording."
@@ -368,9 +433,14 @@ final class RecordingCoordinator {
     /// has far less headroom for file work.
     nonisolated func pruneSharedStorage() {
         let store = SharedStore.shared
+        let retention = LocalTranscriptionPreferences.transcriptRetention.maximumAge
         Task.detached(priority: .utility) {
             try? store.pruneSessions()
             try? store.pruneOrphanedAudio()
+            // The retention the user chose, which is a promise rather than a
+            // storage bound — it deletes finished transcripts however few there
+            // are.
+            try? store.pruneTranscripts(olderThan: retention)
         }
     }
 
@@ -446,6 +516,10 @@ final class RecordingCoordinator {
             // input — and without the claim the keyboard opens vocaphone on top
             // of a Quick Dictation that was seconds from recording.
             record.claimedAt = Date()
+            // Resolved here because this is the process that knows the answer,
+            // and written before any audio moves so the keyboard and the Live
+            // Activity can name the same place the whole way through.
+            record.processingLocation = Self.selectedProcessingLocation()
             try? store.save(record)
             clearQuickDictationMarker()
             activeRecord = record
@@ -489,7 +563,10 @@ final class RecordingCoordinator {
             )
             if shouldUseSherpaIncremental, let chunks = recorder.localPcmChunks {
                 do {
-                    localSherpaSession = try localModels.startSherpaIncrementalSession(
+                    // Awaited rather than built inline: the ONNX graph now loads
+                    // off the main actor, so the capture that has already
+                    // started is not competing with a synchronous disk read.
+                    localSherpaSession = try await localModels.startSherpaIncrementalSession(
                         chunks: chunks,
                         language: record.language
                     )
@@ -644,6 +721,13 @@ final class RecordingCoordinator {
             return
         }
 
+        // Re-resolved and persisted before any of finalizing, uploading or
+        // transcribing. The route in force *now* is the one about to run, and a
+        // session claimed by an older build carries no route at all — either way
+        // this is where the record stops being able to mislead.
+        record.processingLocation = Self.selectedProcessingLocation()
+        try? store.save(record)
+
         // Local inference deliberately happens before the gateway guard. A
         // device configured for on-device transcription must still work with no
         // gateway URL, token, network, or server health result at all.
@@ -670,13 +754,16 @@ final class RecordingCoordinator {
             }
             try store.save(record)
             activeRecord = record
-            message = "Finishing on your gateway…"
-            liveActivity.update(status: "Finishing transcript", canFinish: false)
+            message = "Finishing the recording…"
+            liveActivity.update(status: "Finishing recording", canFinish: false)
 
             if let transcript = await streamingBridge.finish(
                 droppedChunks: recorder.lastDroppedChunkCount
             ) {
-                record.transcript = TranscriptSanitizer.clean(transcript)
+                record.transcript = DictatedTranscript.finished(
+                    transcript,
+                    numbersAsDigits: KeyboardPreferences.numbersAsDigits
+                )
                 record.error = nil
                 try record.transition(to: .readyToInsert)
                 try store.save(record)
@@ -693,7 +780,7 @@ final class RecordingCoordinator {
             }
 
             message = "Uploading to your gateway…"
-            liveActivity.update(status: "Sending to gateway", canFinish: false)
+            liveActivity.update(status: "Sending to your gateway", canFinish: false)
 
             let created = try await client.createSession(
                 id: record.sessionID,
@@ -708,14 +795,17 @@ final class RecordingCoordinator {
             try store.save(record)
             activeRecord = record
             message = "Transcribing on your gateway…"
-            liveActivity.update(status: "Transcribing", canFinish: false)
+            liveActivity.update(status: "Transcribing on your gateway", canFinish: false)
 
             DiagnosticLog.record(.transcriptionStarted)
             let finished = try await client.finish(sessionID: record.sessionID)
             guard let transcript = finished.transcript, !transcript.isEmpty else {
                 throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
             }
-            record.transcript = TranscriptSanitizer.clean(transcript)
+            record.transcript = DictatedTranscript.finished(
+                transcript,
+                numbersAsDigits: KeyboardPreferences.numbersAsDigits
+            )
             record.error = nil
             try record.transition(to: .readyToInsert)
             try store.save(record)
@@ -772,7 +862,7 @@ final class RecordingCoordinator {
             try store.save(record)
             activeRecord = record
             message = "Transcribing on this iPhone…"
-            liveActivity.update(status: "Transcribing on device", canFinish: false)
+            liveActivity.update(status: "Transcribing on this iPhone", canFinish: false)
             try record.transition(to: .transcribing)
             try store.save(record)
             activeRecord = record
@@ -802,20 +892,17 @@ final class RecordingCoordinator {
                 )
             }
             let text = transcribed.text
-            // Sanitize before styling: the styler capitalizes sentences and adds
-            // terminators, and doing that to `[BLANK_AUDIO]` only makes it look
-            // more like something the user meant to say.
-            //
             // The styles punctuate by script, so the language has to be the one
             // actually spoken. With Automatic selected the record only says
             // "auto", and a model that detected Hindi would otherwise have its
             // Devanagari finished with a Latin full stop.
-            record.transcript = TranscriptStyler.apply(
-                TranscriptSanitizer.clean(text),
+            record.transcript = DictatedTranscript.finished(
+                text,
                 style: WritingStyle(rawValue: record.style) ?? .casual,
                 language: transcribed.language.isEmpty
                     ? record.language
-                    : transcribed.language
+                    : transcribed.language,
+                numbersAsDigits: KeyboardPreferences.numbersAsDigits
             )
             record.error = nil
             try record.transition(to: .readyToInsert)
@@ -1038,7 +1125,7 @@ final class RecordingCoordinator {
 
         switch shared.state {
         case .finalizing:
-            liveActivity.update(status: "Finishing", canFinish: false)
+            liveActivity.update(status: "Finishing recording", canFinish: false)
             startPipeline(shared)
         case .uploading where !recorder.isRecording && pipelineSessionID == nil:
             startPipeline(shared)

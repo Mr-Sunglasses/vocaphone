@@ -20,13 +20,19 @@ struct SetupView: View {
         KeyboardPreferences.setupCompletedKey,
         store: KeyboardPreferences.defaults
     ) private var setupCompleted = false
+    @AppStorage(
+        LocalTranscriptionPreferences.enabledKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var localTranscriptionEnabled = false
     @State private var keyboardProbeText = ""
+    @State private var typingProbeText = ""
 
     private var status: SetupStatus { coordinator.setupStatus }
 
     var body: some View {
         List {
             introSection
+            sourceSection
             stepsSection
             finishSection
             privacySection
@@ -58,31 +64,34 @@ struct SetupView: View {
             coordinator.refreshSetupStatus()
             Task { await coordinator.refreshGatewayHealth() }
         }
+        .onChange(of: localTranscriptionEnabled) { _, _ in
+            coordinator.refreshSetupStatus()
+        }
     }
 
     // MARK: - Sections
 
     private var introSection: some View {
         Section {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
                 BrandMark(size: 36)
                     .padding(.bottom, 2)
                 Text("Dictate into any app")
                     .font(.title3.weight(.semibold))
                 Text(
-                    "vocaphone records on this iPhone and transcribes through "
-                        + "your gateway or privately on this phone. Nothing is sent to a "
-                        + "third-party transcription service. Four steps and "
+                    "vocaphone records on this iPhone and turns it into text either "
+                        + "here on the phone or on a gateway you run yourself. Nothing "
+                        + "goes to a third-party transcription service. Four steps and "
                         + "you are done."
                 )
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, 4)
+            .padding(.vertical, VocaMetrics.tight)
             .accessibilityElement(children: .combine)
 
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
                 Text("\(status.completedStepCount) of \(status.stepCount) steps done")
                     .font(.subheadline.weight(.semibold))
                 // No completion colour of its own: the app's tint *is* the
@@ -95,39 +104,64 @@ struct SetupView: View {
         }
     }
 
-    private var stepsSection: some View {
+    // MARK: - Step 1: a choice, not two requirements
+
+    /// Both routes are real and either one finishes the step, so they are
+    /// presented as a segmented choice with the selected one's own setup below
+    /// it. The previous screen showed the gateway as the step and the on-device
+    /// model as a smaller alternative underneath, which read as "the gateway is
+    /// required and this is a workaround".
+    @ViewBuilder private var sourceSection: some View {
         Section {
-            gatewayStep
-            microphoneStep
-            keyboardStep
-            firstDictationStep
-        } footer: {
-            Text(
-                "Full Access is used only to share session state with Local "
-                    + "Flow and to reach the gateway you configured. The "
-                    + "keyboard never sees what you type in other apps."
+            SetupStepLabel(
+                step: .source,
+                detail: status.detail(for: .source),
+                isComplete: status.isSatisfied(.source)
             )
+
+            Picker("Speech to text", selection: $localTranscriptionEnabled) {
+                Text("On this iPhone").tag(true)
+                Text("Your gateway").tag(false)
+            }
+            .pickerStyle(.segmented)
+
+            Text(status.source.boundaryDetail)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !localTranscriptionEnabled {
+                NavigationLink {
+                    GatewaySetupView()
+                } label: {
+                    Label("Pair or configure your gateway", systemImage: "server.rack")
+                }
+            }
+        } header: {
+            Text("Transcription source")
+        }
+
+        // The picker brings its own sections — installed models, available
+        // models, and its status line — so it sits beside this one rather than
+        // inside it.
+        if localTranscriptionEnabled {
+            LocalModelPicker(manager: coordinator.localModels) {
+                coordinator.refreshSetupStatus()
+            }
         }
     }
 
-    private var gatewayStep: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            NavigationLink {
-                GatewaySetupView()
-            } label: {
-                SetupStepLabel(
-                    step: .gateway,
-                    detail: status.detail(for: .gateway),
-                    isComplete: status.isSatisfied(.gateway)
-                )
-            }
-            Text("Or use an on-device model")
-                .font(.subheadline.weight(.semibold))
-                .padding(.leading, 32)
-            LocalModelPicker(
-                manager: coordinator.localModels,
-                leadingPadding: 32,
-                onChange: { coordinator.refreshSetupStatus() }
+    private var stepsSection: some View {
+        Section {
+            microphoneStep
+            keyboardStep
+            firstDictationStep
+            typingStep
+        } footer: {
+            Text(
+                "Full Access is used only to share session state with vocaphone and to "
+                    + "reach the gateway you configured. The keyboard never sees what you "
+                    + "type in other apps."
             )
         }
     }
@@ -160,12 +194,30 @@ struct SetupView: View {
         )
 
         if !status.isSatisfied(.keyboard) {
+            // Not labelled as a deep link to Keyboard settings, because iOS
+            // offers none: this URL opens vocaphone's own settings pane, and the
+            // path below is the part that actually gets the user there.
             stepAction("Open iOS Settings", action: openSystemSettings)
 
-            // The app is only told the keyboard exists once the extension
-            // actually runs, and it only runs when it is switched to. A field
-            // right here is the shortest path to that.
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: VocaMetrics.related - 2) {
+                Text(AppConfiguration.fullAccessSettingsPath)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+                // Two switches, named, because that screen is genuinely
+                // confusing the first time: one adds the keyboard and the other
+                // is a second tap *inside* it.
+                VStack(alignment: .leading, spacing: 2) {
+                    Label("Add “vocaphone” under Keyboards", systemImage: "1.circle")
+                    Label("Tap it, then turn on “Allow Full Access”", systemImage: "2.circle")
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+                // The app is only told the keyboard exists once the extension
+                // actually runs, and it only runs when it is switched to. A
+                // field right here is the shortest path to that.
                 TextField("Tap here, then hold 🌐 and pick vocaphone", text: $keyboardProbeText)
                     .textInputAutocapitalization(.never)
                 Text("Switching to vocaphone here ticks this step automatically.")
@@ -203,8 +255,31 @@ struct SetupView: View {
         if let message = coordinator.message, coordinator.activeRecord != nil {
             Text(message)
                 .font(.footnote)
-                .foregroundStyle(coordinator.hasError ? .red : .secondary)
+                .foregroundStyle(coordinator.hasError ? Color.vocaError : .secondary)
                 .padding(.leading, 32)
+        }
+    }
+
+    /// The product's second half had no moment in onboarding at all: someone
+    /// could finish setup without ever learning the keyboard completes and
+    /// corrects. Optional, and last, because dictation is still the headline.
+    @ViewBuilder private var typingStep: some View {
+        if status.isSatisfied(.keyboard) {
+            VStack(alignment: .leading, spacing: VocaMetrics.related - 2) {
+                Text("Try typing")
+                    .font(.subheadline.weight(.semibold))
+                Text(
+                    "Switch to the vocaphone keyboard here and type a few words. "
+                        + "Suggestions appear in the row above the keys; tap one to "
+                        + "use it, or keep typing to ignore them."
+                )
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                TextField("Type a sentence", text: $typingProbeText)
+                    .textFieldStyle(.roundedBorder)
+            }
+            .padding(.vertical, 2)
         }
     }
 
@@ -247,7 +322,8 @@ struct SetupView: View {
                 Text(
                     status.isComplete
                         ? "Everything is ready. You can reopen this screen from Settings."
-                        : "Dictation will work. The test recording is optional."
+                        : "Dictation will work. The test recording is optional, but it is "
+                            + "the only thing that proves the whole chain end to end."
                 )
             } else {
                 Text(
@@ -264,10 +340,9 @@ struct SetupView: View {
         Section {
         } footer: {
             Text(
-                "Audio stays on this phone until upload succeeds, and your "
-                    + "gateway deletes it after a successful transcription by "
-                    + "default. No third-party transcription or analytics "
-                    + "service is involved."
+                "Audio stays on this phone until transcription succeeds. A gateway "
+                    + "deletes successfully transcribed audio by default. No third-party "
+                    + "transcription or analytics service is involved."
             )
         }
     }
@@ -275,7 +350,7 @@ struct SetupView: View {
     // MARK: - Actions
 
     private var canRunTestDictation: Bool {
-        status.isSatisfied(.gateway) && status.isSatisfied(.microphone)
+        status.isSatisfied(.source) && status.isSatisfied(.microphone)
     }
 
     /// The keyboard writes its status from another process into a file nothing

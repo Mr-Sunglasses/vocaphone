@@ -3,8 +3,26 @@ import UIKit
 /// A single key. Deliberately not a `UIButton`: the grid owns touch tracking so
 /// a finger can slide between keys and so the hit area can spill into the
 /// gutters, neither of which per-control targets can express.
+@MainActor
+protocol KeyViewAccessibilityDelegate: AnyObject {
+    /// A VoiceOver user choosing an accented alternative from the key's custom
+    /// actions, which is the path that replaces the long-press gesture.
+    func keyView(_ key: KeyView, didChooseAlternative text: String)
+    /// VoiceOver's route to the emoji panel, which has no key of its own.
+    func keyViewDidRequestEmojiPanel(_ key: KeyView)
+}
+
 final class KeyView: UIView {
     let spec: KeySpec
+    weak var accessibilityDelegate: (any KeyViewAccessibilityDelegate)?
+    /// Mirrors the field's keyboard type, so the VoiceOver actions for `.`
+    /// offer domains in the same fields the long press does.
+    var alternativesKeyboardType: UIKeyboardType = .default {
+        didSet {
+            guard alternativesKeyboardType != oldValue else { return }
+            updateAlternativeActions()
+        }
+    }
 
     /// Touch area including the surrounding gutter. Computed by the grid during
     /// layout because only the grid knows which keys sit against an edge.
@@ -145,6 +163,18 @@ final class KeyView: UIView {
         }
 
         accessibilityLabel = spec.cap.accessibilityLabel(shift: shift)
+        updateAlternativeActions()
+        if case .plane = spec.cap {
+            // The panel has no key of its own, and VoiceOver never receives the
+            // long press, so this is how a screen-reader user reaches it.
+            accessibilityCustomActions = [
+                UIAccessibilityCustomAction(name: "Emoji") { [weak self] _ in
+                    guard let self else { return false }
+                    accessibilityDelegate?.keyViewDidRequestEmojiPanel(self)
+                    return true
+                },
+            ]
+        }
         if case .shift = spec.cap {
             accessibilityValue = switch shift {
             case .off: "Off"
@@ -153,6 +183,31 @@ final class KeyView: UIView {
             }
         }
         applyColors()
+    }
+
+    /// The accented forms, offered to VoiceOver as custom actions.
+    ///
+    /// The long press they mirror is unavailable under VoiceOver — the gesture
+    /// is intercepted before the grid ever sees it — so without this the accents
+    /// would simply not exist for a screen-reader user. The base character is
+    /// dropped from the list: activating the key already types it.
+    private func updateAlternativeActions() {
+        guard case let .character(base) = spec.cap,
+              KeyAlternatives.hasOptions(for: base, keyboardType: alternativesKeyboardType)
+        else {
+            accessibilityCustomActions = nil
+            return
+        }
+        accessibilityCustomActions = KeyAlternatives
+            .options(for: base, shift: shift, keyboardType: alternativesKeyboardType)
+            .dropFirst()
+            .map { option in
+                UIAccessibilityCustomAction(name: option) { [weak self] _ in
+                    guard let self else { return false }
+                    accessibilityDelegate?.keyView(self, didChooseAlternative: option)
+                    return true
+                }
+            }
     }
 
     private var functionFont: UIFont {

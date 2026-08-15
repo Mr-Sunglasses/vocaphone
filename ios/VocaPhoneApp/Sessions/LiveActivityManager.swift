@@ -59,7 +59,7 @@ final class LiveActivityManager: @unchecked Sendable {
         beginTransition()
         present(
             state: VocaPhoneActivityAttributes.ContentState(
-                status: "Ready to dictate",
+                status: "Quick Dictation on standby",
                 canFinish: false,
                 phase: .standby
             ),
@@ -168,7 +168,7 @@ final class LiveActivityManager: @unchecked Sendable {
         guard seconds > 0 else {
             present(
                 state: VocaPhoneActivityAttributes.ContentState(
-                    status: "Ready to dictate",
+                    status: "Quick Dictation on standby",
                     canFinish: false,
                     phase: .standby
                 ),
@@ -196,7 +196,7 @@ final class LiveActivityManager: @unchecked Sendable {
             }
             self.present(
                 state: VocaPhoneActivityAttributes.ContentState(
-                    status: "Ready to dictate",
+                    status: "Quick Dictation on standby",
                     canFinish: false,
                     phase: .standby
                 ),

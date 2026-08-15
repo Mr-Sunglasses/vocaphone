@@ -50,3 +50,5 @@ android/.idea/
 android/captures/
 android/*.hprof
 
+# Local Netlify folder
+.netlify

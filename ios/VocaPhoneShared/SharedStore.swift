@@ -69,6 +69,58 @@ final class SharedStore: @unchecked Sendable {
         return record
     }
 
+    /// Removes one session and its meter file.
+    ///
+    /// There was previously no way to delete a transcript from the phone at
+    /// all — in a product whose whole pitch is that your words stay yours.
+    func delete(_ id: UUID) throws {
+        let directory = try sessionsDirectory()
+        try? fileManager.removeItem(at: url(for: id, directory: directory))
+        try? fileManager.removeItem(at: meterURL(for: id, directory: directory))
+        notify(.sessionChanged)
+    }
+
+    /// Removes every stored session. Used by "Delete all", which asks first.
+    @discardableResult
+    func deleteAllSessions() throws -> Int {
+        let directory = try sessionsDirectory()
+        guard fileManager.fileExists(atPath: directory.path) else { return 0 }
+        var removed = 0
+        for url in try fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) {
+            try? fileManager.removeItem(at: url)
+            removed += 1
+        }
+        notify(.sessionChanged)
+        return removed
+    }
+
+    /// Deletes transcripts older than the retention the user chose.
+    ///
+    /// Separate from ``pruneSessions(keeping:terminalOlderThan:now:)``, which is
+    /// a storage bound the app decides. This one is a promise the user made to
+    /// themselves, so it deletes finished transcripts regardless of how few
+    /// there are.
+    @discardableResult
+    func pruneTranscripts(olderThan maximumAge: TimeInterval?, now: Date = Date()) throws -> Int {
+        guard let maximumAge else { return 0 }
+        let directory = try sessionsDirectory()
+        guard fileManager.fileExists(atPath: directory.path) else { return 0 }
+        var removed = 0
+        for url in try sessionFilesByRecency(in: directory) {
+            guard let record = decodedRecord(at: url),
+                  record.state.isTerminal,
+                  now.timeIntervalSince(record.createdAt) > maximumAge
+            else { continue }
+            try? fileManager.removeItem(at: url)
+            try? fileManager.removeItem(
+                at: url.deletingPathExtension().appendingPathExtension("meter")
+            )
+            removed += 1
+        }
+        if removed > 0 { notify(.sessionChanged) }
+        return removed
+    }
+
     func recent(limit: Int = 20) throws -> [SessionRecord] {
         let directory = try sessionsDirectory()
         guard fileManager.fileExists(atPath: directory.path) else { return [] }

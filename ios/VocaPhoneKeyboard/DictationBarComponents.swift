@@ -18,7 +18,7 @@ final class WaveformView: UIView {
         }
     }
 
-    var color: UIColor = .systemBlue {
+    var color: UIColor = BrandPalette.accent {
         didSet { setNeedsDisplay() }
     }
 
@@ -201,7 +201,7 @@ final class StatusIndicatorView: UIView {
         }
     }
 
-    var color: UIColor = .systemBlue {
+    var color: UIColor = BrandPalette.accent {
         didSet {
             core.backgroundColor = color.cgColor
             ring.borderColor = color.cgColor
@@ -219,7 +219,7 @@ final class StatusIndicatorView: UIView {
         ring.opacity = 0
         layer.addSublayer(ring)
         layer.addSublayer(core)
-        color = .systemBlue
+        color = BrandPalette.accent
     }
 
     @available(*, unavailable)
@@ -293,7 +293,7 @@ final class StatusIndicatorView: UIView {
 
 /// The bar's primary action uses a solid fill and quiet press feedback.
 final class FlatButton: UIButton {
-    var fillColor: UIColor = .systemBlue {
+    var fillColor: UIColor = BrandPalette.accent {
         didSet { applyFill() }
     }
 

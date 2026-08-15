@@ -125,6 +125,40 @@ struct SessionRecordTests {
 
         #expect(record.startedInContainingApp == nil)
         #expect(record.state == .recording)
+        // No processing location either. The interface answers that with
+        // neutral wording rather than guessing a route.
+        #expect(record.processingLocation == nil)
+    }
+
+    /// Both routes survive a write and a read through the shared container,
+    /// which is the only channel the keyboard and the Live Activity have for
+    /// learning where the work is happening.
+    @Test func bothProcessingLocationsRoundTripThroughTheSharedStore() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedStore(rootOverride: directory)
+
+        for location in [SessionProcessingLocation.onDevice, .gateway] {
+            var record = SessionRecord()
+            record.processingLocation = location
+            try store.save(record)
+            #expect(try store.load(record.sessionID)?.processingLocation == location)
+        }
+    }
+
+    /// A route recorded at claim time has to survive every later transition:
+    /// the keyboard reads it while the app is in the background and cannot ask
+    /// again.
+    @Test func theProcessingLocationSurvivesTransitions() throws {
+        var record = SessionRecord()
+        record.processingLocation = .gateway
+        try record.transition(to: .launchingApp)
+        try record.transition(to: .recording)
+        try record.transition(to: .finalizing)
+        try record.transition(to: .uploading)
+
+        #expect(record.processingLocation == .gateway)
     }
 
     @Test func mostRecentReturnsTheNewestSessionWithoutScanningEverything() throws {

@@ -22,8 +22,10 @@ after recording starts.
 
 ## Keyboard never shows recording
 
-Confirm that Settings → General → Keyboard → Keyboards → vocaphone has Allow
-Full Access enabled. The app and extension must also use exactly the same
+Confirm that Settings → General → Keyboard → Keyboards → vocaphone → Allow Full
+Access is enabled. iOS provides no link that opens that pane, so the keyboard and
+guided setup both print the path rather than offering a button that would land
+somewhere else. The app and extension must also use exactly the same
 registered App Group. Without Full Access, the keyboard now displays an explicit
 warning instead of silently failing to create shared state.
 
@@ -32,9 +34,69 @@ warning instead of silently failing to create shared state.
 Open iOS Settings → Privacy & Security → Microphone and enable vocaphone. The
 keyboard extension itself cannot receive microphone permission.
 
+## The keyboard corrected something I did not want
+
+Press Delete immediately. That restores exactly what you typed, and marks the
+word as yours for the rest of that document, so it will not be corrected again.
+
+Tapping your own spelling in the suggestion row — it appears in quotes, on the
+left — does the same thing and also teaches the keyboard the word.
+
+If a word keeps coming back, add it under **Settings → Dictation → Custom
+words**: those are never corrected away. To make the keyboard forget everything
+it has learned, use **Settings → Keyboard → Reset learned words**, which shows
+the count before it asks.
+
+Autocorrect never fires on a dictated word, a swiped word, a tapped suggestion,
+anything containing a digit or symbol, an all-caps word, or a word shorter than
+three letters.
+
+## The suggestion row is empty, or missing
+
+- In a password, passcode, one-time-code or card-number field it is switched off
+  deliberately, along with correction, prediction and learning.
+- With nothing to suggest, the row shows the language and writing-style pickers
+  instead — the keyboard never displays an empty strip.
+- While a dictation is recording, processing or waiting to be inserted, that row
+  belongs to the dictation state.
+- It can be turned off entirely under **Settings → Keyboard → Suggestions**.
+
+Suggestions work with Full Access off. Learned words do not persist without it,
+and keyboard haptics do not work at all — iOS gives an extension no route to the
+Taptic Engine.
+
+## I cannot find a setting
+
+Settings is grouped by what you are trying to do, in five destinations:
+
+| Destination | What lives there |
+| --- | --- |
+| **Keyboard** | Height, a live preview, suggestions, autocorrect, prediction, learned words, smart punctuation, haptics, swipe typing |
+| **Dictation** | Automatic insertion, Quick Dictation, language, writing style, numbers as digits, microphone, recording sounds, custom words |
+| **Transcription** | Which source is in use, on-device models, gateway pairing and health |
+| **Privacy and permissions** | Microphone status, Full Access explanation and manual path, what is kept |
+| **Diagnostics** | Version, redacted export, and clearing the log |
+
+Guided setup is reachable from the bottom of Settings at any time.
+
+## The keyboard is too tall or too short
+
+Open **Settings → Keyboard** and pick Compact, Standard, or Tall. Standard is the
+default and matches what earlier versions drew. The change applies the next time
+the keyboard appears. Landscape keeps its own compact layout whichever you
+choose, because a landscape phone has no height to give away.
+
+## It says "Transcribing" without naming a place
+
+The processing location is written when vocaphone claims a dictation. A session
+that predates that field, or one interrupted before the app claimed it, has no
+route recorded — so the interface says "Transcribing" rather than guessing. The
+next dictation names the place. If it never does, check **Settings →
+Transcription**: the selected source must report Ready.
+
 ## AirPods are connected but the wrong microphone is used
 
-Open vocaphone and check **Microphone → Input in use**. Use **Automatic** to let
+Open **Settings → Dictation → Input in use**. Use **Automatic** to let
 iOS select the combined input/output route, or **iPhone Microphone** to request
 the built-in input. Bluetooth input and output routes are linked by iOS, so
 changing the microphone can also change where playback is heard while recording.
@@ -223,6 +285,25 @@ explicitly, so selecting Hindi transcribes Hindi.
 
 Speaking for longer also helps the auto-detecting models: a two-second clip
 carries much less evidence of which language it is than a full sentence.
+
+## Some numbers stayed as words
+
+**Write numbers as digits** (Settings → Dictation) converts what it can read as
+one number and leaves everything else exactly as dictated. It is deliberately
+cautious, because a wrong conversion has to be found and undone by hand:
+
+- A lone "one" stays a word unless a unit follows it, so "no one", "one of them"
+  and "one day I'll get to it" are untouched, while "one pm" and "one hour"
+  convert.
+- Number words that do not add up to a single number are left alone as a group.
+  "twenty three" is 23, but "six seven", "seven thirty" and "nineteen eighty
+  four" stay as words rather than becoming "6 7", "7 30" and "19 84".
+- Ordinals are never rewritten, and neither is the number before one: "the
+  twenty first" stays as it is.
+- It is English only. Transcripts in other languages pass through untouched.
+
+The setting applies to dictated text on this device, whichever transcription
+source produced it, and does not change text typed on the keyboard.
 
 ## Transcript did not insert
 

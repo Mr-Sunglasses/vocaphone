@@ -28,6 +28,16 @@ android {
         }
     }
 
+    // The keyboard's word list and bigram table are one file each, shared with
+    // the iOS keyboard from the repository root. Two hand-maintained copies of
+    // a 10 000-word list drift, and nothing would notice until the two
+    // platforms started suggesting different words.
+    sourceSets {
+        getByName("main") {
+            assets.srcDir("${rootDir}/../assets/keyboard")
+        }
+    }
+
     flavorDimensions += "distribution"
 
     productFlavors {

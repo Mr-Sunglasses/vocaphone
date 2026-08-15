@@ -26,7 +26,7 @@ struct DictationBarLabelColorTests {
     }
 
     private let accents: [DictationAccent] = [
-        .brand, .handoff, .listening, .working, .ready, .alert, .locked,
+        .brand, .recording, .working, .ready, .error, .locked,
     ]
 
     @Test func everyAccentGetsTheMoreLegibleOfTheTwoLabelColours() {

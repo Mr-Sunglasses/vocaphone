@@ -1,14 +1,306 @@
 import SwiftUI
 import UIKit
 
+/// The settings hub.
+///
+/// One screen used to hold routine preferences, gateway infrastructure, model
+/// downloads, permissions and diagnostics in eleven sections, so finding the
+/// writing style meant scrolling past a download manager. Five destinations,
+/// grouped by what the person is trying to do rather than by which subsystem
+/// owns the switch.
 struct SettingsView: View {
     @Environment(RecordingCoordinator.self) private var coordinator
-    @AppStorage("gatewayURL") private var gatewayURL = ""
-    @AppStorage(GatewayStatusPreferences.healthMessageKey)
-    private var healthMessage = "Not tested"
-    @AppStorage(GatewayStatusPreferences.engineKey) private var gatewayEngine = ""
-    @AppStorage(GatewayStatusPreferences.engineReadyKey)
-    private var gatewayEngineReady = false
+
+    var body: some View {
+        List {
+            Section {
+                destination(
+                    "Keyboard",
+                    detail: KeyboardPreferences.keyboardHeight.displayName,
+                    symbol: "keyboard"
+                ) { KeyboardSettingsView() }
+
+                destination(
+                    "Dictation",
+                    detail: KeyboardPreferences.effectiveTranscriptionLanguage.displayName
+                        + " · " + KeyboardPreferences.writingStyle.displayName,
+                    symbol: "mic"
+                ) { DictationSettingsView() }
+
+                destination(
+                    "Transcription",
+                    detail: coordinator.setupStatus.source.title,
+                    symbol: "waveform"
+                ) { TranscriptionSettingsView() }
+
+                destination(
+                    "Privacy and permissions",
+                    detail: nil,
+                    symbol: "hand.raised"
+                ) { PrivacySettingsView() }
+
+                destination(
+                    "Diagnostics",
+                    detail: nil,
+                    symbol: "stethoscope"
+                ) { DiagnosticsSettingsView() }
+            }
+
+            Section {
+                NavigationLink {
+                    SetupView()
+                } label: {
+                    Label("Guided setup", systemImage: "checklist")
+                }
+            } footer: {
+                Text(
+                    "Guided setup re-checks the microphone, the keyboard and your "
+                        + "transcription source, and can be reopened at any time."
+                )
+            }
+        }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// A row that carries its current value, so the hub answers most questions
+    /// without being opened.
+    private func destination(
+        _ title: String,
+        detail: String?,
+        symbol: String,
+        @ViewBuilder content: @escaping () -> some View
+    ) -> some View {
+        NavigationLink {
+            content()
+        } label: {
+            LabeledContent {
+                if let detail {
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            } label: {
+                Label(title, systemImage: symbol)
+            }
+        }
+    }
+}
+
+// MARK: - Keyboard
+
+struct KeyboardSettingsView: View {
+    @AppStorage(
+        KeyboardPreferences.keyboardHeightKey,
+        store: KeyboardPreferences.defaults
+    ) private var keyboardHeightRawValue = KeyboardHeightPreference.standard.rawValue
+    @AppStorage(
+        KeyboardPreferences.typingSuggestionsKey,
+        store: KeyboardPreferences.defaults
+    ) private var suggestionsEnabled = true
+    @AppStorage(
+        KeyboardPreferences.autocorrectKey,
+        store: KeyboardPreferences.defaults
+    ) private var autocorrectEnabled = true
+    @AppStorage(
+        KeyboardPreferences.nextWordPredictionKey,
+        store: KeyboardPreferences.defaults
+    ) private var predictionEnabled = true
+    @AppStorage(
+        KeyboardPreferences.learnAsITypeKey,
+        store: KeyboardPreferences.defaults
+    ) private var learnAsITypeEnabled = true
+    @AppStorage(
+        KeyboardPreferences.smartPunctuationKey,
+        store: KeyboardPreferences.defaults
+    ) private var smartPunctuationEnabled = true
+    @AppStorage(
+        KeyboardPreferences.keyboardHapticsKey,
+        store: KeyboardPreferences.defaults
+    ) private var hapticsEnabled = true
+    @AppStorage(
+        KeyboardPreferences.swipeTypingKey,
+        store: KeyboardPreferences.defaults
+    ) private var swipeTypingEnabled = false
+
+    @State private var learnedStore = LearnedWordStore()
+    @State private var learnedCount = 0
+    @State private var isConfirmingLearnedReset = false
+
+    private var selected: KeyboardHeightPreference {
+        KeyboardHeightPreference(rawValue: keyboardHeightRawValue) ?? .standard
+    }
+
+    var body: some View {
+        List {
+            previewSection
+            heightSection
+            suggestionsSection
+            learningSection
+            typingDetailSection
+            appearanceSection
+        }
+        .navigationTitle("Keyboard")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { learnedCount = learnedStore.snapshot().count }
+        .confirmationDialog(
+            "Forget \(learnedCount) learned word\(learnedCount == 1 ? "" : "s")?",
+            isPresented: $isConfirmingLearnedReset,
+            titleVisibility: .visible
+        ) {
+            Button("Forget them", role: .destructive) {
+                learnedStore.removeAll()
+                learnedCount = 0
+            }
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text(
+                "The keyboard will start correcting these words again until it "
+                    + "learns them a second time. Nothing else is affected."
+            )
+        }
+    }
+
+    /// The real keyboard, at the chosen height, redrawing as the switches move.
+    private var previewSection: some View {
+        Section {
+            KeyboardPreview(preference: selected, showsSuggestions: suggestionsEnabled)
+                .listRowInsets(EdgeInsets())
+                .listRowBackground(Color.clear)
+        }
+    }
+
+    private var heightSection: some View {
+        Section {
+            Picker("Height", selection: $keyboardHeightRawValue) {
+                ForEach(KeyboardHeightPreference.allCases) { preference in
+                    Text(preference.displayName).tag(preference.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Height")
+        } footer: {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                Text(selected.detail)
+                Text(
+                    "Landscape keeps its own compact layout, because a landscape "
+                        + "phone has no height to spare whichever size you pick."
+                )
+            }
+        }
+    }
+
+    private var suggestionsSection: some View {
+        Section {
+            Toggle("Suggestions", isOn: $suggestionsEnabled)
+            Toggle("Autocorrect", isOn: $autocorrectEnabled)
+                .disabled(!suggestionsEnabled)
+            Toggle("Predict the next word", isOn: $predictionEnabled)
+                .disabled(!suggestionsEnabled)
+        } header: {
+            Text("Typing")
+        } footer: {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                // The sentence users fear is "the keyboard now reads what you
+                // type", so the answer sits next to the switch that turns it on.
+                Text(
+                    "Suggestions are worked out on this iPhone, by the same "
+                        + "dictionary iOS uses everywhere else, plus your own words. "
+                        + "Nothing you type is sent anywhere, logged, or included in "
+                        + "a diagnostics export — not even to your gateway."
+                )
+                Text(
+                    "Nothing is suggested in password, passcode or one-time-code "
+                        + "fields, and nothing is learned from them."
+                )
+                if !suggestionsEnabled {
+                    Text("Autocorrect and prediction need suggestions turned on.")
+                }
+            }
+        }
+    }
+
+    private var learningSection: some View {
+        Section {
+            Toggle("Learn as I type", isOn: $learnAsITypeEnabled)
+            Button(role: .destructive) {
+                isConfirmingLearnedReset = true
+            } label: {
+                LabeledContent("Reset learned words", value: "\(learnedCount)")
+            }
+            .disabled(learnedCount == 0)
+        } footer: {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                Text(
+                    "Words you type three times without undoing a correction, and "
+                        + "words you tap in the suggestion row, stop being corrected "
+                        + "away. They stay on this iPhone and are never added to the "
+                        + "system-wide dictionary other apps use."
+                )
+                if !learnedStore.isPersistent {
+                    Text(
+                        "Full Access is off, so learned words last only until the "
+                            + "keyboard closes."
+                    )
+                    .foregroundStyle(Color.vocaWarning)
+                }
+            }
+        }
+    }
+
+    private var typingDetailSection: some View {
+        Section {
+            Toggle("Smart punctuation", isOn: $smartPunctuationEnabled)
+            Toggle("Keyboard haptics", isOn: $hapticsEnabled)
+            Toggle("Swipe to type", isOn: $swipeTypingEnabled)
+        } footer: {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                Text(
+                    "Smart punctuation curls quotes, turns two hyphens into an em "
+                        + "dash and three dots into an ellipsis — except where the "
+                        + "field asks it not to, such as a code or address field."
+                )
+                // Said plainly rather than leaving people to wonder why their
+                // keyboard is silent.
+                Text(
+                    "Keyboard haptics need Full Access. Without it iOS gives the "
+                        + "keyboard no way to reach the Taptic Engine, and this "
+                        + "switch does nothing."
+                )
+                Text(
+                    "Swipe to type is new and off by default. Slide from letter to "
+                        + "letter without lifting; alternatives appear in the "
+                        + "suggestion row."
+                )
+            }
+        }
+    }
+
+    private var appearanceSection: some View {
+        Section {
+            NavigationLink {
+                SetupView()
+            } label: {
+                Label("How to add the keyboard", systemImage: "questionmark.circle")
+            }
+        } header: {
+            Text("Appearance")
+        } footer: {
+            Text(
+                "The keyboard follows the appearance of the app you are typing in, "
+                    + "and this iPhone's light or dark setting. There is no separate "
+                    + "keyboard theme to choose."
+            )
+        }
+    }
+}
+
+// MARK: - Dictation
+
+struct DictationSettingsView: View {
+    @Environment(RecordingCoordinator.self) private var coordinator
     @AppStorage(
         KeyboardPreferences.autoInsertKey,
         store: KeyboardPreferences.defaults
@@ -22,6 +314,10 @@ struct SettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var writingStyleRawValue = WritingStyle.casual.rawValue
     @AppStorage(
+        KeyboardPreferences.numbersAsDigitsKey,
+        store: KeyboardPreferences.defaults
+    ) private var numbersAsDigits = false
+    @AppStorage(
         KeyboardPreferences.transcriptionLanguageKey,
         store: KeyboardPreferences.defaults
     ) private var transcriptionLanguageRawValue = TranscriptionLanguage.automatic.rawValue
@@ -33,12 +329,6 @@ struct SettingsView: View {
         KeyboardPreferences.recordingSoundsKey,
         store: KeyboardPreferences.defaults
     ) private var recordingSoundsEnabled = false
-    // The App Group store, not the keyboard's: on-device decoding happens in
-    // this app, and the keyboard has no use for either of these.
-    @AppStorage(
-        LocalTranscriptionPreferences.qualityKey,
-        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
-    ) private var transcriptionQualityRawValue = TranscriptionQuality.default.rawValue
     @AppStorage(
         LocalTranscriptionPreferences.vocabularyKey,
         store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
@@ -47,234 +337,30 @@ struct SettingsView: View {
     /// A `List` row re-runs `onAppear` when it scrolls back into view, and
     /// reloading the draft there would throw away a half-typed word.
     @State private var hasLoadedVocabularyDraft = false
-    @State private var diagnosticExportURL: URL?
-    @State private var isSharingDiagnostics = false
-    @State private var diagnosticsStatus: String?
 
-    /// Every explanation on this screen is a `Section` footer, not a row.
-    /// Explanatory paragraphs used to sit in rows of their own, so each one drew
-    /// a cell with separators above and below and pushed the next control off
-    /// the screen — the settings read as a column of slabs instead of a list.
     var body: some View {
         List {
-            setupSection
-            localModelsSection
             insertionSection
             quickDictationSection
-            transcriptionLanguageSection
+            languageSection
             writingStyleSection
+            numbersSection
             microphoneSection
             recordingFeedbackSection
-            permissionsSection
-            diagnosticsSection
-            privacySection
+            customWordsSection
         }
-        .navigationTitle("Settings")
+        .navigationTitle("Dictation")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $isSharingDiagnostics, onDismiss: removeDiagnosticExport) {
-            if let diagnosticExportURL {
-                DiagnosticShareSheet(activityItems: [diagnosticExportURL])
-            }
-        }
-    }
-
-    private var setupSection: some View {
-        Section {
-            NavigationLink {
-                GatewaySetupView()
-            } label: {
-                LabeledContent {
-                    // The dot and the word, not one or the other. A bare `Circle`
-                    // is not an accessibility element in SwiftUI, so the label on
-                    // it was not reliably announced — and it left colour as the
-                    // only carrier of readiness, which a red/green deficiency
-                    // reads as no signal at all.
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(gatewayEngineReady ? Color.brand : .orange)
-                            .frame(width: 7, height: 7)
-                        Text(gatewayEngineReady ? "Ready" : "Not ready")
-                    }
-                    .accessibilityElement(children: .combine)
-                } label: {
-                    Text("Transcription gateway")
-                    Text(gatewayURL.isEmpty ? healthMessage : gatewayURL)
-                        .font(.footnote)
-                }
-            }
-
-            NavigationLink {
-                SetupView()
-            } label: {
-                Label("Guided setup", systemImage: "checklist")
-            }
-
-            if let dashboardURL = validatedGatewayURL {
-                Link(destination: dashboardURL) {
-                    Label("Open web dashboard", systemImage: "arrow.up.right.square")
-                }
-            } else {
-                Button {} label: {
-                    Label("Open web dashboard", systemImage: "arrow.up.right.square")
-                }
-                    .disabled(true)
-                    .accessibilityHint("Configure a transcription gateway first")
-            }
-
-            if !gatewayEngine.isEmpty {
-                LabeledContent("Model") {
-                    Text(gatewayEngine)
-                        .font(.footnote.monospaced())
-                        .textSelection(.enabled)
-                }
-            }
-        } header: {
-            Text("Setup")
-        } footer: {
-            Text(
-                "For more customization, including choosing the speech-to-text model, "
-                + "open your gateway's web dashboard."
-            )
-        }
-    }
-
-    @ViewBuilder private var localModelsSection: some View {
-        Section {
-            Toggle(
-                "Use on-device transcription",
-                isOn: Binding(
-                    get: { LocalTranscriptionPreferences.enabled },
-                    set: { LocalTranscriptionPreferences.enabled = $0 }
-                )
-            )
-        } header: {
-            Text("On-device models")
-        } footer: {
-            Text(
-                "Models run privately on this iPhone through WhisperKit/Core ML. "
-                    + "Every file, including the tokenizer, is pinned and checked with "
-                    + "SHA-256 before it can load, so transcription needs no network at "
-                    + "all. The keyboard extension never loads the model itself."
-            )
-        }
-
-        LocalModelPicker(manager: coordinator.localModels)
-
-        Section {
-            Picker("Accuracy", selection: $transcriptionQualityRawValue) {
-                ForEach(TranscriptionQuality.allCases) { quality in
-                    Text(quality.displayName).tag(quality.rawValue)
-                }
-            }
-            .pickerStyle(.segmented)
-            .onChange(of: transcriptionQualityRawValue) { _, _ in reloadLocalEngine() }
-            if let loading = coordinator.localModels.loadingMessage {
-                Text(loading).foregroundStyle(.secondary)
-            }
-        } header: {
-            Text("On-device accuracy")
-        } footer: {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(selectedTranscriptionQuality.detail)
-                Text(
-                    "This governs models running on this iPhone. Transcription on "
-                        + "your gateway is unaffected."
-                )
-            }
-        }
-
-        customWordsSection
-    }
-
-    /// Saved on request rather than on every keystroke: the terms are parsed at
-    /// inference time, and a half-typed name being persisted mid-word is a
-    /// spelling nobody asked to be biased toward.
-    @ViewBuilder private var customWordsSection: some View {
-        Section {
-            TextEditor(text: $customVocabularyDraft)
-                .frame(minHeight: 88)
-                .font(.body)
-            Button("Save words") { savedCustomVocabulary = customVocabularyDraft }
-                .disabled(customVocabularyDraft == savedCustomVocabulary)
-        } header: {
-            Text("Custom words")
-        } footer: {
-            let terms = CustomVocabulary.terms(customVocabularyDraft)
-            VStack(alignment: .leading, spacing: 8) {
-                Text(
-                    "Names, places and jargon an on-device Whisper model is unlikely "
-                        + "to know. One per line, or separated by commas."
-                )
-                Text(
-                    terms.isEmpty
-                        ? "No custom words. Transcription is unchanged."
-                        : "\(terms.count) word\(terms.count == 1 ? "" : "s") will bias the "
-                            + "decoder. This nudges spelling rather than guaranteeing it, and "
-                            + "a very long list starts to crowd out the speech itself."
-                )
-                // Said plainly rather than letting the list quietly do nothing:
-                // only Whisper's decoder has somewhere to put a vocabulary.
-                if let unsupported = unsupportedVocabularyModel, !terms.isEmpty {
-                    Text(
-                        "\(unsupported) cannot use these words. Only Whisper models take a "
-                            + "vocabulary; the list is kept for when you switch back to one."
-                    )
-                    .foregroundStyle(.red)
-                }
-            }
-        }
-        .onAppear {
-            guard !hasLoadedVocabularyDraft else { return }
-            customVocabularyDraft = savedCustomVocabulary
-            hasLoadedVocabularyDraft = true
-        }
-    }
-
-    private var selectedTranscriptionQuality: TranscriptionQuality {
-        TranscriptionQuality.fromStored(transcriptionQualityRawValue)
-    }
-
-    /// A sherpa engine has its decoding method baked in, so changing the
-    /// accuracy rebuilds it. Doing that here means it happens while the user is
-    /// still on this screen rather than in front of the next dictation. Best
-    /// effort: the dictation that follows attempts the same load and reports
-    /// whatever went wrong where the user is looking.
-    private func reloadLocalEngine() {
-        guard LocalTranscriptionPreferences.enabled,
-              let descriptor = LocalModelCatalog.descriptor(
-                  for: LocalTranscriptionPreferences.modelIdentifier
-              )
-        else { return }
-        Task { @MainActor in
-            try? await coordinator.localModels.prepare(
-                descriptor,
-                language: KeyboardPreferences.effectiveTranscriptionLanguage.rawValue
-            )
-        }
-    }
-
-    /// The selected on-device model when it cannot take a vocabulary, so the
-    /// word list can say so instead of silently doing nothing.
-    private var unsupportedVocabularyModel: String? {
-        guard LocalTranscriptionPreferences.enabled,
-              let descriptor = LocalModelCatalog.descriptor(
-                  for: LocalTranscriptionPreferences.modelIdentifier
-              ),
-              !descriptor.supportsCustomVocabulary
-        else { return nil }
-        return descriptor.displayName
     }
 
     private var insertionSection: some View {
         Section {
             Toggle("Insert transcript automatically", isOn: $autoInsertTranscripts)
-        } header: {
-            Text("Insertion")
         } footer: {
             Text(
                 autoInsertTranscripts
                     ? "The keyboard inserts text as soon as transcription finishes."
-                    : "The keyboard waits for you to tap Insert."
+                    : "The keyboard shows the transcript and waits for you to tap Insert."
             )
         }
     }
@@ -288,41 +374,18 @@ struct SettingsView: View {
         } footer: {
             Text(
                 "After vocaphone gets microphone access, it keeps an active background "
-                    + "input for up to 10 minutes. Standby audio is discarded and never "
-                    + "saved or uploaded. The orange microphone indicator remains visible."
+                    + "input for up to 10 minutes so Dictate can start without leaving "
+                    + "the app you are in. Standby audio is discarded and never saved or "
+                    + "uploaded. The orange microphone indicator stays visible while it "
+                    + "is on."
             )
         }
     }
 
-    private var writingStyleSection: some View {
-        Section {
-            Picker("Transcript style", selection: $writingStyleRawValue) {
-                ForEach(WritingStyle.allCases) { style in
-                    Label(style.displayName, systemImage: style.symbolName)
-                        .tag(style.rawValue)
-                }
-            }
-        } header: {
-            Text("Writing style")
-        } footer: {
-            // The example earns its place in the footer by being the thing that
-            // actually shows what the style does.
-            VStack(alignment: .leading, spacing: 8) {
-                Text(selectedWritingStyle.detail)
-                Text("“\(selectedWritingStyle.example)”")
-                Text(
-                    "Styles only change formatting. Your words, numbers, times, "
-                        + "links and contractions are never altered."
-                )
-            }
-        }
-    }
-
     /// One row that pushes to the full list, the way a `Picker` behaves in a
-    /// form. Listing all 27 languages inline buried every setting below it, and a
-    /// `Picker` cannot grey out the ones the loaded model cannot honour — hence a
-    /// `NavigationLink` to a list that can do both.
-    private var transcriptionLanguageSection: some View {
+    /// form. Listing all 27 languages inline buried every setting below it, and
+    /// a `Picker` cannot grey out the ones the loaded model cannot honour.
+    private var languageSection: some View {
         Section {
             NavigationLink {
                 TranscriptionLanguageList(selection: $transcriptionLanguageRawValue)
@@ -332,10 +395,56 @@ struct SettingsView: View {
                     value: KeyboardPreferences.effectiveTranscriptionLanguage.displayName
                 )
             }
-        } header: {
-            Text("Transcription language")
         } footer: {
             Text(KeyboardPreferences.effectiveTranscriptionLanguage.detail)
+        }
+    }
+
+    private var writingStyleSection: some View {
+        Section {
+            Picker("Writing style", selection: $writingStyleRawValue) {
+                ForEach(WritingStyle.allCases) { style in
+                    Label(style.displayName, systemImage: style.symbolName)
+                        .tag(style.rawValue)
+                }
+            }
+        } footer: {
+            // The example earns its place in the footer by being the thing that
+            // actually shows what the style does.
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                Text(selectedWritingStyle.detail)
+                Text("“\(selectedWritingStyle.example)”")
+                Text(
+                    "Styles only change formatting. Your words, times, links and "
+                        + "contractions are never altered; numbers change only if "
+                        + "you turn on Write numbers as digits below."
+                )
+            }
+        }
+    }
+
+    /// Number words to digits, for the people who dictate times, amounts and
+    /// quantities all day and reformat every one of them by hand.
+    private var numbersSection: some View {
+        Section {
+            Toggle("Write numbers as digits", isOn: $numbersAsDigits)
+        } header: {
+            Text("Numbers")
+        } footer: {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                Text(
+                    "Numbers you say are written as digits: “six pm at the office” "
+                        + "becomes “6 pm at the office”, and “twenty three” becomes “23”."
+                )
+                // Said plainly, because the exceptions are what stop this from
+                // looking broken the first time it leaves a word alone.
+                Text(
+                    "A lone “one” stays a word unless a unit follows it, so “no one” "
+                        + "and “one of them” are left alone. Ordinals such as “first” "
+                        + "and spoken times such as “seven thirty” are never rewritten."
+                )
+                Text("English only. Transcripts in other languages are untouched.")
+            }
         }
     }
 
@@ -356,7 +465,7 @@ struct SettingsView: View {
         } header: {
             Text("Microphone")
         } footer: {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
                 Text(selectedMicrophonePreference.detail)
                 Text(
                     "Bluetooth input and output routes are linked by iOS, so choosing a "
@@ -369,8 +478,6 @@ struct SettingsView: View {
     private var recordingFeedbackSection: some View {
         Section {
             Toggle("Play recording start and stop sounds", isOn: $recordingSoundsEnabled)
-        } header: {
-            Text("Recording feedback")
         } footer: {
             Text(
                 "Short, quiet tones play outside the captured audio, so they are not "
@@ -379,77 +486,60 @@ struct SettingsView: View {
         }
     }
 
-    private var permissionsSection: some View {
+    /// Saved on request rather than on every keystroke: the terms are parsed at
+    /// inference time, and a half-typed name being persisted mid-word is a
+    /// spelling nobody asked to be biased toward.
+    private var customWordsSection: some View {
         Section {
-            Button("Request microphone permission") {
-                coordinator.requestMicrophonePermission()
-            }
-            Button("Open Keyboard Settings") {
-                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                UIApplication.shared.open(url)
-            }
+            TextEditor(text: $customVocabularyDraft)
+                .frame(minHeight: 88)
+                .font(.body)
+            Button("Save words") { savedCustomVocabulary = customVocabularyDraft }
+                .disabled(customVocabularyDraft == savedCustomVocabulary)
         } header: {
-            Text("Permissions")
+            Text("Custom words")
         } footer: {
-            Text(
-                "Enable vocaphone under Keyboards and allow Full Access. "
-                    + "Full Access is used only for shared session state and communication "
-                    + "with your configured gateway."
-            )
-        }
-    }
-
-    private var diagnosticsSection: some View {
-        Section {
-            Button {
-                do {
-                    diagnosticExportURL = try DiagnosticLog.makeExportFile()
-                    diagnosticsStatus = nil
-                    isSharingDiagnostics = true
-                } catch {
-                    DiagnosticLog.record(
-                        .operationFailed,
-                        metadata: .error(.diagnosticExportFailed)
-                    )
-                    diagnosticsStatus = "The diagnostic export could not be prepared."
-                }
-            } label: {
-                Label("Export diagnostics", systemImage: "square.and.arrow.up")
-            }
-
-            Button(role: .destructive) {
-                DiagnosticLog.clear()
-                diagnosticsStatus = "Diagnostics cleared."
-            } label: {
-                Label("Clear diagnostics", systemImage: "trash")
-            }
-        } header: {
-            Text("Diagnostics")
-        } footer: {
-            VStack(alignment: .leading, spacing: 8) {
+            let terms = CustomVocabulary.terms(customVocabularyDraft)
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
                 Text(
-                    "The bounded export contains up to seven days of build information, app/keyboard "
-                        + "source, state transitions, and lifecycle errors only. It never "
-                        + "contains transcripts, typed text, audio, addresses, or credentials."
+                    "Names, places and jargon an on-device Whisper model is unlikely "
+                        + "to know. One per line, or separated by commas."
                 )
-                if let diagnosticsStatus { Text(diagnosticsStatus) }
+                Text(
+                    terms.isEmpty
+                        ? "No custom words. Transcription is unchanged."
+                        : "\(terms.count) word\(terms.count == 1 ? "" : "s") will bias the "
+                            + "decoder. This nudges spelling rather than guaranteeing it, and "
+                            + "a very long list starts to crowd out the speech itself."
+                )
+                // Said plainly rather than letting the list quietly do nothing:
+                // only Whisper's decoder has somewhere to put a vocabulary.
+                if let unsupported = unsupportedVocabularyModel, !terms.isEmpty {
+                    Text(
+                        "\(unsupported) cannot use these words. Only Whisper models take a "
+                            + "vocabulary; the list is kept for when you switch back to one."
+                    )
+                    .foregroundStyle(Color.vocaError)
+                }
             }
+        }
+        .onAppear {
+            guard !hasLoadedVocabularyDraft else { return }
+            customVocabularyDraft = savedCustomVocabulary
+            hasLoadedVocabularyDraft = true
         }
     }
 
-    /// Prose with no control to attach to, so it is a footer with no rows above
-    /// it rather than a paragraph dressed up as a settings cell.
-    private var privacySection: some View {
-        Section {
-        } header: {
-            Text("Privacy")
-        } footer: {
-            Text(
-                "Audio stays on this phone until upload succeeds. The gateway deletes "
-                    + "successful audio by default. No third-party transcription or analytics "
-                    + "service is used."
-            )
-        }
+    /// The selected on-device model when it cannot take a vocabulary, so the
+    /// word list can say so instead of silently doing nothing.
+    private var unsupportedVocabularyModel: String? {
+        guard LocalTranscriptionPreferences.enabled,
+              let descriptor = LocalModelCatalog.descriptor(
+                  for: LocalTranscriptionPreferences.modelIdentifier
+              ),
+              !descriptor.supportsCustomVocabulary
+        else { return nil }
+        return descriptor.displayName
     }
 
     private var selectedWritingStyle: WritingStyle {
@@ -459,9 +549,424 @@ struct SettingsView: View {
     private var selectedMicrophonePreference: MicrophonePreference {
         MicrophonePreference(rawValue: microphonePreferenceRawValue) ?? .automatic
     }
+}
 
-    private var validatedGatewayURL: URL? {
-        GatewayEndpoint.validatedURL(from: gatewayURL)
+// MARK: - Transcription
+
+struct TranscriptionSettingsView: View {
+    @Environment(RecordingCoordinator.self) private var coordinator
+    @AppStorage("gatewayURL") private var gatewayURL = ""
+    @AppStorage(GatewayStatusPreferences.engineKey) private var gatewayEngine = ""
+    @AppStorage(GatewayStatusPreferences.engineReadyKey)
+    private var gatewayEngineReady = false
+    @AppStorage(
+        LocalTranscriptionPreferences.enabledKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var localTranscriptionEnabled = false
+    @AppStorage(
+        LocalTranscriptionPreferences.qualityKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var transcriptionQualityRawValue = TranscriptionQuality.default.rawValue
+    @State private var engineReloadTask: Task<Void, Never>?
+    @State private var engineReloadError: String?
+
+    private var source: TranscriptionSourceStatus { coordinator.transcriptionSource }
+
+    var body: some View {
+        List {
+            routeSection
+            if localTranscriptionEnabled {
+                onDeviceSections
+            } else {
+                gatewaySection
+            }
+        }
+        .navigationTitle("Transcription")
+        .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: localTranscriptionEnabled) { _, _ in
+            coordinator.refreshSetupStatus()
+        }
+    }
+
+    /// Switching routes never discards the other one's configuration: the
+    /// gateway address and token stay in place, and a downloaded model stays
+    /// downloaded, so the switch is reversible in one tap.
+    private var routeSection: some View {
+        Section {
+            Picker(
+                "Speech to text",
+                selection: Binding(
+                    get: { localTranscriptionEnabled },
+                    set: { localTranscriptionEnabled = $0 }
+                )
+            ) {
+                Text("On this iPhone").tag(true)
+                Text("Your gateway").tag(false)
+            }
+            .pickerStyle(.segmented)
+
+            VocaStatusLine(
+                status: source.isReady ? .ready : .attention,
+                title: source.title,
+                detail: source.readinessDetail
+            )
+            .padding(.vertical, VocaMetrics.tight)
+        } header: {
+            Text("Source")
+        } footer: {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                Text(source.boundaryDetail)
+                Text(source.alternativeSummary)
+            }
+        }
+    }
+
+    @ViewBuilder private var onDeviceSections: some View {
+        Section {
+            EmptyView()
+        } header: {
+            Text("On-device models")
+        } footer: {
+            Text(
+                "Models run on this iPhone through WhisperKit/Core ML. Every file, "
+                    + "including the tokenizer, is pinned and checked with SHA-256 before "
+                    + "it can load, so transcription needs no network at all. The keyboard "
+                    + "extension never loads the model itself."
+            )
+        }
+
+        LocalModelPicker(manager: coordinator.localModels) {
+            coordinator.refreshSetupStatus()
+        }
+
+        Section {
+            Picker("Accuracy", selection: $transcriptionQualityRawValue) {
+                ForEach(TranscriptionQuality.allCases) { quality in
+                    Text(quality.displayName).tag(quality.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+            .onChange(of: transcriptionQualityRawValue) { _, _ in reloadLocalEngine() }
+            if let loading = coordinator.localModels.loadingMessage {
+                Text(loading).foregroundStyle(.secondary)
+            }
+            // Reported rather than swallowed: rebuilding the engine is the one
+            // thing this control does, and a silent failure here looks like the
+            // setting having no effect.
+            if let engineReloadError {
+                Text(engineReloadError).foregroundStyle(Color.vocaError)
+            }
+        } header: {
+            Text("Accuracy")
+        } footer: {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                Text(selectedTranscriptionQuality.detail)
+                Text(
+                    "This governs models running on this iPhone. Transcription on "
+                        + "your gateway is unaffected."
+                )
+            }
+        }
+    }
+
+    private var gatewaySection: some View {
+        Section {
+            NavigationLink {
+                GatewaySetupView()
+            } label: {
+                LabeledContent {
+                    Text(gatewayEngineReady ? "Ready" : "Not ready")
+                } label: {
+                    Text("Gateway")
+                    Text(gatewayURL.isEmpty ? "Not configured" : gatewayURL)
+                        .font(.footnote)
+                }
+            }
+
+            if !gatewayEngine.isEmpty {
+                LabeledContent("Speech-to-text model") {
+                    Text(gatewayEngine)
+                        .font(.footnote.monospaced())
+                        .textSelection(.enabled)
+                }
+            }
+
+            if let dashboardURL = GatewayEndpoint.validatedURL(from: gatewayURL) {
+                Link(destination: dashboardURL) {
+                    Label("Open web dashboard", systemImage: "arrow.up.right.square")
+                }
+            }
+        } header: {
+            Text("Gateway")
+        } footer: {
+            Text(
+                "The gateway is a server you run yourself — on your LAN, over Tailscale, "
+                    + "or on your own VPS. Choose its speech-to-text model in its own web "
+                    + "dashboard. The pairing token is never included in that link."
+            )
+        }
+    }
+
+    private var selectedTranscriptionQuality: TranscriptionQuality {
+        TranscriptionQuality.fromStored(transcriptionQualityRawValue)
+    }
+
+    /// A sherpa engine has its decoding method baked in, so changing the
+    /// accuracy rebuilds it — but only one that is already loaded, and never a
+    /// Whisper engine, which takes its decoding options per call. See
+    /// `LocalModelManager.reloadForAccuracyChange`: this control must not be
+    /// what pulls a speech-to-text model into memory.
+    private func reloadLocalEngine() {
+        engineReloadError = nil
+        engineReloadTask?.cancel()
+        engineReloadTask = Task { @MainActor in
+            do {
+                try await coordinator.localModels.reloadForAccuracyChange(
+                    language: KeyboardPreferences.effectiveTranscriptionLanguage.rawValue
+                )
+            } catch is CancellationError {
+                // Superseded by a later pick.
+            } catch {
+                engineReloadError = "The loaded model could not be rebuilt at this "
+                    + "accuracy: \(error.localizedDescription). The next dictation "
+                    + "will load it again."
+            }
+            engineReloadTask = nil
+        }
+    }
+}
+
+// MARK: - Privacy and permissions
+
+struct PrivacySettingsView: View {
+    @Environment(RecordingCoordinator.self) private var coordinator
+    @AppStorage(
+        LocalTranscriptionPreferences.transcriptRetentionKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var retentionRawValue = TranscriptRetention.default.rawValue
+    @State private var isConfirmingDeleteAll = false
+
+    private var retention: TranscriptRetention {
+        TranscriptRetention.fromStored(retentionRawValue)
+    }
+
+    var body: some View {
+        List {
+            Section {
+                VocaStatusLine(
+                    status: microphoneStatus,
+                    title: "Microphone",
+                    detail: coordinator.setupStatus.detail(for: .microphone)
+                )
+                .padding(.vertical, VocaMetrics.tight)
+
+                switch coordinator.microphoneAccess {
+                case .undetermined:
+                    Button("Allow microphone access") {
+                        coordinator.requestMicrophonePermission()
+                    }
+                case .denied:
+                    // iOS shows its permission alert only once, so re-prompting
+                    // here would do nothing at all.
+                    Button("Open iOS Settings", action: openSystemSettings)
+                case .granted:
+                    EmptyView()
+                }
+            } header: {
+                Text("Permissions")
+            } footer: {
+                Text(
+                    "Recording always happens in this app. An iOS keyboard extension "
+                        + "cannot use the microphone at all."
+                )
+            }
+
+            Section {
+                VocaStatusLine(
+                    status: coordinator.setupStatus.keyboard.isReady ? .ready : .attention,
+                    title: "Keyboard and Full Access",
+                    detail: coordinator.setupStatus.detail(for: .keyboard)
+                )
+                .padding(.vertical, VocaMetrics.tight)
+                Button("Open iOS Settings", action: openSystemSettings)
+            } footer: {
+                VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                    Text(AppConfiguration.fullAccessSettingsPath)
+                    Text(
+                        "Full Access lets the keyboard read the shared session state this "
+                            + "app writes, and nothing else. It does not give the keyboard "
+                            + "the microphone, and it does not send what you type anywhere."
+                    )
+                }
+            }
+
+            Section {
+                LabeledContent(
+                    "Audio",
+                    value: coordinator.transcriptionSource.selected == .onDevice
+                        ? "Never leaves this iPhone"
+                        : "Sent to your gateway only"
+                )
+                Picker("Keep transcripts", selection: $retentionRawValue) {
+                    ForEach(TranscriptRetention.allCases) { option in
+                        Text(option.displayName).tag(option.rawValue)
+                    }
+                }
+                Button(role: .destructive) {
+                    isConfirmingDeleteAll = true
+                } label: {
+                    Label("Delete all transcripts", systemImage: "trash")
+                }
+            } header: {
+                Text("What is kept")
+            } footer: {
+                VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                    Text(retention.detail)
+                    Text(
+                        "Audio is held on this iPhone until transcription succeeds, then "
+                            + "deleted. Your gateway deletes successfully transcribed audio "
+                            + "by default. Transcripts stay in the shared container on this "
+                            + "phone so the keyboard can insert them. No third-party "
+                            + "transcription or analytics service is used."
+                    )
+                }
+            }
+
+            Section {
+                LabeledContent("Typing suggestions", value: "On this iPhone")
+            } header: {
+                Text("What the keyboard sees")
+            } footer: {
+                // The sentence users fear, answered where the claim is made.
+                Text(
+                    "Completions, corrections and next-word suggestions are worked out "
+                        + "on this iPhone by the same dictionary iOS uses everywhere else, "
+                        + "plus your own words. Nothing you type is sent anywhere — not "
+                        + "even to your gateway — logged, or included in a diagnostics "
+                        + "export. Nothing is suggested or learned in password, passcode "
+                        + "or one-time-code fields."
+                )
+            }
+        }
+        .navigationTitle("Privacy")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Delete every transcript?",
+            isPresented: $isConfirmingDeleteAll,
+            titleVisibility: .visible
+        ) {
+            Button("Delete all", role: .destructive) {
+                Task { await coordinator.deleteAllTranscripts() }
+            }
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text(
+                "Every transcript is removed from this iPhone and cannot be "
+                    + "recovered. Your settings and downloaded models are not affected."
+            )
+        }
+    }
+
+    private var microphoneStatus: VocaStatus {
+        switch coordinator.microphoneAccess {
+        case .granted: .ready
+        case .denied: .failed
+        case .undetermined: .attention
+        }
+    }
+
+    private func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+}
+
+// MARK: - Diagnostics
+
+struct DiagnosticsSettingsView: View {
+    @State private var diagnosticExportURL: URL?
+    @State private var isSharingDiagnostics = false
+    @State private var diagnosticsStatus: String?
+    @State private var isConfirmingClear = false
+
+    var body: some View {
+        List {
+            Section {
+                LabeledContent("Version", value: Self.versionSummary)
+            } header: {
+                Text("Build")
+            }
+
+            Section {
+                Button {
+                    exportDiagnostics()
+                } label: {
+                    Label("Export diagnostics", systemImage: "square.and.arrow.up")
+                }
+            } header: {
+                Text("Diagnostics")
+            } footer: {
+                VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                    Text(
+                        "The bounded export contains up to seven days of build "
+                            + "information, app/keyboard source, state transitions, and "
+                            + "lifecycle errors only. It never contains transcripts, typed "
+                            + "text, audio, addresses, or credentials."
+                    )
+                    if let diagnosticsStatus { Text(diagnosticsStatus) }
+                }
+            }
+
+            // Destructive actions live in their own group at the bottom, away
+            // from anything routine, and confirm before they run.
+            Section {
+                Button(role: .destructive) {
+                    isConfirmingClear = true
+                } label: {
+                    Label("Clear diagnostics", systemImage: "trash")
+                }
+            } header: {
+                Text("Reset")
+            } footer: {
+                Text("Clearing the diagnostic log cannot be undone. Transcripts are not affected.")
+            }
+        }
+        .navigationTitle("Diagnostics")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Clear the diagnostic log?",
+            isPresented: $isConfirmingClear,
+            titleVisibility: .visible
+        ) {
+            Button("Clear diagnostics", role: .destructive) {
+                DiagnosticLog.clear()
+                diagnosticsStatus = "Diagnostics cleared."
+            }
+            Button("Keep", role: .cancel) {}
+        }
+        .sheet(isPresented: $isSharingDiagnostics, onDismiss: removeDiagnosticExport) {
+            if let diagnosticExportURL {
+                DiagnosticShareSheet(activityItems: [diagnosticExportURL])
+            }
+        }
+    }
+
+    private static var versionSummary: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = info?["CFBundleVersion"] as? String ?? "—"
+        return "\(version) (\(build))"
+    }
+
+    private func exportDiagnostics() {
+        do {
+            diagnosticExportURL = try DiagnosticLog.makeExportFile()
+            diagnosticsStatus = nil
+            isSharingDiagnostics = true
+        } catch {
+            DiagnosticLog.record(.operationFailed, metadata: .error(.diagnosticExportFailed))
+            diagnosticsStatus = "The diagnostic export could not be prepared."
+        }
     }
 
     private func removeDiagnosticExport() {
@@ -485,17 +990,17 @@ private struct DiagnosticShareSheet: UIViewControllerRepresentable {
     ) {}
 }
 
-/// The full language list, reached from Settings. Search matters at 27 entries,
-/// and the ones the gateway's model cannot honour are grouped at the bottom and
-/// greyed rather than hidden: a language that simply disappears reads as
-/// unsupported by the app, when the fix is to change the model on the gateway.
+/// The full language list, reached from Dictation settings. Search matters at 27
+/// entries, and the ones the loaded model cannot honour are grouped at the
+/// bottom and greyed rather than hidden: a language that simply disappears reads
+/// as unsupported by the app, when the fix is to change the model.
 struct TranscriptionLanguageList: View {
     @Binding var selection: String
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
 
-    private var modelLanguages: Set<String> { KeyboardPreferences.modelLanguages }
-    private var detectsLanguage: Bool { KeyboardPreferences.modelDetectsLanguage }
+    private var modelLanguages: Set<String> { KeyboardPreferences.activeModelLanguages }
+    private var detectsLanguage: Bool { KeyboardPreferences.activeModelDetectsLanguage }
 
     private func matches(_ language: TranscriptionLanguage) -> Bool {
         query.isEmpty

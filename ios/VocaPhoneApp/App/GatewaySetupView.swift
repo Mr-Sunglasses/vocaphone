@@ -18,9 +18,14 @@ struct GatewaySetupView: View {
 
     var body: some View {
         List {
+            // Once a gateway has been paired, its current state is the first
+            // thing worth reading; the address and token below it are
+            // maintenance. Before pairing there is no state to report, so the
+            // scanner leads instead.
+            if !gatewayURL.isEmpty { statusSection }
             pairingSection
             addressSection
-            statusSection
+            if gatewayURL.isEmpty { statusSection }
         }
         .navigationTitle("Gateway")
         .navigationBarTitleDisplayMode(.inline)
@@ -90,7 +95,7 @@ struct GatewaySetupView: View {
                         + "use HTTPS for a VPS or any public network.",
                     systemImage: "exclamationmark.triangle.fill"
                 )
-                .foregroundStyle(.orange)
+                .foregroundStyle(Color.vocaWarning)
             } else {
                 Text(
                     "Use any reachable HTTP or HTTPS gateway. HTTPS is recommended and "
@@ -100,26 +105,45 @@ struct GatewaySetupView: View {
         }
     }
 
+    /// Reachable, authenticated and model-ready are three different things, and
+    /// a single dot cannot tell them apart. The words do; the symbol only
+    /// reinforces them, so the row survives Differentiate Without Color.
     private var statusSection: some View {
-        Section("Status") {
-            // The message beside the dot already says what happened in words, so
-            // the dot is decoration here and the row reads without it.
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                Circle()
-                    .fill(gatewayEngineReady ? Color.brand : .secondary)
-                    .frame(width: 7, height: 7)
-                    .accessibilityHidden(true)
-                Text(healthMessage)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        Section {
+            VocaStatusLine(
+                status: gatewayEngineReady ? .ready : .attention,
+                title: gatewayEngineReady ? "Ready" : "Not ready",
+                detail: healthMessage
+            )
+            .padding(.vertical, VocaMetrics.tight)
 
             if !gatewayEngine.isEmpty {
-                LabeledContent("Model") {
+                LabeledContent("Speech-to-text model") {
                     Text(gatewayEngine)
                         .font(.footnote.monospaced())
                         .textSelection(.enabled)
                 }
             }
+
+            Button {
+                Task { await saveAndTestGateway() }
+            } label: {
+                HStack(spacing: VocaMetrics.related) {
+                    if isTestingGateway {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(isTestingGateway ? "Testing gateway…" : "Test again")
+                }
+            }
+            .disabled(isTestingGateway || validatedGatewayURL == nil)
+        } header: {
+            Text("Status")
+        } footer: {
+            Text(
+                "Ready means the gateway answered, accepted the pairing token, and "
+                    + "reported a loaded speech-to-text model. Anything less and "
+                    + "dictation will not complete."
+            )
         }
     }
 

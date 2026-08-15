@@ -41,15 +41,26 @@ struct DictationButton: Equatable {
     )
 }
 
-/// Colour families the bar cycles through. Kept symbolic so the palette decides
-/// the actual values per appearance, the way the key colours already do.
+/// The semantic colour a state is drawn in.
+///
+/// One role per meaning, and no more: an earlier version had a separate purple
+/// for the hand-off, which said only that vocaphone owns a fourth colour.
+/// Opening the app is an ordinary, expected step, so it is brand — the same
+/// colour as every other "this is fine".
 enum DictationAccent: Equatable {
+    /// Resting, and any state the product considers fine.
     case brand
-    case handoff
-    case listening
+    /// Live capture, and nothing else.
+    case recording
+    /// Waiting on work: finalizing, uploading, transcribing, or a transcript
+    /// stranded by a change of field.
     case working
+    /// A finished, useful result.
     case ready
-    case alert
+    /// A failure the user has to answer.
+    case error
+    /// Unavailable because a prerequisite is missing. Neutral: a locked keyboard
+    /// is not a broken one.
     case locked
 }
 
@@ -77,8 +88,26 @@ enum DictationBody: Equatable {
     /// bar — which is exactly when changing them still affects the next
     /// dictation.
     case controls
+    /// Typing candidates. Only ever in the idle bar: while a transcript is
+    /// arriving, competing for that row would be noise.
+    case candidates([TypingCandidate])
     case waveform(WaveformMode)
     case message(String)
+}
+
+/// How the bar arranges itself.
+///
+/// Two shapes, not two containers. The keyboard settled on one morphing
+/// container for every dictation state, and the typing strip extends that
+/// principle rather than breaking it: idle is a single row, and anything with a
+/// session to report keeps the headline-and-body pair.
+enum DictationBarLayout: Equatable {
+    /// One row: candidates or pickers, and a compact circular Dictate button.
+    /// The shape the keyboard spends nearly all its life in.
+    case strip
+    /// Headline, body and a labelled action — every state that has something
+    /// to say about a session.
+    case status
 }
 
 /// Everything the bar needs to draw itself for one moment in a session.
@@ -93,6 +122,11 @@ struct DictationBarModel: Equatable {
     /// A live session earns the taller bar; an idle one gives the height back
     /// to the keys.
     var isExpanded: Bool
+    /// What VoiceOver should say when the bar arrives at this state, or `nil`
+    /// for states that are not worth interrupting for. Polling re-renders the
+    /// same state several times a second; only a genuine transition announces.
+    var announcement: String?
+    var layout: DictationBarLayout = .status
 }
 
 /// The inputs the model is derived from. A struct rather than a long parameter
@@ -105,6 +139,14 @@ struct DictationContext: Equatable {
     var autoInsertsTranscripts = false
     var canRetry = false
     var canUndo = false
+    /// Typing candidates for the idle bar. Empty in every state that owns a
+    /// session, because the strip is not shown there.
+    var candidates: [TypingCandidate] = []
+    /// Where this session's transcription runs, when the containing app has
+    /// resolved it. `nil` for a legacy or interrupted record, and the copy stays
+    /// neutral rather than guessing — naming the wrong place is worse than
+    /// naming none.
+    var processingLocation: SessionProcessingLocation?
 }
 
 extension DictationBarModel {
@@ -118,7 +160,7 @@ extension DictationBarModel {
         case .recording:
             return listening
         case .finalizing, .uploading, .transcribing:
-            return working(context.state)
+            return working(context)
         case .readyToInsert:
             return ready(context)
         case .targetContextChanged:
@@ -134,9 +176,14 @@ extension DictationBarModel {
         }
     }
 
+    /// The keyboard's phrasing of the Full Access instruction. Front-loaded so
+    /// that the switch to turn on survives the bar's two lines; the containing
+    /// app gives the full path.
+    static let fullAccessPath = AppConfiguration.fullAccessKeyboardHint
+
     private static let locked = DictationBarModel(
         title: "Full Access needed",
-        body: .message("Turn it on in Settings › General › Keyboard › vocaphone."),
+        body: .message(fullAccessPath),
         accent: .locked,
         pulse: .steady,
         primary: DictationButton(
@@ -147,14 +194,20 @@ extension DictationBarModel {
         ),
         secondaries: [],
         showsElapsedTime: false,
-        isExpanded: true
+        isExpanded: true,
+        announcement: nil
     )
 
     private static func resting(_ context: DictationContext) -> DictationBarModel {
-        DictationBarModel(
-            title: context.state == .completed ? "Text inserted" : "Ready to dictate",
-            body: .controls,
-            accent: context.state == .completed ? .ready : .brand,
+        // A finished insertion keeps the headline and the Undo button: "Text
+        // inserted" with an undo still available is not the moment to start
+        // offering candidates for the next word.
+        let justInserted = context.state == .completed
+        let showsCandidates = !justInserted && !context.candidates.isEmpty
+        return DictationBarModel(
+            title: justInserted ? "Text inserted" : "Ready to dictate",
+            body: showsCandidates ? .candidates(context.candidates) : .controls,
+            accent: justInserted ? .ready : .brand,
             pulse: .steady,
             primary: DictationButton(
                 title: "Dictate",
@@ -164,14 +217,16 @@ extension DictationBarModel {
             ),
             secondaries: context.canUndo ? [.undo] : [],
             showsElapsedTime: false,
-            isExpanded: false
+            isExpanded: false,
+            announcement: justInserted ? "Text inserted" : nil,
+            layout: justInserted ? .status : .strip
         )
     }
 
     private static let handoff = DictationBarModel(
         title: "Opening vocaphone",
-        body: .message("Start speaking as soon as the app appears."),
-        accent: .handoff,
+        body: .message("Speak when the app appears."),
+        accent: .brand,
         pulse: .working,
         primary: DictationButton(
             title: "Open app",
@@ -181,13 +236,14 @@ extension DictationBarModel {
         ),
         secondaries: [.cancel],
         showsElapsedTime: false,
-        isExpanded: true
+        isExpanded: true,
+        announcement: nil
     )
 
     private static let listening = DictationBarModel(
         title: "Listening",
         body: .waveform(.live),
-        accent: .listening,
+        accent: .recording,
         pulse: .listening,
         primary: DictationButton(
             title: "Finish",
@@ -197,12 +253,34 @@ extension DictationBarModel {
         ),
         secondaries: [.cancel],
         showsElapsedTime: true,
-        isExpanded: true
+        isExpanded: true,
+        announcement: "Recording started"
     )
 
-    private static func working(_ state: SessionState) -> DictationBarModel {
-        DictationBarModel(
-            title: state == .transcribing ? "Transcribing on your Mac" : "Sending to your Mac",
+    /// Where the work is happening, said plainly.
+    ///
+    /// Never "your Mac": a gateway may be a Linux box, a home server or a VPS,
+    /// and the interface has no business guessing which. Never "local" for a
+    /// gateway either — audio genuinely leaves the phone on that route.
+    private static func working(_ context: DictationContext) -> DictationBarModel {
+        let title: String = switch context.state {
+        case .finalizing:
+            "Finishing recording"
+        case .uploading:
+            switch context.processingLocation {
+            case .gateway: "Sending to your gateway"
+            case .onDevice: "Preparing on this iPhone"
+            case nil: "Preparing transcript"
+            }
+        default:
+            switch context.processingLocation {
+            case .gateway: "Transcribing on your gateway"
+            case .onDevice: "Transcribing on this iPhone"
+            case nil: "Transcribing"
+            }
+        }
+        return DictationBarModel(
+            title: title,
             body: .waveform(.indeterminate),
             accent: .working,
             pulse: .working,
@@ -214,7 +292,8 @@ extension DictationBarModel {
             ),
             secondaries: [.cancel],
             showsElapsedTime: false,
-            isExpanded: true
+            isExpanded: true,
+            announcement: context.state == .finalizing ? title : nil
         )
     }
 
@@ -235,13 +314,14 @@ extension DictationBarModel {
             ),
             secondaries: [.cancel],
             showsElapsedTime: false,
-            isExpanded: true
+            isExpanded: true,
+            announcement: "Transcript ready"
         )
     }
 
     private static func waitingForField(_ context: DictationContext) -> DictationBarModel {
         DictationBarModel(
-            title: "Waiting for its own field",
+            title: "Waiting for the original field",
             body: .message(
                 quoted(context.transcript) ?? "Return to that field, or insert it here."
             ),
@@ -255,7 +335,8 @@ extension DictationBarModel {
             ),
             secondaries: [.cancel],
             showsElapsedTime: false,
-            isExpanded: true
+            isExpanded: true,
+            announcement: "Waiting for the field this was dictated for"
         )
     }
 
@@ -272,7 +353,8 @@ extension DictationBarModel {
         ),
         secondaries: [],
         showsElapsedTime: false,
-        isExpanded: true
+        isExpanded: true,
+        announcement: nil
     )
 
     /// The recording survived, so retrying it is the prominent action. It used
@@ -287,43 +369,46 @@ extension DictationBarModel {
                 hint: "Sends the preserved recording again."
             )
             : DictationButton(title: "Dictate", symbol: "mic.fill", action: .start)
+        let title = context.state == .serverUnavailable
+            ? "Gateway unavailable"
+            : "Transcription paused"
         return DictationBarModel(
-            title: context.state == .serverUnavailable
-                ? "Gateway unavailable"
-                : "Transcription paused",
+            title: title,
             body: .message(context.errorMessage ?? "Your recording is preserved."),
-            accent: .alert,
+            accent: .error,
             pulse: .steady,
             primary: primary,
             // Cancelling returns the bar to Ready with Dictate already in place,
             // so a separate "new recording" button only crowded the title out.
             secondaries: [.cancel],
             showsElapsedTime: false,
-            isExpanded: true
+            isExpanded: true,
+            announcement: context.canRetry ? "\(title). Retry is available." : title
         )
     }
 
     private static let permissionDenied = DictationBarModel(
         title: "Microphone access needed",
-        body: .message("Allow the microphone in vocaphone, then dictate again."),
-        accent: .alert,
+        body: .message("Open vocaphone to allow the microphone, then dictate again."),
+        accent: .error,
         pulse: .steady,
         primary: DictationButton(
             title: "Open app",
-            symbol: "gear",
+            symbol: "arrow.up.forward.app.fill",
             action: .start,
             hint: "Opens vocaphone so the microphone prompt can be answered."
         ),
         secondaries: [],
         showsElapsedTime: false,
-        isExpanded: true
+        isExpanded: true,
+        announcement: "Microphone access needed"
     )
 
     private static func permanentFailure(_ context: DictationContext) -> DictationBarModel {
         DictationBarModel(
             title: "Transcription failed",
             body: .message(context.errorMessage ?? "Please make a new recording."),
-            accent: .alert,
+            accent: .error,
             pulse: .steady,
             primary: DictationButton(
                 title: "Try again",
@@ -333,7 +418,8 @@ extension DictationBarModel {
             ),
             secondaries: [],
             showsElapsedTime: false,
-            isExpanded: true
+            isExpanded: true,
+            announcement: "Transcription failed"
         )
     }
 

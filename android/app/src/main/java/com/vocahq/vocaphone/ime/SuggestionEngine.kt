@@ -101,12 +101,15 @@ internal class SuggestionDictionary(
     }
 
     companion object {
+        // Both files come from assets/keyboard/ at the repository root, merged
+        // into the asset root by the sourceSets entry in app/build.gradle.kts.
+        // The iOS keyboard reads the same two files.
         fun load(assets: AssetManager) = SuggestionDictionary(
-            words = assets.open("suggestions/en.txt").bufferedReader().readLines()
+            words = assets.open("en.txt").bufferedReader().readLines()
                 .map { it.trim() }
                 .filter { it.isNotEmpty() },
             bigrams = parseBigrams(
-                assets.open("suggestions/en-bigrams.txt").bufferedReader().readLines(),
+                assets.open("en-bigrams.txt").bufferedReader().readLines(),
             ),
         )
 

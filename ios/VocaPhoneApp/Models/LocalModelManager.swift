@@ -13,6 +13,14 @@ final class LocalModelManager {
     private(set) var loadingMessage: String?
     private(set) var message: String?
     private(set) var hasError = false
+    /// Models whose files are present but whose SHA-256 digests are still being
+    /// checked. Published because "downloaded" and "safe to load" are different
+    /// claims, and the picker must not offer the second before it is true.
+    private(set) var verifyingModelIDs: Set<String> = []
+    /// Models whose files are present but failed their integrity check. A
+    /// corrupted or tampered-with model is a different problem from a download
+    /// that never happened, and it needs a different sentence.
+    private(set) var failedIntegrityModelIDs: Set<String> = []
 
     private var whisperKit: WhisperKit?
     private var sherpaRecognizer: SherpaRecognizer?
@@ -21,6 +29,9 @@ final class LocalModelManager {
     /// Sherpa only: WhisperKit takes its decoding options per call, so quality
     /// never invalidates a loaded Whisper model.
     private var loadedQuality: TranscriptionQuality?
+    /// The sherpa load currently running, so a second request waits for it
+    /// instead of building a second ONNX graph beside the first.
+    private var sherpaLoad: Task<SherpaRecognizer, Error>?
     private var modelsDirectory: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?
@@ -49,6 +60,8 @@ final class LocalModelManager {
             }
         }
         downloadedModelIDs = verified
+        verifyingModelIDs = Set(needsDigestCheck.map(\.id))
+        failedIntegrityModelIDs.subtract(verified)
         guard !needsDigestCheck.isEmpty else { return }
         // A model downloaded before markers existed, or one whose pins changed in
         // an app update, is hashed once in the background rather than on launch.
@@ -292,15 +305,41 @@ final class LocalModelManager {
                     )) != nil
                 }
             }.value
+            verifyingModelIDs.remove(identifier)
             if verified {
                 downloadedModelIDs.insert(identifier)
+                failedIntegrityModelIDs.remove(identifier)
             } else {
                 downloadedModelIDs.remove(identifier)
+                // The files are on disk and do not match their pins. Saying only
+                // "not downloaded" would send the user to re-download something
+                // they already have.
+                failedIntegrityModelIDs.insert(identifier)
             }
         }
     }
 
     func isDownloaded(_ id: String) -> Bool { downloadedModelIDs.contains(id) }
+
+    /// Removes a model's files and reports the outcome, so the picker's Delete
+    /// button does not have to decide what a failure means.
+    ///
+    /// Leaving `LocalTranscriptionPreferences` pointing at a deleted model would
+    /// leave the app claiming an on-device route it can no longer take, which is
+    /// exactly the kind of false readiness the source card exists to prevent —
+    /// ``delete(_:)`` already clears it.
+    func deleteReportingResult(_ descriptor: LocalModelDescriptor) {
+        do {
+            try delete(descriptor)
+            failedIntegrityModelIDs.remove(descriptor.id)
+            verifyingModelIDs.remove(descriptor.id)
+            message = "\(descriptor.displayName) was removed from this iPhone."
+            hasError = false
+        } catch {
+            message = "\(descriptor.displayName) could not be removed."
+            hasError = true
+        }
+    }
 
     /// Loads the selected engine before the user starts dictating. The first
     /// Core ML or ONNX initialization can take a while, so this state is
@@ -340,12 +379,36 @@ final class LocalModelManager {
             )
         case .sherpaOnnx:
             let resolvedLanguage = descriptor.englishOnly ? "en" : language
-            _ = try ensureSherpaRecognizer(
+            _ = try await ensureSherpaRecognizer(
                 descriptor: descriptor,
                 folder: folder,
                 resolvedLanguage: resolvedLanguage
             )
         }
+    }
+
+    /// Rebuilds the engine after an accuracy change — and only when there is
+    /// already one loaded to rebuild.
+    ///
+    /// Accuracy is read at inference time, so a model that is not currently in
+    /// memory needs nothing done to it: the next dictation builds it with the
+    /// new setting. Calling `prepare` unconditionally meant a Settings control
+    /// pulling a whole speech-to-text model into memory — several hundred
+    /// megabytes, with Core ML prewarm on top — which is the most expensive
+    /// thing this app can do and the last thing a settings screen should be
+    /// doing.
+    ///
+    /// Whisper is excluded even when it *is* loaded: WhisperKit takes its
+    /// decoding options per call, so quality never invalidates it and the
+    /// rebuild would be pure cost. Only sherpa bakes the decoding method into
+    /// the recognizer.
+    func reloadForAccuracyChange(language: String) async throws {
+        guard let id = loadedModelID,
+              sherpaRecognizer != nil,
+              let descriptor = LocalModelCatalog.descriptor(for: id),
+              descriptor.engine == .sherpaOnnx
+        else { return }
+        try await prepare(descriptor, language: language)
     }
 
     /// Prepares a Sherpa recognizer and starts consuming the lossless local
@@ -354,7 +417,7 @@ final class LocalModelManager {
     func startSherpaIncrementalSession(
         chunks: AsyncStream<Data>,
         language: String
-    ) throws -> SherpaIncrementalSession? {
+    ) async throws -> SherpaIncrementalSession? {
         guard let id = LocalTranscriptionPreferences.modelIdentifier,
               let descriptor = LocalModelCatalog.descriptor(for: id),
               descriptor.engine == .sherpaOnnx
@@ -364,7 +427,7 @@ final class LocalModelManager {
         }
 
         let resolvedLanguage = descriptor.englishOnly ? "en" : language
-        let recognizer = try ensureSherpaRecognizer(
+        let recognizer = try await ensureSherpaRecognizer(
             descriptor: descriptor,
             folder: folder,
             resolvedLanguage: resolvedLanguage
@@ -829,7 +892,7 @@ final class LocalModelManager {
             return LocalTranscription(text: text, language: results.first?.language ?? "")
 
         case .sherpaOnnx:
-            let sherpaRecognizer = try ensureSherpaRecognizer(
+            let sherpaRecognizer = try await ensureSherpaRecognizer(
                 descriptor: descriptor,
                 folder: folder,
                 resolvedLanguage: resolvedLanguage
@@ -850,7 +913,15 @@ final class LocalModelManager {
         tokenizerFolder: URL
     ) async throws -> WhisperKit {
         if loadedModelID != descriptor.id || whisperKit == nil {
+            // Both engines released before the new one is built, for the same
+            // reason as in `ensureSherpaRecognizer`: two sets of model weights
+            // resident at once is an out-of-memory kill on a phone, and the
+            // previous Whisper model is exactly that much memory.
             sherpaRecognizer = nil
+            whisperKit = nil
+            loadedModelID = nil
+            loadedLanguage = nil
+            loadedQuality = nil
             whisperKit = try await WhisperKit(
                 WhisperKitConfig(
                     model: descriptor.id,
@@ -877,36 +948,68 @@ final class LocalModelManager {
         descriptor: LocalModelDescriptor,
         folder: URL,
         resolvedLanguage: String
-    ) throws -> SherpaRecognizer {
+    ) async throws -> SherpaRecognizer {
         let files = try LocalModelIntegrity.sherpaModel(for: descriptor.id).files
         try LocalModelIntegrity.verifySizes(in: folder, files: files)
         // Sherpa bakes the decoding method into the recognizer, so a change of
         // quality means building a new one.
         let quality = LocalTranscriptionPreferences.quality
-        if loadedModelID != descriptor.id
-            || loadedLanguage != resolvedLanguage
-            || loadedQuality != quality
-            || sherpaRecognizer == nil
+
+        // Never two loads at once. Building an ONNX graph while another is
+        // still being built puts both models' weights in memory at the same
+        // time, which on a phone is an out-of-memory kill rather than a slow
+        // moment. Changing the accuracy setting twice in quick succession is
+        // exactly how that used to happen.
+        while let inFlight = sherpaLoad {
+            _ = try? await inFlight.value
+            if sherpaLoad == inFlight { sherpaLoad = nil }
+        }
+
+        if let sherpaRecognizer,
+           loadedModelID == descriptor.id,
+           loadedLanguage == resolvedLanguage,
+           loadedQuality == quality
         {
-            whisperKit = nil
-            sherpaRecognizer = try SherpaRecognizer.create(
+            return sherpaRecognizer
+        }
+
+        // Released *before* the replacement is built, not after. Holding the
+        // old recognizer across the load doubles peak memory for the duration —
+        // and for a several-hundred-megabyte model that is the difference
+        // between a pause and the app being killed. The cost of getting this
+        // wrong in the other direction is one failed load that the next
+        // dictation rebuilds, so this is the safe side to err on.
+        whisperKit = nil
+        sherpaRecognizer = nil
+        loadedModelID = nil
+        loadedLanguage = nil
+        loadedQuality = nil
+
+        // Off the main actor: `SherpaRecognizer.create` is synchronous and
+        // reads hundreds of megabytes from disk, so running it here froze the
+        // interface that had just published "Loading…".
+        let threads = max(2, min(ProcessInfo.processInfo.processorCount - 2, 4))
+        let task = Task.detached(priority: .userInitiated) {
+            try SherpaRecognizer.create(
                 model: descriptor,
                 directory: folder,
                 language: resolvedLanguage,
                 // ONNX Runtime's CPU pool benefits from a bounded number of
                 // workers on iPhone; using every logical core throttles long
                 // recordings and competes with audio/UI work.
-                threads: max(2, min(ProcessInfo.processInfo.processorCount - 2, 4)),
+                threads: threads,
                 quality: quality
             )
-            loadedModelID = descriptor.id
-            loadedLanguage = resolvedLanguage
-            loadedQuality = quality
         }
-        guard let sherpaRecognizer else {
-            throw LocalModelManagerError.engineLoadFailed(descriptor.id)
-        }
-        return sherpaRecognizer
+        sherpaLoad = task
+        defer { if sherpaLoad == task { sherpaLoad = nil } }
+
+        let recognizer = try await task.value
+        sherpaRecognizer = recognizer
+        loadedModelID = descriptor.id
+        loadedLanguage = resolvedLanguage
+        loadedQuality = quality
+        return recognizer
     }
 
     private func modelDirectory(for id: String) -> URL? {

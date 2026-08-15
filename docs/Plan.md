@@ -1,5 +1,12 @@
 # Self-Hosted iPhone Voice Keyboard — Implementation Plan
 
+> Historical. This is the plan the iOS client was originally built from, kept
+> for its reasoning about the platform boundaries. The user interface it
+> describes was superseded by a later redesign that reorganized the keyboard,
+> the containing app, setup, and settings around the Voca app design standard.
+> The architecture here — App Group session handoff, direct insertion, and the
+> recording boundary — is unchanged.
+
 ## 1. Purpose
 
 Build a native iPhone application that provides a system-wide custom keyboard with a microphone button. The user can open any standard iOS text field, select the custom keyboard, dictate, send the audio privately to a transcription model running on their Mac through Tailscale, and insert the returned text directly at the active cursor.

@@ -7,6 +7,24 @@ enum AppConfiguration {
     /// list, so drift degrades guided setup rather than breaking dictation.
     static let keyboardBundleIdentifier = "com.vocahq.vocaphone.keyboard"
     static let urlScheme = "vocaphone"
+    /// The manual route to the Full Access switch, written once because the app
+    /// and the keyboard both have to give it and they must not disagree.
+    ///
+    /// iOS exposes no URL that opens this pane — `openSettingsURLString` lands
+    /// in vocaphone's own settings, which does not contain the switch — so these
+    /// words are the whole recovery path, and calling anything else a "deep
+    /// link" to it would be a promise the system cannot keep.
+    static let fullAccessSettingsPath =
+        "Settings › General › Keyboard › Keyboards › vocaphone › Allow Full Access."
+
+    /// The same instruction, front-loaded for the keyboard's two-line bar.
+    ///
+    /// The full path does not fit there and truncates mid-phrase — "… › Allow
+    /// Full A…" — which drops the one part the reader has to act on. Naming the
+    /// switch first means a truncation costs the tail of the path, which the
+    /// containing app spells out in full under Privacy and permissions.
+    static let fullAccessKeyboardHint =
+        "Turn on Allow Full Access under Settings › General › Keyboard."
     static let maximumRecordingSeconds: TimeInterval = 120
     static let quickDictationWindowSeconds: TimeInterval = 10 * 60
     /// How long the keyboard waits for an unclaimed Quick Dictation request

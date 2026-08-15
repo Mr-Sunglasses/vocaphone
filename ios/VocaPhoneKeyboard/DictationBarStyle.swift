@@ -15,16 +15,14 @@ extension KeyboardPalette {
         // product draws.
         case .brand, .ready:
             BrandPalette.accent(isDark: isDark)
-        case .handoff:
-            isDark ? rgb(0.64, 0.69, 0.98) : rgb(0.31, 0.36, 0.75)
-        case .listening:
-            isDark ? rgb(1, 0.45, 0.44) : rgb(0.82, 0.18, 0.19)
+        case .recording:
+            SemanticPalette.value(.recording, isDark: isDark)
         case .working:
-            isDark ? rgb(1, 0.72, 0.38) : rgb(0.72, 0.39, 0.05)
-        case .alert:
-            isDark ? rgb(1, 0.48, 0.43) : rgb(0.72, 0.19, 0.15)
+            SemanticPalette.value(.warning, isDark: isDark)
+        case .error:
+            SemanticPalette.value(.error, isDark: isDark)
         case .locked:
-            isDark ? rgb(0.58, 0.6, 0.63) : rgb(0.43, 0.45, 0.48)
+            SemanticPalette.value(.disabled, isDark: isDark)
         }
     }
 
@@ -52,9 +50,7 @@ extension KeyboardPalette {
     /// the channels linearised first; having done that, comparing both options
     /// is no more work than picking a cut-off and cannot be off by one accent.
     func labelColor(for accent: DictationAccent, enabled: Bool = true) -> UIColor {
-        let drawn = drawnFill(for: accent, enabled: enabled)
-        let ink = UIColor(white: 0.08, alpha: 1)
-        return contrast(drawn, ink) >= contrast(drawn, .white) ? ink : .white
+        ContrastMath.legibleLabel(on: drawnFill(for: accent, enabled: enabled))
     }
 
     /// The fill as the user actually sees it. A disabled primary draws its accent
@@ -65,25 +61,32 @@ extension KeyboardPalette {
         guard !enabled else { return fill }
         return fill
             .withAlphaComponent(Self.disabledFillAlpha)
-            .composited(over: barBackground)
+            .compositedOver(barBackground)
     }
 
-    private func contrast(_ first: UIColor, _ second: UIColor) -> CGFloat {
-        let a = first.relativeLuminance
-        let b = second.relativeLuminance
-        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
-    }
-
+    /// The bar sits on the keyboard, not on the app's warm canvas, so it stays
+    /// in the keys' neutral family — one step brighter than the surrounding
+    /// background so it reads as a surface above them.
     var barBackground: UIColor {
-        isDark
-            ? UIColor(red: 0.135, green: 0.145, blue: 0.17, alpha: 1)
-            : UIColor(red: 0.985, green: 0.99, blue: 1, alpha: 1)
+        isDark ? UIColor(white: 0.145, alpha: 1) : UIColor(white: 0.988, alpha: 1)
     }
 
+    /// Chips sit on the bar, which is itself a surface above the keys, so a
+    /// 4%-alpha wash disappeared into it. These are the values a suggestion has
+    /// to clear to look like something tappable rather than a stain.
     var chipBackground: UIColor {
         isDark
-            ? UIColor.white.withAlphaComponent(0.1)
-            : UIColor.black.withAlphaComponent(0.045)
+            ? UIColor.white.withAlphaComponent(0.16)
+            : UIColor.black.withAlphaComponent(0.07)
+    }
+
+    /// The hairline that gives a quiet chip an edge. Stronger than
+    /// ``cardBorder``, because it has to survive being drawn over a fill that is
+    /// itself only a few percent away from the bar behind it.
+    var chipBorder: UIColor {
+        isDark
+            ? UIColor.white.withAlphaComponent(0.14)
+            : UIColor.black.withAlphaComponent(0.10)
     }
 
     var secondaryControl: UIColor {
@@ -91,54 +94,20 @@ extension KeyboardPalette {
             ? UIColor.white.withAlphaComponent(0.13)
             : UIColor.black.withAlphaComponent(0.06)
     }
-
-    private func rgb(_ red: CGFloat, _ green: CGFloat, _ blue: CGFloat) -> UIColor {
-        UIColor(red: red, green: green, blue: blue, alpha: 1)
-    }
-}
-
-private extension UIColor {
-    /// WCAG relative luminance, which is defined on *linear* channels — sRGB
-    /// components have to be un-gamma'd first, which is the step the earlier
-    /// threshold-based label rule skipped.
-    var relativeLuminance: CGFloat {
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-        guard getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return 0 }
-        func linear(_ channel: CGFloat) -> CGFloat {
-            channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
-        }
-        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
-    }
-
-    /// Flattens a translucent colour onto an opaque one, so a disabled fill can
-    /// be judged as the user sees it rather than as it was declared.
-    func composited(over background: UIColor) -> UIColor {
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-        var backRed: CGFloat = 0
-        var backGreen: CGFloat = 0
-        var backBlue: CGFloat = 0
-        var backAlpha: CGFloat = 0
-        guard getRed(&red, green: &green, blue: &blue, alpha: &alpha),
-              background.getRed(&backRed, green: &backGreen, blue: &backBlue, alpha: &backAlpha)
-        else { return self }
-        return UIColor(
-            red: alpha * red + (1 - alpha) * backRed,
-            green: alpha * green + (1 - alpha) * backGreen,
-            blue: alpha * blue + (1 - alpha) * backBlue,
-            alpha: 1
-        )
-    }
 }
 
 /// Geometry for one rendering of the bar. Everything scales with the traits so
 /// landscape and iPad stop inheriting portrait iPhone sizing.
 struct DictationBarMetrics: Equatable {
+    /// The one-row idle bar: candidates or pickers, and a round Dictate button.
+    ///
+    /// Smaller than ``collapsedHeight`` on purpose. Today's collapsed bar plus
+    /// the grid already comes to the height of a *system* keyboard that has a
+    /// suggestion strip — while having none. Adding a third region would have
+    /// covered appreciably more of the host app than the keyboard vocaphone
+    /// competes with, so the idle bar shrank into the strip instead and the
+    /// keyboard as a whole got shorter.
+    var stripHeight: CGFloat
     var collapsedHeight: CGFloat
     var expandedHeight: CGFloat
     var horizontalInset: CGFloat
@@ -158,9 +127,61 @@ struct DictationBarMetrics: Equatable {
         expanded ? expandedHeight : collapsedHeight
     }
 
+    func height(for layout: DictationBarLayout, expanded: Bool) -> CGFloat {
+        switch layout {
+        case .strip: stripHeight
+        case .status: height(expanded: expanded)
+        }
+    }
+
+    /// Chips and the round Dictate button are the only content of the strip, so
+    /// they take the whole row less its insets — and they must stay a
+    /// comfortable touch target while doing it.
+    var chipHeight: CGFloat { max(38, stripHeight - 2 * verticalInset) }
+
+    /// Scales the portrait bar with the chosen key height, so the bar and the
+    /// grid stay one composition rather than a fixed strip above keys that
+    /// changed size underneath it.
+    ///
+    /// Modestly, though: the bar carries a title, a body and an action column
+    /// whose legibility does not follow key ergonomics, so it moves by a few
+    /// points where the keys move by ten.
+    private func scaled(by factor: CGFloat) -> DictationBarMetrics {
+        guard factor != 1 else { return self }
+        var scaled = self
+        scaled.stripHeight = (stripHeight * factor).rounded()
+        scaled.collapsedHeight = (collapsedHeight * factor).rounded()
+        scaled.expandedHeight = (expandedHeight * factor).rounded()
+        scaled.primaryHeight = (primaryHeight * factor).rounded()
+        scaled.controlHeight = (controlHeight * factor).rounded()
+        scaled.waveformHeight = (waveformHeight * factor).rounded()
+        scaled.secondaryDiameter = (secondaryDiameter * factor).rounded()
+        scaled.cornerRadius = min(24, max(20, (cornerRadius * factor).rounded()))
+        return scaled
+    }
+
+    static func resolved(
+        for traits: UITraitCollection,
+        preference: KeyboardHeightPreference
+    ) -> DictationBarMetrics {
+        let base = resolved(for: traits)
+        // Landscape and regular-width canvases keep their dedicated metrics: one
+        // has no height to give away and the other was never sized from the
+        // portrait preference in the first place.
+        guard traits.verticalSizeClass == .regular,
+              traits.horizontalSizeClass != .regular
+        else { return base }
+        return switch preference {
+        case .compact: base.scaled(by: 0.94)
+        case .standard: base
+        case .tall: base.scaled(by: 1.06)
+        }
+    }
+
     static func resolved(for traits: UITraitCollection) -> DictationBarMetrics {
         if traits.horizontalSizeClass == .regular, traits.verticalSizeClass == .regular {
             return DictationBarMetrics(
+                stripHeight: 62,
                 collapsedHeight: 82,
                 expandedHeight: 96,
                 horizontalInset: 16,
@@ -180,6 +201,7 @@ struct DictationBarMetrics: Equatable {
             // Landscape phones have almost no height to spare, so the bar gives
             // up its breathing room before the keys give up theirs.
             return DictationBarMetrics(
+                stripHeight: 46,
                 collapsedHeight: 58,
                 expandedHeight: 58,
                 horizontalInset: 11,
@@ -196,6 +218,7 @@ struct DictationBarMetrics: Equatable {
             )
         }
         return DictationBarMetrics(
+            stripHeight: 54,
             collapsedHeight: 72,
             expandedHeight: 84,
             horizontalInset: 13,

@@ -89,6 +89,18 @@ limits and Android's keyboard/input-method boundaries.
 
 - Native SwiftUI app and UIKit keyboard with Start, Finish, Cancel, Retry, Undo,
   language/style status, next-keyboard control, and direct insertion
+- A full four-row QWERTY keyboard with letters, numbers and symbols planes,
+  long-press accented characters, delete-repeat, double-space period, spacebar
+  cursor control, and a Compact/Standard/Tall height preference
+- On-device word completion, autocorrect and next-word prediction on iOS, worked
+  out by the system dictionary plus your own words — nothing typed is sent
+  anywhere, logged, or exported, and it all works with Full Access off
+- Swipe typing, an emoji panel with local search, and smart punctuation that
+  honours what the field asks for, on both clients
+- Every surface states where speech becomes text — "Transcribing on this iPhone"
+  or "Transcribing on your gateway" — in the keyboard, the app, and the Live
+  Activity, and stays neutral rather than guessing when a session predates the
+  choice
 - Native Kotlin/Compose Android client with a permission-minimal VocaPhone voice
   keyboard, the same styles and gateway as the iOS keyboard
 - 27 selectable transcription languages plus Automatic on both clients —
@@ -341,8 +353,9 @@ only need the secret.
    The **Token to encode** dropdown switches the QR between the bootstrap
    token and any device token created this way; manage or revoke them later
    from Settings → **Paired device tokens**.
-3. In the iPhone app, open **Settings** and tap **Scan pairing QR code**. On
-   Android, open **Gateway** and tap **Scan QR code**.
+3. In the iPhone app, open **Settings → Transcription → Gateway** and tap
+   **Scan pairing QR code**. On Android, open **Gateway** and tap
+   **Scan QR code**.
 4. Grant camera access if asked; the scan fills address + token and runs the
    connection test.
 
@@ -375,8 +388,12 @@ Then:
 3. Install the containing app on the iPhone and grant microphone permission.
 4. Add the keyboard under **Settings → General → Keyboard → Keyboards** and enable
    Full Access.
-5. In the app, enter the reachable HTTP/HTTPS gateway URL and bearer token,
-   then use **Save and test**. Approve Local Network access when using a LAN host.
+5. Choose a transcription source in guided setup: download an on-device
+   speech-to-text model, **or** enter the reachable HTTP/HTTPS gateway URL and
+   bearer token under **Settings → Transcription → Gateway** and use
+   **Save and test**. Approve Local Network access when using a LAN host.
+   Either source alone is enough to dictate; the app says which one is in use
+   and where the audio goes.
 
 Complete the physical-device checklist in [device setup](docs/device-setup.md).
 

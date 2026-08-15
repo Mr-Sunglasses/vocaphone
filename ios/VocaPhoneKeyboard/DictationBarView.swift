@@ -6,6 +6,8 @@ protocol DictationBarViewDelegate: AnyObject {
     /// The language and style pickers write straight to the shared preferences,
     /// so the controller only needs to know that a re-render is due.
     func dictationBarDidChangePreferences(_ bar: DictationBarView)
+    /// A candidate chip was tapped.
+    func dictationBar(_ bar: DictationBarView, didChoose candidate: TypingCandidate)
 }
 
 /// The dictation chrome above the keys: one container that morphs between
@@ -14,7 +16,7 @@ protocol DictationBarViewDelegate: AnyObject {
 /// The two rows it replaces cost 117pt whether or not anything was happening.
 /// This bar spends 72pt while idle and 84pt while a session is live, and the
 /// difference goes to the keys.
-final class DictationBarView: UIView {
+final class DictationBarView: UIView, TypingStripViewDelegate {
     weak var delegate: (any DictationBarViewDelegate)?
 
     var metrics: DictationBarMetrics {
@@ -42,6 +44,7 @@ final class DictationBarView: UIView {
     private let styleButton = UIButton(type: .system)
     private let waveform = WaveformView()
     private let messageLabel = UILabel()
+    private lazy var typingStrip = TypingStripView(palette: palette, metrics: metrics)
 
     private let actionStack = UIStackView()
     private let secondaryStack = UIStackView()
@@ -54,6 +57,10 @@ final class DictationBarView: UIView {
     private var renderedLanguageMenuKey: LanguageMenuKey?
     private var renderedStyle: WritingStyle?
     private var visibleBodyView: UIView?
+    private var renderedLayout: DictationBarLayout?
+    /// Set from layout, not from traits: both a 320pt and a 430pt phone are
+    /// compact-width, and only one of them is short of room.
+    private var isNarrow = false
     private var flashWork: DispatchWorkItem?
     private var isFlashing = false
 
@@ -61,6 +68,8 @@ final class DictationBarView: UIView {
     private var topInset: NSLayoutConstraint?
     private var bottomInset: NSLayoutConstraint?
     private var primaryWidthConstraint: NSLayoutConstraint?
+    private var bodyTopConstraint: NSLayoutConstraint?
+    private var bodyTopToBarConstraint: NSLayoutConstraint?
     private var primaryHeightConstraint: NSLayoutConstraint?
     private var waveformHeightConstraint: NSLayoutConstraint?
     private var controlHeights: [NSLayoutConstraint] = []
@@ -88,10 +97,53 @@ final class DictationBarView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        applyWidthAdjustment()
         layer.shadowPath = UIBezierPath(
             roundedRect: bounds,
             cornerRadius: metrics.cornerRadius
         ).cgPath
+    }
+
+    /// Gives the title back some of the action column on a narrow phone.
+    ///
+    /// The metrics are resolved from traits, which cannot tell a 320pt phone
+    /// from a 430pt one — both are compact-width. With a fixed 116pt button and
+    /// a 34pt secondary, "Gateway unavailable" had about 80pt to live in at
+    /// 320pt and truncated to "Gateway una…", which names no problem at all.
+    /// The controls shrink instead, down to a floor that keeps the primary a
+    /// comfortable target.
+    private func applyWidthAdjustment() {
+        guard bounds.width > 0 else { return }
+        // The strip's button is a circle sized from the row, not from the
+        // available width; narrowing it would make it an ellipse.
+        guard renderedLayout != .strip else { return }
+        // A 393pt phone, less the keyboard's own side insets: the width the
+        // metrics were chosen against.
+        let reference: CGFloat = 381
+        let scale = min(1, max(0.82, bounds.width / reference))
+        let width = (metrics.primaryWidth * scale).rounded()
+        let diameter = (metrics.secondaryDiameter * scale).rounded()
+        // On the narrowest phone the primary drops its glyph as well. The label
+        // is the promise the button makes; the icon only decorates it, and 26pt
+        // of decoration is the difference between "Gateway unavailable" and
+        // "Gateway unavaila…".
+        let narrow = bounds.width < 340
+        if narrow != isNarrow {
+            isNarrow = narrow
+            if let model = renderedModel {
+                configurePrimary(
+                    model.primary,
+                    accent: model.accent,
+                    animated: false,
+                    force: true
+                )
+            }
+        }
+        // Constraint writes re-enter layout, so only a real change may go
+        // through.
+        guard primaryWidthConstraint?.constant != width else { return }
+        primaryWidthConstraint?.constant = width
+        secondarySizes.forEach { $0.constant = diameter }
     }
 
     // MARK: - Rendering
@@ -108,6 +160,7 @@ final class DictationBarView: UIView {
         if titleLabel.text != model.title {
             crossfade(titleLabel, animated: animated) { self.titleLabel.text = model.title }
         }
+        applyLayout(model.layout)
         timerLabel.isHidden = !model.showsElapsedTime
         indicator.pulse = model.pulse
         if accentChanged {
@@ -160,6 +213,24 @@ final class DictationBarView: UIView {
         isFlashing = false
     }
 
+    /// Switches between the one-row strip and the headline-and-body pair.
+    ///
+    /// The strip has no headline at all: the chips are the content, the round
+    /// button says what it does, and a "Ready to dictate" title above them would
+    /// be a row of chrome bought with the height the strip exists to save.
+    private func applyLayout(_ layout: DictationBarLayout) {
+        guard layout != renderedLayout else { return }
+        renderedLayout = layout
+        let isStrip = layout == .strip
+        headlineStack.isHidden = isStrip
+        bodyTopConstraint?.isActive = !isStrip
+        bodyTopToBarConstraint?.isActive = isStrip
+        // A configuration built for the other layout carries the wrong shape, so
+        // both buttons are rebuilt on the next apply.
+        renderedModel = nil
+        applyMetrics()
+    }
+
     // MARK: - Body
 
     private func setBody(_ body: DictationBody, animated: Bool) {
@@ -175,9 +246,13 @@ final class DictationBarView: UIView {
         } else {
             waveform.mode = nil
         }
+        if case let .candidates(candidates) = body {
+            typingStrip.apply(candidates, animated: animated)
+        }
 
         let target: UIView = switch body {
         case .controls: controlsStack
+        case .candidates: typingStrip
         case .waveform: waveform
         case .message: messageLabel
         }
@@ -208,26 +283,38 @@ final class DictationBarView: UIView {
     private func configurePrimary(
         _ button: DictationButton,
         accent: DictationAccent,
-        animated: Bool
+        animated: Bool,
+        force: Bool = false
     ) {
-        let changed = renderedModel?.primary != button || renderedModel?.accent != accent
+        let changed = force
+            || renderedModel?.primary != button
+            || renderedModel?.accent != accent
         primaryButton.isEnabled = button.isEnabled
         primaryButton.accessibilityLabel = button.title
         primaryButton.accessibilityHint = button.hint
         guard changed || primaryButton.configuration == nil else { return }
         let titleSize = metrics.titleFontSize
+        // The strip's Dictate button is a circle with a microphone in it. The
+        // word "Dictate" is worth 70 pt of a row whose whole purpose is to show
+        // candidates, and the glyph plus the accessibility label say the same
+        // thing in none of it.
+        let isCompact = renderedLayout == .strip
+        let showsGlyph = !isNarrow || isCompact
+        let showsTitle = !isCompact
         let labelColor = palette.labelColor(for: accent, enabled: button.isEnabled)
         let update = { [primaryButton] in
             var configuration = UIButton.Configuration.plain()
-            configuration.title = button.title
-            configuration.image = UIImage(
-                systemName: button.symbol,
-                withConfiguration: UIImage.SymbolConfiguration(
-                    pointSize: titleSize - 2,
-                    weight: .semibold
+            configuration.title = showsTitle ? button.title : nil
+            configuration.image = showsGlyph
+                ? UIImage(
+                    systemName: button.symbol,
+                    withConfiguration: UIImage.SymbolConfiguration(
+                        pointSize: titleSize - 2,
+                        weight: .semibold
+                    )
                 )
-            )
-            configuration.imagePadding = 6
+                : nil
+            configuration.imagePadding = showsGlyph && showsTitle ? 6 : 0
             configuration.contentInsets = .zero
             configuration.baseForegroundColor = labelColor
             // UIKit dims a disabled button's own colours towards grey, which on
@@ -275,6 +362,12 @@ final class DictationBarView: UIView {
             button.configuration = configuration
         }
         secondaryStack.isHidden = items.isEmpty
+    }
+
+    /// Chip taps travel straight through: the bar draws the strip, but only the
+    /// controller can rewrite the document.
+    func typingStrip(_ strip: TypingStripView, didChoose candidate: TypingCandidate) {
+        delegate?.dictationBar(self, didChoose: candidate)
     }
 
     @objc private func primaryTapped() {
@@ -487,6 +580,11 @@ final class DictationBarView: UIView {
         layer.borderColor = palette.cardBorder.cgColor
         titleLabel.textColor = palette.label
         messageLabel.textColor = palette.secondaryLabel
+        // The strip is a child view with its own copy of the palette, and it
+        // was never told when the keyboard changed appearance — so in a dark
+        // field it kept drawing the light palette's black chip labels on a dark
+        // bar, which is to say it drew nothing anyone could read.
+        typingStrip.palette = palette
         // Colours are baked into the button configurations, so every cached
         // rendering has to be discarded before the next apply.
         renderedModel = nil
@@ -503,8 +601,14 @@ final class DictationBarView: UIView {
         }
         topInset?.constant = metrics.verticalInset
         bottomInset?.constant = -metrics.verticalInset
-        primaryWidthConstraint?.constant = metrics.primaryWidth
-        primaryHeightConstraint?.constant = metrics.primaryHeight
+        let isStrip = renderedLayout == .strip
+        primaryWidthConstraint?.constant = isStrip
+            ? metrics.chipHeight
+            : metrics.primaryWidth
+        primaryHeightConstraint?.constant = isStrip
+            ? metrics.chipHeight
+            : metrics.primaryHeight
+        bodyTopToBarConstraint?.constant = metrics.verticalInset
         waveformHeightConstraint?.constant = metrics.waveformHeight
         controlHeights.forEach { $0.constant = metrics.controlHeight }
         secondarySizes.forEach { $0.constant = metrics.secondaryDiameter }
@@ -517,6 +621,7 @@ final class DictationBarView: UIView {
         )
         messageLabel.font = .systemFont(ofSize: metrics.bodyFontSize, weight: .regular)
         messageLabel.numberOfLines = metrics.messageLineLimit
+        typingStrip.metrics = metrics
         renderedModel = nil
         renderedLanguage = nil
         renderedLanguageMenuKey = nil
@@ -550,7 +655,11 @@ final class DictationBarView: UIView {
         layer.shadowOffset = CGSize(width: 0, height: 2)
 
         titleLabel.adjustsFontSizeToFitWidth = true
-        titleLabel.minimumScaleFactor = 0.8
+        // A state name shrunk by a quarter is still readable; a state name cut
+        // to "Gateway una…" names no problem at all. Shrinking is the better of
+        // the two failures, and it only engages on the narrowest phones — at
+        // 393pt the longest title renders at full size.
+        titleLabel.minimumScaleFactor = 0.72
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -585,9 +694,11 @@ final class DictationBarView: UIView {
         languageButton.setContentCompressionResistancePriority(.required, for: .horizontal)
         styleButton.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
 
+        typingStrip.chipDelegate = self
+
         // Only one body view is visible at a time; the others stay in place at
         // zero alpha so a change is a dissolve rather than a re-layout.
-        for view in [controlsStack, waveform, messageLabel] as [UIView] {
+        for view in [controlsStack, waveform, messageLabel, typingStrip] as [UIView] {
             view.alpha = 0
             view.isHidden = true
             bodyContainer.addSubview(view)
@@ -614,8 +725,10 @@ final class DictationBarView: UIView {
     }
 
     private func configureLayout() {
-        [headlineStack, bodyContainer, actionStack, controlsStack, waveform, messageLabel]
-            .forEach { $0.translatesAutoresizingMaskIntoConstraints = false }
+        [
+            headlineStack, bodyContainer, actionStack, controlsStack, waveform,
+            messageLabel, typingStrip,
+        ].forEach { $0.translatesAutoresizingMaskIntoConstraints = false }
 
         let headlineLeading = headlineStack.leadingAnchor.constraint(
             equalTo: leadingAnchor,
@@ -651,6 +764,20 @@ final class DictationBarView: UIView {
             lessThanOrEqualTo: bodyContainer.trailingAnchor
         )
 
+        // In `status` the body hangs off the headline; in `strip` there is no
+        // headline, so it takes the whole row.
+        let bodyBelowHeadline = bodyContainer.topAnchor.constraint(
+            equalTo: headlineStack.bottomAnchor,
+            constant: 4
+        )
+        let bodyFillsBar = bodyContainer.topAnchor.constraint(
+            equalTo: topAnchor,
+            constant: metrics.verticalInset
+        )
+        bodyBelowHeadline.isActive = true
+        bodyTopConstraint = bodyBelowHeadline
+        bodyTopToBarConstraint = bodyFillsBar
+
         let meter = waveform.heightAnchor.constraint(equalToConstant: metrics.waveformHeight)
         // The bar's own height is fixed from outside, so the meter yields rather
         // than breaking the layout when the two disagree.
@@ -678,7 +805,6 @@ final class DictationBarView: UIView {
             ),
             bodyLeading,
             bottom,
-            bodyContainer.topAnchor.constraint(equalTo: headlineStack.bottomAnchor, constant: 4),
             bodyContainer.trailingAnchor.constraint(
                 equalTo: actionStack.leadingAnchor,
                 constant: -10
@@ -697,6 +823,10 @@ final class DictationBarView: UIView {
             messageLabel.leadingAnchor.constraint(equalTo: bodyContainer.leadingAnchor),
             messageLabel.trailingAnchor.constraint(equalTo: bodyContainer.trailingAnchor),
             messageLabel.centerYAnchor.constraint(equalTo: bodyContainer.centerYAnchor),
+            typingStrip.leadingAnchor.constraint(equalTo: bodyContainer.leadingAnchor),
+            typingStrip.trailingAnchor.constraint(equalTo: bodyContainer.trailingAnchor),
+            typingStrip.topAnchor.constraint(equalTo: bodyContainer.topAnchor),
+            typingStrip.bottomAnchor.constraint(equalTo: bodyContainer.bottomAnchor),
             controlsTrailing,
         ] + controlHeights + secondarySizes)
     }

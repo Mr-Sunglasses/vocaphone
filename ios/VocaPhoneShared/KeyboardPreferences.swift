@@ -196,10 +196,55 @@ enum MicrophonePreference: String, Codable, CaseIterable, Identifiable, Sendable
     }
 }
 
+/// How tall the keyboard draws itself in portrait.
+///
+/// Comfort here is genuinely personal — thumb reach, hand size, and how much of
+/// the host app someone wants to keep in view all pull in different directions —
+/// and it is the kind of choice iOS itself does not offer, so vocaphone does.
+/// ``standard`` reproduces the geometry the keyboard shipped with, so an
+/// existing install notices nothing.
+///
+/// Landscape is deliberately not derived from this. A compact-height phone has
+/// almost no room to give away, and multiplying an already-tight layout by
+/// `.tall` would cover the field being typed into.
+enum KeyboardHeightPreference: String, CaseIterable, Codable, Identifiable, Sendable {
+    case compact
+    case standard
+    case tall
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .compact: "Compact"
+        case .standard: "Standard"
+        case .tall: "Tall"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .compact: "Smaller keys, so more of the app you are typing into stays visible."
+        case .standard: "The balanced default, close to the system keyboard."
+        case .tall: "Larger key targets, at the cost of covering more of the screen."
+        }
+    }
+}
+
 enum KeyboardPreferences {
     static let autoInsertKey = "autoInsertTranscripts"
+    static let keyboardHeightKey = "keyboardHeight"
+    static let typingSuggestionsKey = "typingSuggestionsEnabled"
+    static let autocorrectKey = "autocorrectEnabled"
+    static let nextWordPredictionKey = "nextWordPredictionEnabled"
+    static let learnAsITypeKey = "learnAsITypeEnabled"
+    static let smartPunctuationKey = "smartPunctuationEnabled"
+    static let keyboardHapticsKey = "keyboardHapticsEnabled"
+    static let swipeTypingKey = "swipeTypingEnabled"
+    static let numberRowKey = "numberRowEnabled"
     static let quickDictationKey = "quickDictationEnabled"
     static let writingStyleKey = "writingStyle"
+    static let numbersAsDigitsKey = "numbersAsDigitsEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let microphonePreferenceKey = "microphonePreference"
     static let recordingSoundsKey = "recordingSoundsEnabled"
@@ -236,9 +281,99 @@ enum KeyboardPreferences {
         }
     }
 
+    /// Defaults to ``KeyboardHeightPreference/standard`` when absent, which is
+    /// every existing install: the preference is new, and the geometry it names
+    /// is the geometry those keyboards already draw.
+    static var keyboardHeight: KeyboardHeightPreference {
+        get {
+            guard let rawValue = defaults?.string(forKey: keyboardHeightKey),
+                  let preference = KeyboardHeightPreference(rawValue: rawValue)
+            else { return .standard }
+            return preference
+        }
+        set {
+            defaults?.set(newValue.rawValue, forKey: keyboardHeightKey)
+        }
+    }
+
+    /// Every typing-intelligence switch, each defaulting explicitly so that a
+    /// keyboard running **without Full Access** — which cannot read the App
+    /// Group at all — behaves the same as one that has never been configured.
+    /// Suggestions in particular must work without it: a keyboard that needs
+    /// Full Access to type is not a keyboard.
+    static var typingSuggestionsEnabled: Bool {
+        get { boolean(typingSuggestionsKey, default: true) }
+        set { defaults?.set(newValue, forKey: typingSuggestionsKey) }
+    }
+
+    /// Meaningless on its own — the strip is where a correction is shown before
+    /// it is applied, so autocorrect without suggestions would replace words
+    /// with no warning at all. Callers read ``autocorrectIsActive``.
+    static var autocorrectEnabled: Bool {
+        get { boolean(autocorrectKey, default: true) }
+        set { defaults?.set(newValue, forKey: autocorrectKey) }
+    }
+
+    static var autocorrectIsActive: Bool { typingSuggestionsEnabled && autocorrectEnabled }
+
+    static var nextWordPredictionEnabled: Bool {
+        get { boolean(nextWordPredictionKey, default: true) }
+        set { defaults?.set(newValue, forKey: nextWordPredictionKey) }
+    }
+
+    static var learnAsITypeEnabled: Bool {
+        get { boolean(learnAsITypeKey, default: true) }
+        set { defaults?.set(newValue, forKey: learnAsITypeKey) }
+    }
+
+    /// Curly quotes, em dashes and ellipses. On by default, but the *field*
+    /// outranks it: a code editor turns smart quotes off precisely so that a
+    /// keyboard does not curl them.
+    static var smartPunctuationEnabled: Bool {
+        get { boolean(smartPunctuationKey, default: true) }
+        set { defaults?.set(newValue, forKey: smartPunctuationKey) }
+    }
+
+    /// A no-op without Full Access, because a keyboard extension cannot reach
+    /// the haptic engine without it. The Keyboard settings screen says so
+    /// rather than leaving people to wonder why their keyboard is silent.
+    static var keyboardHapticsEnabled: Bool {
+        get { boolean(keyboardHapticsKey, default: true) }
+        set { defaults?.set(newValue, forKey: keyboardHapticsKey) }
+    }
+
+    /// Off until device QA says the recogniser has earned it. A swipe engine
+    /// that guesses wrong is worse than no swipe engine, because the user has
+    /// to notice and undo a whole word rather than one letter.
+    static var swipeTypingEnabled: Bool {
+        get { boolean(swipeTypingKey, default: false) }
+        set { defaults?.set(newValue, forKey: swipeTypingKey) }
+    }
+
+    static var numberRowEnabled: Bool {
+        get { boolean(numberRowKey, default: false) }
+        set { defaults?.set(newValue, forKey: numberRowKey) }
+    }
+
+    /// An absent key means "never set", which is the default — not `false`,
+    /// which is what `UserDefaults.bool(forKey:)` would say.
+    private static func boolean(_ key: String, default fallback: Bool) -> Bool {
+        guard let defaults, defaults.object(forKey: key) != nil else { return fallback }
+        return defaults.bool(forKey: key)
+    }
+
     static var recordingSoundsEnabled: Bool {
         get { defaults?.bool(forKey: recordingSoundsKey) ?? false }
         set { defaults?.set(newValue, forKey: recordingSoundsKey) }
+    }
+
+    /// Whether dictated number words are written as digits — "six pm" as
+    /// "6 pm". Off by default: it changes the words in a transcript rather than
+    /// its formatting, which is not something to start doing to someone's text
+    /// because they updated the app.
+    static var numbersAsDigits: Bool {
+        get { boolean(numbersAsDigitsKey, default: false) }
+        set { defaults?.set(newValue, forKey: numbersAsDigitsKey) }
     }
 
     static var writingStyle: WritingStyle {

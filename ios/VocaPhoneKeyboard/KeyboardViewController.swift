@@ -1,3 +1,4 @@
+import os
 import UIKit
 
 final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedback {
@@ -20,14 +21,22 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var lastPublishedAt: Date?
     private static let statusRepublishInterval: TimeInterval = 10
     private var isBarExpanded = false
+    private var barLayout = DictationBarLayout.status
     private var lastDocumentID: String?
-    /// The document the active session inserts into, as observed by this
-    /// keyboard instance. iOS issues a fresh `documentIdentifier` when the
-    /// keyboard is torn down and recreated, so the identifier stored in the
-    /// session record is only comparable while the instance that captured it
-    /// is still alive; each instance records its own target.
+    /// The document the active session inserts into, as observed during this
+    /// appearance of the keyboard. iOS issues a fresh `documentIdentifier` when
+    /// the keyboard is torn down and recreated, and can reissue one across an
+    /// app switch, so an identifier only means anything for as long as the
+    /// keyboard has been continuously on screen. It is released in
+    /// ``viewWillAppear(_:)`` and re-latched from the field the user has
+    /// returned to.
     private var sessionTargetDocumentID: String?
     private var palette = KeyboardPalette(isDark: false)
+    private lazy var typing = TypingEngine()
+    /// The record the bar is currently drawn from, so a strip update can
+    /// re-render without another read of the shared container. A file read per
+    /// keystroke is exactly the cost typing intelligence must not add.
+    private var lastRecord: SessionRecord?
 
     private var currentDocumentID: String? {
         // On iOS 26 the proxy can temporarily return nil during viewDidLoad even
@@ -42,22 +51,53 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         return identifier.uuidString
     }
 
+    /// Read once per appearance rather than on every layout pass: it can only
+    /// change in the containing app, which means this extension has been torn
+    /// down or at least sent off screen in between.
+    private var heightPreference = KeyboardPreferences.keyboardHeight
+
     private lazy var dictationBar = DictationBarView(
-        metrics: DictationBarMetrics.resolved(for: traitCollection),
+        metrics: DictationBarMetrics.resolved(
+            for: traitCollection,
+            preference: heightPreference
+        ),
         palette: palette
     )
+    /// Built the first time it is opened, never at launch.
+    ///
+    /// A `UICollectionView` and ten category buttons is not much on its own, but
+    /// a keyboard extension is killed somewhere around 45–60 MB and this is a
+    /// panel most sessions never open. Everything the keyboard needs to *appear*
+    /// comes first; everything else waits to be asked for.
+    private var emojiPanel: EmojiPanelView?
     private lazy var keyGrid = KeyGridView(
-        metrics: KeyboardMetrics.resolved(for: traitCollection),
+        metrics: KeyboardMetrics.resolved(for: traitCollection, preference: heightPreference),
         palette: palette
     )
     private var keyboardHeightConstraint: NSLayoutConstraint?
     private var barHeightConstraint: NSLayoutConstraint?
     private var gridHeightConstraint: NSLayoutConstraint?
+    private var emojiPanelHeightConstraint: NSLayoutConstraint?
+    private var keyboardStack: UIStackView?
 
     var enableInputClicksWhenVisible: Bool { true }
 
+    /// iOS decides whether to add its Face ID dictation button before loading
+    /// the keyboard's view, so this must be set during controller creation.
+    override init(nibName nibNameOrNil: String?, bundle nibBundleOrNil: Bundle?) {
+        super.init(nibName: nibNameOrNil, bundle: nibBundleOrNil)
+        hasDictationKey = true
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        hasDictationKey = true
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Reassert the value after UIKit has completed controller creation.
+        hasDictationKey = true
         inputView?.allowsSelfSizing = true
         configureUI()
         registerForTraitChanges([
@@ -69,18 +109,92 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             controller.applyLayoutMetrics()
         }
         publishKeyboardStatus()
+        typing.onStrip = { [weak self] _ in
+            guard let self else { return }
+            render(lastRecord)
+            noteAvailableMemory(.firstCandidates)
+        }
+        typing.onWordListLoaded = { [weak self] list in
+            self?.keyGrid.swipeWordList = list
+        }
+        // The user's own text replacements and contact names. Requested once per
+        // instance; if Full Access is off it simply comes back empty.
+        typing.loadLexicon(from: self)
+        KeyboardHaptics.shared.attach(to: view, hasFullAccess: hasFullAccess)
         render(nil)
         refresh()
+        noteAvailableMemory(.launched)
+    }
+
+    /// How much room the extension has left, sampled at the two moments that
+    /// decide whether it survives.
+    ///
+    /// A keyboard extension is killed somewhere around 45–60 MB, and a jetsam
+    /// looks to its owner like a keyboard that will not open — there is no
+    /// crash report, no alert, just the previous keyboard coming back. So the
+    /// budget is measured rather than assumed. A count of bytes and nothing
+    /// else: no text, ever.
+    enum MemorySample {
+        case launched
+        case firstCandidates
+    }
+
+    private var sampledMoments: Set<String> = []
+
+    private func noteAvailableMemory(_ moment: MemorySample) {
+        let key = "\(moment)"
+        guard sampledMoments.insert(key).inserted else { return }
+        let availableMB = Int(os_proc_available_memory() / (1024 * 1024))
+        DiagnosticLog.record(
+            .keyboardShown,
+            metadata: .megabytesAvailable(availableMB)
+        )
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        // Extension controllers can be reused across host fields and apps.
+        hasDictationKey = true
         // A recreated extension instance can inherit a session the previous one
         // started, so scan once on appear and let `render` decide about polling.
         applyDocumentTraits()
+        // A new appearance is a new field as far as this keyboard can tell.
+        //
+        // The insertion target was previously kept for the life of the
+        // extension instance, which made automatic insertion depend on
+        // something the user cannot see: whether iOS killed the keyboard during
+        // the hand-off. A killed extension came back, adopted the session and
+        // targeted whatever field the cursor was now in, so insertion always
+        // worked. A surviving one still held the identifier captured before the
+        // hand-off, and iOS reissues those across an app switch — so the same
+        // dictation, in the same field, silently parked itself behind an Insert
+        // button instead. Same action, two outcomes, decided by memory
+        // pressure.
+        //
+        // Releasing the target here makes both paths agree on the permissive
+        // one, which is what shipped for every killed extension already. The
+        // guard keeps the case it can actually observe: a cursor that moves to
+        // another field *while the keyboard is on screen* still parks the
+        // transcript rather than following the cursor.
+        sessionTargetDocumentID = nil
         installDarwinObservers()
         publishKeyboardStatus()
+        // Full Access can be granted or revoked in Settings while this instance
+        // stays alive, and a warm engine is what makes the first key of the
+        // session land as a tap rather than as nothing.
+        KeyboardHaptics.shared.attach(to: view, hasFullAccess: hasFullAccess)
+        applyHeightPreferenceIfChanged()
         refresh()
+    }
+
+    /// Picks up a height chosen in the containing app. iOS keeps extension
+    /// instances alive between appearances, so without this the new height would
+    /// wait for the keyboard process to be recycled.
+    private func applyHeightPreferenceIfChanged() {
+        let preference = KeyboardPreferences.keyboardHeight
+        guard preference != heightPreference else { return }
+        heightPreference = preference
+        applyLayoutMetrics()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -89,6 +203,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // flight being restored, not something that just happened to the user,
         // and it must not arrive as a buzz in their hand.
         announcesStateChanges = true
+        NSLog("""
+        DIAG ourView=\(view.bounds.size) \
+        super=\(String(describing: view.superview?.bounds.size)) \
+        superSuper=\(String(describing: view.superview?.superview?.bounds.size)) \
+        inputView=\(String(describing: inputView?.bounds.size)) \
+        needsSwitchKey=\(needsInputModeSwitchKey) \
+        window=\(String(describing: view.window?.bounds.size))
+        """)
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -99,6 +221,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         darwinObservations.forEach { $0.invalidate() }
         darwinObservations.removeAll()
         appLaunchFallbackTask?.cancel()
+        // A held key or an open accent popover must not survive the keyboard
+        // being dismissed; iOS does not reliably cancel those touches for us.
+        keyGrid.endActiveInteractions()
+        // A prepared generator keeps the Taptic Engine powered for a second or
+        // two, which a dismissed keyboard has no business spending.
+        KeyboardHaptics.shared.release()
     }
 
     /// The containing app has no API for whether this keyboard is installed or
@@ -142,6 +270,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             // already left, and stayed on "Waiting for its own field" for over a
             // second after they returned to it.
             if activeSessionID != nil { refresh() }
+        } else {
+            // Same field, but something moved the cursor or edited the text
+            // without going through this keyboard. The document wins.
+            typing.reconcile(documentBefore: textDocumentProxy.documentContextBeforeInput)
         }
         updateAutomaticShift()
     }
@@ -151,7 +283,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Each action arrives already decided by the rendered model, so a button
     /// can only ever do what its own label promised.
     private func perform(_ action: DictationAction) {
-        UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+        KeyboardHaptics.shared.action()
         switch action {
         case .start: startSession()
         case .finish: finishRecording()
@@ -236,25 +368,56 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     func keyGrid(_ grid: KeyGridView, didProduce output: KeyboardOutput) {
         switch output {
         case let .text(text):
-            textDocumentProxy.insertText(text)
+            if let substitution = SmartPunctuation.substitution(
+                for: text,
+                before: documentBefore ?? "",
+                traits: smartPunctuation
+            ) {
+                for _ in 0..<substitution.deletions { textDocumentProxy.deleteBackward() }
+                textDocumentProxy.insertText(substitution.insertion)
+                typing.insert(substitution.insertion, documentBefore: documentBefore)
+            } else if Self.isBoundary(text) {
+                commitComposition(followedBy: text)
+            } else {
+                textDocumentProxy.insertText(text)
+                typing.insert(text, documentBefore: documentBefore)
+            }
             lastSpaceInsertedAt = nil
             releaseUndoIfDetached()
         case .space:
             insertSpace()
         case .newline:
-            textDocumentProxy.insertText("\n")
+            commitComposition(followedBy: "\n")
             lastSpaceInsertedAt = nil
             releaseUndoIfDetached()
         case .deleteBackward:
-            textDocumentProxy.deleteBackward()
+            deleteBackward()
             lastSpaceInsertedAt = nil
             releaseUndoIfDetached()
         case .deleteWord:
             deleteWordBackward()
+            typing.resetComposition(documentBefore: documentBefore)
             releaseUndoIfDetached()
+        case .emojiPanel:
+            showEmojiPanel(true)
+        case let .swipeWord(word, alternates):
+            // A swiped word arrives whole. It is never autocorrected — the
+            // recogniser already chose from the dictionary — and the losers go
+            // in the strip so one tap can replace it.
+            let cased = keyGrid.shiftState.isUppercase
+                ? word.prefix(1).uppercased() + word.dropFirst()
+                : word
+            textDocumentProxy.insertText(cased + " ")
+            typing.noteSwipeWord(cased, alternates: alternates)
+            lastSpaceInsertedAt = nil
+            releaseUndoIfDetached()
+            updateAutomaticShift()
         case let .moveCursor(offset):
             textDocumentProxy.adjustTextPosition(byCharacterOffset: offset)
             lastSpaceInsertedAt = nil
+            // The cursor is somewhere else now, so whatever was being composed
+            // belongs to a different part of the document.
+            typing.reconcile(documentBefore: documentBefore)
             releaseUndoIfDetached()
         case let .nextInputMode(anchor, event):
             // `handleInputModeList` also drives the long-press keyboard picker,
@@ -267,13 +430,131 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
+    /// Swaps the key grid for the emoji panel, in the space the grid already
+    /// occupies. The keyboard's height does not change: a panel that grew the
+    /// keyboard would cost the user more of the app they are typing into than
+    /// switching to the system emoji keyboard does.
+    private func showEmojiPanel(_ showing: Bool) {
+        guard showing || emojiPanel != nil else { return }
+        let panel = showing ? makeEmojiPanelIfNeeded() : emojiPanel
+        guard let panel else { return }
+        guard panel.isHidden == showing else { return }
+        keyGrid.endActiveInteractions()
+        keyGrid.isHidden = showing
+        panel.isHidden = !showing
+        panel.palette = palette
+        panel.metrics = KeyboardMetrics.resolved(
+            for: traitCollection,
+            preference: heightPreference
+        )
+    }
+
+    private func makeEmojiPanelIfNeeded() -> EmojiPanelView? {
+        if let emojiPanel { return emojiPanel }
+        let metrics = KeyboardMetrics.resolved(for: traitCollection, preference: heightPreference)
+        let panel = EmojiPanelView(palette: palette, metrics: metrics)
+        panel.delegate = self
+        panel.isHidden = true
+        keyboardStack?.addArrangedSubview(panel)
+        let height = panel.heightAnchor.constraint(equalToConstant: metrics.gridHeight)
+        height.isActive = true
+        emojiPanelHeightConstraint = height
+        emojiPanel = panel
+        // Four thousand lines, parsed off the main actor, the first time anyone
+        // asks for an emoji — and never if they do not.
+        Task.detached(priority: .userInitiated) {
+            let catalog = EmojiCatalog.load(from: Bundle(for: KeyboardViewController.self))
+            await MainActor.run { [weak self] in self?.emojiPanel?.catalog = catalog }
+        }
+        return panel
+    }
+
+    private var documentBefore: String? {
+        textDocumentProxy.documentContextBeforeInput
+    }
+
+    /// Re-read per keystroke rather than cached: the field can change its own
+    /// traits, and the cost is two property reads.
+    private var smartPunctuation: SmartPunctuation.Traits {
+        SmartPunctuation.Traits.resolve(
+            for: textDocumentProxy,
+            enabled: KeyboardPreferences.smartPunctuationEnabled
+        )
+    }
+
+    /// The characters that end a word and are therefore the moment an
+    /// autocorrect may fire.
+    static func isBoundary(_ text: String) -> Bool {
+        guard text.count == 1, let character = text.first else { return false }
+        return ".,!?;:".contains(character)
+    }
+
+    /// Ends the current word, applying a pending autocorrect if there is one.
+    ///
+    /// The rewrite is *n* deletions and one insertion, because iOS gives a
+    /// keyboard extension no composing region and no atomic replace. They all
+    /// happen here, in one turn, so the host never renders a half-deleted word —
+    /// and never while a dictation insertion is in flight, which is what
+    /// `isPerformingInsertion` guards.
+    private func commitComposition(followedBy boundary: String) {
+        let typed = typing.composer.text
+        if !typed.isEmpty,
+           !isPerformingInsertion,
+           typing.composer.isAutocorrectable,
+           let correction = typing.strip.autocorrection
+        {
+            let replacement = TypingCandidates.matchingCase(
+                of: typed,
+                applyingTo: correction
+            )
+            let rewrite = typing.composer.rewrite(to: replacement)
+            for _ in 0..<rewrite.deletions { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(rewrite.insertion + boundary)
+            typing.noteCorrection(typed: typed, replacement: replacement, boundary: boundary)
+            typing.insert(boundary, documentBefore: documentBefore)
+            // The correction is the one keyboard action a user may not have
+            // noticed, so it announces itself — and only it.
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: "Corrected to \(replacement)"
+            )
+            return
+        }
+        if !boundary.isEmpty { textDocumentProxy.insertText(boundary) }
+        if !typed.isEmpty { typing.noteCompletedWord(typed) }
+        typing.insert(boundary.isEmpty ? " " : boundary, documentBefore: documentBefore)
+    }
+
+    /// Delete, which is also how an autocorrect is undone.
+    ///
+    /// Pressing Delete as the very next action after a correction restores what
+    /// was typed, exactly, and marks the word as the user's for the rest of the
+    /// document. This is the behaviour people rely on without knowing its name,
+    /// and getting it wrong is how a keyboard becomes something to fight.
+    private func deleteBackward() {
+        if let revert = typing.takeRevert() {
+            let removals = revert.replacement.count + revert.boundary.count
+            for _ in 0..<removals { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(revert.typed + revert.boundary)
+            typing.reconcile(documentBefore: documentBefore)
+            UIAccessibility.post(
+                notification: .announcement,
+                argument: "Restored \(revert.typed)"
+            )
+            return
+        }
+        textDocumentProxy.deleteBackward()
+        typing.deleteBackward(documentBefore: documentBefore)
+    }
+
     func keyGridDidChangeShift(_ grid: KeyGridView) {}
 
     private func insertSpace() {
         let proxy = textDocumentProxy
         let before = proxy.documentContextBeforeInput ?? ""
         // A second space closes the sentence instead of doubling the gap, which
-        // is the iOS behaviour people type by reflex.
+        // is the iOS behaviour people type by reflex. It can never coincide with
+        // a pending correction: the previous space already ended that word.
         if let previous = lastSpaceInsertedAt,
            Date().timeIntervalSince(previous) < 1.2,
            before.hasSuffix(" "),
@@ -284,8 +565,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             proxy.deleteBackward()
             proxy.insertText(". ")
             lastSpaceInsertedAt = nil
+            typing.insert(". ", documentBefore: documentBefore)
         } else {
-            proxy.insertText(" ")
+            commitComposition(followedBy: " ")
             lastSpaceInsertedAt = Date()
         }
         releaseUndoIfDetached()
@@ -339,7 +621,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func startSession() {
         guard hasFullAccess else {
-            dictationBar.flash("Turn on Full Access for vocaphone in Keyboard settings.")
+            dictationBar.flash("Full Access is needed. \(DictationBarModel.fullAccessPath)")
             return
         }
         discardParkedSession()
@@ -382,16 +664,27 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// two known identifiers blocks insertion; an unknown identifier must not
     /// strand a transcript the user is waiting for.
     private func documentMatchesSessionTarget() -> Bool {
-        guard let target = sessionTargetDocumentID,
-              let current = currentDocumentID
-        else { return true }
-        return target == current
+        InsertionTarget.allowsInsertion(
+            target: sessionTargetDocumentID,
+            current: currentDocumentID
+        )
     }
 
     private func insert(_ record: inout SessionRecord, force: Bool = false) {
-        guard !isPerformingInsertion else { return }
-        guard let transcript = record.transcript, !transcript.isEmpty else { return }
+        guard !isPerformingInsertion else {
+            DiagnosticLog.record(.insertionSkipped, metadata: .reason(.insertionInFlight))
+            return
+        }
+        guard let transcript = record.transcript, !transcript.isEmpty else {
+            DiagnosticLog.record(.insertionSkipped, metadata: .reason(.transcriptEmpty))
+            return
+        }
         guard force || documentMatchesSessionTarget() else {
+            // Parked rather than inserted. Which of the two identifiers changed
+            // is not knowable from here — iOS reissues them across a keyboard
+            // relaunch — so the log records that it happened at all, and the
+            // state change that follows records where the transcript went.
+            DiagnosticLog.record(.insertionSkipped, metadata: .reason(.targetFieldChanged))
             if record.state == .readyToInsert {
                 transition(&record, to: .targetContextChanged)
             }
@@ -410,6 +703,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try store.save(record)
             textDocumentProxy.insertText(prepared)
             lastInsertedText = prepared
+            // A transcript arrives as finished text. It never becomes a
+            // composition and is never autocorrected: the model that produced it
+            // already had its say.
+            typing.resetComposition(origin: .dictated, documentBefore: nil)
             try record.transition(to: .inserted)
             try store.save(record)
             try record.transition(to: .completed)
@@ -619,6 +916,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func render(_ record: SessionRecord?) {
+        lastRecord = record
         updatePolling(for: record)
         let state = record?.state ?? .idle
         let model = DictationBarModel.make(
@@ -631,14 +929,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 canRetry: record?.canRetry == true,
                 // Undo is offered only while the transcript is still the tail of
                 // the document, and only once the session it came from is over.
-                canUndo: lastInsertedText != nil
+                canUndo: lastInsertedText != nil,
+                candidates: typing.strip.candidates,
+                processingLocation: record?.processingLocation
             )
         )
 
         // An idle keyboard needs no meter and no subtitle, and the height they
-        // would occupy is better spent on the keys.
-        if model.isExpanded != isBarExpanded {
+        // would occupy is better spent on the keys — the idle bar is a one-row
+        // typing strip, shorter than the collapsed status bar it replaces.
+        if model.isExpanded != isBarExpanded || model.layout != barLayout {
             isBarExpanded = model.isExpanded
+            barLayout = model.layout
             applyLayoutMetrics(animated: hasRendered)
         }
         updateElapsedTime(for: state)
@@ -646,7 +948,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             dictationBar.push(meterLevel: record?.meterLevel ?? 0)
         }
         dictationBar.apply(model, animated: hasRendered)
-        announceStateChange(to: state)
+        announceStateChange(to: state, saying: model.announcement)
         hasRendered = true
     }
 
@@ -663,10 +965,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     /// The keyboard is often not the view the user is looking at while a
     /// transcript is being produced, so the milestones announce themselves.
-    private func announceStateChange(to state: SessionState) {
+    ///
+    /// Only genuine transitions, and only the ones the model marked worth
+    /// interrupting for. Polling re-renders the same state up to four times a
+    /// second, and announcing the timer or the meter alongside it would make
+    /// VoiceOver unusable during a dictation.
+    private func announceStateChange(to state: SessionState, saying announcement: String?) {
         guard state != lastRenderedState else { return }
         lastRenderedState = state
         guard announcesStateChanges, hasFullAccess else { return }
+        if let announcement {
+            UIAccessibility.post(notification: .announcement, argument: announcement)
+        }
         switch state {
         case .recording:
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
@@ -684,6 +994,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         dictationBar.delegate = self
         keyGrid.delegate = self
         let stack = UIStackView(arrangedSubviews: [dictationBar, keyGrid])
+        keyboardStack = stack
         stack.axis = .vertical
         stack.spacing = Self.chromeSpacing
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -692,9 +1003,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         view.clipsToBounds = false
         view.addSubview(stack)
 
-        let barMetrics = DictationBarMetrics.resolved(for: traitCollection)
+        let barMetrics = DictationBarMetrics.resolved(
+            for: traitCollection,
+            preference: heightPreference
+        )
         let barHeight = dictationBar.heightAnchor.constraint(
-            equalToConstant: barMetrics.height(expanded: false)
+            equalToConstant: barMetrics.height(for: .strip, expanded: false)
         )
         let gridHeight = keyGrid.heightAnchor.constraint(equalToConstant: 202)
         let keyboardHeight = view.heightAnchor.constraint(equalToConstant: 326)
@@ -731,14 +1045,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// iPhone constant, and gives the dictation bar only as much room as the
     /// current state actually needs.
     private func applyLayoutMetrics(animated: Bool = false) {
-        let metrics = KeyboardMetrics.resolved(for: traitCollection)
-        let barMetrics = DictationBarMetrics.resolved(for: traitCollection)
+        let metrics = KeyboardMetrics.resolved(
+            for: traitCollection,
+            preference: heightPreference
+        )
+        let barMetrics = DictationBarMetrics.resolved(
+            for: traitCollection,
+            preference: heightPreference
+        )
         keyGrid.metrics = metrics
         dictationBar.metrics = barMetrics
 
-        let barHeight = barMetrics.height(expanded: isBarExpanded)
+        let barHeight = barMetrics.height(for: barLayout, expanded: isBarExpanded)
         barHeightConstraint?.constant = barHeight
         gridHeightConstraint?.constant = metrics.gridHeight
+        emojiPanelHeightConstraint?.constant = metrics.gridHeight
         keyboardHeightConstraint?.constant = 2 * Self.chromeInset
             + barHeight
             + metrics.gridHeight
@@ -766,11 +1087,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// a light theme inside a dark-appearance field.
     private func applyDocumentTraits() {
         let proxy = textDocumentProxy
+        // Passwords, one-time codes and PINs switch the whole subsystem off —
+        // not just the strip. A hidden strip over a live spell checker would
+        // still be running the user's password through a dictionary.
+        typing.documentChanged(policy: TypingFieldPolicy.resolve(for: proxy))
         keyGrid.showsGlobeKey = needsInputModeSwitchKey
         let returnKeyType = proxy.returnKeyType ?? .default
         keyGrid.returnKeyTitle = Self.returnKeyTitle(for: returnKeyType)
         keyGrid.returnKeyIsProminent = returnKeyType != .default
         keyGrid.leadingPunctuation = Self.leadingPunctuation(for: proxy.keyboardType ?? .default)
+        keyGrid.keyboardType = proxy.keyboardType ?? .default
         applyTheme()
     }
 
@@ -789,13 +1115,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
-    /// Email and web fields put their most-used separator where the comma sits,
-    /// the way the system keyboard does.
-    private static func leadingPunctuation(for type: UIKeyboardType) -> String {
+    /// Email and web fields put their most-used separator on the bottom row,
+    /// the way the system keyboard does — and every other field gets none, also
+    /// the way the system keyboard does. A plain iPhone QWERTY has `123`, the
+    /// globe, space and return on that row and nothing else; the comma and full
+    /// stop this used to add were two keys the spacebar could have been.
+    private static func leadingPunctuation(for type: UIKeyboardType) -> String? {
         switch type {
         case .emailAddress: "@"
         case .URL, .webSearch: "/"
-        default: ","
+        default: nil
         }
     }
 
@@ -846,18 +1175,51 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         case .words:
             keyGrid.shiftState = before.isEmpty || before.last?.isWhitespace == true ? .on : .off
         default:
-            let trimmed = before.trimmingCharacters(in: .whitespacesAndNewlines)
-            let startsSentence = trimmed.isEmpty
-                || before.hasSuffix("\n")
-                || before.hasSuffix(". ")
-                || before.hasSuffix("! ")
-                || before.hasSuffix("? ")
-            keyGrid.shiftState = startsSentence ? .on : .off
+            // "e.g. ", "Mr. " and "3. " all end in a full stop and none of them
+            // ends a sentence. See `SentenceBoundary`.
+            keyGrid.shiftState = SentenceBoundary.endsSentence(before) ? .on : .off
         }
     }
 }
 
-extension KeyboardViewController: KeyGridViewDelegate {}
+extension KeyboardViewController: EmojiPanelViewDelegate {
+    func emojiPanel(_ panel: EmojiPanelView, didChoose glyph: String) {
+        textDocumentProxy.insertText(glyph)
+        // An emoji ends a word as surely as a space does, and it is never
+        // something to autocorrect.
+        typing.resetComposition(origin: .suggestion, documentBefore: documentBefore)
+        releaseUndoIfDetached()
+    }
+
+    func emojiPanelDidRequestDelete(_ panel: EmojiPanelView) {
+        deleteBackward()
+        releaseUndoIfDetached()
+    }
+
+    func emojiPanelDidRequestReturn(_ panel: EmojiPanelView) {
+        commitComposition(followedBy: "\n")
+        releaseUndoIfDetached()
+    }
+
+    func emojiPanelDidRequestSpace(_ panel: EmojiPanelView) {
+        insertSpace()
+    }
+
+    func emojiPanelDidRequestLetters(_ panel: EmojiPanelView) {
+        showEmojiPanel(false)
+        keyGrid.plane = .letters
+    }
+}
+
+extension KeyboardViewController: KeyGridViewDelegate {
+    /// A held Delete stops at the start of a line. Continuing past it takes a
+    /// fresh press, which is what keeps one long hold from swallowing the
+    /// paragraph above the one being edited.
+    func keyGridShouldContinueDeleting(_ grid: KeyGridView) -> Bool {
+        guard let before = textDocumentProxy.documentContextBeforeInput else { return true }
+        return !before.isEmpty && !before.hasSuffix("\n")
+    }
+}
 
 extension KeyboardViewController: DictationBarViewDelegate {
     func dictationBar(_ bar: DictationBarView, didTrigger action: DictationAction) {
@@ -866,5 +1228,31 @@ extension KeyboardViewController: DictationBarViewDelegate {
 
     func dictationBarDidChangePreferences(_ bar: DictationBarView) {
         refresh()
+    }
+
+    /// A tapped chip. Each kind means something different to the document, and
+    /// the literal means nothing to it at all.
+    func dictationBar(_ bar: DictationBarView, didChoose candidate: TypingCandidate) {
+        guard !isPerformingInsertion else { return }
+        switch candidate.kind {
+        case .literal:
+            // The user's own spelling, asserted. Nothing is rewritten — the
+            // point is that what they typed stays exactly as typed — but it
+            // stops being corrected, and the keyboard learns it.
+            typing.assert(candidate.text)
+            render(lastRecord)
+        case .completion, .correction:
+            let typed = typing.composer.text
+            for _ in 0..<typed.count { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(candidate.text + " ")
+            typing.noteCompletedWord(candidate.text)
+            typing.resetComposition(origin: .suggestion, documentBefore: documentBefore)
+        case .prediction:
+            textDocumentProxy.insertText(candidate.text + " ")
+            typing.resetComposition(origin: .suggestion, documentBefore: documentBefore)
+        }
+        lastSpaceInsertedAt = nil
+        releaseUndoIfDetached()
+        updateAutomaticShift()
     }
 }

@@ -4,9 +4,14 @@ import Testing
 struct SetupStatusTests {
     private static let seenAt = Date(timeIntervalSince1970: 1_700_000_000)
 
-    private let complete = SetupStatus(
-        gatewayReady: true,
+    private static let readyGateway = TranscriptionSourceStatus(
+        selected: .gateway,
         gatewayAddress: "http://homelabone:8765",
+        isGatewayReady: true
+    )
+
+    private let complete = SetupStatus(
+        source: readyGateway,
         microphone: .granted,
         keyboard: .ready(lastSeenAt: seenAt),
         hasDictatedOnce: true
@@ -31,10 +36,10 @@ struct SetupStatusTests {
 
     @Test func remainingStepsAreListedInChecklistOrder() {
         var status = complete
-        status.gatewayReady = false
+        status.source.isGatewayReady = false
         status.keyboard = .notAdded
 
-        #expect(status.remainingSteps == [.gateway, .keyboard])
+        #expect(status.remainingSteps == [.source, .keyboard])
         #expect(status.completedStepCount == status.stepCount - 2)
     }
 
@@ -166,11 +171,11 @@ struct SetupStatusTests {
 
     @Test func aConfiguredGatewayThatFailsIsDistinguishedFromNoGateway() {
         var missing = complete
-        missing.gatewayReady = false
-        missing.gatewayAddress = ""
+        missing.source.isGatewayReady = false
+        missing.source.gatewayAddress = ""
 
         var unreachable = complete
-        unreachable.gatewayReady = false
+        unreachable.source.isGatewayReady = false
 
         #expect(missing.attentionHeadline == "No transcription gateway yet")
         #expect(unreachable.attentionHeadline == "Your gateway is not responding")

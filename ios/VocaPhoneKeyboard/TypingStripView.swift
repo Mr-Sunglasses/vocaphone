@@ -1,0 +1,233 @@
+import UIKit
+
+@MainActor
+protocol TypingStripViewDelegate: AnyObject {
+    func typingStrip(_ strip: TypingStripView, didChoose candidate: TypingCandidate)
+}
+
+/// The candidate chips, drawn inside the dictation bar rather than above it.
+///
+/// A third region would have put the keyboard near 337 pt — appreciably more of
+/// the host app than the system keyboard it competes with, to add a feature
+/// meant to make it feel more native. Instead the idle bar *becomes* this, and
+/// the keyboard gets shorter than it was.
+///
+/// Scrolls rather than truncating: a candidate clipped to "extraordin…" is one
+/// the user cannot judge, and three legible chips that scroll beat three
+/// illegible ones that fit. When they do fit — which is nearly always, because
+/// three ordinary words are narrower than a phone — the row is centred, so the
+/// strip reads as a considered set of three rather than as a list that has been
+/// pushed up against the left edge.
+final class TypingStripView: UIScrollView {
+    weak var chipDelegate: (any TypingStripViewDelegate)?
+
+    var palette: KeyboardPalette {
+        didSet {
+            guard palette != oldValue else { return }
+            rebuild()
+        }
+    }
+
+    var metrics: DictationBarMetrics {
+        didSet {
+            guard metrics != oldValue else { return }
+            rebuild()
+        }
+    }
+
+    private(set) var candidates: [TypingCandidate] = []
+    private let row = UIStackView()
+    private var buttons: [UIButton] = []
+    /// Set when the chips change, so the next layout pass puts the row back at
+    /// its centred resting position rather than wherever the last set was
+    /// scrolled to.
+    private var needsScrollReset = true
+
+    /// The gap between chips. Wide enough that two capsules read as two targets;
+    /// narrow enough that three of them still look like one control.
+    private static let chipSpacing: CGFloat = 8
+    /// A one-letter suggestion in a capsule sized to its text is a dot. Every
+    /// chip is at least wide enough to look like something worth aiming at.
+    private static let minimumChipWidth: CGFloat = 62
+    private static let chipTextInset: CGFloat = 14
+
+    init(palette: KeyboardPalette, metrics: DictationBarMetrics) {
+        self.palette = palette
+        self.metrics = metrics
+        super.init(frame: .zero)
+        showsHorizontalScrollIndicator = false
+        showsVerticalScrollIndicator = false
+        // A chip row that bounces looks like a mistake; it is a fixed set of
+        // three things, not a feed.
+        alwaysBounceHorizontal = false
+        row.axis = .horizontal
+        row.alignment = .fill
+        row.spacing = Self.chipSpacing
+        row.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(row)
+        NSLayoutConstraint.activate([
+            row.leadingAnchor.constraint(equalTo: contentLayoutGuide.leadingAnchor),
+            row.trailingAnchor.constraint(equalTo: contentLayoutGuide.trailingAnchor),
+            row.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor),
+            row.bottomAnchor.constraint(equalTo: contentLayoutGuide.bottomAnchor),
+            row.heightAnchor.constraint(equalTo: frameLayoutGuide.heightAnchor),
+        ])
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// Half the room left over, or nothing at all once the chips overflow.
+    ///
+    /// Split out from ``layoutSubviews`` because centring by inset is the sort of
+    /// arithmetic that is off by half a chip on exactly one device width, and a
+    /// pure function can be checked at all of them.
+    static func centeringInset(contentWidth: CGFloat, availableWidth: CGFloat) -> CGFloat {
+        guard contentWidth > 0, availableWidth > contentWidth else { return 0 }
+        return ((availableWidth - contentWidth) / 2).rounded(.down)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let inset = Self.centeringInset(
+            contentWidth: row.bounds.width,
+            availableWidth: bounds.width
+        )
+        // The inset alone only makes the room scrollable; the offset is what
+        // actually moves the row into it.
+        if contentInset.left != inset {
+            contentInset = UIEdgeInsets(top: 0, left: inset, bottom: 0, right: inset)
+            needsScrollReset = true
+        }
+        if needsScrollReset {
+            needsScrollReset = false
+            contentOffset = CGPoint(x: -inset, y: 0)
+        }
+    }
+
+    /// Diffs before it rebuilds. The strip is asked to render on every
+    /// keystroke, and rebuilding three button configurations per letter is the
+    /// kind of churn that shows up as dropped frames on the oldest device.
+    func apply(_ candidates: [TypingCandidate], animated: Bool) {
+        guard candidates != self.candidates else { return }
+        let wasEmpty = self.candidates.isEmpty
+        self.candidates = candidates
+        rebuild()
+        guard animated, !wasEmpty, !UIAccessibility.isReduceMotionEnabled else { return }
+        // Reduce Motion swaps immediately; the chips are information, and the
+        // crossfade is decoration on top of it.
+        UIView.transition(
+            with: self,
+            duration: 0.16,
+            options: [.transitionCrossDissolve, .allowUserInteraction],
+            animations: {}
+        )
+    }
+
+    private func rebuild() {
+        while buttons.count < candidates.count {
+            let button = UIButton(type: .system)
+            button.tag = buttons.count
+            button.addTarget(self, action: #selector(chipTapped), for: .touchUpInside)
+            // A chip that does not react under the thumb reads as a label the
+            // user has failed to hit. UIKit dims a plain button's title on its
+            // own, which on an accent fill is invisible; this moves the whole
+            // capsule instead.
+            button.configurationUpdateHandler = { button in
+                let isPressed = button.isHighlighted
+                button.alpha = isPressed ? 0.72 : 1
+                button.transform = isPressed
+                    ? CGAffineTransform(scaleX: 0.95, y: 0.95)
+                    : .identity
+            }
+            row.addArrangedSubview(button)
+            button.widthAnchor
+                .constraint(greaterThanOrEqualToConstant: Self.minimumChipWidth)
+                .isActive = true
+            buttons.append(button)
+        }
+        for (index, button) in buttons.enumerated() {
+            guard index < candidates.count else {
+                button.isHidden = true
+                continue
+            }
+            button.isHidden = false
+            configure(button, with: candidates[index])
+        }
+        needsScrollReset = true
+        setNeedsLayout()
+    }
+
+    private func configure(_ button: UIButton, with candidate: TypingCandidate) {
+        var configuration = UIButton.Configuration.plain()
+        // The literal is quoted, exactly as the system keyboard quotes the word
+        // it is about to take away. The quotes are the affordance: they say
+        // "this is what you typed", and iOS has trained everyone to read them.
+        configuration.title = candidate.kind == .literal
+            ? "“\(candidate.text)”"
+            : candidate.text
+        configuration.cornerStyle = .capsule
+        configuration.contentInsets = NSDirectionalEdgeInsets(
+            top: 0,
+            leading: Self.chipTextInset,
+            bottom: 0,
+            trailing: Self.chipTextInset
+        )
+        configuration.titleLineBreakMode = .byTruncatingTail
+
+        let isEmphasised = candidate.isEmphasised
+        let fill = isEmphasised ? palette.accentKey : palette.chipBackground
+        configuration.background.backgroundColor = fill
+        // A hairline around the quiet chips. The fill alone is a wash on the bar
+        // it sits on, and the edge is what turns it into an object: it gives the
+        // capsule a boundary at the exact place the finger is aiming for. The
+        // emphasised chip is solid accent and needs no help being seen.
+        configuration.background.strokeColor = isEmphasised ? .clear : palette.chipBorder
+        configuration.background.strokeWidth = isEmphasised ? 0 : 1 / max(traitCollection.displayScale, 1)
+        let label = isEmphasised
+            ? ContrastMath.legibleLabel(on: palette.accentKey)
+            : palette.label
+        configuration.baseForegroundColor = label
+        let size = metrics.bodyFontSize + 2.5
+        configuration.titleTextAttributesTransformer =
+            UIConfigurationTextAttributesTransformer { incoming in
+                var outgoing = incoming
+                // Medium rather than regular: a chip is a control, and at this
+                // size regular reads as body text that happens to be in a pill.
+                outgoing.font = .systemFont(
+                    ofSize: size,
+                    weight: isEmphasised ? .semibold : .medium
+                )
+                outgoing.foregroundColor = label
+                return outgoing
+            }
+        button.configuration = configuration
+        button.accessibilityLabel = candidate.text
+        button.accessibilityHint = Self.hint(for: candidate)
+    }
+
+    /// What the chip does, said plainly. VoiceOver reads the word from the
+    /// label; the hint is the part that says why it is on screen.
+    ///
+    /// Candidate *changes* are deliberately never announced: that would talk
+    /// over every keystroke and make the keyboard unusable with VoiceOver on.
+    static func hint(for candidate: TypingCandidate) -> String {
+        switch candidate.kind {
+        case .literal: "Keeps what you typed."
+        case .completion: "Completes the word."
+        case .correction: "Replaces the word."
+        case .prediction: "Inserts this word next."
+        }
+    }
+
+    @objc private func chipTapped(_ sender: UIButton) {
+        guard sender.tag < candidates.count else { return }
+        // A chip replaces a whole word, which is a bigger edit than any key
+        // makes. Silence here, next to keys that tap back, reads as a chip that
+        // did not register.
+        KeyboardHaptics.shared.selectionChanged()
+        chipDelegate?.typingStrip(self, didChoose: candidates[sender.tag])
+    }
+}

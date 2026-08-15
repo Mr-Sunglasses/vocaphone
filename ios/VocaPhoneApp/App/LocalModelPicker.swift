@@ -4,51 +4,92 @@ import SwiftUI
 ///
 /// The catalog is deliberately large, so this shows only what this iPhone has
 /// the memory for. Installed models and downloadable models stay in separate
-/// sections so the model currently available for use is easy to find.
+/// sections so the model currently available for use is easy to find, and every
+/// row says the same five things in the same order: what it is, how big it is,
+/// what languages it covers, what state it is in, and the one action available.
 struct LocalModelPicker: View {
     let manager: LocalModelManager
-    /// Setup needs its rows indented and its status line refreshed on every
-    /// change; Settings does not.
-    var leadingPadding: CGFloat = 0
+    /// Setup needs its status line refreshed on every change; Settings does not.
     var onChange: () -> Void = {}
 
     @State private var downloadTask: Task<Void, Never>?
     @State private var modelLoadTask: Task<Void, Never>?
     @State private var modelLoadError: String?
     @State private var availableModelsExpanded = false
+    @State private var pendingDeletion: LocalModelDescriptor?
 
     private var usable: [LocalModelDescriptor] { LocalModelCatalog.usableOnDevice }
 
     private var installedModels: [LocalModelDescriptor] {
-        usable.filter { manager.isDownloaded($0.id) }
+        usable.filter { manager.isDownloaded($0.id) || state(for: $0) != .notDownloaded }
     }
 
     private var availableModels: [LocalModelDescriptor] {
-        usable.filter { !manager.isDownloaded($0.id) }
+        usable.filter { state(for: $0) == .notDownloaded }
+    }
+
+    /// The five states a model can be in, named once so every surface uses the
+    /// same words for them.
+    private enum ModelState: Equatable {
+        case notDownloaded
+        case downloading
+        case verifying
+        case failedIntegrity
+        case loading
+        case ready
+        case selected
+
+        var label: String {
+            switch self {
+            case .notDownloaded: "Not downloaded"
+            case .downloading: "Downloading"
+            case .verifying: "Verifying"
+            case .failedIntegrity: "Failed verification"
+            case .loading: "Loading"
+            case .ready: "Ready"
+            case .selected: "In use"
+            }
+        }
+
+        var status: VocaStatus {
+            switch self {
+            case .notDownloaded: .inactive
+            case .downloading, .verifying, .loading: .working
+            case .failedIntegrity: .failed
+            case .ready, .selected: .ready
+            }
+        }
+    }
+
+    private func state(for model: LocalModelDescriptor) -> ModelState {
+        if manager.downloadingModelID == model.id { return .downloading }
+        if manager.loadingModelID == model.id { return .loading }
+        if manager.verifyingModelIDs.contains(model.id) { return .verifying }
+        if manager.failedIntegrityModelIDs.contains(model.id) { return .failedIntegrity }
+        guard manager.isDownloaded(model.id) else { return .notDownloaded }
+        return LocalTranscriptionPreferences.modelIdentifier == model.id ? .selected : .ready
     }
 
     @ViewBuilder
     var body: some View {
         if usable.isEmpty {
-            Text("No on-device model fits this iPhone yet.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .padding(.leading, leadingPadding)
+            Section {
+                Text("No on-device model fits this iPhone yet.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         } else {
             if !installedModels.isEmpty {
-                Section {
+                Section("On this iPhone") {
                     ForEach(installedModels) { model in
                         row(for: model)
                     }
-                } header: {
-                    Text("Installed models")
-                        .padding(.leading, leadingPadding)
                 }
             }
 
-            Section {
+            Section("Available to download") {
                 if availableModels.isEmpty {
-                    Text("All compatible models are installed.")
+                    Text("All compatible models are already on this iPhone.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
@@ -60,46 +101,43 @@ struct LocalModelPicker: View {
                         Text(
                             "\(availableModels.count) compatible model"
                                 + (availableModels.count == 1 ? "" : "s")
-                                + " available to download"
                         )
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline)
                     }
                 }
-            } header: {
-                Text("Available models")
-                    .padding(.leading, leadingPadding)
             }
 
-            if let message = manager.message {
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(manager.hasError ? .red : .secondary)
-                    .padding(.leading, leadingPadding)
-            }
-            if let modelLoadError {
-                Text(modelLoadError)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .padding(.leading, leadingPadding)
+            if manager.message != nil || modelLoadError != nil {
+                Section {
+                    if let message = manager.message {
+                        Text(message)
+                            .font(.footnote)
+                            .foregroundStyle(manager.hasError ? Color.vocaError : .secondary)
+                    }
+                    if let modelLoadError {
+                        Text(modelLoadError)
+                            .font(.footnote)
+                            .foregroundStyle(Color.vocaError)
+                    }
+                }
             }
         }
     }
 
     private func row(for model: LocalModelDescriptor) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(model.displayName)
-                Text(detail(for: model))
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        let state = state(for: model)
+        return VStack(alignment: .leading, spacing: VocaMetrics.related + 2) {
+            VocaStatusLine(
+                status: state.status,
+                title: model.displayName,
+                detail: detail(for: model, state: state)
+            )
 
-            if manager.downloadingModelID == model.id {
-                VStack(alignment: .leading, spacing: 8) {
+            switch state {
+            case .downloading:
+                VStack(alignment: .leading, spacing: VocaMetrics.related) {
                     HStack {
-                        Text("Downloading model…")
+                        Text("Downloading")
                             .font(.subheadline.weight(.semibold))
                         Spacer()
                         Text("\(Int(manager.progress * 100))%")
@@ -112,58 +150,114 @@ struct LocalModelPicker: View {
                     }
                     .buttonStyle(.bordered)
                 }
-            } else if manager.loadingModelID == model.id {
-                HStack(alignment: .top, spacing: 10) {
+            case .verifying, .loading:
+                HStack(spacing: VocaMetrics.related + 2) {
                     ProgressView()
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(manager.loadingMessage ?? "Loading model… Please wait.")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                }
-            } else if manager.isDownloaded(model.id) {
-                if LocalTranscriptionPreferences.modelIdentifier == model.id {
-                    Label("Selected model", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.tint)
-                } else {
-                    Button("Use this model") {
-                        prepare(model)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .frame(maxWidth: .infinity)
-                    .disabled(
-                        manager.downloadingModelID != nil || manager.loadingModelID != nil
+                    Text(
+                        state == .verifying
+                            ? "Checking every file against its published SHA-256."
+                            : manager.loadingMessage ?? "Loading the model…"
                     )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
-            } else {
-                Button("Download") {
-                    downloadTask?.cancel()
-                    downloadTask = Task { @MainActor in
-                        do {
-                            try await manager.download(model)
-                        } catch is CancellationError {
-                            // The picker shows cancellation as a normal action.
-                        } catch {
-                            // LocalModelManager publishes the actionable error.
-                        }
-                        onChange()
-                        downloadTask = nil
-                    }
+            // `.frame(maxWidth:)` outside a button stretches its *layout* and
+            // leaves the control its natural size, which is how these ended up
+            // the same compact pill as the destructive action below them. The
+            // width belongs on the label.
+            case .failedIntegrity:
+                Button { download(model) } label: {
+                    Text("Download again").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
-                .frame(maxWidth: .infinity)
-                .disabled(
-                    manager.downloadingModelID != nil || manager.loadingModelID != nil
-                )
+                .controlSize(.large)
+            case .notDownloaded:
+                Button { download(model) } label: {
+                    Text("Download \(model.sizeLabel)").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .disabled(isBusy)
+            case .ready:
+                VocaPrimaryButton(title: "Use this model") { prepare(model) }
+                    .disabled(isBusy)
+            case .selected:
+                EmptyView()
             }
+
+            if state == .ready || state == .selected || state == .failedIntegrity {
+                // Centred and compact, with room above it. "Use this model" is
+                // a full-width filled button, so a full-width destructive one
+                // directly beneath it shares an edge with the very action it
+                // must never be confused for.
+                VocaDestructiveButton(title: "Delete model") {
+                    pendingDeletion = model
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, VocaMetrics.related)
+            }
+        }
+        .padding(.vertical, VocaMetrics.tight)
+        .confirmationDialog(
+            "Delete \(pendingDeletion?.displayName ?? "this model")?",
+            isPresented: Binding(
+                get: { pendingDeletion == model },
+                set: { if !$0 { pendingDeletion = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                manager.deleteReportingResult(model)
+                pendingDeletion = nil
+                onChange()
+            }
+            Button("Keep", role: .cancel) { pendingDeletion = nil }
+        } message: {
+            Text(
+                "\(model.sizeLabel) will be freed. You can download it again at any "
+                    + "time; dictating offline needs a model on this iPhone."
+            )
         }
     }
 
-    private func detail(for model: LocalModelDescriptor) -> String {
-        var detail = "\(model.sizeLabel) · \(model.languages)"
-        if model.id == LocalModelCatalog.recommended.id {
-            detail += " · recommended"
+    private var isBusy: Bool {
+        manager.downloadingModelID != nil || manager.loadingModelID != nil
+    }
+
+    /// Size before download, languages before selection, and — for a failed
+    /// integrity check — what actually went wrong, because "download failed" and
+    /// "the files do not match what was published" call for different responses.
+    private func detail(for model: LocalModelDescriptor, state: ModelState) -> String {
+        switch state {
+        case .failedIntegrity:
+            return "The downloaded files do not match their published checksums, so "
+                + "the model will not be loaded. Download it again."
+        case .selected:
+            return "\(model.languages) · in use for dictation on this iPhone"
+        case .ready:
+            return "\(model.languages) · verified and ready to use offline"
+        default:
+            var detail = "\(model.sizeLabel) · \(model.languages)"
+            if model.id == LocalModelCatalog.recommended.id {
+                detail += " · recommended"
+            }
+            return detail
         }
-        return detail
+    }
+
+    private func download(_ model: LocalModelDescriptor) {
+        downloadTask?.cancel()
+        downloadTask = Task { @MainActor in
+            do {
+                try await manager.download(model)
+            } catch is CancellationError {
+                // The picker shows cancellation as a normal action.
+            } catch {
+                // LocalModelManager publishes the actionable error.
+            }
+            onChange()
+            downloadTask = nil
+        }
     }
 
     private func prepare(_ model: LocalModelDescriptor) {
@@ -183,7 +277,8 @@ struct LocalModelPicker: View {
                 // The picker does not expose cancellation for engine loading;
                 // cancellation here only prevents a stale selection commit.
             } catch {
-                modelLoadError = "Could not load \(model.displayName): \(error.localizedDescription)"
+                modelLoadError = "Could not load \(model.displayName): "
+                    + error.localizedDescription
             }
             modelLoadTask = nil
         }

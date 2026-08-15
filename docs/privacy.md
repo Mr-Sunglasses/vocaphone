@@ -74,9 +74,49 @@ VPS. The bearer token authenticates requests but does not encrypt them.
 ## Full Access
 
 The keyboard requests Full Access because the product coordinates a containing
-app and the user's Mac. The extension does not record microphone audio, inspect
-unrelated keystrokes, or use clipboard insertion. iOS still controls whether a
-third-party keyboard is available in a field.
+app and a gateway the user runs. The extension does not record microphone audio,
+inspect unrelated keystrokes, or use clipboard insertion. iOS still controls
+whether a third-party keyboard is available in a field.
+
+Typing intelligence does **not** need Full Access, and must not: a keyboard that
+cannot type without it is not a keyboard. Without Full Access, completions,
+corrections and predictions all still work; only learned words stop persisting,
+and the Keyboard settings screen says so rather than pretending otherwise.
+Keyboard haptics are also unavailable without it, because iOS gives an extension
+no route to the Taptic Engine, and that is stated next to the switch.
+
+## iOS keyboard
+
+The iOS keyboard completes, corrects and predicts entirely on the device.
+
+- **Where suggestions come from.** `UITextChecker` — the same dictionary iOS
+  uses in every other app, in whatever languages the user has installed — plus a
+  frequency-ordered English word list and bigram table shipped in the app
+  bundle, the user's own text replacements and contact names via `UILexicon`,
+  their custom words, and words the keyboard has learned. No network call is
+  made for a suggestion, ever, including to a configured gateway.
+- **What the keyboard reads.** The word being typed, which the keyboard tracks
+  itself, and `documentContextBeforeInput` to reconcile that word after the
+  cursor moves. iOS gives a keyboard extension no composing region, so this is
+  the only way to know which word to replace. Neither is logged or stored.
+- **Sensitive fields.** Suggestions, correction, prediction and learning are all
+  switched off — not merely hidden — in password, new-password, one-time-code,
+  card-number and number-pad fields.
+- **Learned words.** Words typed three times without being undone, and words
+  tapped in the suggestion row, are stored in the App Group on this iPhone,
+  capped at 2 000 and evicted least-recently-used. They are never written to the
+  system-wide dictionary that other apps read, never listed in the interface
+  beyond a count, and are erased by "Reset learned words" or by deleting the app.
+- **Diagnostics.** No typed character, candidate, or learned word is written to
+  the diagnostic log or included in an export. The log's vocabulary is a closed
+  set of state and lifecycle events with no free-text field, and a test asserts
+  an export contains none of it.
+- **Swipe typing** matches the traced path against the same on-phone word list
+  and reads nothing from the field. **Emoji** search runs against a shipped CLDR
+  annotation catalog; recents are stored in the App Group.
+- **Transcript retention** is the user's choice — keep everything, 30 days, or
+  7 days — under Settings → Privacy and permissions, alongside a way to delete
+  any single transcript or all of them.
 
 ## Android keyboard
 
