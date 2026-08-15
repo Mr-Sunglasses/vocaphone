@@ -154,3 +154,41 @@ final class KeyboardPreviewContainer: UIView {
         )
     }
 }
+
+#if DEBUG
+
+// MARK: - Previews
+
+// The height picker's whole argument is that nobody can judge 39 pt against
+// 49 pt from prose. That argument applies to the picker itself: this is the
+// three heights side by side, which is what the setting is choosing between.
+
+#Preview("Keyboard preview — every height", traits: .sizeThatFitsLayout) {
+    HStack(alignment: .top, spacing: 16) {
+        ForEach(KeyboardHeightPreference.allCases) { preference in
+            VStack(spacing: 6) {
+                Text(preference.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                KeyboardPreview(preference: preference, showsSuggestions: true)
+                    .frame(width: 340)
+            }
+        }
+    }
+    .padding()
+}
+
+#Preview("Keyboard preview — suggestions off", traits: .sizeThatFitsLayout) {
+    KeyboardPreview(preference: .standard, showsSuggestions: false)
+        .frame(width: 360)
+        .padding()
+}
+
+#Preview("Keyboard preview — dark", traits: .sizeThatFitsLayout) {
+    KeyboardPreview(preference: .standard, showsSuggestions: true)
+        .frame(width: 360)
+        .padding()
+        .environment(\.colorScheme, .dark)
+        .background(Color.vocaCanvas)
+}
+#endif

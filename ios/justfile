@@ -124,10 +124,36 @@ test *only: gen
     xcodebuild {{ sim_flags }} -destination "platform=iOS Simulator,id=${udid}" \
         ${filters[@]+"${filters[@]}"} test-without-building
 
+# A Release build proves the same thing, but only by compiling WhisperKit twice.
+# This takes under a second, so it can run on every change instead of on the
+# ones somebody remembers.
+#
+# Fail if any preview or debug-only symbol is reachable from a release build.
+[group('test')]
+lint-previews:
+    @python3 '{{ justfile_directory() }}/tools/check-preview-isolation.py'
+
+# The exit gate for the preview harness: `just ios lint-previews` catches a
+# named symbol, this catches everything else — anything the canvas depends on
+# that a shipping build would still have to link.
+#
+# Compile the app with DEBUG undefined.
+[group('test')]
+release-build: gen
+    #!/usr/bin/env bash
+    set -euo pipefail
+    udid="$({{ just_executable() }} _udid)"
+    xcodebuild -project {{ project }} -scheme {{ scheme }} -sdk iphonesimulator \
+        -configuration Release -derivedDataPath '{{ derived }}Release' \
+        -disableAutomaticPackageResolution \
+        CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
+        -destination "platform=iOS Simulator,id=${udid}" -quiet build
+
 # Everything CI checks for iOS: a non-stale project, then a build and the tests.
 [group('test')]
 ci: gen
     @git diff --exit-code -- {{ project }} || { echo "VocaPhone.xcodeproj is stale — commit the regenerated project." >&2; exit 1; }
+    @{{ just_executable() }} lint-previews
     @{{ just_executable() }} test
 
 # Build and install on a connected iPhone. Signing must already work in Xcode.

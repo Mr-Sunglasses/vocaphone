@@ -17,6 +17,36 @@ final class RecordingCoordinator {
     /// snapshotted here and refreshed deliberately rather than polled.
     private(set) var setupStatus = SetupStatus()
 
+#if DEBUG
+    /// True only for a coordinator built by the preview initializer below.
+    ///
+    /// A `#Preview` is live, not a screenshot: `ContentView`'s `.task` runs the
+    /// moment the canvas appears. Unguarded, `refreshSetupStatus` would replace
+    /// the fixture with whatever this developer's simulator happens to be
+    /// within a frame — so every home and setup preview would show one state,
+    /// the real one. `prepareQuickDictationIfEnabled` would arm the microphone
+    /// for a canvas nobody is speaking into.
+    private(set) var isPreviewFixture = false
+    /// `isRecording` is derived from the live `AudioRecorder`, which a canvas
+    /// has no way to start. A fixture sets the answer instead of producing it.
+    fileprivate var previewIsRecording = false
+    /// Stands in for the session files on disk. `nonisolated(unsafe)` because
+    /// `loadRecentTranscripts` is nonisolated by design, and this is written
+    /// once during construction and only read afterwards.
+    @ObservationIgnored nonisolated(unsafe) fileprivate var previewTranscripts: [SessionRecord]?
+#endif
+
+    /// Whether this instance declines to touch audio, the network, the shared
+    /// container, or the system's own state. Always `false` outside DEBUG,
+    /// where the initializer that can set it does not exist.
+    private var isInert: Bool {
+#if DEBUG
+        isPreviewFixture
+#else
+        false
+#endif
+    }
+
     private let recorder = AudioRecorder()
     private let store = SharedStore.shared
     private var pollingTask: Task<Void, Never>?
@@ -34,13 +64,21 @@ final class RecordingCoordinator {
     private let streamingBridge = StreamingAudioBridge()
     private let soundFeedback = RecordingSoundFeedback()
     private var localSherpaSession: SherpaIncrementalSession?
-    let localModels = LocalModelManager()
+    let localModels: LocalModelManager
 
-    var isRecording: Bool { activeRecord?.state == .recording && recorder.isRecording }
+    var isRecording: Bool {
+#if DEBUG
+        if isPreviewFixture { return previewIsRecording }
+#endif
+        return activeRecord?.state == .recording && recorder.isRecording
+    }
     var hasError: Bool { activeRecord?.error != nil }
     var transcript: String? { activeRecord?.transcript }
     var isQuickDictationReady: Bool {
         guard let quickDictationExpiresAt else { return false }
+#if DEBUG
+        if isPreviewFixture { return quickDictationExpiresAt > Date() }
+#endif
         return recorder.isStandbyActive && quickDictationExpiresAt > Date()
     }
     /// Only true for a dictation started from another app, which is the only
@@ -60,10 +98,15 @@ final class RecordingCoordinator {
         !recorder.isRecording && startingSessionID == nil
     }
     var microphoneAccess: MicrophoneAccess {
+#if DEBUG
+        // A fixture's setup status is the single answer for every surface that
+        // asks; the canvas has no audio session to ask instead.
+        if isPreviewFixture { return setupStatus.microphone }
+#endif
         switch recorder.recordPermission {
-        case .granted: .granted
-        case .denied: .denied
-        default: .undetermined
+        case .granted: return .granted
+        case .denied: return .denied
+        default: return .undetermined
         }
     }
 
@@ -72,6 +115,7 @@ final class RecordingCoordinator {
     /// exposes no API for whether a keyboard extension is installed, and a
     /// permission can be revoked from Settings while the app is suspended.
     func refreshSetupStatus() {
+        guard !isInert else { return }
         let refreshed = SetupStatus(
             source: transcriptionSource,
             microphone: microphoneAccess,
@@ -94,6 +138,9 @@ final class RecordingCoordinator {
     /// say what switching would get you without presenting the unselected route
     /// as broken.
     var transcriptionSource: TranscriptionSourceStatus {
+#if DEBUG
+        if isPreviewFixture { return setupStatus.source }
+#endif
         let modelID = LocalTranscriptionPreferences.modelIdentifier
         let descriptor = modelID.flatMap(LocalModelCatalog.descriptor(for:))
         return TranscriptionSourceStatus(
@@ -128,6 +175,7 @@ final class RecordingCoordinator {
     /// too — a card describing a transcript that no longer exists is worse than
     /// an empty one.
     func deleteTranscript(_ id: UUID) async {
+        guard !isInert else { return }
         await Task.detached(priority: .userInitiated) {
             try? SharedStore.shared.delete(id)
         }.value
@@ -138,6 +186,7 @@ final class RecordingCoordinator {
     }
 
     func deleteAllTranscripts() async {
+        guard !isInert else { return }
         await Task.detached(priority: .userInitiated) {
             try? SharedStore.shared.deleteAllSessions()
         }.value
@@ -146,7 +195,10 @@ final class RecordingCoordinator {
     }
 
     nonisolated func loadRecentTranscripts(limit: Int = 50) async -> [SessionRecord] {
-        await Task.detached(priority: .userInitiated) {
+#if DEBUG
+        if let previewTranscripts { return Array(previewTranscripts.prefix(limit)) }
+#endif
+        return await Task.detached(priority: .userInitiated) {
             ((try? SharedStore.shared.recent(limit: limit)) ?? [])
                 .filter { !($0.transcript ?? "").isEmpty }
         }.value
@@ -161,6 +213,7 @@ final class RecordingCoordinator {
     }
 
     init() {
+        localModels = LocalModelManager()
         // A process exit can leave an otherwise valid-looking availability
         // marker behind. The new app process is not warm until it arms audio.
         try? store.clearQuickDictationAvailability()
@@ -184,7 +237,42 @@ final class RecordingCoordinator {
         DiagnosticLog.record(.appStarted)
     }
 
+#if DEBUG
+    /// A coordinator frozen in one state, for `#Preview` only.
+    ///
+    /// Deliberately not a `convenience init`: the designated initializer above
+    /// clears the Quick Dictation marker, installs Darwin observers, reads the
+    /// keychain and writes a diagnostic event. A canvas should do none of that.
+    /// This one assigns the state being previewed and stops.
+    ///
+    /// Every stored property it does not name keeps its inline default, so a
+    /// new one added above cannot silently leave a fixture half-built.
+    init(
+        preview record: SessionRecord? = nil,
+        setupStatus: SetupStatus = SetupStatus(),
+        message: String? = nil,
+        meterLevel: Float = 0,
+        isRecording: Bool = false,
+        quickDictationExpiresAt: Date? = nil,
+        microphoneName: String? = nil,
+        transcripts: [SessionRecord]? = nil,
+        models: LocalModelManager = LocalModelManager(preview: [])
+    ) {
+        localModels = models
+        isPreviewFixture = true
+        previewIsRecording = isRecording
+        previewTranscripts = transcripts
+        activeRecord = record
+        self.setupStatus = setupStatus
+        self.message = message
+        self.meterLevel = meterLevel
+        self.quickDictationExpiresAt = quickDictationExpiresAt
+        currentMicrophoneName = microphoneName
+    }
+#endif
+
     func handleDeepLink(_ url: URL) {
+        guard !isInert else { return }
         guard url.scheme == AppConfiguration.urlScheme,
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let value = components.queryItems?.first(where: { $0.name == "session" })?.value,
@@ -219,6 +307,7 @@ final class RecordingCoordinator {
     /// failed transcription, and Retry is the action that spends it — a new
     /// recording is the one that throws it away.
     func retryPreservedRecording() {
+        guard !isInert else { return }
         guard var record = activeRecord, record.canRetry else { return }
         do {
             record.error = nil
@@ -233,6 +322,7 @@ final class RecordingCoordinator {
     }
 
     func requestMicrophonePermission() {
+        guard !isInert else { return }
         recorder.requestPermission { [weak self] granted in
             guard let self else { return }
             if granted {
@@ -248,6 +338,7 @@ final class RecordingCoordinator {
     }
 
     func prepareQuickDictationIfEnabled() {
+        guard !isInert else { return }
         debugQuickDictation(
             "prepare enabled=\(KeyboardPreferences.quickDictationEnabled) "
                 + "permission=\(recorder.recordPermission.rawValue) "
@@ -263,6 +354,7 @@ final class RecordingCoordinator {
     }
 
     func setQuickDictationEnabled(_ enabled: Bool) {
+        guard !isInert else { return }
         KeyboardPreferences.quickDictationEnabled = enabled
         if enabled {
             if recorder.recordPermission == .granted {
@@ -276,6 +368,7 @@ final class RecordingCoordinator {
     }
 
     func stopQuickDictation() {
+        guard !isInert else { return }
         KeyboardPreferences.quickDictationEnabled = false
         clearQuickDictationReadiness(deactivateAudioSession: true)
         message = "Quick Dictation is off. The keyboard will open vocaphone next time."
@@ -292,6 +385,7 @@ final class RecordingCoordinator {
     /// A gateway configured last week may be unreachable today, so the setup
     /// checklist re-verifies rather than trusting the stored result.
     func refreshGatewayHealth() async {
+        guard !isInert else { return }
         defer { refreshSetupStatus() }
         guard let value = UserDefaults.standard.string(forKey: "gatewayURL"),
               let baseURL = GatewayEndpoint.validatedURL(from: value),
@@ -344,6 +438,7 @@ final class RecordingCoordinator {
     }
 
     func setMicrophonePreference(_ preference: MicrophonePreference) {
+        guard !isInert else { return }
         guard !recorder.isRecording, startingSessionID == nil else {
             message = "Finish the current recording before changing microphones."
             return
@@ -364,6 +459,7 @@ final class RecordingCoordinator {
     }
 
     func startInAppTest() {
+        guard !isInert else { return }
         guard !recorder.isRecording else { return }
         var record = SessionRecord(
             state: .idle,
@@ -384,6 +480,7 @@ final class RecordingCoordinator {
     }
 
     func requestFinish() {
+        guard !isInert else { return }
         guard var record = activeRecord, record.state == .recording else { return }
         DiagnosticLog.record(.finishRequested)
         do {
@@ -398,6 +495,7 @@ final class RecordingCoordinator {
     }
 
     func cancel() {
+        guard !isInert else { return }
         pipelineTask?.cancel()
         pipelineTask = nil
         pipelineSessionID = nil
@@ -445,6 +543,7 @@ final class RecordingCoordinator {
     }
 
     func recoverRecentSession() async {
+        guard !isInert else { return }
         pruneSharedStorage()
         let recovered = try? store.mostRecent()
         // A Live Activity belongs to the system and outlives its app, so a

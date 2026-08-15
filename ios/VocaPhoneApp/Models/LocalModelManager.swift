@@ -22,6 +22,23 @@ final class LocalModelManager {
     /// that never happened, and it needs a different sentence.
     private(set) var failedIntegrityModelIDs: Set<String> = []
 
+#if DEBUG
+    /// True only for a manager built by the preview initializer below. A canvas
+    /// is live, so without this a tap on Download in a preview would fetch a
+    /// gigabyte from Hugging Face, and Delete would remove a real model.
+    private(set) var isPreviewFixture = false
+#endif
+
+    /// Whether this instance declines to touch the network or the filesystem.
+    /// Always `false` outside DEBUG.
+    private var isInert: Bool {
+#if DEBUG
+        isPreviewFixture
+#else
+        false
+#endif
+    }
+
     private var whisperKit: WhisperKit?
     private var sherpaRecognizer: SherpaRecognizer?
     private var loadedModelID: String?
@@ -47,6 +64,38 @@ final class LocalModelManager {
     init() {
         refresh()
     }
+
+#if DEBUG
+    /// A manager frozen in one state, for `#Preview` only.
+    ///
+    /// The designated initializer stats every catalog entry and can start a
+    /// background hashing pass, so a canvas built on it would show whatever
+    /// this developer happens to have downloaded — which is never the state
+    /// being previewed, and never the interesting ones: verifying, loading, or
+    /// failed integrity.
+    init(
+        preview downloaded: Set<String> = [],
+        downloading: String? = nil,
+        progress: Double = 0,
+        loading: String? = nil,
+        loadingMessage: String? = nil,
+        verifying: Set<String> = [],
+        failedIntegrity: Set<String> = [],
+        message: String? = nil,
+        hasError: Bool = false
+    ) {
+        isPreviewFixture = true
+        downloadedModelIDs = downloaded
+        downloadingModelID = downloading
+        self.progress = progress
+        loadingModelID = loading
+        self.loadingMessage = loadingMessage
+        verifyingModelIDs = verifying
+        failedIntegrityModelIDs = failedIntegrity
+        self.message = message
+        self.hasError = hasError
+    }
+#endif
 
     /// Stat-only pass, safe to run on the main actor during launch.
     func refresh() {
@@ -329,6 +378,7 @@ final class LocalModelManager {
     /// exactly the kind of false readiness the source card exists to prevent —
     /// ``delete(_:)`` already clears it.
     func deleteReportingResult(_ descriptor: LocalModelDescriptor) {
+        guard !isInert else { return }
         do {
             try delete(descriptor)
             failedIntegrityModelIDs.remove(descriptor.id)
@@ -436,6 +486,7 @@ final class LocalModelManager {
     }
 
     func download(_ descriptor: LocalModelDescriptor) async throws {
+        guard !isInert else { return }
         downloadingModelID = descriptor.id
         progress = 0
         message = nil

@@ -1095,3 +1095,112 @@ struct TranscriptionLanguageList: View {
         .disabled(!selectable)
     }
 }
+
+#if DEBUG
+
+// MARK: - Previews
+
+// All five destinations, plus the hub. The hub's own finding — three rows that
+// read their value as a plain static property and never invalidate — shows up
+// here as a value that does not follow the store the preview supplies.
+
+#Preview("Settings — hub") {
+    PreviewHost(coordinator: .previewIdle()) {
+        NavigationStack { SettingsView() }
+    }
+}
+
+#Preview("Settings — hub, on-device source") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: SetupStatus(
+                source: PreviewFixtures.onDeviceReady,
+                microphone: .granted,
+                keyboard: .ready(lastSeenAt: Date()),
+                hasDictatedOnce: true
+            )
+        )
+    ) {
+        NavigationStack { SettingsView() }
+    }
+}
+
+#Preview("Settings — keyboard") {
+    PreviewHost {
+        NavigationStack { KeyboardSettingsView() }
+    }
+}
+
+#Preview("Settings — dictation") {
+    PreviewHost(coordinator: .previewIdle()) {
+        NavigationStack { DictationSettingsView() }
+    }
+}
+
+#Preview("Settings — transcription, gateway ready") {
+    PreviewHost(coordinator: .previewIdle()) {
+        NavigationStack { TranscriptionSettingsView() }
+    }
+}
+
+#Preview("Settings — transcription, on-device") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: SetupStatus(
+                source: PreviewFixtures.onDeviceReady,
+                microphone: .granted,
+                keyboard: .ready(lastSeenAt: Date()),
+                hasDictatedOnce: true
+            ),
+            models: LocalModelManager(preview: [PreviewFixtures.firstModelID])
+        )
+    ) {
+        NavigationStack { TranscriptionSettingsView() }
+    }
+}
+
+#Preview("Settings — privacy, everything granted") {
+    PreviewHost(coordinator: .previewIdle()) {
+        NavigationStack { PrivacySettingsView() }
+    }
+}
+
+/// The recovery wording for a permission iOS will not prompt for a second time.
+#Preview("Settings — privacy, microphone denied") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupMicrophoneDenied
+        )
+    ) {
+        NavigationStack { PrivacySettingsView() }
+    }
+}
+
+#Preview("Settings — diagnostics") {
+    PreviewHost {
+        NavigationStack { DiagnosticsSettingsView() }
+    }
+}
+
+#Preview("Settings — language list") {
+    @Previewable @State var selection = TranscriptionLanguage.automatic.rawValue
+    return PreviewHost {
+        NavigationStack { TranscriptionLanguageList(selection: $selection) }
+    }
+}
+
+#Preview("Settings — hub matrix", traits: .sizeThatFitsLayout) {
+    PreviewMatrix(coordinator: .previewIdle()) {
+        NavigationStack { SettingsView() }
+    }
+}
+
+#Preview("Settings — transcription matrix", traits: .sizeThatFitsLayout) {
+    PreviewMatrix(coordinator: .previewIdle()) {
+        NavigationStack { TranscriptionSettingsView() }
+    }
+}
+#endif

@@ -246,3 +246,69 @@ final class TypingStripView: UIScrollView {
         chipDelegate?.typingStrip(self, didChoose: candidates[sender.tag])
     }
 }
+
+#if DEBUG
+import SwiftUI
+
+// MARK: - Previews
+
+// Zero to three chips, light and dark. Three ordinary words nearly always fit
+// and the row centres; the long set is the case that scrolls, which is the
+// behaviour this view exists for and the one nobody had looked at.
+
+private struct StripPreview: View {
+    var candidates: [TypingCandidate]
+    var dark = false
+
+    var body: some View {
+        let metrics = KeyboardPreviewEnvironment.barMetrics()
+        return KeyboardViewPreview {
+            TypingStripView(
+                palette: KeyboardPreviewEnvironment.palette(dark: dark),
+                metrics: metrics
+            )
+        } configure: { strip in
+            strip.palette = KeyboardPreviewEnvironment.palette(dark: dark)
+            strip.apply(candidates, animated: false)
+        }
+        .frame(width: 360, height: metrics.stripHeight)
+        .background(Color(KeyboardPreviewEnvironment.palette(dark: dark).background))
+    }
+}
+
+#Preview("Typing strip — 0 to 3 chips", traits: .sizeThatFitsLayout) {
+    VStack(spacing: 12) {
+        StripPreview(candidates: [])
+        StripPreview(candidates: Array(KeyboardPreviewEnvironment.candidates.prefix(1)))
+        StripPreview(candidates: Array(KeyboardPreviewEnvironment.candidates.prefix(2)))
+        StripPreview(candidates: KeyboardPreviewEnvironment.candidates)
+    }
+    .padding()
+}
+
+#Preview("Typing strip — dark", traits: .sizeThatFitsLayout) {
+    VStack(spacing: 12) {
+        StripPreview(candidates: KeyboardPreviewEnvironment.candidates, dark: true)
+        StripPreview(candidates: [], dark: true)
+    }
+    .padding()
+}
+
+/// One-letter and glyph chips have their own minimum widths, and a long set is
+/// the only case that scrolls rather than fits.
+#Preview("Typing strip — short, glyph and overflowing", traits: .sizeThatFitsLayout) {
+    VStack(spacing: 12) {
+        StripPreview(candidates: [
+            TypingCandidate(text: "a", kind: .completion),
+            TypingCandidate(text: "I", kind: .completion),
+            TypingCandidate(text: "🎉", kind: .emoji),
+        ])
+        StripPreview(candidates: [
+            TypingCandidate(text: "internationalization", kind: .completion),
+            TypingCandidate(text: "interoperability", kind: .completion),
+            TypingCandidate(text: "interchangeable", kind: .completion),
+        ])
+    }
+    .padding()
+}
+#endif

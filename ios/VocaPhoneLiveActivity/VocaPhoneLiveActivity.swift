@@ -176,3 +176,112 @@ private struct VocaPhoneLogo: View {
             .accessibilityLabel("vocaphone")
     }
 }
+
+#if DEBUG
+
+// MARK: - Previews
+
+// The Lock Screen and the Dynamic Island are the two surfaces that cannot be
+// reached from the app at all: seeing one meant starting a real dictation and
+// locking the phone. All four phases are here, plus the two end states —
+// including the "Needs attention" one, which is the whole message a failed
+// dictation currently gets.
+
+private let previewAttributes = VocaPhoneActivityAttributes(
+    sessionID: "preview-session",
+    startedAt: Date(timeIntervalSinceNow: -42)
+)
+
+private extension VocaPhoneActivityAttributes.ContentState {
+    /// Armed, not recording. iOS lights the same microphone indicator either
+    /// way, so this is the state that must never read as a capture.
+    static let standby = VocaPhoneActivityAttributes.ContentState(
+        status: "Quick Dictation on standby",
+        canFinish: false,
+        phase: .standby
+    )
+
+    static let recording = VocaPhoneActivityAttributes.ContentState(
+        status: "Recording",
+        canFinish: true,
+        phase: .recording,
+        sessionID: "preview-session",
+        startedAt: Date(timeIntervalSinceNow: -42)
+    )
+
+    static let processing = VocaPhoneActivityAttributes.ContentState(
+        status: "Transcribing on your gateway",
+        canFinish: false,
+        phase: .processing
+    )
+
+    static let finished = VocaPhoneActivityAttributes.ContentState(
+        status: "Transcript ready",
+        canFinish: false,
+        phase: .finished
+    )
+
+    static let failed = VocaPhoneActivityAttributes.ContentState(
+        status: "Needs attention",
+        canFinish: false,
+        phase: .processing
+    )
+
+    /// The longest status the app produces, against the tightest budget on the
+    /// Lock Screen.
+    static let longStatus = VocaPhoneActivityAttributes.ContentState(
+        status: "Transcribing on this iPhone — no audio leaves the device",
+        canFinish: false,
+        phase: .processing
+    )
+}
+
+#Preview("Live Activity — Lock Screen", as: .content, using: previewAttributes) {
+    VocaPhoneRecordingActivity()
+} contentStates: {
+    VocaPhoneActivityAttributes.ContentState.standby
+    VocaPhoneActivityAttributes.ContentState.recording
+    VocaPhoneActivityAttributes.ContentState.processing
+    VocaPhoneActivityAttributes.ContentState.finished
+    VocaPhoneActivityAttributes.ContentState.failed
+    VocaPhoneActivityAttributes.ContentState.longStatus
+}
+
+#Preview(
+    "Live Activity — expanded",
+    as: .dynamicIsland(.expanded),
+    using: previewAttributes
+) {
+    VocaPhoneRecordingActivity()
+} contentStates: {
+    VocaPhoneActivityAttributes.ContentState.standby
+    VocaPhoneActivityAttributes.ContentState.recording
+    VocaPhoneActivityAttributes.ContentState.processing
+    VocaPhoneActivityAttributes.ContentState.finished
+}
+
+/// The compact trailing region is where `"•••"` lives, with no accessible name.
+#Preview(
+    "Live Activity — compact",
+    as: .dynamicIsland(.compact),
+    using: previewAttributes
+) {
+    VocaPhoneRecordingActivity()
+} contentStates: {
+    VocaPhoneActivityAttributes.ContentState.standby
+    VocaPhoneActivityAttributes.ContentState.recording
+    VocaPhoneActivityAttributes.ContentState.processing
+    VocaPhoneActivityAttributes.ContentState.finished
+}
+
+#Preview(
+    "Live Activity — minimal",
+    as: .dynamicIsland(.minimal),
+    using: previewAttributes
+) {
+    VocaPhoneRecordingActivity()
+} contentStates: {
+    VocaPhoneActivityAttributes.ContentState.recording
+    VocaPhoneActivityAttributes.ContentState.processing
+}
+#endif

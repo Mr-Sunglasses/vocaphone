@@ -14,6 +14,17 @@ struct TranscriptHistoryView: View {
     @State private var copiedID: UUID?
     @State private var pendingDeletion: SessionRecord?
 
+    init() {}
+
+#if DEBUG
+    /// Preview seam: the filter is `@State`, so a canvas has no other way to
+    /// reach "nothing matches" — the state most easily confused with "no
+    /// transcripts yet", and the one whose wording exists to tell them apart.
+    init(previewFilter: TranscriptHistoryModel.Filter) {
+        _filter = State(initialValue: previewFilter)
+    }
+#endif
+
     private var sections: [TranscriptHistoryModel.Section] {
         TranscriptHistoryModel.sections(
             TranscriptHistoryModel.filtered(records, filter: filter)
@@ -234,3 +245,104 @@ struct TranscriptDetailView: View {
         (record.transcript ?? "").split(whereSeparator: \.isWhitespace).count
     }
 }
+
+#if DEBUG
+
+// MARK: - Previews
+
+// The populated state is the one the search, the filters and the day grouping
+// were built for, and the one that needs ninety real dictations to reach.
+
+#Preview("History — populated") {
+    PreviewHost(coordinator: .previewIdle()) {
+        NavigationStack { TranscriptHistoryView() }
+    }
+}
+
+#Preview("History — no transcripts yet") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupComplete,
+            transcripts: []
+        )
+    ) {
+        NavigationStack { TranscriptHistoryView() }
+    }
+}
+
+#Preview("History — nothing matches the search") {
+    PreviewHost(coordinator: .previewIdle()) {
+        NavigationStack {
+            TranscriptHistoryView(
+                previewFilter: TranscriptHistoryModel.Filter(query: "quarterly budget")
+            )
+        }
+    }
+}
+
+#Preview("History — nothing matches the filters") {
+    PreviewHost(coordinator: .previewIdle()) {
+        NavigationStack {
+            TranscriptHistoryView(
+                previewFilter: TranscriptHistoryModel.Filter(route: .onDevice, style: .excited)
+            )
+        }
+    }
+}
+
+/// The row's metadata is a three-item `HStack` with no wrapping, which is the
+/// finding this matrix exists to make visible.
+#Preview("History — matrix", traits: .sizeThatFitsLayout) {
+    PreviewMatrix(coordinator: .previewIdle()) {
+        NavigationStack { TranscriptHistoryView() }
+    }
+}
+
+#Preview("Transcript detail — long") {
+    PreviewHost {
+        NavigationStack {
+            TranscriptDetailView(
+                record: PreviewFixtures.record(
+                    state: .completed,
+                    transcript: PreviewFixtures.longTranscript,
+                    processingLocation: .onDevice,
+                    style: .formal
+                ),
+                delete: {}
+            )
+        }
+    }
+}
+
+/// A record written before the route was stored, which is the only case that
+/// says "Not recorded" rather than naming a place.
+#Preview("Transcript detail — route unknown") {
+    PreviewHost {
+        NavigationStack {
+            TranscriptDetailView(
+                record: PreviewFixtures.record(
+                    state: .completed,
+                    transcript: PreviewFixtures.shortTranscript,
+                    processingLocation: nil
+                ),
+                delete: {}
+            )
+        }
+    }
+}
+
+#Preview("Transcript detail — matrix", traits: .sizeThatFitsLayout) {
+    PreviewMatrix {
+        NavigationStack {
+            TranscriptDetailView(
+                record: PreviewFixtures.record(
+                    state: .completed,
+                    transcript: PreviewFixtures.verboseTranscript
+                ),
+                delete: {}
+            )
+        }
+    }
+}
+#endif

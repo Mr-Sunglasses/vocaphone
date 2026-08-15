@@ -831,3 +831,137 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
         ] + controlHeights + secondarySizes)
     }
 }
+
+#if DEBUG
+import SwiftUI
+
+// MARK: - Previews
+
+// The bar is one control that becomes eight different things. `DictationBarModel`
+// is pure and already tested, but what the model turns into on screen — the
+// accent, the pulse, which secondaries fit, how the strip and status layouts
+// differ — had only ever been seen in the two or three states that are easy to
+// reach from a host app.
+
+private struct DictationBarPreview: View {
+    var context: DictationContext
+    var dark = false
+    var preference: KeyboardHeightPreference = .standard
+
+    var body: some View {
+        let metrics = KeyboardPreviewEnvironment.barMetrics(preference)
+        let palette = KeyboardPreviewEnvironment.palette(dark: dark)
+        return KeyboardViewPreview {
+            DictationBarView(metrics: metrics, palette: palette)
+        } configure: { bar in
+            bar.metrics = metrics
+            bar.palette = palette
+            bar.apply(DictationBarModel.make(context), animated: false)
+        }
+        .frame(width: 360, height: metrics.stripHeight)
+        .background(Color(palette.background))
+    }
+}
+
+private struct DictationBarGallery: View {
+    var dark = false
+
+    private var states: [(String, DictationContext)] {
+        [
+            (
+                "Idle, suggestions",
+                DictationContext(
+                    state: .idle,
+                    candidates: KeyboardPreviewEnvironment.candidates
+                )
+            ),
+            ("Idle, no suggestions", DictationContext(state: .idle)),
+            (
+                "No Full Access",
+                DictationContext(state: .idle, hasFullAccess: false)
+            ),
+            ("Opening vocaphone", DictationContext(state: .launchingApp)),
+            ("Recording", DictationContext(state: .recording)),
+            (
+                "Transcribing on the gateway",
+                DictationContext(state: .transcribing, processingLocation: .gateway)
+            ),
+            (
+                "Transcribing on this iPhone",
+                DictationContext(state: .transcribing, processingLocation: .onDevice)
+            ),
+            (
+                "Ready to insert",
+                DictationContext(
+                    state: .readyToInsert,
+                    transcript: "Let's move the review to Thursday afternoon."
+                )
+            ),
+            (
+                "Field changed while transcribing",
+                DictationContext(
+                    state: .targetContextChanged,
+                    transcript: "Let's move the review to Thursday afternoon."
+                )
+            ),
+            (
+                "Inserted, undo available",
+                DictationContext(state: .inserted, canUndo: true)
+            ),
+            (
+                "Gateway unavailable, can retry",
+                DictationContext(
+                    state: .serverUnavailable,
+                    errorMessage: "Your gateway did not answer. The recording is kept.",
+                    canRetry: true
+                )
+            ),
+            (
+                "Transcription failed for good",
+                DictationContext(
+                    state: .transcriptionFailedPermanent,
+                    errorMessage: "No text came back for this recording."
+                )
+            ),
+        ]
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(states, id: \.0) { name, context in
+                Text(name)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                DictationBarPreview(context: context, dark: dark)
+            }
+        }
+        .padding()
+    }
+}
+
+#Preview("Dictation bar — every state", traits: .sizeThatFitsLayout) {
+    DictationBarGallery()
+}
+
+#Preview("Dictation bar — every state, dark", traits: .sizeThatFitsLayout) {
+    DictationBarGallery(dark: true)
+}
+
+#Preview("Dictation bar — every height", traits: .sizeThatFitsLayout) {
+    VStack(alignment: .leading, spacing: 10) {
+        ForEach(KeyboardHeightPreference.allCases) { preference in
+            Text(preference.displayName)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            DictationBarPreview(
+                context: DictationContext(
+                    state: .idle,
+                    candidates: KeyboardPreviewEnvironment.candidates
+                ),
+                preference: preference
+            )
+        }
+    }
+    .padding()
+}
+#endif

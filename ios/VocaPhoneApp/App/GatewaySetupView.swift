@@ -214,3 +214,49 @@ struct GatewaySetupView: View {
         }
     }
 }
+
+#if DEBUG
+
+// MARK: - Previews
+
+// Reachable, authenticated and model-ready are three different things, and each
+// one failing produces a different sentence. Reaching them on a device means
+// having a gateway and breaking it in three specific ways.
+
+#Preview("Gateway — not paired yet") {
+    PreviewHost(store: PreviewFixtures.gatewayUnpairedStore) {
+        NavigationStack { GatewaySetupView() }
+    }
+}
+
+#Preview("Gateway — ready") {
+    PreviewHost(store: PreviewFixtures.defaults) {
+        NavigationStack { GatewaySetupView() }
+    }
+}
+
+#Preview("Gateway — token rejected") {
+    PreviewHost(store: PreviewFixtures.gatewayTokenRejectedStore) {
+        NavigationStack { GatewaySetupView() }
+    }
+}
+
+#Preview("Gateway — reachable, model not loaded") {
+    PreviewHost(store: PreviewFixtures.gatewayModelNotReadyStore) {
+        NavigationStack { GatewaySetupView() }
+    }
+}
+
+/// The only state in which the address field's footer becomes a warning.
+#Preview("Gateway — unencrypted HTTP warning") {
+    PreviewHost(store: PreviewFixtures.gatewayUnencryptedStore) {
+        NavigationStack { GatewaySetupView() }
+    }
+}
+
+#Preview("Gateway — matrix", traits: .sizeThatFitsLayout) {
+    PreviewMatrix(store: PreviewFixtures.gatewayTokenRejectedStore) {
+        NavigationStack { GatewaySetupView() }
+    }
+}
+#endif

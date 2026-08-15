@@ -107,6 +107,41 @@ through `sourceSets` in `app/build.gradle.kts`. Two hand-maintained copies would
 drift, and nothing would notice until the platforms started suggesting different
 words.
 
+## Preview harness (iOS)
+
+Every user-visible state has a `#Preview`, and every preview is built from
+`VocaPhoneApp/App/Previews/`. The point is not tidiness: states like "gateway
+reachable but token rejected", "model failed its integrity check" and
+"transcript ready but the field changed" are expensive enough to reach on a
+device that they were never looked at.
+
+Three pieces:
+
+- **`PreviewFixtures`** — canned `SessionRecord`s, `SetupStatus` combinations,
+  transcription sources, a transcript library, and named `UserDefaults` stores.
+  Stored values go into the *registration* domain, which `UserDefaults` keeps in
+  memory, so opening a canvas cannot rewrite the settings of the app installed
+  on the same simulator.
+- **`PreviewHost` and `PreviewMatrix`** — the environment a screen needs, and the
+  four variants every screen has to survive: default, dark, `.accessibility5`,
+  and right-to-left.
+- **Preview initializers** on `RecordingCoordinator` and `LocalModelManager`.
+  Both are live objects whose designated initializers touch audio, the network,
+  the keychain and the shared container; the preview ones assign state and stop.
+  Both types carry an `isInert` flag that makes their side-effecting entry
+  points return early, because a canvas is live — without it a home preview's
+  `.task` would overwrite the fixture with the real system state within a frame,
+  and Download in a model preview would fetch a gigabyte.
+
+The keyboard's surfaces are all `UIView`s, so they preview through
+`KeyboardViewPreview` in the keyboard target, beside the views themselves.
+
+**The `#if DEBUG` boundary is enforced, not assumed.**
+`ios/tools/check-preview-isolation.py` fails if a preview-only file has code
+outside `#if DEBUG`, or if a preview-only symbol is named from release code. It
+runs in `just ios ci` and in the iOS workflow. `just ios release-build` compiles
+with DEBUG undefined and is the wider version of the same check.
+
 ## Server states
 
 `created → uploaded → transcribing → completed`

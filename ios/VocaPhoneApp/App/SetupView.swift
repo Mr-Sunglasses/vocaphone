@@ -402,3 +402,130 @@ struct SetupStepLabel: View {
         .accessibilityValue(isComplete ? "Done" : "Not done")
     }
 }
+
+#if DEBUG
+
+// MARK: - Previews
+
+// Guided setup is four steps that each complete somewhere else — iOS Settings,
+// a permission alert, the keyboard itself — so reaching a particular
+// combination on a device means undoing real system state. These are the
+// combinations that change what the screen says.
+
+#Preview("Setup — nothing done yet") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupFresh
+        ),
+        store: PreviewFixtures.gatewayUnpairedStore
+    ) {
+        NavigationStack { SetupView() }
+    }
+}
+
+#Preview("Setup — microphone declined") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupMicrophoneDenied
+        )
+    ) {
+        NavigationStack { SetupView() }
+    }
+}
+
+/// The most common stuck point: listed under Keyboards, never granted Full
+/// Access, so the extension has never reached the shared container.
+#Preview("Setup — keyboard needs Full Access") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupKeyboardNeedsFullAccess,
+            models: LocalModelManager(preview: [PreviewFixtures.firstModelID])
+        )
+    ) {
+        NavigationStack { SetupView() }
+    }
+}
+
+#Preview("Setup — keyboard has gone silent") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupKeyboardSilent
+        )
+    ) {
+        NavigationStack { SetupView() }
+    }
+}
+
+/// Dictation works and only the optional trial run is outstanding — the state
+/// that must *not* warn on the home screen.
+#Preview("Setup — ready, test dictation left") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupReadyToDictate
+        )
+    ) {
+        NavigationStack { SetupView() }
+    }
+}
+
+#Preview("Setup — recording the test dictation") {
+    PreviewHost(
+        coordinator: .preview(
+            .recording,
+            setupStatus: PreviewFixtures.setupReadyToDictate,
+            message: "Listening…",
+            meterLevel: 0.55,
+            isRecording: true
+        )
+    ) {
+        NavigationStack { SetupView() }
+    }
+}
+
+#Preview("Setup — complete") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupComplete
+        )
+    ) {
+        NavigationStack { SetupView() }
+    }
+}
+
+/// The five hardcoded `padding(.leading, 32)` indents in this file are the
+/// reason this matrix exists: at `.accessibility5` they eat a third of the
+/// width, and right to left they land on the wrong side.
+#Preview("Setup — matrix", traits: .sizeThatFitsLayout) {
+    PreviewMatrix(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupFresh
+        ),
+        store: PreviewFixtures.gatewayUnpairedStore
+    ) {
+        NavigationStack { SetupView() }
+    }
+}
+
+#Preview("Setup step label — done and not done", traits: .sizeThatFitsLayout) {
+    PreviewHost {
+        VStack(alignment: .leading, spacing: VocaMetrics.grouping) {
+            ForEach(SetupStep.allCases) { step in
+                SetupStepLabel(
+                    step: step,
+                    detail: PreviewFixtures.setupKeyboardNeedsFullAccess.detail(for: step),
+                    isComplete: PreviewFixtures.setupKeyboardNeedsFullAccess.isSatisfied(step)
+                )
+            }
+        }
+        .padding()
+        .frame(width: 380)
+    }
+}
+#endif

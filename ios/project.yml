@@ -46,6 +46,10 @@ targets:
       - path: VocaPhoneKeyboard/WordComposer.swift
       - path: VocaPhoneKeyboard/TypingWordList.swift
       - path: VocaPhoneKeyboard/SwipeRecognizer.swift
+      # The canvas host for the keyboard's UIKit views. Whole file is
+      # `#if DEBUG`; it is here because the app target compiles the strip
+      # and the bar, and a preview in either file needs it in scope.
+      - path: VocaPhoneKeyboard/KeyboardViewPreview.swift
     resources:
       - VocaPhoneApp/Models/local_model_pins.json
       - VocaPhoneApp/Models/sherpa_model_pins.json
@@ -167,6 +171,9 @@ targets:
       # Search, filter and day-grouping for the transcript library. The grouping
       # arithmetic is the part that goes wrong at midnight and across zones.
       - path: VocaPhoneApp/App/TranscriptHistoryModel.swift
+      # Same reason as the app target: the strip and the bar carry their
+      # own previews, and this is what those previews are built from.
+      - path: VocaPhoneKeyboard/KeyboardViewPreview.swift
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

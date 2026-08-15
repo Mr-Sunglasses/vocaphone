@@ -12,6 +12,13 @@ struct LocalModelPicker: View {
     /// Setup needs its status line refreshed on every change; Settings does not.
     var onChange: () -> Void = {}
 
+#if DEBUG
+    /// Which model a `#Preview` should draw as "In use". Production leaves this
+    /// nil and reads the stored preference, because a canvas must not write the
+    /// developer's real model selection to reach one row state.
+    var previewSelectedModelID: String?
+#endif
+
     @State private var downloadTask: Task<Void, Never>?
     @State private var modelLoadTask: Task<Void, Never>?
     @State private var modelLoadError: String?
@@ -67,6 +74,11 @@ struct LocalModelPicker: View {
         if manager.verifyingModelIDs.contains(model.id) { return .verifying }
         if manager.failedIntegrityModelIDs.contains(model.id) { return .failedIntegrity }
         guard manager.isDownloaded(model.id) else { return .notDownloaded }
+#if DEBUG
+        if let previewSelectedModelID {
+            return previewSelectedModelID == model.id ? .selected : .ready
+        }
+#endif
         return LocalTranscriptionPreferences.modelIdentifier == model.id ? .selected : .ready
     }
 
@@ -284,3 +296,123 @@ struct LocalModelPicker: View {
         }
     }
 }
+
+#if DEBUG
+
+// MARK: - Previews
+
+// Seven row states, three of which cannot be reached on purpose: verifying
+// lasts seconds, loading needs a real ONNX graph, and failed integrity needs a
+// corrupted download. All three have their own wording, and none of it had ever
+// been looked at.
+
+/// A `List` because the picker builds `Section`s, which have no meaning outside
+/// one.
+private struct ModelPickerPreview: View {
+    let manager: LocalModelManager
+    var selected: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                LocalModelPicker(manager: manager, previewSelectedModelID: selected)
+            }
+            .navigationTitle("On-device models")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+#Preview("Models — nothing downloaded") {
+    PreviewHost { ModelPickerPreview(manager: LocalModelManager(preview: [])) }
+}
+
+#Preview("Models — downloading") {
+    PreviewHost {
+        ModelPickerPreview(
+            manager: LocalModelManager(
+                preview: [],
+                downloading: PreviewFixtures.firstModelID,
+                progress: 0.43
+            )
+        )
+    }
+}
+
+#Preview("Models — verifying checksums") {
+    PreviewHost {
+        ModelPickerPreview(
+            manager: LocalModelManager(
+                preview: [],
+                verifying: [PreviewFixtures.firstModelID]
+            )
+        )
+    }
+}
+
+#Preview("Models — failed verification") {
+    PreviewHost {
+        ModelPickerPreview(
+            manager: LocalModelManager(
+                preview: [],
+                failedIntegrity: [PreviewFixtures.firstModelID],
+                message: "The downloaded files do not match their published checksums.",
+                hasError: true
+            )
+        )
+    }
+}
+
+#Preview("Models — loading the engine") {
+    PreviewHost {
+        ModelPickerPreview(
+            manager: LocalModelManager(
+                preview: [PreviewFixtures.firstModelID],
+                loading: PreviewFixtures.firstModelID,
+                loadingMessage: "Building the decoder for the first time…"
+            )
+        )
+    }
+}
+
+/// One model in use, another ready beside it — and every other Download button
+/// disabled by `isBusy` with nothing on screen saying why.
+#Preview("Models — one in use, one downloading") {
+    PreviewHost {
+        ModelPickerPreview(
+            manager: LocalModelManager(
+                preview: [PreviewFixtures.firstModelID, PreviewFixtures.secondModelID],
+                downloading: PreviewFixtures.secondModelID,
+                progress: 0.12
+            ),
+            selected: PreviewFixtures.firstModelID
+        )
+    }
+}
+
+#Preview("Models — ready and in use") {
+    PreviewHost {
+        ModelPickerPreview(
+            manager: LocalModelManager(
+                preview: [PreviewFixtures.firstModelID, PreviewFixtures.secondModelID]
+            ),
+            selected: PreviewFixtures.firstModelID
+        )
+    }
+}
+
+/// The download row puts a label and a percentage at opposite ends of one line,
+/// which is the finding this matrix makes visible.
+#Preview("Models — matrix", traits: .sizeThatFitsLayout) {
+    PreviewMatrix {
+        ModelPickerPreview(
+            manager: LocalModelManager(
+                preview: [PreviewFixtures.firstModelID],
+                downloading: PreviewFixtures.secondModelID,
+                progress: 0.67
+            ),
+            selected: PreviewFixtures.firstModelID
+        )
+    }
+}
+#endif

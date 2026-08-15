@@ -342,3 +342,96 @@ final class EmojiCell: UICollectionViewCell {
         accessibilityLabel = glyph
     }
 }
+
+#if DEBUG
+import SwiftUI
+
+// MARK: - Previews
+
+// The panel occupies exactly the key grid's space, so it is previewed at the
+// grid's resolved height for each of the three keyboard heights. What matters
+// here is that ABC, space, delete and return stay pinned at the bottom: this is
+// the surface a user can otherwise get stuck in.
+
+/// `EmojiCatalog` builds only in the keyboard and the test target, so the
+/// fixture lives beside the view that needs it rather than in the shared
+/// preview helpers, which the app target also compiles.
+private enum EmojiPanelFixture {
+    /// Small enough to write down, large enough that the grid, the category bar
+    /// and search all have something to draw.
+    static let emojiCatalog = EmojiCatalog(entries: [
+        EmojiEntry(glyph: "😀", category: .smileys, keywords: "grinning face smile happy"),
+        EmojiEntry(glyph: "😅", category: .smileys, keywords: "grinning sweat relief nervous"),
+        EmojiEntry(glyph: "🙂", category: .smileys, keywords: "slightly smiling face"),
+        EmojiEntry(glyph: "😍", category: .smileys, keywords: "heart eyes love"),
+        EmojiEntry(glyph: "🤔", category: .smileys, keywords: "thinking face hmm"),
+        EmojiEntry(glyph: "😴", category: .smileys, keywords: "sleeping face tired"),
+        EmojiEntry(glyph: "👋", category: .people, keywords: "waving hand hello goodbye"),
+        EmojiEntry(glyph: "👍", category: .people, keywords: "thumbs up yes approve"),
+        EmojiEntry(glyph: "🙏", category: .people, keywords: "folded hands please thanks"),
+        EmojiEntry(glyph: "🐻", category: .animals, keywords: "bear face"),
+        EmojiEntry(glyph: "🐈", category: .animals, keywords: "cat pet"),
+        EmojiEntry(glyph: "🌱", category: .animals, keywords: "seedling plant grow"),
+        EmojiEntry(glyph: "🍔", category: .food, keywords: "hamburger burger food"),
+        EmojiEntry(glyph: "☕", category: .food, keywords: "hot beverage coffee tea"),
+        EmojiEntry(glyph: "✈️", category: .travel, keywords: "airplane flight travel"),
+        EmojiEntry(glyph: "🚲", category: .travel, keywords: "bicycle bike ride"),
+        EmojiEntry(glyph: "⚽", category: .activities, keywords: "soccer ball football"),
+        EmojiEntry(glyph: "🎧", category: .activities, keywords: "headphone music listen"),
+        EmojiEntry(glyph: "💡", category: .objects, keywords: "light bulb idea"),
+        EmojiEntry(glyph: "🔑", category: .objects, keywords: "key unlock"),
+        EmojiEntry(glyph: "❤️", category: .symbols, keywords: "red heart love"),
+        EmojiEntry(glyph: "✅", category: .symbols, keywords: "check mark done"),
+        EmojiEntry(glyph: "🚩", category: .flags, keywords: "triangular flag"),
+    ])
+}
+
+private struct EmojiPanelPreview: View {
+    var preference: KeyboardHeightPreference = .standard
+    var dark = false
+    var catalog: EmojiCatalog = EmojiPanelFixture.emojiCatalog
+
+    var body: some View {
+        let metrics = KeyboardPreviewEnvironment.gridMetrics(preference)
+        let palette = KeyboardPreviewEnvironment.palette(dark: dark)
+        return KeyboardViewPreview {
+            EmojiPanelView(palette: palette, metrics: metrics)
+        } configure: { panel in
+            panel.palette = palette
+            panel.metrics = metrics
+            panel.catalog = catalog
+        }
+        .frame(width: 360, height: metrics.gridHeight)
+        .background(Color(palette.background))
+    }
+}
+
+#Preview("Emoji panel — standard", traits: .sizeThatFitsLayout) {
+    EmojiPanelPreview().padding()
+}
+
+#Preview("Emoji panel — dark", traits: .sizeThatFitsLayout) {
+    EmojiPanelPreview(dark: true).padding()
+}
+
+#Preview("Emoji panel — every height", traits: .sizeThatFitsLayout) {
+    HStack(alignment: .top, spacing: 16) {
+        ForEach(KeyboardHeightPreference.allCases) { preference in
+            VStack(spacing: 6) {
+                Text(preference.displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                EmojiPanelPreview(preference: preference)
+            }
+        }
+    }
+    .padding()
+}
+
+/// A catalog that failed to load is a real state — the shared TSV lives in a
+/// resource bundle the extension has to find — and it must not read as a broken
+/// keyboard.
+#Preview("Emoji panel — empty catalog", traits: .sizeThatFitsLayout) {
+    EmojiPanelPreview(catalog: .empty).padding()
+}
+#endif

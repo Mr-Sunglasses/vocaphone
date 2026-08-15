@@ -55,6 +55,13 @@ jobs:
           xcodegen generate --spec project.yml
           git diff --exit-code -- VocaPhone.xcodeproj
 
+      # Seconds on the runner, and the only thing standing between the preview
+      # harness and a shipping build. Runs before the build so a leak fails
+      # fast rather than after twenty minutes of xcodebuild.
+      - name: Fail if preview code is reachable from a release build
+        working-directory: ios
+        run: python3 tools/check-preview-isolation.py
+
       - name: Pick an iOS simulator
         id: simulator
         run: |

@@ -230,10 +230,15 @@ struct ContentView: View {
                     .lineLimit(3...6)
                     .focused($diagFocused)
                     .task {
+                        // Debug-only, like the return-guide launch argument
+                        // below it. A release build must not change what it
+                        // focuses because of an argument someone passed it.
+#if DEBUG
                         guard ProcessInfo.processInfo.arguments.contains("-diagFocusField")
                         else { return }
                         try? await Task.sleep(for: .milliseconds(600))
                         diagFocused = true
+#endif
                     }
                     .textFieldStyle(.plain)
                     .padding(VocaMetrics.related + 4)
@@ -550,3 +555,148 @@ private struct KeyboardReturnGuide: View {
         }
     }
 }
+
+#if DEBUG
+
+// MARK: - Previews
+
+// Every state `HomeSessionCard.make` can produce, plus the two overlays the
+// home screen owns. These are the states the visual QA matrix asks for and the
+// ones nobody could reach without a gateway to break and a permission to
+// decline.
+
+#Preview("Home — ready to dictate") {
+    PreviewHost(coordinator: .previewIdle()) { ContentView() }
+}
+
+#Preview("Home — first run, nothing set up") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupFresh
+        ),
+        hasDictatedOnce: false
+    ) { ContentView() }
+}
+
+#Preview("Home — two steps outstanding") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: PreviewFixtures.setupTwoStepsLeft
+        )
+    ) { ContentView() }
+}
+
+#Preview("Home — Quick Dictation standby") {
+    PreviewHost(coordinator: .previewStandby()) { ContentView() }
+}
+
+#Preview("Home — starting the microphone") {
+    PreviewHost(coordinator: .preview(.launchingApp, startedInApp: false)) { ContentView() }
+}
+
+#Preview("Home — listening in the practice field") {
+    PreviewHost(
+        coordinator: .preview(.recording, meterLevel: 0.62, isRecording: true)
+    ) { ContentView() }
+}
+
+#Preview("Home — transcribing on the gateway") {
+    PreviewHost(coordinator: .preview(.transcribing)) { ContentView() }
+}
+
+#Preview("Home — transcribing on this iPhone") {
+    PreviewHost(
+        coordinator: .preview(
+            .transcribing,
+            processingLocation: .onDevice,
+            setupStatus: SetupStatus(
+                source: PreviewFixtures.onDeviceReady,
+                microphone: .granted,
+                keyboard: .ready(lastSeenAt: Date()),
+                hasDictatedOnce: true
+            )
+        )
+    ) { ContentView() }
+}
+
+#Preview("Home — transcript ready, long") {
+    PreviewHost(
+        coordinator: .preview(.completed, transcript: PreviewFixtures.longTranscript)
+    ) { ContentView() }
+}
+
+#Preview("Home — inserted into another app") {
+    PreviewHost(
+        coordinator: .preview(
+            .completed,
+            transcript: PreviewFixtures.shortTranscript,
+            startedInApp: false
+        )
+    ) { ContentView() }
+}
+
+#Preview("Home — gateway unavailable, audio kept") {
+    PreviewHost(
+        coordinator: .preview(
+            .serverUnavailable,
+            error: PreviewFixtures.gatewayFailure,
+            message: PreviewFixtures.gatewayFailure.message
+        )
+    ) { ContentView() }
+}
+
+#Preview("Home — microphone access denied") {
+    PreviewHost(
+        coordinator: .preview(
+            .permissionDenied,
+            error: PreviewFixtures.permanentFailure,
+            setupStatus: PreviewFixtures.setupMicrophoneDenied,
+            message: "vocaphone cannot record without microphone access."
+        )
+    ) { ContentView() }
+}
+
+#Preview("Home — transcription failed for good") {
+    PreviewHost(
+        coordinator: .preview(
+            .transcriptionFailedPermanent,
+            error: PreviewFixtures.permanentFailure,
+            message: PreviewFixtures.permanentFailure.message
+        )
+    ) { ContentView() }
+}
+
+/// The hand-off overlay, which only appears for a dictation started from
+/// another app — the one home state that covers the whole screen.
+#Preview("Return guide — keyboard is recording") {
+    PreviewHost(
+        coordinator: .preview(
+            .recording,
+            startedInApp: false,
+            meterLevel: 0.48,
+            isRecording: true
+        )
+    ) { ContentView() }
+}
+
+#Preview("Home — matrix", traits: .sizeThatFitsLayout) {
+    PreviewMatrix(coordinator: .preview(.serverUnavailable, error: PreviewFixtures.gatewayFailure)) {
+        ContentView()
+    }
+}
+
+#Preview("Meter — quiet, speaking, loud", traits: .sizeThatFitsLayout) {
+    VStack(spacing: VocaMetrics.grouping) {
+        ForEach([Float(0.05), 0.35, 0.85], id: \.self) { level in
+            PreviewHost(coordinator: .preview(.recording, meterLevel: level, isRecording: true)) {
+                RecordingMeter()
+                    .frame(width: 280)
+                    .padding()
+            }
+        }
+    }
+    .padding()
+}
+#endif
