@@ -20,9 +20,11 @@ runs:
     - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
       with:
         distribution: temurin
-        # Matches the JDK bundled with Android Studio, which is what the build
-        # has been verified against locally.
-        java-version: '25'
+        # JDK 21 is what the F-Droid buildserver compiles with, so upstream
+        # releases must use it too: two javac versions emit different bytecode
+        # even for the same source/target, which breaks reproducible builds.
+        # It is also the JBR bundled with current Android Studio.
+        java-version: '21'
     - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       with:
         # The runner image already ships the command-line and platform tools, so

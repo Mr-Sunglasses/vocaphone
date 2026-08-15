@@ -16,8 +16,11 @@ APK does not request accessibility-service or overlay access.
 
 - Android 13 (API 33) or newer. Google Pixel is the baseline device.
 - A reachable vocaphone gateway, unless you choose on-device transcription.
-- To build: JDK 17+ (the JDK bundled with Android Studio works), the Android
-  SDK, CMake 3.22.1 and NDK 27.2.12479018. Everything else is pinned in
+- To build: JDK 21 exactly (the JDK bundled with current Android Studio works;
+  other machines auto-provision it from `gradle/gradle-daemon-jvm.properties`).
+  The version matters because F-Droid rebuilds the app on JDK 21 and
+  reproducible builds need byte-identical javac output. You also need the
+  Android SDK, CMake 3.22.1 and NDK 27.2.12479018. Everything else is pinned in
   `gradle/libs.versions.toml` and fetched by the Gradle wrapper.
 - Clone with `git clone --recurse-submodules`; the pinned `whisper.cpp` source
   is required for the native local engine.
@@ -64,10 +67,14 @@ the tag and APK version do not match.
 
 The repository needs these GitHub Actions secrets: `KEYSTORE_BASE64`,
 `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD`. The workflow builds,
-tests, lints, verifies the release signature against the pinned public
-certificate fingerprint, and attaches these files to the prerelease:
+tests, lints, verifies the release signature of both APKs against the pinned
+public certificate fingerprint, and attaches these files to the prerelease:
 
 - `vocaphone.apk`
+- `vocaphone-fdroid.apk` — the `fdroid` flavour of the same tag. It exists so
+  F-Droid can verify a from-source rebuild against it byte-for-byte and then
+  publish this same signed APK (F-Droid "reproducible builds"). Install
+  `vocaphone.apk` unless you specifically want the from-source-only variant.
 - `SHA256SUMS.txt`
 - `SIGNING-CERTIFICATE-SHA256.txt`
 

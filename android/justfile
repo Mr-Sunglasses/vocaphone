@@ -131,10 +131,14 @@ doctor:
     set -uo pipefail
     ok=0
     version=$(java -version 2>&1 | sed -n '1s/.*version "\([0-9]*\).*/\1/p')
-    if [ -n "${version}" ] && [ "${version}" -ge 17 ]; then
+    # Exactly 21, not "at least": F-Droid compiles on JDK 21 and reproducible
+    # builds need the same javac as theirs. gradle/gradle-daemon-jvm.properties
+    # auto-provisions 21 for the Gradle daemon either way; this checks the JDK
+    # you would run other tools with.
+    if [ "${version:-0}" -eq 21 ]; then
         echo "ok       JDK ${version}"
     else
-        echo "MISSING  JDK 17 or newer — brew install --cask temurin"
+        echo "MISSING  JDK 21 (found ${version:-none}) — brew install --cask temurin@21"
         ok=1
     fi
     if sdk=$({{ just_executable() }} _sdk 2>/dev/null); then
