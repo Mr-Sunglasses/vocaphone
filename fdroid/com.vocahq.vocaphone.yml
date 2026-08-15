@@ -1,27 +1,28 @@
-# Draft fdroiddata metadata for F-Droid inclusion.
+# Metadata intended for submission to fdroiddata.
 #
 # Copy this file to metadata/com.vocahq.vocaphone.yml in an fdroiddata merge
-# request. Until then it is the source of truth for F-Droid builds of this
-# repository — keep it in sync when cutting a release tag:
-#   - versionName / versionCode / commit and CurrentVersion* track the new tag
-#   - AllowedAPKSigningKeys only changes if the release signing key rotates
-#     (it is the same SHA-256 pinned in .github/workflows/android-beta.yml)
+# request.
 #
 # Reproducible builds: F-Droid rebuilds assembleFdroidRelease from the tagged
-# source on JDK 21 (the same JDK .github/actions/setup-android uses), compares
-# the unsigned APK against the upstream-signed vocaphone-fdroid.apk attached to
-# the GitHub release, and ships the upstream-signed APK. The 25→21 toolchain
-# alignment lives in gradle/gradle-daemon-jvm.properties and compileOptions;
-# do not "upgrade" the compiling JDK without checking this file first.
+# source on JDK 21 (matching .github/actions/setup-android), compares its
+# unsigned rebuild with the upstream-signed vocaphone-fdroid.apk attached to
+# the GitHub release, and then publishes that upstream-signed APK. The JDK 21
+# alignment is defined in gradle/gradle-daemon-jvm.properties and in
+# android/app/build.gradle.kts compileOptions; do not change the compiling JDK
+# without reviewing this file first.
 
 Categories:
+  - Keyboard & IME
   - Writing
-
-License: AGPL-3.0-or-later
+License: AGPL-3.0-only
 AuthorName: VocaHQ
+AuthorEmail: hello@vocahq.com
 WebSite: https://vocaphone.vocahq.com
 SourceCode: https://github.com/VocaHQ/vocaphone
 IssueTracker: https://github.com/VocaHQ/vocaphone/issues
+Changelog: https://github.com/VocaHQ/vocaphone/releases
+
+AutoName: VocaPhone
 
 RepoType: git
 Repo: https://github.com/VocaHQ/vocaphone.git
@@ -29,27 +30,22 @@ Repo: https://github.com/VocaHQ/vocaphone.git
 Builds:
   - versionName: 0.1.0-beta.12
     versionCode: 12
-    commit: v0.1.0-beta.12
+    commit: e5ec259acc17e295262d8fe2d33db1223341826c
     subdir: android
     submodules: true
     gradle:
       - fdroid
-    rm:
-      # The fdroid flavour never packages these, but removing the prebuilt
-      # sherpa-onnx / ONNX Runtime JNI libraries before the build proves that
-      # every byte in the resulting APK came from source.
-      - app/src/full/jniLibs
     output: app/build/outputs/apk/fdroid/release/vocaphone-fdroidRelease.apk
-    # Must match android/app/build.gradle.kts ndkVersion. CMake 3.22.1 is
-    # requested via externalNativeBuild and installed from the SDK repository.
+    rm:
+      - android/app/src/full/jniLibs
+    prebuild:
+      - sed -i -e '/foojay/d' settings.gradle.kts
+      - sed -i '/signingConfig = signingConfigs.getByName("release")/d' app/build.gradle.kts
+    scandelete:
+      - android/third_party/whisper.cpp
+      - ios
+      - web
     ndk: 27.2.12479018
-
-# Prebuilt upstream releases, fetched for reproducible-build verification.
-# %v expands to the versionName, and release tags are named v<versionName>.
-Binaries: https://github.com/VocaHQ/vocaphone/releases/download/v%v/vocaphone-fdroid.apk
-
-# F-Droid publishes the upstream-signed APK after byte-for-byte verification.
-AllowedAPKSigningKeys: e6131446f8afeff13516f78036db9ea26aaa16e01b39f37182bf262ccd1d45b0
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
