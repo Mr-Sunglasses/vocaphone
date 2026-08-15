@@ -201,27 +201,53 @@ object LocalModelCatalog {
 
     fun find(id: String): LocalModelDescriptor? = all.firstOrNull { it.id == id }
 
-    /**
-     * A model fitting in RAM does not mean the CPU can transcribe with it at an
-     * interactive speed. Older high-RAM phones report no media performance
-     * class, so keep their default conservative while leaving every model that
-     * fits available as an explicit choice.
-     */
     fun recommended(
         totalRamGB: Long,
         mediaPerformanceClass: Int = Build.VERSION.MEDIA_PERFORMANCE_CLASS,
-    ): LocalModelDescriptor = when {
-        totalRamGB >= 12 && mediaPerformanceClass >= 34 -> find("large-v3-turbo")
-        totalRamGB >= 6 && mediaPerformanceClass >= 31 -> find("large-v3-turbo-q5_0")
-        // RAM only says that a model fits. Older high-RAM phones such as the
-        // POCO F1 still need the smaller encoder to finish at a usable speed.
-        totalRamGB >= 4 && mediaPerformanceClass >= 31 -> find("small-q5_1")
-        totalRamGB >= 4 -> find("base-q5_1")
-        totalRamGB >= 3 -> find("base-q5_1")
-        else -> find("tiny-q5_1")
-    } ?: all.first()
+        abi: String = Build.SUPPORTED_ABIS?.firstOrNull().orEmpty(),
+        sherpaAvailable: Boolean = LocalModelCatalog.sherpaAvailable,
+        cpuCores: Int = Runtime.getRuntime().availableProcessors(),
+        maxCpuKHz: Int = 0,
+    ): LocalModelDescriptor = recommended(
+        DeviceProfile(
+            totalRamGB = totalRamGB,
+            cpuCores = cpuCores,
+            performanceClass = mediaPerformanceClass,
+            abi = abi,
+            maxCpuKHz = maxCpuKHz,
+            sherpaAvailable = sherpaAvailable,
+        ),
+    )
 
-    fun isUsableOnDevice(model: LocalModelDescriptor, totalRamGB: Long): Boolean =
+    /**
+     * Highest-scoring catalog entry that fits this phone's RAM budget.
+     * Adding a model does not require a new branch here; it only needs a
+     * family and a RAM floor.
+     */
+    fun recommended(profile: DeviceProfile): LocalModelDescriptor {
+        val candidates = all.filter { profile.fits(it) }
+        return candidates.maxByOrNull { scoreModel(it, profile) }
+            ?: all.filter { isUsableOnDevice(it, profile.totalRamGB, profile.sherpaAvailable) }
+                .minByOrNull { it.minimumRamGB }
+            ?: all.first()
+    }
+
+    /**
+     * Warn only when a slower Whisper class is selected. Sherpa file size is
+     * not a speed signal, so a working Parakeet must not look "too big".
+     */
+    fun needsHeavierWarning(
+        selected: LocalModelDescriptor,
+        recommended: LocalModelDescriptor,
+    ): Boolean = selected.id != recommended.id &&
+        selected.engine == LocalModelEngine.WHISPER &&
+        selected.minimumRamGB > recommended.minimumRamGB
+
+    fun isUsableOnDevice(
+        model: LocalModelDescriptor,
+        totalRamGB: Long,
+        sherpaAvailable: Boolean = LocalModelCatalog.sherpaAvailable,
+    ): Boolean =
         totalRamGB >= model.minimumRamGB &&
             (model.engine != LocalModelEngine.SHERPA_ONNX || sherpaAvailable)
 

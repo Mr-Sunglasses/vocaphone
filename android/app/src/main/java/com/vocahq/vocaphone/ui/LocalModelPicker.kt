@@ -35,6 +35,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.R
+import com.vocahq.vocaphone.local.DeviceProfile
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
@@ -60,8 +61,11 @@ fun LocalModelPicker(
     val usable = remember(state.totalRamGB) {
         LocalModelCatalog.usableOnDevice(state.totalRamGB).sortedBy { it.sizeBytes }
     }
-    val recommended = remember(state.totalRamGB) {
-        LocalModelCatalog.recommended(state.totalRamGB)
+    val profile = remember(state.totalRamGB) {
+        DeviceProfile.current(state.totalRamGB)
+    }
+    val recommended = remember(profile) {
+        LocalModelCatalog.recommended(profile)
     }
     val selectedModel = usable.firstOrNull { it.id == selectedModelId }
 
@@ -104,7 +108,9 @@ fun LocalModelPicker(
         ModelBusyBanner(state = state, onCancelDownload = onCancelDownload)
     }
 
-    if (selectedModel != null && selectedModel.sizeBytes > recommended.sizeBytes) {
+    if (selectedModel != null &&
+        LocalModelCatalog.needsHeavierWarning(selectedModel, recommended)
+    ) {
         OversizedModelNotice(
             recommended = recommended,
             installed = recommended.id in state.downloaded,
@@ -117,6 +123,7 @@ fun LocalModelPicker(
     if (recommendedVisible) {
         RecommendedModelCard(
             model = recommended,
+            profile = profile,
             state = state,
             selected = selectedModelId == recommended.id,
             busy = busy,
@@ -255,6 +262,7 @@ private fun ModelBusyBanner(state: LocalModelState, onCancelDownload: () -> Unit
 @Composable
 private fun RecommendedModelCard(
     model: LocalModelDescriptor,
+    profile: DeviceProfile,
     state: LocalModelState,
     selected: Boolean,
     busy: Boolean,
@@ -267,6 +275,11 @@ private fun RecommendedModelCard(
         Text(model.displayName, style = MaterialTheme.typography.titleMedium)
         Text(
             model.catalogMeta(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            profile.summary(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -295,9 +308,9 @@ private fun OversizedModelNotice(
 ) {
     Notice(tone = NoticeTone.Attention) {
         Text(
-            "The selected model is larger than this phone is rated for, which can " +
-                "make every dictation take much longer. ${recommended.displayName} is " +
-                "the fastest good match.",
+            "This model asks for more RAM than the one we suggest for this phone, " +
+                "so dictation can take longer. ${recommended.displayName} is the " +
+                "match we would start with.",
             style = MaterialTheme.typography.bodySmall,
         )
         SecondaryButton(

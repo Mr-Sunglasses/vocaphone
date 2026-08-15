@@ -1,12 +1,8 @@
 package com.vocahq.vocaphone.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -15,7 +11,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -96,6 +91,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val appInfo = remember { context.readAppInfo() }
+    val onDevice = context.readOnDeviceDiagnostics(localModels.downloaded)
     var pickingLanguage by remember { mutableStateOf(false) }
     val localModel = LocalModelCatalog.find(settings.localModelId)
 
@@ -319,69 +315,15 @@ fun SettingsScreen(
             }
 
             SettingsPage.ABOUT -> {
-                Section("Privacy") {
-                    Text(
-                        "VocaPhone's keyboard inserts through Android's text connection. " +
-                            "Dictation does not read the field. With Suggestions on, the keyboard " +
-                            "reads about 32 characters before the cursor so it can guess the next " +
-                            "word; that text stays on this phone and is never logged. The clipboard " +
-                            "chip and history read clips only on this phone, never logged. Long " +
-                            "press the chip to dismiss it. Audio " +
-                            "goes to on-device transcription or the gateway you configured. There is " +
-                            "no cloud transcription, no analytics, and nothing is written to the " +
-                            "clipboard unless you tap Copy.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-                Section("Device") {
-                    InfoRow("Android", "${appInfo.androidRelease} (SDK ${appInfo.sdkInt})")
-                    InfoRow("Device", appInfo.device)
-                    InfoRow("Installed from", appInfo.installedFrom)
-                    InfoRow("Package", appInfo.packageName)
-                    InfoRow(
-                        "Engine",
-                        speechSourceCopy(
-                            localEnabled = settings.localTranscriptionEnabled,
-                            localModelName = localModel?.displayName,
-                            gatewayConfigured = settings.isConfigured,
-                            gatewayUrl = settings.gatewayUrl,
-                            lastEngine = settings.lastEngine,
-                            lastEngineReady = settings.lastEngineReady,
-                        ).engineLabel,
-                    )
-                    InfoRow(
-                        "Setup",
-                        if (setup.isReadyToDictate) {
-                            "complete"
-                        } else {
-                            "${setup.completedStepCount} of ${setup.stepCount} steps"
-                        },
-                    )
-                    Text(
-                        "Diagnostics contain only bounded timestamps, state transitions, " +
-                            "error categories and build/source context. They never include " +
-                            "transcripts, typed text, audio, gateway hosts or tokens.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        SecondaryButton(
-                            text = "Copy diagnostics",
-                            onClick = {
-                                context.copyDiagnostics(
-                                    diagnosticsReport(appInfo, settings, setup, diagnosticEvents())
-                                )
-                            },
-                            modifier = Modifier.weight(1f),
-                        )
-                        SecondaryButton(
-                            text = "Project page",
-                            onClick = { context.openHttpUrl(PROJECT_URL) },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    TextButton(onClick = onClearDiagnosticEvents) { Text("Clear event log") }
-                }
+                AboutPage(
+                    appInfo = appInfo,
+                    settings = settings,
+                    setup = setup,
+                    localModel = localModel,
+                    onDevice = onDevice,
+                    diagnosticEvents = diagnosticEvents,
+                    onClearDiagnosticEvents = onClearDiagnosticEvents,
+                )
             }
         }
     }
@@ -494,8 +436,4 @@ private fun CustomVocabularySection(
     }
 }
 
-private fun Context.copyDiagnostics(text: String) {
-    val clipboard = getSystemService(ClipboardManager::class.java) ?: return
-    clipboard.setPrimaryClip(ClipData.newPlainText("VocaPhone diagnostics", text))
-}
 

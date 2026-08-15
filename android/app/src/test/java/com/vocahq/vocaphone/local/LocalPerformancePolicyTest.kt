@@ -33,16 +33,13 @@ class LocalPerformancePolicyTest {
     }
 
     @Test
-    fun `older high ram phone receives a conservative recommendation`() {
-        assertEquals("base-q5_1", LocalModelCatalog.recommended(8, 0).id)
-        assertTrue(
-            LocalModelCatalog.usableOnDevice(8).any { it.id == "large-v3-turbo-q5_0" },
-        )
-    }
-
-    @Test
-    fun `large models remain recommendations for declared performance class devices`() {
-        assertEquals("large-v3-turbo-q5_0", LocalModelCatalog.recommended(8, 31).id)
-        assertEquals("large-v3-turbo", LocalModelCatalog.recommended(12, 34).id)
+    fun `parakeet is not treated as heavier than a smaller whisper`() {
+        val parakeet = LocalModelCatalog.find("parakeet-tdt-0.6b-v3")!!
+        val whisperBase = LocalModelCatalog.find("base-q5_1")!!
+        val whisperLarge = LocalModelCatalog.find("large-v3")!!
+        assertTrue(parakeet.sizeBytes > whisperBase.sizeBytes)
+        assertTrue(!LocalModelCatalog.needsHeavierWarning(parakeet, whisperBase))
+        assertTrue(LocalModelCatalog.needsHeavierWarning(whisperLarge, parakeet))
+        assertTrue(!LocalModelCatalog.needsHeavierWarning(whisperBase, parakeet))
     }
 }

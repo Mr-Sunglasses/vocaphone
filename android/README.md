@@ -190,11 +190,13 @@ the Android Tailscale VPN routes the traffic transparently.
 ## Diagnostics
 
 **Settings → About → Copy diagnostics** exports the app version, Android/device
-context, setup state and a bounded event log. Events contain only timestamps,
-state transitions, error categories, build version and whether the companion app
-or keyboard initiated them. They never contain transcripts, typed text, audio,
-gateway hosts/URLs, tokens or arbitrary package names. **Clear event log** removes
-the app-private log from the device.
+context, setup state, a bounded event log, and the hardware numbers that matter
+for on-device models: RAM, free storage, CPU/ABI, and how much space downloaded
+models take. Events contain only timestamps, state transitions, error categories,
+build version and whether the companion app or keyboard initiated them. They
+never contain transcripts, typed text, audio, gateway hosts/URLs, tokens or
+arbitrary package names. **Clear event log** removes the app-private log from the
+device.
 
 ## Layout
 

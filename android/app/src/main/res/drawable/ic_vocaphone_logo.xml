@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Same mark as assets/vocaphone-logo.svg. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="88dp"
+    android:height="88dp"
+    android:viewportWidth="460"
+    android:viewportHeight="460">
+    <path
+        android:fillColor="#0F6B57"
+        android:pathData="M229,10 A221.5,221.5 0 1,0 229,453 A221.5,221.5 0 1,0 229,10 Z" />
+    <path
+        android:fillColor="#F2F6F2"
+        android:pathData="M 164 127 A 65 65 0 0 1 294 127 L 294 224 A 65 65 0 0 1 164 224 Z" />
+    <path
+        android:strokeColor="#F2F6F2"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M 144.87 202.02 A 87 87 0 1 0 312.13 202.02" />
+    <path
+        android:strokeColor="#F2F6F2"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M 228.5 313 L 228.5 382" />
+    <path
+        android:strokeColor="#F2F6F2"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M 170 382 L 287 382" />
+    <path
+        android:strokeColor="#F2F6F2"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M 123.12 168.78 A 129.0 99.2 0 0 0 123.12 283.22" />
+    <path
+        android:strokeColor="#F2F6F2"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M 333.88 168.78 A 129.0 99.2 0 0 1 333.88 283.22" />
+</vector>

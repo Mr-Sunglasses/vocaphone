@@ -40,6 +40,9 @@ import okhttp3.Request
  * sherpa bridges do not expose it, so they leave this empty and the styler
  * falls back to inspecting the text.
  */
+/** App-private folder that holds downloaded on-device models. */
+const val LOCAL_MODELS_DIR = "local-models"
+
 data class LocalTranscription(val text: String, val language: String = "")
 
 data class LocalModelState(
@@ -69,7 +72,7 @@ class LocalModelManager(
         .build(),
 ) {
     private val appContext = context.applicationContext
-    private val modelRoot = File(appContext.filesDir, "local-models").also { it.mkdirs() }
+    private val modelRoot = File(appContext.filesDir, LOCAL_MODELS_DIR).also { it.mkdirs() }
     private val downloadMutex = Mutex()
     private val engineMutex = Mutex()
     private val _state = MutableStateFlow(LocalModelState())
