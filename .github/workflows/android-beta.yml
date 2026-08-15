@@ -48,7 +48,8 @@ jobs:
           # Passed through the environment rather than interpolated into the
           # script, so the keystore never becomes part of the command line.
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-          ./gradlew assembleFullRelease testFullDebugUnitTest lintFullRelease
+          ./gradlew assembleFullRelease assembleFdroidRelease \
+            testFullDebugUnitTest lintFullRelease
         working-directory: android
       - name: Verify signature and prepare release assets
         env:
@@ -60,6 +61,13 @@ jobs:
           mkdir -p release-assets
           cp android/app/build/outputs/apk/full/release/vocaphone-fullRelease.apk \
             release-assets/vocaphone.apk
+          # The fdroid flavour drops the prebuilt sherpa-onnx and ONNX Runtime
+          # libraries, so every byte it ships is built from source. F-Droid
+          # builds this flavour; publishing it gives them a binary to verify
+          # their own rebuild against, which is what enables reproducible
+          # builds on their side.
+          cp android/app/build/outputs/apk/fdroid/release/vocaphone-fdroidRelease.apk \
+            release-assets/vocaphone-fdroid.apk
 
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print \
             | sort -V | tail -n 1)"
@@ -73,35 +81,42 @@ jobs:
             exit 1
           fi
 
-          package_line="$("$aapt" dump badging release-assets/vocaphone.apk | sed -n '1p')"
-          package_name="$(printf '%s\n' "$package_line" \
-            | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
-          version_name="$(printf '%s\n' "$package_line" \
-            | sed -n "s/.* versionName='\([^']*\)'.*/\1/p")"
-          if [ "$package_name" != "com.vocahq.vocaphone" ]; then
-            echo "Unexpected APK package: $package_name" >&2
-            exit 1
-          fi
-          if [ "v$version_name" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match APK version $version_name" >&2
-            exit 1
-          fi
+          # Both flavours are published, so both get the same identity and
+          # signature checks rather than the second one being trusted implicitly.
+          for apk in release-assets/vocaphone.apk release-assets/vocaphone-fdroid.apk; do
+            package_line="$("$aapt" dump badging "$apk" | sed -n '1p')"
+            package_name="$(printf '%s\n' "$package_line" \
+              | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
+            version_name="$(printf '%s\n' "$package_line" \
+              | sed -n "s/.* versionName='\([^']*\)'.*/\1/p")"
+            if [ "$package_name" != "com.vocahq.vocaphone" ]; then
+              echo "Unexpected package in $apk: $package_name" >&2
+              exit 1
+            fi
+            if [ "v$version_name" != "$GITHUB_REF_NAME" ]; then
+              echo "Tag $GITHUB_REF_NAME does not match $apk version $version_name" >&2
+              exit 1
+            fi
 
-          verification="$("$apksigner" verify --verbose --print-certs release-assets/vocaphone.apk)"
-          printf '%s\n' "$verification"
-          certificate_sha256="$(printf '%s\n' "$verification" \
-            | sed -n 's/.*certificate SHA-256 digest: //p')"
-          if [ "$certificate_sha256" != "$EXPECTED_CERT_SHA256" ]; then
-            echo "Unexpected APK signing certificate: $certificate_sha256" >&2
-            exit 1
-          fi
+            verification="$("$apksigner" verify --verbose --print-certs "$apk")"
+            printf '%s\n' "$verification"
+            certificate_sha256="$(printf '%s\n' "$verification" \
+              | sed -n 's/.*certificate SHA-256 digest: //p')"
+            if [ "$certificate_sha256" != "$EXPECTED_CERT_SHA256" ]; then
+              echo "Unexpected signing certificate in $apk: $certificate_sha256" >&2
+              exit 1
+            fi
+          done
 
-          formatted_certificate="$(printf '%s' "$certificate_sha256" \
+          # Both APKs carry the same package, version and signing key, which the
+          # loop above just enforced, so one fingerprint file covers both.
+          formatted_certificate="$(printf '%s' "$EXPECTED_CERT_SHA256" \
             | sed 's/../&:/g; s/:$//' | tr '[:lower:]' '[:upper:]')"
           printf 'Package: %s\nVersion: %s\nSigning certificate SHA-256: %s\n' \
-            "$package_name" "$version_name" "$formatted_certificate" \
+            "com.vocahq.vocaphone" "${GITHUB_REF_NAME#v}" "$formatted_certificate" \
             > release-assets/SIGNING-CERTIFICATE-SHA256.txt
-          (cd release-assets && sha256sum vocaphone.apk > SHA256SUMS.txt)
+          (cd release-assets \
+            && sha256sum vocaphone.apk vocaphone-fdroid.apk > SHA256SUMS.txt)
       - name: Upload release files as workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -134,6 +149,7 @@ jobs:
           # instructions stay at the top where a beta tester looks first.
           gh release create "$GITHUB_REF_NAME" \
             release-assets/vocaphone.apk \
+            release-assets/vocaphone-fdroid.apk \
             release-assets/SHA256SUMS.txt \
             release-assets/SIGNING-CERTIFICATE-SHA256.txt \
             --repo "$GITHUB_REPOSITORY" \
@@ -141,4 +157,4 @@ jobs:
             --prerelease \
             --generate-notes \
             "${notes_range[@]}" \
-            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store."
+            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store. `vocaphone-fdroid.apk` is the same release built without the prebuilt sherpa-onnx and ONNX Runtime libraries, published so F-Droid can verify its own rebuild against it; install `vocaphone.apk` unless you specifically want that variant."
