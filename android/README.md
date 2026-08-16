@@ -1,13 +1,16 @@
 # vocaphone for Android
 
-A native Android voice keyboard for the same self-hosted vocaphone gateway the
-iPhone app uses. VocaPhone appears as a normal Android input method: Gboard,
-Samsung Keyboard and other keyboards remain available, while VocaPhone can be
-selected whenever you want to dictate into an editable field. It inserts through
-Android's `InputConnection` and does not read the field.
+A native Android voice keyboard for private speech-to-text on your phone, with
+optional [VocaGateway](https://github.com/VocaHQ/vocagateway) for shared or
+larger compute — the same product as the iPhone app. VocaPhone appears as a
+normal Android input method: Gboard, Samsung Keyboard and other keyboards remain
+available, while VocaPhone can be selected whenever you want to dictate into an
+editable field. It inserts through Android's `InputConnection` and does not read
+the field.
 
-Distributed as a private APK. Google Play publication is deferred. The shipped
-APK does not request accessibility-service or overlay access.
+Android 13+ public beta APKs ship from GitHub Releases. Google Play publication
+is deferred. The shipped APK does not request accessibility-service or overlay
+access.
 
 > Package name and application ID have been updated to `com.vocahq.vocaphone`; the APK
 > output is `vocaphone-debug.apk`.
@@ -15,7 +18,8 @@ APK does not request accessibility-service or overlay access.
 ## Requirements
 
 - Android 13 (API 33) or newer. Google Pixel is the baseline device.
-- A reachable vocaphone gateway, unless you choose on-device transcription.
+- An on-device speech-to-text model, or a reachable VocaGateway if you choose that
+  path.
 - To build: JDK 21 exactly (the JDK bundled with current Android Studio works;
   other machines auto-provision it from `gradle/gradle-daemon-jvm.properties`).
   The version matters because F-Droid rebuilds the app on JDK 21 and

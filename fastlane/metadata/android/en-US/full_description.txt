@@ -25,4 +25,4 @@ The keyboard writes through InputConnection and never reads the contents of the 
 
 The build distributed here is compiled entirely from source. It leaves out the optional sherpa-onnx speech engine, which upstream ships as a prebuilt binary library, so on-device transcription uses the Whisper model catalog. Gateway transcription is unaffected and can use any engine your gateway supports. On supported builds, sherpa-onnx models such as Parakeet are available alongside Whisper.
 
-VocaPhone is part of the Voca family alongside VocaLinux and VocaMac, and is in active development. Expect rough edges and please report them on the issue tracker.
+VocaPhone is part of the Voca family alongside VocaLinux and VocaMac. Android is in public beta; expect rough edges and please report them on the issue tracker.

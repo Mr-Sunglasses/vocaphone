@@ -6,9 +6,9 @@
 
 **Voice dictation for iPhone and Android.**
 
-[![Status: in development](https://img.shields.io/badge/status-in%20development-yellow)](#status)
+[![Status: Android beta / iOS source](https://img.shields.io/badge/status-Android%20beta%20%2F%20iOS%20source-yellow)](#status)
 [![Platform: iOS + Android](https://img.shields.io/badge/platform-iOS%20%2B%20Android-lightgrey)](#how-it-works)
-[![Privacy: self-hosted](https://img.shields.io/badge/privacy-self--hosted%20%2F%20no%20cloud%20STT-success)](#privacy-and-platform-boundaries)
+[![Privacy: on-device / optional gateway](https://img.shields.io/badge/privacy-on--device%20%2F%20optional%20gateway-success)](#privacy-and-platform-boundaries)
 [![Part of VocaHQ](https://img.shields.io/badge/family-VocaHQ-1a7f4e)](https://github.com/VocaHQ)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -20,8 +20,11 @@
 [![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
 [![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
 
-Speak into your phone. Text shows up where you're typing. Transcription runs on
-hardware you control, not a cloud speech service.
+Speak into your phone. Text shows up where you're typing. Speech-to-text runs
+on your phone by default, or on optional self-hosted VocaGateway — never a cloud
+speech service.
+
+Product site: [vocaphone.vocahq.com](https://vocaphone.vocahq.com)
 
 </div>
 
@@ -35,18 +38,20 @@ the same privacy-first dictation idea that already runs on Linux
 Longer term the goal is straightforward: set Voca up once and use it across
 whatever machines you own. Desktop plus phone is what makes that real.
 
-Dictate from an iPhone or VocaPhone Android keyboard. Audio goes to a
-gateway on your Mac, Linux box, or home server. Local speech models turn it into
-text, and the transcript lands at your cursor. No accounts, no cloud STT, and no
-subscription.
+Dictate from an iPhone or VocaPhone Android keyboard. Download an on-device
+speech-to-text model and transcription stays on the phone. Or point the app at
+optional [VocaGateway](https://github.com/VocaHQ/vocagateway) on a Mac, Linux
+box, or home server you control when you want larger models or shared compute.
+Text lands at your cursor. No accounts, no cloud STT, and no subscription.
+Gateway mode is self-hosted, but it is not on-device.
 
 ## Status
 
 | Client | State |
 | --- | --- |
-| **iOS** | End-to-end flow exercised on a physical iPhone 14 Pro: keyboard handoff, background recording, private Tailscale transcription, direct insertion |
-| **Android** | IME-only release path builds, passes unit tests/lint, and has been installed and selected on a physical Android device |
-| **Gateway** | Runs natively on macOS/Linux or via Docker Compose, with multiple local engine adapters |
+| **Android** | Public beta for Android 13+ — [releases](https://github.com/VocaHQ/vocaphone/releases) · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
+| **iOS** | Build from source for iOS 17+ (Mac, Xcode, signing team, physical iPhone) · [iPhone guide](https://vocaphone.vocahq.com/iphone/) |
+| **Gateway** | Optional. Self-host [VocaGateway](https://github.com/VocaHQ/vocagateway) on macOS/Linux or Docker when you want more models or shared compute |
 
 Licensed under [AGPL-3.0](LICENSE): free to use, study, modify, and share, with
 copyleft that also covers modified versions offered as a network service.
@@ -61,29 +66,33 @@ minutes so most later dictations skip another app switch.
 
 On Android, VocaPhone is a normal system keyboard. Select it when you want to
 dictate; it inserts through Android's `InputConnection` with the same styles and
-gateway as iOS.
+transcription choices as iOS.
 
-Both clients send recoverable audio to the same private gateway and insert the
-final transcript at the active cursor.
+Both clients can run speech-to-text on the phone after a model download, or send
+recoverable audio to optional VocaGateway. Either way, the transcript inserts at
+the active cursor. A gateway is never required for on-device mode.
 
 > [!IMPORTANT]
 > iOS keyboard extensions cannot access the microphone. vocaphone records in
 > the containing app, shares only versioned session state with the keyboard, and
 > then inserts through `UITextDocumentProxy`. Quick Dictation can keep that app
 > ready for up to 10 minutes so most later dictations do not require another app
-> switch.
+> switch. The speech-to-text model still runs on the iPhone in on-device mode.
 
 ## Why vocaphone
 
 Most phone dictation means either a cloud API listening to every utterance, or
 an app that only works inside itself. vocaphone is built differently.
 
-Transcription runs on a Mac, Linux desktop, or home server you already own, not
-a vendor's GPU farm. You pick the network path: trusted LAN, private Tailscale,
-or HTTPS behind your own reverse proxy. Bearer tokens are per device. There is
-no analytics SDK and no third-party transcription.
+On-device transcription is the default path: download a speech-to-text model once
+and dictate without a gateway or network. Optional VocaGateway runs on a Mac,
+Linux desktop, or home server you already own when you want larger models or
+shared compute. That path is self-hosted, not on-device. For gateway mode you pick
+the network path: trusted LAN, private Tailscale, or HTTPS behind your own
+reverse proxy. Bearer tokens are per device. There is no analytics SDK and no
+third-party transcription.
 
-Same privacy stance as VocaLinux and VocaMac: free, offline first, and meant to
+Same privacy stance as VocaLinux and VocaMac: free, on-device first, and meant to
 stay that way. We also document the awkward platform bits honestly: iOS keyboard
 limits and Android's keyboard/input-method boundaries.
 
@@ -137,15 +146,18 @@ limits and Android's keyboard/input-method boundaries.
 
 | Platform | Project | Repo | Status |
 | --- | --- | --- | --- |
-| Linux | VocaLinux | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Stable |
+| Linux | VocaLinux | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available now |
 | macOS | VocaMac | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
 | Windows | VocaWin | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Coming soon |
-| iOS / Android | vocaphone | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | In development |
+| iOS / Android | vocaphone | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS source build · [site](https://vocaphone.vocahq.com) |
 
 Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
 [hello@vocahq.com](mailto:hello@vocahq.com)
 
 ## Choose a gateway deployment
+
+On-device mode needs no gateway. Use this section only when you want optional
+VocaGateway for larger models or shared compute.
 
 | Deployment | Best for | Speech engine | Expected performance |
 | --- | --- | --- | --- |
@@ -434,8 +446,8 @@ adb install -r app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
 ```
 
 In the app: grant microphone and notifications, enable and select VocaPhone in
-Android's keyboard settings, then enter the gateway address and bearer token from
-step 4 and run **Test connection**.
+Android's keyboard settings, then either download an on-device model or enter the
+gateway address and bearer token from step 4 and run **Test connection**.
 
 See the [Android client guide](android/README.md) for keyboard setup and the
 supported gateway address forms.
@@ -535,9 +547,8 @@ public issue.
 
 vocaphone is licensed under the **GNU Affero General Public License v3.0**
 ([AGPL-3.0](LICENSE)), matching [VocaMac](https://github.com/VocaHQ/vocamac) and
-staying in the same copyleft family as
-[VocaLinux](https://github.com/VocaHQ/vocalinux) (GPL-3.0).
+[VocaLinux](https://github.com/VocaHQ/vocalinux) (both AGPL-3.0).
 
 You may use, study, modify, and redistribute the software under AGPL-3.0. Because
-vocaphone includes a network gateway, AGPL also requires that modified versions
-offered as a network service make their corresponding source available.
+vocaphone includes an optional network gateway, AGPL also requires that modified
+versions offered as a network service make their corresponding source available.

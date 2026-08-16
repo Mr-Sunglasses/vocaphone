@@ -191,7 +191,7 @@ iOS was skipped. You can also run the workflow manually under Actions → PR Bui
 ## License
 
 Contributions are licensed under the [GNU Affero General Public License v3.0](LICENSE)
-(AGPL-3.0), the same family of copyleft license used by
-[VocaMac](https://github.com/VocaHQ/vocamac) (AGPL-3.0) and
-[VocaLinux](https://github.com/VocaHQ/vocalinux) (GPL-3.0). By opening a pull
+(AGPL-3.0), the same license used by
+[VocaMac](https://github.com/VocaHQ/vocamac) and
+[VocaLinux](https://github.com/VocaHQ/vocalinux) (both AGPL-3.0). By opening a pull
 request, you agree that your contribution may be distributed under that license.
