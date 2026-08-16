@@ -2,11 +2,15 @@ package com.vocahq.vocaphone.ime
 
 import android.content.ClipDescription
 import android.content.ClipboardManager
+import android.content.Intent
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputContentInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,6 +30,8 @@ import com.vocahq.vocaphone.dictation.DictationSource
 import com.vocahq.vocaphone.dictation.InsertionOutcome
 import com.vocahq.vocaphone.dictation.InsertionReport
 import com.vocahq.vocaphone.dictation.TranscriptInserter
+import com.vocahq.vocaphone.settings.ClipboardHistory
+import com.vocahq.vocaphone.settings.ClipboardImages
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -60,8 +66,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var startedImeDictation = false
     private var ignoredClipboardText: String? = null
     private var lastRecordedClip: String? = null
+    private var lastImageSource: String? = null
     private var editorSession = 0
     private var editorConfig by mutableStateOf(KeyboardEditorConfig.empty())
+    private var lastCandidatesStart = -1
+    private var lastCandidatesEnd = -1
 
     override fun onCreate() {
         super.onCreate()
@@ -104,6 +113,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             onLanguageSelected = ::setLanguage,
             onStyleSelected = ::setStyle,
             onSuggestionPicked = ::commitSuggestion,
+            onEmojiSuggestion = ::commitEmojiSuggestion,
             onPasteClipboard = { pasteClipboard(it) },
             onDismissClipboard = ::dismissClipboard,
             onRemoveClipboardHistory = ::removeClipboardHistory,
@@ -116,6 +126,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         super.onStartInput(attribute, restarting)
         currentInputType = attribute?.inputType ?: 0
         editorSession += 1
+        lastCandidatesStart = -1
+        lastCandidatesEnd = -1
         val cursorCapsMode = runCatching {
             currentInputConnection?.getCursorCapsMode(currentInputType) ?: 0
         }.getOrDefault(0)
@@ -157,6 +169,22 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             candidatesStart,
             candidatesEnd,
         )
+        val userMove = EditorCursorSync.isUserMove(
+            oldSelStart,
+            oldSelEnd,
+            newSelStart,
+            newSelEnd,
+            lastCandidatesStart,
+            lastCandidatesEnd,
+            candidatesStart,
+            candidatesEnd,
+        )
+        lastCandidatesStart = candidatesStart
+        lastCandidatesEnd = candidatesEnd
+        if (userMove) {
+            currentInputConnection?.finishComposingText()
+            editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
+        }
         refreshEditorText()
     }
 
@@ -164,6 +192,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         cancelOwnedDictation("editor_finished")
         currentInputType = 0
         editorSession += 1
+        lastCandidatesStart = -1
+        lastCandidatesEnd = -1
         editorConfig = KeyboardEditorConfig.empty().copy(sessionId = editorSession)
         super.onFinishInput()
     }
@@ -267,14 +297,58 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         refreshEditorText()
     }
 
+    private fun commitEmojiSuggestion(emoji: String) {
+        val connection = currentInputConnection ?: return
+        connection.finishComposingText()
+        val before = runCatching {
+            connection.getTextBeforeCursor(32, 0)?.toString().orEmpty()
+        }.getOrDefault("")
+        val after = runCatching {
+            connection.getTextAfterCursor(32, 0)?.toString().orEmpty()
+        }.getOrDefault("")
+        if (EmojiCommit.shouldReplaceTrigger("", before)) {
+            val span = SuggestionEngine.replaceableWord(before, after)
+            if (span != null) {
+                connection.deleteSurroundingText(span.beforeLength, span.afterLength)
+            }
+            connection.commitText(emoji, 1)
+        } else {
+            connection.commitText(EmojiCommit.insertText(before, emoji), 1)
+        }
+        recordEmojiRecent(emoji)
+        syncShiftFromCursor()
+        refreshEditorText()
+    }
+
     private fun pasteClipboard(text: String = visibleClipboard.value?.fullText.orEmpty()) {
         if (text.isEmpty()) return
         currentInputConnection?.finishComposingText()
-        currentInputConnection?.commitText(text, 1)
+        val image = ClipboardHistory.parseImage(text)
+        val pasted = if (image != null) {
+            pasteClipboardImage(image.first, image.second)
+        } else {
+            currentInputConnection?.commitText(text, 1) == true
+        }
+        if (!pasted) return
         ignoredClipboardText = text
         if (visibleClipboard.value?.fullText == text) visibleClipboard.value = null
         syncShiftFromCursor()
         refreshEditorText()
+    }
+
+    private fun pasteClipboardImage(mime: String, relativePath: String): Boolean {
+        val file = ClipboardImages.file(this, relativePath)
+        if (!file.exists()) return false
+        val uri = ClipboardImages.contentUri(this, relativePath)
+        currentInputEditorInfo?.packageName?.let { target ->
+            grantUriPermission(target, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        val info = InputContentInfo(uri, ClipDescription("image", arrayOf(mime)))
+        return currentInputConnection?.commitContent(
+            info,
+            InputConnection.INPUT_CONTENT_GRANT_READ_URI_PERMISSION,
+            null,
+        ) == true
     }
 
     private fun dismissClipboard() {
@@ -360,33 +434,88 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             }
             val manager = getSystemService(ClipboardManager::class.java)
             val description = manager?.primaryClipDescription
-            val isText = description?.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) == true ||
-                description?.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML) == true
-            if (!isText) {
-                visibleClipboard.value = null
-                return@post
-            }
-            val text = runCatching {
-                manager.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()
+            val clip = manager?.primaryClip
+            val imageMime = clipImageMime(description)
+            val rawText = runCatching {
+                clip?.getItemAt(0)?.coerceToText(this)?.toString()
             }.getOrNull()?.trim().orEmpty()
-            if (
-                text.isNotEmpty() &&
-                settings.clipboardHistoryEnabled &&
-                text != lastRecordedClip
-            ) {
-                lastRecordedClip = text
-                persistPreference { container.settings.recordClipboardHistory(text) }
-            }
-            visibleClipboard.value = text.takeIf {
-                settings.clipboardChipEnabled && it.isNotEmpty() && it != ignoredClipboardText
-            }?.let { value ->
-                ClipboardChip(
-                    preview = value.replace('\n', ' ').take(24),
-                    fullText = value,
-                )
+            val text = rawText.takeIf { it.isNotEmpty() && !isImageUriText(it, imageMime != null) }
+            when {
+                !text.isNullOrEmpty() -> showClipboardText(text, settings)
+                imageMime != null -> {
+                    val uri = clip?.getItemAt(0)?.uri
+                    if (uri != null) showClipboardImage(uri, imageMime, settings)
+                    else visibleClipboard.value = null
+                }
+                else -> visibleClipboard.value = null
             }
         }
     }
+
+    private fun showClipboardText(text: String, settings: VocaPhoneSettings) {
+        if (settings.clipboardHistoryEnabled && text != lastRecordedClip) {
+            lastRecordedClip = text
+            persistPreference { container.settings.recordClipboardHistory(text) }
+        }
+        visibleClipboard.value = text.takeIf {
+            settings.clipboardChipEnabled && it != ignoredClipboardText
+        }?.let { value ->
+            ClipboardChip(
+                preview = value.replace('\n', ' ').take(24),
+                fullText = value,
+            )
+        }
+    }
+
+    private fun showClipboardImage(uri: Uri, mime: String, settings: VocaPhoneSettings) {
+        val source = uri.toString()
+        val reused = lastRecordedClip
+        if (source == lastImageSource && reused != null && ClipboardHistory.isImage(reused)) {
+            visibleClipboard.value = reused.takeIf {
+                settings.clipboardChipEnabled && it != ignoredClipboardText
+            }?.let {
+                ClipboardChip(
+                    preview = "Image",
+                    fullText = it,
+                    imagePath = ClipboardHistory.parseImage(it)?.second,
+                )
+            }
+            return
+        }
+        scope.launch {
+            val relative = withContext(Dispatchers.IO) {
+                ClipboardImages.cache(this@VocaPhoneInputMethodService, uri, mime)
+            } ?: run {
+                visibleClipboard.value = null
+                return@launch
+            }
+            val encoded = ClipboardHistory.encodeImage(mime, relative)
+            lastImageSource = source
+            if (settings.clipboardHistoryEnabled && encoded != lastRecordedClip) {
+                lastRecordedClip = encoded
+                persistPreference { container.settings.recordClipboardHistory(encoded) }
+            } else {
+                lastRecordedClip = encoded
+            }
+            visibleClipboard.value = encoded.takeIf {
+                settings.clipboardChipEnabled && it != ignoredClipboardText
+            }?.let {
+                ClipboardChip(preview = "Image", fullText = it, imagePath = relative)
+            }
+        }
+    }
+
+    private fun clipImageMime(description: ClipDescription?): String? {
+        if (description == null) return null
+        for (index in 0 until description.mimeTypeCount) {
+            val mime = description.getMimeType(index)
+            if (mime.startsWith("image/")) return mime
+        }
+        return null
+    }
+
+    private fun isImageUriText(text: String, hasImage: Boolean): Boolean =
+        hasImage && (text.startsWith("content://") || text.startsWith("file://"))
 
     private fun performEditorAction() {
         val actionId = editorConfig.editorActionId

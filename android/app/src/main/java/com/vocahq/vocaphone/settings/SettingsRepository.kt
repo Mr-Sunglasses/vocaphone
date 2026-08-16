@@ -26,9 +26,12 @@ internal object ClipboardHistory {
     const val MAX_ITEMS = 20
     const val MAX_ITEM_CHARS = 4_000
     const val SEPARATOR = "\u001e"
+    const val IMAGE_PREFIX = "\u001fIMG\u001f"
 
     fun remember(existing: List<String>, incoming: String): List<String> {
-        val text = incoming.trim().take(MAX_ITEM_CHARS)
+        // Image tokens start with U+001F, which Java treats as whitespace.
+        val text = if (isImage(incoming)) incoming.take(MAX_ITEM_CHARS)
+        else incoming.trim().take(MAX_ITEM_CHARS)
         if (text.isEmpty()) return existing
         return (listOf(text) + existing.filter { it != text }).take(MAX_ITEMS)
     }
@@ -37,6 +40,25 @@ internal object ClipboardHistory {
 
     fun decode(stored: String?): List<String> =
         stored?.split(SEPARATOR)?.filter { it.isNotEmpty() }.orEmpty()
+
+    fun isImage(stored: String): Boolean = stored.startsWith(IMAGE_PREFIX)
+
+    fun encodeImage(mime: String, relativePath: String): String =
+        "$IMAGE_PREFIX$mime\u001f$relativePath"
+
+    fun parseImage(stored: String): Pair<String, String>? {
+        if (!isImage(stored)) return null
+        val rest = stored.removePrefix(IMAGE_PREFIX)
+        val sep = rest.indexOf('\u001f')
+        if (sep <= 0 || sep == rest.lastIndex) return null
+        return rest.substring(0, sep) to rest.substring(sep + 1)
+    }
+
+    fun preview(stored: String): String =
+        if (isImage(stored)) "Image" else stored.replace('\n', ' ')
+
+    fun imagePaths(items: List<String>): Set<String> =
+        items.mapNotNull { parseImage(it)?.second }.toSet()
 }
 
 enum class KeyboardHeight(
@@ -248,23 +270,27 @@ class SettingsRepository(private val context: Context) {
     suspend fun setClipboardHistoryEnabled(enabled: Boolean) = put(Keys.CLIPBOARD_HISTORY_ENABLED, enabled)
 
     suspend fun recordClipboardHistory(text: String) {
+        var next: List<String> = emptyList()
         context.dataStore.edit { preferences ->
             val current = ClipboardHistory.decode(preferences[Keys.CLIPBOARD_HISTORY])
-            preferences[Keys.CLIPBOARD_HISTORY] = ClipboardHistory.encode(
-                ClipboardHistory.remember(current, text),
-            )
+            next = ClipboardHistory.remember(current, text)
+            preferences[Keys.CLIPBOARD_HISTORY] = ClipboardHistory.encode(next)
         }
+        ClipboardImages.prune(context, ClipboardHistory.imagePaths(next))
     }
 
     suspend fun removeClipboardHistory(text: String) {
+        var next: List<String> = emptyList()
         context.dataStore.edit { preferences ->
-            val next = ClipboardHistory.decode(preferences[Keys.CLIPBOARD_HISTORY]).filter { it != text }
+            next = ClipboardHistory.decode(preferences[Keys.CLIPBOARD_HISTORY]).filter { it != text }
             preferences[Keys.CLIPBOARD_HISTORY] = ClipboardHistory.encode(next)
         }
+        ClipboardImages.prune(context, ClipboardHistory.imagePaths(next))
     }
 
     suspend fun clearClipboardHistory() {
         context.dataStore.edit { it.remove(Keys.CLIPBOARD_HISTORY) }
+        ClipboardImages.prune(context, emptySet())
     }
 
     suspend fun recordEmojiRecent(emoji: String) {

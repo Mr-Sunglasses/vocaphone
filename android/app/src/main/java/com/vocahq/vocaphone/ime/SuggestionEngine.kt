@@ -62,21 +62,23 @@ internal class SuggestionDictionary(
         after: String,
         correctionsEnabled: Boolean,
     ): SuggestionStrip {
+        val token = composing.ifEmpty { SuggestionEngine.lastWordForEmoji(before).orEmpty() }
+        val emojis = EmojiSuggestions.glyphs(token)
         if (composing.isNotEmpty()) {
             val completions = complete(composing)
             val corrections = if (correctionsEnabled) correct(composing) else emptyList()
-            return SuggestionStrip((completions + corrections).distinct().take(3))
+            return SuggestionStrip((completions + corrections).distinct().take(3), emojis)
         }
         if (correctionsEnabled) {
             val span = SuggestionEngine.wordSpan(before, after)
             if (span != null && span.word.length >= 2) {
                 val nearby = similar(span.word)
                 if (nearby.isNotEmpty()) {
-                    return SuggestionStrip(nearby, replacesWord = true)
+                    return SuggestionStrip(nearby, emojis, replacesWord = true)
                 }
             }
         }
-        return SuggestionStrip(next(SuggestionEngine.lastWord(before).orEmpty()))
+        return SuggestionStrip(next(SuggestionEngine.lastWord(before).orEmpty()), emojis)
     }
 
     fun swipe(path: String, limit: Int = 4): List<String> {
@@ -141,6 +143,17 @@ internal object SuggestionEngine {
             start--
         }
         val word = trimmed.substring(start).replace("'", "").lowercase()
+        return word.takeIf { it.any(Char::isLetter) }
+    }
+
+    /** Last word even when a space or period is already sitting after it. */
+    fun lastWordForEmoji(textBeforeCursor: CharSequence): String? {
+        var end = textBeforeCursor.length
+        while (end > 0 && !isWordChar(textBeforeCursor[end - 1])) end--
+        if (end == 0) return null
+        var start = end
+        while (start > 0 && isWordChar(textBeforeCursor[start - 1])) start--
+        val word = textBeforeCursor.subSequence(start, end).toString().replace("'", "").lowercase()
         return word.takeIf { it.any(Char::isLetter) }
     }
 

@@ -101,7 +101,65 @@ class SuggestionEngineTest {
             correctionsEnabled = true,
         )
         assertEquals(listOf("first", "same", "other"), strip.words)
+        assertTrue(strip.emojis.isEmpty())
         assertTrue(!strip.replacesWord)
+    }
+
+    @Test
+    fun `strip offers emoji with the word after a space`() {
+        val strip = dictionary.strip(
+            composing = "",
+            before = "happy ",
+            after = "",
+            correctionsEnabled = false,
+        )
+        assertEquals(listOf("😊", "😄", "😁"), strip.emojis)
+        assertTrue(strip.items.any { it.text == "😊" && it.isEmoji })
+        assertTrue(!strip.replacesWord)
+    }
+
+    @Test
+    fun `strip offers emoji while the trigger word is being composed`() {
+        val strip = dictionary.strip(
+            composing = "sad",
+            before = "",
+            after = "",
+            correctionsEnabled = false,
+        )
+        assertEquals(listOf("😢", "😭", "😞"), strip.emojis)
+        assertTrue(strip.words.none { it == "😢" })
+    }
+
+    @Test
+    fun `strip does not offer emoji for a prefix of a trigger`() {
+        val strip = dictionary.strip(
+            composing = "hap",
+            before = "",
+            after = "",
+            correctionsEnabled = false,
+        )
+        assertTrue(strip.emojis.isEmpty())
+    }
+
+    @Test
+    fun `strip still offers emoji after a period`() {
+        val strip = dictionary.strip(
+            composing = "",
+            before = "sad.",
+            after = "",
+            correctionsEnabled = false,
+        )
+        assertEquals(listOf("😢", "😭", "😞"), strip.emojis)
+        assertTrue(!EmojiCommit.shouldReplaceTrigger("", "sad."))
+    }
+
+    @Test
+    fun lastWordForEmojiSkipsTrailingPunctuation() {
+        assertEquals("sad", SuggestionEngine.lastWordForEmoji("sad."))
+        assertEquals("sad", SuggestionEngine.lastWordForEmoji("sad "))
+        assertEquals("sad", SuggestionEngine.lastWordForEmoji("I am sad!"))
+        assertEquals("happy", SuggestionEngine.lastWord("happy "))
+        assertEquals(null, SuggestionEngine.lastWord("sad."))
     }
 
     @Test

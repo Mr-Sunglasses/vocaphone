@@ -260,8 +260,8 @@ fun SettingsScreen(
                     )
                     SettingToggle(
                         title = "Clipboard history",
-                        detail = "Save recent clips on this phone. Open them from the " +
-                            "keyboard menu. Off in passwords.",
+                        detail = "Save recent text and images on this phone. Open them " +
+                            "from the keyboard menu. Off in passwords.",
                         checked = settings.clipboardHistoryEnabled,
                         onCheckedChange = onClipboardHistory,
                     )

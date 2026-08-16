@@ -23,6 +23,7 @@ internal data class KeyboardEditorConfig(
     val dictationAllowed: Boolean,
     val sensitive: Boolean,
     val shiftSync: Int = 0,
+    val cursorSync: Int = 0,
 ) {
     companion object {
         fun empty() = KeyboardEditorConfig(

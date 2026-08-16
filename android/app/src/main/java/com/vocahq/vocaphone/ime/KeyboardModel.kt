@@ -121,6 +121,12 @@ internal data class KeyboardReduction(
 internal data class ClipboardChip(
     val preview: String,
     val fullText: String,
+    val imagePath: String? = null,
+)
+
+internal data class SuggestionItem(
+    val text: String,
+    val isEmoji: Boolean = false,
 )
 
 /** What the single Gboard-style toolbar row should show. */
@@ -133,8 +139,10 @@ internal object KeyboardChrome {
         alreadyPasted: Boolean = false,
     ): ClipboardChip? = clipboard.takeIf { !alreadyPasted }
 
-    fun suggestionsForStrip(suggestions: List<String>, startedTyping: Boolean): List<String> =
-        if (startedTyping) suggestions else emptyList()
+    fun suggestionsForStrip(
+        suggestions: List<SuggestionItem>,
+        startedTyping: Boolean,
+    ): List<SuggestionItem> = if (startedTyping) suggestions else emptyList()
 
     fun suggestionReplacesWord(
         composing: String,
@@ -167,8 +175,45 @@ internal object KeyboardChrome {
 
 internal data class SuggestionStrip(
     val words: List<String>,
+    val emojis: List<String> = emptyList(),
     val replacesWord: Boolean = false,
-)
+) {
+    val items: List<SuggestionItem>
+        get() = words.map { SuggestionItem(it) } + emojis.map { SuggestionItem(it, isEmoji = true) }
+}
+
+/**
+ * Distinguishes a tap in the field from the selection updates [setComposingText]
+ * sends after every letter. Those updates put the cursor on the composing end;
+ * a tap puts it somewhere else, and the next letter has to start there.
+ */
+internal object EditorCursorSync {
+    fun isUserMove(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        oldCandidatesStart: Int,
+        oldCandidatesEnd: Int,
+        newCandidatesStart: Int,
+        newCandidatesEnd: Int,
+    ): Boolean {
+        val collapsed = newSelStart == newSelEnd
+        if (collapsed && newCandidatesStart >= 0 && newSelStart == newCandidatesEnd) {
+            return false
+        }
+        if (
+            newCandidatesStart < 0 &&
+            oldCandidatesStart >= 0 &&
+            collapsed &&
+            newSelStart >= oldCandidatesEnd &&
+            newSelStart <= oldCandidatesEnd + 1
+        ) {
+            return false
+        }
+        return newSelStart != oldSelStart || newSelEnd != oldSelEnd
+    }
+}
 
 internal data class WordSpan(
     val word: String,

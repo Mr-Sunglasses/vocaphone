@@ -31,8 +31,8 @@ class KeyboardChromeTest {
 
     @Test
     fun `suggestions only show after typing starts`() {
-        val words = listOf("you", "the")
-        assertEquals(emptyList<String>(), KeyboardChrome.suggestionsForStrip(words, startedTyping = false))
+        val words = listOf(SuggestionItem("you"), SuggestionItem("the"))
+        assertEquals(emptyList<SuggestionItem>(), KeyboardChrome.suggestionsForStrip(words, startedTyping = false))
         assertEquals(words, KeyboardChrome.suggestionsForStrip(words, startedTyping = true))
     }
 

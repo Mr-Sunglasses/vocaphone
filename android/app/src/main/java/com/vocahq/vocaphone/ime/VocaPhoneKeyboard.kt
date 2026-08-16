@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.ime
 
+import android.graphics.BitmapFactory
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedVisibility
@@ -13,18 +14,21 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,6 +44,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,10 +63,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -100,7 +110,9 @@ import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.WritingStyle
+import com.vocahq.vocaphone.settings.ClipboardHistory
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
+import java.io.File
 import com.vocahq.vocaphone.ui.theme.VocaPhoneTheme
 import kotlin.math.PI
 import kotlin.math.sin
@@ -135,6 +147,7 @@ internal fun VocaPhoneKeyboard(
     onLanguageSelected: (TranscriptionLanguage) -> Unit,
     onStyleSelected: (WritingStyle) -> Unit,
     onSuggestionPicked: (String, Boolean) -> Unit,
+    onEmojiSuggestion: (String) -> Unit,
     onPasteClipboard: (String) -> Unit,
     onDismissClipboard: () -> Unit,
     onRemoveClipboardHistory: (String) -> Unit,
@@ -162,6 +175,11 @@ internal fun VocaPhoneKeyboard(
     LaunchedEffect(editor.shiftSync) {
         if (editor.shiftSync > 0) {
             keyboardState = keyboardState.copy(shift = editor.initialShift)
+        }
+    }
+    LaunchedEffect(editor.cursorSync) {
+        if (editor.cursorSync > 0) {
+            keyboardState = keyboardState.copy(composing = "")
         }
     }
     LaunchedEffect(settings.asciiEmojiEnabled, emojiCategory) {
@@ -197,9 +215,9 @@ internal fun VocaPhoneKeyboard(
     val stripClipboard = KeyboardChrome.clipboardForStrip(clipboardChip)
     val swipeArmed = KeyboardChrome.swipeWordArmed(swipeWord, editorText.before, editorText.after)
     val stripSuggestions = if (swipeArmed && swipeChoices.isNotEmpty()) {
-        swipeChoices
+        swipeChoices.map { SuggestionItem(it) }
     } else {
-        KeyboardChrome.suggestionsForStrip(suggestionStrip.words, startedTyping)
+        KeyboardChrome.suggestionsForStrip(suggestionStrip.items, startedTyping)
     }
     val swipeReplacesWord = swipeArmed && swipeChoices.isNotEmpty()
 
@@ -343,20 +361,29 @@ internal fun VocaPhoneKeyboard(
                     },
                     onPaste = { onPasteClipboard(clipboardChip?.fullText.orEmpty()) },
                     onDismissClipboard = onDismissClipboard,
-                    onSuggestion = { word ->
-                        val replace = KeyboardChrome.suggestionReplacesWord(
-                            composing = keyboardState.composing,
-                            swipeChoicesActive = swipeReplacesWord,
-                            stripReplacesWord = suggestionStrip.replacesWord,
-                        )
-                        swipeChoices = emptyList()
-                        swipeWord = if (replace) word else null
-                        keyboardState = keyboardState.copy(
-                            composing = "",
-                            lastWasSpace = true,
-                            capitalizeAfterSpace = false,
-                        )
-                        onSuggestionPicked(word, replace)
+                    onSuggestion = { item ->
+                        if (item.isEmoji) {
+                            clearSwipe()
+                            keyboardState = keyboardState.copy(
+                                composing = "",
+                                lastWasSpace = false,
+                            )
+                            onEmojiSuggestion(item.text)
+                        } else {
+                            val replace = KeyboardChrome.suggestionReplacesWord(
+                                composing = keyboardState.composing,
+                                swipeChoicesActive = swipeReplacesWord,
+                                stripReplacesWord = suggestionStrip.replacesWord,
+                            )
+                            swipeChoices = emptyList()
+                            swipeWord = if (replace) item.text else null
+                            keyboardState = keyboardState.copy(
+                                composing = "",
+                                lastWasSpace = true,
+                                capitalizeAfterSpace = false,
+                            )
+                            onSuggestionPicked(item.text, replace)
+                        }
                     },
                 )
                 Spacer(Modifier.height(4.dp))
@@ -482,7 +509,7 @@ private fun DictationBar(
     barHeight: Dp,
     isPreferenceWritePending: Boolean,
     clipboard: ClipboardChip?,
-    suggestions: List<String>,
+    suggestions: List<SuggestionItem>,
     emojiCategory: EmojiCategory?,
     hasEmojiRecents: Boolean,
     asciiEmojiEnabled: Boolean,
@@ -493,7 +520,7 @@ private fun DictationBar(
     onMenuTap: () -> Unit,
     onPaste: () -> Unit,
     onDismissClipboard: () -> Unit,
-    onSuggestion: (String) -> Unit,
+    onSuggestion: (SuggestionItem) -> Unit,
 ) {
     val view = LocalView.current
     val idle = state.phase == DictationPhase.IDLE
@@ -622,17 +649,15 @@ private fun DictationBar(
                 )
                 clipboard != null -> ClipboardChipButton(
                     preview = clipboard.preview,
+                    imagePath = clipboard.imagePath,
                     onClick = onPaste,
                     onLongClick = onDismissClipboard,
                     modifier = Modifier.weight(1f),
                 )
-                suggestions.isNotEmpty() -> suggestions.take(3).forEach { word ->
-                    SuggestionChip(
-                        label = word,
-                        onClick = { onSuggestion(word) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                suggestions.isNotEmpty() -> SuggestionStripRow(
+                    suggestions = suggestions,
+                    onSuggestion = onSuggestion,
+                )
                 else -> Spacer(Modifier.weight(1f))
             }
         }
@@ -800,7 +825,7 @@ private fun ClipboardHistoryPanel(
     PreferencePanelShell(
         title = "Clipboard",
         subtitle = if (items.isEmpty()) {
-            "Copy text to save it here"
+            "Copy text or an image to save it here"
         } else {
             "Tap to paste. Long press to remove."
         },
@@ -836,26 +861,40 @@ private fun ClipboardHistoryPanel(
                     .weight(1f),
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
-                items(items, key = { it.hashCode().toString() + it.take(12) }) { text ->
+                items(items, key = { it.hashCode().toString() + it.take(12) }) { stored ->
+                    val image = ClipboardHistory.parseImage(stored)
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .pointerInput(text) {
+                            .pointerInput(stored) {
                                 detectTapGestures(
-                                    onTap = { if (enabled) onPaste(text) },
-                                    onLongPress = { if (enabled) onRemove(text) },
+                                    onTap = { if (enabled) onPaste(stored) },
+                                    onLongPress = { if (enabled) onRemove(stored) },
                                 )
                             },
                         shape = RoundedCornerShape(8.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
-                        Text(
-                            text = text.replace('\n', ' '),
+                        Row(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            fontSize = 13.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (image != null) {
+                                ClipboardThumb(
+                                    relativePath = image.second,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(6.dp)),
+                                )
+                            }
+                            Text(
+                                text = ClipboardHistory.preview(stored),
+                                fontSize = 13.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }
@@ -1248,6 +1287,7 @@ private fun ClipboardChipButton(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    imagePath: String? = null,
 ) {
     val view = LocalView.current
     var dismissing by remember(preview) { mutableStateOf(false) }
@@ -1287,11 +1327,20 @@ private fun ClipboardChipButton(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            KeyboardIcon(
-                glyph = Glyph.CLIPBOARD,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp),
-            )
+            if (imagePath != null) {
+                ClipboardThumb(
+                    relativePath = imagePath,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(RoundedCornerShape(4.dp)),
+                )
+            } else {
+                KeyboardIcon(
+                    glyph = Glyph.CLIPBOARD,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
             Text(
                 text = preview,
                 fontSize = 14.sp,
@@ -1305,10 +1354,64 @@ private fun ClipboardChipButton(
 }
 
 @Composable
+private fun RowScope.SuggestionStripRow(
+    suggestions: List<SuggestionItem>,
+    onSuggestion: (SuggestionItem) -> Unit,
+) {
+    if (suggestions.size <= 3) {
+        suggestions.forEach { item ->
+            SuggestionChip(
+                label = item.text,
+                emoji = item.isEmoji,
+                onClick = { onSuggestion(item) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        return
+    }
+    val scroll = rememberScrollState()
+    val fade = MaterialTheme.colorScheme.surfaceContainerLowest
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .drawWithContent {
+                drawContent()
+                if (scroll.canScrollForward) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            0.82f to Color.Transparent,
+                            1f to fade,
+                        ),
+                    )
+                }
+            },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxHeight()
+                .horizontalScroll(scroll),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            suggestions.forEach { item ->
+                SuggestionChip(
+                    label = item.text,
+                    emoji = item.isEmoji,
+                    onClick = { onSuggestion(item) },
+                    modifier = Modifier.widthIn(min = if (item.isEmoji) 44.dp else 68.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SuggestionChip(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    emoji: Boolean = false,
 ) {
     Surface(
         modifier = modifier
@@ -1324,12 +1427,39 @@ private fun SuggestionChip(
         Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
             Text(
                 text = label,
-                fontSize = 14.sp,
+                fontSize = if (emoji) 18.sp else 14.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+@Composable
+private fun ClipboardThumb(
+    relativePath: String,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val bitmap = remember(relativePath) {
+        val file = File(context.filesDir, relativePath)
+        if (!file.exists()) {
+            null
+        } else {
+            BitmapFactory.decodeFile(
+                file.absolutePath,
+                BitmapFactory.Options().apply { inSampleSize = 8 },
+            )
+        }
+    }
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = null,
+            modifier = modifier,
+            contentScale = ContentScale.Crop,
+        )
     }
 }
 
