@@ -379,7 +379,7 @@ consistently in the Xcode project configuration and entitlements:
 - `com.vocahq.vocaphone`
 - `com.vocahq.vocaphone.keyboard`
 - `com.vocahq.vocaphone.liveactivity`
-- `group.com.vocahq.vocaphone`
+- `group.com.vocahq`
 
 Then:
 

@@ -16,7 +16,8 @@ identifiers. The following are the final identifiers in use:
 | iOS app bundle ID | `com.vocahq.vocaphone` |
 | iOS keyboard bundle ID | `com.vocahq.vocaphone.keyboard` |
 | iOS Live Activity bundle ID | `com.vocahq.vocaphone.liveactivity` |
-| iOS App Group | `group.com.vocahq.vocaphone` |
+| iOS App Group | `group.com.vocahq` |
+| iOS development team | `92962VK378` |
 | iOS URL scheme | `vocaphone://dictate` |
 | Android application ID | `com.vocahq.vocaphone` |
 | LaunchAgent label | `com.vocahq.vocaphone.gateway` |
@@ -24,8 +25,9 @@ identifiers. The following are the final identifiers in use:
 | Docker image tag | `vocaphone-gateway` |
 | Docker volume | `vocaphone_vocaphone-data` |
 
-Apple Developer portal registration of these bundle identifiers and App Group
-under the existing team is a required follow-up.
+Register the bundle identifiers and App Group on team `92962VK378`. The older
+group (`group.com.vocahq.vocaphone`) belongs to another team and cannot be
+reused here.
 
 Native gateway startups migrate a missing vocaphone bootstrap token (and
 WebUI config) from the Local Flow paths once, and the LaunchAgent/systemd

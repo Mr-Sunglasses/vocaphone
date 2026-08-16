@@ -12,7 +12,7 @@ settings:
     MARKETING_VERSION: 0.1.0
     TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Automatic
-    DEVELOPMENT_TEAM: A83WCPTTT9
+    DEVELOPMENT_TEAM: 92962VK378
 packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit.git

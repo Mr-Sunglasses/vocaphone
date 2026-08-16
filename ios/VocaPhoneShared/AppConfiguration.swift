@@ -1,7 +1,7 @@
 import Foundation
 
 enum AppConfiguration {
-    static let appGroupIdentifier = "group.com.vocahq.vocaphone"
+    static let appGroupIdentifier = "group.com.vocahq"
     /// Must match `VocaPhoneKeyboard`'s `PRODUCT_BUNDLE_IDENTIFIER` in
     /// `project.yml`. Only used to spot the keyboard in the user's enabled
     /// list, so drift degrades guided setup rather than breaking dictation.
