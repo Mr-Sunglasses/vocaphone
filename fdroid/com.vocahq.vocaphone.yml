@@ -10,6 +10,16 @@
 # alignment is defined in gradle/gradle-daemon-jvm.properties and in
 # android/app/build.gradle.kts compileOptions; do not change the compiling JDK
 # without reviewing this file first.
+#
+# The fragile half is the whisper/ggml code this flavour compiles from source:
+# it is the only part of the APK that is not already byte-identical between two
+# machines. android/app/src/main/cpp/whisper/CMakeLists.txt keeps it that way by
+# rewriting __FILE__ prefixes, building ggml without OpenMP, and refusing to let
+# ggml read a commit hash out of git. Changing any of those three, or the pinned
+# ndk below, needs a two-path rebuild before it is tagged.
+#
+# 0.1.0-beta.12 is deliberately absent: it was published before those fixes, so
+# its binary cannot be reproduced by anyone, including us.
 
 Categories:
   - Keyboard & IME
@@ -26,11 +36,13 @@ AutoName: VocaPhone
 
 RepoType: git
 Repo: https://github.com/VocaHQ/vocaphone.git
+Binaries: https://github.com/VocaHQ/vocaphone/releases/download/v%v/vocaphone-fdroid.apk
 
 Builds:
-  - versionName: 0.1.0-beta.12
-    versionCode: 12
-    commit: e5ec259acc17e295262d8fe2d33db1223341826c
+
+  - versionName: 0.1.0-beta.13
+    versionCode: 13
+    commit: v0.1.0-beta.13
     subdir: android
     submodules: true
     gradle:
@@ -47,7 +59,9 @@ Builds:
       - web
     ndk: 27.2.12479018
 
+AllowedAPKSigningKeys: e6131446f8afeff13516f78036db9ea26aaa16e01b39f37182bf262ccd1d45b0
+
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.1.0-beta.12
-CurrentVersionCode: 12
+CurrentVersion: 0.1.0-beta.13
+CurrentVersionCode: 13
