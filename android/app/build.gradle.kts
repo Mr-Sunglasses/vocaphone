@@ -18,8 +18,8 @@ android {
         applicationId = "com.vocahq.vocaphone"
         minSdk = 33
         targetSdk = 36
-        versionCode = 13
-        versionName = "0.1.0-beta.13"
+        versionCode = 14
+        versionName = "0.1.0-beta.14"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -104,6 +104,14 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    // AGP embeds a "Dependency metadata" block in the APK signing block that
+    // lists every dependency and its hash. Google Play reads it for tracking,
+    // and F-Droid's scanner rejects APKs that carry it.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     androidComponents {

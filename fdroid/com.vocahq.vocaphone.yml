@@ -18,8 +18,9 @@
 # ggml read a commit hash out of git. Changing any of those three, or the pinned
 # ndk below, needs a two-path rebuild before it is tagged.
 #
-# 0.1.0-beta.12 is deliberately absent: it was published before those fixes, so
-# its binary cannot be reproduced by anyone, including us.
+# Only the current version is listed. 0.1.0-beta.12 was published before those
+# fixes, so its binary cannot be reproduced by anyone, including us, and
+# 0.1.0-beta.13 never got an APK attached to its release at all.
 
 Categories:
   - Keyboard & IME
@@ -40,9 +41,9 @@ Binaries: https://github.com/VocaHQ/vocaphone/releases/download/v%v/vocaphone-fd
 
 Builds:
 
-  - versionName: 0.1.0-beta.13
-    versionCode: 13
-    commit: v0.1.0-beta.13
+  - versionName: 0.1.0-beta.14
+    versionCode: 14
+    commit: v0.1.0-beta.14
     subdir: android
     submodules: true
     gradle:
@@ -63,5 +64,5 @@ AllowedAPKSigningKeys: e6131446f8afeff13516f78036db9ea26aaa16e01b39f37182bf262cc
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.1.0-beta.13
-CurrentVersionCode: 13
+CurrentVersion: 0.1.0-beta.14
+CurrentVersionCode: 14
