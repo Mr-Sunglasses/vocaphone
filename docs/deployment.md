@@ -15,7 +15,8 @@ Canonical guides (after `git submodule update --init --recursive`):
 
 Phone-specific setup (signing and keyboard) stays in this repository:
 
-- [Device setup](device-setup.md)
+- [Device setup](device-setup.md) — physical-device acceptance checklist
+- [TestFlight](testflight.md) — App Store Connect setup, archiving, and upload
 - [Android client](../android/README.md)
 - [Troubleshooting (keyboard / mic / insertion)](troubleshooting.md)
 
@@ -27,7 +28,7 @@ Gateway token, config, and volume renames are documented in
 ### iOS / Android installations
 
 Due to changed bundle identifiers (`com.vocahq.vocaphone*`), App Group
-(`group.com.vocahq.vocaphone`), and application ID (`com.vocahq.vocaphone`),
+(`group.com.vocahq`), and application ID (`com.vocahq.vocaphone`),
 existing iOS and Android installations are not upgraded in place:
 
 - **iOS**: Delete the old app from the device. Rebuild the renamed Xcode project

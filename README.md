@@ -375,29 +375,45 @@ private personal deployment, but it is not mandatory. Follow
 
 ### 5. Configure and install the iPhone app
 
-Before signing under your own Apple account, replace these placeholders
-consistently in the Xcode project configuration and entitlements:
+The Simulator needs no Apple account at all:
 
-- `com.vocahq.vocaphone`
-- `com.vocahq.vocaphone.keyboard`
-- `com.vocahq.vocaphone.liveactivity`
-- `group.com.vocahq`
+```sh
+cd ios
+just doctor   # checks Xcode, xcodegen, and a simulator runtime are present
+just run      # generates the project, builds, boots a simulator, installs, launches
+```
 
-Then:
+`ios/project.yml` is the real project source; `just run` (and every other iOS
+recipe) regenerates `VocaPhone.xcodeproj` from it before building, so don't
+hand-edit the `.xcodeproj`. Prefer working in Xcode itself? `just edit` does
+the same regeneration, then opens it.
 
-1. Generate/open `ios/VocaPhone.xcodeproj` and select your Apple development team.
-2. Register the same App Group for the app, keyboard, and Live Activity targets.
-3. Install the containing app on the iPhone and grant microphone permission.
-4. Add the keyboard under **Settings → General → Keyboard → Keyboards** and enable
-   Full Access.
-5. Choose a transcription source in guided setup: download an on-device
-   speech-to-text model, **or** enter the reachable HTTP/HTTPS gateway URL and
-   bearer token under **Settings → Transcription → Gateway** and use
-   **Save and test**. Approve Local Network access when using a LAN host.
-   Either source alone is enough to dictate; the app says which one is in use
-   and where the audio goes.
+Add the keyboard the same way you would on a device: `just settings` opens
+iOS Settings on the simulator, then **General → Keyboard → Keyboards → Add
+New Keyboard → vocaphone**, with **Allow Full Access** turned on (see
+[privacy.md](docs/privacy.md#full-access) for exactly what that is and isn't
+used for). Typing, autocorrect, and swipe work immediately. For actual
+dictation, **Settings → Transcription → On this iPhone** plus a downloaded
+model is the fastest path with nothing else to configure, or point
+**Settings → Transcription → Gateway** at one you started in step 1.
 
-Complete the physical-device checklist in [device setup](docs/device-setup.md).
+**On your own iPhone** (`just device`, phone connected and trusted): code
+signing has to already work in Xcode first. The project ships with VocaHQ's
+own identifiers (`com.vocahq.vocaphone` and friends, team `92962VK378` — see
+[decisions.md](docs/decisions.md)). If you have access to that team, select
+it on all three targets (VocaPhoneApp, VocaPhoneKeyboard,
+VocaPhoneLiveActivity) under **Signing & Capabilities**; automatic signing
+does the rest. If you don't — most outside contributors — either ask a
+maintainer to comment `/build ios` on your pull request for a signed ad-hoc
+IPA (see [CONTRIBUTING.md](CONTRIBUTING.md#on-demand-pr-builds-build)), or run
+it under your own free Apple ID by changing `bundleIdPrefix` and the three
+`PRODUCT_BUNDLE_IDENTIFIER`s in `ios/project.yml`, the App Group string in all
+three `.entitlements` files, and `AppConfiguration.swift`'s
+`appGroupIdentifier`/`keyboardBundleIdentifier` — don't commit that change.
+
+Grant microphone access on first launch, add the keyboard as above, and turn
+on Full Access. Complete the physical-device checklist in [device
+setup](docs/device-setup.md).
 
 ### 6. Or install the Android app
 
@@ -476,6 +492,7 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 | [Gateway reference](server/README.md) | Native service, Compose, models, configuration, health, and CLI commands ([vocagateway](https://github.com/VocaHQ/vocagateway)) |
 | [Deployment](server/docs/deployment.md) | Native-vs-Docker performance, startup, upgrades, persistence, and backups |
 | [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
+| [TestFlight](docs/testflight.md) | App Store Connect setup, archiving, and TestFlight distribution |
 | [Tailscale](server/docs/tailscale.md) | Private HTTPS ingress for the gateway |
 | [Architecture](docs/architecture.md) | Components, state transitions, engine boundary, and observability |
 | [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |

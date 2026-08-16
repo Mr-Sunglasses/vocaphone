@@ -14,6 +14,7 @@
 		0580A3BE7DFF0FB43B4A41BD /* BrandPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9711C18238B39EA2E842C0F /* BrandPalette.swift */; };
 		06242790B69C03FE11F749D8 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0942243BD8CB1F3937AD795E /* WhisperKit */; };
 		062CD049AAD6768AE5AB3766 /* GatewayEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A0A752EC9784F6FD2274150 /* GatewayEndpoint.swift */; };
+		06DDF0287EE04B56BDA4C2B5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BD7C720E296C2265F0174573 /* PrivacyInfo.xcprivacy */; };
 		07D7CA474CBB8812C0E83D1C /* VocaPhoneActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8988211922DAD4FC77AF89EB /* VocaPhoneActivityAttributes.swift */; };
 		0B939DE9494D3B8F14F18142 /* ModelLanguageSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C6476FC82C4B74D01F4358 /* ModelLanguageSupport.swift */; };
 		0D07EBF90CE481AE0C1976CF /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346B6558EE5557A35C916067 /* SetupView.swift */; };
@@ -204,6 +205,7 @@
 		BA66A26AC92DB96524E13AF5 /* TypingWordList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B6743BB4173E2F719E3D8CB /* TypingWordList.swift */; };
 		BA7DED07F63C388ADD4EC07A /* KeyboardURLLauncher.m in Sources */ = {isa = PBXBuildFile; fileRef = 88548183D3F0AD213E2268E1 /* KeyboardURLLauncher.m */; };
 		BAEC1D5BFECB17B9B28BD780 /* TypingWordListTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 867A5BD6049E4D6788DB704C /* TypingWordListTests.swift */; };
+		BB97658DE518187ABA47D495 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F2228242333B1BBC848C90DA /* PrivacyInfo.xcprivacy */; };
 		BBEEC542D1574BF6C8DF319B /* BrandPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9711C18238B39EA2E842C0F /* BrandPalette.swift */; };
 		BC36D829FEE2BEC0A6BC30C2 /* KeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5118F8CFAAE127CD5FF92076 /* KeyView.swift */; };
 		BCB8CA3BAACE6280D9ED4B22 /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */; };
@@ -264,6 +266,7 @@
 		F6901AAB3D79295B2F40E436 /* AudioCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2678D836274997421A54E901 /* AudioCaptureTests.swift */; };
 		F69EAE4A82B9ACE347EA0D77 /* SherpaDecodingMethodTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20F3E310970DBFA3822A4D19 /* SherpaDecodingMethodTests.swift */; };
 		F7432B1674EF3B6924FB89B1 /* KeyboardPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = D97C6225AC98D4FE053BDB13 /* KeyboardPreview.swift */; };
+		F76D2952E85E8F009A2BC034 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 06FC8DDB89A55103E29C10D3 /* PrivacyInfo.xcprivacy */; };
 		F859CEA335A920156C89478F /* KeyGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BF7CAC171521FC372DF2BF0 /* KeyGridView.swift */; };
 		F97104FEC3A627ACF8F869AD /* DictationBarLabelColorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32BFD71F9D14772A0C7330CD /* DictationBarLabelColorTests.swift */; };
 		F9BE6A9D183361BABE1E286E /* TranscriptionSourceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B154124C04655D1A36F1B4E4 /* TranscriptionSourceTests.swift */; };
@@ -312,6 +315,7 @@
 		03871B8CFC1A23E1AD3A33CD /* SherpaOnnx-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SherpaOnnx-Bridging-Header.h"; sourceTree = "<group>"; };
 		054B6576EFBD7797C0B0F433 /* SherpaLongAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SherpaLongAudio.swift; sourceTree = "<group>"; };
 		05735C847A47FF442B4FB21A /* TypingPrivacyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingPrivacyTests.swift; sourceTree = "<group>"; };
+		06FC8DDB89A55103E29C10D3 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		07178E9C6A3CF354CD83A2C1 /* SmartPunctuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartPunctuation.swift; sourceTree = "<group>"; };
 		07C4BD2142E9377F123A8848 /* SwipeRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeRecognizer.swift; sourceTree = "<group>"; };
 		0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickDictationAvailability.swift; sourceTree = "<group>"; };
@@ -420,6 +424,7 @@
 		B9B9027C03A87FBC74CE1130 /* TypingEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingEngine.swift; sourceTree = "<group>"; };
 		BA1F0FABCAE6669D0EB07FC3 /* SwipeAlternates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeAlternates.swift; sourceTree = "<group>"; };
 		BC9677581A0FA938AD9C520C /* PreviewFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewFixtures.swift; sourceTree = "<group>"; };
+		BD7C720E296C2265F0174573 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		BE0BE99770A5F7F08891E2BD /* KeyboardURLLauncher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyboardURLLauncher.h; sourceTree = "<group>"; };
 		BE3489C985467C23EB6A90AD /* DictationBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarView.swift; sourceTree = "<group>"; };
 		C304CF763960E5F1D8F76B2B /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
@@ -449,6 +454,7 @@
 		EF0326EF6FB3E96C942C6065 /* KeyAlternativesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyAlternativesTests.swift; sourceTree = "<group>"; };
 		EF0D852E37E341D37CCB4DB2 /* CustomVocabularyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomVocabularyTests.swift; sourceTree = "<group>"; };
 		F0DBF47C7F5E5B13752056CB /* TranscriptStyler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStyler.swift; sourceTree = "<group>"; };
+		F2228242333B1BBC848C90DA /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		F72772F0CCE3BA274182C5F4 /* HomePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomePresentationTests.swift; sourceTree = "<group>"; };
 		FA83B914C241E5F8BF8F32AC /* DictationBarLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarLayoutTests.swift; sourceTree = "<group>"; };
 		FC2CD13AAF5FDF79DD5D0075 /* TypingFieldPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingFieldPolicy.swift; sourceTree = "<group>"; };
@@ -475,6 +481,7 @@
 			children = (
 				3BA012C76E8C374857732F67 /* Assets.xcassets */,
 				4871EA8AAF829D7979EC9587 /* Info.plist */,
+				BD7C720E296C2265F0174573 /* PrivacyInfo.xcprivacy */,
 				CEA8F4B58D6EF52749026347 /* VocaPhoneApp.entitlements */,
 				AAF95B55221B170F0DA7CAE5 /* App */,
 				34DE966505F645843BA89C68 /* Audio */,
@@ -516,6 +523,7 @@
 				8BF7CAC171521FC372DF2BF0 /* KeyGridView.swift */,
 				B87128326897BFA30E7B2038 /* KeyLayout.swift */,
 				5118F8CFAAE127CD5FF92076 /* KeyView.swift */,
+				06FC8DDB89A55103E29C10D3 /* PrivacyInfo.xcprivacy */,
 				07178E9C6A3CF354CD83A2C1 /* SmartPunctuation.swift */,
 				3D4BE75828FCA9C70DFEDC96 /* SpellChecking.swift */,
 				BA1F0FABCAE6669D0EB07FC3 /* SwipeAlternates.swift */,
@@ -616,6 +624,7 @@
 			children = (
 				0AC0739F69438AEC347C44A4 /* Assets.xcassets */,
 				8ACA0C7140D6C997C12CFDD1 /* Info.plist */,
+				F2228242333B1BBC848C90DA /* PrivacyInfo.xcprivacy */,
 				786DEF44BDB4C70935762971 /* VocaPhoneLiveActivity.entitlements */,
 				C3D3E1455AD292ED6DA1DFAC /* VocaPhoneLiveActivity.swift */,
 			);
@@ -891,6 +900,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				2D83B6984ABEA15D65169CEE /* Assets.xcassets in Resources */,
+				06DDF0287EE04B56BDA4C2B5 /* PrivacyInfo.xcprivacy in Resources */,
 				36A5F07E79173A14F240A47F /* local_model_pins.json in Resources */,
 				7466C707EC283E26021BB710 /* sherpa_model_pins.json in Resources */,
 			);
@@ -901,6 +911,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6BDE1B7BE51A2350AFE05074 /* Assets.xcassets in Resources */,
+				BB97658DE518187ABA47D495 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -908,6 +919,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				F76D2952E85E8F009A2BC034 /* PrivacyInfo.xcprivacy in Resources */,
 				AB11765BF143D832E2B89511 /* catalog.tsv in Resources */,
 				4C26EF1A498140E6AEE51D86 /* en-bigrams.txt in Resources */,
 				1B6EE0F70EFC9078A48F7EB6 /* en.txt in Resources */,

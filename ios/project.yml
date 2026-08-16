@@ -53,6 +53,7 @@ targets:
     resources:
       - VocaPhoneApp/Models/local_model_pins.json
       - VocaPhoneApp/Models/sherpa_model_pins.json
+      - VocaPhoneApp/PrivacyInfo.xcprivacy
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone
@@ -88,6 +89,8 @@ targets:
       - path: ../assets/keyboard
         name: SharedKeyboardData
         buildPhase: resources
+    resources:
+      - VocaPhoneKeyboard/PrivacyInfo.xcprivacy
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone.keyboard
@@ -105,6 +108,8 @@ targets:
       - VocaPhoneLiveActivity
       - VocaPhoneShared
       - VocaPhoneActivityShared
+    resources:
+      - VocaPhoneLiveActivity/PrivacyInfo.xcprivacy
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone.liveactivity
