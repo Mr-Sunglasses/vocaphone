@@ -17,6 +17,8 @@
 [![Code of Conduct](https://img.shields.io/badge/contributor%20covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 [![Security policy](https://img.shields.io/badge/security-policy-red.svg)](SECURITY.md)
 [![GitHub Issues](https://img.shields.io/github/issues/VocaHQ/vocaphone)](https://github.com/VocaHQ/vocaphone/issues)
+[![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
+[![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
 
 Speak into your phone. Text shows up where you're typing. Transcription runs on
 hardware you control, not a cloud speech service.
