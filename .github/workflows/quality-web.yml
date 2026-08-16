@@ -1,0 +1,69 @@
+name: Quality (web)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '!web/**.md'
+      - '.github/actions/report-size/**'
+      - '.github/workflows/quality-web.yml'
+  pull_request:
+    branches: [main]
+    # A draft pull request is filtered out below; listing ready_for_review makes
+    # the checks start the moment it stops being a draft.
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'web/**'
+      - '!web/**.md'
+      - '.github/actions/report-size/**'
+      - '.github/workflows/quality-web.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # Lets report-size post/update its size comment on same-repo pull requests.
+  # Fork pull requests get a read-only token regardless, which the action
+  # already tolerates.
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A superseded pull request push is wasted minutes, but a run on main is the
+  # record for a merged commit, so let that one finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  web:
+    # Work in progress re-runs the checks on every push. The checks that
+    # matter run when the author marks the pull request ready.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check site
+        working-directory: web
+        run: npm run check
+
+      - name: Measure page weight
+        id: size
+        working-directory: web
+        run: |
+          set -euo pipefail
+          # Only what a browser actually fetches: markup, script, styles, and
+          # images. package.json/README/robots.txt/sitemap.xml/tests are real
+          # files in the folder but never ship to a visitor.
+          bytes=$(find assets favicon.ico index.html iphone/index.html script.js site.webmanifest styles.css \
+            -type f -exec stat -c%s {} + | awk '{sum += $1} END {print sum}')
+          echo "bytes=$bytes" >> "$GITHUB_OUTPUT"
+
+      - name: Report page weight vs. main
+        uses: ./.github/actions/report-size
+        with:
+          component: web
+          label: Web site page weight
+          bytes: ${{ steps.size.outputs.bytes }}

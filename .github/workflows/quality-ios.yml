@@ -8,6 +8,7 @@ on:
       # Prose next to the code it documents cannot break the build, and macOS
       # minutes bill at ten times the Linux rate.
       - '!ios/**.md'
+      - '.github/actions/report-size/**'
       - '.github/workflows/quality-ios.yml'
   pull_request:
     branches: [main]
@@ -17,11 +18,16 @@ on:
     paths:
       - 'ios/**'
       - '!ios/**.md'
+      - '.github/actions/report-size/**'
       - '.github/workflows/quality-ios.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+  # Lets report-size post/update its size comment on same-repo pull requests.
+  # Fork pull requests get a read-only token regardless, which the action
+  # already tolerates.
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -147,3 +153,32 @@ jobs:
           path: ${{ runner.temp }}/VocaPhone.xcresult
           retention-days: 7
           if-no-files-found: ignore
+
+      - name: Measure app bundle size
+        id: size
+        env:
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+        run: |
+          set -euo pipefail
+          # The app target is named VocaPhoneApp (see ios/project.yml), and
+          # nothing overrides PRODUCT_NAME, so the built bundle is
+          # VocaPhoneApp.app - not VocaPhone.app, which is only the scheme
+          # and .xcodeproj name.
+          app=$(find "$DERIVED_DATA/Build/Products" -maxdepth 2 -name 'VocaPhoneApp.app' | head -1)
+          if [ -z "$app" ]; then
+            echo "No VocaPhoneApp.app found under $DERIVED_DATA/Build/Products" >&2
+            exit 1
+          fi
+          bytes=$(find "$app" -type f -exec stat -f%z {} + | awk '{sum += $1} END {print sum}')
+          echo "bytes=$bytes" >> "$GITHUB_OUTPUT"
+
+      # This is the unsigned Debug-simulator build the tests above already
+      # produced, not the signed Release device build TestFlight ships — it
+      # moves with the code the same way a Release build would, at zero extra
+      # xcodebuild cost, which is what a trend comparison needs.
+      - name: Report app bundle size vs. main
+        uses: ./.github/actions/report-size
+        with:
+          component: ios
+          label: iOS app bundle (Debug, simulator)
+          bytes: ${{ steps.size.outputs.bytes }}

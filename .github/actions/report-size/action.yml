@@ -1,0 +1,120 @@
+name: Report build size
+description: >
+  Compares a component's build size against the most recent size recorded on
+  main and writes the delta to the job summary and, when the token allows it,
+  a pull request comment. On a push to main it also records the new size so
+  the next comparison has something to diff against.
+
+inputs:
+  component:
+    description: Short id used as the cache key and comment marker, e.g. android, ios, web.
+    required: true
+  label:
+    description: Human-readable name shown in the report, e.g. "Android debug APK".
+    required: true
+  bytes:
+    description: Current size of the build output, in bytes.
+    required: true
+  github-token:
+    description: Token used to read/write the pull request comment.
+    required: false
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Restore size history
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/size-history-${{ inputs.component }}.json
+        # No run ever saves this exact key, so restore always falls through to
+        # the newest match under restore-keys — the point is to read main's
+        # last recorded size, not this run's own (nonexistent) entry.
+        key: size-history-${{ inputs.component }}-none
+        restore-keys: |
+          size-history-${{ inputs.component }}-
+
+    - name: Compare against the last recorded size
+      id: report
+      shell: bash
+      env:
+        HISTORY_FILE: ${{ runner.temp }}/size-history-${{ inputs.component }}.json
+        REPORT_FILE: ${{ runner.temp }}/size-report-${{ inputs.component }}.md
+        LABEL: ${{ inputs.label }}
+        BYTES: ${{ inputs.bytes }}
+      run: |
+        set -euo pipefail
+        python3 "${{ github.action_path }}/compare.py" \
+          --history-file "$HISTORY_FILE" \
+          --bytes "$BYTES" \
+          --label "$LABEL" \
+          --out "$REPORT_FILE" \
+          >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Update the pull request comment
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+      env:
+        COMPONENT: ${{ inputs.component }}
+        REPORT_FILE: ${{ runner.temp }}/size-report-${{ inputs.component }}.md
+      with:
+        github-token: ${{ inputs.github-token }}
+        # A fork pull request gets a read-only token even though this step's
+        # job declares pull-requests: write, so posting can 403. That's a
+        # permissions gap in this run, not a broken report — the size is
+        # already in the job summary above, so swallow the failure instead of
+        # failing the whole job over a comment.
+        script: |
+          const fs = require('fs');
+          const marker = `<!-- vocaphone-size-report:${process.env.COMPONENT} -->`;
+          const body = `${marker}\n${fs.readFileSync(process.env.REPORT_FILE, 'utf8')}`;
+          try {
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              per_page: 100
+            });
+            const existing = comments.find(c => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body
+              });
+            }
+          } catch (err) {
+            core.warning(`Could not post the size report comment (likely a fork PR's read-only token): ${err.message}`);
+          }
+
+    - name: Record size on main
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      shell: bash
+      env:
+        HISTORY_FILE: ${{ runner.temp }}/size-history-${{ inputs.component }}.json
+        BYTES: ${{ inputs.bytes }}
+        SHA: ${{ github.sha }}
+      run: |
+        set -euo pipefail
+        python3 "${{ github.action_path }}/record.py" \
+          --history-file "$HISTORY_FILE" \
+          --bytes "$BYTES" \
+          --sha "$SHA"
+
+    - name: Save size history
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/size-history-${{ inputs.component }}.json
+        # A cache key is immutable once written, so each run on main gets its
+        # own key and the restore step's restore-keys prefix finds the newest
+        # one — the same pattern quality-android.yml's Gradle cache uses.
+        key: size-history-${{ inputs.component }}-${{ github.sha }}

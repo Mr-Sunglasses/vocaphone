@@ -1,0 +1,105 @@
+name: CodeQL (native)
+
+# Kotlin and Swift both need a real compile to analyze, and a Swift compile
+# only happens on a macOS runner, which bills at ten times the Linux rate
+# (same reasoning as quality-ios.yml). Gating a full CodeQL build behind every
+# pull request would make that the most expensive check in the repo for no
+# proportionate benefit, so this runs after merge and once a week instead —
+# continuous coverage without taxing every review cycle. Semgrep
+# (semgrep.yml) covers Kotlin and Swift on pull requests instead, since it
+# needs no build.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '!android/**.md'
+      - 'ios/**'
+      - '!ios/**.md'
+      - '.github/actions/setup-android/action.yml'
+      - '.github/workflows/codeql-native.yml'
+  schedule:
+    - cron: '32 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: '1'
+  HOMEBREW_NO_INSTALL_CLEANUP: '1'
+  HOMEBREW_NO_ENV_HINTS: '1'
+
+jobs:
+  android:
+    name: Kotlin/Java
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-android
+        with:
+          cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      - uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: java-kotlin
+          source-root: android
+          build-mode: manual
+
+      - name: Build (traced by CodeQL)
+        working-directory: android
+        run: ./gradlew assembleFullDebug
+
+      - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          category: /language:java-kotlin
+
+  ios:
+    name: Swift
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: true
+          persist-credentials: false
+
+      - run: brew install xcodegen
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate --spec project.yml
+
+      - uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          languages: swift
+          source-root: ios
+          build-mode: manual
+
+      - name: Build (traced by CodeQL)
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project VocaPhone.xcodeproj \
+            -scheme VocaPhone \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "${{ runner.temp }}/DerivedData" \
+            -disableAutomaticPackageResolution \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            build
+
+      - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          category: /language:swift

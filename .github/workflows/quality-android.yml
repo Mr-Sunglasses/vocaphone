@@ -8,6 +8,7 @@ on:
       # Prose next to the code it documents cannot break the build.
       - '!android/**.md'
       - '.github/actions/setup-android/action.yml'
+      - '.github/actions/report-size/**'
       - '.github/workflows/quality-android.yml'
   pull_request:
     branches: [main]
@@ -18,11 +19,16 @@ on:
       - 'android/**'
       - '!android/**.md'
       - '.github/actions/setup-android/action.yml'
+      - '.github/actions/report-size/**'
       - '.github/workflows/quality-android.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
+  # Lets report-size post/update its size comment on same-repo pull requests.
+  # Fork pull requests get a read-only token regardless, which the action
+  # already tolerates.
+  pull-requests: write
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -54,3 +60,18 @@ jobs:
       - name: Fail if the checked-in Room schema is stale
         run: git diff --exit-code -- app/schemas
         working-directory: android
+
+      - name: Measure Android debug APK size
+        id: size
+        working-directory: android
+        run: |
+          set -euo pipefail
+          apk=app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
+          echo "bytes=$(stat -c%s "$apk")" >> "$GITHUB_OUTPUT"
+
+      - name: Report APK size vs. main
+        uses: ./.github/actions/report-size
+        with:
+          component: android
+          label: Android debug APK
+          bytes: ${{ steps.size.outputs.bytes }}

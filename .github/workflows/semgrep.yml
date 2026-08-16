@@ -1,0 +1,62 @@
+name: Semgrep
+
+# Semgrep is pattern-based rather than a real compile, so it covers Kotlin
+# and Swift on every pull request at Linux-runner cost — the coverage
+# codeql-native.yml deliberately doesn't give PRs because a full compile on
+# every push would be the most expensive check in the repo (see the comment
+# there). This is a new check on an existing codebase: findings upload to the
+# Security tab but don't fail the build yet, so a backlog of pre-existing
+# findings doesn't block unrelated PRs on day one. Once that backlog is
+# triaged, add `--error` to the semgrep scan command below to start failing
+# builds on new findings.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    # A draft pull request is filtered out below; listing ready_for_review makes
+    # the check start the moment it stops being a draft.
+    types: [opened, synchronize, reopened, ready_for_review]
+  schedule:
+    - cron: '47 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  semgrep:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The server and whisper.cpp submodules are third-party/separate-repo
+          # code with their own review process; scan only what this repo owns.
+          persist-credentials: false
+
+      - name: Install Semgrep
+        env:
+          SEMGREP_VERSION: 1.173.0
+        run: pip install "semgrep==${SEMGREP_VERSION}"
+
+      - name: Run Semgrep
+        run: |
+          semgrep scan \
+            --config p/security-audit \
+            --config p/secrets \
+            --config p/owasp-top-ten \
+            --sarif --output semgrep.sarif \
+            --metrics off
+
+      - uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
