@@ -40,20 +40,18 @@ Repo: https://github.com/VocaHQ/vocaphone.git
 Binaries: https://github.com/VocaHQ/vocaphone/releases/download/v%v/vocaphone-fdroid.apk
 
 Builds:
-
   - versionName: 0.1.0-beta.14
     versionCode: 14
-    commit: v0.1.0-beta.14
-    subdir: android
+    commit: 52b0a4e60df30c581825a45b3c77ab9768d892d3
+    subdir: android/app
     submodules: true
     gradle:
       - fdroid
-    output: app/build/outputs/apk/fdroid/release/vocaphone-fdroidRelease.apk
     rm:
       - android/app/src/full/jniLibs
     prebuild:
-      - sed -i -e '/foojay/d' settings.gradle.kts
-      - sed -i '/signingConfig = signingConfigs.getByName("release")/d' app/build.gradle.kts
+      - sed -i -e '/foojay/d' ../settings.gradle.kts
+      - sed -i '/signingConfig = signingConfigs.getByName("release")/d' build.gradle.kts
     scandelete:
       - android/third_party/whisper.cpp
       - ios
