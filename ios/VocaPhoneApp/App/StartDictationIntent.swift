@@ -13,7 +13,7 @@ struct StartDictationIntent: AppIntent {
     static let description = IntentDescription(
         """
         Opens vocaphone and starts recording. Audio is transcribed on this \
-        iPhone or on the gateway you configured.
+        device or on the gateway you configured.
         """
     )
 
