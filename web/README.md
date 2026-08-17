@@ -11,9 +11,10 @@ npm run dev
 Then open `http://127.0.0.1:4173/`. The iPhone setup guide is available at
 `http://127.0.0.1:4173/iphone/`.
 
-The site uses only local brand assets and system fonts. Android beta links open
-the repository's GitHub Releases page, where each release includes the APK and
-its verification files.
+The site uses only local brand assets and system fonts. The Android install and
+download CTAs point at the current public beta tag
+(`v0.1.0-beta.14`), where the release includes the APK and its verification
+files.
 
 ## Deployment
 
@@ -26,7 +27,7 @@ this directory (see `.github/workflows/pages.yml`). Set Pages source to
 - Publish directory: `web`
 - Canonical URL expected by metadata: `https://vocaphone.vocahq.com/`
 
-Both `/` and `/iphone/` must resolve as HTML routes.
+Both `/`, `/iphone/`, and `/iphone/device-setup/` must resolve as HTML routes.
 
 The Android product images are the original 576×1280 screenshots from
 [VocaPhone PR #70](https://github.com/VocaHQ/vocaphone/pull/70). The website

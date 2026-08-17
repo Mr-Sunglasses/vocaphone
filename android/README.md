@@ -12,8 +12,8 @@ Android 13+ public beta APKs ship from GitHub Releases. Google Play publication
 is deferred. The shipped APK does not request accessibility-service or overlay
 access.
 
-> Package name and application ID have been updated to `com.vocahq.vocaphone`; the APK
-> output is `vocaphone-debug.apk`.
+> Package name and application ID have been updated to `com.vocahq.vocaphone`;
+> `assembleFullDebug` writes `vocaphone-fullDebug.apk`.
 
 ## Requirements
 
@@ -64,7 +64,7 @@ sherpa models are hidden from the picker when the library is absent.
 
 ## GitHub beta releases
 
-Pushing a tag such as `v0.1.0-beta.8` runs
+Pushing a tag such as `v0.1.0-beta.14` (or the latest prerelease tag) runs
 `.github/workflows/android-beta.yml`. Before tagging, bump `versionCode` and
 `versionName` in `app/build.gradle.kts`; the workflow refuses to publish when
 the tag and APK version do not match.
@@ -82,8 +82,9 @@ public certificate fingerprint, and attaches these files to the prerelease:
 - `SHA256SUMS.txt`
 - `SIGNING-CERTIFICATE-SHA256.txt`
 
-After downloading all three files, verify the APK checksum with
-`sha256sum -c SHA256SUMS.txt` on Linux or
+After downloading the release files (`vocaphone.apk`, `vocaphone-fdroid.apk`,
+`SHA256SUMS.txt`, and `SIGNING-CERTIFICATE-SHA256.txt`), verify the APK
+checksum with `sha256sum -c SHA256SUMS.txt` on Linux or
 `shasum -a 256 -c SHA256SUMS.txt` on macOS. Signing establishes a stable update
 identity and the checksum detects a damaged or changed download; neither
 changes Android's Play Protect treatment for apps installed outside an app store.
@@ -99,13 +100,13 @@ shows up as an actionable repair prompt rather than a silent failure.
    microphone foreground service.
 3. **VocaPhone keyboard** — enable it in Android's keyboard settings, then select
    it from the keyboard picker.
-4. **Gateway address and token** — either **Scan QR code** against the gateway
-   WebUI Overview pairing card, or paste the URL and bearer token, then
-   **Test connection**, which reports reachability, token validity, the active
-   engine, whether it is ready, and whether it supports streaming.
-
-To use the phone without a gateway, open **Speech** during setup or in Settings,
-download the recommended model with **Download and use**, or search the catalog.
+4. **On-device model** — open **Speech** during setup or in Settings, download
+   the recommended model with **Download and use**, or search the catalog. No
+   gateway is required for this path.
+5. **Optional gateway** — if you want shared or larger compute, **Scan QR code**
+   against the gateway WebUI Overview pairing card, or paste the URL and bearer
+   token, then **Test connection**, which reports reachability, token validity,
+   the active engine, whether it is ready, and whether it supports streaming.
 
 The catalog carries 32 whisper.cpp GGML builds from Tiny through Large v3,
 including the q5 and q8 quantizations — a 574 MB Large v3 Turbo q5 is a far
@@ -188,15 +189,17 @@ the Android Tailscale VPN routes the traffic transparently.
 
 - Captured as 16 kHz mono PCM16 and written to a complete WAV in app-private
   storage while recording.
-- Streamed to `/v1/stream` as little-endian float32 frames when the active engine
-  supports it; otherwise, and after a recoverable stream failure, the WAV goes
-  through the batch endpoints. One session UUID is reused throughout, so retries
-  stay idempotent.
+- On-device mode (default): the model runs on the phone and audio never leaves
+  the device.
+- Gateway mode (only if you configured a gateway): streamed to `/v1/stream` as
+  little-endian float32 frames when the active engine supports it; otherwise,
+  and after a recoverable stream failure, the WAV goes through the batch
+  endpoints. One session UUID is reused throughout, so retries stay idempotent.
 - Deleted immediately on success. Kept only for a failed, still-retryable attempt,
   and only for the retention window you choose (1, 6 or 24 hours).
-- The bearer token is encrypted with an AES-GCM key held in the Android Keystore;
-  only the ciphertext and nonce are stored. Backup and device-to-device transfer
-  are disabled.
+- When a gateway is configured, the bearer token is encrypted with an AES-GCM key
+  held in the Android Keystore; only the ciphertext and nonce are stored. Backup
+  and device-to-device transfer are disabled.
 
 ## Diagnostics
 

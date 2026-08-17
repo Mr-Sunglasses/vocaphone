@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Physical iPhone checklist for VocaPhone: signing, on-device model setup, keyboard enablement, and acceptance gates."
+    />
+    <meta name="theme-color" content="#f4f1e8" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://vocaphone.vocahq.com/iphone/device-setup/" />
+    <meta property="og:title" content="VocaPhone verified device checklist" />
+    <meta
+      property="og:description"
+      content="Sign, install, download an on-device model, and run the physical iPhone acceptance pass."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="VocaPhone" />
+    <meta property="og:url" content="https://vocaphone.vocahq.com/iphone/device-setup/" />
+    <meta property="og:image" content="https://vocaphone.vocahq.com/assets/og-image.png" />
+    <meta
+      property="og:image:secure_url"
+      content="https://vocaphone.vocahq.com/assets/og-image.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="VocaPhone private voice typing, on-device first with an optional self-hosted gateway"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="VocaPhone verified device checklist" />
+    <meta
+      name="twitter:description"
+      content="Physical iPhone signing, on-device model setup, and acceptance gates for VocaPhone."
+    />
+    <meta name="twitter:image" content="https://vocaphone.vocahq.com/assets/og-image.png" />
+    <meta
+      name="twitter:image:alt"
+      content="VocaPhone private voice typing, on-device first with an optional self-hosted gateway"
+    />
+    <title>VocaPhone verified device checklist</title>
+    <link rel="icon" href="../../assets/vocaphone-logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="../../favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="../../assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="../../styles.css" />
+    <script src="../../script.js" defer></script>
+  </head>
+  <body class="guide-body">
+    <a class="skip-link" href="#checklist-content">Skip to checklist</a>
+
+    <header class="menu-bar guide-menu-bar">
+      <a class="brand-link" href="/" aria-label="VocaPhone home">
+        <img src="../../assets/vocaphone-logo.svg" alt="" width="32" height="32" />
+        <span>vocaphone</span>
+      </a>
+      <a class="guide-back" href="/iphone/">← back to the iPhone guide</a>
+    </header>
+
+    <main class="guide-main" id="checklist-content">
+      <section class="guide-hero dot-field">
+        <div>
+          <span class="section-tag">iPhone · physical device</span>
+          <h1>verified device<br />checklist.</h1>
+          <p>
+            Simulator success is not enough. This pass covers signing, keyboard
+            installation, microphone handoff, on-device models, and text insertion
+            on a real iPhone. iOS 17 or newer. There is no App Store or TestFlight
+            build today — install from source with Xcode.
+          </p>
+        </div>
+        <aside class="guide-summary" aria-label="Before you begin">
+          <span>before you begin</span>
+          <strong>iOS 17+</strong>
+          <strong>physical iPhone</strong>
+          <strong>Apple signing</strong>
+          <strong>Git LFS clone</strong>
+        </aside>
+      </section>
+
+      <section class="guide-content" aria-labelledby="signing-title">
+        <div class="guide-intro">
+          <span class="section-tag">signing</span>
+          <h2 id="signing-title">prerequisites before the phone.</h2>
+          <p>
+            Bundle IDs and the App Group are already final
+            (<code>com.vocahq.vocaphone*</code>, team <code>92962VK378</code> when
+            you have access). Nothing to rename for VocaHQ signing.
+          </p>
+        </div>
+
+        <ol class="guide-steps">
+          <li class="guide-step">
+            <span>01</span>
+            <div>
+              <h3>Open the Xcode project</h3>
+              <p>
+                Run <code>just ios gen</code> if needed, open
+                <code>ios/VocaPhone.xcodeproj</code>, and choose your Apple team on
+                all three targets — App, Keyboard, and Live Activity — under
+                <strong>Signing &amp; Capabilities</strong>.
+              </p>
+            </div>
+          </li>
+          <li class="guide-step">
+            <span>02</span>
+            <div>
+              <h3>Confirm the App Group</h3>
+              <p>
+                Enable the same App Group (<code>group.com.vocahq</code>) on all
+                three targets. Automatic signing registers it the first time your
+                team can use the VocaHQ identifiers.
+              </p>
+            </div>
+          </li>
+          <li class="guide-step">
+            <span>03</span>
+            <div>
+              <h3>Install on the connected iPhone</h3>
+              <p>
+                Select the phone as the run destination and run VocaPhoneApp.
+                Need the short path first?
+                <a href="/iphone/">Use the iPhone install guide</a>.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="guide-content" aria-labelledby="on-device-title">
+        <div class="guide-intro">
+          <span class="section-tag">on-device setup</span>
+          <h2 id="on-device-title">model on the phone. gateway optional.</h2>
+          <p>
+            iOS keyboard extensions cannot use the microphone. The companion app
+            records; the speech-to-text model still runs on the iPhone in on-device
+            mode. A gateway is never required for that path.
+          </p>
+        </div>
+
+        <ol class="guide-steps">
+          <li class="guide-step">
+            <span>01</span>
+            <div>
+              <h3>Grant microphone access</h3>
+              <p>Open vocaphone and allow the microphone permission.</p>
+            </div>
+          </li>
+          <li class="guide-step">
+            <span>02</span>
+            <div>
+              <h3>Keep Quick Dictation ready</h3>
+              <p>
+                Leave “Keep Quick Dictation ready for 10 minutes” enabled. Confirm
+                the app shows Quick Dictation as Ready and iOS shows its microphone
+                indicator.
+              </p>
+            </div>
+          </li>
+          <li class="guide-step">
+            <span>03</span>
+            <div>
+              <h3>Choose a transcription source</h3>
+              <p>
+                <strong>On this iPhone</strong> — under
+                <strong>Settings → Transcription</strong>, pick
+                <strong>On this iPhone</strong>, download a model, and wait until
+                it reports <em>verified</em>. Downloaded is not the same claim.
+              </p>
+              <p>
+                <strong>Your gateway</strong> — optional. Under
+                <strong>Settings → Transcription → Gateway</strong>, enter a
+                trusted LAN, Tailscale, or HTTPS URL plus bearer token, or scan the
+                gateway pairing QR. Approve camera and Local Network access when
+                asked.
+              </p>
+            </div>
+          </li>
+          <li class="guide-step">
+            <span>04</span>
+            <div>
+              <h3>Confirm Ready</h3>
+              <p>
+                Transcription should report the selected source as
+                <strong>Ready</strong>. A gateway path should also name the loaded
+                model.
+              </p>
+            </div>
+          </li>
+          <li class="guide-step">
+            <span>05</span>
+            <div>
+              <h3>Microphone and keyboard preferences</h3>
+              <p>
+                Under <strong>Settings → Dictation</strong>, choose Automatic or
+                iPhone Microphone and confirm <strong>Input in use</strong>. Under
+                <strong>Settings → Keyboard</strong>, try Compact, Standard, and
+                Tall in a real host app.
+              </p>
+            </div>
+          </li>
+          <li class="guide-step">
+            <span>06</span>
+            <div>
+              <h3>Enable the keyboard</h3>
+              <p>
+                Open iOS Settings from vocaphone. Under
+                <strong>General → Keyboard → Keyboards</strong>, add vocaphone and
+                enable Full Access. Full Access is for shared session state and for
+                reaching a gateway you configured — not for collecting unrelated
+                typing.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="guide-content" aria-labelledby="gate-title">
+        <div class="guide-intro">
+          <span class="section-tag">acceptance</span>
+          <h2 id="gate-title">required phase 1 gate.</h2>
+          <p>
+            Repeat in Notes at least five times, then again while Quick Dictation
+            still shows Ready.
+          </p>
+        </div>
+
+        <ol class="guide-steps">
+          <li class="guide-step">
+            <span>01</span>
+            <div>
+              <h3>Hand-off dictation</h3>
+              <pre><code>Notes → vocaphone keyboard → Start
+→ containing app begins recording → swipe back
+→ keyboard shows active recording → Finish
+→ transcript available → Insert</code></pre>
+            </div>
+          </li>
+          <li class="guide-step">
+            <span>02</span>
+            <div>
+              <h3>Ready-window Dictate</h3>
+              <pre><code>Notes → vocaphone keyboard → Dictate
+→ Notes stays visible → Recording → Finish
+→ transcript available → Insert</code></pre>
+            </div>
+          </li>
+          <li class="guide-step">
+            <span>03</span>
+            <div>
+              <h3>What must hold</h3>
+              <p>
+                Microphone stays active when returning to Notes. Expired ready
+                windows open vocaphone again. Finish stops the recorder. Text
+                inserts directly, never via clipboard. Cancel removes local audio.
+                The keyboard, app, and Live Activity name the same place —
+                “Transcribing on this iPhone” or “Transcribing on your gateway”.
+                Secure fields that block third-party keyboards must fail without a
+                gateway error.
+              </p>
+            </div>
+          </li>
+        </ol>
+
+        <aside class="guide-callout" aria-labelledby="full-doc-title">
+          <div>
+            <span class="section-tag">full checklist</span>
+            <h2 id="full-doc-title">typing and Quick Dictation gates</h2>
+            <p>
+              The repository doc also covers typing intelligence, VoiceOver,
+              swipe, jetsam, Dynamic Island standby, and diagnostics export rules.
+              Use that when you change audio, App Group, or keyboard code.
+            </p>
+          </div>
+          <a
+            class="button button-secondary"
+            href="https://github.com/VocaHQ/vocaphone/blob/main/docs/device-setup.md"
+          >
+            open docs/device-setup.md <span aria-hidden="true">↗</span>
+          </a>
+        </aside>
+
+        <div class="guide-source-links">
+          <p>Need the short install path or the build recipes?</p>
+          <a href="/iphone/">
+            back to the iPhone guide <span aria-hidden="true">→</span>
+          </a>
+          <a href="https://github.com/VocaHQ/vocaphone#build-and-test">
+            read the build documentation <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="guide-footer">
+      <a class="brand-link" href="/">
+        <img src="../../assets/vocaphone-logo.svg" alt="" width="34" height="34" />
+        <span>vocaphone</span>
+      </a>
+      <span>open source · private by design · gateway optional</span>
+    </footer>
+  </body>
+</html>

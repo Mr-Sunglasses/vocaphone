@@ -224,7 +224,84 @@ bumps and release tags.
 
 ## Quick start
 
-### 1. Start the gateway natively on macOS
+Download a speech-to-text model on the phone and dictate with no gateway. The
+gateway steps later in this section are optional, for larger models or shared
+compute.
+
+### 1. Configure and install the iPhone app
+
+The Simulator needs no Apple account at all:
+
+```sh
+cd ios
+just doctor   # checks Xcode, xcodegen, and a simulator runtime are present
+just run      # generates the project, builds, boots a simulator, installs, launches
+```
+
+`ios/project.yml` is the real project source; `just run` (and every other iOS
+recipe) regenerates `VocaPhone.xcodeproj` from it before building, so don't
+hand-edit the `.xcodeproj`. Prefer working in Xcode itself? `just edit` does
+the same regeneration, then opens it.
+
+Add the keyboard the same way you would on a device: `just settings` opens
+iOS Settings on the simulator, then **General → Keyboard → Keyboards → Add
+New Keyboard → vocaphone**, with **Allow Full Access** turned on (see
+[privacy.md](docs/privacy.md#full-access) for exactly what that is and isn't
+used for). Typing, autocorrect, and swipe work immediately. For actual
+dictation, **Settings → Transcription → On this iPhone** plus a downloaded
+model is the fastest path with nothing else to configure, or point
+**Settings → Transcription → Gateway** at a gateway from the optional steps below.
+
+**On your own iPhone** (`just device`, phone connected and trusted): code
+signing has to already work in Xcode first. The project ships with VocaHQ's
+own identifiers (`com.vocahq.vocaphone` and friends, team `92962VK378` — see
+[decisions.md](docs/decisions.md)). If you have access to that team, select
+it on all three targets (VocaPhoneApp, VocaPhoneKeyboard,
+VocaPhoneLiveActivity) under **Signing & Capabilities**; automatic signing
+does the rest. If you don't — most outside contributors — either ask a
+maintainer to comment `/build ios` on your pull request for a signed ad-hoc
+IPA (see [CONTRIBUTING.md](CONTRIBUTING.md#on-demand-pr-builds-build)), or run
+it under your own free Apple ID by changing `bundleIdPrefix` and the three
+`PRODUCT_BUNDLE_IDENTIFIER`s in `ios/project.yml`, the App Group string in all
+three `.entitlements` files, and `AppConfiguration.swift`'s
+`appGroupIdentifier`/`keyboardBundleIdentifier` — don't commit that change.
+
+Grant microphone access on first launch, add the keyboard as above, and turn
+on Full Access. Complete the physical-device checklist in [device
+setup](docs/device-setup.md).
+
+### 2. Or install the Android app
+
+Android adds VocaPhone as a selectable voice keyboard. Build and install the APK,
+then follow the guided setup in the app:
+
+```sh
+cd android
+# macOS default; on Linux try $HOME/Android/Sdk
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+# "full" is the flavor to develop against; "fdroid" is the from-source-only
+# build described under Build flavors below.
+./gradlew assembleFullDebug
+# Uninstall any pre-rename Local Flow build first — application IDs differ, so
+# `adb install -r` will side-install next to io.github.mrsunglasses.localflow.
+adb uninstall io.github.mrsunglasses.localflow 2>/dev/null || true
+adb install -r app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
+```
+
+In the app: grant microphone and notifications, enable and select VocaPhone in
+Android's keyboard settings, then download an on-device model (no gateway needed).
+If you want the optional gateway path instead, enter the gateway address and
+bearer token from the steps below and run **Test connection**.
+
+See the [Android client guide](android/README.md) for keyboard setup and the
+supported gateway address forms.
+
+### Optional: run a gateway
+
+Skip this if on-device mode already works. A gateway is never required for
+on-device transcription, and the phone never calls one unless you configure it.
+
+### 3. Start the gateway natively on macOS
 
 Install the tools (FFmpeg, plus the WhisperKit and `whisper.cpp` CLIs) and
 launch the server:
@@ -248,7 +325,7 @@ cd server
 ./scripts/install-launch-agent.sh
 ```
 
-### 2. Or start the gateway natively on Linux
+### 4. Or start the gateway natively on Linux
 
 Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and FFmpeg. On Debian or
 Ubuntu:
@@ -290,7 +367,7 @@ loginctl enable-linger "$USER"
 
 Logs: `journalctl --user -u com.vocahq.vocaphone.gateway.service -f`.
 
-### 3. Or start it with Docker Compose
+### 5. Or start it with Docker Compose
 
 The canonical Compose file is [server/compose.yaml](server/compose.yaml). It
 publishes the gateway only on host loopback by default and stores models,
@@ -318,7 +395,7 @@ curl --fail http://127.0.0.1:8765/health/ready
 Copy [server/.env.example](server/.env.example) if you prefer an editable
 template. Never commit the resulting `.env` file.
 
-### 4. Choose how the phone reaches the gateway
+### 6. Choose how the phone reaches the gateway
 
 The iPhone and Android apps accept any valid `http://` or `https://` gateway URL.
 Choose one of these network arrangements:
@@ -385,72 +462,6 @@ private personal deployment, but it is not mandatory. Follow
 [deployment](docs/deployment.md) and the optional
 [Tailscale guide](docs/tailscale.md) for the relevant host configuration.
 
-### 5. Configure and install the iPhone app
-
-The Simulator needs no Apple account at all:
-
-```sh
-cd ios
-just doctor   # checks Xcode, xcodegen, and a simulator runtime are present
-just run      # generates the project, builds, boots a simulator, installs, launches
-```
-
-`ios/project.yml` is the real project source; `just run` (and every other iOS
-recipe) regenerates `VocaPhone.xcodeproj` from it before building, so don't
-hand-edit the `.xcodeproj`. Prefer working in Xcode itself? `just edit` does
-the same regeneration, then opens it.
-
-Add the keyboard the same way you would on a device: `just settings` opens
-iOS Settings on the simulator, then **General → Keyboard → Keyboards → Add
-New Keyboard → vocaphone**, with **Allow Full Access** turned on (see
-[privacy.md](docs/privacy.md#full-access) for exactly what that is and isn't
-used for). Typing, autocorrect, and swipe work immediately. For actual
-dictation, **Settings → Transcription → On this iPhone** plus a downloaded
-model is the fastest path with nothing else to configure, or point
-**Settings → Transcription → Gateway** at one you started in step 1.
-
-**On your own iPhone** (`just device`, phone connected and trusted): code
-signing has to already work in Xcode first. The project ships with VocaHQ's
-own identifiers (`com.vocahq.vocaphone` and friends, team `92962VK378` — see
-[decisions.md](docs/decisions.md)). If you have access to that team, select
-it on all three targets (VocaPhoneApp, VocaPhoneKeyboard,
-VocaPhoneLiveActivity) under **Signing & Capabilities**; automatic signing
-does the rest. If you don't — most outside contributors — either ask a
-maintainer to comment `/build ios` on your pull request for a signed ad-hoc
-IPA (see [CONTRIBUTING.md](CONTRIBUTING.md#on-demand-pr-builds-build)), or run
-it under your own free Apple ID by changing `bundleIdPrefix` and the three
-`PRODUCT_BUNDLE_IDENTIFIER`s in `ios/project.yml`, the App Group string in all
-three `.entitlements` files, and `AppConfiguration.swift`'s
-`appGroupIdentifier`/`keyboardBundleIdentifier` — don't commit that change.
-
-Grant microphone access on first launch, add the keyboard as above, and turn
-on Full Access. Complete the physical-device checklist in [device
-setup](docs/device-setup.md).
-
-### 6. Or install the Android app
-
-Android adds VocaPhone as a selectable voice keyboard. Build and install the APK,
-then follow the guided setup in the app:
-
-```sh
-cd android
-# macOS default; on Linux try $HOME/Android/Sdk
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-# "full" is the flavor to develop against; "fdroid" is the from-source-only
-# build described under Build flavors below.
-./gradlew assembleFullDebug
-# Uninstall any pre-rename Local Flow build first — application IDs differ, so
-# `adb install -r` will side-install next to io.github.mrsunglasses.localflow.
-adb uninstall io.github.mrsunglasses.localflow 2>/dev/null || true
-adb install -r app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
-```
-
-In the app: grant microphone and notifications, enable and select VocaPhone in
-Android's keyboard settings, then either download an on-device model or enter the
-gateway address and bearer token from step 4 and run **Test connection**.
-
-See the [Android client guide](android/README.md) for keyboard setup and the
-supported gateway address forms.
 
 ## Build and test
 

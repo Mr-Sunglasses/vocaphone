@@ -7,8 +7,17 @@ import { fileURLToPath } from "node:url";
 const siteRoot = fileURLToPath(new URL("..", import.meta.url));
 const html = readFileSync(join(siteRoot, "index.html"), "utf8");
 const iphoneHtml = readFileSync(join(siteRoot, "iphone/index.html"), "utf8");
+const deviceSetupHtml = readFileSync(join(siteRoot, "iphone/device-setup/index.html"), "utf8");
 const css = readFileSync(join(siteRoot, "styles.css"), "utf8");
 const script = readFileSync(join(siteRoot, "script.js"), "utf8");
+
+function androidInstallBlock(source) {
+  const match = source.match(
+    /<article class="install-card reveal">[\s\S]*?<h3>Android<\/h3>[\s\S]*?<\/article>/,
+  );
+  assert.ok(match, "Android install card missing");
+  return match[0];
+}
 
 test("page has one clear title and a landmark structure", () => {
   assert.match(html, /<title>VocaPhone — voice typing that stays yours<\/title>/);
@@ -131,16 +140,53 @@ test("availability and install paths are honest", () => {
   assert.match(html, /Android 13 or newer/);
   assert.match(html, /iOS 17 or newer/);
   assert.match(html, /There is no App Store or TestFlight build today/);
-  assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases"/);
+  assert.match(
+    html,
+    /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases\/tag\/v0\.1\.0-beta\.14"/,
+  );
+  assert.match(html, /v0\.1\.0-beta\.14/);
+  assert.match(html, /io\.github\.mrsunglasses\.localflow/);
   assert.match(html, /href="\/iphone\/"/);
   assert.match(html, /SHA256SUMS\.txt/);
   assert.doesNotMatch(html, /href="\/download\/android"/);
   assert.doesNotMatch(html, /releases\/latest/);
+  assert.doesNotMatch(html, /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases"/);
   assert.doesNotMatch(html, /free forever/i);
+  assert.doesNotMatch(html, /available on (the )?App Store/i);
+  assert.doesNotMatch(html, /available on TestFlight/i);
+  assert.doesNotMatch(html, /available on F-Droid/i);
+
+  const androidCard = androidInstallBlock(html);
+  const uninstallAt = androidCard.indexOf("io.github.mrsunglasses.localflow");
+  const tagHrefAt = androidCard.indexOf(
+    "https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0-beta.14",
+  );
+  const checksumAt = androidCard.indexOf("SHA256SUMS.txt");
+  assert.ok(uninstallAt !== -1, "uninstall note missing from Android install block");
+  assert.ok(tagHrefAt !== -1, "pinned beta.14 URL missing from Android install block");
+  assert.ok(checksumAt !== -1, "checksum note missing from Android install block");
+  assert.ok(uninstallAt < tagHrefAt, "uninstall line must lead the Android install block");
+  assert.ok(tagHrefAt < checksumAt, "pinned beta.14 URL must precede the checksum note");
 
   assert.match(iphoneHtml, /The gateway is optional/);
   assert.match(iphoneHtml, /No gateway address or token\s+is needed for this mode/);
   assert.match(iphoneHtml, /iOS does not permit[\s\S]*keyboard extensions to access the microphone/);
+  assert.match(iphoneHtml, /href="\/iphone\/device-setup\/"/);
+  assert.match(
+    iphoneHtml,
+    /href="https:\/\/github\.com\/VocaHQ\/vocaphone#build-and-test"/,
+  );
+  assert.match(iphoneHtml, /There is no App Store or\s+TestFlight build yet/);
+
+  assert.ok(existsSync(join(siteRoot, "iphone/device-setup/index.html")));
+  assert.match(deviceSetupHtml, /There is no App Store or\s+TestFlight\s+build today/);
+  assert.match(deviceSetupHtml, /iOS 17 or newer/);
+  assert.match(deviceSetupHtml, /keyboard extensions cannot use the microphone/);
+  assert.match(deviceSetupHtml, /companion app\s+records/i);
+  assert.match(deviceSetupHtml, /model still runs on the iPhone/);
+  assert.match(deviceSetupHtml, /gateway is never required/);
+  assert.doesNotMatch(deviceSetupHtml, /available on (the )?App Store/i);
+  assert.doesNotMatch(deviceSetupHtml, /available on TestFlight/i);
 });
 
 test("decorative product frames do not expose focusable controls", () => {
