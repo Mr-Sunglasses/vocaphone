@@ -41,8 +41,8 @@ result needed for idempotent retry.
 - Docker Compose mounts the bearer token as a secret instead of a container
   environment variable; `/data` is the only persistent application volume
 
-The Compose source token is normally stored in the host-only `server/.env` file
-before Docker mounts it at `/run/secrets/vocaphone_token`. Keep that file at mode
+The Compose source token is normally stored in the host-only `gateway/.env` file
+before Docker mounts it at `/run/secrets/vocagateway_token`. Keep that file at mode
 `600`, exclude it from backups shared with other people, and never commit it.
 
 Streaming (Moonshine's streaming tiers, or sherpa-onnx's streaming Zipformer
@@ -133,7 +133,7 @@ path is used to insert a transcript.
 
 ## Per-device tokens
 
-`VOCAPHONE_TOKEN` (or its token file) remains a permanent bootstrap credential
+`VOCAGATEWAY_TOKEN` (or its token file) remains a permanent bootstrap credential
 that always authenticates and cannot be revoked through the API — whoever
 controls that file or environment variable can already read or rotate it
 directly. The WebUI Settings tab and the Overview pairing card can both create

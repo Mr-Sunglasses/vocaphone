@@ -9,9 +9,9 @@ identifiers. The following are the final identifiers in use:
 | --- | --- |
 | Product / display | **vocaphone** (lowercase prose) |
 | Client code symbols | **VocaPhone** (PascalCase) |
-| Server CLI entry points | `vocaphone-server`, `vocaphone-status`, `vocaphone-diagnostics`, `vocaphone-cleanup` |
-| Server env prefix | `VOCAPHONE_` |
-| Server config/data paths | `~/.config/vocaphone/`, `~/.local/share/vocaphone/` |
+| Gateway CLI entry points | `vocaphone-server`, `vocaphone-status`, `vocaphone-diagnostics`, `vocaphone-cleanup` |
+| Gateway env prefix | `VOCAGATEWAY_` |
+| Gateway config/data paths | `~/.config/vocagateway/`, `~/.local/share/vocagateway/` |
 | macOS logs | `~/Library/Logs/Vocaphone/` |
 | iOS app bundle ID | `com.vocahq.vocaphone` |
 | iOS keyboard bundle ID | `com.vocahq.vocaphone.keyboard` |
@@ -23,7 +23,7 @@ identifiers. The following are the final identifiers in use:
 | LaunchAgent label | `com.vocahq.vocaphone.gateway` |
 | systemd unit | `com.vocahq.vocaphone.gateway.service` |
 | Docker image tag | `vocaphone-gateway` |
-| Docker volume | `vocaphone_vocaphone-data` |
+| Docker volume | `vocagateway_vocagateway-data` |
 
 Register the bundle identifiers and App Group on team `92962VK378`. The older
 group (`group.com.vocahq.vocaphone`) belongs to another team and cannot be

@@ -248,7 +248,7 @@ def android_background() -> str:
 # --- outputs ----------------------------------------------------------------
 
 # Every path here is inside *this* repository. The gateway favicon used to be in
-# this dict as `server/app/webui/favicon.svg`, and it cannot be any more: `server/`
+# this dict as `gateway/app/webui/favicon.svg`, and it cannot be any more: `gateway/`
 # is the VocaHQ/vocagateway submodule, so writing there made a routine
 # `generate.py` run dirty a second repository as a side effect. Nothing in
 # vocaphone's `git status` shows it, so the honest failure mode was to regenerate,
@@ -372,7 +372,7 @@ def main() -> None:
                     help="also re-rasterise the PNGs (needs cairosvg)")
     ap.add_argument("--favicon", metavar="PATH", type=pathlib.Path,
                     help="also write the gateway favicon to PATH, e.g. "
-                         "server/app/webui/favicon.svg -- that file belongs to "
+                         "gateway/app/webui/favicon.svg -- that file belongs to "
                          "VocaHQ/vocagateway and has to be committed there")
     args = ap.parse_args()
 

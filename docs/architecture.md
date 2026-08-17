@@ -9,7 +9,7 @@ vocaphone keyboard extension
   ↕ atomic App Group JSON + revision numbers
 vocaphone containing app
   ↕ bearer-authenticated HTTP/HTTPS through LAN, VPN, or reverse proxy
-FastAPI gateway (VocaHQ/vocagateway submodule at server/)
+FastAPI gateway (VocaHQ/vocagateway submodule at gateway/)
   on macOS or Linux (native or multi-architecture container)
   → bounded temporary audio → FFmpeg mono 16 kHz WAV
   → TranscriptionEngine adapter → VocaMac, Handy, MLX Audio, WhisperKit,
@@ -19,7 +19,7 @@ FastAPI gateway (VocaHQ/vocagateway submodule at server/)
 
 The gateway implementation and its ops docs live in
 [vocagateway](https://github.com/VocaHQ/vocagateway); this repository vendors a
-pinned revision under `server/`.
+pinned revision under `gateway/`.
 
 The App Group record is the source of truth. Polling is a wake-up strategy, not
 the data store. Audio references are opaque filenames; tokens, transcripts, and
@@ -208,6 +208,6 @@ Docker Desktop cannot pass the macOS MLX, WhisperKit, or Core ML runtime into th
 container. Both deployments expose
 the same API, WebUI, health semantics, and persistent model-selection behavior.
 
-The canonical container project is `server/compose.yaml`. It publishes host
+The canonical container project is `gateway/compose.yaml`. It publishes host
 loopback by default, mounts `/data` as the only persistent application volume,
 and supplies the bearer token through a Compose secret.

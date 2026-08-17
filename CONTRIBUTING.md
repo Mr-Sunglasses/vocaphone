@@ -24,7 +24,7 @@ are available.
 - Clone with submodules: `git clone --recurse-submodules …` (or
   `git submodule update --init --recursive` on an existing clone). The gateway
   is the [vocagateway](https://github.com/VocaHQ/vocagateway) submodule at
-  `server/`.
+  `gateway/`.
 - Install [Git LFS](https://git-lfs.com/) before cloning and run `git lfs
   install`. After cloning an existing checkout, run `git lfs pull`; this
   downloads the iOS Sherpa ONNX and ONNX Runtime archives that are too large
@@ -52,8 +52,8 @@ recipes work from either place:
 
 ```sh
 just --list              # cross-cutting recipes and the three modules
-just --list server       # one application's recipes
-cd server && just test   # same as `just server test` from the root
+just --list gateway      # one application's recipes
+cd gateway && just test  # same as `just gateway test` from the root
 just doctor              # what each application's toolchain is missing
 ```
 
@@ -63,30 +63,30 @@ installed at once.
 
 ### Gateway submodule pin (dev vs ship)
 
-The parent repository records a fixed `server/` SHA so clones and release builds
+The parent repository records a fixed `gateway/` SHA so clones and release builds
 are reproducible. That pin is what CI and shipped apps use.
 
 For day-to-day gateway work you can move the **local** checkout to the tip of
 `main` without changing what this repo ships:
 
 ```sh
-just server-pin-status   # pin vs working tree vs origin/main
-just server-sync         # git submodule update --remote server (main tip)
-just server install      # after a sync, if dependencies moved
-just server run
+just gateway-pin-status  # pin vs working tree vs origin/main
+just gateway-sync        # git submodule update --remote gateway (main tip)
+just gateway install     # after a sync, if dependencies moved
+just gateway run
 ```
 
-`server-sync` only updates your working tree. It does **not** commit a new pin.
+`gateway-sync` only updates your working tree. It does **not** commit a new pin.
 When this repo should adopt a newer gateway (or a release tag), do it on purpose:
 
 ```sh
-just server-sync         # or: cd server && git fetch --tags && git checkout vX.Y.Z
-git add server
+just gateway-sync        # or: cd gateway && git fetch --tags && git checkout vX.Y.Z
+git add gateway
 git commit -m "build: pin vocagateway to <sha or tag>"
 ```
 
 Phone-only work can leave the recorded pin alone. Shipping builds must never run
-`server-sync` in CI; they check out the committed pin only.
+`gateway-sync` in CI; they check out the committed pin only.
 
 ### direnv (optional)
 
@@ -104,13 +104,13 @@ export VOCAPHONE_SIM='iPhone 17 Pro'   # which simulator ios/justfile uses
 export ANDROID_SERIAL=emulator-5554    # which device android/justfile targets
 ```
 
-`.envrc` deliberately does not load `server/.env`. That file holds the Compose
-bearer token, and the gateway reads `VOCAPHONE_TOKEN` straight from the
+`.envrc` deliberately does not load `gateway/.env`. That file holds the Compose
+bearer token, and the gateway reads `VOCAGATEWAY_TOKEN` straight from the
 environment, so exporting it would make a natively run gateway serve the
-container's token instead of the one in `~/.config/vocaphone/token` — silently,
+container's token instead of the one in `~/.config/vocagateway/token` — silently,
 because both are valid. Compose reads that file by itself. For the same reason,
 only the repository-root `.envrc` is tracked; any nested one is gitignored,
-since the quickest way to make `server/.envrc` is to copy `server/.env` into
+since the quickest way to make `gateway/.envrc` is to copy `gateway/.env` into
 it, secret and all.
 
 ## Required checks
@@ -119,8 +119,8 @@ Each application has one recipe that runs everything its workflow gates on.
 Run the one for what you changed:
 
 ```sh
-just server install   # once, and after dependency changes (submodule)
-just server test      # lint, types, dependency audit, unit tests, Compose
+just gateway install  # once, and after dependency changes (submodule)
+just gateway test     # lint, types, dependency audit, unit tests, Compose
 just ios ci           # regenerates the project, builds, runs the unit tests
 just android ci       # assembles, unit tests, lint, Room schema freshness
 ```
@@ -129,7 +129,7 @@ just android ci       # assembles, unit tests, lint, Room schema freshness
 is absent, which is what a contributor with only one platform installed wants.
 
 iOS/Android recipes match the workflows in `.github/workflows/`. Gateway quality
-and container CI run in vocagateway; use `just server test` / `just server image`
+and container CI run in vocagateway; use `just gateway test` / `just gateway image`
 against the submodule when you change the pin or work on the gateway itself.
 
 When changing documentation, check local links and commands against the current

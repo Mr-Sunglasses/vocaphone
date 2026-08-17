@@ -26,7 +26,7 @@ Thanks for trying vocaphone. Use this guide to get help without opening the wron
 When you ask for help, include:
 
 - Component: iOS app, keyboard, Android bubble, native gateway, or Docker gateway
-- Exact versions: OS, Xcode/Android SDK/Python as relevant, the vocaphone git commit or release, and the `server` submodule SHA when the gateway is involved
+- Exact versions: OS, Xcode/Android SDK/Python as relevant, the vocaphone git commit or release, and the `gateway` submodule SHA when the gateway is involved
 - What you expected vs what happened
 - Redacted steps to reproduce
 - Redacted logs (see below)

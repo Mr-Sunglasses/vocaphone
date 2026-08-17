@@ -2,7 +2,7 @@
 
 Phone client issues are covered below. Gateway, model, Docker, and network
 failures for the transcription server are documented in
-[server/docs/troubleshooting.md](../server/docs/troubleshooting.md) (the
+[gateway/docs/troubleshooting.md](../gateway/docs/troubleshooting.md) (the
 [vocagateway](https://github.com/VocaHQ/vocagateway) submodule).
 
 
@@ -131,7 +131,7 @@ WebUI. For a native Handy setup, also check:
 ```sh
 test -x /Applications/Handy.app/Contents/MacOS/handy
 /Applications/Handy.app/Contents/MacOS/handy --list-models --json
-cd server
+cd gateway
 uv run vocaphone-status
 ```
 
@@ -150,8 +150,8 @@ du -sh ~/Library/Application\ Support/VocaMac/models/models/argmaxinc/whisperkit
 A folder of a few kilobytes is an incomplete download — re-download that model
 in VocaMac's Models tab.
 
-With `VOCAPHONE_ENGINE=whisper.cpp`, also check
-`$VOCAPHONE_WHISPER_BINARY` and `$VOCAPHONE_WHISPER_MODEL`.
+With `VOCAGATEWAY_ENGINE=whisper.cpp`, also check
+`$VOCAGATEWAY_WHISPER_BINARY` and `$VOCAGATEWAY_WHISPER_MODEL`.
 
 For Docker, open Models and download/select SenseVoice Small INT8, Parakeet TDT
 INT8, or a faster-whisper Base model. CPU + INT8 applies to faster-whisper;
@@ -202,17 +202,17 @@ falls back to that batch path whenever live streaming is unavailable.
 Run commands from the directory containing the canonical Compose file:
 
 ```sh
-cd server
+cd gateway
 docker compose config
 docker compose ps
 docker compose logs gateway
 ```
 
-Confirm `server/.env` contains a `VOCAPHONE_TOKEN` of at least 32 characters and
+Confirm `gateway/.env` contains a `VOCAGATEWAY_TOKEN` of at least 32 characters and
 is not a copy with the placeholder unchanged. A healthy container can still be
 not ready until a model is selected; the Docker healthcheck measures liveness.
 
-If port 8765 is already in use, change `VOCAPHONE_PUBLISH_PORT` in `.env` and
+If port 8765 is already in use, change `VOCAGATEWAY_PUBLISH_PORT` in `.env` and
 recreate the service. Tailscale Serve must then point to that same host port.
 
 ## Gateway unavailable
@@ -221,8 +221,8 @@ Check that the gateway host is awake, reachable, and running. For a Tailscale
 deployment, also confirm Tailscale is connected and Serve is active. The
 recording should remain on the iPhone for Retry.
 
-For a container deployment, also check `docker compose ps` from `server/` and
-confirm the `vocaphone_vocaphone-data` volume is still mounted.
+For a container deployment, also check `docker compose ps` from `gateway/` and
+confirm the `vocagateway_vocagateway-data` volume is still mounted.
 
 ## A LAN hostname such as homelabone does not connect
 
@@ -231,11 +231,11 @@ Confirm the app URL includes the scheme and port, for example
 Then verify the hostname from another LAN device and check that the gateway is
 actually listening beyond loopback.
 
-For Docker, `VOCAPHONE_PUBLISH_HOST` must be `0.0.0.0` rather than the secure
-loopback default. Recreate the service after changing `server/.env`:
+For Docker, `VOCAGATEWAY_PUBLISH_HOST` must be `0.0.0.0` rather than the secure
+loopback default. Recreate the service after changing `gateway/.env`:
 
 ```sh
-cd server
+cd gateway
 docker compose up --detach
 ```
 
@@ -246,7 +246,7 @@ If the pairing QR itself shows no LAN address to pick from (or only shows a
 `172.x`/bridge address), that's the same root cause: the container's default
 bridge network only exposes its own private interface to address
 auto-discovery, never the host's real LAN NIC. On Linux Docker Engine (not
-Docker Desktop), set `VOCAPHONE_NETWORK_MODE=host` in `server/.env` instead so
+Docker Desktop), set `VOCAGATEWAY_NETWORK_MODE=host` in `gateway/.env` instead so
 the container shares the host's network namespace and discovery finds the
 `192.168.x.x` address directly. See [deployment.md](deployment.md#trusted-local-network).
 
@@ -254,7 +254,7 @@ the container shares the host's network namespace and discovery finds the
 
 If this device was paired with its own token, open the WebUI Settings tab and
 confirm it is still listed under **Paired device tokens** — revoking a token
-there immediately rejects it. Otherwise re-run `server/scripts/setup-token.sh`,
+there immediately rejects it. Otherwise re-run `gateway/scripts/setup-token.sh`,
 copy the exact token into vocaphone, and save/test again. Never put the token
 in a URL or screenshot.
 

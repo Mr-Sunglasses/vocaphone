@@ -91,15 +91,15 @@ Every path above is inside this repository. Nothing here writes outside it.
 
 ### The gateway favicon lives in another repository
 
-`server/` is the [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway)
+`gateway/` is the [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway)
 submodule, so `app/webui/favicon.svg` is *its* file, committed and reviewed
 there. This generator still draws it — the geometry and the palette are here, and
 a second copy of the generator in the gateway repo would be the worse
 duplication — but only when you ask:
 
 ```sh
-python3 assets/generate.py --favicon server/app/webui/favicon.svg
-cd server && git switch -c chore/refresh-favicon && git commit -am 'chore: refresh the favicon'
+python3 assets/generate.py --favicon gateway/app/webui/favicon.svg
+cd gateway && git switch -c chore/refresh-favicon && git commit -am 'chore: refresh the favicon'
 ```
 
 It used to be an ordinary entry in `SVGS`, which meant a routine run dirtied a

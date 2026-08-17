@@ -2,16 +2,16 @@
 
 The headless gateway is maintained in
 [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) and is checked out here
-as the `server/` git submodule.
+as the `gateway/` git submodule.
 
 Canonical guides (after `git submodule update --init --recursive`):
 
 | Topic | Location |
 | --- | --- |
-| Full deployment reference | [server/docs/deployment.md](../server/docs/deployment.md) |
-| Gateway README (quick start, engines, config) | [server/README.md](../server/README.md) |
-| Private Tailscale Serve | [server/docs/tailscale.md](../server/docs/tailscale.md) |
-| Gateway troubleshooting | [server/docs/troubleshooting.md](../server/docs/troubleshooting.md) |
+| Full deployment reference | [gateway/docs/deployment.md](../gateway/docs/deployment.md) |
+| Gateway README (quick start, engines, config) | [gateway/README.md](../gateway/README.md) |
+| Private Tailscale Serve | [gateway/docs/tailscale.md](../gateway/docs/tailscale.md) |
+| Gateway troubleshooting | [gateway/docs/troubleshooting.md](../gateway/docs/troubleshooting.md) |
 
 Phone-specific setup (signing and keyboard) stays in this repository:
 
@@ -23,7 +23,7 @@ Phone-specific setup (signing and keyboard) stays in this repository:
 ## Migrating from the Local Flow working name (v0.3.0)
 
 Gateway token, config, and volume renames are documented in
-[server/docs/deployment.md](../server/docs/deployment.md#migrating-from-the-local-flow-working-name-v030).
+[gateway/docs/deployment.md](../gateway/docs/deployment.md#migrating-from-the-local-flow-working-name-v030).
 
 ### iOS / Android installations
 

@@ -14,15 +14,15 @@ DerivedData/
 *.ipa
 *.xcuserstate
 xcuserdata/
-server/.venv/
-server/.pytest_cache/
-server/.ruff_cache/
-server/.mypy_cache/
-server/.omo/
-server/data/
-server/*.db
-server/*.sqlite
-server/*.sqlite3
+gateway/.venv/
+gateway/.pytest_cache/
+gateway/.ruff_cache/
+gateway/.mypy_cache/
+gateway/.omo/
+gateway/data/
+gateway/*.db
+gateway/*.sqlite
+gateway/*.sqlite3
 *.m4a
 *.caf
 *.wav
@@ -36,8 +36,8 @@ server/*.sqlite3
 *.mobileprovision
 
 # direnv: the repository-root .envrc is checked in and contains no secrets.
-# Every other .envrc is personal — server/.envrc in particular is easy to
-# create by copying server/.env, which carries a live bearer token.
+# Every other .envrc is personal — gateway/.envrc in particular is easy to
+# create by copying gateway/.env, which carries a live bearer token.
 .direnv/
 .envrc
 .envrc.local

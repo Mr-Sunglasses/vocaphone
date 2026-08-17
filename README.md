@@ -183,7 +183,7 @@ operational commands.
 ## Repository layout note
 
 The headless gateway lives in [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway)
-and is vendored here as the `server/` git submodule so the phone clients and
+and is vendored here as the `gateway/` git submodule so the phone clients and
 future desktop apps share one implementation. The iOS Sherpa ONNX and ONNX
 Runtime archives are tracked with Git LFS, so install Git LFS before cloning.
 Clone with submodules and LFS:
@@ -213,12 +213,12 @@ clones and releases. For local development you can follow `main` without
 shipping that tip until you intentionally bump the pin:
 
 ```sh
-just server-pin-status   # pin vs working tree vs origin/main
-just server-sync         # move server/ to the tip of main (local only)
+just gateway-pin-status  # pin vs working tree vs origin/main
+just gateway-sync        # move gateway/ to the tip of main (local only)
 ```
 
 Gateway CI, releases, and deep ops docs run in the vocagateway repository.
-Phone-side docs below still use `cd server` against the submodule checkout.
+Phone-side docs below still use `cd gateway` against the submodule checkout.
 See [CONTRIBUTING.md](CONTRIBUTING.md#gateway-submodule-pin-dev-vs-ship) for pin
 bumps and release tags.
 
@@ -304,24 +304,24 @@ on-device transcription, and the phone never calls one unless you configure it.
 ### 3. Start the gateway natively on macOS
 
 Install the tools (FFmpeg, plus the WhisperKit and `whisper.cpp` CLIs) and
-launch the server:
+launch the gateway:
 
 ```sh
 brew install ffmpeg whisperkit-cli whisper-cpp
-cd server
+cd gateway
 uv sync --all-groups --extra engines --extra apple
 uv run vocaphone-server
 ```
 
 The first run creates a private bearer token at
-`~/.config/vocaphone/token`. Open `http://127.0.0.1:8765/`, enter that token,
+`~/.config/vocagateway/token`. Open `http://127.0.0.1:8765/`, enter that token,
 download a recommended model from **Models**, select it, and confirm the Overview
 shows **Ready for dictation**.
 
 To keep the gateway running after the terminal closes and restart it after login:
 
 ```sh
-cd server
+cd gateway
 ./scripts/install-launch-agent.sh
 ```
 
@@ -333,7 +333,7 @@ Ubuntu:
 ```sh
 sudo apt install ffmpeg
 # Install uv if needed: curl -LsSf https://astral.sh/uv/install.sh | sh
-cd server
+cd gateway
 uv sync --all-groups --extra engines
 uv run vocaphone-server
 ```
@@ -345,21 +345,21 @@ startup banner prints the WebUI URL and where the bearer token lives:
 vocaphone gateway listening on 0.0.0.0:8765
 WebUI (this host): http://127.0.0.1:8765/
 Network access: use this host's LAN or Tailscale IP with the same port
-Token: ~/.config/vocaphone/token
-  (cat ~/.config/vocaphone/token — enter that value in the phone app)
+Token: ~/.config/vocagateway/token
+  (cat ~/.config/vocagateway/token — enter that value in the phone app)
   or: just token  (prints a terminal QR for headless phone pairing)
 ```
 
-Open the WebUI, enter the token from `~/.config/vocaphone/token`, download a
+Open the WebUI, enter the token from `~/.config/vocagateway/token`, download a
 recommended model (SenseVoice Small INT8 or Parakeet TDT INT8 on CPU), select it,
 and confirm Overview shows **Ready for dictation**. For headless phone pairing
-without the WebUI, run `just token` (or `just server token` from the repo root)
+without the WebUI, run `just token` (or `just gateway token` from the repo root)
 on a TTY to print a scannable pairing QR.
 
 To keep the gateway running after the terminal closes (systemd user unit):
 
 ```sh
-cd server
+cd gateway
 ./scripts/install-systemd-user.sh
 # optional: survive logout
 loginctl enable-linger "$USER"
@@ -369,22 +369,21 @@ Logs: `journalctl --user -u com.vocahq.vocaphone.gateway.service -f`.
 
 ### 5. Or start it with Docker Compose
 
-The canonical Compose file is [server/compose.yaml](server/compose.yaml). It
+The canonical Compose file is [gateway/compose.yaml](gateway/compose.yaml). It
 publishes the gateway only on host loopback by default and stores models,
 configuration, and the session database in a named volume.
 
 ```sh
-cd server
+cd gateway
 umask 077
-printf 'VOCAPHONE_TOKEN=%s\n' "$(openssl rand -hex 32)" > .env
-printf 'VOCAPHONE_PUBLISH_HOST=127.0.0.1\n' >> .env
-printf 'VOCAPHONE_PUBLISH_PORT=8765\n' >> .env
+cp .env.example .env
+printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
 docker compose up --detach --build
 docker compose ps
 curl --fail http://127.0.0.1:8765/health/live
 ```
 
-Open the WebUI, enter the token from `server/.env`, and download/select a
+Open the WebUI, enter the token from `gateway/.env`, and download/select a
 recommended sherpa-onnx, Moonshine, or faster-whisper model. Readiness returns
 `503` until a runnable model is selected:
 
@@ -392,7 +391,7 @@ recommended sherpa-onnx, Moonshine, or faster-whisper model. Readiness returns
 curl --fail http://127.0.0.1:8765/health/ready
 ```
 
-Copy [server/.env.example](server/.env.example) if you prefer an editable
+Copy [gateway/.env.example](gateway/.env.example) if you prefer an editable
 template. Never commit the resulting `.env` file.
 
 ### 6. Choose how the phone reaches the gateway
@@ -405,18 +404,18 @@ Choose one of these network arrangements:
   `http://192.168.1.75:8765`). Find the IP with `hostname -I` or
   `ip -4 addr`. HTTP is unencrypted, so use this only on a network you trust and
   never forward that port to the internet. For Docker, set
-  `VOCAPHONE_PUBLISH_HOST=0.0.0.0` in `server/.env` and protect the port with the
+  `VOCAGATEWAY_PUBLISH_HOST=0.0.0.0` in `gateway/.env` and protect the port with the
   host firewall. The container's own address auto-discovery (used by the
   pairing QR) can't see the host's LAN IP under the default bridge network
-  either; on Linux Docker Engine, set `VOCAPHONE_NETWORK_MODE=host` in
-  `server/.env` instead so discovery finds it directly — see
-  [server/README.md](server/README.md#configuration).
+  either; on Linux Docker Engine, set `VOCAGATEWAY_NETWORK_MODE=host` in
+  `gateway/.env` instead so discovery finds it directly — see
+  [gateway/README.md](gateway/README.md#configuration).
 - **Tailscale:** keep the gateway on loopback and let Tailscale Serve provide
   tailnet-only HTTPS:
 
 ```sh
 # optional: bind loopback only when using Serve
-# VOCAPHONE_BIND_HOST=127.0.0.1 uv run vocaphone-server
+# VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
 tailscale serve --bg 8765
 tailscale serve status
 ```
@@ -429,15 +428,15 @@ tailscale serve status
 ### Pair the phone with a QR code (iPhone or Android)
 
 **Without the WebUI (headless):** on the gateway host, run `just token` (or
-`just server token` from the repo root). On a TTY it prints an ASCII QR that
+`just gateway token` from the repo root). On a TTY it prints an ASCII QR that
 encodes the same pairing payload as the WebUI. Point the phone's camera at the
-terminal, or use `just token --plain` / `cat ~/.config/vocaphone/token` when you
+terminal, or use `just token --plain` / `cat ~/.config/vocagateway/token` when you
 only need the secret.
 
 **From the WebUI:** once authenticated on the gateway host:
 
-1. Stay on **Overview** — the **Pair phone app** card shows a QR for a
-   phone-reachable address (LAN IP preferred, or `VOCAPHONE_PUBLIC_URL` if set).
+1. Open **Pair & test** — the **Pair phone** card shows a QR for a
+   phone-reachable address (LAN IP preferred, or `VOCAGATEWAY_PUBLIC_URL` if set).
 2. To give this phone its own revocable credential instead of the shared
    bootstrap token, use **Or pair a new device with its own token**: name the
    device and the card immediately shows a QR for that device's token alone.
@@ -453,8 +452,8 @@ only need the secret.
 You can still paste manually:
 
 1. **Gateway address** — the LAN, Tailscale, or HTTPS URL above.
-2. **Bearer token** — `just token --plain` or `cat ~/.config/vocaphone/token`
-   for native installs, or the `VOCAPHONE_TOKEN` value from `server/.env` for
+2. **Bearer token** — `just token --plain` or `cat ~/.config/vocagateway/token`
+   for native installs, or the `VOCAGATEWAY_TOKEN` value from `gateway/.env` for
    Docker.
 
 Then use **Save and test** / **Test connection**. Tailscale is recommended for a
@@ -471,20 +470,20 @@ the root or from inside the application directory:
 
 ```sh
 just ci               # all three applications, skipping absent toolchains
-just server test      # gateway: lint, types, dependency audit, tests, Compose
-just server-sync      # optional: local server/ → tip of main (does not commit)
-just server-pin-status
+just gateway test     # gateway: lint, types, dependency audit, tests, Compose
+just gateway-sync     # optional: local gateway/ → tip of main (does not commit)
+just gateway-pin-status
 just ios ci           # iOS: regenerate the project, build, run unit tests
 just android ci       # Android: assemble, unit tests, lint, Room schema
 just doctor           # what each toolchain is still missing
 ```
 
 iOS and Android CI live in this repository. Gateway quality and container
-builds run in [vocagateway](https://github.com/VocaHQ/vocagateway); `just server
+builds run in [vocagateway](https://github.com/VocaHQ/vocagateway); `just gateway
 test` still exercises the submodule checkout locally. `just --list` shows the
 rest — running the
 apps (`just ios run`,
-`just android run`, `just server run`), streaming logs, installing onto a
+`just android run`, `just gateway run`), streaming logs, installing onto a
 physical phone, and managing the container deployment.
 
 Optional: with [direnv](https://direnv.net) installed, `direnv allow` once after
@@ -503,7 +502,7 @@ physical-device verification.
 ```text
 ios/                    Swift app, keyboard, Live Activity, shared state, tests
 android/                Kotlin app, voice keyboard, foreground dictation service, tests
-server/                 Git submodule → VocaHQ/vocagateway (gateway + WebUI)
+gateway/                Git submodule → VocaHQ/vocagateway (gateway + WebUI)
 docs/                   Architecture, device setup, privacy, decisions, historical plans
 ```
 
@@ -512,11 +511,11 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 | Guide | Covers |
 | --- | --- |
 | [Android client](android/README.md) | Building the APK, guided setup, voice keyboard, and privacy boundaries |
-| [Gateway reference](server/README.md) | Native service, Compose, models, configuration, health, and CLI commands ([vocagateway](https://github.com/VocaHQ/vocagateway)) |
-| [Deployment](server/docs/deployment.md) | Native-vs-Docker performance, startup, upgrades, persistence, and backups |
+| [Gateway reference](gateway/README.md) | Native service, Compose, models, configuration, health, and CLI commands ([vocagateway](https://github.com/VocaHQ/vocagateway)) |
+| [Deployment](gateway/docs/deployment.md) | Native-vs-Docker performance, startup, upgrades, persistence, and backups |
 | [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
 | [TestFlight](docs/testflight.md) | App Store Connect setup, archiving, and TestFlight distribution |
-| [Tailscale](server/docs/tailscale.md) | Private HTTPS ingress for the gateway |
+| [Tailscale](gateway/docs/tailscale.md) | Private HTTPS ingress for the gateway |
 | [Architecture](docs/architecture.md) | Components, state transitions, engine boundary, and observability |
 | [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
 | [Troubleshooting](docs/troubleshooting.md) | Keyboard, microphone, model, network, and Docker failures |

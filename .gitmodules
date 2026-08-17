@@ -1,5 +1,5 @@
-[submodule "server"]
-	path = server
+[submodule "gateway"]
+	path = gateway
 	url = https://github.com/VocaHQ/vocagateway.git
 	branch = main
 [submodule "android/third_party/whisper.cpp"]
