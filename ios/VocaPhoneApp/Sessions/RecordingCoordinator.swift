@@ -968,21 +968,46 @@ final class RecordingCoordinator {
 
             let incremental = localSherpaSession
             localSherpaSession = nil
+            // A chunk the queue refused never reached the decoder, so the
+            // session cannot know it is short. Only the recorder can say.
+            let droppedLocalChunks = recorder.didDropLocalChunks
             let transcribed: LocalModelManager.LocalTranscription
             if let incremental {
                 let incrementalResult = await incremental.finish()
-                if incrementalResult.text.isEmpty {
-                    // A model can still produce no tokens for a boundary split;
-                    // preserve the old whole-file retry as a last resort.
-                    transcribed = try await localModels.transcribe(
-                        audioURL: audioURL,
-                        language: record.language
-                    )
+                let partial = LocalModelManager.LocalTranscription(
+                    text: incrementalResult.transcript.text,
+                    language: incrementalResult.transcript.language
+                )
+                // A whole-file retry for an empty result, and equally for one
+                // that lost a chunk: the attention families answer a long
+                // waveform with no tokens often enough that a partial result is
+                // the common case, not the rare one, and the seconds it is
+                // missing are invisible in the text it did produce. The retry
+                // levels the gain over the whole recording and splits on
+                // different boundaries, which is what recovers them.
+                if partial.text.isEmpty || incrementalResult.droppedAudibleChunk
+                    || droppedLocalChunks
+                {
+                    do {
+                        let wholeFile = try await localModels.transcribe(
+                            audioURL: audioURL,
+                            language: record.language
+                        )
+                        transcribed = incrementalResult.supersededBy(wholeFile.text)
+                            ? wholeFile
+                            : partial
+                    } catch {
+                        // Incomplete beats nothing, but only when there is
+                        // something, and never for a session the user has
+                        // already walked away from.
+                        guard !partial.text.isEmpty,
+                              !Task.isCancelled,
+                              !(error is CancellationError)
+                        else { throw error }
+                        transcribed = partial
+                    }
                 } else {
-                    transcribed = .init(
-                        text: incrementalResult.text,
-                        language: incrementalResult.language
-                    )
+                    transcribed = partial
                 }
             } else {
                 transcribed = try await localModels.transcribe(

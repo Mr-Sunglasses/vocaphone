@@ -9,6 +9,13 @@ enum SherpaLongAudio {
     static let targetChunkSeconds = 10
     static let maxChunkSeconds = 14
     static let overlapSamples = sampleRate / 2
+    /// A chunk shorter than this answering with no tokens is ordinary rather
+    /// than a loss: it is the half second of retained overlap a recording that
+    /// ends just after a boundary leaves behind, or a fragment of a word.
+    /// Longer than this and an empty answer is suspicious — which is why it is
+    /// also the bar `SherpaEmptyChunkRecovery` uses before it bothers retrying
+    /// a chunk as two halves.
+    static let minimumSuspectChunkSamples = 6 * sampleRate
     static let streamingWindowSeconds = targetChunkSeconds + 2
 
     struct Chunk {
@@ -27,6 +34,7 @@ enum SherpaLongAudio {
     private static let minChunkSamples = sampleRate * 4
     private static let minSilenceRMS = 0.0125
     private static let silenceRMSRatio = 0.18
+    private static let silentFrameRMS = 0.006
 
     static func chunks(_ samples: [Float]) -> [Chunk] {
         guard samples.count > longAudioThresholdSeconds * sampleRate else {
@@ -118,8 +126,8 @@ enum SherpaLongAudio {
         return (sum / Double(endExclusive - start)).squareRoot()
     }
 
-    static func isEffectivelySilent(_ samples: [Float]) -> Bool {
-        guard !samples.isEmpty else { return true }
+    /// The loudest 100 ms frame in `samples`, as RMS.
+    static func loudestFrame(_ samples: [Float]) -> Double {
         var maximum = 0.0
         var start = 0
         while start < samples.count {
@@ -129,9 +137,36 @@ enum SherpaLongAudio {
             )
             start += silenceFrameSamples
         }
-        // This is deliberately below the boundary-search silence floor. It
-        // skips only near-digital-silence chunks and keeps quiet speech.
-        return maximum < 0.006
+        return maximum
+    }
+
+    /// Whether there is nothing here worth handing to a model.
+    ///
+    /// The floor is deliberately below the boundary-search silence threshold:
+    /// it skips only near-digital-silence and keeps quiet speech. Erring this
+    /// way costs a decode of a pause; erring the other way drops speech, which
+    /// is the whole failure this file exists to avoid.
+    static func isEffectivelySilent(_ samples: [Float]) -> Bool {
+        samples.isEmpty || isEffectivelySilent(loudestFrame: loudestFrame(samples))
+    }
+
+    static func isEffectivelySilent(loudestFrame: Double) -> Bool {
+        loudestFrame < silentFrameRMS
+    }
+
+    /// Whether `samples` carries speech rather than the room between sentences.
+    ///
+    /// `loudestFrameSoFar` is the loudest frame heard earlier in the same
+    /// recording. No absolute floor separates a quiet room from quiet speech —
+    /// one room's noise sits above another room's whisper — but the distance
+    /// between a pause and the speech around it holds across recordings, which
+    /// is why the boundary search scales its own threshold the same way.
+    ///
+    /// Only asked about a chunk that already decoded to nothing, and only to
+    /// decide whether that is worth re-reading the whole file over. Room tone
+    /// answering with no tokens is not a loss; it is the correct answer.
+    static func carriesSpeech(loudestFrame: Double, loudestFrameSoFar: Double) -> Bool {
+        loudestFrame >= max(silentFrameRMS, loudestFrameSoFar * silenceRMSRatio)
     }
 }
 

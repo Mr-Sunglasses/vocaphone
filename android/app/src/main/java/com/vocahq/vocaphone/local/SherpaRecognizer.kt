@@ -195,7 +195,6 @@ internal data class SherpaTranscript(val text: String, val language: String = ""
  * pay the extra inference cost.
  */
 internal object SherpaEmptyChunkRecovery {
-    private const val MIN_RETRY_SECONDS = 6
 
     fun decode(
         samples: FloatArray,
@@ -203,7 +202,8 @@ internal object SherpaEmptyChunkRecovery {
     ): SherpaTranscript {
         val firstAttempt = decodeOnce(samples)
         if (firstAttempt.text.isNotEmpty() ||
-            samples.size <= MIN_RETRY_SECONDS * SherpaLongAudio.SAMPLE_RATE
+            samples.size <=
+            SherpaLongAudio.MIN_SUSPECT_CHUNK_SECONDS * SherpaLongAudio.SAMPLE_RATE
         ) {
             return firstAttempt
         }

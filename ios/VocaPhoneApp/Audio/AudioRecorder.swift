@@ -38,6 +38,13 @@ final class AudioRecorder: NSObject {
     /// or a slower first decode cannot discard the beginning of the transcript.
     private(set) var localPcmChunks: AsyncStream<Data>?
     private(set) var lastDroppedChunkCount = 0
+    /// Whether the on-device queue refused a chunk. Its capacity is comfortably
+    /// past the recording limit, so this should never fire — but the two numbers
+    /// are set in different files, and the failure it guards is silent: a
+    /// refused chunk is seconds missing from the end of the transcript with
+    /// nothing in the text to show for it.
+    private let localChunksDropped = OSAllocatedUnfairLock(initialState: false)
+    var didDropLocalChunks: Bool { localChunksDropped.withLock { $0 } }
     /// The loudest sample of the recording that just finished. Zero means iOS
     /// handed this app silence, not that the user said nothing quietly.
     private(set) var lastPeakLevel: Float = 0
@@ -195,13 +202,20 @@ final class AudioRecorder: NSObject {
         }
 
         ring.reset()
+        // Captured rather than reached through `self`: the emit closure runs on
+        // the capture queue and this type is main-actor isolated.
+        let localDropped = localChunksDropped
+        localDropped.withLock { $0 = false }
         try pipeline.start(writingTo: output) { data in
             let gatewayAccepted = switch continuation.yield(data) {
             case .enqueued: true
             default: false
             }
             if let localContinuation {
-                _ = localContinuation.yield(data)
+                switch localContinuation.yield(data) {
+                case .enqueued: break
+                default: localDropped.withLock { $0 = true }
+                }
             }
             return gatewayAccepted
         }

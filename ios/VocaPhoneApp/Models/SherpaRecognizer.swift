@@ -158,8 +158,6 @@ private extension SherpaFamily {
 }
 
 private enum SherpaEmptyChunkRecovery {
-    private static let minimumRetrySamples = 6 * SherpaLongAudio.sampleRate
-
     static func decode(
         samples: [Float], decodeOnce: ([Float]) -> SherpaTranscript
     ) -> SherpaTranscript {
@@ -169,76 +167,20 @@ private enum SherpaEmptyChunkRecovery {
             text: attempt.text.trimmingCharacters(in: .whitespacesAndNewlines),
             language: attempt.language
         )
-        guard first.text.isEmpty, samples.count > minimumRetrySamples else { return first }
+        guard first.text.isEmpty,
+              samples.count > SherpaLongAudio.minimumSuspectChunkSamples
+        else { return first }
         let midpoint = samples.count / 2
         return decodeOnce(Array(samples[..<midpoint]))
             .appending(decodeOnce(Array(samples[midpoint...])), deduplicateOverlap: false)
     }
 }
 
-/// Consumes captured PCM while the microphone is still running. The WAV file
-/// remains authoritative, but Sherpa's expensive offline work is spread over
-/// the recording instead of making the user wait for the whole file at finish.
-final class SherpaIncrementalSession: @unchecked Sendable {
-    private let task: Task<SherpaTranscript, Never>
-
-    init(chunks: AsyncStream<Data>, recognizer: SherpaRecognizer) {
-        task = Task.detached(priority: .userInitiated) {
-            await Self.transcribe(chunks: chunks, recognizer: recognizer)
-        }
-    }
-
-    func finish() async -> SherpaTranscript { await task.value }
-
-    func cancel() { task.cancel() }
-
-    private static func transcribe(
-        chunks: AsyncStream<Data>,
-        recognizer: SherpaRecognizer
-    ) async -> SherpaTranscript {
-        var samples: [Float] = []
-        samples.reserveCapacity(
-            SherpaLongAudio.streamingWindowSeconds * SherpaLongAudio.sampleRate
-        )
-        var transcript = SherpaTranscript.empty
-        var overlapsPrevious = false
-
-        for await data in chunks {
-            guard !Task.isCancelled else { return Self.trimmed(transcript) }
-            samples.append(contentsOf: Self.floatSamples(in: data))
-
-            while let split = SherpaLongAudio.nextStreamingSplit(samples) {
-                let bounded = Array(samples[..<split.endExclusive])
-                transcript = transcript.appending(
-                    recognizer.transcribeChunk(bounded),
-                    deduplicateOverlap: overlapsPrevious
-                )
-                samples.removeFirst(split.nextStart)
-                overlapsPrevious = split.nextStart < split.endExclusive
-            }
-        }
-
-        if !samples.isEmpty {
-            transcript = transcript.appending(
-                recognizer.transcribeChunk(samples),
-                deduplicateOverlap: overlapsPrevious
-            )
-        }
-        return Self.trimmed(transcript)
-    }
-
-    private static func trimmed(_ transcript: SherpaTranscript) -> SherpaTranscript {
-        SherpaTranscript(
-            text: transcript.text.trimmingCharacters(in: .whitespacesAndNewlines),
-            language: transcript.language
-        )
-    }
-
-    private static func floatSamples(in data: Data) -> [Float] {
-        guard data.count >= MemoryLayout<Float>.stride else { return [] }
-        return data.withUnsafeBytes { rawBuffer in
-            let values = rawBuffer.bindMemory(to: Float.self)
-            return Array(values)
-        }
+extension SherpaIncrementalSession {
+    /// The session lives in the shared target and takes a decode closure so it
+    /// can be tested without the native engine; this is the one call site that
+    /// has a real recognizer to give it.
+    convenience init(chunks: AsyncStream<Data>, recognizer: SherpaRecognizer) {
+        self.init(chunks: chunks) { recognizer.transcribeChunk($0) }
     }
 }

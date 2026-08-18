@@ -89,7 +89,7 @@ class SherpaLongAudioTest {
         withTimeout(5_000) { firstChunkDecoded.await() }
         repeat(130) { assertTrue(session.offer(frame)) }
 
-        assertEquals("one boundary two three", session.finish().text)
+        assertEquals("one boundary two three", session.finish().transcript.text)
         assertEquals(3, decodedSizes.size)
         assertTrue(decodedSizes.dropLast(1).all { it <= 10 * SherpaLongAudio.SAMPLE_RATE })
         assertTrue(decodedSizes.last() < 10 * SherpaLongAudio.SAMPLE_RATE)

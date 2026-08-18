@@ -65,7 +65,22 @@ object SpeechAudioConditioning {
             val magnitude = abs(sample)
             if (magnitude > peak) peak = magnitude
         }
-        if (peak < SILENCE_PEAK) return samples
+        return condition(samples, peak)
+    }
+
+    /**
+     * Levels [samples] in place with a gain derived from [peak] rather than from
+     * the array itself.
+     *
+     * This is how a streaming chunk gets levelled: it passes the peak of every
+     * sample captured so far, which is the closest one chunk can come to the
+     * single gain [condition] applies over a whole recording. Passing the
+     * chunk's own peak would be exactly the per-chunk gain the note above warns
+     * against. The DC offset is not touched here — measuring it needs the whole
+     * recording, so it stays on the whole-file path.
+     */
+    fun condition(samples: FloatArray, peak: Float): FloatArray {
+        if (samples.isEmpty() || peak < SILENCE_PEAK) return samples
 
         // Already loud enough. Attenuating a hot recording cannot undo whatever
         // clipping it arrived with, and quiet is the problem worth solving.
