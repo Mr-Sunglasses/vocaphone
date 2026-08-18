@@ -123,24 +123,31 @@ class DictationService : Service() {
     }
 
     private fun notification(status: String): Notification {
-        // Named explicitly rather than resolved with
-        // `packageManager.getLaunchIntentForPackage`. That call does set a
-        // component, but only after a lookup that returns null when it finds no
-        // launcher activity, and neither the null nor the component is visible
-        // to anything reading this code -- including CodeQL, which reported it
-        // as an implicit PendingIntent handed to a third party (CWE-927).
+        // Destination named, and nothing else set.
         //
-        // The distinction is not academic. A PendingIntent wrapping an intent
-        // with no component runs with this app's identity and can have its
-        // destination filled in by whoever holds it, and a notification's
-        // content intent is held by the system UI. FLAG_IMMUTABLE already
-        // closed that door; naming MainActivity means the door was never built.
+        // The action and category this used to carry were copied from what
+        // `packageManager.getLaunchIntentForPackage` builds internally, and they
+        // were doing nothing: an action and a category exist so the system can
+        // *resolve* an intent, and resolution does not happen once a component
+        // is named. What they did do was make CodeQL read this as an implicit
+        // intent handed to a third party (CWE-927), because its rule keys on
+        // `setAction` and does not care that the constructor set a component.
+        //
+        // The rule is crude there but the direction is right: a PendingIntent
+        // runs with this app's identity, an intent with an unfilled destination
+        // can have one supplied by whoever holds it, and a notification's
+        // content intent is held by the system UI. FLAG_IMMUTABLE already closed
+        // that door. This leaves nothing for anyone to fill in.
+        //
+        // FLAG_ACTIVITY_NEW_TASK is not decoration: `getLaunchIntentForPackage`
+        // sets it too, and starting an activity from a Service context needs it.
+        // With the activity at the root of an existing task it brings that task
+        // forward rather than stacking a second copy, which is what tapping an
+        // ongoing notification should do.
         val open = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java)
-                .setAction(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_LAUNCHER),
+            Intent(this, MainActivity::class.java).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             PendingIntent.FLAG_IMMUTABLE,
         )
         val cancel = PendingIntent.getService(
