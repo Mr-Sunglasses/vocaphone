@@ -33,7 +33,9 @@ result needed for idempotent retry.
 - Strict upload types, byte limits, duration limits, and one transcription slot
 - FFmpeg and `whisper.cpp` invoked with argument arrays, never a shell
 - Opaque file references and canonical server-owned paths
-- No analytics or third-party transcription
+- No third-party analytics or transcription service; see "Usage reporting" below
+  for the optional, off-by-default counters the apps can send to a server
+  VocaHQ self-hosts
 - No ordinary logging of audio, transcripts, tokens, or private endpoint values
 - In-memory operational metrics contain only counts, queue activity, stage
   timings, real-time factor, peak process memory, and process uptime; they reset
@@ -156,6 +158,158 @@ again) is the one action that actually breaks that device's existing pairing,
 so treat it as opt-in, not routine maintenance. Revoking a device token
 immediately rejects further requests carrying it without affecting the
 bootstrap token or any other paired device.
+
+## Usage reporting
+
+**Off until the user turns it on.** Guided setup asks once, at the end, after a
+working transcript rather than before; Settings can change the answer at any
+time. Nothing is queued while the switch is off — not queued-and-discarded, so
+turning it on later cannot deliver a backlog.
+
+It reports to a self-hosted [Aptabase](https://github.com/aptabase/aptabase)
+instance (AGPL-3.0) that VocaHQ runs at `telemetry.vocahq.com`. No third-party
+analytics service is in the path, and no analytics SDK is linked into either
+binary: the sender is about a hundred lines against Aptabase's documented ingest
+API, in `android/…/telemetry/` and `ios/VocaPhoneApp/Telemetry/`.
+
+### There is no identifier
+
+Aptabase derives its anonymous user server-side from the request's IP address,
+the User-Agent, and a per-app salt that is **discarded every 24 hours**. Nothing
+identifying is stored on the phone — no install ID, no IDFV, no `ANDROID_ID`, no
+advertising ID — and because the salt is thrown away, the same device on two
+different days produces two unrelated hashes that nobody, including whoever
+holds root on the server, can join back together.
+
+That is why there is no "reset my reporting ID" button: there is no ID to reset.
+The only client-side identifier is an in-memory session number that rotates after
+an hour of inactivity and is never written to disk.
+
+The consequence, stated plainly: there are no retention curves and no multi-day
+funnels. The setup funnel is reconstructed from ratios of once-ever counters
+(`first_dictation_ever` over `app_first_open`) rather than by following anyone.
+
+### What is sent
+
+A closed vocabulary, enforced by the type system rather than by review. Neither
+platform's telemetry API has a parameter that accepts a string, so a call site
+cannot pass a transcript, a URL or a token even by mistake; tests on both sides
+fail the build if that stops being true. The model identifier is the one value
+that begins life as a string, and both platforms pin it against the shipped
+catalog before it can reach the network.
+
+- Which setup step was reached, and whether setup finished
+- Which transcription source was selected — on-device or gateway, never which
+  gateway
+- Which shipped on-device model was downloaded, and whether it completed
+- Which shipped on-device model actually transcribed a dictation, and at which
+  of the three accuracy settings. A gateway dictation reports `gateway` for
+  both, because the gateway decides its own model and decoding and is never
+  asked; anything outside the shipped catalog reports `unknown` rather than the
+  value it was given
+- Whether a dictation succeeded or failed, at which stage, and for what reason,
+  drawn from a fixed list of causes
+- Recording length **bucketed** (`<10s`, `10–30s`, `30–60s`, `60s+`), never exact
+- App version, OS **major** version only, language subtag only (`en`, not
+  `en-IN`), and whether it is a debug build
+
+### What is never sent
+
+Transcripts, audio, typed text, or any character count. The gateway's URL,
+hostname, IP or bearer token. Model file paths. Device model, exact OS build,
+region or timezone. Free text of any kind.
+
+**Device model is deliberately absent**, unlike Aptabase's own SDKs, which send
+it. Play Console and App Store Connect already report the device distribution for
+every install, and model plus exact OS build plus locale is a usable fingerprint
+at beta population sizes — which would undo most of what the daily salt rotation
+achieves. Omitting it is the main reason the sender is hand-rolled.
+
+**The model identifier is the one value with real cardinality**, and it is worth
+being straight about that. The catalog is dozens of entries rather than the two
+a source selection has, and several models are language-locked, so reporting one
+softly implies what language somebody speaks. Two things keep this from mattering
+much: the language subtag is already sent and says the same thing more directly,
+and Aptabase's daily salt rotation means today's events cannot be joined to
+tomorrow's whatever they contain. It is a real widening of the payload, not a
+neutral one, and the honest summary is that it buys the ability to tell whether a
+performance fix landed at the cost of a value that is not quite as inert as a
+bucketed duration.
+
+### Where it does not run
+
+- **The iOS keyboard extension reports nothing and cannot.** The whole
+  `VocaPhoneApp/Telemetry` directory is compiled into the containing app only,
+  so the keyboard binary has no reporting code in it and its
+  `PrivacyInfo.xcprivacy` keeps an empty `NSPrivacyCollectedDataTypes`. The
+  Android IME holds the same line for parity.
+- **The F-Droid flavour cannot report.** `BuildConfig.TELEMETRY` is a constant
+  `false` there, so R8 strips the sender, the host, the app key and every
+  control that could switch reporting on. Scanning the release APK's dex finds
+  no host, no ingest path, no credential header and no switch; what remains is
+  an unreachable queue wired to a no-op sink.
+- **Debug and source builds never transmit**, whatever the default says.
+
+### Checking it rather than trusting it
+
+Settings → Usage reporting → "See exactly what's sent" renders the literal JSON
+that the next flush would POST, `systemProps` included — not a summary of it. If
+a field is ever added to the payload, it appears on that screen without anyone
+having to remember to describe it.
+
+The same screen shows content-free delivery counters — how many events were
+recorded, how many were sent, and what the last attempt did. They carry counts
+and an outcome, never an event name or a property value. They exist because the
+delivery path swallows every failure by design, which is right in production and
+leaves nobody — user or developer — able to tell "delivered" from "never
+recorded" when something looks wrong.
+
+Note what that line does **not** claim. Aptabase's ingest answers `200` to any
+well-formed batch, including one carrying an unknown app key, so a successful
+send means the server accepted the request and not that it stored anything. The
+dashboard is the only authority on that, and the wording on screen says so.
+
+Turning reporting off sends one final `telemetry_disabled` event before the
+switch takes effect, then discards the queue. That is stated next to the switch:
+an opt-out event discovered by packet capture would be worse than not knowing the
+opt-out rate.
+
+### On the server
+
+By design: the reverse proxy passes the client address because Aptabase needs it
+to compute the daily rotating hash, the ingest path's access logs do not retain
+it, and events age out on a ClickHouse TTL.
+
+By design is not the same as verified, and the difference is the entire reason
+this backend is self-hosted. These are claims about infrastructure rather than
+about code in this repository, so no amount of reading this tree establishes
+them — and a claim nobody has checked is exactly the vendor promise self-hosting
+was meant to replace. Each is listed below with what would establish it and
+whether that has been done. The table is meant to be uncomfortable to read while
+it still says "not yet verified".
+
+| Claim | What establishes it | Status |
+| --- | --- | --- |
+| Aptabase receives the client address but persists no raw IP | Inspect the ClickHouse events schema and a sample row; confirm no column holds an address | Not yet verified |
+| The ingest path's access logs do not record addresses | Read the proxy configuration for the ingest location | Not yet verified |
+| Events age out on a ClickHouse TTL | Read the `TTL` clause off the events table. The intended retention is 180 days | Not yet verified |
+| The ingest path is rate limited | Read the proxy configuration | Not in place yet |
+
+`telemetry/README.md` carries the exact commands for each row. When one is done,
+replace its status with the date it was checked — a date is the only form of
+this claim that means anything.
+
+The ingest key compiled into the apps (`A-SH-…`) is deliberately not a secret.
+It can append events and nothing else — it cannot read the dashboard, change an
+app, or reach any other endpoint — and it ships inside every binary, so it is
+extractable from any store download. Keeping it out of the repository would hide
+it from contributors and from nobody else. The exposure it does create is
+someone posting junk events to skew the beta numbers, which is a data-quality
+problem rather than a privacy one. The answer to it is rate limiting the ingest
+path at the proxy, which is not in place yet, and rotating the key if it is ever
+abused. It is unrelated
+to the gateway bearer token, which is a real secret and lives in the iOS
+Keychain and the Android Keystore.
 
 ## Diagnostics export
 

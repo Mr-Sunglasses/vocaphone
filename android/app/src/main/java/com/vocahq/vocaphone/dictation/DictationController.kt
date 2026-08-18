@@ -33,6 +33,12 @@ import com.vocahq.vocaphone.local.SherpaIncrementalResult
 import com.vocahq.vocaphone.local.SherpaIncrementalSession
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.settings.SettingsRepository
+import com.vocahq.vocaphone.telemetry.Telemetry
+import com.vocahq.vocaphone.telemetry.TelemetryDurationBucket
+import com.vocahq.vocaphone.telemetry.TelemetryReason
+import com.vocahq.vocaphone.telemetry.TelemetryStage
+import com.vocahq.vocaphone.telemetry.telemetryModel
+import com.vocahq.vocaphone.telemetry.telemetrySource
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -79,6 +85,7 @@ class DictationController(
     private val diagnostics: DiagnosticLog,
     private val audioDirectory: File,
     private val localModels: LocalModelManager,
+    private val telemetry: Telemetry,
     private val scope: CoroutineScope,
 ) {
     private val _state = MutableStateFlow(DictationState())
@@ -109,6 +116,23 @@ class DictationController(
      * and a write from an older one is dropped.
      */
     private val generation = AtomicInteger()
+
+    /**
+     * How long the last completed capture ran, for the telemetry duration
+     * bucket. Written once the WAV is closed and read at delivery, because the
+     * writer is scoped to `runDictation` and the outcome is reported from
+     * `deliver`/`fail` further down.
+     */
+    /**
+     * Cleared on retry, because a retry re-transcribes a stored WAV without
+     * recording anything: the previous live capture's length would otherwise be
+     * reported as this dictation's, and after a process restart a retried
+     * 90-second dictation would report `under_10s`. Null means "no duration to
+     * report", and the outcome is sent without a bucket rather than with a
+     * wrong one.
+     */
+    @Volatile
+    private var lastRecordingMillis: Long? = null
 
     init {
         scope.launch {
@@ -175,6 +199,9 @@ class DictationController(
     /** Re-sends audio that was preserved for a recoverable failure. */
     fun retry(sessionId: String) {
         if (pipeline?.isActive == true) return
+        // Nothing is recorded on this path, so the previous capture's length is
+        // not this dictation's.
+        lastRecordingMillis = null
         val generation = nextGeneration()
         pipeline = scope.launch {
             val record = history.find(sessionId) ?: return@launch
@@ -440,6 +467,7 @@ class DictationController(
         streamFrames?.close()
         drain.join()
         writer.close()
+        lastRecordingMillis = writer.durationMillis
 
         var stream = streamReference.get()
         if (stream == null) {
@@ -803,6 +831,18 @@ class DictationController(
         source: DictationSource,
     ) {
         diagnostics.recordTiming("transcript_ready", source.name)
+        // Reported here rather than after insertion: the transcript exists and
+        // is correct at this point, and whether the keyboard managed to commit
+        // it is a separate question with its own failure path.
+        telemetry.firstDictationEver()
+        lastRecordingMillis?.let { millis ->
+            telemetry.dictationSucceeded(
+                source = configuration.telemetrySource,
+                duration = TelemetryDurationBucket.of(millis / 1_000.0),
+                model = configuration.telemetryModel,
+                quality = configuration.transcriptionQuality,
+            )
+        }
         val target = when (source) {
             DictationSource.IME -> imeInserter
             DictationSource.COMPANION_APP -> null
@@ -880,6 +920,13 @@ class DictationController(
         generation: Int,
     ) = withContext(NonCancellable) {
         diagnostics.recordError(errorCategory(error), activeSource?.name)
+        telemetry.dictationFailed(
+            stage = telemetryStage(error),
+            reason = telemetryReason(error),
+            source = configuration.telemetrySource,
+            model = configuration.telemetryModel,
+            quality = configuration.transcriptionQuality,
+        )
         history.recordFailure(
             sessionId = sessionId.toString(),
             language = configuration.effectiveLanguage.wireValue,
@@ -910,6 +957,44 @@ class DictationController(
     private fun reset() {
         nextGeneration()
         _state.value = DictationState()
+    }
+
+    /**
+     * How far the dictation got, from the error that ended it.
+     *
+     * Deliberately derived from `error.code` — a closed set the gateway client
+     * defines — and never from `error.userMessage`, which is free text and can
+     * name a host, a path, or whatever a server chose to return.
+     */
+    private fun telemetryStage(error: GatewayException): TelemetryStage = when {
+        error.code.startsWith("audio") || error.code.startsWith("microphone") -> {
+            TelemetryStage.CAPTURE
+        }
+        error.code.startsWith("insert") -> TelemetryStage.INSERTION
+        error.code.startsWith("upload") || error.code == "unreachable" -> TelemetryStage.UPLOAD
+        else -> TelemetryStage.TRANSCRIPTION
+    }
+
+    private fun telemetryReason(error: GatewayException): TelemetryReason = when (error.code) {
+        "microphone_silenced" -> TelemetryReason.AUDIO_SILENCED
+        "microphone_focus_lost" -> TelemetryReason.AUDIO_FOCUS_LOST
+        "microphone_capture_lost" -> TelemetryReason.AUDIO_CAPTURE_LOST
+        "permission_repair" -> TelemetryReason.PERMISSION
+        "unreachable" -> TelemetryReason.GATEWAY_UNREACHABLE
+        "unauthorized", "forbidden" -> TelemetryReason.GATEWAY_REJECTED
+        "engine_not_ready" -> TelemetryReason.ENGINE_NOT_READY
+        "model_missing" -> TelemetryReason.MODEL_MISSING
+        "empty_transcript" -> TelemetryReason.TRANSCRIPT_EMPTY
+        else -> when {
+            error.code.startsWith("audio") || error.code.startsWith("microphone") -> {
+                TelemetryReason.AUDIO
+            }
+            error.code.startsWith("insert") -> TelemetryReason.INSERTION_REJECTED
+            // Unknown rather than the raw code. A code this mapper has not seen
+            // is exactly the case where passing it through would put an
+            // unreviewed string on the wire.
+            else -> TelemetryReason.UNKNOWN
+        }
     }
 
     private fun errorCategory(error: GatewayException): String = when {

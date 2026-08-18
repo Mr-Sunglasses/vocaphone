@@ -144,6 +144,19 @@ data class VocaPhoneSettings(
     val clipboardHistoryEnabled: Boolean = true,
     val clipboardHistory: List<String> = emptyList(),
     val emojiRecents: List<String> = emptyList(),
+    /**
+     * Anonymous usage reporting. Off until the user turns it on; see
+     * [com.vocahq.vocaphone.telemetry.TelemetryConfig] for what is sent and why
+     * there is no install identifier behind it.
+     */
+    val telemetryEnabled: Boolean = false,
+    /**
+     * Whether the onboarding step that offers usage reporting has been shown.
+     * Separate from [telemetryEnabled] because "declined" and "never asked"
+     * have to be told apart: without this, someone who said no would be asked
+     * again on every trip through guided setup.
+     */
+    val telemetryAsked: Boolean = false,
 ) {
 
     /**
@@ -301,6 +314,34 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun setTelemetryEnabled(enabled: Boolean) = put(Keys.TELEMETRY_ENABLED, enabled)
+
+    suspend fun setTelemetryAsked(asked: Boolean) = put(Keys.TELEMETRY_ASKED, asked)
+
+    /**
+     * Claims a one-shot telemetry milestone, returning true only the first time
+     * it is claimed on this install.
+     *
+     * Aptabase rotates its anonymous user hash every 24 hours, so per-user
+     * funnels are impossible and the funnel is reconstructed from ratios of
+     * once-ever counters instead. That arithmetic is wrong the moment a
+     * milestone fires twice, so the check and the write happen inside a single
+     * `edit` block: two coroutines reaching first-launch together must not both
+     * come away believing they were first.
+     *
+     * The stored value is a set of opaque milestone keys. It is not an
+     * identifier and never leaves the phone.
+     */
+    suspend fun claimTelemetryMilestone(key: String): Boolean {
+        var claimed = false
+        context.dataStore.edit { preferences ->
+            val seen = preferences[Keys.TELEMETRY_MILESTONES].orEmpty()
+            claimed = key !in seen
+            if (claimed) preferences[Keys.TELEMETRY_MILESTONES] = seen + key
+        }
+        return claimed
+    }
+
     suspend fun recordEngineStatus(
         engine: String,
         ready: Boolean,
@@ -352,6 +393,9 @@ class SettingsRepository(private val context: Context) {
         clipboardHistoryEnabled = this[Keys.CLIPBOARD_HISTORY_ENABLED] ?: true,
         clipboardHistory = ClipboardHistory.decode(this[Keys.CLIPBOARD_HISTORY]),
         emojiRecents = decodeEmojiRecents(this[Keys.EMOJI_RECENTS]),
+        telemetryEnabled = this[Keys.TELEMETRY_ENABLED]
+            ?: com.vocahq.vocaphone.telemetry.TelemetryConfig.DEFAULT_ENABLED,
+        telemetryAsked = this[Keys.TELEMETRY_ASKED] ?: false,
     )
 
     private object Keys {
@@ -384,6 +428,9 @@ class SettingsRepository(private val context: Context) {
         val CLIPBOARD_HISTORY_ENABLED = booleanPreferencesKey("keyboard_clipboard_history")
         val CLIPBOARD_HISTORY = stringPreferencesKey("keyboard_clipboard_history_items")
         val EMOJI_RECENTS = stringPreferencesKey("keyboard_emoji_recents")
+        val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
+        val TELEMETRY_ASKED = booleanPreferencesKey("telemetry_asked")
+        val TELEMETRY_MILESTONES = stringSetPreferencesKey("telemetry_milestones")
     }
 
     private companion object {

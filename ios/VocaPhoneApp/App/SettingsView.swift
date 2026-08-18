@@ -839,10 +839,16 @@ struct PrivacySettingsView: View {
                             + "deleted. Your gateway deletes successfully transcribed audio "
                             + "by default. Transcripts stay in the shared container on this "
                             + "phone so the keyboard can insert them. No third-party "
-                            + "transcription or analytics service is used."
+                            + "transcription or analytics service is used; usage reporting, "
+                            + "if you turn it on, goes to a server VocaHQ self-hosts."
                     )
                 }
             }
+
+            // Next to "What is kept" rather than under Diagnostics: both answer
+            // "what does this app keep or send", which is the question someone
+            // is holding when they come looking for either.
+            UsageReportingSettingsSection()
 
             Section {
                 LabeledContent("Typing suggestions", value: "On this iPhone")

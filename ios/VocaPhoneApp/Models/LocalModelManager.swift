@@ -564,18 +564,42 @@ final class LocalModelManager {
             downloadedModelIDs.insert(descriptor.id)
             persistPath(folder, for: descriptor.id)
             message = "\(descriptor.displayName) downloaded and verified."
+            Telemetry.shared.modelDownloadFinished(model: descriptor, outcome: .completed)
         } catch is CancellationError {
             hasError = false
             message = "Model download canceled."
+            Telemetry.shared.modelDownloadFinished(model: descriptor, outcome: .cancelled)
             throw CancellationError()
         } catch let error as URLError where error.code == .cancelled {
             hasError = false
             message = "Model download canceled."
+            Telemetry.shared.modelDownloadFinished(model: descriptor, outcome: .cancelled)
             throw CancellationError()
         } catch {
             hasError = true
             message = error.localizedDescription
+            // The error itself is never passed on: its message can name a
+            // download URL or a path inside the container, and the whole point
+            // of the enum is that neither can get out.
+            Telemetry.shared.modelDownloadFinished(
+                model: descriptor,
+                outcome: Self.downloadOutcome(for: error)
+            )
             throw error
+        }
+    }
+
+    /// A failed download that failed its integrity check is worth telling apart
+    /// from one that simply could not finish: the first means a pinned digest no
+    /// longer matches what the host serves, which is a supply-chain signal
+    /// rather than a flaky network.
+    static func downloadOutcome(for error: Error) -> TelemetryDownloadOutcome {
+        switch error {
+        case LocalModelManagerError.integrityFileMissing,
+            LocalModelManagerError.integrityManifestMissing:
+            .integrityFailed
+        default:
+            .failed
         }
     }
 

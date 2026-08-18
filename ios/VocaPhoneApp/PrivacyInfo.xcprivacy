@@ -6,8 +6,40 @@
 	<false/>
 	<key>NSPrivacyTrackingDomains</key>
 	<array/>
+	<!--
+		Anonymous usage reporting, off until the user turns it on in guided setup
+		or Settings › Privacy. It goes to a self-hosted Aptabase instance VocaHQ
+		runs, never to a third-party analytics service, and it carries a closed
+		set of counters: which setup step was reached, whether a dictation
+		succeeded or failed and at which stage, and the app version.
+
+		Not linked, because there is nothing to link it to. Aptabase derives its
+		anonymous user server-side from a salt it discards every 24 hours, so no
+		identifier is stored on the device and two days of events cannot be
+		joined together. NSPrivacyTracking stays false above: this is never
+		combined with data from other companies and is never used for
+		advertising, which is what "tracking" means in Apple's sense. No ATT
+		prompt is required and none is shown.
+
+		The keyboard and Live Activity extensions have their own manifests and
+		collect nothing at all. That is enforced by where the code lives: the
+		whole VocaPhoneApp/Telemetry directory is compiled into this target only.
+	-->
 	<key>NSPrivacyCollectedDataTypes</key>
-	<array/>
+	<array>
+		<dict>
+			<key>NSPrivacyCollectedDataType</key>
+			<string>NSPrivacyCollectedDataTypeProductInteraction</string>
+			<key>NSPrivacyCollectedDataTypeLinked</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypeTracking</key>
+			<false/>
+			<key>NSPrivacyCollectedDataTypePurposes</key>
+			<array>
+				<string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSPrivacyAccessedAPITypes</key>
 	<array>
 		<dict>

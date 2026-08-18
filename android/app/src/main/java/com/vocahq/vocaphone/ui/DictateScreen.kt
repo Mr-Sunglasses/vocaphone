@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.TextInsertion
@@ -42,6 +43,10 @@ fun DictateScreen(
     onRetry: (String) -> Unit,
     onDismiss: () -> Unit,
     onOpenGateway: () -> Unit,
+    onTelemetryDecision: (Boolean) -> Unit,
+    telemetryPayload: () -> String,
+    telemetryPendingCount: () -> Int,
+    telemetryDeliveryStatus: () -> String,
     modifier: Modifier = Modifier,
 ) {
     var scratchpad by remember { mutableStateOf(TextFieldValue()) }
@@ -70,6 +75,26 @@ fun DictateScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(SectionSpacing),
     ) {
+        // Guided setup asks once, at its end -- but only people who go through
+        // setup ever reach that screen. Everyone upgrading from an earlier beta
+        // already has onboardingComplete set, so SetupScreen never renders for
+        // them and they would never be asked at all. Asking here covers them,
+        // and disappears for good either way once answered.
+        if (BuildConfig.TELEMETRY && settings.onboardingComplete && !settings.telemetryAsked) {
+            var showingPayload by remember { mutableStateOf(false) }
+            UsageReportingSetupCard(
+                onDecision = onTelemetryDecision,
+                onSeePayload = { showingPayload = !showingPayload },
+            )
+            if (showingPayload) {
+                PendingPayloadView(
+                    payload = telemetryPayload(),
+                    pendingCount = telemetryPendingCount(),
+                    deliveryStatus = telemetryDeliveryStatus(),
+                )
+            }
+        }
+
         Section(
             title = "Dictate",
             supporting = listOf(

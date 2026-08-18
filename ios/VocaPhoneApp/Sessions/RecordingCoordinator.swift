@@ -130,6 +130,79 @@ final class RecordingCoordinator {
         // every observer, so the comparison earns its keep.
         guard refreshed != setupStatus else { return }
         setupStatus = refreshed
+        reportSetupProgress(refreshed)
+    }
+
+    /// Reports each setup step the first time it is satisfied.
+    ///
+    /// Driven from the refreshed status rather than from the buttons that start
+    /// each step, because every one of them is finished somewhere else — iOS
+    /// Settings, a permission alert, the keyboard itself — and comes back as
+    /// state rather than as a callback. Each step is a once-ever milestone
+    /// inside `Telemetry`, so the several-times-a-second refresh this method
+    /// runs under reports nothing after the first time.
+    /// When capture began, and how long the last completed capture ran.
+    ///
+    /// `SessionRecord` carries `createdAt`/`updatedAt`, but neither is the
+    /// recording length — a session that waits on a model load or a slow upload
+    /// would report a duration far longer than anyone spoke for. This is the
+    /// microphone's own clock, and it only feeds the bucketed telemetry value.
+    private var captureStartedAt: Date?
+    private var lastRecordingDuration: TimeInterval = 0
+
+    /// The last reported transcription route, so `source_selected` reports a
+    /// change rather than the mere fact that setup was re-read.
+    private var lastReportedSource: TelemetrySource?
+
+    /// The on-device settings the work in flight was claimed with.
+    ///
+    /// Captured for exactly the reason the route is (see
+    /// ``selectedProcessingLocation()``): a model or accuracy changed between two
+    /// dictations must describe the next one, not rewrite the one already
+    /// running. Reading them again at report time would attribute a slow
+    /// dictation to whatever the user switched to *because* it was slow, which
+    /// inverts the signal the events exist to carry.
+    ///
+    /// Both stay `nil` for a session this process never claimed — one resumed
+    /// after a relaunch — and a nil model is reported as `unknown` rather than
+    /// guessed at.
+    private var claimedModel: LocalModelDescriptor?
+    private var claimedQuality: TranscriptionQuality?
+
+    private func captureClaimedTranscriptionSettings() {
+        claimedModel = LocalModelCatalog.descriptor(
+            for: LocalTranscriptionPreferences.modelIdentifier
+        )
+        claimedQuality = LocalTranscriptionPreferences.quality
+    }
+
+    private func reportSourceIfChanged(_ selected: SessionProcessingLocation) {
+        let source: TelemetrySource = selected == .onDevice ? .onDevice : .gateway
+        guard source != lastReportedSource else { return }
+        lastReportedSource = source
+        Telemetry.shared.sourceSelected(source)
+    }
+
+    private func reportSetupProgress(_ status: SetupStatus) {
+        if status.isSatisfied(.microphone) {
+            Telemetry.shared.setupStepCompleted(.microphone)
+        }
+        if status.isSatisfied(.keyboard) {
+            Telemetry.shared.setupStepCompleted(.keyboard)
+        }
+        if status.isSatisfied(.source) {
+            Telemetry.shared.setupStepCompleted(.source)
+        }
+        // Deliberately not reported from here. `refreshSetupStatus` runs on any
+        // change to any field — microphone, keyboard, gateway health — and
+        // `source_selected` repeats by design, so emitting it here fired it over
+        // and over for someone who never touched the setting. Android reports it
+        // only where the source actually changes, and the two platforms' counts
+        // have to mean the same thing.
+        reportSourceIfChanged(status.source.selected)
+        if status.isSatisfied(.firstDictation) {
+            Telemetry.shared.firstDictationEver()
+        }
     }
 
     /// The selected route and everything known about whether it can work.
@@ -468,6 +541,7 @@ final class RecordingCoordinator {
             style: KeyboardPreferences.writingStyle.rawValue
         )
         record.processingLocation = Self.selectedProcessingLocation()
+        captureClaimedTranscriptionSettings()
         do {
             try record.transition(to: .launchingApp)
             try store.save(record)
@@ -619,6 +693,7 @@ final class RecordingCoordinator {
             // and written before any audio moves so the keyboard and the Live
             // Activity can name the same place the whole way through.
             record.processingLocation = Self.selectedProcessingLocation()
+        captureClaimedTranscriptionSettings()
             try? store.save(record)
             clearQuickDictationMarker()
             activeRecord = record
@@ -655,6 +730,11 @@ final class RecordingCoordinator {
                 && LocalTranscriptionPreferences.modelIdentifier.flatMap {
                     LocalModelCatalog.descriptor(for: $0)?.engine == .sherpaOnnx
                 } == true
+            // Stamped here, not at claim: permission prompts and a first
+            // on-device model load sit between the two and can take seconds,
+            // which would inflate every duration bucket by however long the
+            // user waited rather than spoke.
+            captureStartedAt = Date()
             let audioURL = try recorder.start(
                 sessionID: record.sessionID,
                 directory: directory,
@@ -782,6 +862,10 @@ final class RecordingCoordinator {
             keepAudioSessionActive: true
         ) ?? resolvedAudioURL(for: record)
         DiagnosticLog.record(.captureStopped)
+        if let started = captureStartedAt {
+            lastRecordingDuration = Date().timeIntervalSince(started)
+            captureStartedAt = nil
+        }
         if wasRecording {
             // Feedback is optional and should never sit in front of gateway work.
             Task { await soundFeedback.play(.stop) }
@@ -825,6 +909,7 @@ final class RecordingCoordinator {
         // session claimed by an older build carries no route at all — either way
         // this is where the record stops being able to mislead.
         record.processingLocation = Self.selectedProcessingLocation()
+        captureClaimedTranscriptionSettings()
         try? store.save(record)
 
         // Local inference deliberately happens before the gateway guard. A
@@ -1076,6 +1161,13 @@ final class RecordingCoordinator {
             .operationFailed,
             metadata: .error(diagnosticErrorCode(for: code, state: state))
         )
+        Telemetry.shared.dictationFailed(
+            stage: TelemetryFailureMapping.stage(for: code),
+            reason: TelemetryFailureMapping.reason(for: code),
+            source: record.telemetrySource,
+            model: claimedModel,
+            quality: claimedQuality
+        )
         do {
             try record.transition(to: state)
             record.error = SessionFailure(code: code, message: failureMessage, recoverable: recoverable)
@@ -1094,6 +1186,14 @@ final class RecordingCoordinator {
     /// a trial run once one has arrived.
     private func markTranscriptDelivered(for record: SessionRecord) {
         KeyboardPreferences.hasCompletedFirstDictation = true
+        // Both the gateway route and the on-device route converge here, which is
+        // why the outcome is reported from this method rather than twice.
+        Telemetry.shared.dictationSucceeded(
+            source: record.telemetrySource,
+            duration: .of(lastRecordingDuration),
+            model: claimedModel,
+            quality: claimedQuality
+        )
         refreshSetupStatus()
         message = record.sourceDocumentID == "in-app-test"
             ? "Transcript ready. Your gateway is working end to end."

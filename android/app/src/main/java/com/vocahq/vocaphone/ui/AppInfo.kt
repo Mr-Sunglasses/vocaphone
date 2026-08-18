@@ -43,8 +43,10 @@ const val ABOUT_PRIVACY_NOTE =
         "while the keyboard is open. Long-press the chip to hide it. Those clips " +
         "are never logged.\n\n" +
         "Audio goes to a model on this phone or to the gateway you set up. There " +
-        "is no cloud transcription and no analytics. Nothing is copied to the " +
-        "clipboard unless you tap Copy."
+        "is no cloud transcription and no third-party analytics. Usage reporting " +
+        "is off unless you turn it on under Dictation, and it sends counters to a " +
+        "server VocaHQ self-hosts, never your speech or your text. Nothing is " +
+        "copied to the clipboard unless you tap Copy."
 
 const val ABOUT_DIAGNOSTICS_NOTE =
     "The copied report has the app version, setup state, and the hardware " +

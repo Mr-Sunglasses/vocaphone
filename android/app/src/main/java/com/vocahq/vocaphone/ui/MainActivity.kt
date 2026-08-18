@@ -193,6 +193,17 @@ fun VocaPhoneApp(
                 onDownloadLocalModel = viewModel::downloadLocalModel,
                 onDownloadAndUseLocalModel = viewModel::downloadAndUseLocalModel,
                 onCancelLocalModelDownload = viewModel::cancelLocalModelDownload,
+                onTelemetryDecision = { enabled ->
+                    // The answer and the fact of having asked are recorded
+                    // separately: "declined" and "not asked yet" have to stay
+                    // distinguishable, or a no becomes a question repeated on
+                    // every trip through guided setup.
+                    viewModel.setTelemetryEnabled(enabled)
+                    viewModel.setTelemetryAsked()
+                },
+                telemetryPayload = viewModel::telemetryPayload,
+                telemetryPendingCount = viewModel::telemetryPendingCount,
+                telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 onFinish = { viewModel.setOnboardingComplete(true) },
                 modifier = content,
             )
@@ -207,6 +218,13 @@ fun VocaPhoneApp(
                 onRetry = viewModel::retry,
                 onDismiss = viewModel::dismissDictation,
                 onOpenGateway = { showingGateway = true },
+                onTelemetryDecision = { enabled ->
+                    viewModel.setTelemetryEnabled(enabled)
+                    viewModel.setTelemetryAsked()
+                },
+                telemetryPayload = viewModel::telemetryPayload,
+                telemetryPendingCount = viewModel::telemetryPendingCount,
+                telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 modifier = content,
             )
 
@@ -248,6 +266,16 @@ fun VocaPhoneApp(
                 onOpenGateway = { showingGateway = true },
                 diagnosticEvents = viewModel::diagnosticEvents,
                 onClearDiagnosticEvents = viewModel::clearDiagnosticEvents,
+                // Answering the switch in Settings counts as answering the
+                // question, or the onboarding card keeps asking someone to opt
+                // into something they already turned on.
+                onTelemetryEnabled = { enabled ->
+                    viewModel.setTelemetryEnabled(enabled)
+                    viewModel.setTelemetryAsked()
+                },
+                telemetryPayload = viewModel::telemetryPayload,
+                telemetryPendingCount = viewModel::telemetryPendingCount,
+                telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 page = settingsPage,
                 onPageChange = { settingsPage = it },
                 modifier = content,

@@ -1,0 +1,86 @@
+# Self-hosted Aptabase — the backend for the anonymous usage counters.
+#
+# TEMPLATE, NOT YET THE RUNNING CONFIGURATION. The live instance behind
+# telemetry.vocahq.com was stood up before this directory existed, so the
+# authoritative version is still on the host. Reconcile the two before treating
+# this as documentation of anything — README.md, "Bringing the real config in".
+#
+# Secrets come from an untracked .env beside this file. The ingest key is not
+# among them and is not a secret; see README.md, "Secrets".
+
+name: vocaphone-telemetry
+
+services:
+  aptabase:
+    # Pin by digest before this is load-bearing: :main shifts underneath you,
+    # and a floating tag on the service that receives user data is a bad place
+    # to discover that. README.md, "Pinning".
+    image: ghcr.io/aptabase/aptabase:main
+    restart: unless-stopped
+    depends_on:
+      aptabase_db:
+        condition: service_healthy
+      aptabase_events_db:
+        condition: service_healthy
+    environment:
+      BASE_URL: https://telemetry.vocahq.com
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      DATABASE_URL: "Server=aptabase_db;Port=5432;Database=aptabase;User Id=aptabase;Password=${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}"
+      CLICKHOUSE_CONNECTION_STRING: "Host=aptabase_events_db;Port=8123;Username=aptabase;Password=${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}"
+      # Used for the login link to the dashboard. Nothing about events touches
+      # this path — no user of the apps ever receives mail from here.
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS}
+    ports:
+      # Bound to loopback: TLS termination and the ingest rate limit both live
+      # in the reverse proxy in front of this, and a container published on
+      # 0.0.0.0 would let anyone skip both.
+      - "127.0.0.1:8000:8080"
+
+  aptabase_db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aptabase
+      POSTGRES_USER: aptabase
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - aptabase_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aptabase -d aptabase"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  aptabase_events_db:
+    image: clickhouse/clickhouse-server:24.3-alpine
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: aptabase
+      CLICKHOUSE_USER: aptabase
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:?set CLICKHOUSE_PASSWORD in .env}
+    volumes:
+      - aptabase_events_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    # ClickHouse is the memory-hungry component of the three. Cap it here rather
+    # than discovering the ceiling when the gateway on the same box starts
+    # swapping.
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aptabase_db_data:
+  aptabase_events_data:

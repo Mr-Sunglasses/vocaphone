@@ -14,8 +14,13 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
@@ -35,6 +40,10 @@ fun SetupScreen(
     onDownloadLocalModel: (LocalModelDescriptor) -> Unit,
     onDownloadAndUseLocalModel: (LocalModelDescriptor) -> Unit,
     onCancelLocalModelDownload: () -> Unit,
+    onTelemetryDecision: (Boolean) -> Unit,
+    telemetryPayload: () -> String,
+    telemetryPendingCount: () -> Int,
+    telemetryDeliveryStatus: () -> String,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -103,6 +112,29 @@ fun SetupScreen(
                     "On-device models are off while you use a gateway.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                )
+            }
+        }
+
+        // Last, and only once the checklist is done: asking for usage reporting
+        // before the user has a working transcript is asking a favour of someone
+        // still deciding whether the app is worth their time.
+        //
+        // The BuildConfig check is repeated here even though the card checks it
+        // too, because the payload view below is a separate call. Without it R8
+        // keeps that composable — and the ingest path string inside it — in the
+        // F-Droid APK, where nothing can ever reach it.
+        if (BuildConfig.TELEMETRY && status.isReadyToDictate && !settings.telemetryAsked) {
+            var showingPayload by remember { mutableStateOf(false) }
+            UsageReportingSetupCard(
+                onDecision = onTelemetryDecision,
+                onSeePayload = { showingPayload = !showingPayload },
+            )
+            if (showingPayload) {
+                PendingPayloadView(
+                    payload = telemetryPayload(),
+                    pendingCount = telemetryPendingCount(),
+                    deliveryStatus = telemetryDeliveryStatus(),
                 )
             }
         }

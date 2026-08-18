@@ -90,7 +90,9 @@ Linux desktop, or home server you already own when you want larger models or
 shared compute. That path is self-hosted, not on-device. For gateway mode you pick
 the network path: trusted LAN, private Tailscale, or HTTPS behind your own
 reverse proxy. Bearer tokens are per device. There is no analytics SDK and no
-third-party transcription.
+third-party transcription. Optional anonymous usage reporting is off unless
+you turn it on, goes to a server VocaHQ self-hosts, and never carries text,
+audio, or your gateway's address.
 
 Same privacy stance as VocaLinux and VocaMac: free, on-device first, and meant to
 stay that way. We also document the awkward platform bits honestly: iOS keyboard
@@ -140,7 +142,8 @@ limits and Android's keyboard/input-method boundaries.
 - CPU/OpenBLAS, host-native CPU, NVIDIA CUDA, and Vulkan Compose profiles
 - Bearer authentication with named per-device tokens and revocation, iOS
   Keychain storage, configurable HTTP/HTTPS gateway access, optional private
-  Tailscale HTTPS, no analytics, and no third-party transcription
+  Tailscale HTTPS, no third-party analytics or transcription, and opt-in
+  anonymous usage reporting that is off by default
 
 ## Part of VocaHQ
 

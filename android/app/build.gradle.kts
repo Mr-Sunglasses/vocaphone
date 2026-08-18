@@ -40,6 +40,29 @@ android {
 
     flavorDimensions += "distribution"
 
+    // Anonymous usage reporting goes to a self-hosted Aptabase instance.
+    //
+    // The key is committed on purpose, and it is not in the same class as the
+    // signing keystore above. It is an append-only ingest credential: it can
+    // add events and cannot read the dashboard, change the app, or reach
+    // anything else. It also ships inside every APK, so it can be extracted
+    // from a Play download in seconds -- keeping it out of the repository would
+    // hide it from contributors and from nobody else, while making release
+    // builds depend on an environment variable that is easy to forget and
+    // silently disables reporting when it is missing.
+    //
+    // The real exposure is someone posting junk events to skew the beta
+    // numbers. That is handled where it can actually be handled -- rate
+    // limiting at the reverse proxy -- and by rotating this key if it ever
+    // happens, which costs one release.
+    //
+    // Forks override it with -PaptabaseAppKey= or APTABASE_APP_KEY. An empty
+    // value disables transmission entirely rather than falling back to ours.
+    val aptabaseHost = "https://telemetry.vocahq.com"
+    val aptabaseKey = providers.gradleProperty("aptabaseAppKey").orNull
+        ?: System.getenv("APTABASE_APP_KEY")
+        ?: "A-SH-3275173609"
+
     productFlavors {
         // Everything the project ships itself. sherpa-onnx reaches Android as a
         // prebuilt JNI library, so its .so files live in this flavor's source
@@ -48,14 +71,29 @@ android {
             dimension = "distribution"
             isDefault = true
             buildConfigField("boolean", "SHERPA_ONNX", "true")
+            buildConfigField("boolean", "TELEMETRY", "true")
+            buildConfigField("String", "APTABASE_HOST", "\"$aptabaseHost\"")
+            buildConfigField("String", "APTABASE_KEY", "\"$aptabaseKey\"")
         }
         // F-Droid builds every byte it ships from source, which rules out the
         // prebuilt sherpa-onnx and ONNX Runtime libraries. This flavor drops
         // them and leaves whisper.cpp, which is compiled from the pinned
         // submodule, as the on-device engine.
+        //
+        // It also compiles usage reporting out. TELEMETRY is a constant
+        // false, so R8 removes AptabaseSink, the host, the app key and every
+        // control that could switch reporting on. Scanning the release dex
+        // finds no host, no ingest path and no App-Key header; what survives is
+        // an unreachable queue whose sink is the no-op. That keeps this flavor
+        // clear of F-Droid's Tracking anti-feature without anyone having to
+        // trust a runtime check, and it leaves the flavor's dependency graph --
+        // and so the reproducible build -- exactly as it was.
         create("fdroid") {
             dimension = "distribution"
             buildConfigField("boolean", "SHERPA_ONNX", "false")
+            buildConfigField("boolean", "TELEMETRY", "false")
+            buildConfigField("String", "APTABASE_HOST", "\"\"")
+            buildConfigField("String", "APTABASE_KEY", "\"\"")
         }
     }
 
@@ -194,6 +232,9 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // TelemetryVocabularyTest walks Telemetry's public signatures to assert none
+    // of them can carry free text. Test-only: nothing in the APK reflects.
+    testImplementation(kotlin("reflect"))
     testImplementation(libs.okhttp.mockwebserver)
     // The unit-test android.jar only stubs org.json; the real implementation lets
     // the gateway client be tested against MockWebServer on a plain JVM.

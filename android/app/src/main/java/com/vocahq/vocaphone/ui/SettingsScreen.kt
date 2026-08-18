@@ -85,6 +85,10 @@ fun SettingsScreen(
     onOpenGateway: () -> Unit,
     diagnosticEvents: () -> String,
     onClearDiagnosticEvents: () -> Unit,
+    onTelemetryEnabled: (Boolean) -> Unit,
+    telemetryPayload: () -> String,
+    telemetryPendingCount: () -> Int,
+    telemetryDeliveryStatus: () -> String,
     page: SettingsPage,
     onPageChange: (SettingsPage) -> Unit,
     modifier: Modifier = Modifier,
@@ -303,6 +307,16 @@ fun SettingsScreen(
                         onSelect = onAudioRetention,
                     )
                 }
+                // Next to audio retention rather than under About: both answer
+                // "what does this app keep or send", which is the question
+                // someone is holding when they come looking for either.
+                UsageReportingSection(
+                    enabled = settings.telemetryEnabled,
+                    onEnabled = onTelemetryEnabled,
+                    payload = telemetryPayload,
+                    pendingCount = telemetryPendingCount,
+                    deliveryStatus = telemetryDeliveryStatus,
+                )
             }
 
             SettingsPage.CONNECTION -> {

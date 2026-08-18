@@ -45,7 +45,9 @@ revert — decide which before archiving.
    [privacy.md](privacy.md). The honest answers are unusually simple —
    - Data collected: **Audio Data**, linked to no identity, used only to
      provide app functionality (transcription), not used for tracking.
-   - No analytics, no advertising, no third-party data sharing.
+   - Data collected: **Product Interaction**, only when the user turns on
+     usage reporting, not linked to identity, not used for tracking.
+   - No third-party analytics service, no advertising, no data sharing.
    - No tracking (matches `NSPrivacyTracking = false` in the privacy
      manifests).
 3. **Age rating**: answer the questionnaire; nothing in the app needs an

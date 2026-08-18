@@ -26,6 +26,11 @@ struct SetupView: View {
     ) private var localTranscriptionEnabled = false
     @State private var keyboardProbeText = ""
     @State private var typingProbeText = ""
+    /// Seeded from the stored flag and then owned by the view, so answering the
+    /// usage-reporting step removes it immediately instead of leaving it on
+    /// screen already-answered until the next redraw.
+    @State private var hasAskedAboutReporting = UserDefaultsTelemetryPreferences().hasBeenAsked
+    private let telemetryPreferences = UserDefaultsTelemetryPreferences()
 
     private var status: SetupStatus { coordinator.setupStatus }
 
@@ -34,6 +39,7 @@ struct SetupView: View {
             introSection
             sourceSection
             stepsSection
+            usageReportingSection
             finishSection
             privacySection
         }
@@ -294,6 +300,24 @@ struct SetupView: View {
             .padding(.leading, 32)
     }
 
+    /// Asked last, and only once the checklist is done: requesting a favour of
+    /// someone still deciding whether the app is worth their time is how you get
+    /// a reflexive no.
+    @ViewBuilder
+    private var usageReportingSection: some View {
+        if status.isReadyToDictate && !hasAskedAboutReporting {
+            UsageReportingSetupSection { enabled in
+                // The answer and the fact of having asked are recorded
+                // separately: "declined" and "not asked yet" have to stay
+                // distinguishable, or a no becomes a question repeated on every
+                // trip through guided setup.
+                Task { await Telemetry.shared.setEnabled(enabled) }
+                telemetryPreferences.hasBeenAsked = true
+                hasAskedAboutReporting = true
+            }
+        }
+    }
+
     private var finishSection: some View {
         Section {
             Button(action: leaveSetup) {
@@ -342,7 +366,9 @@ struct SetupView: View {
             Text(
                 "Audio stays on this phone until transcription succeeds. A gateway "
                     + "deletes successfully transcribed audio by default. No third-party "
-                    + "transcription or analytics service is involved."
+                    + "transcription or analytics service is involved. If you turn on "
+                    + "usage reporting, counters go to a server VocaHQ self-hosts — never "
+                    + "your speech, your text, or your gateway's address."
             )
         }
     }
@@ -368,6 +394,7 @@ struct SetupView: View {
 
     private func leaveSetup() {
         setupCompleted = true
+        if status.isReadyToDictate { Telemetry.shared.setupFinished() }
         dismiss()
     }
 

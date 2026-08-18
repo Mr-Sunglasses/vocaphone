@@ -9,6 +9,8 @@ import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
 import com.vocahq.vocaphone.local.LocalModelManager
 import com.vocahq.vocaphone.settings.SettingsRepository
+import com.vocahq.vocaphone.telemetry.Telemetry
+import com.vocahq.vocaphone.telemetry.TelemetryFlushScheduler
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +43,14 @@ class AppContainer(context: Context) {
 
     val localModels = LocalModelManager(context.applicationContext)
 
+    /**
+     * Anonymous usage reporting. Does nothing at all until the user turns it on,
+     * and is compiled out of the F-Droid flavor.
+     */
+    val telemetry = Telemetry(settings, applicationScope)
+
+    private val telemetryFlush = TelemetryFlushScheduler(telemetry, applicationScope)
+
     val dictation = DictationController(
         context = context.applicationContext,
         settings = settings,
@@ -48,11 +58,13 @@ class AppContainer(context: Context) {
         diagnostics = diagnostics,
         audioDirectory = audioDirectory,
         localModels = localModels,
+        telemetry = telemetry,
         scope = applicationScope,
     )
 
     init {
         applicationScope.launch { localModels.refresh() }
+        telemetryFlush.start()
     }
 
     fun purgeExpiredAudio() {

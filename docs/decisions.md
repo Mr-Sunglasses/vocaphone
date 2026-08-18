@@ -35,6 +35,32 @@ install helpers remove the obsolete Local Flow units. Everything else remains
 a documented hard cutover — see
 [deployment.md](deployment.md#migrating-from-the-local-flow-working-name-v030).
 
+## Reversed: anonymous usage reporting (August 2026)
+
+The 0.1.0 beta plan called the absence of analytics and crash reporting "correct
+and non-negotiable". That position is deliberately reversed here, and the
+reversal is recorded rather than left to be discovered in a diff.
+
+**What changed.** The beta has no feedback channel that does not require the user
+to write an email, so the one question it cannot answer is where setup breaks for
+people who never file a bug.
+
+**What did not change.** No third-party analytics service, no analytics SDK in
+either binary, nothing sent by default, and nothing sent that is not a counter.
+
+| Choice | Decision | Why |
+| --- | --- | --- |
+| Backend | Self-hosted Aptabase (AGPL-3.0) at `telemetry.vocahq.com` | Purpose-built for privacy-first mobile analytics; three containers rather than PostHog's eight-service stack; no vendor in the data path |
+| Client | Hand-rolled against the documented ingest API, not the MIT SDK | The SDK auto-sends `deviceModel` and a full `osVersion`; omitting them is a one-line decision when you own the request and a fork when you do not. Also keeps "no analytics SDK" literally true |
+| Identity | None. Aptabase derives an anonymous user from a salt it discards every 24 hours | Nothing stored on the phone, and two days of events cannot be joined. Costs all retention and multi-day funnel analysis, which is accepted |
+| Default | Opt-in, asked at the end of guided setup | Not a legal requirement — with no device-stored identifier the ePrivacy consent hook does not apply — but this audience installed a self-hosted dictation keyboard, and a default-on network call spends trust that took a release to earn |
+| F-Droid | Compiled out: no sender, host, credential or switch survives R8, verified by scanning the release dex | Keeps the listing clear of the `Tracking` anti-feature without relying on a runtime check, and leaves the reproducible build's dependency graph unchanged |
+| iOS keyboard | Reports nothing; the code is not in the extension's target | A Full Access keyboard that can open a socket is the scariest thing this product could ship, whatever is in the packet |
+
+Full detail in [privacy.md](privacy.md#usage-reporting); the backend that
+receives it, and what has and has not been verified about it, is in
+[`telemetry/`](../telemetry/README.md).
+
 ## Implemented assumptions
 
 These are changeable implementation defaults, not confirmed product decisions:

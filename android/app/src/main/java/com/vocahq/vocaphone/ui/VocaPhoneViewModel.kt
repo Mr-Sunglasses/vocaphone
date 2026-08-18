@@ -19,10 +19,14 @@ import com.vocahq.vocaphone.dictation.DictationSource
 import com.vocahq.vocaphone.gateway.GatewayClient
 import com.vocahq.vocaphone.gateway.GatewayException
 import com.vocahq.vocaphone.local.LocalModelDescriptor
+import com.vocahq.vocaphone.local.LocalModelIntegrityException
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
+import com.vocahq.vocaphone.telemetry.TelemetryDownloadOutcome
+import com.vocahq.vocaphone.telemetry.TelemetrySetupStep
+import com.vocahq.vocaphone.telemetry.TelemetrySource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -113,6 +117,7 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         audioManager?.registerAudioDeviceCallback(deviceCallback, null)
+        container.telemetry.appFirstOpen()
         viewModelScope.launch {
             container.dictation.state.collect { state ->
                 _microphone.update {
@@ -144,6 +149,27 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
                         container.localModels.isDownloaded(configuration.localModelId)
                     ),
             )
+            reportSetupProgress(_setup.value)
+        }
+    }
+
+    /**
+     * Reports each setup step the first time it is satisfied.
+     *
+     * Driven from the refreshed status rather than from the buttons that grant
+     * each permission, because most of these steps are completed in iOS-style
+     * trips out to system Settings and come back as state, not as a callback.
+     * Each step is a once-ever milestone inside [Telemetry], so repeatedly
+     * refreshing a finished checklist reports nothing.
+     */
+    private fun reportSetupProgress(status: SetupStatus) {
+        if (status.microphone) container.telemetry.setupStepCompleted(TelemetrySetupStep.MICROPHONE)
+        if (status.notifications) {
+            container.telemetry.setupStepCompleted(TelemetrySetupStep.NOTIFICATIONS)
+        }
+        if (status.ime.selected) container.telemetry.setupStepCompleted(TelemetrySetupStep.KEYBOARD)
+        if (status.gatewayConfigured) {
+            container.telemetry.setupStepCompleted(TelemetrySetupStep.SOURCE)
         }
     }
 
@@ -315,13 +341,36 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch { container.settings.clearClipboardHistory() }
 
     fun setOnboardingComplete(complete: Boolean) =
-        viewModelScope.launch { container.settings.setOnboardingComplete(complete) }
+        viewModelScope.launch {
+            container.settings.setOnboardingComplete(complete)
+            if (complete) container.telemetry.setupFinished()
+        }
 
     fun setLocalTranscriptionEnabled(enabled: Boolean) =
         viewModelScope.launch {
             container.settings.setLocalTranscriptionEnabled(enabled)
+            container.telemetry.sourceSelected(
+                if (enabled) TelemetrySource.ON_DEVICE else TelemetrySource.GATEWAY
+            )
             refreshSetup()
         }
+
+    // ----------------------------------------------------------- telemetry
+
+    /** Anonymous usage reporting; see `TelemetryConfig` for what this does and does not send. */
+    fun setTelemetryEnabled(enabled: Boolean) = container.telemetry.setEnabled(enabled)
+
+    /** Records that the onboarding step was shown, whichever way it was answered. */
+    fun setTelemetryAsked() =
+        viewModelScope.launch { container.settings.setTelemetryAsked(true) }
+
+    /** The literal JSON the next flush would POST, for the "See what's sent" screen. */
+    fun telemetryPayload(): String = container.telemetry.pendingPayload()
+
+    fun telemetryPendingCount(): Int = container.telemetry.pendingCount()
+
+    /** Whether reporting is actually getting through; counts only, no content. */
+    fun telemetryDeliveryStatus(): String = container.telemetry.deliveryStatus()
 
     fun setLocalModel(model: LocalModelDescriptor) {
         viewModelScope.launch {
@@ -366,6 +415,7 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
         val job = viewModelScope.launch {
             try {
                 container.localModels.download(model)
+                container.telemetry.modelDownloadFinished(model, TelemetryDownloadOutcome.COMPLETED)
                 if (useWhenReady) {
                     container.settings.setLocalModel(model.id)
                     container.settings.setLocalTranscriptionEnabled(true)
@@ -374,6 +424,20 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
                 }
             } catch (_: CancellationException) {
                 // Cancellation is an explicit user action, not a failed download.
+                container.telemetry.modelDownloadFinished(model, TelemetryDownloadOutcome.CANCELLED)
+            } catch (error: Throwable) {
+                // The exception is never passed on: its message can name a
+                // download URL or a path under the user's data directory, and
+                // the whole point of the enum is that neither can get out.
+                container.telemetry.modelDownloadFinished(
+                    model,
+                    if (error is LocalModelIntegrityException) {
+                        TelemetryDownloadOutcome.INTEGRITY_FAILED
+                    } else {
+                        TelemetryDownloadOutcome.FAILED
+                    },
+                )
+                throw error
             }
         }
         localModelDownloadJob = job

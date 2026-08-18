@@ -1,6 +1,6 @@
 Speak into your phone and the text shows up where you are already typing. VocaPhone is a system keyboard: switch to it in any app, dictate, and the transcript is inserted at your cursor through Android's normal input method interface.
 
-Transcription never touches a cloud speech service. It runs either on your own device or on a machine you already own and administer via a self-hosted gateway. There are no accounts, no analytics SDK, and no subscription.
+Transcription never touches a cloud speech service. It runs either on your own device or on a machine you already own and administer via a self-hosted gateway. There are no accounts, no analytics SDK, and no subscription. The Play build offers optional anonymous usage reporting, off unless you turn it on, reporting to a server the developers self-host; it never includes your speech, your text, or your gateway address. The F-Droid build has it compiled out entirely.
 
 <b>Two ways to transcribe</b>
 

@@ -179,6 +179,20 @@ targets:
       # Same reason as the app target: the strip and the bar carry their
       # own previews, and this is what those previews are built from.
       - path: VocaPhoneKeyboard/KeyboardViewPreview.swift
+      # Usage reporting. These tests are the privacy claim: the promise is that
+      # the code *cannot* put a transcript, a gateway address or a device model
+      # on the wire, not that reviewers will notice if it does. Listed file by
+      # file rather than as a directory so it stays obvious that this code is
+      # in the app target and the test target, and in no extension.
+      - path: VocaPhoneApp/Telemetry/TelemetryEvent.swift
+      - path: VocaPhoneApp/Telemetry/TelemetryConfig.swift
+      - path: VocaPhoneApp/Telemetry/TelemetryRecord.swift
+      - path: VocaPhoneApp/Telemetry/TelemetryQueue.swift
+      - path: VocaPhoneApp/Telemetry/TelemetrySink.swift
+      - path: VocaPhoneApp/Telemetry/Telemetry.swift
+      - path: VocaPhoneApp/Telemetry/UsageReportingCopy.swift
+      - path: VocaPhoneApp/Telemetry/TelemetryStats.swift
+      - path: VocaPhoneApp/Telemetry/TelemetryFailureMapping.swift
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
