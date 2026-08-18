@@ -8,6 +8,8 @@ const siteRoot = fileURLToPath(new URL("..", import.meta.url));
 const html = readFileSync(join(siteRoot, "index.html"), "utf8");
 const iphoneHtml = readFileSync(join(siteRoot, "iphone/index.html"), "utf8");
 const deviceSetupHtml = readFileSync(join(siteRoot, "iphone/device-setup/index.html"), "utf8");
+const privacyHtml = readFileSync(join(siteRoot, "privacy/index.html"), "utf8");
+const sitemap = readFileSync(join(siteRoot, "sitemap.xml"), "utf8");
 const css = readFileSync(join(siteRoot, "styles.css"), "utf8");
 const script = readFileSync(join(siteRoot, "script.js"), "utf8");
 
@@ -232,4 +234,26 @@ test("visual treatment stays flat", () => {
 test("motion has a reduced-motion fallback", () => {
   assert.match(css, /prefers-reduced-motion:\s*reduce/);
   assert.match(script, /setTimeout\([\s\S]*revealNodes[\s\S]*is-visible/);
+});
+
+test("hosted privacy page covers the Play listing facts", () => {
+  assert.ok(existsSync(join(siteRoot, "privacy/index.html")));
+  assert.equal((privacyHtml.match(/<h1\b/g) || []).length, 1);
+  assert.match(
+    privacyHtml,
+    /rel="canonical" href="https:\/\/vocaphone\.vocahq\.com\/privacy\/"/,
+  );
+  assert.match(html, /href="\/privacy\/"/);
+  assert.doesNotMatch(html, /docs\/privacy\.md/);
+  assert.match(sitemap, /<loc>https:\/\/vocaphone\.vocahq\.com\/privacy\/<\/loc>/);
+
+  assert.match(privacyHtml, /no Voca account/i);
+  assert.match(privacyHtml, /no analytics SDK/i);
+  assert.match(privacyHtml, /on-device is the default/i);
+  assert.match(
+    privacyHtml,
+    /Audio leaves the phone only if you deliberately set a gateway you\s+control/,
+  );
+  assert.match(privacyHtml, /AGPL-3\.0/);
+  assert.match(privacyHtml, /hello@vocahq\.com/);
 });

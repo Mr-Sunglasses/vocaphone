@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="VocaPhone is a voice dictation keyboard. Transcription never touches a cloud speech service. On-device is the default. Audio leaves the phone only if you set a gateway you control."
+    />
+    <meta name="theme-color" content="#f4f1e8" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://vocaphone.vocahq.com/privacy/" />
+    <meta property="og:title" content="VocaPhone privacy" />
+    <meta
+      property="og:description"
+      content="On-device is the default. Audio leaves the phone only if you set a gateway you control."
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:site_name" content="VocaPhone" />
+    <meta property="og:url" content="https://vocaphone.vocahq.com/privacy/" />
+    <meta property="og:image" content="https://vocaphone.vocahq.com/assets/og-image.png" />
+    <meta
+      property="og:image:secure_url"
+      content="https://vocaphone.vocahq.com/assets/og-image.png"
+    />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="VocaPhone private voice typing, on-device first with an optional self-hosted gateway"
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="VocaPhone privacy" />
+    <meta
+      name="twitter:description"
+      content="On-device is the default. Audio leaves the phone only if you set a gateway you control."
+    />
+    <meta name="twitter:image" content="https://vocaphone.vocahq.com/assets/og-image.png" />
+    <meta
+      name="twitter:image:alt"
+      content="VocaPhone private voice typing, on-device first with an optional self-hosted gateway"
+    />
+    <title>VocaPhone privacy</title>
+    <link rel="icon" href="../assets/vocaphone-logo.svg" type="image/svg+xml" />
+    <link rel="icon" href="../favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="../assets/apple-touch-icon.png" />
+    <link rel="stylesheet" href="../styles.css" />
+    <script src="../script.js" defer></script>
+  </head>
+  <body class="guide-body">
+    <a class="skip-link" href="#privacy-content">Skip to privacy</a>
+
+    <header class="menu-bar guide-menu-bar">
+      <a class="brand-link" href="/" aria-label="VocaPhone home">
+        <img src="../assets/vocaphone-logo.svg" alt="" width="32" height="32" />
+        <span>vocaphone</span>
+      </a>
+      <a class="guide-back" href="/">← back to the website</a>
+    </header>
+
+    <main class="guide-main" id="privacy-content">
+      <section class="guide-hero dot-field">
+        <div>
+          <span class="section-tag">privacy</span>
+          <h1>what happens<br />to your voice.</h1>
+          <p>
+            VocaPhone is a voice dictation keyboard. Transcription never
+            touches a cloud speech service. It runs on your own device, or on a
+            machine you already own and administer through a self-hosted
+            gateway.
+          </p>
+        </div>
+        <aside class="guide-summary" aria-label="Privacy facts">
+          <span>the short version</span>
+          <strong>no Voca account</strong>
+          <strong>no analytics SDK</strong>
+          <strong>no subscription</strong>
+          <strong>on-device default</strong>
+        </aside>
+      </section>
+
+      <section class="guide-content" aria-labelledby="on-device-title">
+        <div class="guide-intro">
+          <span class="section-tag">the default</span>
+          <h2 id="on-device-title">on-device is the default.</h2>
+          <p>
+            Recording and speech-to-text happen on the phone. After a
+            transcript is safely stored, the successful audio file is deleted.
+          </p>
+        </div>
+
+        <ol class="guide-steps">
+          <li class="guide-step">
+            <span>01</span>
+            <div>
+              <h3>Android recordings</h3>
+              <p>
+                Audio is captured as 16 kHz mono PCM16 and written to a WAV in
+                app-private storage while recording. The file is deleted
+                immediately on success. It is kept only for a failed
+                still-retryable attempt, for the retention window you choose
+                (1, 6 or 24 hours).
+              </p>
+            </div>
+          </li>
+
+          <li class="guide-step">
+            <span>02</span>
+            <div>
+              <h3>What the keyboard can see</h3>
+              <p>
+                The keyboard writes through InputConnection and does not read
+                the field for dictation. Camera is requested only for Scan QR
+                pairing. The microphone is used only while a dictation is
+                running.
+              </p>
+            </div>
+          </li>
+        </ol>
+
+        <aside class="guide-callout" aria-labelledby="gateway-title">
+          <div>
+            <span class="section-tag">optional path</span>
+            <h2 id="gateway-title">audio leaves only if you set a gateway.</h2>
+            <p>
+              Audio leaves the phone only if you deliberately set a gateway you
+              control. That audio goes to that gateway, not to VocaHQ. The
+              gateway is self-hosted, but it is not on-device. Use a trusted
+              LAN, encrypted private network, or HTTPS to protect gateway
+              traffic.
+            </p>
+          </div>
+          <a class="button button-secondary" href="https://github.com/VocaHQ/vocagateway">
+            explore VocaGateway <span aria-hidden="true">↗</span>
+          </a>
+        </aside>
+
+        <div class="guide-source-links">
+          <p>
+            VocaPhone is free and AGPL-3.0 licensed. There is no Voca account,
+            no analytics SDK, and no subscription.
+          </p>
+          <a href="mailto:hello@vocahq.com">hello@vocahq.com</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="guide-footer">
+      <a class="brand-link" href="/">
+        <img src="../assets/vocaphone-logo.svg" alt="" width="34" height="34" />
+        <span>vocaphone</span>
+      </a>
+      <span>open source · private by design · gateway optional</span>
+    </footer>
+  </body>
+</html>
