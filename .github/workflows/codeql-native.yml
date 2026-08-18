@@ -26,9 +26,18 @@ permissions:
   contents: read
   security-events: write
 
+# Analysing the newest commit on main is the whole point, so a newer push
+# supersedes an older run rather than queueing behind it.
+#
+# `false` was actively harmful here. The Swift job can occupy the group for its
+# full timeout, and GitHub keeps only one *pending* run per group: when a second
+# push arrives while one is already waiting, the older pending run is cancelled.
+# That is not the run you want to lose. It cost the analysis of the commit that
+# fixed an open alert -- the fix merged, its run was evicted by the next merge,
+# and the alert stayed open pointing at code that no longer existed.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   HOMEBREW_NO_AUTO_UPDATE: '1'
@@ -68,7 +77,14 @@ jobs:
   ios:
     name: Swift
     runs-on: macos-15
-    timeout-minutes: 30
+    # Sixty rather than the thirty this started with, and the thirty was the bug.
+    # CodeQL traces the compiler, which costs far more than the build itself:
+    # quality-ios.yml builds and tests the same project on the same runner in
+    # seven to eight minutes, while the traced build alone was still going at
+    # twenty-nine. It hit the limit every time, so Swift results never uploaded
+    # and the job held the concurrency group for the full half hour on the way
+    # out.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
