@@ -20,7 +20,7 @@ function androidInstallBlock(source) {
 }
 
 test("page has one clear title and a landmark structure", () => {
-  assert.match(html, /<title>VocaPhone — voice typing that stays yours<\/title>/);
+  assert.match(html, /<title>VocaPhone: voice typing that stays yours<\/title>/);
   assert.equal((html.match(/<h1\b/g) || []).length, 1);
   assert.match(html, /<main id="main-content">/);
   assert.match(html, /<nav[^>]+aria-label="Main navigation"/);
@@ -86,7 +86,7 @@ test("production metadata is complete", () => {
     /property="og:image:height" content="630"/,
     /property="og:image:alt"\s+content="VocaPhone voice typing that stays yours, on-device first with an optional gateway"/,
     /name="twitter:card" content="summary_large_image"/,
-    /name="twitter:title" content="VocaPhone — voice typing that stays yours"/,
+    /name="twitter:title" content="VocaPhone: voice typing that stays yours"/,
     /name="twitter:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
     /name="twitter:image:alt"\s+content="VocaPhone voice typing that stays yours, on-device first with an optional gateway"/,
   ]) {
