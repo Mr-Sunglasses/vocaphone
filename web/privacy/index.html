@@ -76,6 +76,7 @@
           <span>the short version</span>
           <strong>no Voca account</strong>
           <strong>no analytics SDK</strong>
+          <strong>reporting off by default</strong>
           <strong>no subscription</strong>
           <strong>on-device default</strong>
         </aside>
@@ -137,10 +138,39 @@
           </a>
         </aside>
 
+        <div class="guide-intro">
+          <span class="section-tag">optional</span>
+          <h2 id="usage-title">usage reporting is off until you turn it on.</h2>
+          <p>
+            There is no analytics SDK. Play builds can include optional usage
+            reporting, off by default. Guided setup asks once after a working
+            transcript. Settings can change it later. Nothing is queued while
+            it is off. If you opt in, usage events go to a self-hosted Aptabase
+            instance VocaHQ runs at telemetry.vocahq.com. No third-party
+            analytics service is in the path. The sender is hand-rolled against
+            Aptabase's ingest API. Nothing identifying is stored on the phone:
+            no install ID, no IDFV, no ANDROID_ID, no advertising ID.
+          </p>
+          <p>
+            Never sent: transcripts, audio, typed text, character counts,
+            gateway URL, host, or token, model file paths, device model, exact
+            OS build, region, or timezone. If you opt in, sent: setup step
+            reached, transcription source (on-device or gateway, never which
+            gateway), model download outcome, dictation success or fail with
+            fixed reasons, recording length bucketed (&lt;10s, 10-30s, 30-60s,
+            60s+), app version, OS major only, and language subtag only.
+            Settings → Usage reporting → See exactly what's sent shows the
+            literal JSON of the next flush. F-Droid builds compile it out. The
+            iOS keyboard extension has no telemetry code. The Android IME holds
+            the same line; the companion app may report if you opted in.
+          </p>
+        </div>
+
         <div class="guide-source-links">
           <p>
             VocaPhone is free and AGPL-3.0 licensed. There is no Voca account,
-            no analytics SDK, and no subscription.
+            no analytics SDK, and no subscription. Optional usage reporting is
+            off by default.
           </p>
           <a href="mailto:hello@vocahq.com">hello@vocahq.com</a>
         </div>

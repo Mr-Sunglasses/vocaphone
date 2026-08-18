@@ -254,6 +254,12 @@ test("hosted privacy page covers the Play listing facts", () => {
     privacyHtml,
     /Audio leaves the phone only if you deliberately set a gateway you\s+control/,
   );
+  assert.match(privacyHtml, /off until you turn it on|off by default/i);
+  assert.match(privacyHtml, /opt in|optional usage reporting/i);
+  assert.match(privacyHtml, /telemetry\.vocahq\.com/);
+  assert.match(privacyHtml, /self-hosted/);
+  assert.match(privacyHtml, /Never sent:[\s\S]*transcripts[\s\S]*audio/i);
+  assert.match(privacyHtml, /F-Droid[\s\S]{0,80}compil/i);
   assert.match(privacyHtml, /AGPL-3\.0/);
   assert.match(privacyHtml, /hello@vocahq\.com/);
 });
