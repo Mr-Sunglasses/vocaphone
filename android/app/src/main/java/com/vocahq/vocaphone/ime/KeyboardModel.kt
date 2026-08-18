@@ -134,10 +134,27 @@ internal object KeyboardChrome {
     fun startedTyping(composing: String, textBeforeCursor: CharSequence): Boolean =
         composing.isNotEmpty() || textBeforeCursor.any { !it.isWhitespace() }
 
+    /**
+     * The clip chip and the suggestion strip share one row, so only one of them
+     * can be on screen. The chip is an offer made while the field is idle; the
+     * moment the user types, the row belongs to what they are producing.
+     *
+     * [startedTyping] is what makes that true. Without it the chip outlived the
+     * empty field and sat where the word suggestions should be for the whole
+     * sentence, because the render order in `DictationBar` reaches the clipboard
+     * branch first and never falls through to the suggestions one.
+     *
+     * Deliberately hidden for the rest of the sentence rather than reappearing
+     * whenever suggestions happen to run dry: a paste target that pops back
+     * under a finger already moving toward a word would paste the entire
+     * clipboard into the middle of what they were writing. Clearing the field
+     * brings it back, which is the same condition that first offered it.
+     */
     fun clipboardForStrip(
         clipboard: ClipboardChip?,
+        startedTyping: Boolean,
         alreadyPasted: Boolean = false,
-    ): ClipboardChip? = clipboard.takeIf { !alreadyPasted }
+    ): ClipboardChip? = clipboard.takeIf { !alreadyPasted && !startedTyping }
 
     fun suggestionsForStrip(
         suggestions: List<SuggestionItem>,

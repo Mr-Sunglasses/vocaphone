@@ -212,7 +212,7 @@ internal fun VocaPhoneKeyboard(
     }
     val clipboardChip = clipboard.takeIf { settings.clipboardChipEnabled && !editor.sensitive }
     val startedTyping = KeyboardChrome.startedTyping(keyboardState.composing, editorText.before)
-    val stripClipboard = KeyboardChrome.clipboardForStrip(clipboardChip)
+    val stripClipboard = KeyboardChrome.clipboardForStrip(clipboardChip, startedTyping)
     val swipeArmed = KeyboardChrome.swipeWordArmed(swipeWord, editorText.before, editorText.after)
     val stripSuggestions = if (swipeArmed && swipeChoices.isNotEmpty()) {
         swipeChoices.map { SuggestionItem(it) }
