@@ -1,9 +1,10 @@
-name: Android beta APK
+name: Android beta release
 
-# Pushing a tag like v0.1.0-beta.1 builds the release APK signed with the
-# vocaphone keystore and publishes it both as a workflow artifact and as a
-# prerelease on GitHub Releases. The workflow also publishes the APK checksum
-# and signing-certificate fingerprint so testers can verify what they install.
+# Pushing a tag like v0.1.0-beta.1 builds the signed full and fdroid release
+# APKs plus the full-flavor AAB (Play upload candidate), then publishes them as
+# a workflow artifact and a GitHub prerelease. Checksums and the signing
+# certificate fingerprint are attached so testers can verify what they install.
+# This workflow does not upload to Google Play.
 on:
   push:
     tags:
@@ -36,7 +37,7 @@ jobs:
           # never be restored again, so this build reads main's and saves none.
           cache-read-only: true
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      - name: Build signed release APK
+      - name: Build signed release APKs and Play AAB
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_FILE: ${{ runner.temp }}/vocaphone-release.keystore
@@ -48,7 +49,9 @@ jobs:
           # Passed through the environment rather than interpolated into the
           # script, so the keystore never becomes part of the command line.
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
-          ./gradlew assembleFullRelease assembleFdroidRelease \
+          # Play gets the full-flavor AAB only. fdroid is APK-only for F-Droid
+          # rebuild verification; do not bundle that flavour for store upload.
+          ./gradlew assembleFullRelease assembleFdroidRelease bundleFullRelease \
             testFullDebugUnitTest lintFullRelease
         working-directory: android
       - name: Verify signature and prepare release assets
@@ -68,6 +71,19 @@ jobs:
           # builds on their side.
           cp android/app/build/outputs/apk/fdroid/release/vocaphone-fdroidRelease.apk \
             release-assets/vocaphone-fdroid.apk
+
+          # AGP names the bundle from the module (app) plus flavor/build type.
+          # Glob rather than hard-coding the filename so a future archivesBaseName
+          # change does not silently publish a stale path.
+          shopt -s nullglob
+          aab_candidates=(android/app/build/outputs/bundle/fullRelease/*.aab)
+          shopt -u nullglob
+          if [ "${#aab_candidates[@]}" -ne 1 ]; then
+            echo "Expected exactly one fullRelease AAB, found ${#aab_candidates[@]}" >&2
+            printf '%s\n' "${aab_candidates[@]}" >&2
+            exit 1
+          fi
+          cp "${aab_candidates[0]}" release-assets/vocaphone.aab
 
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner -print \
             | sort -V | tail -n 1)"
@@ -108,15 +124,35 @@ jobs:
             fi
           done
 
-          # Both APKs carry the same package, version and signing key, which the
-          # loop above just enforced, so one fingerprint file covers both.
+          # Package name and versionName are checked on vocaphone.apk above
+          # (same fullRelease build). aapt dump badging does not apply to
+          # bundles. Verify the AAB upload-key fingerprint with keytool, which
+          # reads the JAR signing block AABs use; apksigner is APK-oriented.
+          aab_certificate_sha256="$(keytool -printcert -jarfile release-assets/vocaphone.aab \
+            | sed -n 's/^[[:space:]]*SHA256: //p' \
+            | head -n 1 \
+            | tr -d ':' \
+            | tr '[:upper:]' '[:lower:]')"
+          printf 'vocaphone.aab signing certificate SHA-256: %s\n' "$aab_certificate_sha256"
+          if [ -z "$aab_certificate_sha256" ]; then
+            echo "Could not read signing certificate from vocaphone.aab" >&2
+            exit 1
+          fi
+          if [ "$aab_certificate_sha256" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "Unexpected signing certificate in vocaphone.aab: $aab_certificate_sha256" >&2
+            exit 1
+          fi
+
+          # APKs and the full AAB share package, version and signing key, which
+          # the checks above enforced, so one fingerprint file covers them all.
           formatted_certificate="$(printf '%s' "$EXPECTED_CERT_SHA256" \
             | sed 's/../&:/g; s/:$//' | tr '[:lower:]' '[:upper:]')"
           printf 'Package: %s\nVersion: %s\nSigning certificate SHA-256: %s\n' \
             "com.vocahq.vocaphone" "${GITHUB_REF_NAME#v}" "$formatted_certificate" \
             > release-assets/SIGNING-CERTIFICATE-SHA256.txt
           (cd release-assets \
-            && sha256sum vocaphone.apk vocaphone-fdroid.apk > SHA256SUMS.txt)
+            && sha256sum vocaphone.apk vocaphone-fdroid.apk vocaphone.aab \
+              > SHA256SUMS.txt)
       - name: Upload release files as workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -150,6 +186,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             release-assets/vocaphone.apk \
             release-assets/vocaphone-fdroid.apk \
+            release-assets/vocaphone.aab \
             release-assets/SHA256SUMS.txt \
             release-assets/SIGNING-CERTIFICATE-SHA256.txt \
             --repo "$GITHUB_REPOSITORY" \
@@ -157,4 +194,4 @@ jobs:
             --prerelease \
             --generate-notes \
             "${notes_range[@]}" \
-            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store. \`vocaphone-fdroid.apk\` is the same release built without the prebuilt sherpa-onnx and ONNX Runtime libraries, published so F-Droid can verify its own rebuild against it; install \`vocaphone.apk\` unless you specifically want that variant."
+            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. \`vocaphone.aab\` is the same full-flavor build as an Android App Bundle for Google Play Console upload (not uploaded by this workflow). SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store. \`vocaphone-fdroid.apk\` is the same release built without the prebuilt sherpa-onnx and ONNX Runtime libraries, published so F-Droid can verify its own rebuild against it; install \`vocaphone.apk\` unless you specifically want that variant."

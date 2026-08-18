@@ -1,0 +1,1 @@
+Typing from the cursor, emoji suggestions, and paste for copied images. Release builds no longer embed Play dependency metadata in the APK or AAB.
