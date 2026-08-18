@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.DictationPhase
+import com.vocahq.vocaphone.ui.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -122,10 +123,24 @@ class DictationService : Service() {
     }
 
     private fun notification(status: String): Notification {
+        // Named explicitly rather than resolved with
+        // `packageManager.getLaunchIntentForPackage`. That call does set a
+        // component, but only after a lookup that returns null when it finds no
+        // launcher activity, and neither the null nor the component is visible
+        // to anything reading this code -- including CodeQL, which reported it
+        // as an implicit PendingIntent handed to a third party (CWE-927).
+        //
+        // The distinction is not academic. A PendingIntent wrapping an intent
+        // with no component runs with this app's identity and can have its
+        // destination filled in by whoever holds it, and a notification's
+        // content intent is held by the system UI. FLAG_IMMUTABLE already
+        // closed that door; naming MainActivity means the door was never built.
         val open = PendingIntent.getActivity(
             this,
             0,
-            packageManager.getLaunchIntentForPackage(packageName),
+            Intent(this, MainActivity::class.java)
+                .setAction(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER),
             PendingIntent.FLAG_IMMUTABLE,
         )
         val cancel = PendingIntent.getService(

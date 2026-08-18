@@ -4,11 +4,20 @@ version: 2
 # from silently entering the build — and also what stops those pins from ever
 # moving on their own. One grouped pull request a month keeps them current
 # without turning into a queue of single-line updates that each cost a CI run.
+#
+# The cooldown holds a newly published version back for a week before it is
+# proposed. A compromised release is usually pulled within days of being noticed,
+# and the whole point of pinning SHAs is that nothing enters this build the
+# moment upstream publishes it. Monthly grouping already means a week costs
+# nothing: an update held back today arrives in the same pull request as
+# everything else.
 updates:
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ['*']
@@ -20,6 +29,8 @@ updates:
     directory: /.github/actions/setup-android
     schedule:
       interval: monthly
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns: ['*']
