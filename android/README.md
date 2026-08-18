@@ -8,9 +8,10 @@ available, while VocaPhone can be selected whenever you want to dictate into an
 editable field. It inserts through Android's `InputConnection` and does not read
 the field.
 
-Android 13+ public beta APKs ship from GitHub Releases. Google Play publication
-is deferred. The shipped APK does not request accessibility-service or overlay
-access.
+Android 13+ public beta APKs (and the full-flavor Play AAB) ship from GitHub
+Releases on beta tags. Play Console setup is still outstanding, so the app is
+not listed on Google Play yet. Maintainer steps: [docs/play-store.md](../docs/play-store.md).
+The shipped build does not request accessibility-service or overlay access.
 
 > Package name and application ID have been updated to `com.vocahq.vocaphone`;
 > `assembleFullDebug` writes `vocaphone-fullDebug.apk`.
@@ -54,8 +55,8 @@ Every Gradle task name carries a flavor, because there are two:
 
 | Flavor | Speech engines | Use it for |
 | --- | --- | --- |
-| `full` | whisper.cpp, plus sherpa-onnx via the prebuilt JNI libraries in `app/src/full/jniLibs` | Everyday development and the GitHub beta releases |
-| `fdroid` | whisper.cpp only, compiled from `third_party/whisper.cpp` | F-Droid, which builds every byte it distributes from source |
+| `full` | whisper.cpp, plus sherpa-onnx via the prebuilt JNI libraries in `app/src/full/jniLibs` | Everyday development, GitHub beta releases, and the Play AAB |
+| `fdroid` | whisper.cpp only, compiled from `third_party/whisper.cpp` | F-Droid only (never upload this flavour to Play) |
 
 `full` is the default, so Android Studio selects it on import. The flavors differ
 only in whether the prebuilt sherpa-onnx libraries are present; shared code asks
@@ -71,23 +72,25 @@ the tag and APK version do not match.
 
 The repository needs these GitHub Actions secrets: `KEYSTORE_BASE64`,
 `KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD`. The workflow builds,
-tests, lints, verifies the release signature of both APKs against the pinned
-public certificate fingerprint, and attaches these files to the prerelease:
+tests, lints, verifies both APKs (package, version, cert) and the full AAB
+signing cert via `keytool` (package/version come from the matching full APK),
+and attaches these files to the prerelease:
 
 - `vocaphone.apk`
-- `vocaphone-fdroid.apk` — the `fdroid` flavour of the same tag. It exists so
+- `vocaphone.aab`: full-flavor Android App Bundle for Play Console upload.
+  CI does not push it to Play; see [docs/play-store.md](../docs/play-store.md).
+- `vocaphone-fdroid.apk`: the `fdroid` flavour of the same tag. It exists so
   F-Droid can verify a from-source rebuild against it byte-for-byte and then
   publish this same signed APK (F-Droid "reproducible builds"). Install
   `vocaphone.apk` unless you specifically want the from-source-only variant.
 - `SHA256SUMS.txt`
 - `SIGNING-CERTIFICATE-SHA256.txt`
 
-After downloading the release files (`vocaphone.apk`, `vocaphone-fdroid.apk`,
-`SHA256SUMS.txt`, and `SIGNING-CERTIFICATE-SHA256.txt`), verify the APK
-checksum with `sha256sum -c SHA256SUMS.txt` on Linux or
-`shasum -a 256 -c SHA256SUMS.txt` on macOS. Signing establishes a stable update
-identity and the checksum detects a damaged or changed download; neither
-changes Android's Play Protect treatment for apps installed outside an app store.
+After downloading the release files, verify checksums with
+`sha256sum -c SHA256SUMS.txt` on Linux or `shasum -a 256 -c SHA256SUMS.txt` on
+macOS. Signing establishes a stable update identity and the checksum detects a
+damaged or changed download; neither changes Android's Play Protect treatment
+for apps installed outside an app store.
 
 ## First run
 
