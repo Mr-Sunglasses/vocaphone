@@ -1,0 +1,1 @@
+First GitHub beta that also ships vocaphone.aab for Play Internal testing. Includes the usage-reporting opt-in and the hosted privacy page that landed after beta.15.
