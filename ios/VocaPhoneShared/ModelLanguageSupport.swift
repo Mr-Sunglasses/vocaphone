@@ -13,6 +13,14 @@ import Foundation
 /// same conclusion as the containing app.
 enum ModelLanguageSupport {
 
+    /// An explicit selection is the output contract. The engine's reported
+    /// language is useful only for Automatic; allowing it to replace a selected
+    /// language makes the writing-style pass choose punctuation for another
+    /// script even though the decoder was pinned to the user's selection.
+    static func transcriptLanguage(requested: String, reported: String) -> String {
+        requested == TranscriptionLanguage.automatic.rawValue ? reported : requested
+    }
+
     /// `modelLanguages` empty means the gateway made no claim — an older build,
     /// no model selected, or one the user imported. Nothing is disabled then: a
     /// client that has not been told must never lock the user out.

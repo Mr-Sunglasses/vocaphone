@@ -17,6 +17,7 @@ import com.vocahq.vocaphone.core.DictationFailure
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.MissingPermission
+import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptSanitizer
 import com.vocahq.vocaphone.core.TranscriptStyler
 import com.vocahq.vocaphone.data.HistoryRepository
@@ -789,7 +790,10 @@ class DictationController(
     ): String = TranscriptStyler.apply(
         TranscriptSanitizer.clean(local.text),
         configuration.style,
-        local.language.ifEmpty { configuration.effectiveLanguage.wireValue },
+        ModelLanguageSupport.transcriptLanguage(
+            requested = configuration.effectiveLanguage.wireValue,
+            reported = local.language,
+        ),
     )
 
     private suspend fun deliver(

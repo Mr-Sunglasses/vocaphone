@@ -1023,9 +1023,10 @@ final class RecordingCoordinator {
             record.transcript = DictatedTranscript.finished(
                 text,
                 style: WritingStyle(rawValue: record.style) ?? .casual,
-                language: transcribed.language.isEmpty
-                    ? record.language
-                    : transcribed.language,
+                language: ModelLanguageSupport.transcriptLanguage(
+                    requested: record.language,
+                    reported: transcribed.language
+                ),
                 numbersAsDigits: KeyboardPreferences.numbersAsDigits
             )
             record.error = nil

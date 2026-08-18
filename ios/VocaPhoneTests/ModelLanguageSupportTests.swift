@@ -2,6 +2,13 @@ import Foundation
 import Testing
 
 struct ModelLanguageSupportTests {
+    @Test func explicitLanguageRemainsTheTranscriptOutputContract() {
+        #expect(ModelLanguageSupport.transcriptLanguage(requested: "hi", reported: "en") == "hi")
+        #expect(ModelLanguageSupport.transcriptLanguage(requested: "en", reported: "hi") == "en")
+        #expect(ModelLanguageSupport.transcriptLanguage(requested: "auto", reported: "hi") == "hi")
+        #expect(ModelLanguageSupport.transcriptLanguage(requested: "auto", reported: "") == "")
+    }
+
     private let dolphin: Set<String> = ["hi", "bn", "ta", "zh", "ja"]
     private let englishOnly: Set<String> = ["en"]
 

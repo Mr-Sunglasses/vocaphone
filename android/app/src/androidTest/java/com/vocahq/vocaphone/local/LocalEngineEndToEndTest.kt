@@ -1,7 +1,10 @@
 package com.vocahq.vocaphone.local
 
+import android.util.Log
 import androidx.test.platform.app.InstrumentationRegistry
+import com.vocahq.vocaphone.audio.SpeechAudioConditioning
 import java.io.File
+import kotlin.time.measureTime
 import kotlinx.coroutines.runBlocking
 import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
@@ -51,6 +54,79 @@ class LocalEngineEndToEndTest {
 
         // A second pass must reuse the loaded context rather than reloading.
         assertEquals(transcript, manager.transcribe(speech(), model.id, "en").text)
+    }
+
+    /**
+     * Repeatable physical-device timing for a model that is already downloaded
+     * in the app under test. This deliberately does not assert a duration: the
+     * same model spans phones with radically different CPUs, while the log gives
+     * us comparable numbers for the same audio before and after a change.
+     *
+     *     ./gradlew :app:connectedFullDebugAndroidTest \
+     *       -Pandroid.testInstrumentationRunnerArguments.localModelBenchmark=small
+     */
+    @Test
+    fun anInstalledWhisperModelTranscribesReferenceAudio() = runBlocking {
+        val modelID = InstrumentationRegistry.getArguments()
+            .getString("localModelBenchmark")
+            .orEmpty()
+        assumeTrue(
+            "set localModelBenchmark to an installed Whisper model ID",
+            modelID.isNotEmpty(),
+        )
+        val manager = LocalModelManager(context)
+        val model = requireNotNull(LocalModelCatalog.find(modelID))
+        require(model.engine == LocalModelEngine.WHISPER) { "$modelID is not a Whisper model" }
+        manager.refresh()
+        assumeTrue("$modelID is not downloaded in the target app", manager.isDownloaded(model.id))
+
+        val arguments = InstrumentationRegistry.getArguments()
+        val threads = arguments.getString("localModelBenchmarkThreads")
+            ?.toIntOrNull()
+            ?: WhisperCpuConfig.preferredThreadCount(model.id)
+        val audio = SpeechAudioConditioning.condition(speech())
+        val audioContext = arguments.getString("localModelBenchmarkContext")
+            ?.toIntOrNull()
+            ?: if (model.cropsAudioContext) WhisperCpuConfig.whisperAudioContext(audio.size) else 0
+        val pointer = WhisperLib.initContext(
+            File(manager.directoryFor(model), model.primaryFile.path).absolutePath,
+        )
+        check(pointer != 0L) { "Could not load ${model.displayName}" }
+        try {
+            repeat(2) { run ->
+                val elapsed = measureTime {
+                    check(
+                        WhisperLib.fullTranscribe(
+                            pointer,
+                            threads,
+                            audio,
+                            "en",
+                            0,
+                            1f,
+                            audioContext,
+                            "",
+                        ) == 0,
+                    ) { "${model.displayName} could not decode the reference audio" }
+                }
+                val transcript = buildString {
+                    repeat(WhisperLib.getTextSegmentCount(pointer)) { index ->
+                        append(WhisperLib.getTextSegment(pointer, index))
+                    }
+                }.trim()
+                assertTrue("empty transcript from ${model.displayName}", transcript.isNotBlank())
+                assertTrue(
+                    "unexpected transcript: $transcript",
+                    transcript.lowercase().contains("yellow lamps"),
+                )
+                Log.i(
+                    "VocaPhoneBenchmark",
+                    "${model.id} run ${run + 1}: ${elapsed.inWholeMilliseconds} ms; " +
+                        "threads=$threads; audio_ctx=$audioContext; $transcript",
+                )
+            }
+        } finally {
+            WhisperLib.freeContext(pointer)
+        }
     }
 
     /**

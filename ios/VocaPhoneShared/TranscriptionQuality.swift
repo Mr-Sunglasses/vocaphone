@@ -46,8 +46,18 @@ enum TranscriptionQuality: String, Codable, CaseIterable, Identifiable, Sendable
     var whisperKitTemperatureFallbackCount: Int {
         switch self {
         case .fast: 0
-        case .balanced: 3
-        case .accurate: 5
+        case .balanced: 1
+        case .accurate: 2
+        }
+    }
+
+    /// Reaches Whisper's useful temperature range in the bounded pass count
+    /// above instead of spending four to six full decoder runs stepping by 0.2.
+    var whisperKitTemperatureIncrement: Float {
+        switch self {
+        case .fast: 0
+        case .balanced: 1
+        case .accurate: 0.5
         }
     }
 

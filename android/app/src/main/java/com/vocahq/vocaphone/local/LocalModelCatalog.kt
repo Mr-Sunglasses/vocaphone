@@ -73,6 +73,8 @@ data class LocalModelDescriptor(
     val languageCodes: Set<String> = emptySet(),
     /** True when the model decides the language itself and ignores the request. */
     val detectsLanguage: Boolean = false,
+    /** Whether short recordings may use a cropped whisper encoder window. */
+    val cropsAudioContext: Boolean = false,
 ) {
     val sizeLabel: String
         get() = if (sizeBytes >= 1_000_000_000) {
@@ -232,16 +234,29 @@ object LocalModelCatalog {
             ?: all.first()
     }
 
+    /** The fastest sensible Whisper fallback for this CPU class. */
+    fun recommendedWhisper(profile: DeviceProfile): LocalModelDescriptor =
+        whisper.filter { profile.fits(it) }
+            .maxByOrNull { scoreModel(it, profile) }
+            ?: whisper.filter { isUsableOnDevice(it, profile.totalRamGB, sherpaAvailable = false) }
+                .minByOrNull { it.sizeBytes }
+            ?: whisper.first()
+
     /**
-     * Warn only when a slower Whisper class is selected. Sherpa file size is
-     * not a speed signal, so a working Parakeet must not look "too big".
+     * Warn only when a slower Whisper class or full-precision variant is
+     * selected. Sherpa file size is not a speed signal, so a working Parakeet
+     * must not look "too big".
      */
     fun needsHeavierWarning(
         selected: LocalModelDescriptor,
-        recommended: LocalModelDescriptor,
-    ): Boolean = selected.id != recommended.id &&
-        selected.engine == LocalModelEngine.WHISPER &&
-        selected.minimumRamGB > recommended.minimumRamGB
+        profile: DeviceProfile,
+    ): Boolean {
+        if (selected.engine != LocalModelEngine.WHISPER) return false
+        val recommended = recommendedWhisper(profile)
+        return whisperClass(selected.id) > whisperClass(recommended.id) ||
+            (whisperClass(selected.id) == whisperClass(recommended.id) &&
+                selected.sizeBytes > recommended.sizeBytes * 2)
+    }
 
     fun isUsableOnDevice(
         model: LocalModelDescriptor,
@@ -275,6 +290,10 @@ object LocalModelCatalog {
         languages = languages,
         englishOnly = englishOnly,
         languageCodes = if (englishOnly) setOf("en") else emptySet(),
+        // The larger encoders are much more sensitive to an off-distribution
+        // cropped window. Tiny through small retain the short-dictation speedup;
+        // medium and large keep Whisper's trained thirty-second context.
+        cropsAudioContext = !name.startsWith("medium") && !name.startsWith("large"),
     )
 
     fun downloadUrl(model: LocalModelDescriptor, file: PinnedFile): String =

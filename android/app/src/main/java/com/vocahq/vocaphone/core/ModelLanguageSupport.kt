@@ -12,6 +12,14 @@ package com.vocahq.vocaphone.core
 object ModelLanguageSupport {
 
     /**
+     * An explicit selection is the output contract. Engine-reported language is
+     * useful only for Automatic; letting it override a selected language makes
+     * the writing-style pass use punctuation from a different script.
+     */
+    fun transcriptLanguage(requested: String, reported: String): String =
+        if (requested == TranscriptionLanguage.AUTOMATIC.wireValue) reported else requested
+
+    /**
      * [modelLanguages] empty means the gateway made no claim — an older build, no
      * model selected, or one the user imported. Nothing is disabled in that case:
      * a client that has not been told must never lock the user out.

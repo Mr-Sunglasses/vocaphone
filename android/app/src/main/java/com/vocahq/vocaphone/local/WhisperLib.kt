@@ -66,7 +66,7 @@ internal class WhisperLib {
             audioData: FloatArray,
             language: String,
             beamSize: Int,
-            temperatureFallback: Boolean,
+            temperatureIncrement: Float,
             audioContext: Int,
             prompt: String,
         ): Int

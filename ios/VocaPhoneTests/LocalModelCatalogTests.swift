@@ -16,6 +16,12 @@ struct LocalModelCatalogTests {
         #expect(LocalModelCatalog.descriptor(for: "sense-voice")?.detectsLanguageAutomatically == true)
     }
 
+    @Test func recommendationPrefersFastMultilingualSherpaThenCompactWhisper() {
+        #expect(LocalModelCatalog.recommended(deviceMemoryGB: 4).id == "parakeet-tdt-0.6b-v3")
+        #expect(LocalModelCatalog.recommended(deviceMemoryGB: 3).id == "openai_whisper-base")
+        #expect(LocalModelCatalog.recommended(deviceMemoryGB: 2).id == "sense-voice")
+    }
+
     @Test func longAudioStreamingUsesBoundedWindows() {
         let samples = [Float](
             repeating: 0.05,

@@ -836,13 +836,14 @@ final class LocalModelManager {
         }
     }
 
-    /// What an on-device engine produced, and the language it actually decoded.
+    /// What an on-device engine produced, and the language that governs its output.
     ///
     /// The language matters because the writing styles punctuate by script — a
     /// Devanagari sentence ends in a danda, not a full stop — and with Automatic
     /// selected the request says only "auto". WhisperKit detects and reports;
     /// the sherpa bridge does not expose it, so it leaves this empty and the
-    /// styler falls back to inspecting the text.
+    /// styler falls back to inspecting the text. An explicit selection stays
+    /// authoritative even if an engine reports something contradictory.
     struct LocalTranscription: Sendable {
         let text: String
         let language: String
@@ -902,7 +903,7 @@ final class LocalModelManager {
                 folder: folder,
                 tokenizerFolder: tokenizerFolder
             )
-            let requested = descriptor.englishOnly ? "en" : (language == "auto" ? nil : language)
+            let requested = resolvedLanguage == "auto" ? nil : resolvedLanguage
             let quality = LocalTranscriptionPreferences.quality
             // Tokenized here rather than stored, because the tokens only mean
             // anything against the tokenizer of the model that is loaded.
@@ -916,6 +917,7 @@ final class LocalModelManager {
                 task: .transcribe,
                 language: requested,
                 temperature: 0,
+                temperatureIncrementOnFallback: quality.whisperKitTemperatureIncrement,
                 temperatureFallbackCount: quality.whisperKitTemperatureFallbackCount,
                 usePrefillPrompt: true,
                 usePrefillCache: true,
@@ -925,6 +927,9 @@ final class LocalModelManager {
                 // has to ask for detection in so many words.
                 detectLanguage: requested == nil,
                 skipSpecialTokens: true,
+                // Timestamp tokens are not shown, but Whisper needs to predict
+                // them to stop cleanly instead of repeating into padded audio.
+                withoutTimestamps: false,
                 promptTokens: promptTokens,
                 // WhisperKit defaults this off where Whisper itself defaults it
                 // on. Leaving it off lets a window open on a blank token, which
@@ -938,9 +943,16 @@ final class LocalModelManager {
             guard !text.isEmpty else {
                 throw LocalModelManagerError.modelNotDownloaded("empty transcript")
             }
-            // Only meaningful when "auto" was asked for; otherwise it echoes the
-            // request back, which is the same answer either way.
-            return LocalTranscription(text: text, language: results.first?.language ?? "")
+            // Detection is meaningful only for Automatic. With an explicit
+            // selection, the user's requested output language remains the
+            // contract even if the engine reports something contradictory.
+            return LocalTranscription(
+                text: text,
+                language: ModelLanguageSupport.transcriptLanguage(
+                    requested: resolvedLanguage,
+                    reported: results.first?.language ?? ""
+                )
+            )
 
         case .sherpaOnnx:
             let sherpaRecognizer = try await ensureSherpaRecognizer(
@@ -954,7 +966,13 @@ final class LocalModelManager {
             guard !decoded.text.isEmpty else {
                 throw LocalModelManagerError.modelNotDownloaded("empty transcript")
             }
-            return LocalTranscription(text: decoded.text, language: decoded.language)
+            return LocalTranscription(
+                text: decoded.text,
+                language: ModelLanguageSupport.transcriptLanguage(
+                    requested: resolvedLanguage,
+                    reported: decoded.language
+                )
+            )
         }
     }
 

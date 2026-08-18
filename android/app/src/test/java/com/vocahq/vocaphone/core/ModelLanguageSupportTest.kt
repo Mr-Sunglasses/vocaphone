@@ -12,6 +12,14 @@ class ModelLanguageSupportTest {
     private val englishOnly = setOf("en")
 
     @Test
+    fun `an explicit language remains the transcript output contract`() {
+        assertEquals("hi", ModelLanguageSupport.transcriptLanguage("hi", "en"))
+        assertEquals("en", ModelLanguageSupport.transcriptLanguage("en", "hi"))
+        assertEquals("hi", ModelLanguageSupport.transcriptLanguage("auto", "hi"))
+        assertEquals("", ModelLanguageSupport.transcriptLanguage("auto", ""))
+    }
+
+    @Test
     fun `a model that detects its own language offers only Automatic`() {
         // Dolphin ignores the requested language, so offering Hindi promises
         // something it cannot deliver — it returned Cyrillic for a short Hindi clip.

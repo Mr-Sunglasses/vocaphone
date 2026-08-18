@@ -52,6 +52,10 @@ include(FetchContent)
 # These have to be set here, at directory scope and before ggml is pulled in,
 # so that they cover ggml's targets as well as ours.
 add_compile_options(
+    # Dictation performance must not depend on whether a developer installed a
+    # debug or release APK. Keep native inference optimized while retaining the
+    # debug symbols supplied by the build type.
+    -O3
     -ffile-prefix-map=${WHISPER_LIB_DIR}=/whisper.cpp
     -ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=/vocaphone
     -ffile-prefix-map=${CMAKE_BINARY_DIR}=/build

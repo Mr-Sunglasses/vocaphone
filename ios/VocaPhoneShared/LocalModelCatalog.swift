@@ -598,21 +598,25 @@ enum LocalModelCatalog {
     /// Everything this iPhone can actually run, smallest first.
     static var usableOnDevice: [LocalModelDescriptor] { all.filter(isUsableOnDevice) }
 
-    /// Best quality that fits, rather than a memory ladder that disagreed with
-    /// the models' own floors.
+    /// Fast, multilingual default that fits. A model fitting in memory is not a
+    /// promise that its encoder is interactive on a phone; Parakeet is preferred
+    /// where available, with compact Whisper builds as the universal fallback.
     static var recommended: LocalModelDescriptor {
+        recommended(deviceMemoryGB: deviceMemoryGB)
+    }
+
+    static func recommended(deviceMemoryGB: Int) -> LocalModelDescriptor {
         let preference = [
-            "openai_whisper-large-v3-v20240930_turbo_632MB",
-            "openai_whisper-large-v3-v20240930_626MB",
-            "openai_whisper-large-v3-v20240930_547MB",
-            "openai_whisper-small_216MB",
+            "parakeet-tdt-0.6b-v3",
+            "openai_whisper-base",
             "openai_whisper-tiny",
+            "sense-voice",
         ]
         for id in preference {
-            if let descriptor = descriptor(for: id), isUsableOnDevice(descriptor) {
+            if let descriptor = descriptor(for: id), deviceMemoryGB >= descriptor.minimumRamGB {
                 return descriptor
             }
         }
-        return usableOnDevice.first ?? all[0]
+        return all.first { deviceMemoryGB >= $0.minimumRamGB } ?? all[0]
     }
 }

@@ -193,6 +193,7 @@
 		AC222A4D19661A309FEC32C1 /* SpokenNumbers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E590CFC53039DA367280B8CD /* SpokenNumbers.swift */; };
 		ACDADCAF73BF41FE2355ED15 /* VocaPhoneKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B7028AF4B134C7EDD726891E /* VocaPhoneKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AD2CCDE7DC189E63810890BB /* SwipeRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07C4BD2142E9377F123A8848 /* SwipeRecognizer.swift */; };
+		AE4E1B1B8CB72567DEF58A40 /* TranscriptionQualityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCAE41267FF8113463CFFF96 /* TranscriptionQualityTests.swift */; };
 		B063AE9288450BE04769F7DD /* TypingCandidates.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEAA4440B24071020CD693DB /* TypingCandidates.swift */; };
 		B0DF0FF5821BD7E8C839065C /* GatewayClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4211FAA8E574AEF57D788FA /* GatewayClient.swift */; };
 		B1D4DE96B74C3327DA6A0FAD /* SwipeTrailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEEBFC48C457EF15183DB453 /* SwipeTrailView.swift */; };
@@ -465,6 +466,7 @@
 		F72772F0CCE3BA274182C5F4 /* HomePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomePresentationTests.swift; sourceTree = "<group>"; };
 		FA83B914C241E5F8BF8F32AC /* DictationBarLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarLayoutTests.swift; sourceTree = "<group>"; };
 		FC2CD13AAF5FDF79DD5D0075 /* TypingFieldPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingFieldPolicy.swift; sourceTree = "<group>"; };
+		FCAE41267FF8113463CFFF96 /* TranscriptionQualityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionQualityTests.swift; sourceTree = "<group>"; };
 		FEBB0D1B0CD48BA2F8F22986 /* TextInsertion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInsertion.swift; sourceTree = "<group>"; };
 		FF28F6F60B7FDEA4EB183B6F /* LocalModelCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelCatalogTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -717,6 +719,7 @@
 				924E5D73CB086A4210BF6052 /* SwipeRecognizerTests.swift */,
 				0DFD83D2BCB84400E7981A4B /* SwipeTrailTests.swift */,
 				ABDF2EC3AB09FF78FD1EF935 /* TranscriptHistoryModelTests.swift */,
+				FCAE41267FF8113463CFFF96 /* TranscriptionQualityTests.swift */,
 				B154124C04655D1A36F1B4E4 /* TranscriptionSourceTests.swift */,
 				C8E491E7E805F47388A668E1 /* TranscriptSanitizerTests.swift */,
 				A45A3914F898AD0570486806 /* TranscriptStylerTests.swift */,
@@ -1206,6 +1209,7 @@
 				3948B010FEE4F51B8CE2074D /* TranscriptStyler.swift in Sources */,
 				7E26A729562A6F474635AFEC /* TranscriptStylerTests.swift in Sources */,
 				444F9DFC10831BE9150988A6 /* TranscriptionQuality.swift in Sources */,
+				AE4E1B1B8CB72567DEF58A40 /* TranscriptionQualityTests.swift in Sources */,
 				D347613BCA81EB9BF9AAC2DD /* TranscriptionSourceStatus.swift in Sources */,
 				F9BE6A9D183361BABE1E286E /* TranscriptionSourceTests.swift in Sources */,
 				AA0483D40117344580501ABD /* TypingCandidates.swift in Sources */,

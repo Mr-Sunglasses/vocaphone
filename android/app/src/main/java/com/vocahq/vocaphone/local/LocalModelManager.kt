@@ -5,6 +5,7 @@ import android.content.Context
 import com.vocahq.vocaphone.audio.CaptureFormat
 import com.vocahq.vocaphone.audio.SpeechAudioConditioning
 import com.vocahq.vocaphone.core.CustomVocabulary
+import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import java.io.File
 import java.io.FileInputStream
@@ -32,13 +33,14 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * What an on-device engine produced, and the language it actually decoded.
+ * What an on-device engine produced, and the language that governs its output.
  *
  * The language matters because the writing styles punctuate by script — a
  * Devanagari sentence ends in a danda, not a full stop — and with Automatic
  * selected the request says only "auto". Whisper detects and reports; the
  * sherpa bridges do not expose it, so they leave this empty and the styler
- * falls back to inspecting the text.
+ * falls back to inspecting the text. An explicit selection stays authoritative
+ * even if an engine reports something contradictory.
  */
 /** App-private folder that holds downloaded on-device models. */
 const val LOCAL_MODELS_DIR = "local-models"
@@ -429,7 +431,10 @@ class LocalModelManager(
         sherpaRecognizer?.let { recognizer ->
             return@withLock withContext(Dispatchers.Default) {
                 val result = recognizer.transcribe(samples)
-                LocalTranscription(result.text, result.language)
+                LocalTranscription(
+                    result.text,
+                    ModelLanguageSupport.transcriptLanguage(resolvedLanguage, result.language),
+                )
             }
         }
         whisperContext?.transcribe(
@@ -437,6 +442,8 @@ class LocalModelManager(
             resolvedLanguage,
             quality,
             CustomVocabulary.whisperPrompt(vocabulary),
+            model.cropsAudioContext,
+            WhisperCpuConfig.preferredThreadCount(model.id),
         ) ?: error("Local transcription engine is not loaded")
     }
 

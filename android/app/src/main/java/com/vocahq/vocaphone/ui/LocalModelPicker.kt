@@ -109,7 +109,7 @@ fun LocalModelPicker(
     }
 
     if (selectedModel != null &&
-        LocalModelCatalog.needsHeavierWarning(selectedModel, recommended)
+        LocalModelCatalog.needsHeavierWarning(selectedModel, profile)
     ) {
         OversizedModelNotice(
             recommended = recommended,
@@ -308,9 +308,8 @@ private fun OversizedModelNotice(
 ) {
     Notice(tone = NoticeTone.Attention) {
         Text(
-            "This model asks for more RAM than the one we suggest for this phone, " +
-                "so dictation can take longer. ${recommended.displayName} is the " +
-                "match we would start with.",
+            "This Whisper model can be slow on this phone. " +
+                "${recommended.displayName} is the faster match we would start with.",
             style = MaterialTheme.typography.bodySmall,
         )
         SecondaryButton(

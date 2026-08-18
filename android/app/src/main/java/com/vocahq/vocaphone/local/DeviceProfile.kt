@@ -113,10 +113,11 @@ fun DeviceProfile.fits(model: LocalModelDescriptor): Boolean {
  * Higher is better. Family beats file size: a transducer that fits this
  * phone's class is preferred over a larger Whisper weight.
  *
- * Whisper entries are scored by distance from the class this tier wants
- * (tiny on constrained, small on standard, turbo on fast, full large on
- * high-RAM flagship). q5 is the phone default; full precision only wins
- * on flagship. Adding a catalog row does not need a new branch here.
+ * Whisper entries are scored by distance from the class this tier wants.
+ * RAM alone never promotes an old phone to a large encoder: devices without a
+ * declared Android media performance class stay on base, including the
+ * Snapdragon 845 generation. q5 is the phone default; adding a catalog row
+ * does not need a new branch here.
  */
 fun scoreModel(model: LocalModelDescriptor, profile: DeviceProfile): Int {
     if (!profile.fits(model)) return Int.MIN_VALUE
@@ -135,7 +136,7 @@ fun scoreModel(model: LocalModelDescriptor, profile: DeviceProfile): Int {
     return score
 }
 
-private fun whisperClass(id: String): Int = when {
+internal fun whisperClass(id: String): Int = when {
     "large-v3-turbo" in id -> 5
     "large" in id -> 6
     "medium" in id -> 4
@@ -146,20 +147,24 @@ private fun whisperClass(id: String): Int = when {
 
 private fun whisperTarget(profile: DeviceProfile): Int = when (profile.tier) {
     DeviceTier.CONSTRAINED -> 1
-    DeviceTier.STANDARD -> 3
-    DeviceTier.FAST -> 5
-    DeviceTier.FLAGSHIP -> if (profile.totalRamGB >= 16) 6 else 5
+    DeviceTier.STANDARD -> 2
+    DeviceTier.FAST -> if (profile.performanceClass >= 31) 3 else 2
+    DeviceTier.FLAGSHIP -> when {
+        profile.performanceClass >= 34 -> 5
+        else -> 3
+    }
 }
 
 private fun whisperClassScore(id: String, profile: DeviceProfile): Int {
     val distance = abs(whisperClass(id) - whisperTarget(profile))
     var score = 50 - distance * 12
+    val declaredFlagship = profile.performanceClass >= 34
     score += when {
-        "q5" in id && profile.tier == DeviceTier.FLAGSHIP -> -4
+        "q5" in id && declaredFlagship -> -4
         "q5" in id -> 10
-        "q8" in id && profile.tier == DeviceTier.FLAGSHIP -> -2
+        "q8" in id && declaredFlagship -> -2
         "q8" in id -> 2
-        profile.tier == DeviceTier.FLAGSHIP -> 8
+        declaredFlagship -> 8
         else -> -6
     }
     return score

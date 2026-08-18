@@ -84,7 +84,7 @@ JNIEXPORT jint JNICALL
 Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
         JNIEnv *env, jobject thiz, jlong context_ptr, jint num_threads,
         jfloatArray audio_data, jstring language_str, jint beam_size,
-        jboolean temperature_fallback, jint audio_context, jstring prompt_str) {
+        jfloat temperature_increment, jint audio_context, jstring prompt_str) {
     UNUSED(thiz);
     struct whisper_context *context = (struct whisper_context *) context_ptr;
     jfloat *audio = (*env)->GetFloatArrayElements(env, audio_data, NULL);
@@ -109,11 +109,10 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
     params.language = language;
     params.n_threads = num_threads;
     params.no_context = true;
-    // The client only consumes text. Timestamp tokens add decoder work and
-    // their segment boundaries are never used, so decode one text segment per
-    // 30-second whisper window instead of making the phone predict timestamps
-    // that are immediately discarded.
-    params.no_timestamps = true;
+    // The client does not print timestamps, but the decoder must still be able
+    // to predict their tokens: they are how Whisper cleanly stops after speech.
+    // Suppressing them made short phrases repeat over the padded window.
+    params.no_timestamps = false;
     params.single_segment = true;
     // whisper.cpp defaults greedy.best_of to five. That default is also used
     // for temperature-fallback passes, and it turns a rare retry into five
@@ -124,10 +123,10 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
     // rather than stripping them from the text afterwards where a marker the
     // sanitizer has not seen before gets through.
     params.suppress_nst = true;
-    // Zero disables the retry of a window whose result looks degenerate. That
-    // retry is what breaks whisper out of a repetition loop, so only the Fast
-    // setting gives it up.
-    params.temperature_inc = temperature_fallback ? 0.2f : 0.0f;
+    // Zero disables fallback. Balanced passes 1.0 for exactly one retry;
+    // Accurate passes 0.5 for two. The upstream 0.2 default permits five full
+    // decoder retries and caused the multi-second latency spikes seen on phones.
+    params.temperature_inc = temperature_increment;
     // Crops the encoder to the window the caller sized for this recording, so a
     // short dictation stops paying for the thirty-second one whisper otherwise
     // pads it to. Zero leaves whisper's own default in place.
@@ -135,9 +134,9 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
 
     __android_log_print(
             ANDROID_LOG_INFO, TAG,
-            "Transcribing %d samples with %d threads, beam=%d, fallback=%d, audio_ctx=%d",
+            "Transcribing %d samples with %d threads, beam=%d, temperature_inc=%.1f, audio_ctx=%d",
             (int) length, (int) num_threads, (int) beam_size,
-            temperature_fallback ? 1 : 0, (int) audio_context);
+            temperature_increment, (int) audio_context);
 
     if (prompt != NULL && prompt[0] != '\0') {
         params.initial_prompt = prompt;

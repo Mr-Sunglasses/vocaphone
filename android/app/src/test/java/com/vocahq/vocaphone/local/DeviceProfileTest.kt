@@ -58,11 +58,11 @@ class DeviceProfileTest {
             LocalModelCatalog.recommended(profile(2, sherpa = false)).id,
         )
         assertEquals(
-            "small-q5_1",
+            "base-q5_1",
             LocalModelCatalog.recommended(profile(4, sherpa = false)).id,
         )
         assertEquals(
-            "large-v3-turbo-q5_0",
+            "base-q5_1",
             LocalModelCatalog.recommended(profile(8, mpc = 0, sherpa = false)).id,
         )
         assertEquals(
@@ -70,9 +70,23 @@ class DeviceProfileTest {
             LocalModelCatalog.recommended(profile(12, mpc = 34, sherpa = false)).id,
         )
         assertEquals(
-            "large-v3",
+            "small-q5_1",
             LocalModelCatalog.recommended(profile(16, sherpa = false)).id,
         )
+    }
+
+    @Test
+    fun `poco class hardware stays on base whisper without a sherpa runtime`() {
+        val pocoF1 = profile(
+            ram = 6,
+            cores = 8,
+            mpc = 0,
+            khz = 2_800_000,
+            sherpa = false,
+        )
+        assertEquals(DeviceTier.FAST, pocoF1.tier)
+        assertEquals("base-q5_1", LocalModelCatalog.recommendedWhisper(pocoF1).id)
+        assertEquals("base-q5_1", LocalModelCatalog.recommended(pocoF1).id)
     }
 
     @Test

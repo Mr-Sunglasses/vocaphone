@@ -47,13 +47,19 @@ enum class TranscriptionQuality(val storedValue: String) {
         }
 
     /**
-     * Whether a window whose result looks degenerate — too repetitive, or too
-     * unlikely — is decoded again at a higher temperature. This is what catches
-     * whisper's repetition loops, and it costs nothing on the windows that
-     * decode cleanly the first time, which is nearly all of them.
+     * Temperature step for a window whose first decode looks degenerate.
+     *
+     * whisper.cpp keeps adding this value until it reaches 1.0. Its usual 0.2
+     * therefore permits five retries, not one, and every retry reruns the whole
+     * decoder. Balanced jumps straight to one rescue pass; Accurate tries the
+     * midpoint first but is still capped at two retries.
      */
-    val whisperTemperatureFallback: Boolean
-        get() = this != FAST
+    val whisperTemperatureIncrement: Float
+        get() = when (this) {
+            FAST -> 0f
+            BALANCED -> 1f
+            ACCURATE -> 0.5f
+        }
 
     /**
      * What to ask a sherpa model for *if its family supports beam search*.
