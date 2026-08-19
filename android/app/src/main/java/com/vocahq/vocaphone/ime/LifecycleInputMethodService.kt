@@ -89,6 +89,12 @@ abstract class LifecycleInputMethodService : InputMethodService(),
     @Composable
     protected abstract fun KeyboardContent()
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        inputComposeView?.requestLayout()
+        window?.window?.decorView?.requestLayout()
+    }
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         if (lifecycleRegistry.currentState == Lifecycle.State.STARTED) {

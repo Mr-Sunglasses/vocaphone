@@ -61,6 +61,27 @@ internal object ClipboardHistory {
         items.mapNotNull { parseImage(it)?.second }.toSet()
 }
 
+enum class SplitKeyboard(val storedValue: String) {
+    AUTO("auto"),
+    ALWAYS("always"),
+    NEVER("never"),
+    ;
+
+    val displayName: String
+        get() = when (this) {
+            AUTO -> "Auto"
+            ALWAYS -> "Always"
+            NEVER -> "Never"
+        }
+
+    companion object {
+        val DEFAULT = AUTO
+
+        fun fromStored(value: String?): SplitKeyboard =
+            entries.firstOrNull { it.storedValue == value } ?: DEFAULT
+    }
+}
+
 enum class KeyboardHeight(
     val storedValue: String,
     val keyHeightDp: Int,
@@ -135,6 +156,7 @@ data class VocaPhoneSettings(
     val customVocabulary: String = "",
     val numberRowEnabled: Boolean = false,
     val keyboardHeight: KeyboardHeight = KeyboardHeight.DEFAULT,
+    val splitKeyboard: SplitKeyboard = SplitKeyboard.DEFAULT,
     val suggestionsEnabled: Boolean = true,
     val correctionsEnabled: Boolean = true,
     val numberKeyHintsEnabled: Boolean = true,
@@ -268,6 +290,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setKeyboardHeight(height: KeyboardHeight) = put(Keys.KEYBOARD_HEIGHT, height.storedValue)
 
+    suspend fun setSplitKeyboard(mode: SplitKeyboard) = put(Keys.SPLIT_KEYBOARD, mode.storedValue)
+
     suspend fun setSuggestionsEnabled(enabled: Boolean) = put(Keys.SUGGESTIONS, enabled)
 
     suspend fun setCorrectionsEnabled(enabled: Boolean) = put(Keys.CORRECTIONS, enabled)
@@ -384,6 +408,7 @@ class SettingsRepository(private val context: Context) {
         customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),
         numberRowEnabled = this[Keys.NUMBER_ROW] ?: false,
         keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
+        splitKeyboard = SplitKeyboard.fromStored(this[Keys.SPLIT_KEYBOARD]),
         suggestionsEnabled = this[Keys.SUGGESTIONS] ?: true,
         correctionsEnabled = this[Keys.CORRECTIONS] ?: true,
         numberKeyHintsEnabled = this[Keys.NUMBER_KEY_HINTS] ?: true,
@@ -419,6 +444,7 @@ class SettingsRepository(private val context: Context) {
         val CUSTOM_VOCABULARY = stringPreferencesKey("custom_vocabulary")
         val NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
         val KEYBOARD_HEIGHT = stringPreferencesKey("keyboard_height")
+        val SPLIT_KEYBOARD = stringPreferencesKey("keyboard_split")
         val SUGGESTIONS = booleanPreferencesKey("keyboard_suggestions")
         val CORRECTIONS = booleanPreferencesKey("keyboard_corrections")
         val NUMBER_KEY_HINTS = booleanPreferencesKey("keyboard_number_key_hints")

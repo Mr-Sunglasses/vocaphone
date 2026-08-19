@@ -23,6 +23,7 @@ import com.vocahq.vocaphone.local.LocalModelIntegrityException
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.KeyboardHeight
+import com.vocahq.vocaphone.settings.SplitKeyboard
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.telemetry.TelemetryDownloadOutcome
 import com.vocahq.vocaphone.telemetry.TelemetrySetupStep
@@ -315,6 +316,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setKeyboardHeight(height: KeyboardHeight) =
         viewModelScope.launch { container.settings.setKeyboardHeight(height) }
+
+    fun setSplitKeyboard(mode: SplitKeyboard) =
+        viewModelScope.launch { container.settings.setSplitKeyboard(mode) }
 
     fun setSuggestionsEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setSuggestionsEnabled(enabled) }

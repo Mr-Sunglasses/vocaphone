@@ -248,6 +248,7 @@ fun VocaPhoneApp(
                 onCustomVocabulary = { viewModel.setCustomVocabulary(it) },
                 onNumberRow = { viewModel.setNumberRowEnabled(it) },
                 onKeyboardHeight = { viewModel.setKeyboardHeight(it) },
+                onSplitKeyboard = { viewModel.setSplitKeyboard(it) },
                 onSuggestions = { viewModel.setSuggestionsEnabled(it) },
                 onCorrections = { viewModel.setCorrectionsEnabled(it) },
                 onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },

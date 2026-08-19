@@ -31,6 +31,7 @@ import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.KeyboardHeight
+import com.vocahq.vocaphone.settings.SplitKeyboard
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
 enum class SettingsPage(val title: String) {
@@ -67,6 +68,7 @@ fun SettingsScreen(
     onCustomVocabulary: (String) -> Unit,
     onNumberRow: (Boolean) -> Unit,
     onKeyboardHeight: (KeyboardHeight) -> Unit,
+    onSplitKeyboard: (SplitKeyboard) -> Unit,
     onSuggestions: (Boolean) -> Unit,
     onCorrections: (Boolean) -> Unit,
     onNumberKeyHints: (Boolean) -> Unit,
@@ -155,6 +157,9 @@ fun SettingsScreen(
                             append(" · ")
                             append(settings.keyboardHeight.displayName)
                             if (settings.numberRowEnabled) append(" · number row")
+                            if (settings.splitKeyboard != SplitKeyboard.AUTO) {
+                                append(" · split ${settings.splitKeyboard.displayName.lowercase()}")
+                            }
                         },
                         icon = R.drawable.ic_keyboard,
                         onClick = { onPageChange(SettingsPage.KEYBOARD) },
@@ -221,6 +226,20 @@ fun SettingsScreen(
                         selected = settings.keyboardHeight,
                         label = { it.displayName },
                         onSelect = onKeyboardHeight,
+                    )
+                    Text("Split keyboard", style = MaterialTheme.typography.bodyMedium)
+                    ChipChoiceRow(
+                        options = SplitKeyboard.entries,
+                        selected = settings.splitKeyboard,
+                        label = { it.displayName },
+                        onSelect = onSplitKeyboard,
+                    )
+                    Text(
+                        "Auto splits when the keyboard is at least 600 dp wide, " +
+                            "like a tablet or an unfolded foldable. " +
+                            "A phone-sized portrait keyboard stays in one piece.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     SettingToggle(
                         title = "Suggestions",

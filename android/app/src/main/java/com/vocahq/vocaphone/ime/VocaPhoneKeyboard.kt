@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -121,6 +122,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import java.util.Locale
 
 private enum class PreferencePanel {
@@ -326,6 +328,10 @@ internal fun VocaPhoneKeyboard(
             color = MaterialTheme.colorScheme.surfaceContainerLowest,
             contentColor = MaterialTheme.colorScheme.onSurface,
         ) {
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val widthDp = maxWidth.value.roundToInt()
+                val splitKeys = SplitKeyboardLayout.shouldSplit(settings.splitKeyboard, widthDp)
+                val spacerFraction = SplitKeyboardLayout.spacerFraction(widthDp)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -441,6 +447,8 @@ internal fun VocaPhoneKeyboard(
                             catalog = emojiCatalog,
                             recents = settings.emojiRecents,
                             category = emojiCategory,
+                            split = splitKeys,
+                            spacerFraction = spacerFraction,
                             onEmoji = { glyph ->
                                 handleKey(
                                     KeyboardKey(
@@ -479,6 +487,8 @@ internal fun VocaPhoneKeyboard(
                             editor = editor,
                             keyHeight = fittedKeyHeight,
                             showKeyHints = settings.numberKeyHintsEnabled,
+                            split = splitKeys,
+                            spacerFraction = spacerFraction,
                             swipeEnabled = settings.swipeTypingEnabled &&
                                 keyboardState.layer == KeyboardLayer.LETTERS,
                             onSwipe = ::handleSwipe,
@@ -494,6 +504,7 @@ internal fun VocaPhoneKeyboard(
                         )
                     }
                 }
+            }
             }
         }
     }
@@ -1472,6 +1483,8 @@ private fun EmojiLayer(
     catalog: List<EmojiEntry>,
     recents: List<String>,
     category: EmojiCategory,
+    split: Boolean = false,
+    spacerFraction: Float = SplitKeyboardLayout.MIN_SPACER_FRACTION,
     onEmoji: (String) -> Unit,
     onKey: (KeyboardKey) -> Unit,
     onKeyHold: (KeyboardKey, Long) -> Unit = { _, _ -> },
@@ -1496,6 +1509,8 @@ private fun EmojiLayer(
             state = state,
             editor = editor,
             keyHeight = keyHeight,
+            split = split,
+            spacerFraction = spacerFraction,
             onKey = onKey,
             onKeyHold = onKeyHold,
             onCursorMove = onCursorMove,
@@ -1580,6 +1595,8 @@ private fun KeyboardRows(
     editor: KeyboardEditorConfig,
     keyHeight: Dp,
     showKeyHints: Boolean = false,
+    split: Boolean = false,
+    spacerFraction: Float = SplitKeyboardLayout.MIN_SPACER_FRACTION,
     swipeEnabled: Boolean = false,
     onSwipe: (String) -> Unit = {},
     onKey: (KeyboardKey) -> Unit,
@@ -1625,38 +1642,49 @@ private fun KeyboardRows(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     if (row.leadingSpace > 0f) Spacer(Modifier.weight(row.leadingSpace))
-                    row.keys.forEach { key ->
-                        KeyButton(
-                            key = key,
-                            state = state,
-                            editor = editor,
-                            keyHeight = keyHeight,
-                            showKeyHints = showKeyHints,
-                            swipeConsumed = swipeConsumed,
-                            onPress = { onKey(key) },
-                            onHold = { heldMs -> onKeyHold(key, heldMs) },
-                            onCommitText = { text ->
-                                onKey(
-                                    KeyboardKey(
-                                        id = "variant-$text",
-                                        label = text,
-                                        output = text,
-                                    ),
+                    val items = if (split) {
+                        SplitKeyboardLayout.splitRow(row, spacerFraction).items
+                    } else {
+                        row.keys.map { SplitItem.Key(it) }
+                    }
+                    items.forEach { item ->
+                        when (item) {
+                            is SplitItem.Gap -> Spacer(Modifier.weight(item.weight))
+                            is SplitItem.Key -> {
+                                val key = item.key
+                                KeyButton(
+                                    key = key,
+                                    state = state,
+                                    editor = editor,
+                                    keyHeight = keyHeight,
+                                    showKeyHints = showKeyHints,
+                                    swipeConsumed = swipeConsumed,
+                                    onPress = { onKey(key) },
+                                    onHold = { heldMs -> onKeyHold(key, heldMs) },
+                                    onCommitText = { text ->
+                                        onKey(
+                                            KeyboardKey(
+                                                id = "variant-$text",
+                                                label = text,
+                                                output = text,
+                                            ),
+                                        )
+                                    },
+                                    onCursorMove = onCursorMove,
+                                    modifier = Modifier
+                                        .weight(key.weight)
+                                        .onGloballyPositioned { coords ->
+                                            val origin = coords.positionInRoot()
+                                            keyBounds[key.id] = key to Rect(
+                                                origin.x,
+                                                origin.y,
+                                                origin.x + coords.size.width,
+                                                origin.y + coords.size.height,
+                                            )
+                                        },
                                 )
-                            },
-                            onCursorMove = onCursorMove,
-                            modifier = Modifier
-                                .weight(key.weight)
-                                .onGloballyPositioned { coords ->
-                                    val origin = coords.positionInRoot()
-                                    keyBounds[key.id] = key to Rect(
-                                        origin.x,
-                                        origin.y,
-                                        origin.x + coords.size.width,
-                                        origin.y + coords.size.height,
-                                    )
-                                },
-                        )
+                            }
+                        }
                     }
                     if (row.trailingSpace > 0f) Spacer(Modifier.weight(row.trailingSpace))
                 }
@@ -2032,7 +2060,9 @@ private fun KeyContent(
             ReturnKeyKind.GO -> KeyLabel("Go", tint, utility = true)
             ReturnKeyKind.SEND -> KeyLabel("Send", tint, utility = true)
         }
-        KeyboardKeyType.SPACE -> KeyLabel("VocaPhone", tint.copy(alpha = 0.78f), utility = true)
+        KeyboardKeyType.SPACE -> if (!SplitKeyboardLayout.isSplitSpace(key)) {
+            KeyLabel("VocaPhone", tint.copy(alpha = 0.78f), utility = true)
+        }
         KeyboardKeyType.LAYER_SWITCH -> KeyLabel(displayLabel, tint, utility = true)
         KeyboardKeyType.CHARACTER -> {
             if (hint == null) {
