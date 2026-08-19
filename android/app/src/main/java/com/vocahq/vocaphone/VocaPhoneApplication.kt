@@ -15,6 +15,7 @@ import com.vocahq.vocaphone.settings.SettingsRepository
 import com.vocahq.vocaphone.telemetry.Telemetry
 import com.vocahq.vocaphone.telemetry.TelemetryFlushScheduler
 import java.io.File
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -26,8 +27,6 @@ import kotlinx.coroutines.launch
  * rather than injected per component.
  */
 class AppContainer(context: Context) {
-
-    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val appContext = context.applicationContext
 
@@ -44,6 +43,27 @@ class AppContainer(context: Context) {
 
     /** App-private and bounded; it never contains transcript or gateway data. */
     val diagnostics = DiagnosticLog(context)
+
+    /**
+     * SupervisorJob keeps one failed job from cancelling its siblings. It does
+     * not stop an exception escaping a root `launch`, and an uncaught one there
+     * reaches the thread's default handler and takes the process down.
+     *
+     * Everything on this scope is upkeep or reporting -- model verification,
+     * expired-audio purging, exit reporting, telemetry -- and none of it is
+     * worth killing the app for. It also runs on every process start, which for
+     * this app includes every time the keyboard is raised, so a throw here is a
+     * crash the user meets again the moment they try to type. Record it where
+     * the bug report will show it and let the app carry on.
+     */
+    private val backgroundFailures = CoroutineExceptionHandler { _, _ ->
+        // No source: SOURCES names where a dictation came from, and this did
+        // not come from one. Anything else would be written out as "none".
+        diagnostics.recordError("background", null)
+    }
+
+    private val applicationScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default + backgroundFailures)
 
     /**
      * Why the previous process ended, written into [diagnostics] at start.

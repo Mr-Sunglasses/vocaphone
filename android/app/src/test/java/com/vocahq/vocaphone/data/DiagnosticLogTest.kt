@@ -39,6 +39,27 @@ class DiagnosticLogTest {
     }
 
     /**
+     * The application scope's exception handler writes this and nothing else,
+     * so if the category ever falls out of the allowlist the log silently reads
+     * `value=unknown` and the one line explaining a survived crash is gone.
+     * `source` is deliberately absent: SOURCES names where a dictation came
+     * from, and background upkeep did not come from one.
+     */
+    @Test
+    fun `background upkeep failures survive the allowlist`() {
+        val directory = Files.createTempDirectory("vocaphone-diagnostics").toFile()
+        try {
+            val log = DiagnosticLog(directory.resolve("events.log"), nowMillis = { 7L })
+
+            log.recordError("background", null)
+
+            assertTrue(log.read().contains("event=error value=background source=none"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    /**
      * A microphone failure is only diagnosable after the fact if the log says
      * which one it was: the call or the screen recording that took the input is
      * gone by the time anyone reads this.

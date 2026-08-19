@@ -250,6 +250,11 @@ class DiagnosticLog(
             "audio_focus_lost",
             "audio_silenced",
             "audio_capture_lost",
+            // Upkeep on the application scope threw: model verification,
+            // expired-audio purging, exit reporting or telemetry. Coarse on
+            // purpose -- it says the app survived something it used to die on,
+            // and the exit that no longer happens is the rest of the story.
+            "background",
             "gateway",
             "insertion",
             "settings",
