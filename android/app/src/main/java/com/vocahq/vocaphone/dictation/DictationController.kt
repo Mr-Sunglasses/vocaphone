@@ -8,6 +8,7 @@ import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.vocahq.vocaphone.audio.AudioCapture
 import com.vocahq.vocaphone.audio.CaptureFormat
+import com.vocahq.vocaphone.audio.DictationTonePlayer
 import com.vocahq.vocaphone.audio.MicrophoneInterruptedException
 import com.vocahq.vocaphone.audio.MicrophoneInterruption
 import com.vocahq.vocaphone.audio.PcmConversion
@@ -16,6 +17,7 @@ import com.vocahq.vocaphone.audio.WavWriter
 import com.vocahq.vocaphone.core.DictationFailure
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
+import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MissingPermission
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptSanitizer
@@ -86,6 +88,7 @@ class DictationController(
     private val audioDirectory: File,
     private val localModels: LocalModelManager,
     private val telemetry: Telemetry,
+    private val cues: DictationTonePlayer,
     private val scope: CoroutineScope,
 ) {
     private val _state = MutableStateFlow(DictationState())
@@ -343,7 +346,11 @@ class DictationController(
             },
         )
         capture = recorder
+        // Cue and haptic before the recorder opens, so the speaker is not
+        // the first thing in the transcript.
+        announceListening(configuration.dictationTone)
         if (!recorder.start()) {
+            announceStopped(configuration.dictationTone)
             incrementalReference.getAndSet(null)?.cancel()
             frames.close()
             streamFrames?.close()
@@ -460,6 +467,7 @@ class DictationController(
 
         awaitFinish(sessionFinishSignal)
         recorder.stop()
+        announceStopped(configuration.dictationTone)
         diagnostics.recordTiming("capture_stopped", source.name)
         capture = null
         frames.close()
@@ -949,6 +957,16 @@ class DictationController(
             level = 0f,
             failure = DictationFailure(error.code, error.userMessage, error.recoverable),
         )
+    }
+
+    private suspend fun announceListening(tone: DictationTone) {
+        cues.haptic()
+        cues.playStart(tone)
+    }
+
+    private fun announceStopped(tone: DictationTone) {
+        cues.haptic()
+        scope.launch { cues.playStop(tone) }
     }
 
     /** Retires whatever owned the state, so nothing older can write to it. */

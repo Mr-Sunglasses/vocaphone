@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.CustomVocabulary
+import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptionLanguage
@@ -62,6 +63,8 @@ fun SettingsScreen(
     microphone: MicrophoneStatus,
     onLanguage: (TranscriptionLanguage) -> Unit,
     onStyle: (WritingStyle) -> Unit,
+    onDictationTone: (DictationTone) -> Unit,
+    onPreviewDictationTone: (DictationTone) -> Unit,
     onMicrophone: (MicrophonePreference) -> Unit,
     onAudioRetention: (AudioRetention) -> Unit,
     onTranscriptionQuality: (TranscriptionQuality) -> Unit,
@@ -166,7 +169,7 @@ fun SettingsScreen(
                     )
                 SettingsMenuRow(
                     title = "Dictation",
-                    supporting = "${settings.style.displayName} · ${settings.microphone.displayName}",
+                    supporting = "${settings.style.displayName} · ${settings.dictationTone.displayName} · ${settings.microphone.displayName}",
                     icon = R.drawable.ic_dictation,
                     onClick = { onPageChange(SettingsPage.DICTATION) },
                 )
@@ -307,6 +310,25 @@ fun SettingsScreen(
                         selected = settings.style,
                         label = { it.displayName },
                         onSelect = onStyle,
+                    )
+                }
+                Section(
+                    title = "Dictation tone",
+                    supporting = if (settings.dictationTone.playsCues) {
+                        "Start and stop cues when dictation turns on and off."
+                    } else {
+                        "Off plays nothing."
+                    },
+                ) {
+                    ChipChoiceRow(
+                        options = DictationTone.entries,
+                        selected = settings.dictationTone,
+                        label = { it.displayName },
+                        onSelect = onDictationTone,
+                    )
+                    SecondaryButton(
+                        text = "Preview",
+                        onClick = { onPreviewDictationTone(settings.dictationTone) },
                     )
                 }
                 MicrophoneSection(

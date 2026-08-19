@@ -3,6 +3,7 @@ package com.vocahq.vocaphone
 import android.app.Application
 import android.content.Context
 import androidx.room.Room
+import com.vocahq.vocaphone.audio.DictationTonePlayer
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.data.VocaPhoneDatabase
@@ -27,6 +28,8 @@ class AppContainer(context: Context) {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val settings = SettingsRepository(context)
+
+    val dictationCues = DictationTonePlayer(context)
 
     private val database = Room
         .databaseBuilder(context, VocaPhoneDatabase::class.java, "vocaphone.db")
@@ -59,6 +62,7 @@ class AppContainer(context: Context) {
         audioDirectory = audioDirectory,
         localModels = localModels,
         telemetry = telemetry,
+        cues = dictationCues,
         scope = applicationScope,
     )
 

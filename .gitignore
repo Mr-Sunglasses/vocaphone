@@ -26,8 +26,10 @@ gateway/*.sqlite3
 *.m4a
 *.caf
 *.wav
-# The one exception: a speech fixture the on-device engine test transcribes.
+# Speech fixture the on-device engine test transcribes, plus the dictation
+# start/stop cues shipped as raw resources.
 !android/app/src/androidTest/assets/*.wav
+!android/app/src/main/res/raw/*.wav
 .env
 .env.*
 !.env.example

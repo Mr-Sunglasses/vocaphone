@@ -242,6 +242,8 @@ fun VocaPhoneApp(
                 microphone = microphone,
                 onLanguage = { viewModel.setLanguage(it) },
                 onStyle = { viewModel.setStyle(it) },
+                onDictationTone = { viewModel.setDictationTone(it) },
+                onPreviewDictationTone = { viewModel.previewDictationTone(it) },
                 onMicrophone = { viewModel.setMicrophone(it) },
                 onAudioRetention = { viewModel.setAudioRetention(it) },
                 onTranscriptionQuality = { viewModel.setTranscriptionQuality(it) },

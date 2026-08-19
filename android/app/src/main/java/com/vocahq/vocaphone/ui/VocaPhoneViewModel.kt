@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.audio.InputDevices
+import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.GatewayEndpoint
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.TranscriptionLanguage
@@ -284,6 +285,12 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setStyle(style: WritingStyle) =
         viewModelScope.launch { container.settings.setStyle(style) }
+
+    fun setDictationTone(tone: DictationTone) =
+        viewModelScope.launch { container.settings.setDictationTone(tone) }
+
+    fun previewDictationTone(tone: DictationTone) =
+        viewModelScope.launch { container.dictationCues.preview(tone) }
 
     fun setTranscriptionQuality(quality: TranscriptionQuality) =
         viewModelScope.launch {

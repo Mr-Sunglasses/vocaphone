@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.local.LocalModelCatalog
@@ -131,6 +132,7 @@ data class VocaPhoneSettings(
     val hasToken: Boolean = false,
     val language: TranscriptionLanguage = TranscriptionLanguage.DEFAULT,
     val style: WritingStyle = WritingStyle.DEFAULT,
+    val dictationTone: DictationTone = DictationTone.DEFAULT,
     val microphone: MicrophonePreference = MicrophonePreference.DEFAULT,
     val audioRetention: AudioRetention = AudioRetention.DEFAULT,
     val onboardingComplete: Boolean = false,
@@ -269,6 +271,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setStyle(style: WritingStyle) = put(Keys.STYLE, style.wireValue)
 
+    suspend fun setDictationTone(tone: DictationTone) = put(Keys.DICTATION_TONE, tone.id)
+
     suspend fun setMicrophone(preference: MicrophonePreference) =
         put(Keys.MICROPHONE, preference.storedValue)
 
@@ -394,6 +398,7 @@ class SettingsRepository(private val context: Context) {
         hasToken = this[Keys.TOKEN_CIPHERTEXT] != null,
         language = TranscriptionLanguage.fromWire(this[Keys.LANGUAGE]),
         style = WritingStyle.fromWire(this[Keys.STYLE]),
+        dictationTone = DictationTone.fromStored(this[Keys.DICTATION_TONE]),
         microphone = MicrophonePreference.fromStored(this[Keys.MICROPHONE]),
         audioRetention = AudioRetention.fromHours(this[Keys.RETENTION_HOURS]),
         onboardingComplete = this[Keys.ONBOARDING_COMPLETE] ?: false,
@@ -430,6 +435,7 @@ class SettingsRepository(private val context: Context) {
         val TOKEN_NONCE = stringPreferencesKey("gateway_token_nonce")
         val LANGUAGE = stringPreferencesKey("transcription_language")
         val STYLE = stringPreferencesKey("writing_style")
+        val DICTATION_TONE = stringPreferencesKey("dictation_tone")
         val MICROPHONE = stringPreferencesKey("microphone_preference")
         val RETENTION_HOURS = intPreferencesKey("audio_retention_hours")
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
