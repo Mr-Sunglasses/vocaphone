@@ -45,6 +45,7 @@ import java.io.File
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -316,6 +317,9 @@ class DictationController(
         val streamAcceptingFrames = AtomicBoolean(streamFrames != null)
         val droppedStreamFrames = AtomicInteger()
         val batchFallbackRecorded = AtomicBoolean()
+        // The mark at which the opening cue stops sounding. Frames before it
+        // are the speaker, not the speaker's voice.
+        val cueQuietAt = AtomicLong(0L)
         fun recordBatchFallback() {
             if (batchFallbackRecorded.compareAndSet(false, true)) {
                 diagnostics.recordTiming("batch_fallback", source.name)
@@ -326,18 +330,22 @@ class DictationController(
             context = context,
             preference = configuration.microphone,
             onFrame = { samples, count ->
-                val frame = samples.copyOf(count)
-                if (frames.trySend(frame).isFailure) {
-                    captureError.compareAndSet(
-                        null,
-                        IllegalStateException("Audio processing could not keep up."),
-                    )
-                    sessionFinishSignal.complete(Unit)
-                }
-                if (streamAcceptingFrames.get() && streamFrames?.trySend(frame)?.isFailure == true) {
-                    droppedStreamFrames.incrementAndGet()
-                    streamAcceptingFrames.set(false)
-                    streamFrames.cancel()
+                if (SystemClock.elapsedRealtime() >= cueQuietAt.get()) {
+                    val frame = samples.copyOf(count)
+                    if (frames.trySend(frame).isFailure) {
+                        captureError.compareAndSet(
+                            null,
+                            IllegalStateException("Audio processing could not keep up."),
+                        )
+                        sessionFinishSignal.complete(Unit)
+                    }
+                    if (streamAcceptingFrames.get() &&
+                        streamFrames?.trySend(frame)?.isFailure == true
+                    ) {
+                        droppedStreamFrames.incrementAndGet()
+                        streamAcceptingFrames.set(false)
+                        streamFrames.cancel()
+                    }
                 }
             },
             onError = { error ->
@@ -346,9 +354,11 @@ class DictationController(
             },
         )
         capture = recorder
-        // Cue and haptic before the recorder opens, so the speaker is not
-        // the first thing in the transcript.
-        announceListening(configuration.dictationTone)
+        // The cue sounds while AudioRecord warms up rather than before it, and
+        // onFrame drops whatever the microphone hears until it is done. Waiting
+        // the cue out first put its whole length in front of every dictation --
+        // 600 ms of it for Lift -- to buy the same guarantee.
+        cueQuietAt.set(announceListening(configuration.dictationTone))
         if (!recorder.start()) {
             announceStopped(configuration.dictationTone)
             incrementalReference.getAndSet(null)?.cancel()
@@ -959,14 +969,15 @@ class DictationController(
         )
     }
 
-    private suspend fun announceListening(tone: DictationTone) {
+    /** Taps the phone, sounds the cue, and reports when the cue falls quiet. */
+    private fun announceListening(tone: DictationTone): Long {
         cues.haptic()
-        cues.playStart(tone)
+        return cues.startCue(tone)
     }
 
     private fun announceStopped(tone: DictationTone) {
         cues.haptic()
-        scope.launch { cues.playStop(tone) }
+        cues.stopCue(tone)
     }
 
     /** Retires whatever owned the state, so nothing older can write to it. */
