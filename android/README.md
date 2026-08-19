@@ -71,14 +71,18 @@ Pushing a tag such as `v0.1.0-beta.14` (or the latest prerelease tag) runs
 the tag and APK version do not match.
 
 The repository needs these GitHub Actions secrets: `KEYSTORE_BASE64`,
-`KEYSTORE_PASSWORD`, `KEY_ALIAS`, and `KEY_PASSWORD`. The workflow builds,
-tests, lints, verifies both APKs (package, version, cert) and the full AAB
-signing cert via `keytool` (package/version come from the matching full APK),
-and attaches these files to the prerelease:
+`KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`, and
+`PLAY_SERVICE_ACCOUNT_JSON` (Play Internal testing upload; the step is skipped
+if it is empty). The workflow builds, tests, lints, verifies both APKs
+(package, version, cert) and the full AAB signing cert via `keytool`
+(package/version come from the matching full APK), and attaches these files
+to the prerelease:
 
 - `vocaphone.apk`
-- `vocaphone.aab`: full-flavor Android App Bundle for Play Console upload.
-  CI does not push it to Play; see [docs/play-store.md](../docs/play-store.md).
+- `vocaphone.aab`: full-flavor Android App Bundle. CI uploads it to Play
+  Internal testing when `PLAY_SERVICE_ACCOUNT_JSON` is set; see
+  [docs/play-store.md](../docs/play-store.md). This tag workflow never uploads
+  to production and never uploads the fdroid flavour.
 - `vocaphone-fdroid.apk`: the `fdroid` flavour of the same tag. It exists so
   F-Droid can verify a from-source rebuild against it byte-for-byte and then
   publish this same signed APK (F-Droid "reproducible builds"). Install

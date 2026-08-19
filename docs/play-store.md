@@ -4,18 +4,25 @@ How to take a VocaPhone Android beta tag from GitHub Releases into Play Console.
 This is Console and listing work. The app is not listed on Play until that work
 is finished; there is no store URL to publish yet.
 
-Beta tags already attach a signed full-flavor AAB as `vocaphone.aab`. CI does
-not upload to Play (no Play API secrets in this repository yet).
+Beta tags attach a signed full-flavor AAB as `vocaphone.aab`. When
+`PLAY_SERVICE_ACCOUNT_JSON` is set, the beta tag workflow uploads that AAB to
+Internal testing after the GitHub Release is published. The step is skipped if
+the secret is empty, so testers still get the GitHub APKs if Play is unset or
+fails. This tag workflow never uploads to production.
+
+The Play Developer API account is
+`vocaphone-play-upload@level-approach-506001-h1.iam.gserviceaccount.com`.
+It can view this app and release it to testing tracks only.
 
 ## What to upload
 
 | Artifact | Flavor | Use |
 | --- | --- | --- |
-| `vocaphone.aab` | `full` | Play Console upload |
+| `vocaphone.aab` | `full` | Play Internal testing (CI when the secret is set) |
 | `vocaphone.apk` | `full` | Sideload / GitHub beta |
 | `vocaphone-fdroid.apk` | `fdroid` | F-Droid rebuild verification only |
 
-Upload the full AAB. Never upload the fdroid APK or an fdroid bundle to
+Upload the full AAB only. Never upload the fdroid APK or an fdroid bundle to
 Play. The fdroid flavour drops prebuilt sherpa-onnx / ONNX Runtime so F-Droid
 can rebuild from source; Play testers should get the full catalog.
 
@@ -46,9 +53,9 @@ purpose.
 
 ## Track order
 
-Ship closed testing first (internal or closed track), then open testing if you
-want a wider beta, then production. Do not jump straight to production for the
-first upload.
+The beta tag workflow uses the Play API track name `internal`. If that name is
+missing, `qa` is the only other name to try. Wider testing and production stay
+in Console. This tag workflow never uploads to production.
 
 ## Permissions (Console justification notes)
 
@@ -76,7 +83,8 @@ privacy policy URL (a live page, not a repo-relative path).
 
 ## Listing assets
 
-Fastlane metadata lives under `fastlane/metadata/android/en-US/`:
+Fastlane stays metadata only. It does not upload binaries. Copy lives under
+`fastlane/metadata/android/en-US/`:
 
 - `title.txt`, `short_description.txt`, `full_description.txt`
 - `images/icon.png` (512×512)
@@ -105,7 +113,8 @@ PY
 4. Data safety form (no analytics; on-device default; gateway optional)
 5. Content rating questionnaire
 6. Closed testing track before production
-7. Upload `vocaphone.aab` from the matching beta GitHub Release
+7. Confirm Internal testing received `vocaphone.aab` from the beta tag workflow
+   (upload by hand from the matching GitHub Release if the secret was unset)
 8. Confirm listing copy and graphics in Fastlane match what you paste into Console
 
 ## Building the AAB locally

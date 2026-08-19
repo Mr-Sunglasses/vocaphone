@@ -4,7 +4,9 @@ name: Android beta release
 # APKs plus the full-flavor AAB (Play upload candidate), then publishes them as
 # a workflow artifact and a GitHub prerelease. Checksums and the signing
 # certificate fingerprint are attached so testers can verify what they install.
-# This workflow does not upload to Google Play.
+# After the GitHub Release is published, the full AAB is uploaded to Google Play
+# Internal testing when PLAY_SERVICE_ACCOUNT_JSON is set. That step is skipped
+# if the secret is empty. fdroid artifacts and production are never uploaded.
 on:
   push:
     tags:
@@ -21,6 +23,10 @@ jobs:
   beta:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      # steps.if cannot read secrets. This is true only when the Play JSON
+      # secret is non-empty, so the upload step can skip without it.
+      PLAY_SERVICE_ACCOUNT_JSON_SET: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -194,4 +200,18 @@ jobs:
             --prerelease \
             --generate-notes \
             "${notes_range[@]}" \
-            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. \`vocaphone.aab\` is the same full-flavor build as an Android App Bundle for Google Play Console upload (not uploaded by this workflow). SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store. \`vocaphone-fdroid.apk\` is the same release built without the prebuilt sherpa-onnx and ONNX Runtime libraries, published so F-Droid can verify its own rebuild against it; install \`vocaphone.apk\` unless you specifically want that variant."
+            --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. \`vocaphone.aab\` is the same full-flavor build as an Android App Bundle. This workflow uploads it to Google Play Internal testing when PLAY_SERVICE_ACCOUNT_JSON is set. SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store. \`vocaphone-fdroid.apk\` is the same release built without the prebuilt sherpa-onnx and ONNX Runtime libraries, published so F-Droid can verify its own rebuild against it; install \`vocaphone.apk\` unless you specifically want that variant."
+      # After the GitHub Release so testers still get APKs if Play fails.
+      # The action defaults to the production track, so tracks must be
+      # internal. If that API name is missing, qa is the only other name
+      # to try. Full-flavor AAB only; never fdroid, never production.
+      - name: Upload vocaphone.aab to Play Internal testing
+        if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON_SET == 'true' }}
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.vocahq.vocaphone
+          releaseFiles: release-assets/vocaphone.aab
+          tracks: internal
+          status: completed
+          releaseName: ${{ github.ref_name }}
