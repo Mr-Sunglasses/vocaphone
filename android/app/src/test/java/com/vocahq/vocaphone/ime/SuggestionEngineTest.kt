@@ -190,10 +190,23 @@ class SuggestionEngineTest {
         assertTrue(dictionary.swipe("h").isEmpty())
     }
 
+    /**
+     * The path here was `src/main/assets/suggestions/en.txt`, which stopped
+     * existing when the word list moved to the repository root to be shared
+     * with iOS. `assumeTrue` turned that into a skip rather than a failure, so
+     * the only check that swipe ranks the real ten thousand word list correctly
+     * silently stopped running — including through a rewrite of the ranking.
+     */
     @Test
     fun `english list picks some not see on an s-o-m-e swipe`() {
-        val file = java.io.File("src/main/assets/suggestions/en.txt")
-        org.junit.Assume.assumeTrue(file.exists())
+        val file = generateSequence(java.io.File("").absoluteFile) { it.parentFile }
+            .map { java.io.File(it, "assets/keyboard/en.txt") }
+            .firstOrNull(java.io.File::isFile)
+        org.junit.Assume.assumeTrue(
+            "assets/keyboard is only present in the repository",
+            file != null,
+        )
+        requireNotNull(file)
         val dict = SuggestionDictionary(
             words = file.readLines().map { it.trim() }.filter { it.isNotEmpty() },
             bigrams = emptyMap(),

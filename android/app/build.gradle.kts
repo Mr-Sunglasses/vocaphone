@@ -172,6 +172,15 @@ android {
     testOptions {
         unitTests.isIncludeAndroidResources = true
         unitTests.isReturnDefaultValues = true
+        // Gradle does not pass the daemon's system properties to the test JVM,
+        // so the keyboard's timing harness could not be switched on from the
+        // command line without this. Absent by default, which is what keeps the
+        // harness out of an ordinary `test` run.
+        unitTests.all { test ->
+            System.getProperty("vocaphone.benchmark")?.let {
+                test.systemProperty("vocaphone.benchmark", it)
+            }
+        }
     }
 
     packaging {

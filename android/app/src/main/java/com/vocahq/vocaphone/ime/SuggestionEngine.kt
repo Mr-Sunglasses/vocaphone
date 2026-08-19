@@ -2,22 +2,72 @@ package com.vocahq.vocaphone.ime
 
 import android.content.res.AssetManager
 
+/**
+ * The typing dictionary, with the indexes that keep it off the frame budget.
+ *
+ * Every lookup here used to be a full scan of all ten thousand words, run from
+ * composition on every keystroke: `complete` tested `startsWith` against each
+ * one, `similar` ran a Damerau-Levenshtein matrix against each one — allocating
+ * three `IntArray`s a word — and `swipe` rebuilt each word's collapsed spelling
+ * from scratch. Typing a word the dictionary does not know cost roughly a
+ * millisecond per keystroke on a desktop JVM, which is a dropped frame or
+ * several on a phone, and it landed on exactly the keystrokes where the user is
+ * mid-word and watching the strip.
+ *
+ * The indexes below are built once, at load, on whatever thread does the
+ * loading — which is deliberately not the keyboard's. They cost about a
+ * megabyte for the shipped list and turn all three scans into small ones. The
+ * results are identical: every index preserves the frequency order of [words],
+ * because that order is what the strip's ranking means.
+ */
 internal class SuggestionDictionary(
     private val words: List<String>,
     private val bigrams: Map<String, List<String>>,
 ) {
     private val known = words.toHashSet()
 
+    /** `word.length`, unboxed, so the length filter never touches a String. */
+    private val lengths = IntArray(words.size) { words[it].length }
+
+    /**
+     * Which letters each word contains, one bit per letter, with bit 26 for
+     * anything outside a-z. Two words within edit distance 2 cannot differ by
+     * more than four letters — each edit adds at most one letter and removes at
+     * most one — so a word whose bit count differs by more is rejected before
+     * the matrix runs. On the shipped list this declines around 95% of the
+     * candidates that survive the length filter, for one xor and one popcount.
+     */
+    private val letterMasks = IntArray(words.size) { letterMask(words[it]) }
+
+    /**
+     * Indices of the words starting with each prefix of up to
+     * [PREFIX_KEY_LENGTH] characters, ascending, so a bucket walk is still a
+     * frequency-ordered walk. A longer prefix reuses the longest bucket it has
+     * and re-tests `startsWith`, which is exact and cheap on a small bucket.
+     */
+    private val prefixIndex: Map<String, IntArray> = buildPrefixIndex(words)
+
+    /** Each word's swipe spelling, collapsed once here instead of per gesture. */
+    private val collapsed: Array<String> =
+        Array(words.size) { SuggestionEngine.collapseLetters(words[it]) }
+
+    /** Unboxed lengths for [collapsed], so the reject path never derefs a String. */
+    private val collapsedLength = IntArray(words.size) { collapsed[it].length }
+
     fun isKnown(word: String): Boolean = known.contains(word.lowercase())
 
     fun complete(prefix: String, limit: Int = 3): List<String> {
         if (prefix.isEmpty()) return emptyList()
         val lower = prefix.lowercase()
-        return words.asSequence()
-            .filter { it.startsWith(lower) && it.length > lower.length }
-            .take(limit)
-            .map { SuggestionEngine.matchCase(prefix, it) }
-            .toList()
+        val bucket = prefixIndex[lower.take(PREFIX_KEY_LENGTH)] ?: return emptyList()
+        val matches = ArrayList<String>(limit)
+        for (index in bucket) {
+            val word = words[index]
+            if (lengths[index] <= lower.length || !word.startsWith(lower)) continue
+            matches.add(SuggestionEngine.matchCase(prefix, word))
+            if (matches.size == limit) break
+        }
+        return matches
     }
 
     fun next(previousWord: String, limit: Int = 3): List<String> {
@@ -39,9 +89,16 @@ internal class SuggestionDictionary(
         val distance2 = ArrayList<String>(limit)
         val minLen = (lower.length - 2).coerceAtLeast(1)
         val maxLen = lower.length + 2
-        for (word in words) {
-            if (word == lower || word.length !in minLen..maxLen) continue
-            val distance = SuggestionEngine.editDistance(lower, word, max = 2)
+        val typedMask = letterMask(lower)
+        // One set of rows for the whole scan rather than three arrays per word.
+        val scratch = SuggestionEngine.EditDistanceScratch(maxLen)
+        for (index in words.indices) {
+            val length = lengths[index]
+            if (length < minLen || length > maxLen) continue
+            if ((typedMask xor letterMasks[index]).countOneBits() > MAX_LETTER_DIFFERENCE) continue
+            val word = words[index]
+            if (word == lower) continue
+            val distance = SuggestionEngine.editDistance(lower, word, max = 2, scratch = scratch)
             when (distance) {
                 1 -> {
                     if (SuggestionEngine.isNeighborSubstitution(lower, word)) neighbor.add(word)
@@ -84,25 +141,53 @@ internal class SuggestionDictionary(
     fun swipe(path: String, limit: Int = 4): List<String> {
         val keys = SuggestionEngine.collapseLetters(path)
         if (keys.length < 2) return emptyList()
-        val firstKeys = SuggestionEngine.nearbyLetters(keys.first()) + keys.first()
-        val lastKeys = SuggestionEngine.nearbyLetters(keys.last()) + keys.last()
-        return words.asSequence()
-            .mapIndexedNotNull { rank, word ->
-                val compact = SuggestionEngine.collapseLetters(word)
-                if (compact.length < 2) return@mapIndexedNotNull null
-                if (compact.first() !in firstKeys || compact.last() !in lastKeys) {
-                    return@mapIndexedNotNull null
-                }
-                if (!SuggestionEngine.isSubsequence(compact, keys)) return@mapIndexedNotNull null
-                word to SuggestionEngine.swipeScore(keys, compact, rank)
-            }
+        // The gesture's own sampled shape and length are the same for every
+        // candidate. They used to be recomputed inside the score, so a ten
+        // thousand word list resampled the user's path ten thousand times.
+        val gesture = SuggestionEngine.SwipeGesture(keys)
+        val scored = ArrayList<Pair<String, Float>>()
+        for (rank in words.indices) {
+            val compact = collapsed[rank]
+            val last = collapsedLength[rank] - 1
+            if (last < 1) continue
+            if (!gesture.endsAreReachable(compact[0], compact[last])) continue
+            if (!SuggestionEngine.isSubsequence(compact, keys)) continue
+            scored.add(words[rank] to gesture.score(compact, rank))
+        }
+        return scored
             .sortedByDescending { it.second }
             .take(limit)
             .map { it.first }
-            .toList()
     }
 
     companion object {
+        /**
+         * How many leading characters a prefix bucket is keyed by. Three keeps
+         * the map at a few thousand entries for the shipped list while leaving
+         * the average bucket small enough to walk.
+         */
+        private const val PREFIX_KEY_LENGTH = 3
+
+        /** See [letterMasks]: two edits can move at most four distinct letters. */
+        private const val MAX_LETTER_DIFFERENCE = 4
+
+        private fun letterMask(word: String): Int {
+            var mask = 0
+            for (character in word) mask = mask or SuggestionEngine.letterBit(character)
+            return mask
+        }
+
+        private fun buildPrefixIndex(words: List<String>): Map<String, IntArray> {
+            val builders = HashMap<String, MutableList<Int>>()
+            words.forEachIndexed { index, word ->
+                val lower = word.lowercase()
+                for (length in 1..minOf(PREFIX_KEY_LENGTH, lower.length)) {
+                    builders.getOrPut(lower.substring(0, length)) { ArrayList() }.add(index)
+                }
+            }
+            return builders.mapValues { (_, indices) -> indices.toIntArray() }
+        }
+
         // Both files come from assets/keyboard/ at the repository root, merged
         // into the asset root by the sourceSets entry in app/build.gradle.kts.
         // The iOS keyboard reads the same two files.
@@ -220,13 +305,64 @@ internal object SuggestionEngine {
         return WordSpan(word, before.length - start, end)
     }
 
-    internal fun editDistance(left: String, right: String, max: Int): Int {
+    /**
+     * Three rows of the edit-distance matrix, reused across a whole scan.
+     *
+     * The rows are the same shape for every candidate, so allocating them per
+     * word meant three `IntArray`s per dictionary entry — tens of thousands of
+     * short-lived arrays per keystroke, and the garbage collection that comes
+     * with them, on the thread drawing the keyboard.
+     *
+     * Not thread-safe, deliberately: one belongs to one scan, and sharing one
+     * between scans would interleave two matrices in the same rows.
+     */
+    internal class EditDistanceScratch(maxRightLength: Int) {
+        var previousPrevious = IntArray(maxRightLength + 1)
+            private set
+        var previous = IntArray(maxRightLength + 1)
+            private set
+        var current = IntArray(maxRightLength + 1)
+            private set
+
+        /**
+         * Grows in place rather than handing back a bigger one, so a caller
+         * that held onto this keeps the rows that grew.
+         *
+         * Returning a replacement looked equivalent and was not: `similar`
+         * binds its scratch once and reuses it for a whole scan, so it would
+         * have kept the undersized one and allocated a replacement per
+         * candidate — the exact cost this class exists to remove, with nothing
+         * failing to say so.
+         */
+        fun fit(columns: Int) {
+            if (previous.size > columns) return
+            previousPrevious = IntArray(columns + 1)
+            previous = IntArray(columns + 1)
+            current = IntArray(columns + 1)
+        }
+    }
+
+    internal fun editDistance(left: String, right: String, max: Int): Int =
+        editDistance(left, right, max, EditDistanceScratch(right.length))
+
+    internal fun editDistance(
+        left: String,
+        right: String,
+        max: Int,
+        scratch: EditDistanceScratch,
+    ): Int {
         if (left == right) return 0
         if (kotlin.math.abs(left.length - right.length) > max) return max + 1
         val columns = right.length
-        var previousPrevious = IntArray(columns + 1)
-        var previous = IntArray(columns + 1) { it }
-        var current = IntArray(columns + 1)
+        scratch.fit(columns)
+        var previousPrevious = scratch.previousPrevious
+        var previous = scratch.previous
+        var current = scratch.current
+        // Only the prefix this candidate uses is reset; the tail is never read.
+        for (index in 0..columns) {
+            previousPrevious[index] = 0
+            previous[index] = index
+        }
         for (i in 1..left.length) {
             current[0] = i
             var rowMin = current[0]
@@ -277,30 +413,61 @@ internal object SuggestionEngine {
      * the word's key centers, then rank by shape and path length. We do the
      * same on the QWERTY grid instead of taking the first dictionary hit.
      */
-    internal fun swipeScore(path: String, compactWord: String, frequencyRank: Int): Float {
-        val shape = shapeDistance(path, compactWord)
-        val lengthGap = kotlin.math.abs(pathLength(path) - pathLength(compactWord))
-        val endPenalty =
-            (if (compactWord.first() == path.first()) 0f else 0.7f) +
-                (if (compactWord.last() == path.last()) 0f else 0.7f)
-        val frequency = 1f / (1f + frequencyRank / 400f)
-        return frequency * 2f - shape * 3f - lengthGap * 0.35f - endPenalty
+    /**
+     * One gesture's key path, with everything that depends only on the gesture
+     * worked out once.
+     *
+     * Scoring used to take the raw path and re-derive all of this per candidate,
+     * so a ten thousand word list resampled the user's sixteen points ten
+     * thousand times and rebuilt its own neighbour sets on the way in.
+     */
+    internal class SwipeGesture(val keys: String) {
+        private val samples = samplePath(keys, SAMPLE_POINTS)
+        private val length = pathLength(keys)
+
+        /**
+         * The acceptable first and last keys as letter bitmaps rather than
+         * `Set<Char>`. Membership in a `Set<Char>` boxes the character, and this
+         * is tested twice for every word in the list on every gesture — twenty
+         * thousand boxes per swipe, for a question a shift and an and answers.
+         */
+        private val firstMask = letterBits(nearbyLetters(keys.first()) + keys.first())
+        private val lastMask = letterBits(nearbyLetters(keys.last()) + keys.last())
+
+        fun endsAreReachable(first: Char, last: Char): Boolean =
+            letterBit(first) and firstMask != 0 && letterBit(last) and lastMask != 0
+
+        fun score(compactWord: String, frequencyRank: Int): Float {
+            val shape = shapeDistance(compactWord)
+            val lengthGap = kotlin.math.abs(length - pathLength(compactWord))
+            val endPenalty =
+                (if (compactWord.first() == keys.first()) 0f else 0.7f) +
+                    (if (compactWord.last() == keys.last()) 0f else 0.7f)
+            val frequency = 1f / (1f + frequencyRank / 400f)
+            return frequency * 2f - shape * 3f - lengthGap * 0.35f - endPenalty
+        }
+
+        private fun shapeDistance(word: String): Float {
+            val ideal = samplePath(word, SAMPLE_POINTS)
+            if (samples.isEmpty() || ideal.isEmpty()) return Float.MAX_VALUE
+            var sum = 0f
+            for (index in samples.indices) sum += samples[index].distanceTo(ideal[index])
+            return sum / samples.size
+        }
     }
 
-    internal fun nearbyLetters(letter: Char): Set<Char> {
-        val origin = QWERTY[letter] ?: return emptySet()
-        return QWERTY.mapNotNull { (other, point) ->
-            other.takeIf { it != letter && origin.distanceTo(point) < 1.55f }
-        }.toSet()
+    internal fun nearbyLetters(letter: Char): Set<Char> = NEARBY[letter].orEmpty()
+
+    /** One bit per a-z letter; bit 26 stands in for everything else. */
+    internal fun letterBit(letter: Char): Int {
+        val offset = letter - 'a'
+        return if (offset in 0..25) 1 shl offset else 1 shl 26
     }
 
-    internal fun shapeDistance(userPath: String, word: String): Float {
-        val user = samplePath(userPath, SAMPLE_POINTS)
-        val ideal = samplePath(word, SAMPLE_POINTS)
-        if (user.isEmpty() || ideal.isEmpty()) return Float.MAX_VALUE
-        var sum = 0f
-        for (index in user.indices) sum += user[index].distanceTo(ideal[index])
-        return sum / user.size
+    internal fun letterBits(letters: Iterable<Char>): Int {
+        var mask = 0
+        for (letter in letters) mask = mask or letterBit(letter)
+        return mask
     }
 
     private fun pathLength(keys: String): Float {
@@ -353,6 +520,21 @@ internal object SuggestionEngine {
         row(0f, 0f, "qwertyuiop")
         row(1f, 0.5f, "asdfghjkl")
         row(2f, 1.5f, "zxcvbnm")
+    }
+
+    /**
+     * Keys within reach of a mistyped one, worked out once for the whole
+     * layout. Derived per call, this allocated a list and a set on every
+     * distance-1 candidate the correction scan found, and twice per swipe.
+     *
+     * Declared after [QWERTY] because an object's properties initialize in
+     * source order, and this one reads it.
+     */
+    private val NEARBY: Map<Char, Set<Char>> = QWERTY.mapValues { (letter, origin) ->
+        QWERTY.entries
+            .filter { (other, point) -> other != letter && origin.distanceTo(point) < 1.55f }
+            .map { it.key }
+            .toSet()
     }
 
     private fun isWordChar(character: Char): Boolean =

@@ -117,10 +117,12 @@ import java.io.File
 import com.vocahq.vocaphone.ui.theme.VocaPhoneTheme
 import kotlin.math.PI
 import kotlin.math.sin
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import java.util.Locale
@@ -194,22 +196,45 @@ internal fun VocaPhoneKeyboard(
     val keyHeight = settings.keyboardHeight.keyHeightDp.dp
     val letterRows = KeyboardLayouts.letterRowCount(settings.numberRowEnabled)
     val keyAreaHeight = keyHeight * letterRows + RowGap * (letterRows - 1)
-    val suggestionStrip = remember(
+    // Worked out off the composition thread, and off the frame the keystroke
+    // that triggered it is drawn in.
+    //
+    // This was a `remember` block, so every keystroke ran a dictionary lookup
+    // inside composition and the key could not paint until it returned. The
+    // cost landed unevenly, which is what made it feel like a stutter rather
+    // than a constant delay: a prefix that happens to be a word skips the
+    // correction scan, and a prefix that does not — most of them, mid-word —
+    // paid for it.
+    //
+    // LaunchedEffect gives the conflation for free. Its keys change on the next
+    // keystroke, which cancels a scan still running for the previous one, so a
+    // fast typist computes a strip for the word they stopped on rather than for
+    // every letter on the way there.
+    //
+    // The trade is that the strip is one frame behind the key, so for that
+    // frame it offers the previous keystroke's words. Tapping one in that
+    // window would commit a suggestion for the word as it was a letter ago —
+    // reachable in principle, sixteen milliseconds wide in practice, and the
+    // same trade every keyboard that does this off the main thread makes.
+    var suggestionStrip by remember(editor.sessionId) { mutableStateOf(SuggestionStrip(emptyList())) }
+    LaunchedEffect(
         composeWords,
         settings.correctionsEnabled,
         keyboardState.composing,
         editorText,
         suggestions,
     ) {
-        if (!composeWords || suggestions == null) {
+        suggestionStrip = if (!composeWords || suggestions == null) {
             SuggestionStrip(emptyList())
         } else {
-            suggestions.strip(
-                composing = keyboardState.composing,
-                before = editorText.before,
-                after = editorText.after,
-                correctionsEnabled = settings.correctionsEnabled,
-            )
+            withContext(Dispatchers.Default) {
+                suggestions.strip(
+                    composing = keyboardState.composing,
+                    before = editorText.before,
+                    after = editorText.after,
+                    correctionsEnabled = settings.correctionsEnabled,
+                )
+            }
         }
     }
     val clipboardChip = clipboard.takeIf { settings.clipboardChipEnabled && !editor.sensitive }
@@ -321,6 +346,38 @@ internal fun VocaPhoneKeyboard(
             shift = if (keyboardState.shift == ShiftState.LOCKED) ShiftState.LOCKED else ShiftState.OFF,
         )
         onSuggestionPicked(chosen, false)
+    }
+
+    // Callbacks with an identity that survives recomposition.
+    //
+    // Compose can only skip a child whose inputs are unchanged, and a local
+    // function reference is a fresh object every time this composable runs. So
+    // every keystroke handed all forty keys a new `onKey`, and all forty
+    // rebuilt their modifier chain, semantics and label for it — even though a
+    // letter changes nothing a key draws. `remember` with no keys pins the
+    // identity; `rememberUpdatedState` keeps the body current.
+    val latestKey by rememberUpdatedState<(KeyboardKey) -> Unit>(::handleKey)
+    val latestDelete by rememberUpdatedState<(Long) -> Unit>(::handleDelete)
+    val latestSwipe by rememberUpdatedState<(String) -> Unit>(::handleSwipe)
+    val latestCursorMove by rememberUpdatedState<(Int) -> Unit> { positions ->
+        clearSwipe()
+        keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
+        onCommand(KeyboardCommand.MoveCursor(positions))
+    }
+    val latestEmojiUsed by rememberUpdatedState(onEmojiUsed)
+    val onKeyStable = remember { { key: KeyboardKey -> latestKey(key) } }
+    val onSwipeStable = remember { { path: String -> latestSwipe(path) } }
+    val onCursorMoveStable = remember { { positions: Int -> latestCursorMove(positions) } }
+    val onKeyHoldStable = remember {
+        { key: KeyboardKey, heldMs: Long ->
+            if (key.type == KeyboardKeyType.DELETE) latestDelete(heldMs)
+        }
+    }
+    val onEmojiStable = remember {
+        { glyph: String ->
+            latestKey(KeyboardKey(id = "emoji-$glyph", label = glyph, output = glyph))
+            latestEmojiUsed(glyph)
+        }
     }
 
     VocaPhoneTheme {
@@ -443,31 +500,17 @@ internal fun VocaPhoneKeyboard(
                             height = keyAreaHeight,
                             keyHeight = keyHeight,
                             editor = editor,
-                            state = keyboardState,
+                            shift = keyboardState.shift,
+                            layer = keyboardState.layer,
                             catalog = emojiCatalog,
                             recents = settings.emojiRecents,
                             category = emojiCategory,
                             split = splitKeys,
                             spacerFraction = spacerFraction,
-                            onEmoji = { glyph ->
-                                handleKey(
-                                    KeyboardKey(
-                                        id = "emoji-$glyph",
-                                        label = glyph,
-                                        output = glyph,
-                                    ),
-                                )
-                                onEmojiUsed(glyph)
-                            },
-                            onKey = ::handleKey,
-                            onKeyHold = { key, heldMs ->
-                                if (key.type == KeyboardKeyType.DELETE) handleDelete(heldMs)
-                            },
-                            onCursorMove = { positions ->
-                                clearSwipe()
-                                keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
-                                onCommand(KeyboardCommand.MoveCursor(positions))
-                            },
+                            onEmoji = onEmojiStable,
+                            onKey = onKeyStable,
+                            onKeyHold = onKeyHoldStable,
+                            onCursorMove = onCursorMoveStable,
                         )
                     } else {
                         val rows = KeyboardLayouts.rows(
@@ -483,7 +526,8 @@ internal fun VocaPhoneKeyboard(
                         }
                         KeyboardRows(
                             rows = rows,
-                            state = keyboardState,
+                            shift = keyboardState.shift,
+                            layer = keyboardState.layer,
                             editor = editor,
                             keyHeight = fittedKeyHeight,
                             showKeyHints = settings.numberKeyHintsEnabled,
@@ -491,16 +535,10 @@ internal fun VocaPhoneKeyboard(
                             spacerFraction = spacerFraction,
                             swipeEnabled = settings.swipeTypingEnabled &&
                                 keyboardState.layer == KeyboardLayer.LETTERS,
-                            onSwipe = ::handleSwipe,
-                            onKey = ::handleKey,
-                            onKeyHold = { key, heldMs ->
-                                if (key.type == KeyboardKeyType.DELETE) handleDelete(heldMs)
-                            },
-                            onCursorMove = { positions ->
-                                clearSwipe()
-                                keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
-                                onCommand(KeyboardCommand.MoveCursor(positions))
-                            },
+                            onSwipe = onSwipeStable,
+                            onKey = onKeyStable,
+                            onKeyHold = onKeyHoldStable,
+                            onCursorMove = onCursorMoveStable,
                         )
                     }
                 }
@@ -1479,7 +1517,8 @@ private fun EmojiLayer(
     height: Dp,
     keyHeight: Dp,
     editor: KeyboardEditorConfig,
-    state: KeyboardState,
+    shift: ShiftState,
+    layer: KeyboardLayer,
     catalog: List<EmojiEntry>,
     recents: List<String>,
     category: EmojiCategory,
@@ -1506,7 +1545,8 @@ private fun EmojiLayer(
         )
         KeyboardRows(
             rows = bottomRow,
-            state = state,
+            shift = shift,
+            layer = layer,
             editor = editor,
             keyHeight = keyHeight,
             split = split,
@@ -1591,7 +1631,8 @@ private fun EmojiGrid(
 @Composable
 private fun KeyboardRows(
     rows: List<KeyboardRow>,
-    state: KeyboardState,
+    shift: ShiftState,
+    layer: KeyboardLayer,
     editor: KeyboardEditorConfig,
     keyHeight: Dp,
     showKeyHints: Boolean = false,
@@ -1654,7 +1695,8 @@ private fun KeyboardRows(
                                 val key = item.key
                                 KeyButton(
                                     key = key,
-                                    state = state,
+                                    shift = shift,
+                                    layer = layer,
                                     editor = editor,
                                     keyHeight = keyHeight,
                                     showKeyHints = showKeyHints,
@@ -1756,7 +1798,8 @@ private fun hitLetter(
 @Composable
 private fun RowScope.KeyButton(
     key: KeyboardKey,
-    state: KeyboardState,
+    shift: ShiftState,
+    layer: KeyboardLayer,
     editor: KeyboardEditorConfig,
     keyHeight: Dp,
     showKeyHints: Boolean = false,
@@ -1775,13 +1818,13 @@ private fun RowScope.KeyButton(
     val currentOnCursorMove = rememberUpdatedState(onCursorMove)
     var pressed by remember(key.id) { mutableStateOf(false) }
     var accentIndex by remember(key.id) { mutableStateOf(-1) }
-    val accents = remember(key.id, state.shift) { KeyAccents.forKey(key, state.shift) }
+    val accents = remember(key.id, shift) { KeyAccents.forKey(key, shift) }
     val isReturnAction = key.type == KeyboardKeyType.RETURN && editor.returnKey != ReturnKeyKind.ENTER
-    val activeShift = key.type == KeyboardKeyType.SHIFT && state.shift != ShiftState.OFF
+    val activeShift = key.type == KeyboardKeyType.SHIFT && shift != ShiftState.OFF
     val background = when {
         isReturnAction -> MaterialTheme.colorScheme.primary
         activeShift -> MaterialTheme.colorScheme.primaryContainer
-        key.type in setOf(KeyboardKeyType.CHARACTER, KeyboardKeyType.SPACE) ->
+        key.type == KeyboardKeyType.CHARACTER || key.type == KeyboardKeyType.SPACE ->
             MaterialTheme.colorScheme.surfaceContainerHighest
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
@@ -1792,8 +1835,8 @@ private fun RowScope.KeyButton(
     }
     val previewLabel = if (
         key.type == KeyboardKeyType.CHARACTER &&
-        state.layer == KeyboardLayer.LETTERS &&
-        state.shift != ShiftState.OFF
+        layer == KeyboardLayer.LETTERS &&
+        shift != ShiftState.OFF
     ) {
         key.label.uppercase(Locale.ROOT)
     } else {
@@ -1836,7 +1879,7 @@ private fun RowScope.KeyButton(
             .background(if (pressed) background.copy(alpha = 0.72f) else background)
             .semantics {
                 role = Role.Button
-                contentDescription = keyDescription(key, previewLabel, editor.returnKey, state.shift)
+                contentDescription = keyDescription(key, previewLabel, editor.returnKey, shift)
                 onClick {
                     currentOnPress.value()
                     true
@@ -1848,7 +1891,7 @@ private fun RowScope.KeyButton(
         KeyContent(
             key = key,
             displayLabel = previewLabel,
-            shift = state.shift,
+            shift = shift,
             returnKey = editor.returnKey,
             tint = foreground,
             hint = if (showKeyHints) KeyAccents.hint(key) else null,

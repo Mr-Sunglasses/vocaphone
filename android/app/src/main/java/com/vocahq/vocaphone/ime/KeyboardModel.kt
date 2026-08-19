@@ -232,6 +232,23 @@ internal object EditorCursorSync {
     }
 }
 
+/**
+ * Whether the editor's selected text has to be asked for.
+ *
+ * `InputConnection.getSelectedText` is a blocking round trip into the app being
+ * typed into, and it was issued once per keystroke. While someone is typing the
+ * answer is always the empty string, because there is no selection to return —
+ * so the cheapest correct thing is to notice that from the bounds the editor
+ * already told us and never make the call.
+ *
+ * A negative bound means no editor has reported yet, which is the one case
+ * worth paying for.
+ */
+internal object EditorSelectionSync {
+    fun mustReadSelection(selStart: Int, selEnd: Int): Boolean =
+        selStart < 0 || selEnd < 0 || selStart != selEnd
+}
+
 internal data class WordSpan(
     val word: String,
     val beforeLength: Int,
