@@ -43,6 +43,47 @@ class DiagnosticLog(
         append(event = "timing", value = stage, source = source)
     }
 
+    /**
+     * Why a previous process of this app ended, read back from the system.
+     *
+     * A process the system kills writes nothing on its way out, so until this
+     * existed the only trace of one was a hole: a dictation logged up to
+     * TRANSCRIBING, then a bare IDLE from the freshly built controller, with
+     * every event that distinguishes a crash from a cancel absent. That shape
+     * is common to a native crash, a low-memory kill, an ANR, and an OEM
+     * background-process sweep, and no amount of reading the log tells them
+     * apart. The system knows which it was and keeps the answer for the next
+     * process to ask.
+     *
+     * [atMillis] is when the process died, not when this line was written, so
+     * an exit sorts into the gap it explains rather than to the end. It is the
+     * one event here that can appear out of order in the file.
+     *
+     * `ApplicationExitInfo.getDescription` is deliberately not recorded. It is
+     * free text from the system or the OEM, and this log's whole contract is
+     * that no call site can put free text in it.
+     */
+    @Synchronized
+    fun recordExit(
+        reason: String,
+        importance: String,
+        footprint: String,
+        signal: String,
+        atMillis: Long,
+    ) {
+        append(
+            event = "exit",
+            value = reason,
+            source = null,
+            atMillis = atMillis,
+            details = listOf(
+                "importance" to importance.takeIf { it in EXIT_IMPORTANCES },
+                "rss" to footprint.takeIf { it in EXIT_FOOTPRINTS },
+                "signal" to signal.takeIf { it in EXIT_SIGNALS },
+            ),
+        )
+    }
+
     @Synchronized
     fun read(): String = runCatching { file.takeIf(File::isFile)?.readText().orEmpty() }
         .getOrDefault("")
@@ -59,14 +100,32 @@ class DiagnosticLog(
         .take(MAX_VALUE_LENGTH)
         .ifEmpty { "unknown" }
 
-    private fun append(event: String, value: String, source: String?) {
-        val line = listOf(
-            "ts=${nowMillis()}",
+    /**
+     * @param atMillis when the event happened, for the events that describe
+     *   something older than the call. Defaults to now.
+     * @param details extra `key=value` fields for the events that need more
+     *   than one dimension to be worth reading. A null value is dropped, so a
+     *   caller whose allowlist rejected its input omits the field rather than
+     *   writing something unvetted, and [safe] still runs over whatever
+     *   survives.
+     */
+    private fun append(
+        event: String,
+        value: String,
+        source: String?,
+        atMillis: Long? = null,
+        details: List<Pair<String, String?>> = emptyList(),
+    ) {
+        val fields = listOf(
+            "ts=${atMillis ?: nowMillis()}",
             "build=${safe(buildVersion)}",
             "event=${knownEvent(event)}",
             "value=${knownValue(event, value)}",
             "source=${knownSource(source)}",
-        ).joinToString(" ") + "\n"
+        ) + details.mapNotNull { (key, detail) ->
+            detail?.let { "${safe(key)}=${safe(it)}" }
+        }
+        val line = fields.joinToString(" ") + "\n"
 
         runCatching {
             file.parentFile?.mkdirs()
@@ -97,18 +156,92 @@ class DiagnosticLog(
         "error" -> value.takeIf { it in ERROR_CATEGORIES } ?: "unknown"
         "action" -> value.takeIf { it in ACTIONS } ?: "unknown"
         "timing" -> value.takeIf { it in TIMING_STAGES } ?: "unknown"
+        "exit" -> value.takeIf { it in EXIT_REASONS } ?: "unknown"
         else -> "unknown"
     }
 
     private fun knownSource(value: String?): String =
         value?.takeIf { it in SOURCES } ?: "none"
 
-    private companion object {
+    // Internal rather than private so the mappers that feed this log can be
+    // tested against the vocabularies themselves. A mapper and an allowlist
+    // that drift turn every event into "unknown" and nothing fails.
+    internal companion object {
         const val MAX_EVENTS = 200
         const val MAX_BYTES = 48 * 1024
         const val MAX_VALUE_LENGTH = 64
-        val EVENTS = setOf("state", "error", "action", "timing")
+        val EVENTS = setOf("state", "error", "action", "timing", "exit")
         val SOURCES = setOf("IME", "COMPANION_APP", "none")
+        /**
+         * `ApplicationExitInfo.REASON_*`, named rather than numbered so a
+         * pasted log reads without the SDK next to it. `crash` is a Java
+         * exception that reached the top; `crash_native` is a signal ggml,
+         * whisper.cpp or ONNX Runtime died on.
+         */
+        val EXIT_REASONS = setOf(
+            "exit_self",
+            "signaled",
+            "low_memory",
+            "crash",
+            "crash_native",
+            "anr",
+            "initialization_failure",
+            "permission_change",
+            "excessive_resource_usage",
+            "user_requested",
+            "user_stopped",
+            "dependency_died",
+            "other",
+            "freezer",
+            "package_state_change",
+            "package_updated",
+            "unknown",
+        )
+        /**
+         * How the system saw the process when it ended.
+         *
+         * This is what separates a bug from housekeeping. A process killed
+         * while cached is Android reclaiming memory it is entitled to; the same
+         * reason code against a foreground service is the keyboard being killed
+         * mid-dictation, which is what a user reports as a crash.
+         */
+        val EXIT_IMPORTANCES = setOf(
+            "foreground",
+            "foreground_service",
+            "visible",
+            "perceptible",
+            "service",
+            "cached",
+            "gone",
+            "unknown",
+        )
+        /** Resident set size at exit, bucketed: a model that did not fit says so here. */
+        val EXIT_FOOTPRINTS = setOf(
+            "under_256mb",
+            "under_512mb",
+            "under_1gb",
+            "under_2gb",
+            "under_4gb",
+            "over_4gb",
+            "unknown",
+        )
+        /**
+         * The signal a `signaled` exit died on.
+         *
+         * `sigill` is the one worth naming on its own: it means a ggml CPU
+         * backend built for instructions this phone does not have was allowed
+         * to run, which is a different bug from a bad pointer.
+         */
+        val EXIT_SIGNALS = setOf(
+            "sigill",
+            "sigabrt",
+            "sigbus",
+            "sigsegv",
+            "sigkill",
+            "sigquit",
+            "other",
+            "none",
+        )
         // Microphone failures are split by cause: after the fact, the call or
         // the screen recording that took the input is long gone, and "audio" on
         // its own cannot tell those apart from a broken recorder.

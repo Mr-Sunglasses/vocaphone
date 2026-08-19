@@ -371,6 +371,26 @@ class SettingsRepository(private val context: Context) {
         return claimed
     }
 
+    /**
+     * Moves the process-exit watermark to [newest] and returns where it was.
+     *
+     * The system hands back the same exits on every query, so something has to
+     * remember which of them the diagnostic log already has. That cannot be the
+     * log itself: it is bounded, and the user can clear it from About, either
+     * of which would make a week-old crash reappear as though it had just
+     * happened. Read and write share one `edit` for the same reason the
+     * telemetry milestones above do — two processes starting together must not
+     * both come away thinking they were first to see an exit.
+     */
+    suspend fun claimProcessExitsUpTo(newest: Long): Long {
+        var previous = 0L
+        context.dataStore.edit { preferences ->
+            previous = preferences[Keys.LAST_REPORTED_EXIT_AT] ?: 0L
+            if (newest > previous) preferences[Keys.LAST_REPORTED_EXIT_AT] = newest
+        }
+        return previous
+    }
+
     suspend fun recordEngineStatus(
         engine: String,
         ready: Boolean,
@@ -464,6 +484,7 @@ class SettingsRepository(private val context: Context) {
         val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
         val TELEMETRY_ASKED = booleanPreferencesKey("telemetry_asked")
         val TELEMETRY_MILESTONES = stringSetPreferencesKey("telemetry_milestones")
+        val LAST_REPORTED_EXIT_AT = longPreferencesKey("last_reported_process_exit_at")
     }
 
     private companion object {

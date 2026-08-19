@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.ui
 
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -118,6 +119,7 @@ class DiagnosticsReportTest {
             cpuCores = 8,
             abi = "arm64-v8a",
             soc = "Google Tensor",
+            cpuFeatures = listOf("asimdhp", "asimddp"),
             performanceClass = 34,
         )
 
@@ -133,9 +135,59 @@ class DiagnosticsReportTest {
         assertTrue(report.contains("RAM: 8.0 GB total, 1.2 GB available"))
         assertTrue(report.contains("Storage: 12.0 GB free of 128.0 GB"))
         assertTrue(report.contains("CPU: 8 cores · arm64-v8a · Google Tensor"))
+        assertTrue(report.contains("CPU features: asimdhp, asimddp"))
         assertTrue(report.contains("Performance class: 34"))
         assertFalse(report.contains("local-models"))
         assertFalse(report.contains("/data/"))
+    }
+
+    /** A Snapdragon 8 Elite Gen 5, which is the shape this line exists for. */
+    private val sm8850Cpuinfo = """
+        processor	: 0
+        BogoMIPS	: 38.40
+        Features	: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 asimdfhm dit uscat ilrcpc flagm ssbs sb paca pacg dcpodp flagm2 frint i8mm bf16 dgh rng bti ecv afp wfxt sme smei8i32 smef16f32 smeb16f32 smef32f32
+        CPU implementer	: 0x51
+        processor	: 1
+        Features	: fp asimd evtstrm aes pmull asimddp i8mm bf16 sme
+        Hardware	: Qualcomm Technologies, Inc SM8850
+    """.trimIndent()
+
+    @Test
+    fun `sme without sme2 is visible in the features`() {
+        val features = cpuFeatures(sm8850Cpuinfo)
+
+        assertTrue(features.contains("sme"))
+        assertFalse(features.contains("sme2"))
+        assertEquals(listOf("asimdhp", "asimddp", "i8mm", "bf16", "sme"), features)
+    }
+
+    @Test
+    fun `a feature is matched whole, never as a prefix of a longer name`() {
+        assertEquals(emptyList<String>(), cpuFeatures("Features\t: smei8i32 smef32f32 sve2fp16"))
+        assertEquals(listOf("sve", "sve2"), cpuFeatures("Features\t: sve sve2 svei8mm"))
+    }
+
+    @Test
+    fun `everything outside the allowlist is dropped rather than copied`() {
+        val features = cpuFeatures(sm8850Cpuinfo)
+
+        assertFalse(features.contains("aes"))
+        assertFalse(features.contains("paca"))
+        assertTrue(sm8850Cpuinfo.contains("Qualcomm Technologies"))
+        assertFalse(features.any { it.contains("Qualcomm") })
+    }
+
+    @Test
+    fun `a cpuinfo with no features of ours reports none, and drops the line`() {
+        // 32-bit Arm, where none of what the engines dispatch on exists.
+        val armv7 = "Features\t: swp half thumb fastmult vfp edsp neon vfpv3 tls idiva"
+
+        assertEquals(emptyList<String>(), cpuFeatures(armv7))
+        assertEquals(emptyList<String>(), cpuFeatures(""))
+        assertFalse(
+            onDeviceReportLines(OnDeviceDiagnostics(cpuCores = 8, abi = "armeabi-v7a"))
+                .any { it.startsWith("CPU features:") },
+        )
     }
 
     @Test

@@ -64,6 +64,30 @@ add_compile_options(
 if(DEFINED ANDROID_NDK)
     add_compile_options(-ffile-prefix-map=${ANDROID_NDK}=/ndk)
 endif()
+
+# 16 KB page size support, which Play requires of every app targeting Android
+# 15 or newer and which devices shipping with Android 15+ -- the 2026 Snapdragon
+# flagships among them -- have switched to.
+#
+# The linker aligns a shared library's PT_LOAD segments to 4 KB unless told
+# otherwise, and Android's loader refuses to map a library whose segments are
+# aligned below the running kernel's page size. `dlopen` then fails outright, so
+# `System.loadLibrary("whisper")` in WhisperLib's initializer throws and
+# on-device transcription is unavailable on the whole device class.
+#
+# Nothing was catching it. Every prebuilt library the project ships -- ONNX
+# Runtime, sherpa-onnx, the AndroidX ones -- already arrives 16 KB aligned, and
+# AGP page-aligns the APK's zip entries by itself, so the only 4 KB segments in
+# a release build were in the libraries compiled right here. NDK r28 makes this
+# the default for 64-bit ABIs; the flag is what r27 needs, and it is written at
+# directory scope so ggml's own targets take it too.
+#
+# 32-bit ABIs are deliberately excluded, matching what r28 does: their page size
+# is unchanged, and the padding would be dead weight in the APK.
+if(ANDROID_ABI STREQUAL "arm64-v8a" OR ANDROID_ABI STREQUAL "x86_64")
+    add_link_options(-Wl,-z,max-page-size=16384)
+endif()
+
 set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
 set(GIT_EXE "" CACHE FILEPATH "Disabled: ggml must not read git for GGML_COMMIT" FORCE)
 set(GGML_BUILD_COMMIT "whisper-v${WHISPER_VERSION}")

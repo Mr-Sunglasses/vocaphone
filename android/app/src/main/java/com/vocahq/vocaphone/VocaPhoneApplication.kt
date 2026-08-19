@@ -6,6 +6,8 @@ import androidx.room.Room
 import com.vocahq.vocaphone.audio.DictationTonePlayer
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
+import com.vocahq.vocaphone.data.ProcessExitReporter
+import com.vocahq.vocaphone.data.recentProcessExits
 import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
 import com.vocahq.vocaphone.local.LocalModelManager
@@ -27,6 +29,8 @@ class AppContainer(context: Context) {
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    private val appContext = context.applicationContext
+
     val settings = SettingsRepository(context)
 
     val dictationCues = DictationTonePlayer(context)
@@ -40,6 +44,20 @@ class AppContainer(context: Context) {
 
     /** App-private and bounded; it never contains transcript or gateway data. */
     val diagnostics = DiagnosticLog(context)
+
+    /**
+     * Why the previous process ended, written into [diagnostics] at start.
+     *
+     * A killed process cannot log its own death, so without this the log of a
+     * crashing device is a dictation that reaches TRANSCRIBING and then a bare
+     * IDLE from the rebuilt controller — the same shape whether the cause was a
+     * native crash, an out-of-memory kill, or an OEM background sweep.
+     */
+    private val processExits = ProcessExitReporter(
+        diagnostics = diagnostics,
+        claimExitsUpTo = settings::claimProcessExitsUpTo,
+        recentExits = { appContext.recentProcessExits() },
+    )
 
     /** App-private, no-backup storage: recordings never leave the device except to the gateway. */
     val audioDirectory = File(context.filesDir, "recordings")
@@ -74,6 +92,10 @@ class AppContainer(context: Context) {
     fun purgeExpiredAudio() {
         applicationScope.launch { history.purgeExpiredAudio(audioDirectory) }
     }
+
+    fun reportProcessExits() {
+        applicationScope.launch { processExits.report() }
+    }
 }
 
 class VocaPhoneApplication : Application() {
@@ -85,6 +107,11 @@ class VocaPhoneApplication : Application() {
         // Audio kept for a retry that never happened must not outlive its window,
         // including across a process that was killed mid-dictation.
         container.purgeExpiredAudio()
+        // Runs for every process start, which for this app is every time the
+        // keyboard is brought up after the last one was reclaimed — so a crash
+        // is explained in the log the user pastes, not only after they manage
+        // to reproduce it with a cable attached.
+        container.reportProcessExits()
     }
 
     companion object {

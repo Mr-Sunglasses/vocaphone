@@ -107,6 +107,7 @@ data class OnDeviceDiagnostics(
     val cpuCores: Int = 0,
     val abi: String = "",
     val soc: String = "",
+    val cpuFeatures: List<String> = emptyList(),
     val performanceClass: Int = 0,
 ) {
     val collected: Boolean
@@ -131,8 +132,49 @@ fun Context.readOnDeviceDiagnostics(
         cpuCores = Runtime.getRuntime().availableProcessors(),
         abi = Build.SUPPORTED_ABIS?.firstOrNull().orEmpty(),
         soc = socLabel(),
+        cpuFeatures = runCatching { File(PROC_CPUINFO).readText() }
+            .map(::cpuFeatures)
+            .getOrDefault(emptyList()),
         performanceClass = Build.VERSION.MEDIA_PERFORMANCE_CLASS,
     )
+}
+
+private const val PROC_CPUINFO = "/proc/cpuinfo"
+
+/**
+ * The instruction-set extensions the transcription engines choose kernels from,
+ * always reported in this order so two reports compare line for line.
+ *
+ * The pair that earns the line is sme without sme2. They are separate
+ * extensions, and a core that has the first but not the second is what made
+ * ONNX Runtime 1.23.2 dispatch SME2 opcodes and take the process down with
+ * SIGILL on the Snapdragon 8 Elite Gen 5. Nothing in the old report said which
+ * of the two the phone had.
+ */
+private val REPORTED_CPU_FEATURES = listOf(
+    "asimdhp",
+    "asimddp",
+    "i8mm",
+    "bf16",
+    "sve",
+    "sve2",
+    "sme",
+    "sme2",
+)
+
+/**
+ * Reads the "Features" lines of a /proc/cpuinfo, which every core repeats.
+ *
+ * A closed allowlist, like every other field in a diagnostics report: the file
+ * is free text from the kernel and the OEM, and the report gets pasted into
+ * public issues, so a name this does not know is dropped rather than copied.
+ */
+fun cpuFeatures(cpuinfo: String): List<String> {
+    val present = cpuinfo.lineSequence()
+        .filter { it.substringBefore(':').trim() == "Features" }
+        .flatMap { it.substringAfter(':', "").trim().splitToSequence(Regex("\\s+")) }
+        .toSet()
+    return REPORTED_CPU_FEATURES.filter { it in present }
 }
 
 fun directorySizeBytes(root: File): Long {
@@ -247,6 +289,9 @@ fun onDeviceReportLines(onDevice: OnDeviceDiagnostics): List<String> {
                     }
                 },
             )
+        }
+        if (onDevice.cpuFeatures.isNotEmpty()) {
+            add("CPU features: ${onDevice.cpuFeatures.joinToString()}")
         }
         if (onDevice.performanceClass > 0) {
             add("Performance class: ${onDevice.performanceClass}")

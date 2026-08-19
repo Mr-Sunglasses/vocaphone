@@ -80,6 +80,53 @@ class DiagnosticLogTest {
         }
     }
 
+    /**
+     * The exit line is the one that carries more than one value, and every one
+     * of them is an allowlist away from the free text the system offers. An
+     * unvetted field is dropped rather than written.
+     */
+    @Test
+    fun `process exits record their dimensions and reject anything else`() {
+        val directory = Files.createTempDirectory("vocaphone-diagnostics").toFile()
+        try {
+            val log = DiagnosticLog(directory.resolve("events.log"), nowMillis = { 5_000L })
+
+            log.recordExit(
+                reason = "crash_native",
+                importance = "foreground_service",
+                footprint = "under_1gb",
+                signal = "sigsegv",
+                atMillis = 4_321L,
+            )
+            log.recordExit(
+                reason = "Native crash (see logcat)",
+                importance = "com.oem.killer said so",
+                footprint = "703992 kB",
+                signal = "11",
+                atMillis = 4_400L,
+            )
+
+            val lines = log.read().lines().filter { it.isNotBlank() }
+            assertTrue(
+                lines[0].contains(
+                    "event=exit value=crash_native source=none " +
+                        "importance=foreground_service rss=under_1gb signal=sigsegv",
+                ),
+            )
+            // An exit is dated when the process died, so it sorts into the gap
+            // it explains rather than to when it happened to be read back.
+            assertTrue(lines[0].startsWith("ts=4321 "))
+            assertTrue(lines[1].contains("event=exit value=unknown source=none"))
+            assertFalse(lines[1].contains("importance="))
+            assertFalse(lines[1].contains("rss="))
+            assertFalse(lines[1].contains("signal="))
+            assertFalse(log.read().contains("logcat"))
+            assertFalse(log.read().contains("oem"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test
     fun `log is bounded by event count`() {
         val directory = Files.createTempDirectory("vocaphone-diagnostics").toFile()

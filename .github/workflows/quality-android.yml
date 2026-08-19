@@ -61,6 +61,13 @@ jobs:
         run: git diff --exit-code -- app/schemas
         working-directory: android
 
+      # A 4 KB-aligned library cannot be loaded at all on a 16 KB-page device,
+      # and nothing else in the build says so: lint does not look, and the APK's
+      # zip entries are page-aligned by AGP whatever the ELF segments say.
+      - name: Fail if a 64-bit library is not 16 KB aligned
+        run: python3 tools/check-page-alignment.py app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
+        working-directory: android
+
       - name: Measure Android debug APK size
         id: size
         working-directory: android
