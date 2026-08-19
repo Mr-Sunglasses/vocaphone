@@ -1,0 +1,1 @@
+Dictation plays a start and stop tone. Pick one under Settings, Dictation, or set it to Off. The keyboard no longer stutters while you type and its emoji list now covers the full Unicode catalog. On-device transcription works on phones that use 16 KB memory pages.
