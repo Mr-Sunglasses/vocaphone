@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a reproducible vocaphone problem without including private data.
+description: Something broken in the Android or iOS app.
 title: "[Bug]: "
 labels:
   - bug
@@ -7,47 +7,44 @@ body:
   - type: markdown
     attributes:
       value: |
-        Do not include recordings, transcripts, access tokens, signing files, or private tailnet hostnames. Report security issues privately using SECURITY.md.
+        Leave out recordings, transcripts, tokens, and private hostnames.
+        Security issues go through SECURITY.md or a private advisory, not this form.
   - type: dropdown
-    id: component
+    id: app
     attributes:
-      label: Component
+      label: App
       options:
-        - iOS containing app
-        - Custom keyboard
-        - Android floating bubble
-        - Native or Docker gateway
-        - VocaMac, Handy, WhisperKit, or whisper.cpp adapter
-        - Documentation or setup
+        - Android app
+        - iOS app
     validations:
       required: true
   - type: textarea
     id: description
     attributes:
       label: What happened?
-      description: Describe the observed and expected behavior.
+      description: What you saw, and what you expected.
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: Reproduction steps
+      label: How to reproduce
       placeholder: |
         1. Open ...
         2. Tap ...
-        3. Observe ...
+        3. Then ...
     validations:
       required: true
   - type: input
     id: environment
     attributes:
-      label: Environment
-      description: iPhone/iOS or macOS/Xcode/Python versions, as applicable.
+      label: Phone and version
+      description: Phone model, OS version, and the VocaPhone app version or release tag.
     validations:
       required: true
   - type: textarea
     id: logs
     attributes:
-      label: Redacted diagnostics
-      description: Remove tokens, transcripts, recordings, URLs, and other personal data.
+      label: Redacted logs (optional)
+      description: Strip tokens, transcripts, recordings, and hostnames first.
       render: shell

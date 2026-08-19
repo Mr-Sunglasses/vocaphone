@@ -1,11 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Support and troubleshooting
-    url: https://github.com/VocaHQ/vocaphone/blob/main/SUPPORT.md
-    about: Read SUPPORT.md for where to ask usage questions and what to include.
-  - name: Security report
+  - name: Gateway
+    url: https://github.com/VocaHQ/vocagateway/issues
+    about: Docker, pairing, and self-hosted server problems go in VocaHQ/vocagateway.
+  - name: Security
     url: https://github.com/VocaHQ/vocaphone/security/advisories/new
-    about: Report microphone, token, gateway, or privacy vulnerabilities privately.
-  - name: Contributing guide
-    url: https://github.com/VocaHQ/vocaphone/blob/main/CONTRIBUTING.md
-    about: Development setup, required checks, and pull request expectations.
+    about: Microphone, token, or privacy issues. Use a private advisory, not a public issue.
+  - name: Support
+    url: https://github.com/VocaHQ/vocaphone/blob/main/SUPPORT.md
+    about: Where to ask usage questions and what to leave out of a report.

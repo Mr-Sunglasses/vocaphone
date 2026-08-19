@@ -2,236 +2,117 @@
 
 <img src="assets/vocaphone-logo-512.png" alt="" width="120" height="120">
 
-# vocaphone
+# VocaPhone
 
 **Voice dictation for iPhone and Android.**
 
+<!-- Product -->
 [![Status: Android beta / iOS source](https://img.shields.io/badge/status-Android%20beta%20%2F%20iOS%20source-yellow)](#status)
-[![Platform: iOS + Android](https://img.shields.io/badge/platform-iOS%20%2B%20Android-lightgrey)](#how-it-works)
 [![Privacy: on-device / optional gateway](https://img.shields.io/badge/privacy-on--device%20%2F%20optional%20gateway-success)](#privacy-and-platform-boundaries)
-[![Part of VocaHQ](https://img.shields.io/badge/family-VocaHQ-1a7f4e)](https://github.com/VocaHQ)
+[![Release](https://img.shields.io/github/v/release/VocaHQ/vocaphone?include_prereleases)](https://github.com/VocaHQ/vocaphone/releases/latest)
+[![vocaphone.vocahq.com](https://img.shields.io/badge/site-vocaphone.vocahq.com-0F6B57)](https://vocaphone.vocahq.com)
+<br>
+
+<!-- Family / community -->
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
-[![Contributing](https://img.shields.io/badge/guide-contributing-informational)](CONTRIBUTING.md)
-[![Support](https://img.shields.io/badge/guide-support-informational)](SUPPORT.md)
-[![Code of Conduct](https://img.shields.io/badge/contributor%20covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
-[![Security policy](https://img.shields.io/badge/security-policy-red.svg)](SECURITY.md)
-[![GitHub Issues](https://img.shields.io/github/issues/VocaHQ/vocaphone)](https://github.com/VocaHQ/vocaphone/issues)
 [![Discord](https://img.shields.io/discord/1538633755877580810?logo=discord&logoColor=white&label=Discord)](https://discord.gg/UMJduhcqn)
-[![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-1a7f4e)](https://vocahq.com)
+[![X](https://img.shields.io/badge/X-vocahq-black?logo=x&logoColor=white)](https://x.com/vocahq)
+[![VocaHQ](https://img.shields.io/badge/VocaHQ-vocahq.com-0F6B57)](https://vocahq.com)
 
 Speak into your phone. Text shows up where you're typing. Speech-to-text runs
-on your phone by default, or on optional self-hosted VocaGateway — never a cloud
-speech service.
-
-Product site: [vocaphone.vocahq.com](https://vocaphone.vocahq.com)
+on your phone by default, or on optional self-hosted VocaGateway, and never on
+a cloud speech service.
 
 </div>
 
 ---
 
-**vocaphone** is the phone side of the [Voca](https://github.com/VocaHQ) family:
-the same privacy-first dictation idea that already runs on Linux
-([VocaLinux](https://github.com/VocaHQ/vocalinux)) and macOS
-([VocaMac](https://github.com/VocaHQ/vocamac)), with Windows coming later.
+VocaPhone is the phone side of the [Voca](https://github.com/VocaHQ) family,
+next to [VocaLinux](https://github.com/VocaHQ/vocalinux),
+[VocaMac](https://github.com/VocaHQ/vocamac), and
+[VocaWin](https://github.com/VocaHQ/vocawin). VocaWin is an unsigned
+developer alpha on [GitHub Releases](https://github.com/VocaHQ/vocawin/releases).
 
-Longer term the goal is straightforward: set Voca up once and use it across
-whatever machines you own. Desktop plus phone is what makes that real.
-
-Dictate from an iPhone or VocaPhone Android keyboard. Download an on-device
-speech-to-text model and transcription stays on the phone. Or point the app at
-optional [VocaGateway](https://github.com/VocaHQ/vocagateway) on a Mac, Linux
-box, or home server you control when you want larger models or shared compute.
-Text lands at your cursor. No accounts, no cloud STT, and no subscription.
-Gateway mode is self-hosted, but it is not on-device.
+Licensed under [AGPL-3.0](LICENSE): free to use, study, modify, and share, with
+copyleft that also covers modified versions offered as a network service.
 
 ## Status
 
 | Client | State |
 | --- | --- |
-| **Android** | Public beta for Android 13+ — [releases](https://github.com/VocaHQ/vocaphone/releases) · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
+| **Android** | Public beta for Android 13+. [releases](https://github.com/VocaHQ/vocaphone/releases) · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
 | **iOS** | Build from source for iOS 17+ (Mac, Xcode, signing team, physical iPhone) · [iPhone guide](https://vocaphone.vocahq.com/iphone/) |
 | **Gateway** | Optional. Self-host [VocaGateway](https://github.com/VocaHQ/vocagateway) on macOS/Linux or Docker when you want more models or shared compute |
 
-Licensed under [AGPL-3.0](LICENSE): free to use, study, modify, and share, with
-copyleft that also covers modified versions offered as a network service.
-
 ## How it works
 
-On iPhone, vocaphone is a custom keyboard plus a containing app. iOS keyboard
-extensions cannot access the microphone, so the app records, shares only
-versioned session state with the keyboard, and inserts through
-`UITextDocumentProxy`. Quick Dictation can keep the app ready for up to 10
-minutes so most later dictations skip another app switch.
-
-On Android, VocaPhone is a normal system keyboard. Select it when you want to
-dictate; it inserts through Android's `InputConnection` with the same styles and
-transcription choices as iOS.
+On iPhone, VocaPhone is a custom keyboard plus a containing app. On Android it
+is a normal system keyboard: select it when you want to dictate. Both insert at
+the cursor (iOS through `UITextDocumentProxy`, Android through
+`InputConnection`) with the same styles and transcription choices.
 
 Both clients can run speech-to-text on the phone after a model download, or send
 recoverable audio to optional VocaGateway. Either way, the transcript inserts at
 the active cursor. A gateway is never required for on-device mode.
 
 > [!IMPORTANT]
-> iOS keyboard extensions cannot access the microphone. vocaphone records in
+> iOS keyboard extensions cannot access the microphone. VocaPhone records in
 > the containing app, shares only versioned session state with the keyboard, and
 > then inserts through `UITextDocumentProxy`. Quick Dictation can keep that app
 > ready for up to 10 minutes so most later dictations do not require another app
 > switch. The speech-to-text model still runs on the iPhone in on-device mode.
 
-## Why vocaphone
-
-Most phone dictation means either a cloud API listening to every utterance, or
-an app that only works inside itself. vocaphone is built differently.
-
-On-device transcription is the default path: download a speech-to-text model once
-and dictate without a gateway or network. Optional VocaGateway runs on a Mac,
-Linux desktop, or home server you already own when you want larger models or
-shared compute. That path is self-hosted, not on-device. For gateway mode you pick
-the network path: trusted LAN, private Tailscale, or HTTPS behind your own
-reverse proxy. Bearer tokens are per device. There is no analytics SDK and no
-third-party transcription. Optional anonymous usage reporting is off unless
-you turn it on, goes to a server VocaHQ self-hosts, and never carries text,
-audio, or your gateway's address.
-
-Same privacy stance as VocaLinux and VocaMac: free, on-device first, and meant to
-stay that way. We also document the awkward platform bits honestly: iOS keyboard
-limits and Android's keyboard/input-method boundaries.
-
 ## Highlights
 
-- Native SwiftUI app and UIKit keyboard with Start, Finish, Cancel, Retry, Undo,
-  language/style status, next-keyboard control, and direct insertion
-- A full four-row QWERTY keyboard with letters, numbers and symbols planes,
-  long-press accented characters, delete-repeat, double-space period, spacebar
-  cursor control, and a Compact/Standard/Tall height preference
-- On-device word completion, autocorrect and next-word prediction on iOS, worked
-  out by the system dictionary plus your own words — nothing typed is sent
-  anywhere, logged, or exported, and it all works with Full Access off
-- Swipe typing, an emoji panel with local search, and smart punctuation that
-  honours what the field asks for, on both clients
-- Every surface states where speech becomes text — "Transcribing on this iPhone"
-  or "Transcribing on your gateway" — in the keyboard, the app, and the Live
-  Activity, and stays neutral rather than guessing when a session predates the
-  choice
-- Native Kotlin/Compose Android client with a permission-minimal VocaPhone voice
-  keyboard, the same styles and gateway as the iOS keyboard
-- 27 selectable transcription languages plus Automatic on both clients —
-  English, Mandarin Chinese, Spanish, French, German, Russian, Portuguese,
-  Italian, Dutch, Polish, Ukrainian, Arabic, Japanese, Korean and Vietnamese,
-  along with Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, Kannada,
-  Malayalam, Punjabi, Assamese and Nepali — and four writing styles: Formal,
-  Casual, Very Casual, and Excited, with sentence punctuation that follows the
-  script rather than assuming a Latin full stop
-- Automatic microphone routing or an explicit Microphone preference,
-  with the input currently in use shown in the app
-- A bounded Quick Dictation window with persistent background input, a Live
-  Activity/Dynamic Island timer, and standby buffers that are discarded
-- FastAPI gateway with bounded uploads, SQLite idempotency, FFmpeg normalization,
-  silence detection, retention cleanup, and stable error responses
-- VocaMac, Handy, WhisperKit, Apple-native MLX Audio, persistent `sherpa-onnx`
-  and `faster-whisper`, multilingual Moonshine, and `whisper.cpp` adapters.
-  The VocaMac and Handy desktop apps are optional, Mac-only, and reuse the
-  models they already downloaded
-- A 58-model catalog spanning Whisper, Parakeet, SenseVoice, Moonshine, GigaAM,
-  Canary, Qwen3-ASR, Granite Speech, and Dolphin (40 Eastern
-  languages, including Hindi, Bengali, Tamil and Urdu), filterable by the
-  language you actually speak
-- Operational dashboard with hardware detection, queue/outcome counters,
-  pipeline benchmarks, real-time factor, peak memory, and warmup state
-- CPU/OpenBLAS, host-native CPU, NVIDIA CUDA, and Vulkan Compose profiles
-- Bearer authentication with named per-device tokens and revocation, iOS
-  Keychain storage, configurable HTTP/HTTPS gateway access, optional private
-  Tailscale HTTPS, no third-party analytics or transcription, and opt-in
-  anonymous usage reporting that is off by default
+- The keyboard inserts the transcript at the cursor in the field you are already using
+- After you download a speech-to-text model, on-device dictation needs no gateway
+- Optional VocaGateway runs on a Mac, Linux box, or home server you control when
+  you want larger models or shared compute. That path is self-hosted, not on-device
+- 27 transcription languages plus Automatic, and four writing styles: Formal,
+  Casual, Very Casual, and Excited
+- On iOS the containing app records, because a keyboard extension cannot use the
+  microphone
 
-## Part of VocaHQ
+## Part of Voca
 
 | Platform | Project | Repo | Status |
 | --- | --- | --- | --- |
 | Linux | VocaLinux | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available now |
 | macOS | VocaMac | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
-| Windows | VocaWin | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Coming soon |
-| iOS / Android | vocaphone | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS source build · [site](https://vocaphone.vocahq.com) |
+| Windows | VocaWin | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Developer alpha · [releases](https://github.com/VocaHQ/vocawin/releases) |
+| iOS / Android | VocaPhone | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS source build · [site](https://vocaphone.vocahq.com) |
 
 Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
 [hello@vocahq.com](mailto:hello@vocahq.com)
 
-## Choose a gateway deployment
-
-On-device mode needs no gateway. Use this section only when you want optional
-VocaGateway for larger models or shared compute.
-
-| Deployment | Best for | Speech engine | Expected performance |
-| --- | --- | --- | --- |
-| Native macOS | Daily use on an Apple silicon Mac | MLX Audio, WhisperKit, VocaMac, Handy, sherpa-onnx | Best with Apple-native MLX/Core ML engines |
-| Native Linux | Daily use on a Linux desktop or home server | sherpa-onnx INT8, faster-whisper, Moonshine | Good CPU latency; optional CUDA/Vulkan via Docker profiles |
-| Docker Compose | Reproducible Linux images and multi-arch hosts | sherpa-onnx INT8, faster-whisper INT8, Moonshine, or accelerated `whisper.cpp` | Portable CPU by default; optional native/CUDA/Vulkan profiles |
-
-On an Apple silicon Mac, use the native gateway for the lowest virtualization
-overhead. MLX Audio runs directly on M-series unified memory/GPU, while
-WhisperKit uses Core ML; the gateway keeps either selected model resident between
-dictations. The container deliberately uses portable Linux runtimes and cannot
-use macOS MLX or Core ML from inside Docker Desktop.
-
-On Linux, prefer the native gateway when you already have Python 3.12+ and FFmpeg
-on the host. Use Docker when you want an isolated image, CUDA/Vulkan profiles, or
-a multi-architecture registry build. Precise speed depends on the model, audio
-duration, and hardware; compare the same recording and model class before drawing
-benchmark conclusions.
-
-See [deployment choices](docs/deployment.md) for the complete comparison and
-operational commands.
-
-## Repository layout note
-
-The headless gateway lives in [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway)
-and is vendored here as the `gateway/` git submodule so the phone clients and
-future desktop apps share one implementation. The iOS Sherpa ONNX and ONNX
-Runtime archives are tracked with Git LFS, so install Git LFS before cloning.
-Clone with submodules and LFS:
-
-```sh
-# macOS: brew install git-lfs; other platforms: https://git-lfs.com/
-git lfs install
-# new clone:
-git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
-cd vocaphone
-git lfs pull
-git submodule update --init --recursive
-```
-
-For an existing clone, run these commands from the repository root:
-
-```sh
-git lfs install
-git lfs pull
-git submodule update --init --recursive
-```
-
-Without Git LFS, those framework paths contain small pointer files instead of
-the native archives and the iOS project cannot link its local model engine.
-This repository records a fixed gateway commit (the pin) for reproducible
-clones and releases. For local development you can follow `main` without
-shipping that tip until you intentionally bump the pin:
-
-```sh
-just gateway-pin-status  # pin vs working tree vs origin/main
-just gateway-sync        # move gateway/ to the tip of main (local only)
-```
-
-Gateway CI, releases, and deep ops docs run in the vocagateway repository.
-Phone-side docs below still use `cd gateway` against the submodule checkout.
-See [CONTRIBUTING.md](CONTRIBUTING.md#gateway-submodule-pin-dev-vs-ship) for pin
-bumps and release tags.
-
 ## Quick start
 
-Download a speech-to-text model on the phone and dictate with no gateway. The
-gateway steps later in this section are optional, for larger models or shared
-compute.
+### 1. Android (public beta)
 
-### 1. Configure and install the iPhone app
+Public beta APKs for Android 13+ are on
+[GitHub Releases](https://github.com/VocaHQ/vocaphone/releases). Install one,
+enable VocaPhone in Android's keyboard settings, grant microphone (and
+notifications if asked), then download an on-device speech-to-text model.
+
+To build from source:
+
+```sh
+cd android
+# macOS default; on Linux try $HOME/Android/Sdk
+export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+# "full" is the flavor to develop against; "fdroid" is the from-source-only
+# build described under Build flavors in android/README.md.
+./gradlew assembleFullDebug
+# Uninstall any pre-rename Local Flow build first. Application IDs differ, so
+# `adb install -r` will side-install next to io.github.mrsunglasses.localflow.
+adb uninstall io.github.mrsunglasses.localflow 2>/dev/null || true
+adb install -r app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
+```
+
+See the [Android client guide](android/README.md) for keyboard setup and the
+supported gateway address forms.
+
+### 2. iOS (source)
 
 The Simulator needs no Apple account at all:
 
@@ -253,217 +134,49 @@ New Keyboard → vocaphone**, with **Allow Full Access** turned on (see
 used for). Typing, autocorrect, and swipe work immediately. For actual
 dictation, **Settings → Transcription → On this iPhone** plus a downloaded
 model is the fastest path with nothing else to configure, or point
-**Settings → Transcription → Gateway** at a gateway from the optional steps below.
+**Settings → Transcription → Gateway** at an optional VocaGateway.
 
 **On your own iPhone** (`just device`, phone connected and trusted): code
 signing has to already work in Xcode first. The project ships with VocaHQ's
-own identifiers (`com.vocahq.vocaphone` and friends, team `92962VK378` — see
+own identifiers (`com.vocahq.vocaphone` and friends, team `92962VK378`; see
 [decisions.md](docs/decisions.md)). If you have access to that team, select
 it on all three targets (VocaPhoneApp, VocaPhoneKeyboard,
 VocaPhoneLiveActivity) under **Signing & Capabilities**; automatic signing
-does the rest. If you don't — most outside contributors — either ask a
+does the rest. If you don't (most outside contributors), either ask a
 maintainer to comment `/build ios` on your pull request for a signed ad-hoc
 IPA (see [CONTRIBUTING.md](CONTRIBUTING.md#on-demand-pr-builds-build)), or run
 it under your own free Apple ID by changing `bundleIdPrefix` and the three
 `PRODUCT_BUNDLE_IDENTIFIER`s in `ios/project.yml`, the App Group string in all
 three `.entitlements` files, and `AppConfiguration.swift`'s
-`appGroupIdentifier`/`keyboardBundleIdentifier` — don't commit that change.
+`appGroupIdentifier`/`keyboardBundleIdentifier`. Don't commit that change.
 
 Grant microphone access on first launch, add the keyboard as above, and turn
 on Full Access. Complete the physical-device checklist in [device
 setup](docs/device-setup.md).
 
-### 2. Or install the Android app
-
-Android adds VocaPhone as a selectable voice keyboard. Build and install the APK,
-then follow the guided setup in the app:
+iOS Sherpa ONNX archives are Git LFS objects, and the gateway checkout is a
+submodule. Clone with both before you build:
 
 ```sh
-cd android
-# macOS default; on Linux try $HOME/Android/Sdk
-export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
-# "full" is the flavor to develop against; "fdroid" is the from-source-only
-# build described under Build flavors below.
-./gradlew assembleFullDebug
-# Uninstall any pre-rename Local Flow build first — application IDs differ, so
-# `adb install -r` will side-install next to io.github.mrsunglasses.localflow.
-adb uninstall io.github.mrsunglasses.localflow 2>/dev/null || true
-adb install -r app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
+# macOS: brew install git-lfs; other platforms: https://git-lfs.com/
+git lfs install
+git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
+cd vocaphone
+git lfs pull
+git submodule update --init --recursive
 ```
 
-In the app: grant microphone and notifications, enable and select VocaPhone in
-Android's keyboard settings, then download an on-device model (no gateway needed).
-If you want the optional gateway path instead, enter the gateway address and
-bearer token from the steps below and run **Test connection**.
+On an existing clone: `git lfs install && git lfs pull && git submodule update --init --recursive`.
+Without Git LFS those framework paths are pointer files and the iOS project
+cannot link the on-device engine. Pin bumps live in
+[CONTRIBUTING.md](CONTRIBUTING.md#gateway-submodule-pin-dev-vs-ship).
 
-See the [Android client guide](android/README.md) for keyboard setup and the
-supported gateway address forms.
+### 3. Optional gateway
 
-### Optional: run a gateway
-
-Skip this if on-device mode already works. A gateway is never required for
-on-device transcription, and the phone never calls one unless you configure it.
-
-### 3. Start the gateway natively on macOS
-
-Install the tools (FFmpeg, plus the WhisperKit and `whisper.cpp` CLIs) and
-launch the gateway:
-
-```sh
-brew install ffmpeg whisperkit-cli whisper-cpp
-cd gateway
-uv sync --all-groups --extra engines --extra apple
-uv run vocaphone-server
-```
-
-The first run creates a private bearer token at
-`~/.config/vocagateway/token`. Open `http://127.0.0.1:8765/`, enter that token,
-download a recommended model from **Models**, select it, and confirm the Overview
-shows **Ready for dictation**.
-
-To keep the gateway running after the terminal closes and restart it after login:
-
-```sh
-cd gateway
-./scripts/install-launch-agent.sh
-```
-
-### 4. Or start the gateway natively on Linux
-
-Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), and FFmpeg. On Debian or
-Ubuntu:
-
-```sh
-sudo apt install ffmpeg
-# Install uv if needed: curl -LsSf https://astral.sh/uv/install.sh | sh
-cd gateway
-uv sync --all-groups --extra engines
-uv run vocaphone-server
-```
-
-Omit the `apple` extra on Linux; MLX Audio and WhisperKit are macOS-only. The
-startup banner prints the WebUI URL and where the bearer token lives:
-
-```text
-vocaphone gateway listening on 0.0.0.0:8765
-WebUI (this host): http://127.0.0.1:8765/
-Network access: use this host's LAN or Tailscale IP with the same port
-Token: ~/.config/vocagateway/token
-  (cat ~/.config/vocagateway/token — enter that value in the phone app)
-  or: just token  (prints a terminal QR for headless phone pairing)
-```
-
-Open the WebUI, enter the token from `~/.config/vocagateway/token`, download a
-recommended model (SenseVoice Small INT8 or Parakeet TDT INT8 on CPU), select it,
-and confirm Overview shows **Ready for dictation**. For headless phone pairing
-without the WebUI, run `just token` (or `just gateway token` from the repo root)
-on a TTY to print a scannable pairing QR.
-
-To keep the gateway running after the terminal closes (systemd user unit):
-
-```sh
-cd gateway
-./scripts/install-systemd-user.sh
-# optional: survive logout
-loginctl enable-linger "$USER"
-```
-
-Logs: `journalctl --user -u com.vocahq.vocaphone.gateway.service -f`.
-
-### 5. Or start it with Docker Compose
-
-The canonical Compose file is [gateway/compose.yaml](gateway/compose.yaml). It
-publishes the gateway only on host loopback by default and stores models,
-configuration, and the session database in a named volume.
-
-```sh
-cd gateway
-umask 077
-cp .env.example .env
-printf 'VOCAGATEWAY_TOKEN=%s\n' "$(openssl rand -hex 32)" >> .env
-docker compose up --detach --build
-docker compose ps
-curl --fail http://127.0.0.1:8765/health/live
-```
-
-Open the WebUI, enter the token from `gateway/.env`, and download/select a
-recommended sherpa-onnx, Moonshine, or faster-whisper model. Readiness returns
-`503` until a runnable model is selected:
-
-```sh
-curl --fail http://127.0.0.1:8765/health/ready
-```
-
-Copy [gateway/.env.example](gateway/.env.example) if you prefer an editable
-template. Never commit the resulting `.env` file.
-
-### 6. Choose how the phone reaches the gateway
-
-The iPhone and Android apps accept any valid `http://` or `https://` gateway URL.
-Choose one of these network arrangements:
-
-- **Trusted LAN:** the native gateway listens on all interfaces by default. On
-  the same Wi‑Fi, enter `http://<host-lan-ip>:8765` (for example
-  `http://192.168.1.75:8765`). Find the IP with `hostname -I` or
-  `ip -4 addr`. HTTP is unencrypted, so use this only on a network you trust and
-  never forward that port to the internet. For Docker, set
-  `VOCAGATEWAY_PUBLISH_HOST=0.0.0.0` in `gateway/.env` and protect the port with the
-  host firewall. The container's own address auto-discovery (used by the
-  pairing QR) can't see the host's LAN IP under the default bridge network
-  either; on Linux Docker Engine, set `VOCAGATEWAY_NETWORK_MODE=host` in
-  `gateway/.env` instead so discovery finds it directly — see
-  [gateway/README.md](gateway/README.md#configuration).
-- **Tailscale:** keep the gateway on loopback and let Tailscale Serve provide
-  tailnet-only HTTPS:
-
-```sh
-# optional: bind loopback only when using Serve
-# VOCAGATEWAY_BIND_HOST=127.0.0.1 uv run vocaphone-server
-tailscale serve --bg 8765
-tailscale serve status
-```
-
-- **VPS or public DNS:** put the loopback gateway behind an HTTPS reverse proxy
-  with a trusted certificate and enter a URL such as
-  `https://dictation.example.com/`. Do not send recordings or bearer tokens over
-  public HTTP.
-
-### Pair the phone with a QR code (iPhone or Android)
-
-**Without the WebUI (headless):** on the gateway host, run `just token` (or
-`just gateway token` from the repo root). On a TTY it prints an ASCII QR that
-encodes the same pairing payload as the WebUI. Point the phone's camera at the
-terminal, or use `just token --plain` / `cat ~/.config/vocagateway/token` when you
-only need the secret.
-
-**From the WebUI:** once authenticated on the gateway host:
-
-1. Open **Pair & test** — the **Pair phone** card shows a QR for a
-   phone-reachable address (LAN IP preferred, or `VOCAGATEWAY_PUBLIC_URL` if set).
-2. To give this phone its own revocable credential instead of the shared
-   bootstrap token, use **Or pair a new device with its own token**: name the
-   device and the card immediately shows a QR for that device's token alone.
-   The **Token to encode** dropdown switches the QR between the bootstrap
-   token and any device token created this way; manage or revoke them later
-   from Settings → **Paired device tokens**.
-3. In the iPhone app, open **Settings → Transcription → Gateway** and tap
-   **Scan pairing QR code**. On Android, open **Gateway** and tap
-   **Scan QR code**.
-4. Grant camera access if asked; the scan fills address + token and runs the
-   connection test.
-
-You can still paste manually:
-
-1. **Gateway address** — the LAN, Tailscale, or HTTPS URL above.
-2. **Bearer token** — `just token --plain` or `cat ~/.config/vocagateway/token`
-   for native installs, or the `VOCAGATEWAY_TOKEN` value from `gateway/.env` for
-   Docker.
-
-Then use **Save and test** / **Test connection**. Tailscale is recommended for a
-private personal deployment, but it is not mandatory. Follow
-[deployment](docs/deployment.md) and the optional
-[Tailscale guide](docs/tailscale.md) for the relevant host configuration.
-
+On-device mode needs no gateway. When you want larger models or shared compute,
+self-host [VocaGateway](https://github.com/VocaHQ/vocagateway) and point the
+phone at it. Native vs Docker, pairing, and how the phone reaches the host are
+in that repository and in [docs/deployment.md](docs/deployment.md).
 
 ## Build and test
 
@@ -484,15 +197,14 @@ just doctor           # what each toolchain is still missing
 iOS and Android CI live in this repository. Gateway quality and container
 builds run in [vocagateway](https://github.com/VocaHQ/vocagateway); `just gateway
 test` still exercises the submodule checkout locally. `just --list` shows the
-rest — running the
-apps (`just ios run`,
-`just android run`, `just gateway run`), streaming logs, installing onto a
-physical phone, and managing the container deployment.
+rest, including running the apps (`just ios run`, `just android run`,
+`just gateway run`), streaming logs, installing onto a physical phone, and
+managing the container deployment.
 
 Optional: with [direnv](https://direnv.net) installed, `direnv allow` once after
 cloning puts the gateway virtualenv and the Android SDK's `platform-tools` on
 `PATH` and exports `ANDROID_HOME`, so `pytest` and `adb` resolve without a
-prefix or a full path. Everything works without it — see
+prefix or a full path. Everything works without it. See
 [CONTRIBUTING.md](CONTRIBUTING.md#direnv-optional).
 
 The generated Xcode project is checked in. Run `just ios gen` after changing
@@ -515,11 +227,11 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 | --- | --- |
 | [Android client](android/README.md) | Building the APK, guided setup, voice keyboard, and privacy boundaries |
 | [Gateway reference](gateway/README.md) | Native service, Compose, models, configuration, health, and CLI commands ([vocagateway](https://github.com/VocaHQ/vocagateway)) |
-| [Deployment](gateway/docs/deployment.md) | Native-vs-Docker performance, startup, upgrades, persistence, and backups |
+| [Deployment](docs/deployment.md) | Pointers into vocagateway for native vs Docker, pairing, and host setup |
 | [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
 | [TestFlight](docs/testflight.md) | App Store Connect setup, archiving, and TestFlight distribution |
 | [Google Play prep](docs/play-store.md) | Full-flavor AAB, upload signing, listing and Console checklist |
-| [Tailscale](gateway/docs/tailscale.md) | Private HTTPS ingress for the gateway |
+| [Tailscale](docs/tailscale.md) | Private HTTPS ingress for the gateway |
 | [Architecture](docs/architecture.md) | Components, state transitions, engine boundary, and observability |
 | [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
 | [Troubleshooting](docs/troubleshooting.md) | Keyboard, microphone, model, network, and Docker failures |
@@ -548,10 +260,11 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 
 ## Contributing, support, security, and license
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) — setup, required checks, and pull request expectations
-- [SUPPORT.md](SUPPORT.md) — where to ask for help and what to include (or omit)
-- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1
-- [SECURITY.md](SECURITY.md) — private vulnerability reporting
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, required checks, and pull
+request expectations. [SUPPORT.md](SUPPORT.md) is where to ask for help and what
+to include (or omit). [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) is Contributor
+Covenant 2.1. [SECURITY.md](SECURITY.md) is the private vulnerability-reporting
+process.
 
 Report suspected microphone, recording, token, gateway, or tailnet
 vulnerabilities through the private process in [SECURITY.md](SECURITY.md), not a
@@ -559,10 +272,10 @@ public issue.
 
 ### License
 
-vocaphone is licensed under the **GNU Affero General Public License v3.0**
+VocaPhone is licensed under the **GNU Affero General Public License v3.0**
 ([AGPL-3.0](LICENSE)), matching [VocaMac](https://github.com/VocaHQ/vocamac) and
 [VocaLinux](https://github.com/VocaHQ/vocalinux) (both AGPL-3.0).
 
 You may use, study, modify, and redistribute the software under AGPL-3.0. Because
-vocaphone includes an optional network gateway, AGPL also requires that modified
+VocaPhone includes an optional network gateway, AGPL also requires that modified
 versions offered as a network service make their corresponding source available.

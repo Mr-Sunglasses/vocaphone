@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest a focused improvement that fits vocaphone's privacy-first design.
+description: An idea for the Android or iOS app.
 title: "[Feature]: "
 labels:
   - enhancement
@@ -7,47 +7,40 @@ body:
   - type: markdown
     attributes:
       value: |
-        Please keep proposals aligned with self-hosted transcription, no cloud STT,
-        and the documented iOS/Android platform constraints. Do not include tokens,
-        recordings, transcripts, or private hostnames.
+        VocaPhone stays on-device by default and does not need an account.
+        Leave out tokens, recordings, transcripts, and private hostnames.
   - type: dropdown
-    id: area
+    id: app
     attributes:
-      label: Area
+      label: App
       options:
-        - iOS containing app
-        - Custom keyboard
-        - Android floating bubble
-        - Native or Docker gateway
-        - Engine adapters / model catalog
-        - Documentation or contributor experience
-        - Other
+        - Android app
+        - iOS app
     validations:
       required: true
   - type: textarea
     id: problem
     attributes:
       label: Problem
-      description: What problem does this solve for a self-hosted dictation user?
+      description: What is awkward or missing today?
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: Proposed solution
-      description: Describe the smallest change that would help.
+      label: Smallest change
+      description: The smallest change that would help.
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: Alternatives considered
-      description: Other approaches you thought about, or why existing options fall short.
+      label: Other options (optional)
+      description: Anything you already tried, or a different approach you considered.
   - type: checkboxes
-    id: constraints
+    id: checks
     attributes:
-      label: Design constraints
+      label: Before you submit
       options:
-        - label: This does not require cloud speech-to-text or a mandatory account
-        - label: This does not weaken bearer auth, upload limits, retention, or loopback/Tailscale exposure controls
-        - label: I have checked existing issues and docs for a similar request
+        - label: I looked for an existing issue
+          required: true
