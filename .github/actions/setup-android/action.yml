@@ -31,7 +31,7 @@ runs:
         # the default package install is a redownload of what is on disk. The
         # action still accepts the licences, which is the part the build needs.
         packages: 'cmake;3.22.1 ndk;27.2.12479018'
-    - uses: gradle/actions/setup-gradle@48b5f213c81028ace310571dc5ec0fbbca0b2947 # v4
+    - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       with:
         cache-read-only: ${{ inputs.cache-read-only }}
         cache-encryption-key: ${{ inputs.cache-encryption-key }}
