@@ -1,0 +1,53 @@
+name: Quality (shared assets)
+
+# The keyboard assets at the repository root are read by both platforms, so
+# they belong to neither platform's workflow. This one checks that the
+# generated ones still match their generator: the emoji catalog is 3,781 lines
+# nobody reviews by eye, and a hand edit to it is silently undone by the next
+# person to run --write.
+#
+# Nothing here needs the network. tools/unicode/ carries the pinned Unicode and
+# CLDR sources, which is what makes this check mean the same thing on every run
+# and lets F-Droid rebuild the catalog from this tree alone.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'assets/keyboard/**'
+      - 'tools/**'
+      - '.github/workflows/quality-assets.yml'
+  pull_request:
+    branches: [main]
+    # A draft pull request is filtered out below; listing ready_for_review makes
+    # the checks start the moment it stops being a draft.
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'assets/keyboard/**'
+      - 'tools/**'
+      - '.github/workflows/quality-assets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A superseded pull request push is wasted minutes, but a run on main is the
+  # record for a merged commit, so let that one finish.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  assets:
+    # Work in progress re-runs the checks on every push. The checks that
+    # matter run when the author marks the pull request ready.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Fail if the emoji catalog does not match its generator
+        run: python3 tools/generate-emoji-catalog.py --check

@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'android/**'
+      # The keyboard reads the shared word list and emoji catalog from
+      # here; app/build.gradle.kts merges them into the asset root.
+      - 'assets/keyboard/**'
       # Prose next to the code it documents cannot break the build.
       - '!android/**.md'
       - '.github/actions/setup-android/action.yml'
@@ -17,6 +20,9 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'android/**'
+      # The keyboard reads the shared word list and emoji catalog from
+      # here; app/build.gradle.kts merges them into the asset root.
+      - 'assets/keyboard/**'
       - '!android/**.md'
       - '.github/actions/setup-android/action.yml'
       - '.github/actions/report-size/**'

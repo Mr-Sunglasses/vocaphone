@@ -1,0 +1,12 @@
+# Search terms CLDR does not carry, merged in by generate-emoji-catalog.py.
+#
+# Keep this short. Everything here is a claim that upstream is missing
+# something people search for, and every line is one more thing to re-check
+# when CLDR moves. A key beginning with @ names a category and applies to
+# every emoji in it.
+#
+# Flags: CLDR annotates each flag with its country name and nothing else, so
+# without this the tab is unreachable by the words people actually type.
+# Measured against the hand-maintained catalog this replaces, dropping it lost
+# "country" (90 results to 2), "nation" (90 to 2) and "banner" (90 to 1).
+@flags	flag country nation banner

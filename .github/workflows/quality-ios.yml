@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'ios/**'
+      # EmojiCatalogTests asserts against the real shared catalog, so a
+      # change to it has to run this suite. Worth the macOS minutes: it is
+      # the only check that the file both keyboards ship still parses.
+      - 'assets/keyboard/**'
       # Prose next to the code it documents cannot break the build, and macOS
       # minutes bill at ten times the Linux rate.
       - '!ios/**.md'
@@ -17,6 +21,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'ios/**'
+      # EmojiCatalogTests asserts against the real shared catalog, so a
+      # change to it has to run this suite. Worth the macOS minutes: it is
+      # the only check that the file both keyboards ship still parses.
+      - 'assets/keyboard/**'
       - '!ios/**.md'
       - '.github/actions/report-size/**'
       - '.github/workflows/quality-ios.yml'

@@ -80,4 +80,36 @@ class EmojiSuggestionsTest {
         assertTrue(EmojiSuggestions.TRIGGERS.size > 100)
         assertTrue(EmojiSuggestions.TRIGGERS.size < 400)
     }
+
+    /**
+     * Every glyph the strip can offer is one the shipped catalog also carries.
+     *
+     * The trigger table is curated by hand and stays that way -- CLDR's
+     * keywords are for a deliberate search in the emoji panel, and matched
+     * against ordinary prose they answer "the" with an emoji. What the table
+     * has no way to catch on its own is a glyph that nothing can draw. The
+     * catalog is generated from a pinned Unicode release, so agreeing with it
+     * is what rules out pasting in a draft codepoint that renders as a blank
+     * box on every phone in the field.
+     */
+    @Test
+    fun `every offered emoji exists in the shipped catalog`() {
+        val catalog = generateSequence(java.io.File("").absoluteFile) { it.parentFile }
+            .map { java.io.File(it, "assets/keyboard/emoji/catalog.tsv") }
+            .firstOrNull(java.io.File::isFile)
+        org.junit.Assume.assumeTrue(
+            "assets/keyboard is only present in the repository",
+            catalog != null,
+        )
+        val known = catalog!!.readLines()
+            .mapNotNull { line -> line.substringBefore('\t').takeIf { it.isNotEmpty() } }
+            .toSet()
+
+        val offered = EmojiSuggestions.TRIGGERS.keys
+            .flatMap { EmojiSuggestions.glyphs(it) }
+            .toSortedSet()
+        assertTrue("the catalog looks empty", known.size > 1_000)
+        val missing = offered.filterNot { it in known }
+        assertEquals("offered but not in the catalog", emptyList<String>(), missing)
+    }
 }
