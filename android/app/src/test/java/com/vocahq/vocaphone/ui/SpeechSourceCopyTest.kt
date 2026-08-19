@@ -59,6 +59,30 @@ class SpeechSourceCopyTest {
     }
 
     @Test
+    fun firstRunPicksOnThisPhoneAndLeavesGatewayClosed() {
+        val choice = speechSourceSelection(wantLocal = true, gatewayConfigured = false)
+
+        assertTrue(choice.localEnabled)
+        assertFalse(choice.openGateway)
+    }
+
+    @Test
+    fun pickingGatewayOpensSetupWhenItIsNotConfigured() {
+        val choice = speechSourceSelection(wantLocal = false, gatewayConfigured = false)
+
+        assertFalse(choice.localEnabled)
+        assertTrue(choice.openGateway)
+    }
+
+    @Test
+    fun pickingAConfiguredGatewayDoesNotReopenSetup() {
+        val choice = speechSourceSelection(wantLocal = false, gatewayConfigured = true)
+
+        assertFalse(choice.localEnabled)
+        assertFalse(choice.openGateway)
+    }
+
+    @Test
     fun unconfiguredGatewayIsNamedAsSuch() {
         val copy = speechSourceCopy(
             localEnabled = false,

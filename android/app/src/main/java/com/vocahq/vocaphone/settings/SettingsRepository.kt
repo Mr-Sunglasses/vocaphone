@@ -144,7 +144,8 @@ data class VocaPhoneSettings(
      */
     val modelLanguages: Set<String> = emptySet(),
     val modelDetectsLanguage: Boolean = false,
-    val localTranscriptionEnabled: Boolean = false,
+    /** First-run default is this phone. Gateway is opt-in from setup or settings. */
+    val localTranscriptionEnabled: Boolean = true,
     val localModelId: String = "",
     /** Governs the on-device engines only; the gateway decides for itself. */
     val transcriptionQuality: TranscriptionQuality = TranscriptionQuality.DEFAULT,
@@ -402,7 +403,7 @@ class SettingsRepository(private val context: Context) {
         lastEngineCheckedAtMillis = this[Keys.LAST_ENGINE_CHECKED_AT],
         modelLanguages = this[Keys.MODEL_LANGUAGES].orEmpty(),
         modelDetectsLanguage = this[Keys.MODEL_DETECTS_LANGUAGE] ?: false,
-        localTranscriptionEnabled = this[Keys.LOCAL_TRANSCRIPTION_ENABLED] ?: false,
+        localTranscriptionEnabled = this[Keys.LOCAL_TRANSCRIPTION_ENABLED] ?: true,
         localModelId = this[Keys.LOCAL_MODEL_ID].orEmpty(),
         transcriptionQuality = TranscriptionQuality.fromStored(this[Keys.TRANSCRIPTION_QUALITY]),
         customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),

@@ -43,6 +43,10 @@ data class SetupStatus(
     val isReadyToDictate: Boolean
         get() = remainingSteps.isEmpty()
 
+    /** Short labels for chips under the header progress. */
+    val remainingLabels: List<String>
+        get() = remainingSteps.map { it.label }
+
     companion object {
         fun read(context: Context, gatewayConfigured: Boolean): SetupStatus {
             val ime = ImeSetup.read(context)

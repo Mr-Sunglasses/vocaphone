@@ -23,6 +23,7 @@ class DiagnosticsReportTest {
         lastEngine = "moonshine:en",
         lastEngineReady = true,
         lastStreamingSupported = true,
+        localTranscriptionEnabled = false,
     )
 
     private val ready = SetupStatus(
@@ -69,10 +70,11 @@ class DiagnosticsReportTest {
         val report = diagnosticsReport(info, VocaPhoneSettings(), SetupStatus())
 
         assertTrue(report.contains("Gateway: not configured"))
-        assertTrue(report.contains("Engine: unknown (not ready)"))
-        assertTrue(report.contains("Streaming: batch upload"))
+        assertTrue(report.contains("Speech: On this phone"))
+        assertTrue(report.contains("Local model: none"))
         assertTrue(report.contains("Setup: missing"))
         assertTrue(report.contains(SetupStep.MICROPHONE.label))
+        assertFalse(report.contains("Engine: unknown (not ready)"))
     }
 
     @Test

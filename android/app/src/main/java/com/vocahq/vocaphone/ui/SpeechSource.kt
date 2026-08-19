@@ -15,6 +15,20 @@ data class SpeechSourceCopy(
     val engineLabel: String,
 )
 
+data class SpeechSourceSelection(
+    val localEnabled: Boolean,
+    val openGateway: Boolean,
+)
+
+/** Tile tap: stay on this phone, or flip to gateway and open setup if needed. */
+fun speechSourceSelection(
+    wantLocal: Boolean,
+    gatewayConfigured: Boolean,
+): SpeechSourceSelection = SpeechSourceSelection(
+    localEnabled = wantLocal,
+    openGateway = !wantLocal && !gatewayConfigured,
+)
+
 fun speechSourceCopy(
     localEnabled: Boolean,
     localModelName: String?,

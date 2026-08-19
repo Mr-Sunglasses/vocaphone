@@ -2,6 +2,8 @@ package com.vocahq.vocaphone.ui
 
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelEngine
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -57,5 +59,104 @@ class ModelCatalogQueryTest {
         assertTrue(meta.contains("MB"))
         assertTrue(meta.contains("Whisper"))
         assertTrue(meta.contains("recommended"))
+    }
+
+    @Test
+    fun setupMetaIsOnlySizeAndLanguages() {
+        val model = LocalModelCatalog.find("tiny-q5_1")!!
+        val meta = model.setupMeta()
+        assertTrue(meta.contains("MB"))
+        assertTrue(meta.contains(model.languages))
+        assertTrue(!meta.contains("Whisper"))
+        assertTrue(!meta.contains("RAM"))
+        assertTrue(!meta.contains("GHz"))
+        assertTrue(!meta.contains("cores"))
+        assertTrue(!meta.contains("budget"))
+        assertTrue(!meta.contains("SHA-256"))
+    }
+
+    @Test
+    fun compactSetupDoesNotExposeTheCatalogUntilMoreModelsOpens() {
+        val recommended = models.first()
+        val available = models.drop(1)
+        val closed = modelPickerSections(
+            recommended = recommended,
+            showRecommended = true,
+            installed = emptyList(),
+            available = available,
+            compact = true,
+            catalogOpen = false,
+        )
+        val open = modelPickerSections(
+            recommended = recommended,
+            showRecommended = true,
+            installed = emptyList(),
+            available = available,
+            compact = true,
+            catalogOpen = true,
+        )
+
+        assertTrue(models.size >= 30)
+        assertTrue(!closed.showCatalog)
+        assertTrue(closed.catalog.isEmpty())
+        assertTrue(closed.recommended?.id == recommended.id)
+        val withInstalled = modelPickerSections(
+            recommended = recommended,
+            showRecommended = true,
+            installed = listOf(available.first()),
+            available = available,
+            compact = true,
+            catalogOpen = false,
+        )
+        assertEquals(available.first().id, withInstalled.installed.single().id)
+        assertTrue(withInstalled.catalog.isEmpty())
+        assertTrue(open.showCatalog)
+        assertTrue(open.catalog.size == available.size)
+        assertTrue(open.catalog.size >= 30)
+    }
+
+    @Test
+    fun settingsKeepsTheCatalogOnThePage() {
+        val recommended = models.first()
+        val available = models.drop(1)
+        val sections = modelPickerSections(
+            recommended = recommended,
+            showRecommended = true,
+            installed = emptyList(),
+            available = available,
+            compact = false,
+            catalogOpen = false,
+        )
+
+        assertTrue(sections.showCatalog)
+        assertTrue(sections.catalog.size == available.size)
+    }
+
+    @Test
+    fun recommendedDownloadDoesNotAlsoShowTheBusyBanner() {
+        val recommended = LocalModelCatalog.find("tiny-q5_1")!!
+
+        assertFalse(
+            showPickerBusyBanner(
+                downloadingId = recommended.id,
+                preparingName = null,
+                recommended = recommended,
+            ),
+        )
+        assertFalse(
+            showPickerBusyBanner(
+                downloadingId = null,
+                preparingName = recommended.displayName,
+                recommended = recommended,
+            ),
+        )
+        assertTrue(
+            showPickerBusyBanner(
+                downloadingId = "large-v3-turbo-q5_0",
+                preparingName = null,
+                recommended = recommended,
+            ),
+        )
+        assertFalse(showPickerBusyBanner(null, null, recommended))
     }
 }

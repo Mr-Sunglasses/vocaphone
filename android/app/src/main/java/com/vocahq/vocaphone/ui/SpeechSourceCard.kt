@@ -3,8 +3,11 @@ package com.vocahq.vocaphone.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,6 +34,7 @@ fun SpeechSourceCard(
     onOpenGateway: () -> Unit,
     onLocalTranscriptionEnabled: (Boolean) -> Unit,
     onOpenModels: (() -> Unit)? = null,
+    compact: Boolean = false,
 ) {
     val context = LocalContext.current
     val localModel = LocalModelCatalog.find(settings.localModelId)
@@ -45,33 +49,53 @@ fun SpeechSourceCard(
     val localOn = copy.localSelected
 
     FeaturedCard {
-        Text("Speech", style = MaterialTheme.typography.titleSmall)
-        Text(
-            "Transcribe on this phone, or send audio to a gateway you run.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        if (!compact) {
+            Text("Speech", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Transcribe on this phone, or send audio to a gateway you run.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Max),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             SourceChoiceTile(
                 title = "On this phone",
                 subtitle = copy.localDetail,
                 selected = localOn,
-                onClick = { onLocalTranscriptionEnabled(true) },
-                modifier = Modifier.weight(1f),
+                onClick = {
+                    val choice = speechSourceSelection(true, settings.isConfigured)
+                    onLocalTranscriptionEnabled(choice.localEnabled)
+                    if (choice.openGateway) onOpenGateway()
+                },
+                modifier = Modifier.weight(1f).fillMaxHeight(),
             )
             SourceChoiceTile(
                 title = "Gateway",
                 subtitle = copy.gatewayDetail,
                 selected = !localOn,
                 onClick = {
-                    onLocalTranscriptionEnabled(false)
-                    if (!settings.isConfigured) onOpenGateway()
+                    val choice = speechSourceSelection(false, settings.isConfigured)
+                    onLocalTranscriptionEnabled(choice.localEnabled)
+                    if (choice.openGateway) onOpenGateway()
                 },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
             )
+        }
+        if (compact) {
+            if (!localOn) {
+                TextButton(
+                    onClick = onOpenGateway,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                ) {
+                    Text(if (settings.isConfigured) "Gateway settings" else "Set up a gateway")
+                }
+            }
+            return@FeaturedCard
         }
         if (localOn) {
             if (localModel != null) {
@@ -142,7 +166,9 @@ private fun SourceChoiceTile(
         border = if (selected) BorderStroke(1.dp, colors.primary) else null,
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier
+                .fillMaxHeight()
+                .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(

@@ -43,5 +43,25 @@ class SetupStatusTest {
         assertFalse(status.isReadyToDictate)
         assertEquals(SetupStep.entries, status.remainingSteps)
         assertEquals(0, status.completedStepCount)
+        assertEquals(
+            listOf("Microphone", "Notifications", "VocaPhone keyboard", "Speech source"),
+            status.remainingLabels,
+        )
+    }
+
+    @Test
+    fun `remaining labels name only the unfinished steps`() {
+        val status = complete.copy(keyboard = false, gatewayConfigured = false)
+
+        assertEquals(listOf("VocaPhone keyboard", "Speech source"), status.remainingLabels)
+        assertTrue(complete.remainingLabels.isEmpty())
+    }
+
+    @Test
+    fun remainingLabelsSkipTheStillToDoSentence() {
+        val status = complete.copy(gatewayConfigured = false)
+
+        assertEquals(listOf("Speech source"), status.remainingLabels)
+        assertFalse(status.remainingLabels.joinToString().contains("Still to do"))
     }
 }
