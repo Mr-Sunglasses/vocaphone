@@ -23,7 +23,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -33,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.ui.theme.VocaPhoneTheme
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filter
 
 class MainActivity : ComponentActivity() {
     private val launchIntents = MutableStateFlow<Intent?>(null)
@@ -92,6 +95,20 @@ fun VocaPhoneApp(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // The keyboard picker is a system dialog: it takes the window's focus
+    // without taking the activity out of the resumed state, so choosing a
+    // keyboard there produces no lifecycle event to read on. Getting focus back
+    // is the event it does produce. VocaPhoneViewModel watches the settings
+    // themselves, which is the mechanism that should carry this; this is here
+    // because a ROM is allowed to refuse that observer, and a stuck checklist
+    // is not a good way to find out.
+    val windowInfo = LocalWindowInfo.current
+    LaunchedEffect(windowInfo) {
+        snapshotFlow { windowInfo.isWindowFocused }
+            .filter { it }
+            .collect { viewModel.refreshSetup() }
     }
 
     var destination by remember { mutableStateOf(Destination.DICTATE) }

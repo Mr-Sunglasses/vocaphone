@@ -1,9 +1,12 @@
 package com.vocahq.vocaphone.ui
 
 import android.app.Application
+import android.database.ContentObserver
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vocahq.vocaphone.VocaPhoneApplication
@@ -117,8 +120,25 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
         override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) = refreshMicrophones()
     }
 
+    /**
+     * Guided setup's keyboard step finishes outside the app, and neither half of
+     * it reliably brings the activity back through onResume. The picker is a
+     * system dialog drawn over an activity that stays resumed, so nothing
+     * re-reads once it closes; and the settings screen commits its write
+     * asynchronously, so a read taken on resume can still return the old value.
+     * Either way the checklist keeps asking for a step the user has just
+     * finished, and killing the app is the only way to move on.
+     *
+     * Watching the settings makes the state arrive rather than be sampled, so
+     * the step ticks while they are still looking at it.
+     */
+    private val imeSettingsObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) = refreshSetup()
+    }
+
     init {
         audioManager?.registerAudioDeviceCallback(deviceCallback, null)
+        ImeSetup.watchSettings(application, imeSettingsObserver)
         container.telemetry.appFirstOpen()
         viewModelScope.launch {
             container.dictation.state.collect { state ->
@@ -131,6 +151,7 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
 
     override fun onCleared() {
         audioManager?.unregisterAudioDeviceCallback(deviceCallback)
+        ImeSetup.stopWatchingSettings(getApplication(), imeSettingsObserver)
         container.localModels.cancelDownload()
         localModelDownloadJob?.cancel()
         super.onCleared()
