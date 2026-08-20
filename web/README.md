@@ -13,9 +13,15 @@ Then open `http://127.0.0.1:4173/`. The iPhone setup guide is available at
 `http://127.0.0.1:4173/privacy/`.
 
 The site uses only local brand assets and system fonts. The Android install and
-download CTAs point at the current public beta tag
-(`v0.1.0-beta.14`), where the release includes the APK and its verification
-files.
+download CTAs point at a pinned release tag (`v0.1.0`), where the release
+includes the APK and its verification files. **Move that pin when you cut a
+release**; `npm run check` asserts the tag the install block links to, so a
+stale pin fails there rather than on the live site.
+
+They deliberately do not use `/releases/latest`, which the check forbids.
+GitHub resolves it to the newest release that is not a prerelease, so while
+this project ships prereleases between releases it can land on the releases
+index rather than on a page carrying an APK.
 
 ## Deployment
 

@@ -36,9 +36,9 @@ Repo: https://github.com/VocaHQ/vocaphone.git
 Binaries: https://github.com/VocaHQ/vocaphone/releases/download/v%v/vocaphone-fdroid.apk
 
 Builds:
-  - versionName: 0.1.0-beta.20
-    versionCode: 20
-    commit: 919d6de78c41f5a3d66a7f68d1d6ef5369f31749
+  - versionName: 0.1.0
+    versionCode: 21
+    commit: v0.1.0
     subdir: android/app
     submodules: true
     gradle:
@@ -58,5 +58,5 @@ AllowedAPKSigningKeys: e6131446f8afeff13516f78036db9ea26aaa16e01b39f37182bf262cc
 
 AutoUpdateMode: Version
 UpdateCheckMode: Tags
-CurrentVersion: 0.1.0-beta.20
-CurrentVersionCode: 20
+CurrentVersion: 0.1.0
+CurrentVersionCode: 21

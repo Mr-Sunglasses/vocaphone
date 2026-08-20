@@ -144,9 +144,9 @@ test("availability and install paths are honest", () => {
   assert.match(html, /There is no App Store or TestFlight build today/);
   assert.match(
     html,
-    /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases\/tag\/v0\.1\.0-beta\.14"/,
+    /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases\/tag\/v0\.1\.0"/,
   );
-  assert.match(html, /v0\.1\.0-beta\.14/);
+  assert.match(html, /v0\.1\.0/);
   assert.match(html, /io\.github\.mrsunglasses\.localflow/);
   assert.match(html, /href="\/iphone\/"/);
   assert.match(html, /SHA256SUMS\.txt/);
@@ -161,14 +161,14 @@ test("availability and install paths are honest", () => {
   const androidCard = androidInstallBlock(html);
   const uninstallAt = androidCard.indexOf("io.github.mrsunglasses.localflow");
   const tagHrefAt = androidCard.indexOf(
-    "https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0-beta.14",
+    "https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0",
   );
   const checksumAt = androidCard.indexOf("SHA256SUMS.txt");
   assert.ok(uninstallAt !== -1, "uninstall note missing from Android install block");
-  assert.ok(tagHrefAt !== -1, "pinned beta.14 URL missing from Android install block");
+  assert.ok(tagHrefAt !== -1, "pinned release URL missing from Android install block");
   assert.ok(checksumAt !== -1, "checksum note missing from Android install block");
   assert.ok(uninstallAt < tagHrefAt, "uninstall line must lead the Android install block");
-  assert.ok(tagHrefAt < checksumAt, "pinned beta.14 URL must precede the checksum note");
+  assert.ok(tagHrefAt < checksumAt, "pinned release URL must precede the checksum note");
 
   assert.match(iphoneHtml, /The gateway is optional/);
   assert.match(iphoneHtml, /No gateway address or token\s+is needed for this mode/);
