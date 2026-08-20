@@ -20,7 +20,7 @@ data class SpeechSourceSelection(
     val openGateway: Boolean,
 )
 
-/** Tile tap: stay on this phone, or flip to gateway and open setup if needed. */
+/** Mode tap: stay on this phone, or flip to gateway and open setup if needed. */
 fun speechSourceSelection(
     wantLocal: Boolean,
     gatewayConfigured: Boolean,

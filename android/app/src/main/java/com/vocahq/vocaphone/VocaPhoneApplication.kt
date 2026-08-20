@@ -65,6 +65,9 @@ class AppContainer(context: Context) {
     private val applicationScope =
         CoroutineScope(SupervisorJob() + Dispatchers.Default + backgroundFailures)
 
+    /** Survives the companion activity. Model downloads and their follow-up writes use this. */
+    internal val workScope: CoroutineScope get() = applicationScope
+
     /**
      * Why the previous process ended, written into [diagnostics] at start.
      *

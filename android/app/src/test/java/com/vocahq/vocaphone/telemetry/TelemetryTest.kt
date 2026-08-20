@@ -745,4 +745,43 @@ class TelemetryTest {
         // The 120s cap in AppConfiguration is the reason this bucket exists.
         assertEquals(TelemetryDurationBucket.OVER_60S, TelemetryDurationBucket.of(120.0))
     }
+
+    @Test
+    fun `setup with no events shows a labeled sample`() {
+        val preferences = FakePreferences(enabled = true)
+        val telemetry = telemetry(preferences, RecordingSink(), TestScope(UnconfinedTestDispatcher()))
+        val inspect = telemetry.inspectPayload()
+
+        assertTrue(inspect.isSample)
+        val batch = JSONArray(inspect.json)
+        val event = batch.getJSONObject(0)
+        assertEquals("setup_step_completed", event.getString("eventName"))
+        assertEquals(
+            TelemetrySystemProps.KEYS,
+            event.getJSONObject("systemProps").keys().asSequence().toSet(),
+        )
+        assertFalse(inspect.json.contains("deviceModel"))
+        assertFalse(inspect.json.contains("transcript"))
+        listOf("http://", "https://", "Bearer ").forEach { forbidden ->
+            assertFalse(inspect.json.contains(forbidden))
+        }
+    }
+
+    @Test
+    fun `after a real event the viewer shows that event, not the sample`() = runTest {
+        val preferences = FakePreferences(enabled = true)
+        val sink = RecordingSink()
+        val telemetry = telemetry(preferences, sink, TestScope(UnconfinedTestDispatcher(testScheduler)))
+
+        telemetry.sourceSelected(TelemetrySource.ON_DEVICE)
+        val beforeFlush = telemetry.inspectPayload()
+        telemetry.flush()
+        val afterFlush = telemetry.inspectPayload()
+
+        assertFalse(beforeFlush.isSample)
+        assertFalse(afterFlush.isSample)
+        assertEquals(beforeFlush.json, afterFlush.json)
+        assertEquals("source_selected", JSONArray(afterFlush.json).getJSONObject(0).getString("eventName"))
+        assertEquals(0, telemetry.pendingCount())
+    }
 }

@@ -31,15 +31,15 @@ enum class MicrophonePreference(val storedValue: String) {
     val detail: String
         get() = when (this) {
             AUTOMATIC ->
-                "Android picks the input and may use a headset microphone when one " +
-                    "is connected."
-            PHONE -> "Always request the microphone built into this phone."
-            WIRED -> "Always request the microphone on a wired headset."
+                "Uses a Bluetooth headset when one is connected. Otherwise uses " +
+                    "this phone's microphone."
+            PHONE -> "Always use the microphone built into this phone."
+            WIRED -> "Always use the microphone on a wired headset."
             BLUETOOTH ->
-                "Always request the microphone on a Bluetooth headset. Android puts " +
-                    "the headset into call mode to reach its microphone, so music " +
-                    "playback drops in quality while you dictate."
-            USB -> "Always request a USB microphone or headset."
+                "Always use the microphone on a Bluetooth headset. Android puts " +
+                    "the headset into call mode, so music playback drops in quality " +
+                    "while you dictate."
+            USB -> "Always use a USB microphone or headset."
         }
 
     /** Shown when the preference is stored but nothing matching is attached. */

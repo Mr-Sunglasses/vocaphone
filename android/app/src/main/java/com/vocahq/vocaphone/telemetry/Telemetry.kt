@@ -4,6 +4,7 @@ import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.settings.SettingsRepository
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -55,6 +56,7 @@ class Telemetry internal constructor(
 ) {
 
     private var flushJob: Job? = null
+    private val lastQueuedJson = AtomicReference<String?>(null)
 
     /**
      * Content-free counters for the "See what's sent" screen.
@@ -240,6 +242,19 @@ class Telemetry internal constructor(
 
     fun pendingCount(): Int = queue.size()
 
+    /**
+     * Last event we actually queued (and later may have sent), or a labeled
+     * sample when setup has not produced one yet.
+     */
+    fun inspectPayload(): TelemetryInspectPayload {
+        val last = lastQueuedJson.get()
+        return if (last.isNullOrEmpty()) {
+            TelemetryInspectPayload(json = TelemetrySample.json(), isSample = true)
+        } else {
+            TelemetryInspectPayload(json = last, isSample = false)
+        }
+    }
+
     // MARK: - Internals
 
     private fun record(event: TelemetryEvent, vararg props: Pair<String, String>) {
@@ -283,15 +298,15 @@ class Telemetry internal constructor(
     }
 
     private fun enqueue(event: TelemetryEvent, props: Map<String, String>) {
-        queue.add(
-            TelemetryRecord(
-                eventName = event.wire,
-                timestamp = clock(),
-                sessionId = session.currentId(),
-                systemProps = systemProps(),
-                props = props,
-            )
+        val record = TelemetryRecord(
+            eventName = event.wire,
+            timestamp = clock(),
+            sessionId = session.currentId(),
+            systemProps = systemProps(),
+            props = props,
         )
+        queue.add(record)
+        lastQueuedJson.set(JSONArray(listOf(record.toJson())).toString(2))
         stats.recorded()
         scheduleFlush()
     }

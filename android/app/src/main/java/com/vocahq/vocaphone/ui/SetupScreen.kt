@@ -18,10 +18,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -31,6 +27,7 @@ import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
+import com.vocahq.vocaphone.telemetry.TelemetryInspectPayload
 
 internal object SetupCopy {
     /** Vector mark. Adaptive mipmaps crash painterResource. */
@@ -68,7 +65,7 @@ fun SetupScreen(
     onDownloadAndUseLocalModel: (LocalModelDescriptor) -> Unit,
     onCancelLocalModelDownload: () -> Unit,
     onTelemetryDecision: (Boolean) -> Unit,
-    telemetryPayload: () -> String,
+    telemetryInspect: () -> TelemetryInspectPayload,
     telemetryPendingCount: () -> Int,
     telemetryDeliveryStatus: () -> String,
     onFinish: () -> Unit,
@@ -149,18 +146,12 @@ fun SetupScreen(
             // keeps that composable — and the ingest path string inside it — in the
             // F-Droid APK, where nothing can ever reach it.
             if (BuildConfig.TELEMETRY && status.isReadyToDictate && !settings.telemetryAsked) {
-                var showingPayload by remember { mutableStateOf(false) }
                 UsageReportingSetupCard(
                     onDecision = onTelemetryDecision,
-                    onSeePayload = { showingPayload = !showingPayload },
+                    inspect = telemetryInspect,
+                    pendingCount = telemetryPendingCount,
+                    deliveryStatus = telemetryDeliveryStatus,
                 )
-                if (showingPayload) {
-                    PendingPayloadView(
-                        payload = telemetryPayload(),
-                        pendingCount = telemetryPendingCount(),
-                        deliveryStatus = telemetryDeliveryStatus(),
-                    )
-                }
             }
         }
 

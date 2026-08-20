@@ -29,7 +29,7 @@ enum class TranscriptionQuality(val storedValue: String) {
         get() = when (this) {
             FAST -> "Quickest result. Skips the retries that rescue a hard passage."
             BALANCED -> "Beam search where it is cheap, and a retry when a window looks wrong."
-            ACCURATE -> "Wider search for difficult speech. Can be 2–3× slower on older phones."
+            ACCURATE -> "Wider search for difficult speech. Can be 2-3x slower on older phones."
         }
 
     /**

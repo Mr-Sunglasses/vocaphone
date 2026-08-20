@@ -35,6 +35,21 @@ enum class DictationTone(val id: String) {
 
     val playsCues: Boolean get() = this != OFF
 
+    val detail: String
+        get() = when (this) {
+            LIFT -> "Rising chime when dictation starts and stops."
+            FLICK -> "Short snap when dictation starts and stops."
+            EMBER -> "Warm, muted start and stop cues."
+            STEP -> "Two-note step up to start, down to stop."
+            VOCA -> "Default VocaPhone start and stop cues."
+            SOFT -> "Quiet, short start and stop cues."
+            CHIRP -> "Bright chirp when dictation starts and stops."
+            SCALE -> "A short scale up to start, down to stop."
+            DROP -> "Falling tone when dictation starts and stops."
+            GLASS -> "Bright tap when dictation starts and stops."
+            OFF -> "No sound when dictation starts or stops."
+        }
+
     companion object {
         val DEFAULT = VOCA
 

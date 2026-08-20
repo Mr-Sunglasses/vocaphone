@@ -133,6 +133,19 @@ class ModelCatalogQueryTest {
     }
 
     @Test
+    fun installedIncludesTheRecommendedModel() {
+        val recommended = models.first()
+        val extra = models.drop(1).first()
+        val installed = pickerInstalledModels(
+            candidates = listOf(recommended, extra),
+            downloaded = setOf(recommended.id, extra.id),
+        )
+
+        assertEquals(listOf(recommended.id, extra.id), installed.map { it.id })
+        assertTrue(installed.any { it.id == recommended.id })
+    }
+
+    @Test
     fun recommendedDownloadDoesNotAlsoShowTheBusyBanner() {
         val recommended = LocalModelCatalog.find("tiny-q5_1")!!
 

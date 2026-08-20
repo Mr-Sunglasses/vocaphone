@@ -96,6 +96,52 @@ class InputDevicesTest {
     }
 
     @Test
+    fun `automatic prefers bluetooth when a headset type is present`() {
+        assertEquals(
+            MicrophonePreference.BLUETOOTH,
+            InputDevices.preferredCategory(
+                MicrophonePreference.AUTOMATIC,
+                listOf(AudioDeviceInfo.TYPE_BUILTIN_MIC, AudioDeviceInfo.TYPE_BLUETOOTH_SCO),
+            ),
+        )
+        assertEquals(
+            MicrophonePreference.BLUETOOTH,
+            InputDevices.preferredCategory(
+                MicrophonePreference.AUTOMATIC,
+                listOf(AudioDeviceInfo.TYPE_BLE_HEADSET),
+            ),
+        )
+    }
+
+    @Test
+    fun `automatic uses the phone mic when no bluetooth device is present`() {
+        assertNull(
+            InputDevices.preferredCategory(
+                MicrophonePreference.AUTOMATIC,
+                listOf(AudioDeviceInfo.TYPE_BUILTIN_MIC, AudioDeviceInfo.TYPE_USB_DEVICE),
+            ),
+        )
+    }
+
+    @Test
+    fun `explicit phone and headset choices stay themselves`() {
+        assertEquals(
+            MicrophonePreference.PHONE,
+            InputDevices.preferredCategory(
+                MicrophonePreference.PHONE,
+                listOf(AudioDeviceInfo.TYPE_BUILTIN_MIC, AudioDeviceInfo.TYPE_BLUETOOTH_SCO),
+            ),
+        )
+        assertEquals(
+            MicrophonePreference.BLUETOOTH,
+            InputDevices.preferredCategory(
+                MicrophonePreference.BLUETOOTH,
+                listOf(AudioDeviceInfo.TYPE_BLUETOOTH_SCO),
+            ),
+        )
+    }
+
+    @Test
     fun `a category attached twice is still offered once`() {
         val available = InputDevices.available(
             listOf(AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_DEVICE),

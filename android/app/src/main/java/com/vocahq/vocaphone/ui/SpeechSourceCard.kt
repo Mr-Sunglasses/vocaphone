@@ -1,32 +1,29 @@
 package com.vocahq.vocaphone.ui
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
+private val SpeechModes = listOf("On this phone", "Gateway")
+
 /**
- * One place to pick where speech is transcribed: this phone, or a gateway.
+ * Where speech is transcribed: this phone, or a gateway.
  *
- * The unused side stays visible and tappable so the choice can be flipped, but
- * its details are muted. That is what "not connected" used to try to say, and
- * failed at, when a local model was already doing the work.
+ * These are opposing modes, so the control is a single-select segmented row,
+ * not a switch and not a pair of cards.
  */
 @Composable
 fun SpeechSourceCard(
@@ -48,7 +45,16 @@ fun SpeechSourceCard(
     )
     val localOn = copy.localSelected
 
-    FeaturedCard {
+    fun pick(wantLocal: Boolean) {
+        val choice = speechSourceSelection(wantLocal, settings.isConfigured)
+        onLocalTranscriptionEnabled(choice.localEnabled)
+        if (choice.openGateway) onOpenGateway()
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         if (!compact) {
             Text("Speech", style = MaterialTheme.typography.titleSmall)
             Text(
@@ -57,45 +63,35 @@ fun SpeechSourceCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Max),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SourceChoiceTile(
-                title = "On this phone",
-                subtitle = copy.localDetail,
-                selected = localOn,
-                onClick = {
-                    val choice = speechSourceSelection(true, settings.isConfigured)
-                    onLocalTranscriptionEnabled(choice.localEnabled)
-                    if (choice.openGateway) onOpenGateway()
-                },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
-            SourceChoiceTile(
-                title = "Gateway",
-                subtitle = copy.gatewayDetail,
-                selected = !localOn,
-                onClick = {
-                    val choice = speechSourceSelection(false, settings.isConfigured)
-                    onLocalTranscriptionEnabled(choice.localEnabled)
-                    if (choice.openGateway) onOpenGateway()
-                },
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            SpeechModes.forEachIndexed { index, label ->
+                val wantLocal = index == 0
+                SegmentedButton(
+                    selected = wantLocal == localOn,
+                    onClick = { pick(wantLocal) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = SpeechModes.size,
+                    ),
+                    label = { Text(label) },
+                )
+            }
         }
+        Text(
+            if (localOn) copy.localDetail else copy.gatewayDetail,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         if (compact) {
             if (!localOn) {
                 TextButton(
                     onClick = onOpenGateway,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    contentPadding = PaddingValues(0.dp),
                 ) {
                     Text(if (settings.isConfigured) "Gateway settings" else "Set up a gateway")
                 }
             }
-            return@FeaturedCard
+            return@Column
         }
         if (localOn) {
             if (localModel != null) {
@@ -104,7 +100,7 @@ fun SpeechSourceCard(
             if (onOpenModels != null) {
                 TextButton(
                     onClick = onOpenModels,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    contentPadding = PaddingValues(0.dp),
                 ) {
                     Text(if (localModel == null) "Download a model" else "Change model")
                 }
@@ -128,65 +124,23 @@ fun SpeechSourceCard(
                 )
                 TextButton(
                     onClick = { context.openHttpUrl(settings.gatewayUrl) },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    contentPadding = PaddingValues(0.dp),
                 ) {
                     Text("Open web dashboard")
                 }
             }
             TextButton(
                 onClick = onOpenGateway,
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                contentPadding = PaddingValues(0.dp),
             ) {
                 Text(if (settings.isConfigured) "Gateway settings" else "Set up a gateway")
             }
             TextButton(
                 onClick = { context.openHttpUrl(GATEWAY_GUIDE_URL) },
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                contentPadding = PaddingValues(0.dp),
             ) {
                 Text("How to run a gateway")
             }
-        }
-    }
-}
-
-@Composable
-private fun SourceChoiceTile(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        modifier = modifier,
-        onClick = onClick,
-        color = if (selected) colors.primaryContainer else colors.surfaceContainerHigh,
-        shape = MaterialTheme.shapes.large,
-        border = if (selected) BorderStroke(1.dp, colors.primary) else null,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.titleSmall,
-                color = if (selected) colors.primary else colors.onSurface,
-            )
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (selected) {
-                    colors.onSurfaceVariant
-                } else {
-                    colors.onSurfaceVariant.copy(alpha = 0.5f)
-                },
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
     }
 }

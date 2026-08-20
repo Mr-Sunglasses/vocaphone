@@ -52,6 +52,12 @@ data class ModelPickerSections(
     val showCatalog: Boolean,
 )
 
+/** Downloaded models on disk, including the recommended or in-use one. */
+fun pickerInstalledModels(
+    candidates: List<LocalModelDescriptor>,
+    downloaded: Set<String>,
+): List<LocalModelDescriptor> = candidates.filter { it.id in downloaded }
+
 /** One progress UI: the recommended card owns its own download or load. */
 fun showPickerBusyBanner(
     downloadingId: String?,

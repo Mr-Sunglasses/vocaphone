@@ -120,6 +120,13 @@ enum class AudioRetention(val hours: Int) {
             ONE_DAY -> "24 hours"
         }
 
+    val detail: String
+        get() = when (this) {
+            ONE_HOUR -> "Keep a failed recording for 1 hour so Retry still works."
+            SIX_HOURS -> "Keep a failed recording for 6 hours so Retry still works."
+            ONE_DAY -> "Keep a failed recording for 24 hours so Retry still works."
+        }
+
     companion object {
         val DEFAULT = SIX_HOURS
         fun fromHours(hours: Int?): AudioRetention =

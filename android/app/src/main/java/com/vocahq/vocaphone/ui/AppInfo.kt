@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.StatFs
+import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.GatewayEndpoint
 import com.vocahq.vocaphone.local.LOCAL_MODELS_DIR
 import com.vocahq.vocaphone.local.LocalModelCatalog
@@ -16,37 +17,73 @@ const val ORG_URL = "https://github.com/VocaHQ"
 const val PROJECT_URL = "https://github.com/VocaHQ/vocaphone"
 const val WEBSITE_URL = "https://vocaphone.vocahq.com"
 const val NEW_ISSUE_URL = "https://github.com/VocaHQ/vocaphone/issues/new/choose"
+const val FAMILY_SITE_URL = "https://vocahq.com"
+const val VOCALINUX_URL = "https://vocalinux.com"
+const val VOCAMAC_URL = "https://vocamac.com"
+const val VOCAGATEWAY_SITE_URL = "https://vocagateway.vocahq.com"
+const val DISCORD_URL = "https://discord.gg/UMJduhcqn"
+const val X_URL = "https://x.com/vocahq"
+const val CONTACT_EMAIL = "hello@vocahq.com"
+const val CONTACT_MAILTO = "mailto:hello@vocahq.com"
 
 /** Quick start, engines, and pairing for a self-hosted gateway. */
 const val GATEWAY_GUIDE_URL = "https://github.com/VocaHQ/vocagateway"
 
-const val ABOUT_TAGLINE = "Voice dictation for Android and iPhone."
+const val ABOUT_WORDMARK = "VocaPhone"
+const val ABOUT_REPORT_BUG = "Report a bug or idea"
+const val ABOUT_COPY_DIAGNOSTICS = "Copy diagnostics"
+const val ABOUT_CLEAR_EVENT_LOG = "Clear event log"
+
+const val ABOUT_TAGLINE = "Voice-to-text for Android, kept on this phone."
+
+const val ABOUT_STATUS = "Public beta. Android 13 and newer."
+
+const val ABOUT_ON_DEVICE =
+    "Speech is transcribed on this phone first. A gateway is optional " +
+        "self-hosted compute. On-device dictation never calls it."
 
 const val ABOUT_FAMILY_NOTE =
-    "VocaPhone is one of the VocaHQ apps. The same dictation already runs on " +
-        "Linux as VocaLinux and on macOS as VocaMac. Windows is on the way, " +
-        "and the iPhone build lives in this project too."
+    "VocaPhone is one of the VocaHQ apps. VocaLinux is available now, " +
+        "VocaMac is in beta, and VocaWin is a developer alpha. This APK is " +
+        "the Android beta. iOS 17+ is a source build in the same repo. " +
+        "VocaGateway is Early."
 
 const val ABOUT_FEEDBACK_NOTE =
     "Bugs, feedback, and feature ideas open a new GitHub issue. You pick the " +
         "template on the next screen."
 
+/**
+ * A tap target on About.
+ *
+ * [icon] is a VocaDesign vocahq/social mark. Do not invent brand marks here.
+ */
+data class AboutLink(
+    val label: String,
+    val url: String,
+    val icon: Int? = null,
+)
+
+val ABOUT_FAMILY_LINKS = listOf(
+    AboutLink("vocahq.com", FAMILY_SITE_URL),
+    AboutLink("vocalinux.com", VOCALINUX_URL),
+    AboutLink("vocamac.com", VOCAMAC_URL),
+    AboutLink("vocaphone.vocahq.com", WEBSITE_URL),
+    AboutLink("vocagateway.vocahq.com", VOCAGATEWAY_SITE_URL),
+)
+
+val ABOUT_CONTACT_LINKS = listOf(
+    AboutLink("Discord", DISCORD_URL, R.drawable.ic_social_discord),
+    AboutLink("X", X_URL, R.drawable.ic_social_x),
+    AboutLink("Email", CONTACT_MAILTO, R.drawable.ic_social_mail),
+)
+
 const val ABOUT_PRIVACY_NOTE =
     "The keyboard types through Android's text connection. Dictation does not " +
-        "read the field.\n\n" +
-        "With Suggestions on, the keyboard looks at about 32 characters before " +
-        "and after the cursor so it can guess the next word. That snippet stays " +
-        "on this phone. It is not logged and it is not sent to the gateway. " +
-        "Swipe typing compares your finger path to the English word list on the " +
-        "phone and does not read the field.\n\n" +
-        "The clipboard chip and history read clips only on this phone, and only " +
-        "while the keyboard is open. Long-press the chip to hide it. Those clips " +
-        "are never logged.\n\n" +
-        "Audio goes to a model on this phone or to the gateway you set up. There " +
-        "is no cloud transcription and no third-party analytics. Usage reporting " +
-        "is off unless you turn it on under Dictation, and it sends counters to a " +
-        "server VocaHQ self-hosts, never your speech or your text. Nothing is " +
-        "copied to the clipboard unless you tap Copy."
+        "read the field. With Suggestions on, the keyboard looks at about 32 " +
+        "characters around the cursor on this phone.\n\n" +
+        "Audio goes to a model on this phone or to the gateway you set up. " +
+        "There is no cloud transcription. Usage reporting is off unless you " +
+        "turn it on under Dictation, and then it sends counters only."
 
 const val ABOUT_DIAGNOSTICS_NOTE =
     "The copied report has the app version, setup state, and the hardware " +

@@ -19,11 +19,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -65,6 +67,9 @@ data class LocalModelState(
     val preparing: String? = null,
 )
 
+/** Leaving the picker or the activity must not cancel a running download. */
+const val CANCEL_MODEL_DOWNLOAD_WHEN_HOST_LEAVES = false
+
 /** Owns model storage, atomic downloads, and the verified inference engine. */
 class LocalModelManager(
     context: Context,
@@ -72,6 +77,7 @@ class LocalModelManager(
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.MINUTES)
         .build(),
+    private val downloadScope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
     private val appContext = context.applicationContext
     private val modelRoot = File(appContext.filesDir, LOCAL_MODELS_DIR).also { it.mkdirs() }
@@ -97,6 +103,7 @@ class LocalModelManager(
     private var loadedQuality: TranscriptionQuality? = null
     /** The coroutine cannot interrupt a blocking OkHttp execute by itself. */
     private val activeDownloadCall = AtomicReference<Call?>(null)
+    private val activeDownloadJob = AtomicReference<Job?>(null)
 
     /**
      * Stat-only pass. Anything present but not yet marked as digest-checked is
@@ -160,9 +167,22 @@ class LocalModelManager(
 
     fun directoryFor(model: LocalModelDescriptor): File = File(modelRoot, model.id)
 
-    /** Cancels the in-flight HTTP request as well as the caller's coroutine. */
+    /**
+     * Starts a download on [downloadScope] so leaving setup or settings does
+     * not cancel it. Only [cancelDownload] stops an in-flight job.
+     */
+    fun startDownload(model: LocalModelDescriptor): Job {
+        cancelDownload()
+        val job = downloadScope.launch { download(model) }
+        activeDownloadJob.set(job)
+        job.invokeOnCompletion { activeDownloadJob.compareAndSet(job, null) }
+        return job
+    }
+
+    /** Cancels the in-flight HTTP request and the process-scoped download job. */
     fun cancelDownload() {
         activeDownloadCall.get()?.cancel()
+        activeDownloadJob.getAndSet(null)?.cancel()
     }
 
     suspend fun download(model: LocalModelDescriptor) = downloadMutex.withLock {

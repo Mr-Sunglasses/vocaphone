@@ -63,7 +63,7 @@ internal class TelemetryStats {
             append("\nNo send attempted yet this session.")
             return@buildString
         }
-        append("\nLast attempt ${TIME.format(at.atZone(ZoneId.systemDefault()))} — ")
+        append("\nLast attempt ${TIME.format(at.atZone(ZoneId.systemDefault()))}: ")
         append(
             when (outcome) {
                 // "Sent", not "stored": the server answers 200 to a batch it

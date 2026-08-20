@@ -51,9 +51,28 @@ object InputDevices {
             manager.availableCommunicationDevices.map { it.type },
     )
 
+    /**
+     * Which category Automatic should ask for, given the types attached now.
+     * Bluetooth headset, HFP, or SCO wins. Built-in only when none of those
+     * are present. Explicit Phone / Headset choices are left alone.
+     */
+    fun preferredCategory(
+        preference: MicrophonePreference,
+        attachedTypes: Collection<Int>,
+    ): MicrophonePreference? {
+        if (preference == MicrophonePreference.AUTOMATIC) {
+            return MicrophonePreference.BLUETOOTH.takeIf {
+                attachedTypes.any { it in deviceTypes(MicrophonePreference.BLUETOOTH) }
+            }
+        }
+        return preference.takeIf { attachedTypes.any { type -> type in deviceTypes(it) } }
+    }
+
     /** The attached input matching [preference], or null when none is. */
     fun match(manager: AudioManager, preference: MicrophonePreference): AudioDeviceInfo? {
-        val types = deviceTypes(preference)
+        val attached = manager.getDevices(AudioManager.GET_DEVICES_INPUTS).map { it.type }
+        val resolved = preferredCategory(preference, attached) ?: return null
+        val types = deviceTypes(resolved)
         if (types.isEmpty()) return null
         return manager.getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.type in types }
     }
@@ -67,8 +86,17 @@ object InputDevices {
         manager: AudioManager,
         preference: MicrophonePreference,
     ): AudioDeviceInfo? {
-        if (preference != MicrophonePreference.BLUETOOTH) return null
-        val types = deviceTypes(preference)
+        val types = deviceTypes(MicrophonePreference.BLUETOOTH)
+        val communicationTypes = manager.availableCommunicationDevices.map { it.type }
+        val attached = manager.getDevices(AudioManager.GET_DEVICES_INPUTS).map { it.type } +
+            communicationTypes
+        val wantBluetooth = when (preference) {
+            MicrophonePreference.BLUETOOTH -> true
+            MicrophonePreference.AUTOMATIC ->
+                preferredCategory(preference, attached) == MicrophonePreference.BLUETOOTH
+            else -> false
+        }
+        if (!wantBluetooth) return null
         return manager.availableCommunicationDevices.firstOrNull { it.type in types }
     }
 
@@ -79,6 +107,6 @@ object InputDevices {
             else -> "External microphone"
         }
         val name = device.productName?.toString()?.trim().orEmpty()
-        return if (name.isEmpty() || name.equals(kind, ignoreCase = true)) kind else "$kind — $name"
+        return if (name.isEmpty() || name.equals(kind, ignoreCase = true)) kind else "$kind ($name)"
     }
 }

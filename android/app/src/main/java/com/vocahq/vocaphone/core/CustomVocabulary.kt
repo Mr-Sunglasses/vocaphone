@@ -17,6 +17,11 @@ import java.util.Locale
  */
 object CustomVocabulary {
 
+    fun whisperOnlyWarning(modelName: String?): String? {
+        if (modelName.isNullOrBlank()) return null
+        return "$modelName is not Whisper. Custom words only apply to Whisper models."
+    }
+
     /**
      * The prompt competes with the audio for the decoder's context window, and
      * a long one measurably degrades transcription of everything the user did

@@ -11,6 +11,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.audio.InputDevices
+import com.vocahq.vocaphone.audio.TonePreview
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.GatewayEndpoint
 import com.vocahq.vocaphone.core.MicrophonePreference
@@ -103,6 +104,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     private val _microphone = MutableStateFlow(MicrophoneStatus())
     val microphone: StateFlow<MicrophoneStatus> = _microphone.asStateFlow()
 
+    private val _tonePreviewListening = MutableStateFlow(false)
+    val tonePreviewListening: StateFlow<Boolean> = _tonePreviewListening.asStateFlow()
+
     private val audioManager = application.getSystemService(AudioManager::class.java)
     private var localModelDownloadJob: Job? = null
 
@@ -152,8 +156,6 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     override fun onCleared() {
         audioManager?.unregisterAudioDeviceCallback(deviceCallback)
         ImeSetup.stopWatchingSettings(getApplication(), imeSettingsObserver)
-        container.localModels.cancelDownload()
-        localModelDownloadJob?.cancel()
         super.onCleared()
     }
 
@@ -307,11 +309,25 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setStyle(style: WritingStyle) =
         viewModelScope.launch { container.settings.setStyle(style) }
 
-    fun setDictationTone(tone: DictationTone) =
+    fun setDictationTone(tone: DictationTone) {
+        _tonePreviewListening.value = false
         viewModelScope.launch { container.settings.setDictationTone(tone) }
+    }
 
-    fun previewDictationTone(tone: DictationTone) =
-        viewModelScope.launch { container.dictationCues.preview(tone) }
+    fun toggleDictationTonePreview(tone: DictationTone) {
+        val next = TonePreview.nextListening(_tonePreviewListening.value, tone)
+        if (!next) {
+            if (_tonePreviewListening.value) {
+                container.dictationCues.haptic()
+                container.dictationCues.stopCue(tone)
+            }
+            _tonePreviewListening.value = false
+            return
+        }
+        container.dictationCues.haptic()
+        container.dictationCues.startCue(tone)
+        _tonePreviewListening.value = true
+    }
 
     fun setTranscriptionQuality(quality: TranscriptionQuality) =
         viewModelScope.launch {
@@ -404,6 +420,8 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     /** Whether reporting is actually getting through; counts only, no content. */
     fun telemetryDeliveryStatus(): String = container.telemetry.deliveryStatus()
 
+    fun telemetryInspect() = container.telemetry.inspectPayload()
+
     fun setLocalModel(model: LocalModelDescriptor) {
         viewModelScope.launch {
             container.settings.setLocalModel(model.id)
@@ -443,38 +461,42 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     private fun startLocalModelDownload(model: LocalModelDescriptor, useWhenReady: Boolean) {
-        cancelLocalModelDownload()
-        val job = viewModelScope.launch {
-            try {
-                container.localModels.download(model)
-                container.telemetry.modelDownloadFinished(model, TelemetryDownloadOutcome.COMPLETED)
-                if (useWhenReady) {
-                    container.settings.setLocalModel(model.id)
-                    container.settings.setLocalTranscriptionEnabled(true)
-                    refreshSetup()
-                    preloadLocalEngine()
-                }
-            } catch (_: CancellationException) {
-                // Cancellation is an explicit user action, not a failed download.
-                container.telemetry.modelDownloadFinished(model, TelemetryDownloadOutcome.CANCELLED)
-            } catch (error: Throwable) {
-                // The exception is never passed on: its message can name a
-                // download URL or a path under the user's data directory, and
-                // the whole point of the enum is that neither can get out.
-                container.telemetry.modelDownloadFinished(
-                    model,
-                    if (error is LocalModelIntegrityException) {
-                        TelemetryDownloadOutcome.INTEGRITY_FAILED
-                    } else {
-                        TelemetryDownloadOutcome.FAILED
-                    },
-                )
-                throw error
-            }
-        }
+        val job = container.localModels.startDownload(model)
         localModelDownloadJob = job
-        job.invokeOnCompletion {
+        job.invokeOnCompletion { cause ->
             if (localModelDownloadJob === job) localModelDownloadJob = null
+            when {
+                cause is CancellationException ->
+                    container.telemetry.modelDownloadFinished(
+                        model,
+                        TelemetryDownloadOutcome.CANCELLED,
+                    )
+                cause != null ->
+                    container.telemetry.modelDownloadFinished(
+                        model,
+                        if (cause is LocalModelIntegrityException ||
+                            cause.cause is LocalModelIntegrityException
+                        ) {
+                            TelemetryDownloadOutcome.INTEGRITY_FAILED
+                        } else {
+                            TelemetryDownloadOutcome.FAILED
+                        },
+                    )
+                else -> {
+                    container.telemetry.modelDownloadFinished(
+                        model,
+                        TelemetryDownloadOutcome.COMPLETED,
+                    )
+                    if (useWhenReady) {
+                        container.workScope.launch {
+                            container.settings.setLocalModel(model.id)
+                            container.settings.setLocalTranscriptionEnabled(true)
+                            refreshSetup()
+                            preloadLocalEngine()
+                        }
+                    }
+                }
+            }
         }
     }
 

@@ -28,6 +28,7 @@ import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.TextInsertion
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
+import com.vocahq.vocaphone.telemetry.TelemetryInspectPayload
 
 /**
  * In-app dictation. The transcript lands in a scratchpad the user can edit.
@@ -44,7 +45,7 @@ fun DictateScreen(
     onDismiss: () -> Unit,
     onOpenGateway: () -> Unit,
     onTelemetryDecision: (Boolean) -> Unit,
-    telemetryPayload: () -> String,
+    telemetryInspect: () -> TelemetryInspectPayload,
     telemetryPendingCount: () -> Int,
     telemetryDeliveryStatus: () -> String,
     modifier: Modifier = Modifier,
@@ -81,18 +82,12 @@ fun DictateScreen(
         // them and they would never be asked at all. Asking here covers them,
         // and disappears for good either way once answered.
         if (BuildConfig.TELEMETRY && settings.onboardingComplete && !settings.telemetryAsked) {
-            var showingPayload by remember { mutableStateOf(false) }
             UsageReportingSetupCard(
                 onDecision = onTelemetryDecision,
-                onSeePayload = { showingPayload = !showingPayload },
+                inspect = telemetryInspect,
+                pendingCount = telemetryPendingCount,
+                deliveryStatus = telemetryDeliveryStatus,
             )
-            if (showingPayload) {
-                PendingPayloadView(
-                    payload = telemetryPayload(),
-                    pendingCount = telemetryPendingCount(),
-                    deliveryStatus = telemetryDeliveryStatus(),
-                )
-            }
         }
 
         Section(
@@ -175,7 +170,7 @@ fun DictateScreen(
 
             if (!setup.isReadyToDictate) {
                 Text(
-                    "Dictation is paused — see below.",
+                    "Dictation is paused. See below.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )

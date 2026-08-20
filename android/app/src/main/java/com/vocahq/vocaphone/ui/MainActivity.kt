@@ -7,7 +7,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -85,6 +87,7 @@ fun VocaPhoneApp(
     val testing by viewModel.testing.collectAsStateWithLifecycle()
     val microphone by viewModel.microphone.collectAsStateWithLifecycle()
     val localModels by viewModel.localModels.collectAsStateWithLifecycle()
+    val tonePreviewListening by viewModel.tonePreviewListening.collectAsStateWithLifecycle()
 
     // The selected keyboard is a system setting, so its state can change while
     // the app is in the background; re-read setup on every resume.
@@ -129,6 +132,7 @@ fun VocaPhoneApp(
     val showSetup = !settings.onboardingComplete && !showingGateway
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             TopAppBar(
                 title = {
@@ -218,7 +222,7 @@ fun VocaPhoneApp(
                     viewModel.setTelemetryEnabled(enabled)
                     viewModel.setTelemetryAsked()
                 },
-                telemetryPayload = viewModel::telemetryPayload,
+                telemetryInspect = viewModel::telemetryInspect,
                 telemetryPendingCount = viewModel::telemetryPendingCount,
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 onFinish = { viewModel.setOnboardingComplete(true) },
@@ -239,7 +243,7 @@ fun VocaPhoneApp(
                     viewModel.setTelemetryEnabled(enabled)
                     viewModel.setTelemetryAsked()
                 },
-                telemetryPayload = viewModel::telemetryPayload,
+                telemetryInspect = viewModel::telemetryInspect,
                 telemetryPendingCount = viewModel::telemetryPendingCount,
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 modifier = content,
@@ -260,7 +264,8 @@ fun VocaPhoneApp(
                 onLanguage = { viewModel.setLanguage(it) },
                 onStyle = { viewModel.setStyle(it) },
                 onDictationTone = { viewModel.setDictationTone(it) },
-                onPreviewDictationTone = { viewModel.previewDictationTone(it) },
+                onPreviewDictationTone = { viewModel.toggleDictationTonePreview(it) },
+                tonePreviewListening = tonePreviewListening,
                 onMicrophone = { viewModel.setMicrophone(it) },
                 onAudioRetention = { viewModel.setAudioRetention(it) },
                 onTranscriptionQuality = { viewModel.setTranscriptionQuality(it) },
@@ -293,7 +298,7 @@ fun VocaPhoneApp(
                     viewModel.setTelemetryEnabled(enabled)
                     viewModel.setTelemetryAsked()
                 },
-                telemetryPayload = viewModel::telemetryPayload,
+                telemetryInspect = viewModel::telemetryInspect,
                 telemetryPendingCount = viewModel::telemetryPendingCount,
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 page = settingsPage,

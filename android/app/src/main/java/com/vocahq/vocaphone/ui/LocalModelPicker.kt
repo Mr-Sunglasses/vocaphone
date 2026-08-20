@@ -92,11 +92,9 @@ fun LocalModelPicker(
         filtered.any { it.id == recommended.id }
     }
     val installedModels = if (compact) {
-        usable.filter { it.id in state.downloaded && it.id != recommended.id }
+        pickerInstalledModels(usable, state.downloaded)
     } else {
-        filtered.filter {
-            it.id in state.downloaded && !(recommendedVisible && it.id == recommended.id)
-        }
+        pickerInstalledModels(filtered, state.downloaded)
     }
     val availableModels = filtered.filter {
         it.id !in state.downloaded && !(recommendedVisible && it.id == recommended.id)
@@ -372,24 +370,35 @@ private fun ModelCatalogSearch(
         label = { Text("Find a model") },
         placeholder = { Text("Name, language, or engine") },
     )
-    ChipChoiceRow(
-        options = ModelEngineFilter.entries,
-        selected = engineFilter,
-        label = { it.displayName },
-        onSelect = onEngine,
-    )
-    ChipChoiceRow(
-        options = ModelSizeFilter.entries,
-        selected = sizeFilter,
-        label = { it.displayName },
-        onSelect = onSize,
-    )
-    ChipChoiceRow(
-        options = ModelLanguageFilter.entries,
-        selected = languageFilter,
-        label = { it.displayName },
-        onSelect = onLanguage,
-    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChipMenu(
+            unselectedLabel = ModelEngineFilter.ALL.displayName,
+            options = ModelEngineFilter.entries,
+            selected = engineFilter,
+            label = { it.displayName },
+            isDefault = { it == ModelEngineFilter.ALL },
+            onSelect = onEngine,
+        )
+        FilterChipMenu(
+            unselectedLabel = ModelSizeFilter.ANY.displayName,
+            options = ModelSizeFilter.entries,
+            selected = sizeFilter,
+            label = { it.displayName },
+            isDefault = { it == ModelSizeFilter.ANY },
+            onSelect = onSize,
+        )
+        FilterChipMenu(
+            unselectedLabel = ModelLanguageFilter.ANY.displayName,
+            options = ModelLanguageFilter.entries,
+            selected = languageFilter,
+            label = { it.displayName },
+            isDefault = { it == ModelLanguageFilter.ANY },
+            onSelect = onLanguage,
+        )
+    }
 }
 
 @Composable

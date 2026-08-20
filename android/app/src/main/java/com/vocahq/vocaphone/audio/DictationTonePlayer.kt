@@ -8,7 +8,6 @@ import android.os.VibrationEffect
 import android.os.VibratorManager
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.DictationTone
-import kotlinx.coroutines.delay
 import java.io.DataInputStream
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -81,13 +80,6 @@ class DictationTonePlayer(context: Context) {
 
     /** Sounds the closing cue. Returns the mark it finishes on, as [startCue] does. */
     fun stopCue(tone: DictationTone): Long = sound(tone.stopRes())
-
-    /** Start cue, then stop cue. Off stays silent. */
-    suspend fun preview(tone: DictationTone) {
-        val quietAt = startCue(tone)
-        delay((quietAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
-        stopCue(tone)
-    }
 
     /**
      * Returns now for anything that did not sound -- Off, a sample still
