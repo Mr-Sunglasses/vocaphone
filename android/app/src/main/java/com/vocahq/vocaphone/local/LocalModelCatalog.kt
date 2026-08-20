@@ -18,19 +18,25 @@ enum class LocalModelEngine { WHISPER, SHERPA_ONNX }
  */
 enum class SherpaFamily(
     val sherpaModelType: String = "",
+    /** Tiny feature noise used only where zero dither can collapse valid speech. */
+    val featureDither: Float = 0f,
     /**
-     * Whether this family accepts `modified_beam_search`.
+     * Whether this family can safely use `modified_beam_search`.
      *
      * This is not a preference. sherpa-onnx validates the decoding method when
-     * the recognizer is built, and every family except the transducer answers an
-     * unsupported one with `exit(-1)` — not an exception, not an error return,
-     * but the process gone. In the IME that is the keyboard vanishing mid-
-     * sentence, so the method has to be decided from the family and never from
-     * the user's setting alone.
+     * the recognizer is built, and unsupported families answer with `exit(-1)`
+     * — not an exception, but the process gone. NeMo TDT accepts the value, but
+     * the implementation in the bundled sherpa-onnx v1.13.6 can intermittently
+     * emit empty or hallucinated text (upstream #3267; its proposed fix #3657
+     * is not merged). It stays false until a fixed native runtime is shipped
+     * and exercised on a phone.
      */
     val supportsBeamSearch: Boolean = false,
 ) {
-    NEMO_TRANSDUCER("nemo_transducer", supportsBeamSearch = true),
+    // Kaldi's dither=1 on int16 audio is approximately 1 / 32768 here. It is
+    // the upstream workaround for Parakeet returning no tokens on valid audio
+    // with an all-zero dither setting (sherpa-onnx #2258).
+    NEMO_TRANSDUCER("nemo_transducer", featureDither = 0.00003f),
     SENSE_VOICE,
     MOONSHINE,
     DOLPHIN_CTC,

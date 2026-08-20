@@ -32,7 +32,7 @@ class DeviceProfileTest {
     @Test
     fun `budget leaves headroom on fast and flagship phones`() {
         assertEquals(3, profile(3).modelRamBudgetGB)
-        assertEquals(4, profile(4).modelRamBudgetGB)
+        assertEquals(3, profile(4).modelRamBudgetGB)
         assertEquals(7, profile(8).modelRamBudgetGB)
         assertEquals(14, profile(16).modelRamBudgetGB)
         assertEquals(18, profile(20).modelRamBudgetGB)
@@ -40,7 +40,7 @@ class DeviceProfileTest {
 
     @Test
     fun `sherpa phones pick the best fitting transducer, not a hardcoded id`() {
-        for (ram in listOf(4L, 8L, 16L, 20L)) {
+        for (ram in listOf(8L, 16L, 20L)) {
             val pick = LocalModelCatalog.recommended(profile(ram))
             assertEquals(SherpaFamily.NEMO_TRANSDUCER, pick.sherpaFamily)
             assertTrue(pick.minimumRamGB <= profile(ram).modelRamBudgetGB)
@@ -49,6 +49,17 @@ class DeviceProfileTest {
         // also covers more than English, so it wins the score on every tier
         // that can hold a 4 GB floor.
         assertEquals("parakeet-tdt-0.6b-v3", LocalModelCatalog.recommended(profile(8)).id)
+    }
+
+    @Test
+    fun `four GB sherpa phone keeps a memory margin for the default`() {
+        val pick = LocalModelCatalog.recommended(profile(4))
+        assertEquals(SherpaFamily.MOONSHINE, pick.sherpaFamily)
+        assertTrue(pick.minimumRamGB <= profile(4).modelRamBudgetGB)
+        // Parakeet remains an explicit catalog choice when the user accepts
+        // the memory tradeoff; this test covers only the automatic default.
+        val parakeet = LocalModelCatalog.find("parakeet-tdt-0.6b-v3")!!
+        assertTrue(LocalModelCatalog.isUsableOnDevice(parakeet, 4, sherpaAvailable = true))
     }
 
     @Test

@@ -3,46 +3,35 @@ package com.vocahq.vocaphone.local
 import com.vocahq.vocaphone.audio.SpeechAudioConditioning
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.math.abs
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 
-/**
- * What an incremental session decoded, and whether any of the recording is
- * missing from it.
- *
- * A chunk that decodes to nothing takes its seconds out of the transcript
- * without leaving a trace: the merge joins the chunks either side into text
- * that reads as a whole sentence which happens to begin ten seconds in. The
- * attention families drop a long chunk often enough for this to be the
- * difference between a transcript and a plausible-looking lie, so the caller
- * re-decodes the file rather than shipping the hole.
- */
+/** The streaming result and the evidence required before it can be trusted. */
 internal data class SherpaIncrementalResult(
     val transcript: SherpaTranscript,
     val droppedAudibleChunk: Boolean,
+    val conditioningChanged: Boolean,
+    val processingError: Throwable? = null,
 ) {
-    /**
-     * Whether a whole-file re-decode is worth taking over this result.
-     *
-     * The re-decode exists to recover seconds the streaming pass lost, and it
-     * is only evidence of that if it came back with more. The same model that
-     * dropped a chunk in one pass drops one in the other -- over a recording
-     * with a long pause in it, routinely -- so taking the second pass on faith
-     * trades a hole for a bigger one, and the user watches a finished sentence
-     * lose its opening half.
-     */
-    fun supersededBy(wholeFile: String): Boolean = wholeFile.length > transcript.text.length
+    /** A complete, stable result can bypass the post-capture WAV decode. */
+    val isSafe: Boolean
+        get() = processingError == null &&
+            !droppedAudibleChunk &&
+            !conditioningChanged &&
+            transcript.text.isNotBlank()
 }
 
 /**
- * Decodes completed Sherpa chunks while AudioRecord is still capturing.
+ * Decodes bounded Sherpa windows while AudioRecord continues capturing.
  *
- * The input queue can hold the app's full five-minute recording limit. That
- * keeps this optimization off the capture thread even when inference is slower
- * than real time; the WAV writer remains the authoritative fallback.
+ * This is a latency optimization, not a second source of truth. Every frame
+ * is retained in the WAV as well. A changed running gain, an empty audible
+ * chunk, a failed offer, or any native exception makes the caller use that
+ * complete WAV instead.
  */
 internal class SherpaIncrementalSession(
     scope: CoroutineScope,
@@ -52,13 +41,13 @@ internal class SherpaIncrementalSession(
     private val accepting = AtomicBoolean(true)
     private val frames = Channel<ShortArray>(capacity = MAX_RECORDING_FRAMES)
     private val result: Deferred<SherpaIncrementalResult> =
-        scope.async(Dispatchers.Default) { transcribe() }
+        scope.async(Dispatchers.Default) { runSafely() }
 
     init {
         result.invokeOnCompletion { accepting.set(false) }
     }
 
-    /** Non-blocking because this is called from the file-drain pipeline. */
+    /** Non-blocking: this is called from the AudioRecord callback. */
     fun offer(frame: ShortArray): Boolean =
         accepting.get() && frames.trySend(frame).isSuccess
 
@@ -74,6 +63,19 @@ internal class SherpaIncrementalSession(
         result.cancel()
     }
 
+    private suspend fun runSafely(): SherpaIncrementalResult = try {
+        transcribe()
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Throwable) {
+        SherpaIncrementalResult(
+            transcript = SherpaTranscript.EMPTY,
+            droppedAudibleChunk = true,
+            conditioningChanged = true,
+            processingError = error,
+        )
+    }
+
     private suspend fun transcribe(): SherpaIncrementalResult {
         prepare()
         val audio = FloatSampleBuffer(
@@ -82,48 +84,39 @@ internal class SherpaIncrementalSession(
         var transcript = SherpaTranscript.EMPTY
         var overlapsPrevious = false
         var droppedAudibleChunk = false
-        // The loudest frame of everything decoded so far, which is what a later
-        // chunk's level is judged against. Read before this chunk contributes
-        // to it, so a pause is compared with the speech around it and never
-        // with itself.
+        var conditioningChanged = false
+        // The gain the first decoded window was levelled with. `gainFor` is
+        // monotonically non-increasing in the running peak, so comparing every
+        // later window against this one measures the total drift rather than
+        // one step of it.
+        var firstAppliedGain = 0f
         var loudestFrame = 0.0
 
         suspend fun consume(chunk: FloatArray) {
-            // Silence is judged on the capture as it arrived, and so has to be
-            // measured before `condition` levels the array in place. That gain
-            // multiplies a quiet recording by as much as eight, and a floor
-            // meant for microphone levels reads amplified room tone as speech
-            // -- which buys a decode, the two more the empty-chunk recovery
-            // adds on top, and then the whole-file re-run the flag below asks
-            // the caller for. All to transcribe a pause.
             val level = SherpaLongAudio.loudestFrame(chunk)
             if (SherpaLongAudio.isEffectivelySilent(level)) return
 
-            // The gain a chunk is levelled with has to come from more than the
-            // chunk itself: one gain per chunk moves the level at every
-            // boundary, and a chunk that is all pause would be amplified into
-            // noise the model transcribes as words. The peak over everything
-            // captured so far is the closest a streaming chunk gets to the
-            // single gain the whole-file path applies, and it only ever grows,
-            // so the gain only ever settles.
-            val levelled = SpeechAudioConditioning.condition(chunk, audio.peak)
+            // A running peak is the closest safe approximation to the
+            // recording-wide gain, and it moves on almost every recording:
+            // anyone who gets louder as they go raises it. What the model
+            // actually hears is the gain, which mostly does not move, so that
+            // is what is compared. Past the tolerance the complete-WAV path
+            // takes over and every word is levelled once.
+            val gain = SpeechAudioConditioning.gainFor(audio.peak)
+            if (firstAppliedGain > 0f &&
+                maxOf(firstAppliedGain, gain) / minOf(firstAppliedGain, gain) > MAX_GAIN_DRIFT
+            ) {
+                conditioningChanged = true
+            }
+            val levelled = SpeechAudioConditioning.conditionStreaming(chunk, audio.peak)
             val decoded = decode(levelled)
-
-            // Only a chunk long enough that the recovery has already tried and
-            // failed, and loud enough next to the rest of the recording to have
-            // held speech, is a hole worth re-reading the file for. Below those
-            // bars an empty answer is routine -- the retained overlap, the
-            // fragment of a word a recording ending just after a boundary
-            // leaves, the room tone while someone pauses to think -- and
-            // treating it as a loss spends a second pass over the whole
-            // recording to find out it was right the first time.
             if (decoded.text.isEmpty() &&
-                chunk.size >
-                SherpaLongAudio.MIN_SUSPECT_CHUNK_SECONDS * SherpaLongAudio.SAMPLE_RATE &&
+                chunk.size > SherpaLongAudio.MIN_SUSPECT_CHUNK_SECONDS * SherpaLongAudio.SAMPLE_RATE &&
                 SherpaLongAudio.carriesSpeech(level, loudestFrame)
             ) {
                 droppedAudibleChunk = true
             }
+            if (firstAppliedGain == 0f) firstAppliedGain = gain
             loudestFrame = maxOf(loudestFrame, level)
             transcript = transcript.append(decoded, deduplicateOverlap = overlapsPrevious)
         }
@@ -131,7 +124,9 @@ internal class SherpaIncrementalSession(
         for (frame in frames) {
             audio.append(frame)
             while (true) {
-                if (audio.size < STREAMING_WINDOW_SAMPLES) break
+                if (audio.size < SherpaLongAudio.STREAMING_WINDOW_SECONDS * SherpaLongAudio.SAMPLE_RATE) {
+                    break
+                }
                 val available = audio.toFloatArray()
                 val split = SherpaLongAudio.nextStreamingSplit(available) ?: break
                 consume(available.copyOfRange(0, split.endExclusive))
@@ -144,6 +139,7 @@ internal class SherpaIncrementalSession(
         return SherpaIncrementalResult(
             transcript = transcript.copy(text = transcript.text.trim()),
             droppedAudibleChunk = droppedAudibleChunk,
+            conditioningChanged = conditioningChanged,
         )
     }
 
@@ -151,8 +147,6 @@ internal class SherpaIncrementalSession(
         private var samples = FloatArray(initialCapacity)
         var size: Int = 0
             private set
-
-        /** The loudest sample of everything appended, not only what is retained. */
         var peak: Float = 0f
             private set
 
@@ -185,9 +179,22 @@ internal class SherpaIncrementalSession(
     }
 
     private companion object {
-        // AudioCapture emits one 100 ms frame. The app stops at five minutes.
+        // AudioCapture emits one 100 ms frame; the app stops at five minutes.
         const val MAX_RECORDING_FRAMES = 3_100
-        const val STREAMING_WINDOW_SAMPLES =
-            SherpaLongAudio.STREAMING_WINDOW_SECONDS * SherpaLongAudio.SAMPLE_RATE
+
+        /**
+         * How far the streaming gain may drift before the complete WAV has to
+         * take over.
+         *
+         * Two is 6 dB. A gain is a constant offset in every log-mel channel,
+         * which per-feature normalization mostly removes and volume
+         * augmentation trains through, so 6 dB across a transcript is not what
+         * makes one window read differently from the next. What this is
+         * guarding against is the eight-fold spread the gain ceiling allows
+         * between a whisper and a shout, and that still trips it. Tighter than
+         * this and ordinary speech dynamics -- anyone who warms up as they talk
+         * -- send every recording to the slow path.
+         */
+        const val MAX_GAIN_DRIFT = 2f
     }
 }

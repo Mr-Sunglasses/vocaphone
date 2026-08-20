@@ -3,6 +3,7 @@ package com.vocahq.vocaphone.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -370,9 +371,14 @@ private fun ModelCatalogSearch(
         label = { Text("Find a model") },
         placeholder = { Text("Name, language, or engine") },
     )
-    Row(
+    // Three chips do not fit one line at a large display scale, and a Row has
+    // nowhere to put the third: it squeezes the chip past its own label, which
+    // then sets one character per line and grows the row to the height of the
+    // page. FlowRow moves it to a second line instead.
+    FlowRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         FilterChipMenu(
             unselectedLabel = ModelEngineFilter.ALL.displayName,

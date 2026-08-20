@@ -14,11 +14,10 @@ import org.junit.Test
 class SherpaDecodingMethodTest {
 
     @Test
-    fun `only the transducer family may be asked for beam search`() {
+    fun `every bundled family stays on its stable greedy decoder`() {
         SherpaFamily.entries.forEach { family ->
             TranscriptionQuality.entries.forEach { quality ->
                 val method = family.decodingMethod(quality)
-                if (family == SherpaFamily.NEMO_TRANSDUCER) return@forEach
                 assertEquals(
                     "$family must stay on greedy search at $quality",
                     SherpaFamily.GREEDY_SEARCH,
@@ -29,19 +28,21 @@ class SherpaDecodingMethodTest {
     }
 
     @Test
-    fun `the transducer still widens its search when quality asks for it`() {
-        assertEquals(
-            "greedy_search",
-            SherpaFamily.NEMO_TRANSDUCER.decodingMethod(TranscriptionQuality.FAST),
-        )
-        assertEquals(
-            "modified_beam_search",
-            SherpaFamily.NEMO_TRANSDUCER.decodingMethod(TranscriptionQuality.BALANCED),
-        )
-        assertEquals(
-            "modified_beam_search",
-            SherpaFamily.NEMO_TRANSDUCER.decodingMethod(TranscriptionQuality.ACCURATE),
-        )
+    fun `parakeet never enters the unstable NeMo TDT beam decoder`() {
+        TranscriptionQuality.entries.forEach { quality ->
+            assertEquals(
+                "greedy_search",
+                SherpaFamily.NEMO_TRANSDUCER.decodingMethod(quality),
+            )
+        }
+    }
+
+    @Test
+    fun `parakeet enables the upstream empty-result dither workaround`() {
+        assertEquals(0.00003f, SherpaFamily.NEMO_TRANSDUCER.featureDither, 0f)
+        SherpaFamily.entries
+            .filterNot { it == SherpaFamily.NEMO_TRANSDUCER }
+            .forEach { family -> assertEquals(0f, family.featureDither, 0f) }
     }
 
     @Test

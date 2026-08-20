@@ -17,10 +17,9 @@ import java.util.concurrent.ConcurrentHashMap
  * Haptics are separate: they fire even when the tone is Off.
  *
  * Every cue is decoded once into a SoundPool when the container is built, so
- * playing one later is a single call with no codec to spin up. That matters
- * because the opening cue sits in front of the microphone on every dictation:
- * a MediaPlayer per play cost around 80 ms of NuPlayer and codec setup on top
- * of the tone itself.
+ * playing one later is a single call with no codec to spin up. That matters on
+ * every dictation: a MediaPlayer per play cost around 80 ms of NuPlayer and
+ * codec setup on top of the tone itself.
  */
 class DictationTonePlayer(context: Context) {
     private val appContext = context.applicationContext
@@ -72,9 +71,8 @@ class DictationTonePlayer(context: Context) {
      * at which the speaker falls quiet again.
      *
      * The caller gets the mark instead of a suspend that blocks until it passes,
-     * so the microphone can open while the cue is still sounding and drop the
-     * frames that overlap it. Waiting first put the cue's whole length in front
-     * of every dictation -- 600 ms of it for Lift.
+     * so the microphone can warm up while the cue is still sounding. Captured
+     * frames are retained; the mark delays only the ready state and haptic.
      */
     fun startCue(tone: DictationTone): Long = sound(tone.startRes())
 

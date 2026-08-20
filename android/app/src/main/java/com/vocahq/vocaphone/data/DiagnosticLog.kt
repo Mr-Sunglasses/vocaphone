@@ -286,6 +286,8 @@ class DiagnosticLog(
             "local_transcription_started",
             "local_incremental_started",
             "local_incremental_ready",
+            "local_incremental_dropped_chunk",
+            "local_incremental_unstable_gain",
             "local_incremental_fallback",
             "transcript_ready",
             "insertion_started",

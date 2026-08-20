@@ -41,6 +41,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.R
 
@@ -457,7 +458,13 @@ fun <T> FilterChipMenu(
             selected = !isDefault(selected),
             onClick = { expanded = true },
             label = {
-                Text(if (isDefault(selected)) unselectedLabel else label(selected))
+                // A chip that cannot fit its label should lose the end of it,
+                // not set it one character per line and stretch the row.
+                Text(
+                    text = if (isDefault(selected)) unselectedLabel else label(selected),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
             border = null,

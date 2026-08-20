@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.local
 
 import com.k2fsa.sherpa.onnx.OfflineCanaryModelConfig
 import com.k2fsa.sherpa.onnx.OfflineDolphinModelConfig
+import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineNemoEncDecCtcModelConfig
@@ -32,7 +33,7 @@ internal class SherpaRecognizer private constructor(
         return transcript.copy(text = transcript.text.trim())
     }
 
-    /** One already-bounded chunk used by the during-recording pipeline. */
+    /** Decodes one bounded window, recovering an empty result with smaller windows. */
     fun transcribeChunk(samples: FloatArray): SherpaTranscript = SherpaEmptyChunkRecovery.decode(
         samples = samples,
         decodeOnce = ::decode,
@@ -142,6 +143,7 @@ internal class SherpaRecognizer private constructor(
                 OfflineRecognizer(
                     assetManager = null,
                     config = OfflineRecognizerConfig(
+                        featConfig = FeatureConfig(dither = family.featureDither),
                         modelConfig = modelConfig,
                         decodingMethod = decodingMethod,
                         maxActivePaths = quality.sherpaMaxActivePaths,
@@ -191,8 +193,8 @@ internal data class SherpaTranscript(val text: String, val language: String = ""
 /**
  * Some attention-based models occasionally return no tokens for a longer
  * waveform even though shorter speech from the same recording is recognized.
- * Retry only that empty chunk as two smaller streams; successful chunks never
- * pay the extra inference cost.
+ * Retry only that empty chunk as two overlapping smaller streams; successful
+ * chunks never pay the extra inference cost.
  */
 internal object SherpaEmptyChunkRecovery {
 
@@ -201,15 +203,33 @@ internal object SherpaEmptyChunkRecovery {
         decodeOnce: (FloatArray) -> SherpaTranscript,
     ): SherpaTranscript {
         val firstAttempt = decodeOnce(samples)
+        // Length is what this recovers from, so a window that is not long
+        // enough to be dropped for its length has nothing to recover. Room
+        // tone is the other ordinary reason for an empty answer, and the
+        // cheapest thing to rule out before spending two more decodes: the
+        // scan costs a pass over the samples, the retry costs inference.
         if (firstAttempt.text.isNotEmpty() ||
             samples.size <=
-            SherpaLongAudio.MIN_SUSPECT_CHUNK_SECONDS * SherpaLongAudio.SAMPLE_RATE
+            SherpaLongAudio.MIN_SUSPECT_CHUNK_SECONDS * SherpaLongAudio.SAMPLE_RATE ||
+            SherpaLongAudio.isEffectivelySilent(samples)
         ) {
             return firstAttempt
         }
 
+        // Retain context on both sides of the recovery boundary. A plain
+        // midpoint split could rescue an empty window while still deleting the
+        // word crossing its exact centre. One split and no more: a half-length
+        // window that is still empty is not being lost to its length, and
+        // subdividing again multiplies the decodes for nothing.
         val midpoint = samples.size / 2
-        return decodeOnce(samples.copyOfRange(0, midpoint))
-            .append(decodeOnce(samples.copyOfRange(midpoint, samples.size)), deduplicateOverlap = false)
+        val halfOverlap = SherpaLongAudio.OVERLAP_MILLIS *
+            SherpaLongAudio.SAMPLE_RATE / 2_000
+        val leftEnd = (midpoint + halfOverlap).coerceAtMost(samples.size)
+        val rightStart = (midpoint - halfOverlap).coerceAtLeast(0)
+        return decodeOnce(samples.copyOfRange(0, leftEnd))
+            .append(
+                decodeOnce(samples.copyOfRange(rightStart, samples.size)),
+                deduplicateOverlap = true,
+            )
     }
 }

@@ -419,22 +419,26 @@ class AudioCapture(
                 }
             }
         }
-        drainBufferedFrames(recorder)
+        drainFinalFrames(recorder)
     }
 
     /**
-     * Hands over whatever the hardware buffered while the loop was being asked
-     * to stop.
+     * Completes one final frame, then hands over anything else already buffered.
      *
-     * `READ_NON_BLOCKING` so a microphone that has already gone quiet returns 0
-     * straight away rather than holding `stop` open for a frame that is never
-     * coming. Bounded because this runs while the user is waiting for their
-     * words: a tail worth keeping is milliseconds long, and anything larger is
-     * a backlog that the recording is better off without.
+     * Merely switching [running] off has a race: if the loop is between reads it
+     * can observe the flag, make one non-blocking read before the HAL publishes
+     * the last samples, get zero, and let `stop()` discard the final syllable.
+     * One blocking frame closes that gap. `stop()` bounds it from the outside
+     * and hard-stops a microphone that has stalled, so this cannot hang Finish.
      */
-    private fun drainBufferedFrames(recorder: AudioRecord) {
+    private fun drainFinalFrames(recorder: AudioRecord) {
         val samples = ShortArray(frameSamples)
-        repeat(MAX_DRAIN_FRAMES) {
+        val finalCount = runCatching {
+            recorder.read(samples, 0, samples.size, AudioRecord.READ_BLOCKING)
+        }.getOrDefault(0)
+        if (finalCount > 0) onFrame(samples, finalCount)
+
+        repeat((MAX_DRAIN_FRAMES - 1).coerceAtLeast(0)) {
             val count = runCatching {
                 recorder.read(samples, 0, samples.size, AudioRecord.READ_NON_BLOCKING)
             }.getOrDefault(0)
@@ -461,7 +465,7 @@ class AudioCapture(
          */
         const val DRAIN_JOIN_MILLIS = 250L
 
-        /** Two frames of tail. More than this is a backlog, not a last word. */
+        /** One completed frame and one buffered frame of tail. */
         const val MAX_DRAIN_FRAMES = 2
     }
 }

@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.local
 
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.sqrt
 
 /** A half-open range of 16 kHz samples sent to one offline decode call. */
@@ -10,7 +11,7 @@ internal data class SherpaAudioChunk(
     val overlapsPrevious: Boolean,
 )
 
-/** A completed streaming chunk and the first sample retained for the next one. */
+/** A stable prefix that can be decoded while the microphone keeps recording. */
 internal data class SherpaStreamingSplit(
     val endExclusive: Int,
     val nextStart: Int,
@@ -21,29 +22,51 @@ internal data class SherpaStreamingSplit(
  *
  * Offline recognizers accept one complete waveform per stream. That is a good
  * fast path for a sentence, but attention-based models become disproportionately
- * expensive as the waveform grows. The boundary search prefers a quiet 100 ms
- * frame around the target so normal speech is not cut in half. Continuous speech
- * falls back to a 500 ms overlap; the transcript merger removes repeated words.
+ * expensive as the waveform grows. The boundary search prefers a sustained
+ * 300 ms quiet run around the target so normal speech is not cut in half. Every
+ * boundary retains context either way, because deleting it on a classification
+ * was enough to lose a boundary word; how much depends on how well the boundary
+ * is evidenced. The transcript merger removes the repeated words back out.
  */
 internal object SherpaLongAudio {
     const val SAMPLE_RATE = 16_000
     const val LONG_AUDIO_THRESHOLD_SECONDS = 12
     const val TARGET_CHUNK_SECONDS = 10
     const val MAX_CHUNK_SECONDS = 14
+
+    /**
+     * Retained across a boundary the search had to guess at. A low-energy
+     * phoneme can sit where the audio looks quiet, so a guessed cut keeps
+     * enough of the previous window to decode a word it may have split.
+     */
     const val OVERLAP_MILLIS = 500
+
+    /**
+     * Retained across a boundary a sustained quiet run was actually found at.
+     * The cut lands in the middle of that run, so 150 ms of measured silence
+     * already sits on each side of it and a word cannot be straddling it. This
+     * still keeps that silence plus a margin, and every 300 ms saved here is
+     * audio the model does not decode twice.
+     */
+    const val SILENCE_OVERLAP_MILLIS = 200
+
     const val STREAMING_WINDOW_SECONDS = TARGET_CHUNK_SECONDS + 2
 
     /**
-     * A chunk shorter than this answering with no tokens is ordinary rather
-     * than a loss: it is the half second of retained overlap a recording that
-     * ends just after a boundary leaves behind, or a fragment of a word. Longer
-     * than this and an empty answer is suspicious -- which is why it is also the
-     * bar [SherpaEmptyChunkRecovery] uses before it bothers retrying a chunk as
-     * two halves.
+     * The bar above which a window answering with no tokens is suspicious.
+     *
+     * Below it an empty answer is ordinary rather than a loss: the half second
+     * of retained overlap a recording ending just after a boundary leaves
+     * behind, or a fragment of a word. Both callers need the same bar --
+     * [SherpaEmptyChunkRecovery] before it spends two more decodes on a retry,
+     * and the streaming session before it sends the caller to the whole-file
+     * decode -- because both are asking the same question about the same
+     * window.
      */
     const val MIN_SUSPECT_CHUNK_SECONDS = 6
 
     private const val SILENCE_FRAME_MILLIS = 100
+    private const val SILENCE_RUN_FRAMES = 3
     private const val SILENCE_SEARCH_MILLIS = 2_000
     private const val MIN_CHUNK_SECONDS = 4
     private const val MIN_SILENCE_RMS = 0.0125
@@ -57,7 +80,8 @@ internal object SherpaLongAudio {
 
         val targetSamples = TARGET_CHUNK_SECONDS * SAMPLE_RATE
         val maxSamples = MAX_CHUNK_SECONDS * SAMPLE_RATE
-        val overlapSamples = OVERLAP_MILLIS * SAMPLE_RATE / 1_000
+        val guessedOverlapSamples = OVERLAP_MILLIS * SAMPLE_RATE / 1_000
+        val foundOverlapSamples = SILENCE_OVERLAP_MILLIS * SAMPLE_RATE / 1_000
         val minChunkSamples = MIN_CHUNK_SECONDS * SAMPLE_RATE
         val chunks = mutableListOf<SherpaAudioChunk>()
         var start = 0
@@ -79,28 +103,27 @@ internal object SherpaLongAudio {
                 maxEnd = (start + maxSamples).coerceAtMost(samples.size - minChunkSamples),
             )
             val end = silence ?: idealEnd
-            val useOverlap = silence == null
             chunks += SherpaAudioChunk(start, end, overlapsPrevious)
-            start = if (useOverlap) {
-                (end - overlapSamples).coerceAtLeast(start + 1)
-            } else {
-                end
-            }
-            overlapsPrevious = useOverlap
+            // Boundary classification is deliberately not trusted with audio
+            // ownership: a quiet consonant can satisfy an RMS threshold, and
+            // dropping the overlap on that guess loses the word. It is trusted
+            // with how much to retain, which is only a question of cost.
+            val retainedSamples =
+                if (silence != null) foundOverlapSamples else guessedOverlapSamples
+            start = (end - retainedSamples).coerceAtLeast(start + 1)
+            overlapsPrevious = true
         }
         return chunks
     }
 
     /**
-     * Returns one stable boundary once enough future audio exists to inspect
-     * the full silence-search window. The caller retains [SherpaStreamingSplit.nextStart]
-     * onward while the completed prefix is decoded in the background.
+     * Returns one bounded prefix after enough future audio exists to inspect a
+     * complete silence-search window. The caller retains [nextStart] onward.
      */
     fun nextStreamingSplit(samples: FloatArray): SherpaStreamingSplit? {
         val targetSamples = TARGET_CHUNK_SECONDS * SAMPLE_RATE
         if (samples.size < STREAMING_WINDOW_SECONDS * SAMPLE_RATE) return null
 
-        val overlapSamples = OVERLAP_MILLIS * SAMPLE_RATE / 1_000
         val silence = findSilenceBoundary(
             samples = samples,
             start = 0,
@@ -109,9 +132,14 @@ internal object SherpaLongAudio {
             maxEnd = STREAMING_WINDOW_SECONDS * SAMPLE_RATE,
         )
         val end = silence ?: targetSamples
+        // Retain context on the same terms as the authoritative finish-time
+        // path, including at a boundary that looks quiet: a low-energy phoneme
+        // can sit inside an RMS silence run. A found run needs less of it.
+        val retainedSamples =
+            (if (silence != null) SILENCE_OVERLAP_MILLIS else OVERLAP_MILLIS) * SAMPLE_RATE / 1_000
         return SherpaStreamingSplit(
             endExclusive = end,
-            nextStart = if (silence == null) end - overlapSamples else end,
+            nextStart = (end - retainedSamples).coerceAtLeast(1),
         )
     }
 
@@ -132,23 +160,22 @@ internal object SherpaLongAudio {
             ) * frameSamples
         if (firstFrame > lastFrame) return null
 
+        val levels = mutableListOf<Pair<Int, Double>>()
         var peakRms = 0.0
-        var lowestRms = Double.MAX_VALUE
-        var quietStart = -1
         var frame = firstFrame
         while (frame <= lastFrame) {
             val rms = rms(samples, frame, (frame + frameSamples).coerceAtMost(samples.size))
             peakRms = peakRms.coerceAtLeast(rms)
-            if (rms < lowestRms) {
-                lowestRms = rms
-                quietStart = frame
-            }
+            levels += frame to rms
             frame += frameSamples
         }
 
         val threshold = maxOf(MIN_SILENCE_RMS, peakRms * SILENCE_RMS_RATIO)
-        return quietStart.takeIf { it >= 0 && lowestRms <= threshold }
-            ?.plus(frameSamples / 2)
+        return levels.windowed(SILENCE_RUN_FRAMES)
+            .asSequence()
+            .filter { run -> run.all { (_, rms) -> rms <= threshold } }
+            .map { run -> run.first().first + frameSamples * SILENCE_RUN_FRAMES / 2 }
+            .minByOrNull { boundary -> abs(boundary - idealEnd) }
             ?.coerceIn(minEnd, maxEnd)
     }
 
@@ -180,19 +207,7 @@ internal object SherpaLongAudio {
 
     fun isEffectivelySilent(loudestFrame: Double): Boolean = loudestFrame < SILENT_CHUNK_RMS
 
-    /**
-     * Whether a chunk carries speech rather than the room between sentences.
-     *
-     * [loudestFrameSoFar] is the loudest frame heard earlier in the same
-     * recording. No absolute floor separates a quiet room from quiet speech --
-     * one room's noise sits above another room's whisper -- but the distance
-     * between a pause and the speech around it holds across recordings, which
-     * is why the boundary search scales its own threshold the same way.
-     *
-     * Only asked about a chunk that already decoded to nothing, and only to
-     * decide whether that is worth re-reading the whole file over. Room tone
-     * answering with no tokens is not a loss; it is the correct answer.
-     */
+    /** Whether a silent decode is suspicious compared with earlier speech. */
     fun carriesSpeech(loudestFrame: Double, loudestFrameSoFar: Double): Boolean =
         loudestFrame >= maxOf(SILENT_CHUNK_RMS, loudestFrameSoFar * SILENCE_RMS_RATIO)
 
@@ -209,7 +224,9 @@ internal object SherpaLongAudio {
 
 /** Joins text from overlapped chunks without writing the repeated boundary words. */
 internal object SherpaTranscriptMerger {
-    private const val MAX_OVERLAP_WORDS = 12
+    // The audio overlap is half a second at most. A much wider text match can
+    // only be a phrase the speaker genuinely repeated, not duplicated audio.
+    private const val MAX_OVERLAP_WORDS = 4
 
     fun append(existing: String, next: String, deduplicateOverlap: Boolean = true): String {
         val left = existing.trim()

@@ -44,50 +44,81 @@ object SpeechAudioConditioning {
      * fresh array and a second copy of five minutes of audio is worth avoiding.
      *
      * Only whole recordings should be passed here. The gain is derived from the
-     * loudest sample in what it is given, so feeding it one streaming chunk at
-     * a time would apply a different gain to each — jarring across a chunk
+     * recording after [analysisStartSample], allowing a known start-cue prefix
+     * to stay in the audio without setting the speech level. Feeding streaming
+     * chunks here would apply a different gain to each — jarring across a chunk
      * boundary, and outright wrong for a chunk that happens to be a pause.
      */
-    fun condition(samples: FloatArray): FloatArray {
+    fun condition(samples: FloatArray, analysisStartSample: Int = 0): FloatArray {
         if (samples.isEmpty()) return samples
+
+        val requestedStart = analysisStartSample.coerceIn(0, samples.size)
+        // A very short utterance can fit entirely under a long cue. In that
+        // case analysing all of it is safer than deriving a gain from no audio.
+        val analysisStart = requestedStart.takeIf {
+            samples.size - it >= MIN_ANALYSIS_SAMPLES
+        } ?: 0
 
         // A DC offset costs a model headroom and shifts every frame's energy
         // without carrying any of the speech. Some phone inputs have a real one.
         var sum = 0.0
-        for (sample in samples) sum += sample
-        val offset = (sum / samples.size).toFloat()
+        for (index in analysisStart until samples.size) sum += samples[index]
+        val offset = (sum / (samples.size - analysisStart)).toFloat()
         if (abs(offset) > 1e-4f) {
             for (index in samples.indices) samples[index] -= offset
         }
 
         var peak = 0f
-        for (sample in samples) {
-            val magnitude = abs(sample)
+        for (index in analysisStart until samples.size) {
+            val magnitude = abs(samples[index])
             if (magnitude > peak) peak = magnitude
         }
-        return condition(samples, peak)
-    }
-
-    /**
-     * Levels [samples] in place with a gain derived from [peak] rather than from
-     * the array itself.
-     *
-     * This is how a streaming chunk gets levelled: it passes the peak of every
-     * sample captured so far, which is the closest one chunk can come to the
-     * single gain [condition] applies over a whole recording. Passing the
-     * chunk's own peak would be exactly the per-chunk gain the note above warns
-     * against. The DC offset is not touched here — measuring it needs the whole
-     * recording, so it stays on the whole-file path.
-     */
-    fun condition(samples: FloatArray, peak: Float): FloatArray {
-        if (samples.isEmpty() || peak < SILENCE_PEAK) return samples
+        if (peak < SILENCE_PEAK) return samples
 
         // Already loud enough. Attenuating a hot recording cannot undo whatever
         // clipping it arrived with, and quiet is the problem worth solving.
-        val gain = (TARGET_PEAK / peak).coerceAtMost(MAX_GAIN)
+        val gain = gainFor(peak)
+        if (gain <= 1f) return samples
+
+        for (index in samples.indices) {
+            samples[index] = (samples[index] * gain).coerceIn(-1f, 1f)
+        }
+        return samples
+    }
+
+    /**
+     * Levels one streaming chunk with the loudest raw sample seen so far.
+     *
+     * This is only for the latency path. The complete-WAV path above stays
+     * authoritative whenever the gain moves materially between chunks, because
+     * a single recording-wide gain is more accurate than a sequence of gains
+     * that step at chunk boundaries.
+     */
+    fun conditionStreaming(samples: FloatArray, peakSoFar: Float): FloatArray {
+        if (samples.isEmpty()) return samples
+
+        val gain = gainFor(peakSoFar)
         if (gain <= 1f) return samples
 
         for (index in samples.indices) samples[index] *= gain
         return samples
     }
+
+    /**
+     * The gain [conditionStreaming] applies for [peak]. 1 means untouched.
+     *
+     * Exposed so the streaming caller can compare the gains it actually used
+     * rather than the running peak they came from. That peak grows on nearly
+     * every recording -- anyone who gets louder as they go moves it -- while
+     * the gain it derives usually does not, and the gain is what reaches the
+     * model. Treating peak growth as a level change made the latency path
+     * discard its work almost every time.
+     */
+    fun gainFor(peak: Float): Float {
+        if (peak < SILENCE_PEAK) return 1f
+        return (TARGET_PEAK / peak).coerceIn(1f, MAX_GAIN)
+    }
+
+    /** One AudioRecord frame: enough signal to derive a meaningful level. */
+    private const val MIN_ANALYSIS_SAMPLES = CaptureFormat.SAMPLE_RATE / 10
 }

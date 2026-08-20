@@ -1,8 +1,5 @@
 package com.vocahq.vocaphone.local
 
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -17,7 +14,7 @@ class SherpaLongAudioTest {
     }
 
     @Test
-    fun `continuous long audio is bounded and overlaps only fallback boundaries`() {
+    fun `continuous long audio is bounded and overlaps every boundary`() {
         val samples = FloatArray(52 * SherpaLongAudio.SAMPLE_RATE) { 0.2f }
 
         val chunks = SherpaLongAudio.chunks(samples)
@@ -27,6 +24,19 @@ class SherpaLongAudioTest {
         assertTrue(chunks.drop(1).all { it.overlapsPrevious })
         assertTrue(chunks.zipWithNext().all { (left, right) -> right.start < left.endExclusive })
         assertEquals(samples.size, chunks.last().endExclusive)
+    }
+
+    @Test
+    fun `streaming split releases a bounded prefix with overlap`() {
+        val split = SherpaLongAudio.nextStreamingSplit(
+            FloatArray(SherpaLongAudio.STREAMING_WINDOW_SECONDS * SherpaLongAudio.SAMPLE_RATE) { 0.2f },
+        )
+
+        assertEquals(10 * SherpaLongAudio.SAMPLE_RATE, split?.endExclusive)
+        assertEquals(
+            9 * SherpaLongAudio.SAMPLE_RATE + 500 * SherpaLongAudio.SAMPLE_RATE / 1_000,
+            split?.nextStart,
+        )
     }
 
     @Test
@@ -41,66 +51,62 @@ class SherpaLongAudioTest {
     }
 
     @Test
-    fun `a quiet boundary avoids overlap`() {
+    fun `a quiet boundary is preferred without surrendering overlap`() {
         val samples = FloatArray(52 * SherpaLongAudio.SAMPLE_RATE) { 0.2f }
         val silenceStart = 9 * SherpaLongAudio.SAMPLE_RATE
         val silenceEnd = silenceStart + SherpaLongAudio.SAMPLE_RATE
         java.util.Arrays.fill(samples, silenceStart, silenceEnd, 0f)
 
-        val first = SherpaLongAudio.chunks(samples).first()
+        val chunks = SherpaLongAudio.chunks(samples)
+        val first = chunks.first()
+        val second = chunks[1]
 
         assertFalse(first.overlapsPrevious)
         assertTrue(first.endExclusive in silenceStart..silenceEnd)
-    }
-
-    @Test
-    fun `streaming waits for lookahead and retains overlap for continuous speech`() {
-        val tooEarly = FloatArray(11 * SherpaLongAudio.SAMPLE_RATE) { 0.2f }
-        assertEquals(null, SherpaLongAudio.nextStreamingSplit(tooEarly))
-
-        val ready = FloatArray(SherpaLongAudio.STREAMING_WINDOW_SECONDS * SherpaLongAudio.SAMPLE_RATE) {
-            0.2f
-        }
-        val split = checkNotNull(SherpaLongAudio.nextStreamingSplit(ready))
-
-        assertEquals(10 * SherpaLongAudio.SAMPLE_RATE, split.endExclusive)
+        assertTrue(second.overlapsPrevious)
+        // A found quiet run still hands context to the next chunk, just less of
+        // it than a guessed boundary needs.
         assertEquals(
-            split.endExclusive - SherpaLongAudio.OVERLAP_MILLIS * SherpaLongAudio.SAMPLE_RATE / 1_000,
-            split.nextStart,
+            first.endExclusive -
+                SherpaLongAudio.SILENCE_OVERLAP_MILLIS * SherpaLongAudio.SAMPLE_RATE / 1_000,
+            second.start,
         )
     }
 
     @Test
-    fun `incremental session decodes completed chunks before its final tail`() = runBlocking {
-        val decodedSizes = mutableListOf<Int>()
-        val outputs = ArrayDeque(listOf("one boundary", "boundary two", "two three"))
-        val firstChunkDecoded = CompletableDeferred<Unit>()
-        val session = SherpaIncrementalSession(
-            scope = this,
-            prepare = {},
-            decode = { samples ->
-                decodedSizes += samples.size
-                SherpaTranscript(outputs.removeFirst())
-                    .also { firstChunkDecoded.complete(Unit) }
-            },
-        )
-        val frame = ShortArray(SherpaLongAudio.SAMPLE_RATE / 10) { 4_000 }
-        repeat(120) { assertTrue(session.offer(frame)) }
-        withTimeout(5_000) { firstChunkDecoded.await() }
-        repeat(130) { assertTrue(session.offer(frame)) }
+    fun `a guessed boundary keeps the wider overlap`() {
+        val samples = FloatArray(52 * SherpaLongAudio.SAMPLE_RATE) { 0.2f }
 
-        assertEquals("one boundary two three", session.finish().transcript.text)
-        assertEquals(3, decodedSizes.size)
-        assertTrue(decodedSizes.dropLast(1).all { it <= 10 * SherpaLongAudio.SAMPLE_RATE })
-        assertTrue(decodedSizes.last() < 10 * SherpaLongAudio.SAMPLE_RATE)
+        val chunks = SherpaLongAudio.chunks(samples)
+
+        assertEquals(
+            chunks.first().endExclusive -
+                SherpaLongAudio.OVERLAP_MILLIS * SherpaLongAudio.SAMPLE_RATE / 1_000,
+            chunks[1].start,
+        )
     }
 
     @Test
-    fun `an empty long chunk retries as two short decodes`() {
+    fun `one quiet frame inside speech is not trusted as a boundary`() {
+        val samples = FloatArray(30 * SherpaLongAudio.SAMPLE_RATE) { 0.2f }
+        java.util.Arrays.fill(
+            samples,
+            10 * SherpaLongAudio.SAMPLE_RATE,
+            10 * SherpaLongAudio.SAMPLE_RATE + SherpaLongAudio.SAMPLE_RATE / 10,
+            0f,
+        )
+
+        val first = SherpaLongAudio.chunks(samples).first()
+
+        assertEquals(10 * SherpaLongAudio.SAMPLE_RATE, first.endExclusive)
+    }
+
+    @Test
+    fun `an empty long chunk retries as overlapping short decodes`() {
         val decodedSizes = mutableListOf<Int>()
         var shortResult = 0
         val transcript = SherpaEmptyChunkRecovery.decode(
-            samples = FloatArray(10 * SherpaLongAudio.SAMPLE_RATE),
+            samples = FloatArray(10 * SherpaLongAudio.SAMPLE_RATE) { 0.2f },
             decodeOnce = { samples ->
                 decodedSizes += samples.size
                 SherpaTranscript(
@@ -116,7 +122,52 @@ class SherpaLongAudioTest {
         )
 
         assertEquals("first half second half", transcript.text)
-        assertEquals(listOf(160_000, 80_000, 80_000), decodedSizes)
+        assertEquals(listOf(160_000, 84_000, 84_000), decodedSizes)
+    }
+
+    @Test
+    fun `an empty short chunk is not worth a retry`() {
+        val decodedSizes = mutableListOf<Int>()
+        SherpaEmptyChunkRecovery.decode(
+            samples = FloatArray(5 * SherpaLongAudio.SAMPLE_RATE) { 0.2f },
+            decodeOnce = { samples ->
+                decodedSizes += samples.size
+                SherpaTranscript.EMPTY
+            },
+        )
+
+        // Below the suspect bar an empty answer is ordinary -- a fragment of a
+        // word, or the retained overlap a recording ending just after a
+        // boundary leaves -- and length is not what dropped it.
+        assertEquals(listOf(80_000), decodedSizes)
+    }
+
+    @Test
+    fun `a silent chunk is never retried`() {
+        val decodedSizes = mutableListOf<Int>()
+        SherpaEmptyChunkRecovery.decode(
+            samples = FloatArray(10 * SherpaLongAudio.SAMPLE_RATE),
+            decodeOnce = { samples ->
+                decodedSizes += samples.size
+                SherpaTranscript.EMPTY
+            },
+        )
+
+        assertEquals(listOf(160_000), decodedSizes)
+    }
+
+    @Test
+    fun `a half that is still empty is not subdivided again`() {
+        val decodedSizes = mutableListOf<Int>()
+        SherpaEmptyChunkRecovery.decode(
+            samples = FloatArray(14 * SherpaLongAudio.SAMPLE_RATE) { 0.2f },
+            decodeOnce = { samples ->
+                decodedSizes += samples.size
+                SherpaTranscript.EMPTY
+            },
+        )
+
+        assertEquals(listOf(224_000, 116_000, 116_000), decodedSizes)
     }
 
     @Test
@@ -132,6 +183,17 @@ class SherpaLongAudioTest {
         assertEquals(
             "yes yes",
             SherpaTranscriptMerger.append("yes", "yes", deduplicateOverlap = false),
+        )
+    }
+
+    @Test
+    fun `a phrase wider than the audio overlap is preserved as repetition`() {
+        assertEquals(
+            "start one two three four five one two three four five end",
+            SherpaTranscriptMerger.append(
+                "start one two three four five",
+                "one two three four five end",
+            ),
         )
     }
 }
