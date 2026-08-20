@@ -1,0 +1,59 @@
+name: Stage the publishable site
+description: >
+  Copies web/ to a staging directory with the files that exist for developers
+  rather than visitors removed, and reports the path to upload.
+
+  Everything in web/ is published by default and this removes named exceptions,
+  rather than listing what to publish. A missed exception is a stray file on
+  the site; a missed inclusion is a 404 on a page someone is looking at, and
+  the first is the better failure to have.
+
+inputs:
+  source:
+    description: Directory holding the site as it lives in the repository.
+    required: false
+    default: web
+
+outputs:
+  path:
+    description: Directory to upload, holding only what visitors should get.
+    value: ${{ steps.stage.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - id: stage
+      shell: bash
+      env:
+        SOURCE: ${{ inputs.source }}
+        # Kept deliberately: CNAME is how Pages knows the custom domain, and
+        # robots.txt and sitemap.xml are for crawlers rather than readers, so
+        # "nothing links to it" is not a reason to drop them.
+        #
+        # tests/ is the site's own check suite, and package.json exists to
+        # carry the two npm scripts that run it and a local server.
+        # .htmlvalidate.json configures an editor's HTML linting; nothing in
+        # this repository reads it. Pages already withheld that one, so listing
+        # it changes nothing there and covers anywhere else this is uploaded.
+        NOT_PUBLISHED: 'README.md package.json tests .htmlvalidate.json'
+      run: |
+        set -euo pipefail
+        staged="$RUNNER_TEMP/site"
+        rm -rf "$staged"
+        cp -R "$SOURCE" "$staged"
+        for entry in $NOT_PUBLISHED; do
+          # Guard the path rather than the loop: an entry that has already been
+          # renamed away should not quietly stop this from staging the rest.
+          if [ -e "$staged/$entry" ]; then
+            rm -rf "${staged:?}/$entry"
+          else
+            echo "::warning::$SOURCE/$entry is listed as not published but does not exist"
+          fi
+        done
+        echo "path=$staged" >> "$GITHUB_OUTPUT"
+        {
+          echo 'Staged for publishing:'
+          echo '```'
+          (cd "$staged" && find . -type f | sort | sed 's|^\./||')
+          echo '```'
+        } >> "$GITHUB_STEP_SUMMARY"

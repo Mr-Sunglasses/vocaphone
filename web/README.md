@@ -31,8 +31,17 @@ this directory (see `.github/workflows/pages.yml`). Set Pages source to
 
 - Site directory: `web`
 - Check command: `npm run check`
-- Publish directory: `web`
+- Publish directory: `web`, minus the files that exist for developers rather
+  than visitors
 - Canonical URL expected by metadata: `https://vocaphone.vocahq.com/`
+
+`.github/actions/stage-site` drops `README.md`, `package.json`, `tests/` and
+`.htmlvalidate.json` before the upload; the first three used to be reachable on
+the live site. It removes named exceptions rather than listing what to publish,
+so a new asset ships by default: a stray file on the site is a better failure
+than a 404 on a page someone is reading. `CNAME`, `robots.txt` and `sitemap.xml`
+stay — Pages needs the first for the custom domain and crawlers want the others,
+so "nothing links to it" does not decide this.
 
 `/`, `/iphone/`, `/iphone/device-setup/`, and `/privacy/` must resolve as HTML
 routes.
