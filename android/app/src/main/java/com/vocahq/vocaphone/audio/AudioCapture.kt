@@ -142,8 +142,20 @@ class AudioCapture(
         running.set(false)
         val recorder = record
         stopSilenceWatch(recorder)
-        // AudioRecord.read is blocking. Stop the recorder first so the read loop
-        // wakes immediately; joining before stop made Finish wait up to 500 ms.
+        // Give the read loop a moment to notice and drain what the hardware has
+        // already buffered, because `AudioRecord.stop` throws that away.
+        //
+        // Stopping first and joining afterwards is what cut the last syllable
+        // off a dictation: `read` is blocking, so stopping does wake it, but it
+        // wakes it into a stopped recorder with the tail still inside. A read
+        // returns within a frame while audio is flowing, so this join almost
+        // always completes well inside its bound; the hard stop below is what
+        // happens when the microphone has already stalled and there is nothing
+        // to wait for anyway.
+        val drained = thread
+            ?.takeIf { it !== Thread.currentThread() }
+            ?.let { runCatching { it.join(DRAIN_JOIN_MILLIS); !it.isAlive }.getOrDefault(false) }
+            ?: true
         recorder?.let {
             runCatching {
                 if (it.state == AudioRecord.STATE_INITIALIZED &&
@@ -153,7 +165,9 @@ class AudioCapture(
                 }
             }
         }
-        thread?.takeIf { it !== Thread.currentThread() }?.let { runCatching { it.join(500) } }
+        if (!drained) {
+            thread?.takeIf { it !== Thread.currentThread() }?.let { runCatching { it.join(500) } }
+        }
         thread = null
         recorder?.let {
             runCatching { it.release() }
@@ -405,6 +419,28 @@ class AudioCapture(
                 }
             }
         }
+        drainBufferedFrames(recorder)
+    }
+
+    /**
+     * Hands over whatever the hardware buffered while the loop was being asked
+     * to stop.
+     *
+     * `READ_NON_BLOCKING` so a microphone that has already gone quiet returns 0
+     * straight away rather than holding `stop` open for a frame that is never
+     * coming. Bounded because this runs while the user is waiting for their
+     * words: a tail worth keeping is milliseconds long, and anything larger is
+     * a backlog that the recording is better off without.
+     */
+    private fun drainBufferedFrames(recorder: AudioRecord) {
+        val samples = ShortArray(frameSamples)
+        repeat(MAX_DRAIN_FRAMES) {
+            val count = runCatching {
+                recorder.read(samples, 0, samples.size, AudioRecord.READ_NON_BLOCKING)
+            }.getOrDefault(0)
+            if (count <= 0) return
+            onFrame(samples, count)
+        }
     }
 
     private companion object {
@@ -416,5 +452,16 @@ class AudioCapture(
 
         /** Silence still present after this is another app, not a route change. */
         const val SILENCE_CONFIRMATION_MILLIS = 400L
+
+        /**
+         * How long `stop` waits for the read loop to hand back the tail. A
+         * blocking read returns within a frame while audio is flowing, so this
+         * is roughly two of them: enough for the common case, short enough that
+         * a stalled microphone does not hold up Finish.
+         */
+        const val DRAIN_JOIN_MILLIS = 250L
+
+        /** Two frames of tail. More than this is a backlog, not a last word. */
+        const val MAX_DRAIN_FRAMES = 2
     }
 }

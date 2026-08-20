@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import com.vocahq.vocaphone.audio.AudioCapture
+import com.vocahq.vocaphone.audio.CueMuting
 import com.vocahq.vocaphone.audio.CaptureFormat
 import com.vocahq.vocaphone.audio.DictationTonePlayer
 import com.vocahq.vocaphone.audio.MicrophoneInterruptedException
@@ -330,7 +331,7 @@ class DictationController(
             context = context,
             preference = configuration.microphone,
             onFrame = { samples, count ->
-                if (SystemClock.elapsedRealtime() >= cueQuietAt.get()) {
+                if (CueMuting.keepsFrame(SystemClock.elapsedRealtime(), cueQuietAt.get())) {
                     val frame = samples.copyOf(count)
                     if (frames.trySend(frame).isFailure) {
                         captureError.compareAndSet(
@@ -354,11 +355,11 @@ class DictationController(
             },
         )
         capture = recorder
-        // The cue sounds while AudioRecord warms up rather than before it, and
-        // onFrame drops whatever the microphone hears until it is done. Waiting
-        // the cue out first put its whole length in front of every dictation --
-        // 600 ms of it for Lift -- to buy the same guarantee.
-        cueQuietAt.set(announceListening(configuration.dictationTone))
+        // The cue sounds while AudioRecord warms up rather than before it, so
+        // most of its length costs nothing, and onFrame drops whatever the
+        // microphone hears until it falls quiet. See CueMuting for why the
+        // remainder is then waited out rather than announced through.
+        cueQuietAt.set(cues.startCue(configuration.dictationTone))
         if (!recorder.start()) {
             announceStopped(configuration.dictationTone)
             incrementalReference.getAndSet(null)?.cancel()
@@ -381,6 +382,12 @@ class DictationController(
             )
             return
         }
+
+        // Whatever the warm-up did not already cover. The haptic goes here
+        // rather than with the cue because it is the "speak now" signal, and
+        // now is when speaking starts being recorded.
+        delay(CueMuting.waitMillis(cueQuietAt.get(), SystemClock.elapsedRealtime()))
+        cues.haptic()
 
         val captureStartedAt = SystemClock.elapsedRealtime()
         _state.value = DictationState(
@@ -967,12 +974,6 @@ class DictationController(
             level = 0f,
             failure = DictationFailure(error.code, error.userMessage, error.recoverable),
         )
-    }
-
-    /** Taps the phone, sounds the cue, and reports when the cue falls quiet. */
-    private fun announceListening(tone: DictationTone): Long {
-        cues.haptic()
-        return cues.startCue(tone)
     }
 
     private fun announceStopped(tone: DictationTone) {

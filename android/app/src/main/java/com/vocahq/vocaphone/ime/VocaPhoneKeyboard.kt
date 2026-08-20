@@ -158,7 +158,24 @@ internal fun VocaPhoneKeyboard(
     onClearClipboardHistory: () -> Unit,
     onEmojiUsed: (String) -> Unit,
 ) {
-    var keyboardState by remember(editor.sessionId) {
+    // One set of state holders for the life of the composition, reset when the
+    // editor changes rather than rebuilt.
+    //
+    // These were all `remember(editor.sessionId)`, which built a *new*
+    // MutableState for every editor. The callbacks further down are remembered
+    // without keys so that forty keys can skip recomposition, and the Compose
+    // compiler memoizes the `::handleKey` reference handed to
+    // `rememberUpdatedState` along with them. So from the second editor onward
+    // the key handlers read and wrote the state objects belonging to the
+    // session they were built in, while the keyboard drew from the new ones.
+    //
+    // That is why this looked like "only the layer keys are broken". Tapping
+    // `?123` did run the reducer and did set the layer — on an orphaned state
+    // that nothing rendered, so no recomposition followed and the key looked
+    // dead. Letters were unaffected because a character reaches the editor
+    // through `onCommand`, which never goes near this state. Caps lock went the
+    // same way as the layer, for the same reason.
+    var keyboardState by remember {
         mutableStateOf(
             KeyboardState(
                 layer = editor.initialLayer,
@@ -166,10 +183,25 @@ internal fun VocaPhoneKeyboard(
             ),
         )
     }
-    var preferencePanel by remember(editor.sessionId) { mutableStateOf<PreferencePanel?>(null) }
-    var emojiCategory by remember(editor.sessionId) { mutableStateOf(EmojiCategory.SMILEYS) }
-    var swipeChoices by remember(editor.sessionId) { mutableStateOf<List<String>>(emptyList()) }
-    var swipeWord by remember(editor.sessionId) { mutableStateOf<String?>(null) }
+    var preferencePanel by remember { mutableStateOf<PreferencePanel?>(null) }
+    var emojiCategory by remember { mutableStateOf(EmojiCategory.SMILEYS) }
+    var swipeChoices by remember { mutableStateOf<List<String>>(emptyList()) }
+    var swipeWord by remember { mutableStateOf<String?>(null) }
+    var suggestionStrip by remember { mutableStateOf(SuggestionStrip(emptyList())) }
+
+    // The one place a new editor wipes the keyboard. Replacing the holders did
+    // this implicitly and broke the handlers that had closed over them.
+    LaunchedEffect(editor.sessionId) {
+        keyboardState = KeyboardState(
+            layer = editor.initialLayer,
+            shift = editor.initialShift,
+        )
+        preferencePanel = null
+        emojiCategory = EmojiCategory.SMILEYS
+        swipeChoices = emptyList()
+        swipeWord = null
+        suggestionStrip = SuggestionStrip(emptyList())
+    }
 
     LaunchedEffect(dictationState.phase, editor.dictationAllowed) {
         if (dictationState.phase != DictationPhase.IDLE || !editor.dictationAllowed) {
@@ -216,7 +248,6 @@ internal fun VocaPhoneKeyboard(
     // window would commit a suggestion for the word as it was a letter ago —
     // reachable in principle, sixteen milliseconds wide in practice, and the
     // same trade every keyboard that does this off the main thread makes.
-    var suggestionStrip by remember(editor.sessionId) { mutableStateOf(SuggestionStrip(emptyList())) }
     LaunchedEffect(
         composeWords,
         settings.correctionsEnabled,
@@ -1651,6 +1682,13 @@ private fun KeyboardRows(
     val trailColor = MaterialTheme.colorScheme.primary
     val currentOnSwipe = rememberUpdatedState(onSwipe)
 
+    // Only the swipe gesture clears this, and it is only installed on the
+    // letter layer, so a swipe that was still consuming when the layer changed
+    // would leave the flag raised with nothing left to lower it.
+    LaunchedEffect(swipeEnabled) {
+        if (!swipeEnabled) swipeConsumed.value = false
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1700,7 +1738,17 @@ private fun KeyboardRows(
                                     editor = editor,
                                     keyHeight = keyHeight,
                                     showKeyHints = showKeyHints,
-                                    swipeConsumed = swipeConsumed,
+                                    // A swipe can only begin on a letter, so a
+                                    // letter is the only key whose own tap can
+                                    // be the tail of one. Handing the flag to
+                                    // shift or `?123` let a swipe that ended
+                                    // without a match swallow the next tap on
+                                    // them instead.
+                                    swipeConsumed = if (key.type == KeyboardKeyType.CHARACTER) {
+                                        swipeConsumed
+                                    } else {
+                                        null
+                                    },
                                     onPress = { onKey(key) },
                                     onHold = { heldMs -> onKeyHold(key, heldMs) },
                                     onCommitText = { text ->

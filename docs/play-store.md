@@ -26,8 +26,8 @@ Upload the full AAB only. Never upload the fdroid APK or an fdroid bundle to
 Play. The fdroid flavour drops prebuilt sherpa-onnx / ONNX Runtime so F-Droid
 can rebuild from source; Play testers should get the full catalog.
 
-Package: `com.vocahq.vocaphone`. Current tree on main: `versionCode` 18,
-`versionName` `0.1.0-beta.18`. Keep that until the next Play-bound tag needs a
+Package: `com.vocahq.vocaphone`. Current tree on main: `versionCode` 19,
+`versionName` `0.1.0-beta.19`. Keep that until the next Play-bound tag needs a
 bump; the beta workflow refuses to publish when the tag and APK version disagree.
 
 `dependenciesInfo.includeInApk` / `includeInBundle` stay `false` so AGP does

@@ -81,6 +81,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var lastRecordedClip: String? = null
     private var lastImageSource: String? = null
     private var editorSession = 0
+    private var editorIdentity: EditorIdentity? = null
     private var editorConfig by mutableStateOf(KeyboardEditorConfig.empty())
     private var lastCandidatesStart = -1
     private var lastCandidatesEnd = -1
@@ -150,7 +151,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         currentInputType = attribute?.inputType ?: 0
-        editorSession += 1
+        val identity = EditorIdentity.of(attribute)
+        val sameEditor = EditorRestart.keepsSession(editorIdentity, identity)
+        editorIdentity = identity
+        if (!sameEditor) editorSession += 1
         lastCandidatesStart = -1
         lastCandidatesEnd = -1
         lastSelStart = attribute?.initialSelStart ?: -1
@@ -158,12 +162,25 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val cursorCapsMode = runCatching {
             currentInputConnection?.getCursorCapsMode(currentInputType) ?: 0
         }.getOrDefault(0)
-        editorConfig = KeyboardEditorConfig.from(attribute, editorSession).let { config ->
+        val started = KeyboardEditorConfig.from(attribute, editorSession).let { config ->
             if (config.initialLayer == KeyboardLayer.LETTERS) {
                 config.copy(initialShift = KeyboardEditorConfig.shiftFromCapsMode(cursorCapsMode))
             } else {
                 config
             }
+        }
+        editorConfig = if (sameEditor) {
+            started.copy(
+                // The keyboard is still the one the user left, so leave its
+                // shift alone: a restart is not a reason to unlock caps.
+                shiftSync = editorConfig.shiftSync,
+                // The restart did drop the editor's composing region, so the
+                // half-typed word the strip was building there has to go with
+                // it, or the next letter commits the whole prefix again.
+                cursorSync = editorConfig.cursorSync + 1,
+            )
+        } else {
+            started
         }
         refreshEditorText()
     }
@@ -226,6 +243,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     override fun onFinishInput() {
         cancelOwnedDictation("editor_finished")
         currentInputType = 0
+        editorIdentity = null
         editorSession += 1
         lastCandidatesStart = -1
         lastCandidatesEnd = -1

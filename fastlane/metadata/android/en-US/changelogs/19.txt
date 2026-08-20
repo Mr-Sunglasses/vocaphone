@@ -1,0 +1,1 @@
+The 123, emoji and caps lock keys work again after you move between text fields. Dictation keeps the first word when you start speaking on the tone and the last one when you finish, which also restores on-device accuracy for the Parakeet and Canary models.

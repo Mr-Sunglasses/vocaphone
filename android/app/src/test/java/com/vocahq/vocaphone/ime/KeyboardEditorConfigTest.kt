@@ -109,4 +109,70 @@ class KeyboardEditorConfigTest {
         )
         assertEquals(ShiftState.OFF, KeyboardEditorConfig.shiftFromCapsMode(0))
     }
+
+    @Test
+    fun `restarting the same field keeps the session`() {
+        assertTrue(
+            EditorRestart.keepsSession(
+                previous = EditorIdentity.of(messageField()),
+                next = EditorIdentity.of(messageField()),
+            ),
+        )
+    }
+
+    @Test
+    fun `the same field is kept even when the framework forgets to say restarting`() {
+        // The whole point of comparing the editor rather than branching on the
+        // `restarting` flag: an app or an OEM framework that reports a restart
+        // as a fresh connection must not cost the user their layer.
+        val identity = EditorIdentity.of(messageField())
+
+        assertEquals(identity, EditorIdentity.of(messageField()))
+        assertTrue(EditorRestart.keepsSession(identity, EditorIdentity.of(messageField())))
+    }
+
+    @Test
+    fun `focusing a second field starts a new session`() {
+        val second = messageField().apply { fieldId = 202 }
+
+        assertFalse(
+            EditorRestart.keepsSession(
+                previous = EditorIdentity.of(messageField()),
+                next = EditorIdentity.of(second),
+            ),
+        )
+    }
+
+    @Test
+    fun `a field that changes input type under a restart starts over`() {
+        val password = messageField().apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+
+        assertFalse(
+            EditorRestart.keepsSession(
+                previous = EditorIdentity.of(messageField()),
+                next = EditorIdentity.of(password),
+            ),
+        )
+    }
+
+    @Test
+    fun `a first connection is never a restart`() {
+        // onFinishInput clears the stored identity, so this is also the path a
+        // genuine focus change between two identical-looking fields takes.
+        assertFalse(
+            EditorRestart.keepsSession(
+                previous = null,
+                next = EditorIdentity.of(messageField()),
+            ),
+        )
+    }
+
+    private fun messageField() = EditorInfo().apply {
+        fieldId = 101
+        packageName = "com.example.chat"
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        imeOptions = EditorInfo.IME_ACTION_SEND
+    }
 }
