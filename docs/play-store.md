@@ -1,14 +1,15 @@
 # Preparing Google Play (maintainers)
 
-How to take a VocaPhone Android beta tag from GitHub Releases into Play Console.
+How to take a VocaPhone Android tag from GitHub Releases into Play Console.
 This is Console and listing work. The app is not listed on Play until that work
 is finished; there is no store URL to publish yet.
 
-Beta tags attach a signed full-flavor AAB as `vocaphone.aab`. When
-`PLAY_SERVICE_ACCOUNT_JSON` is set, the beta tag workflow uploads that AAB to
+Version tags attach a signed full-flavor AAB as `vocaphone.aab`. When
+`PLAY_SERVICE_ACCOUNT_JSON` is set, the tag workflow uploads that AAB to
 Internal testing after the GitHub Release is published. The step is skipped if
 the secret is empty, so testers still get the GitHub APKs if Play is unset or
-fails. This tag workflow never uploads to production.
+fails. Stable tags go to Internal too: this tag workflow never uploads to
+production, and never to a wider track than Internal.
 
 The Play Developer API account is
 `vocaphone-play-upload@level-approach-506001-h1.iam.gserviceaccount.com`.
@@ -19,7 +20,7 @@ It can view this app and release it to testing tracks only.
 | Artifact | Flavor | Use |
 | --- | --- | --- |
 | `vocaphone.aab` | `full` | Play Internal testing (CI when the secret is set) |
-| `vocaphone.apk` | `full` | Sideload / GitHub beta |
+| `vocaphone.apk` | `full` | Sideload / GitHub Release |
 | `vocaphone-fdroid.apk` | `fdroid` | F-Droid rebuild verification only |
 
 Upload the full AAB only. Never upload the fdroid APK or an fdroid bundle to
@@ -28,7 +29,7 @@ can rebuild from source; Play testers should get the full catalog.
 
 Package: `com.vocahq.vocaphone`. Current tree on main: `versionCode` 20,
 `versionName` `0.1.0-beta.20`. Keep that until the next Play-bound tag needs a
-bump; the beta workflow refuses to publish when the tag and APK version disagree.
+bump; the release workflow refuses to publish when the tag and APK version disagree.
 
 `dependenciesInfo.includeInApk` / `includeInBundle` stay `false` so AGP does
 not embed Play dependency metadata. Do not turn those back on.
@@ -37,8 +38,8 @@ not embed Play dependency metadata. Do not turn those back on.
 
 The GitHub release keystore already signs `vocaphone.apk`, `vocaphone-fdroid.apk`,
 and `vocaphone.aab`. The public certificate SHA-256 is published with every
-beta release in `SIGNING-CERTIFICATE-SHA256.txt` (pinned in
-`.github/workflows/android-beta.yml`).
+release in `SIGNING-CERTIFICATE-SHA256.txt` (pinned in
+`.github/workflows/android-release.yml`).
 
 In Play Console, use Play App Signing:
 
@@ -53,9 +54,11 @@ purpose.
 
 ## Track order
 
-The beta tag workflow uses the Play API track name `internal`. If that name is
-missing, `qa` is the only other name to try. Wider testing and production stay
-in Console. This tag workflow never uploads to production.
+The tag workflow uses the Play API track name `internal`, for prerelease and
+stable tags alike. If that name is missing, `qa` is the only other name to try.
+Closed testing, open testing and production stay in Console. Promotion carries a
+rollout percentage and a staged-release halt behind it, which is a decision
+rather than a consequence of pushing a tag.
 
 ## Permissions (Console justification notes)
 
@@ -113,7 +116,7 @@ PY
 4. Data safety form (no analytics; on-device default; gateway optional)
 5. Content rating questionnaire
 6. Closed testing track before production
-7. Confirm Internal testing received `vocaphone.aab` from the beta tag workflow
+7. Confirm Internal testing received `vocaphone.aab` from the tag workflow
    (upload by hand from the matching GitHub Release if the secret was unset)
 8. Confirm listing copy and graphics in Fastlane match what you paste into Console
 
@@ -127,10 +130,10 @@ export KEYSTORE_FILE=… KEYSTORE_PASSWORD=… KEY_ALIAS=… KEY_PASSWORD=…
 ```
 
 Output under `app/build/outputs/bundle/fullRelease/`. Prefer the CI artifact
-from a beta tag so the signing certificate matches the published fingerprint.
+from a version tag so the signing certificate matches the published fingerprint.
 
 ## Related docs
 
-- [Android client](../android/README.md): build flavors, beta tags, keyboard setup
+- [Android client](../android/README.md): build flavors, version tags, keyboard setup
 - [TestFlight](testflight.md): iOS counterpart
 - [Privacy](privacy.md): data flow and threat model

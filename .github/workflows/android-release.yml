@@ -1,26 +1,32 @@
-name: Android beta release
+name: Android release
 
-# Pushing a tag like v0.1.0-beta.1 builds the signed full and fdroid release
-# APKs plus the full-flavor AAB (Play upload candidate), then publishes them as
-# a workflow artifact and a GitHub prerelease. Checksums and the signing
-# certificate fingerprint are attached so testers can verify what they install.
-# After the GitHub Release is published, the full AAB is uploaded to Google Play
-# Internal testing when PLAY_SERVICE_ACCOUNT_JSON is set. That step is skipped
-# if the secret is empty. fdroid artifacts and production are never uploaded.
+# Pushing a version tag builds the signed full and fdroid release APKs plus the
+# full-flavor AAB (Play upload candidate), then publishes them as a workflow
+# artifact and a GitHub Release. Checksums and the signing certificate
+# fingerprint are attached so testers can verify what they install. After the
+# GitHub Release is published, the full AAB is uploaded to Google Play Internal
+# testing when PLAY_SERVICE_ACCOUNT_JSON is set. That step is skipped if the
+# secret is empty. fdroid artifacts and production are never uploaded: every
+# track past Internal is promoted by hand in Console.
+#
+# Both tag shapes run the same build. Semver's own rule decides which is which:
+# a hyphen means a prerelease, so v0.1.0-beta.20 is published as a prerelease
+# and v0.1.0 is published as the latest release.
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+-beta*'
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
 
 permissions:
   contents: write
 
 concurrency:
-  group: android-beta-${{ github.ref }}
+  group: android-release-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  beta:
+  release:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -31,7 +37,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
-          # The release notes step walks back to the previous beta tag, which
+          # The release notes step walks back to the previous release tag, which
           # needs the tags and the history connecting them. Only the commits
           # are needed, so skip fetching every blob in that history.
           fetch-depth: 0
@@ -170,25 +176,42 @@ jobs:
           # storage, and an APK is already a compressed archive.
           retention-days: 7
           compression-level: 0
-      - name: Publish beta GitHub Release
+      - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
+          # Semver: anything after a hyphen is a prerelease identifier. The tag
+          # patterns above admit only these two shapes, so the absence of one
+          # is the presence of the other.
+          case "$GITHUB_REF_NAME" in
+            *-*) release_kind=(--prerelease) ;;
+            *) release_kind=(--latest) ;;
+          esac
+
           # --generate-notes lists the pull requests merged since the previous
-          # beta. It will choose that starting point on its own, but naming the
-          # tag explicitly keeps the range right for a tag cut from anywhere
-          # other than the tip of main. An empty result is the first beta ever,
-          # where letting it pick means "everything", which is correct.
-          previous_tag="$(git describe --tags --abbrev=0 --match 'v*-beta*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          # release of the same kind. It will choose a starting point on its
+          # own, but naming the tag explicitly keeps the range right for a tag
+          # cut from anywhere other than the tip of main.
+          #
+          # A stable tag looks back to the previous stable one, so 0.2.0 covers
+          # everything since 0.1.0 rather than only what landed after the last
+          # beta of the 0.2.0 series. An empty result is the first release of
+          # that kind, where letting it pick means "everything" — which is what
+          # the first stable release should say.
+          case "$GITHUB_REF_NAME" in
+            *-*) match=(--match 'v*-*') ;;
+            *) match=(--match 'v*' --exclude 'v*-*') ;;
+          esac
+          previous_tag="$(git describe --tags --abbrev=0 "${match[@]}" "$GITHUB_REF_NAME^" 2>/dev/null || true)"
           notes_range=()
           if [ -n "$previous_tag" ]; then
             notes_range=(--notes-start-tag "$previous_tag")
           fi
 
           # --notes is prepended to the generated list, so the install
-          # instructions stay at the top where a beta tester looks first.
+          # instructions stay at the top where someone installing looks first.
           gh release create "$GITHUB_REF_NAME" \
             release-assets/vocaphone.apk \
             release-assets/vocaphone-fdroid.apk \
@@ -197,7 +220,7 @@ jobs:
             release-assets/SIGNING-CERTIFICATE-SHA256.txt \
             --repo "$GITHUB_REPOSITORY" \
             --title "vocaphone Android $GITHUB_REF_NAME" \
-            --prerelease \
+            "${release_kind[@]}" \
             --generate-notes \
             "${notes_range[@]}" \
             --notes "Release-signed APK covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. \`vocaphone.aab\` is the same full-flavor build as an Android App Bundle. This workflow uploads it to Google Play Internal testing when PLAY_SERVICE_ACCOUNT_JSON is set. SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store. \`vocaphone-fdroid.apk\` is the same release built without the prebuilt sherpa-onnx and ONNX Runtime libraries, published so F-Droid can verify its own rebuild against it; install \`vocaphone.apk\` unless you specifically want that variant."
@@ -205,6 +228,11 @@ jobs:
       # The action defaults to the production track, so tracks must be
       # internal. If that API name is missing, qa is the only other name
       # to try. Full-flavor AAB only; never fdroid, never production.
+      #
+      # A stable tag lands on Internal too. Play wants a closed test before
+      # production, and that promotion is a decision with a rollout percentage
+      # and a staged-release halt behind it, so it stays a Console action
+      # rather than a consequence of pushing a tag.
       - name: Upload vocaphone.aab to Play Internal testing
         if: ${{ env.PLAY_SERVICE_ACCOUNT_JSON_SET == 'true' }}
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5

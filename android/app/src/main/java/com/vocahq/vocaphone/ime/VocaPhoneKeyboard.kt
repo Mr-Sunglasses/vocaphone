@@ -210,12 +210,24 @@ internal fun VocaPhoneKeyboard(
     }
     LaunchedEffect(editor.shiftSync) {
         if (editor.shiftSync > 0) {
-            keyboardState = keyboardState.copy(shift = editor.initialShift)
+            keyboardState = keyboardState.copy(
+                shift = KeyboardChrome.shiftAfterCursorSync(
+                    current = keyboardState.shift,
+                    atCursor = editor.initialShift,
+                ),
+            )
         }
     }
     LaunchedEffect(editor.cursorSync) {
         if (editor.cursorSync > 0) {
-            keyboardState = keyboardState.copy(composing = "")
+            // Both flags describe the character the cursor was sitting after,
+            // and it is no longer sitting there. Left set, the next space
+            // capitalizes because of a period somewhere else in the field.
+            keyboardState = keyboardState.copy(
+                composing = "",
+                capitalizeAfterSpace = false,
+                lastWasSpace = false,
+            )
         }
     }
     LaunchedEffect(settings.asciiEmojiEnabled, emojiCategory) {

@@ -158,4 +158,37 @@ class KeyboardChromeTest {
             ),
         )
     }
+
+    @Test
+    fun `a cursor move inside a word drops the pending capital`() {
+        assertEquals(
+            ShiftState.OFF,
+            KeyboardChrome.shiftAfterCursorSync(
+                current = ShiftState.ONCE,
+                atCursor = ShiftState.OFF,
+            ),
+        )
+    }
+
+    @Test
+    fun `a cursor move at a sentence start arms one capital`() {
+        assertEquals(
+            ShiftState.ONCE,
+            KeyboardChrome.shiftAfterCursorSync(
+                current = ShiftState.OFF,
+                atCursor = ShiftState.ONCE,
+            ),
+        )
+    }
+
+    @Test
+    fun `caps lock survives a cursor move`() {
+        assertEquals(
+            ShiftState.LOCKED,
+            KeyboardChrome.shiftAfterCursorSync(
+                current = ShiftState.LOCKED,
+                atCursor = ShiftState.OFF,
+            ),
+        )
+    }
 }

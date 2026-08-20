@@ -176,6 +176,17 @@ internal object KeyboardChrome {
             span.word.equals(word, ignoreCase = true)
     }
 
+    /**
+     * What the shift key becomes when the service re-reads the caps mode at the
+     * cursor, after a commit or a tap somewhere else in the field.
+     *
+     * Caps lock is the user's and the editor never asks for it, so a locked
+     * keyboard ignores the answer. Everything else takes it, which is how a tap
+     * into the middle of a word turns off a pending capital.
+     */
+    fun shiftAfterCursorSync(current: ShiftState, atCursor: ShiftState): ShiftState =
+        if (current == ShiftState.LOCKED) ShiftState.LOCKED else atCursor
+
     fun swipeAlternatives(
         committed: String,
         swipeMatches: List<String>,

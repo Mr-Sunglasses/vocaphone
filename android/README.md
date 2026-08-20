@@ -63,12 +63,19 @@ only in whether the prebuilt sherpa-onnx libraries are present; shared code asks
 `LocalModelCatalog.sherpaAvailable` rather than assuming either way, and the
 sherpa models are hidden from the picker when the library is absent.
 
-## GitHub beta releases
+## GitHub releases
 
-Pushing a tag such as `v0.1.0-beta.14` (or the latest prerelease tag) runs
-`.github/workflows/android-beta.yml`. Before tagging, bump `versionCode` and
-`versionName` in `app/build.gradle.kts`; the workflow refuses to publish when
-the tag and APK version do not match.
+Pushing a version tag runs `.github/workflows/android-release.yml`. Both shapes
+build identically and semver decides how each is published: a tag with a hyphen
+in it, such as `v0.1.0-beta.20`, becomes a GitHub prerelease, and a plain
+`v0.1.0` becomes the latest release. Generated notes span the previous tag of
+the same kind, so a stable tag summarizes everything since the last stable one
+rather than only what followed its own last beta.
+
+Before tagging, bump `versionCode` and `versionName` in `app/build.gradle.kts`;
+the workflow refuses to publish when the tag and APK version do not match. Both
+kinds upload to Play Internal testing and nothing promotes itself past that:
+closed testing, open testing and production are Console decisions.
 
 The repository needs these GitHub Actions secrets: `KEYSTORE_BASE64`,
 `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`, and
@@ -76,7 +83,7 @@ The repository needs these GitHub Actions secrets: `KEYSTORE_BASE64`,
 if it is empty). The workflow builds, tests, lints, verifies both APKs
 (package, version, cert) and the full AAB signing cert via `keytool`
 (package/version come from the matching full APK), and attaches these files
-to the prerelease:
+to the release:
 
 - `vocaphone.apk`
 - `vocaphone.aab`: full-flavor Android App Bundle. CI uploads it to Play

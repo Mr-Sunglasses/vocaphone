@@ -539,4 +539,17 @@ internal object SuggestionEngine {
 
     private fun isWordChar(character: Char): Boolean =
         character.isLetterOrDigit() || character == '\''
+
+    /**
+     * A picked suggestion carries its own trailing space so the next word can
+     * follow straight on. At the end of the text that is what everyone wants;
+     * mid-text it is not, because the space that already separates this word
+     * from the next one is still sitting there and the field ends up with two.
+     *
+     * The space belongs before another word and nowhere else, so it is dropped
+     * whenever the cursor is about to land in front of anything that is not a
+     * word character: existing whitespace, a comma, a closing bracket.
+     */
+    fun suggestionCommit(word: String, textAfterCursor: CharSequence): String =
+        if (textAfterCursor.isEmpty() || isWordChar(textAfterCursor[0])) "$word " else word
 }

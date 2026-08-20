@@ -235,4 +235,28 @@ class SuggestionEngineTest {
         assertEquals(6, span?.beforeLength)
         assertEquals(0, span?.afterLength)
     }
+
+    @Test
+    fun `a picked suggestion keeps its trailing space at the end of the text`() {
+        assertEquals("hello ", SuggestionEngine.suggestionCommit("hello", ""))
+    }
+
+    @Test
+    fun `a picked suggestion spaces itself from a word that follows`() {
+        assertEquals("hello ", SuggestionEngine.suggestionCommit("hello", "world"))
+    }
+
+    @Test
+    fun `a picked suggestion drops the space the text after it already has`() {
+        // Editing "hel|lo world": the word span takes "hello" out and the
+        // commit lands in front of " world", which is already separated.
+        assertEquals("hello", SuggestionEngine.suggestionCommit("hello", " world"))
+        assertEquals("hello", SuggestionEngine.suggestionCommit("hello", "\nrest"))
+    }
+
+    @Test
+    fun `a picked suggestion does not push punctuation away from its word`() {
+        assertEquals("hello", SuggestionEngine.suggestionCommit("hello", ", world"))
+        assertEquals("hello", SuggestionEngine.suggestionCommit("hello", "."))
+    }
 }

@@ -230,6 +230,15 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         if (userMove) {
             currentInputConnection?.finishComposingText()
             editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
+            // A tap somewhere else is a new sentence position, so the pending
+            // shift has to be re-read there. Without this the ONCE armed at the
+            // start of the field, or by the last ". ", follows the cursor into
+            // the middle of an existing word and capitalizes inside it.
+            //
+            // Only for a plain cursor. Once there is a selection the shift key
+            // cycles its case instead of arming a capital, and "in a word" has
+            // no answer for a span that covers several.
+            if (newSelStart == newSelEnd) syncShiftFromCursor()
         }
         // Selecting text is rare and the shift key changes meaning once there
         // is a selection, so that one reads straight away. Typing conflates.
@@ -333,22 +342,25 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun commitSuggestion(word: String, replaceWord: Boolean) {
         val connection = currentInputConnection ?: return
+        var after = runCatching {
+            connection.getTextAfterCursor(32, 0)?.toString().orEmpty()
+        }.getOrDefault("")
         if (replaceWord) {
             connection.finishComposingText()
             val before = runCatching {
                 connection.getTextBeforeCursor(32, 0)?.toString().orEmpty()
             }.getOrDefault("")
-            val after = runCatching {
-                connection.getTextAfterCursor(32, 0)?.toString().orEmpty()
-            }.getOrDefault("")
             val span = SuggestionEngine.replaceableWord(before, after)
             if (span != null) {
                 connection.deleteSurroundingText(span.beforeLength, span.afterLength)
+                // What the commit lands in front of is what survives the
+                // delete, not what was there when the suggestion was picked.
+                after = after.substring(span.afterLength)
             }
         }
         // Leave composing alone so commitText replaces "hel" with "hello ".
         // Finishing first commits the stub, then this would insert in front of it.
-        connection.commitText("$word ", 1)
+        connection.commitText(SuggestionEngine.suggestionCommit(word, after), 1)
         syncShiftFromCursor()
         scheduleEditorTextRefresh()
     }
@@ -489,6 +501,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         visibleEditorText.value = EditorTextWindow(before, after, selected)
     }
 
+    /**
+     * Re-reads the platform's caps mode for wherever the cursor is now.
+     *
+     * `getCursorCapsMode` is position-aware: mid-word it answers 0 even when
+     * the field asks for sentence capitalization, which is exactly the check
+     * the keyboard's own shift state cannot make for itself.
+     */
     private fun syncShiftFromCursor() {
         if (editorConfig.initialLayer != KeyboardLayer.LETTERS) return
         val capsMode = runCatching {
