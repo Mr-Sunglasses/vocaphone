@@ -151,8 +151,11 @@ internal class SuggestionDictionary(
             val last = collapsedLength[rank] - 1
             if (last < 1) continue
             if (!gesture.endsAreReachable(compact[0], compact[last])) continue
-            if (!SuggestionEngine.isSubsequence(compact, keys)) continue
-            scored.add(words[rank] to gesture.score(compact, rank))
+            // Exact first: it is the cheaper test, it rejects most of the list,
+            // and whether it succeeded is itself part of the score below.
+            val exact = SuggestionEngine.isSubsequence(compact, keys)
+            if (!exact && !SuggestionEngine.isReachableSubsequence(compact, keys)) continue
+            scored.add(words[rank] to gesture.score(compact, rank, approximate = !exact))
         }
         return scored
             .sortedByDescending { it.second }
@@ -400,14 +403,6 @@ internal object SuggestionEngine {
         }
     }
 
-    internal fun isSubsequence(word: String, path: String): Boolean {
-        var index = 0
-        for (character in path) {
-            if (index < word.length && character == word[index]) index++
-        }
-        return index == word.length
-    }
-
     /**
      * FlorisBoard / AnySoftKeyboard compare a swipe to the ideal line through
      * the word's key centers, then rank by shape and path length. We do the
@@ -437,14 +432,15 @@ internal object SuggestionEngine {
         fun endsAreReachable(first: Char, last: Char): Boolean =
             letterBit(first) and firstMask != 0 && letterBit(last) and lastMask != 0
 
-        fun score(compactWord: String, frequencyRank: Int): Float {
+        fun score(compactWord: String, frequencyRank: Int, approximate: Boolean): Float {
             val shape = shapeDistance(compactWord)
             val lengthGap = kotlin.math.abs(length - pathLength(compactWord))
             val endPenalty =
                 (if (compactWord.first() == keys.first()) 0f else 0.7f) +
                     (if (compactWord.last() == keys.last()) 0f else 0.7f)
             val frequency = 1f / (1f + frequencyRank / 400f)
-            return frequency * 2f - shape * 3f - lengthGap * 0.35f - endPenalty
+            val nearby = if (approximate) NEARBY_KEY_PENALTY else 0f
+            return frequency * 2f - shape * 3f - lengthGap * 0.35f - endPenalty - nearby
         }
 
         private fun shapeDistance(word: String): Float {
@@ -513,6 +509,18 @@ internal object SuggestionEngine {
 
     private const val SAMPLE_POINTS = 16
 
+    /**
+     * How much worse a word is for having been matched through a neighbouring
+     * key rather than the one the finger crossed.
+     *
+     * It has to be large enough that a word which really was spelled out beats
+     * a shape-alike that was not, and small enough that a genuinely wobbly
+     * swipe still finds its word. Simulated over the shipped list against noisy
+     * paths, anything from roughly 1 to 1.5 sits on the same plateau; 1.5 is
+     * the end of it that keeps the exactly-spelled word in front.
+     */
+    private const val NEARBY_KEY_PENALTY = 1.5f
+
     private val QWERTY: Map<Char, KeyXY> = buildMap {
         fun row(y: Float, startX: Float, letters: String) {
             letters.forEachIndexed { index, letter -> put(letter, KeyXY(startX + index, y)) }
@@ -535,6 +543,60 @@ internal object SuggestionEngine {
             .filter { (other, point) -> other != letter && origin.distanceTo(point) < 1.55f }
             .map { it.key }
             .toSet()
+    }
+
+    /**
+     * For each letter, the keys a finger aiming at it could plausibly have
+     * crossed instead: the key itself and its neighbours, as one bitmap.
+     *
+     * Declared after [NEARBY] for the same source-order reason it is.
+     */
+    private val REACH: IntArray = IntArray(26) { offset ->
+        val letter = 'a' + offset
+        letterBits(NEARBY[letter].orEmpty() + letter)
+    }
+
+    private fun reachMask(letter: Char): Int {
+        val offset = letter - 'a'
+        return if (offset in 0..25) REACH[offset] else 0
+    }
+
+    /** Whether every letter of [word] appears in [path], in order. */
+    internal fun isSubsequence(word: String, path: String): Boolean {
+        var index = 0
+        for (character in path) {
+            if (index < word.length && character == word[index]) index++
+        }
+        return index == word.length
+    }
+
+    /**
+     * Whether a swipe could have spelled [word], allowing for a finger that
+     * clipped the key next to the one it was aiming at.
+     *
+     * The exact version of this test threw the right word away outright. A
+     * corner apex landing a quarter of a key off — which is most of them —
+     * leaves that letter missing from the crossed keys, and one missing letter
+     * eliminated the candidate no matter how well the rest of the gesture fit.
+     * Simulated against noisy paths for the shipped word list, that cost about
+     * a fifth of swipes at a quarter-key wobble and half of them at a third.
+     *
+     * Neighbours are admitted here and nowhere else: a letter may be met by a
+     * key beside it, but every letter must still be met, in order. Letting a
+     * letter go unmatched entirely was measurably worse, because the noise it
+     * admits outranks the word more often than it rescues it.
+     *
+     * A word that only matches this way is scored below one whose keys were
+     * all actually crossed — see [NEARBY_KEY_PENALTY]. Without that, a word
+     * sharing the gesture's shape but not its letters wins on shape alone.
+     */
+    internal fun isReachableSubsequence(word: String, path: String): Boolean {
+        var index = 0
+        for (character in path) {
+            if (index == word.length) break
+            if (letterBit(character) and reachMask(word[index]) != 0) index++
+        }
+        return index == word.length
     }
 
     private fun isWordChar(character: Char): Boolean =

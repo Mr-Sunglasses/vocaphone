@@ -118,6 +118,7 @@ import com.vocahq.vocaphone.ui.theme.VocaPhoneTheme
 import kotlin.math.PI
 import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -367,8 +368,7 @@ internal fun VocaPhoneKeyboard(
         reduction.command?.let(onCommand)
     }
 
-    fun handleSwipe(path: String) {
-        val matches = suggestions?.swipe(path).orEmpty()
+    fun applySwipe(matches: List<String>, similar: List<String>) {
         if (matches.isEmpty()) return
         if (keyboardState.composing.isNotEmpty()) {
             onCommand(KeyboardCommand.SetComposingText(""))
@@ -380,7 +380,7 @@ internal fun VocaPhoneKeyboard(
         swipeChoices = KeyboardChrome.swipeAlternatives(
             committed = chosen,
             swipeMatches = matches.map(::cased),
-            similar = suggestions?.similar(matches.first()).orEmpty().map(::cased),
+            similar = similar.map(::cased),
         )
         keyboardState = keyboardState.copy(
             composing = "",
@@ -389,6 +389,43 @@ internal fun VocaPhoneKeyboard(
             shift = if (keyboardState.shift == ShiftState.LOCKED) ShiftState.LOCKED else ShiftState.OFF,
         )
         onSuggestionPicked(chosen, false)
+    }
+
+    // Finished gestures, handed over rather than resolved in place.
+    //
+    // Matching a swipe walks the whole word list twice, and it used to do that
+    // on the thread delivering the pointer events. The keyboard stopped reading
+    // the screen for as long as it took, so a second swipe started during that
+    // window went nowhere at all: no letters, no feedback, the gesture simply
+    // swallowed. That is the "hidden cooldown" it felt like from the outside.
+    //
+    // A channel with one consumer keeps that work off this thread while still
+    // applying results in the order the gestures were made, so swiping two
+    // words in quick succession still writes them down in that order.
+    val swipePaths = remember { Channel<String>(Channel.UNLIMITED) }
+
+    fun handleSwipe(path: String) {
+        swipePaths.trySend(path)
+    }
+
+    // The consumer below outlives the composition that started it, so it has to
+    // reach the current `applySwipe` rather than the one it closed over: that
+    // one still holds the `onCommand` and `onSuggestionPicked` it was handed.
+    val latestApplySwipe by rememberUpdatedState<(List<String>, List<String>) -> Unit>(::applySwipe)
+
+    LaunchedEffect(suggestions) {
+        val dictionary = suggestions ?: return@LaunchedEffect
+        for (path in swipePaths) {
+            val resolved = withContext(Dispatchers.Default) {
+                val matches = dictionary.swipe(path)
+                matches to if (matches.isEmpty()) {
+                    emptyList()
+                } else {
+                    dictionary.similar(matches.first())
+                }
+            }
+            latestApplySwipe(resolved.first, resolved.second)
+        }
     }
 
     // Callbacks with an identity that survives recomposition.

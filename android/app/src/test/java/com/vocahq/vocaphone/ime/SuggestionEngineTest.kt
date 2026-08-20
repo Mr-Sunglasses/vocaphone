@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.ime
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -179,15 +180,58 @@ class SuggestionEngineTest {
         assertEquals(0, SuggestionEngine.lineBefore(""))
     }
 
+    /**
+     * The winner is asserted rather than the whole list. Admitting words whose
+     * letters the finger only came near widened what a path can return — that
+     * is the point of it, since those extra words fill the strip the user
+     * picks from — so only the ranking is a promise here.
+     */
     @Test
     fun `swipe matches a path across letter keys`() {
-        assertEquals(listOf("the"), dictionary.swipe("the"))
-        assertEquals(listOf("the"), dictionary.swipe("tghe"))
-        assertEquals(listOf("hello"), dictionary.swipe("hjkello"))
-        assertEquals(listOf("hello"), dictionary.swipe("helo"))
-        assertEquals(listOf("book"), dictionary.swipe("bok"))
+        assertEquals("the", dictionary.swipe("the").first())
+        assertEquals("the", dictionary.swipe("tghe").first())
+        assertEquals("hello", dictionary.swipe("hjkello").first())
+        assertEquals("hello", dictionary.swipe("helo").first())
+        assertEquals("book", dictionary.swipe("bok").first())
         assertTrue(dictionary.swipe("qz").isEmpty())
         assertTrue(dictionary.swipe("h").isEmpty())
+    }
+
+    @Test
+    fun `a word whose keys were all crossed outranks a shape-alike that was not`() {
+        // j-o-e-l traces almost the same line as this h-e-l-l-o path and is
+        // reachable from it one key at a time, but "hello" is the word the
+        // finger actually spelled and has to stay in front of it.
+        val words = SuggestionDictionary(
+            words = listOf("joel", "hello"),
+            bigrams = emptyMap(),
+        )
+        assertEquals("hello", words.swipe("hjkello").first())
+    }
+
+    @Test
+    fun `a swipe that started off its first key still finds its word`() {
+        // A recorded h-e-l-l-o path whose start landed a little high, on "u"
+        // rather than "h", so "h" is nowhere in the keys the finger crossed.
+        // Requiring every letter exactly threw "hello" out over that one miss,
+        // while it is plainly still the best answer for the gesture.
+        val words = SuggestionDictionary(
+            words = listOf("hello", "help", "held", "book"),
+            bigrams = emptyMap(),
+        )
+        assertFalse(SuggestionEngine.isSubsequence("helo", "uytrertyuiklo"))
+        assertEquals("hello", words.swipe("uytrertyuiklo").first())
+    }
+
+    @Test
+    fun `a reachable subsequence still needs every letter in order`() {
+        assertTrue(SuggestionEngine.isReachableSubsequence("helo", "hjkelo"))
+        // "k" stands in for "l" and "p" for "o": both are neighbours.
+        assertTrue(SuggestionEngine.isReachableSubsequence("helo", "hgerkp"))
+        // "z" is nowhere near "l", so the word is not spelled here.
+        assertFalse(SuggestionEngine.isReachableSubsequence("helo", "hgerzo"))
+        // Right letters, wrong order.
+        assertFalse(SuggestionEngine.isReachableSubsequence("helo", "hole"))
     }
 
     /**
