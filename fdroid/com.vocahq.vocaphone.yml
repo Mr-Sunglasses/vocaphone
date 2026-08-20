@@ -17,10 +17,6 @@
 # rewriting __FILE__ prefixes, building ggml without OpenMP, and refusing to let
 # ggml read a commit hash out of git. Changing any of those three, or the pinned
 # ndk below, needs a two-path rebuild before it is tagged.
-#
-# Only the current version is listed. 0.1.0-beta.12 was published before those
-# fixes, so its binary cannot be reproduced by anyone, including us, and
-# 0.1.0-beta.13 never got an APK attached to its release at all.
 
 Categories:
   - Keyboard & IME
@@ -42,7 +38,7 @@ Binaries: https://github.com/VocaHQ/vocaphone/releases/download/v%v/vocaphone-fd
 Builds:
   - versionName: 0.1.0-beta.20
     versionCode: 20
-    commit: v0.1.0-beta.20
+    commit: 919d6de78c41f5a3d66a7f68d1d6ef5369f31749
     subdir: android/app
     submodules: true
     gradle:
