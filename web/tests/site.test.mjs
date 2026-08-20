@@ -13,6 +13,12 @@ const sitemap = readFileSync(join(siteRoot, "sitemap.xml"), "utf8");
 const css = readFileSync(join(siteRoot, "styles.css"), "utf8");
 const script = readFileSync(join(siteRoot, "script.js"), "utf8");
 
+function heroActions(source) {
+  const match = source.match(/<div class="hero-actions">[\s\S]*?<\/div>/);
+  assert.ok(match, "hero actions missing");
+  return match[0];
+}
+
 function androidInstallBlock(source) {
   const match = source.match(
     /<article class="install-card reveal">[\s\S]*?<h3>Android<\/h3>[\s\S]*?<\/article>/,
@@ -141,7 +147,11 @@ test("real Android product screenshots are present", () => {
 test("availability and install paths are honest", () => {
   assert.match(html, /Android 13 or newer/);
   assert.match(html, /iOS 17 or newer/);
-  assert.match(html, /There is no App Store or TestFlight build today/);
+  // iOS is on a public TestFlight track, so the old "no TestFlight build"
+  // line went with it. What still has to be true is that the link is real and
+  // that the App Store, which VocaPhone is not on, is not implied.
+  assert.match(html, /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/);
+  assert.match(html, /There is\s+no App Store release yet/);
   assert.match(
     html,
     /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases\/tag\/v0\.1\.0"/,
@@ -155,8 +165,25 @@ test("availability and install paths are honest", () => {
   assert.doesNotMatch(html, /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases"/);
   assert.doesNotMatch(html, /free forever/i);
   assert.doesNotMatch(html, /available on (the )?App Store/i);
-  assert.doesNotMatch(html, /available on TestFlight/i);
   assert.doesNotMatch(html, /available on F-Droid/i);
+
+  // Both ways to install are offered before the fold, not just the Android
+  // one. The hero is where most visitors decide, so an iPhone owner reaching
+  // "see how it works" without ever being shown TestFlight is the bug.
+  const hero = heroActions(html);
+  assert.ok(
+    hero.includes("https://testflight.apple.com/join/wd85wQ3W"),
+    "hero is missing the TestFlight link",
+  );
+  // The Apple mark is filled, not stroked like the Android one beside it, and
+  // .button svg sets stroke by default, so it needs the class to render solid.
+  assert.match(hero, /<svg class="mark-solid"/);
+  assert.match(hero, /<use href="#mark-android"/);
+  assert.match(hero, /<use href="#mark-apple"/);
+  assert.ok(
+    hero.includes("https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0"),
+    "hero is missing the Android release link",
+  );
 
   const androidCard = androidInstallBlock(html);
   const uninstallAt = androidCard.indexOf("io.github.mrsunglasses.localflow");
@@ -178,17 +205,39 @@ test("availability and install paths are honest", () => {
     iphoneHtml,
     /href="https:\/\/github\.com\/VocaHQ\/vocaphone#build-and-test"/,
   );
-  assert.match(iphoneHtml, /There is no App Store or\s+TestFlight build yet/);
+  assert.match(iphoneHtml, /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/);
+  assert.match(iphoneHtml, /There is no App Store release yet/);
+  // The guide is the path that always works, so it must keep saying why it is
+  // still here now that a one-tap install exists next to it.
+  assert.match(iphoneHtml, /expires after\s+90 days/);
 
   assert.ok(existsSync(join(siteRoot, "iphone/device-setup/index.html")));
-  assert.match(deviceSetupHtml, /There is no App Store or\s+TestFlight\s+build today/);
+  assert.match(deviceSetupHtml, /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/);
   assert.match(deviceSetupHtml, /iOS 17 or newer/);
   assert.match(deviceSetupHtml, /keyboard extensions cannot use the microphone/);
   assert.match(deviceSetupHtml, /companion app\s+records/i);
   assert.match(deviceSetupHtml, /model still runs on the iPhone/);
   assert.match(deviceSetupHtml, /gateway is never required/);
   assert.doesNotMatch(deviceSetupHtml, /available on (the )?App Store/i);
-  assert.doesNotMatch(deviceSetupHtml, /available on TestFlight/i);
+});
+
+test("every platform mark points at a symbol that exists", () => {
+  // A <use> naming an id that is not there renders nothing at all and reports
+  // no error, so a typo would be invisible until someone looked at the page.
+  const defined = [...html.matchAll(/<symbol id="([^"]+)"/g)].map(m => m[1]);
+  assert.ok(defined.includes("mark-android"), "android symbol missing");
+  assert.ok(defined.includes("mark-apple"), "apple symbol missing");
+
+  const used = [...html.matchAll(/<use href="#([^"]+)"/g)].map(m => m[1]);
+  assert.ok(used.length >= 8, `expected the marks to be used, saw ${used.length}`);
+  for (const id of new Set(used)) {
+    assert.ok(defined.includes(id), `<use href="#${id}"> has no matching symbol`);
+  }
+
+  // The sprite must not be display:none, which stops <use> resolving in some
+  // engines; it is taken out of the flow by size instead.
+  assert.match(html, /<svg class="mark-sprite"/);
+  assert.doesNotMatch(css, /\.mark-sprite\s*\{[^}]*display:\s*none/);
 });
 
 test("decorative product frames do not expose focusable controls", () => {

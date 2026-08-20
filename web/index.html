@@ -51,6 +51,18 @@
     <script src="script.js" defer></script>
   </head>
   <body>
+  <!-- Platform marks, defined once and referenced by <use> wherever a button
+       or a card heading names a platform. Inline rather than a file so the
+       page stays a single request and the marks take currentColor. -->
+  <svg class="mark-sprite" aria-hidden="true" focusable="false">
+    <symbol id="mark-android" viewBox="0 0 24 24">
+      <path d="M17.523 15.3414c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993.0001.5511-.4482.9997-.9993.9997m-11.046 0c-.5511 0-.9993-.4486-.9993-.9997s.4482-.9993.9993-.9993c.5511 0 .9993.4482.9993.9993 0 .5511-.4483.9997-.9993.9997m11.4045-6.02l1.9973-3.4592a.416.416 0 00-.1521-.5676.416.416 0 00-.5676.1521l-2.0223 3.503C15.5902 8.2439 13.8533 7.8508 12 7.8508s-3.5902.3931-5.1367 1.0989L4.841 5.4467a.4161.4161 0 00-.5677-.1521.4157.4157 0 00-.1521.5676l1.9973 3.4592C2.6889 11.1867.3432 14.6589 0 18.761h24c-.3435-4.1021-2.6892-7.5743-6.1185-9.4396" />
+    </symbol>
+    <symbol id="mark-apple" viewBox="0 0 24 24">
+      <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
+    </symbol>
+  </svg>
+
     <a class="skip-link" href="#main-content">Skip to content</a>
 
     <header class="menu-bar" data-menu-bar>
@@ -151,11 +163,13 @@
               class="button button-primary"
               href="https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M7 4h10a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z" />
-                <path d="M9 7h6M10 17h4" />
-              </svg>
+              <svg class="mark-solid" aria-hidden="true"><use href="#mark-android" /></svg>
               get the android beta
+            </a>
+            <a class="button button-primary" href="https://testflight.apple.com/join/wd85wQ3W">
+              <svg class="mark-solid" aria-hidden="true"><use href="#mark-apple" /></svg>
+              get the iphone beta
+              <span aria-hidden="true">↗</span>
             </a>
             <a class="button button-secondary" href="#how">
               see how it works
@@ -539,9 +553,9 @@
         <div class="platform-grid">
           <article class="platform-card ios-card reveal">
             <div class="platform-card-head">
-              <span class="platform-symbol">●</span>
+              <span class="platform-symbol"><svg aria-hidden="true"><use href="#mark-apple" /></svg></span>
               <span>iPhone</span>
-              <small>build from source</small>
+              <small>public TestFlight beta</small>
             </div>
             <div class="phone-frame iphone-frame" aria-hidden="true">
               <div class="phone-island"></div>
@@ -554,12 +568,20 @@
               </div>
             </div>
             <p>WhisperKit/Core ML models run on the iPhone with no network or gateway needed for transcription.</p>
-            <a href="/iphone/">iPhone setup <span>↗</span></a>
+            <div class="platform-card-actions">
+              <a class="button button-primary" href="https://testflight.apple.com/join/wd85wQ3W">
+                <svg class="mark-solid" aria-hidden="true"><use href="#mark-apple" /></svg>
+                join the TestFlight beta <span aria-hidden="true">↗</span>
+              </a>
+              <a class="button button-secondary" href="/iphone/">
+                iPhone setup <span aria-hidden="true">→</span>
+              </a>
+            </div>
           </article>
 
           <article class="platform-card android-card reveal">
             <div class="platform-card-head">
-              <span class="platform-symbol">◆</span>
+              <span class="platform-symbol"><svg aria-hidden="true"><use href="#mark-android" /></svg></span>
               <span>Android</span>
               <small>beta available</small>
             </div>
@@ -574,7 +596,12 @@
               />
             </div>
             <p>Native whisper.cpp and sherpa-onnx models run inside the Android phone and insert text directly.</p>
-            <a href="https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0">get the beta <span>↗</span></a>
+            <div class="platform-card-actions">
+              <a class="button button-primary" href="https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0">
+                <svg class="mark-solid" aria-hidden="true"><use href="#mark-android" /></svg>
+                get the beta <span aria-hidden="true">↗</span>
+              </a>
+            </div>
           </article>
         </div>
       </section>
@@ -667,9 +694,10 @@
             <summary>What do I need to run it?<span aria-hidden="true">＋</span></summary>
             <p>
               After setup, private on-device dictation needs only your phone and a
-              downloaded model it supports. Android has a public beta. iPhone
-              currently requires a Mac, Xcode, Apple signing, and a physical iPhone
-              for the initial source build. Gateway hardware remains optional.
+              downloaded model it supports. Android has a public beta. iPhone has a
+              public <a href="https://testflight.apple.com/join/wd85wQ3W">TestFlight beta</a>, or
+              a Mac with Xcode, Apple signing, and a physical iPhone if you would
+              rather build it yourself. Gateway hardware remains optional.
             </p>
           </details>
           <details>
@@ -692,7 +720,7 @@
         <div class="install-grid">
           <article class="install-card reveal">
             <div class="install-card-heading">
-              <span class="platform-symbol">◆</span>
+              <span class="platform-symbol"><svg aria-hidden="true"><use href="#mark-android" /></svg></span>
               <div><h3>Android</h3><p>public beta</p></div>
             </div>
             <ul class="install-facts">
@@ -706,6 +734,7 @@
               sideloading if that older Local Flow build is still installed.
             </p>
             <a class="button button-primary" href="https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0">
+              <svg class="mark-solid" aria-hidden="true"><use href="#mark-android" /></svg>
               open v0.1.0 <span aria-hidden="true">↗</span>
             </a>
             <p class="install-note">
@@ -716,18 +745,26 @@
 
           <article class="install-card reveal">
             <div class="install-card-heading">
-              <span class="platform-symbol">●</span>
-              <div><h3>iPhone</h3><p>build from source</p></div>
+              <span class="platform-symbol"><svg aria-hidden="true"><use href="#mark-apple" /></svg></span>
+              <div><h3>iPhone</h3><p>public TestFlight beta</p></div>
             </div>
             <ul class="install-facts">
               <li><b>Requires</b><span>iOS 17 or newer</span></li>
-              <li><b>Install</b><span>Xcode, Apple signing, and a connected iPhone</span></li>
+              <li><b>Install</b><span>Join the TestFlight beta, or build from source</span></li>
               <li><b>Privacy</b><span>On-device model or optional gateway</span></li>
             </ul>
+            <a class="button button-primary" href="https://testflight.apple.com/join/wd85wQ3W">
+              <svg class="mark-solid" aria-hidden="true"><use href="#mark-apple" /></svg>
+              join the TestFlight beta <span aria-hidden="true">↗</span>
+            </a>
             <a class="button button-secondary" href="/iphone/">
               follow the iPhone guide <span aria-hidden="true">→</span>
             </a>
-            <p class="install-note">There is no App Store or TestFlight build today.</p>
+            <p class="install-note">
+              A TestFlight build expires after 90 days and the beta has a tester
+              limit, so building from source stays available either way. There is
+              no App Store release yet.
+            </p>
           </article>
         </div>
       </section>
@@ -745,8 +782,8 @@
           <h2 id="download-title">say less.<br />type more.</h2>
           <p>Download a model to your phone and turn speech into text without sending your voice anywhere.</p>
           <div class="hero-actions">
-            <a class="button button-primary" href="https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0">get Android beta v0.1.0 <span>↗</span></a>
-            <a class="button button-secondary" href="/iphone/">build for iPhone <span>↗</span></a>
+            <a class="button button-primary" href="https://github.com/VocaHQ/vocaphone/releases/tag/v0.1.0"><svg class="mark-solid" aria-hidden="true"><use href="#mark-android" /></svg>get Android beta v0.1.0 <span aria-hidden="true">↗</span></a>
+            <a class="button button-primary" href="https://testflight.apple.com/join/wd85wQ3W"><svg class="mark-solid" aria-hidden="true"><use href="#mark-apple" /></svg>join the iPhone TestFlight <span aria-hidden="true">↗</span></a>
           </div>
           <span class="download-fineprint">no gateway required · free &amp; open source · AGPL-3.0</span>
         </div>

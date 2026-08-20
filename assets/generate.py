@@ -152,12 +152,29 @@ def mark_svg(colour: str = INK, indent: str = "  ", arcs: str = SHIPPED_ARCS) ->
 
 
 def logo(background: str = BRAND, colour: str = LIGHT) -> str:
-    """Round badge on a flat disc."""
+    """Round badge on a flat disc.
+
+    Fitted and centred the way the square icons are. This was the one document
+    that dropped the mark in at the raw coordinates it was measured in, which
+    left it at 0.743 of the disc's diameter where every icon uses
+    ICON_MARK_FRACTION, and 5 units above the disc's centre rather than on it.
+
+    A disc punishes that harder than a square does. The mark's bounding box ran
+    to 0.969 of the diameter along its diagonal -- all but inscribed -- so the
+    corners of the artwork arrived where the field is already curving away, and
+    at the sizes a badge is actually seen, 32px in a header and 16px in a tab,
+    the arcs merged into the capsule and the whole thing read as a smudge.
+    """
     d = DISC
+    w, h, cx, cy = mark_box()
+    scale = (2 * d["r"] * ICON_MARK_FRACTION) / max(w, h)
+    tx, ty = d["cx"] - cx * scale, d["cy"] - cy * scale
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 460" '
             f'width="460" height="460" role="img" aria-label="vocaphone">\n'
             f'  <circle cx="{d["cx"]:g}" cy="{d["cy"]:g}" r="{d["r"]:g}" fill="{background}"/>\n'
-            f'{mark_svg(colour)}\n'
+            f'  <g transform="translate({tx:.3f} {ty:.3f}) scale({scale:.6f})">\n'
+            f'{mark_svg(colour, indent="    ")}\n'
+            f'  </g>\n'
             f'</svg>\n')
 
 
@@ -294,6 +311,16 @@ PNGS: list[tuple[str, object, int, bool]] = [
 ]
 
 
+# The website's .ico fallback, for browsers and OS surfaces that pass over the
+# SVG icon declared next to it. It was maintained by hand and so was the one
+# drawing of the mark that could drift from the rest without anything noticing
+# -- which is what it had done. Multi-size because a .ico carries its own
+# mipmaps and the chooser is the browser's, not ours.
+ICO: tuple[str, object, tuple[int, ...]] = (
+    "web/favicon.ico", logo, (16, 32, 48, 64),
+)
+
+
 # --- brand rules ------------------------------------------------------------
 
 
@@ -417,6 +444,20 @@ def main() -> None:
             with Image.open(path) as img:
                 img.convert("RGB").save(path)
         print(f"wrote {rel}{' (RGB)' if opaque else ''}")
+
+    rel, producer, sizes = ICO
+    path = repo / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Rasterised once at the largest entry and handed to Pillow, which writes
+    # the smaller ones itself. Going through the vector for each size would be
+    # sharper in principle, but ICO stores what it is given and the browser
+    # picks; one clean source beats four that disagree by a pixel.
+    largest = max(sizes)
+    cairosvg.svg2png(bytestring=producer().encode(), write_to=str(path),
+                     output_width=largest, output_height=largest)
+    with Image.open(path) as img:
+        img.save(path, format="ICO", sizes=[(s, s) for s in sizes])
+    print(f"wrote {rel} ({', '.join(str(s) for s in sizes)})")
 
 
 if __name__ == "__main__":

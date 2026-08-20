@@ -7,7 +7,7 @@
 **Voice dictation for iPhone and Android.**
 
 <!-- Product -->
-[![Status: Android beta / iOS source](https://img.shields.io/badge/status-Android%20beta%20%2F%20iOS%20source-yellow)](#status)
+[![Status: Android beta / iOS TestFlight](https://img.shields.io/badge/status-Android%20beta%20%2F%20iOS%20TestFlight-yellow)](#status)
 [![Privacy: on-device / optional gateway](https://img.shields.io/badge/privacy-on--device%20%2F%20optional%20gateway-success)](#privacy-and-platform-boundaries)
 [![Release](https://img.shields.io/github/v/release/VocaHQ/vocaphone?include_prereleases)](https://github.com/VocaHQ/vocaphone/releases/latest)
 [![vocaphone.vocahq.com](https://img.shields.io/badge/site-vocaphone.vocahq.com-0F6B57)](https://vocaphone.vocahq.com)
@@ -41,7 +41,7 @@ copyleft that also covers modified versions offered as a network service.
 | Client | State |
 | --- | --- |
 | **Android** | Public beta for Android 13+. [releases](https://github.com/VocaHQ/vocaphone/releases) · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
-| **iOS** | Build from source for iOS 17+ (Mac, Xcode, signing team, physical iPhone) · [iPhone guide](https://vocaphone.vocahq.com/iphone/) |
+| **iOS** | Public TestFlight beta for iOS 17+ · [join](https://testflight.apple.com/join/wd85wQ3W) · or build from source (Mac, Xcode, signing team, physical iPhone) · [iPhone guide](https://vocaphone.vocahq.com/iphone/) |
 | **Gateway** | Optional. Self-host [VocaGateway](https://github.com/VocaHQ/vocagateway) on macOS/Linux or Docker when you want more models or shared compute |
 
 ## How it works
@@ -80,7 +80,7 @@ the active cursor. A gateway is never required for on-device mode.
 | Linux | VocaLinux | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available now |
 | macOS | VocaMac | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
 | Windows | VocaWin | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Developer alpha · [releases](https://github.com/VocaHQ/vocawin/releases) |
-| iOS / Android | VocaPhone | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS source build · [site](https://vocaphone.vocahq.com) |
+| iOS / Android | VocaPhone | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS TestFlight · [site](https://vocaphone.vocahq.com) |
 
 Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
 [hello@vocahq.com](mailto:hello@vocahq.com)
@@ -112,7 +112,11 @@ adb install -r app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
 See the [Android client guide](android/README.md) for keyboard setup and the
 supported gateway address forms.
 
-### 2. iOS (source)
+### 2. iOS
+
+To just use it on an iPhone, join the [public TestFlight beta](https://testflight.apple.com/join/wd85wQ3W) — no Mac,
+no Xcode, no signing. A TestFlight build expires after 90 days and the beta has
+a tester limit, so the source route below stays the one that always works.
 
 The Simulator needs no Apple account at all:
 
