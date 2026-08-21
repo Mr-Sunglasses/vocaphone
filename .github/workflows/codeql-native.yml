@@ -45,8 +45,85 @@ env:
   HOMEBREW_NO_ENV_HINTS: '1'
 
 jobs:
+  # Workflow-level `paths` can only start or skip the whole workflow. An
+  # iOS-only push still has to run this file so Swift is analysed, and without
+  # a per-job filter the Kotlin job then compiles Android from the Gradle
+  # cache: kotlinc never runs, CodeQL sees no Java/Kotlin, and analyze fails
+  # with "no source code seen during build".
+  #
+  # The weekly schedule and a manual run cover the whole tree, not a diff.
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      android: ${{ steps.detect.outputs.android }}
+      ios: ${{ steps.detect.outputs.ios }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: detect
+        name: Detect which languages changed
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+
+          mark() {
+            echo "android=$1" >> "$GITHUB_OUTPUT"
+            echo "ios=$2" >> "$GITHUB_OUTPUT"
+            echo "android=$1 ios=$2 ($3)"
+          }
+
+          if [ "$EVENT_NAME" != "push" ]; then
+            mark true true "$EVENT_NAME"
+            exit 0
+          fi
+
+          if [ -z "${BEFORE:-}" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            mark true true "no previous commit"
+            exit 0
+          fi
+
+          if ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            git fetch --depth=1 origin "$BEFORE" || {
+              mark true true "could not fetch $BEFORE"
+              exit 0
+            }
+          fi
+
+          android=false
+          ios=false
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in
+              .github/workflows/codeql-native.yml)
+                android=true
+                ios=true
+                ;;
+              .github/actions/setup-android/action.yml)
+                android=true
+                ;;
+              android/*.md) ;;
+              android/*)
+                android=true
+                ;;
+              ios/*.md) ;;
+              ios/*)
+                ios=true
+                ;;
+            esac
+          done < <(git diff --name-only "$BEFORE" HEAD)
+
+          mark "$android" "$ios" "push diff"
+
   android:
     name: Kotlin/Java
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -66,9 +143,13 @@ jobs:
           source-root: android
           build-mode: manual
 
+      # CodeQL traces the compiler. Gradle's build cache restores
+      # compileFullDebugKotlin as FROM-CACHE, so kotlinc never runs and
+      # analyze fails with "no source code seen". Quality (Android) wants
+      # that cache; this job needs a real compile.
       - name: Build (traced by CodeQL)
         working-directory: android
-        run: ./gradlew assembleFullDebug
+        run: ./gradlew assembleFullDebug --no-build-cache --rerun-tasks
 
       - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
@@ -76,6 +157,8 @@ jobs:
 
   ios:
     name: Swift
+    needs: changes
+    if: needs.changes.outputs.ios == 'true'
     runs-on: macos-15
     # Sixty rather than the thirty this started with, and the thirty was the bug.
     # CodeQL traces the compiler, which costs far more than the build itself:
