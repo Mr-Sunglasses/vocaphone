@@ -14,6 +14,7 @@ Thanks for trying vocaphone. Use this guide to get help without opening the wron
 
 | Topic | Where |
 | --- | --- |
+| Chat with maintainers and other contributors | [Discord](https://discord.gg/t6muquAJbm) |
 | Setup, usage, or "how do I…?" questions | [GitHub Discussions](https://github.com/VocaHQ/vocaphone/discussions) (when enabled) or a clearly titled issue using the question/feature templates |
 | Reproducible bugs | [Bug report](https://github.com/VocaHQ/vocaphone/issues/new?template=bug_report.yml) |
 | Feature ideas | [Feature request](https://github.com/VocaHQ/vocaphone/issues/new?template=feature_request.yml) |

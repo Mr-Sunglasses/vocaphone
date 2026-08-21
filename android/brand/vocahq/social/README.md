@@ -4,7 +4,7 @@ Official Discord, X, and GitHub marks, plus a generic mail envelope. For About s
 
 | File | Use |
 | --- | --- |
-| `discord.svg` | Discord, https://discord.gg/UMJduhcqn |
+| `discord.svg` | Discord, https://discord.gg/t6muquAJbm |
 | `x.svg` | X, https://x.com/vocahq. Label it X, not Twitter. |
 | `github.svg` | GitHub issues |
 | `mail.svg` | hello@vocahq.com |

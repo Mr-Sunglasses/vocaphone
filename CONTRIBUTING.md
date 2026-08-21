@@ -188,6 +188,12 @@ tester's device UDID):
 Without those secrets, `/build` still produces the Android APK and notes that
 iOS was skipped. You can also run the workflow manually under Actions → PR Build.
 
+## Community
+
+[Discord](https://discord.gg/t6muquAJbm) is the fastest place to talk with
+maintainers and other people building VocaPhone. Follow
+[@vocahq](https://x.com/vocahq) on X for release notes.
+
 ## License
 
 Contributions are licensed under the [GNU Affero General Public License v3.0](LICENSE)
