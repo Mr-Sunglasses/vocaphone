@@ -4,7 +4,8 @@ How to take a VocaPhone Android tag from GitHub Releases into Play Console.
 This is Console and listing work. The app is not listed on Play until that work
 is finished; there is no store URL to publish yet.
 
-Version tags attach a signed full-flavor AAB as `vocaphone.aab`. When
+Android tags (`android/v0.1.1`, see [releasing.md](releasing.md)) attach a
+signed full-flavor AAB as `vocaphone.aab`. When
 `PLAY_SERVICE_ACCOUNT_JSON` is set, the tag workflow uploads that AAB to
 Internal testing after the GitHub Release is published. The step is skipped if
 the secret is empty, so testers still get the GitHub APKs if Play is unset or
@@ -29,7 +30,7 @@ can rebuild from source; Play testers should get the full catalog.
 
 Package: `com.vocahq.vocaphone`. Current tree on main: `versionCode` 21,
 `versionName` `0.1.0`. Keep that until the next Play-bound tag needs a bump;
-the release workflow refuses to publish when the tag and APK version disagree.
+the release workflow refuses to publish when the tag is not `android/v$versionName`.
 
 `dependenciesInfo.includeInApk` / `includeInBundle` stay `false` so AGP does
 not embed Play dependency metadata. Do not turn those back on.

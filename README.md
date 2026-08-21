@@ -233,6 +233,7 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 | [Gateway reference](gateway/README.md) | Native service, Compose, models, configuration, health, and CLI commands ([vocagateway](https://github.com/VocaHQ/vocagateway)) |
 | [Deployment](docs/deployment.md) | Pointers into vocagateway for native vs Docker, pairing, and host setup |
 | [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
+| [Releasing](docs/releasing.md) | Platform-prefixed tags, Android-only / iOS-only / joint drops, changelogs |
 | [TestFlight](docs/testflight.md) | App Store Connect setup, archiving, and TestFlight distribution |
 | [Google Play prep](docs/play-store.md) | Full-flavor AAB, upload signing, listing and Console checklist |
 | [Tailscale](docs/tailscale.md) | Private HTTPS ingress for the gateway |

@@ -9,14 +9,19 @@ name: Android release
 # secret is empty. fdroid artifacts and production are never uploaded: every
 # track past Internal is promoted by hand in Console.
 #
+# Tags are platform-prefixed so Android and iOS can ship independently.
 # Both tag shapes run the same build. Semver's own rule decides which is which:
-# a hyphen means a prerelease, so v0.1.0-beta.20 is published as a prerelease
-# and v0.1.0 is published as the latest release.
+# a hyphen in the version means a prerelease, so android/v0.1.0-beta.21 is a
+# GitHub prerelease and android/v0.1.0 is the latest release. Bare v* tags are
+# historical (through v0.1.0) and no longer trigger this workflow.
+#
+# iOS uses ios/v* tags; see .github/workflows/ios-release.yml and
+# docs/releasing.md.
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
-      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+      - 'android/v[0-9]+.[0-9]+.[0-9]+'
+      - 'android/v[0-9]+.[0-9]+.[0-9]+-*'
 
 permissions:
   contents: write
@@ -121,8 +126,9 @@ jobs:
               echo "Unexpected package in $apk: $package_name" >&2
               exit 1
             fi
-            if [ "v$version_name" != "$GITHUB_REF_NAME" ]; then
+            if [ "android/v${version_name}" != "$GITHUB_REF_NAME" ]; then
               echo "Tag $GITHUB_REF_NAME does not match $apk version $version_name" >&2
+              echo "Android tags are android/v\$versionName, e.g. android/v${version_name}." >&2
               exit 1
             fi
 
@@ -160,7 +166,7 @@ jobs:
           formatted_certificate="$(printf '%s' "$EXPECTED_CERT_SHA256" \
             | sed 's/../&:/g; s/:$//' | tr '[:lower:]' '[:upper:]')"
           printf 'Package: %s\nVersion: %s\nSigning certificate SHA-256: %s\n' \
-            "com.vocahq.vocaphone" "${GITHUB_REF_NAME#v}" "$formatted_certificate" \
+            "com.vocahq.vocaphone" "${GITHUB_REF_NAME#android/v}" "$formatted_certificate" \
             > release-assets/SIGNING-CERTIFICATE-SHA256.txt
           (cd release-assets \
             && sha256sum vocaphone.apk vocaphone-fdroid.apk vocaphone.aab \
@@ -177,34 +183,45 @@ jobs:
           retention-days: 7
           compression-level: 0
       - name: Publish GitHub Release
+        id: github-release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
+          version_ref="${GITHUB_REF_NAME#android/}"
+          # Play's releaseName input is an action expression, which has no
+          # replace(). Strip the prefix here and pass the version through.
+          echo "release_name=${version_ref}" >> "$GITHUB_OUTPUT"
+
           # Semver: anything after a hyphen is a prerelease identifier. The tag
           # patterns above admit only these two shapes, so the absence of one
           # is the presence of the other.
-          case "$GITHUB_REF_NAME" in
+          case "$version_ref" in
             *-*) release_kind=(--prerelease) ;;
             *) release_kind=(--latest) ;;
           esac
 
           # --generate-notes lists the pull requests merged since the previous
-          # release of the same kind. It will choose a starting point on its
-          # own, but naming the tag explicitly keeps the range right for a tag
-          # cut from anywhere other than the tip of main.
-          #
-          # A stable tag looks back to the previous stable one, so 0.2.0 covers
-          # everything since 0.1.0 rather than only what landed after the last
-          # beta of the 0.2.0 series. An empty result is the first release of
-          # that kind, where letting it pick means "everything" — which is what
-          # the first stable release should say.
-          case "$GITHUB_REF_NAME" in
-            *-*) match=(--match 'v*-*') ;;
-            *) match=(--match 'v*' --exclude 'v*-*') ;;
+          # release of the same kind. Prefixed android/v* tags are the current
+          # series; fall back to historical bare v* tags so the first prefixed
+          # stable still summarizes from v0.1.0 rather than from the dawn of
+          # the repo.
+          previous_tag=""
+          case "$version_ref" in
+            *-*)
+              previous_tag="$(git describe --tags --abbrev=0 --match 'android/v*-*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+              if [ -z "$previous_tag" ]; then
+                previous_tag="$(git describe --tags --abbrev=0 --match 'v*-*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+              fi
+              ;;
+            *)
+              previous_tag="$(git describe --tags --abbrev=0 --match 'android/v*' --exclude 'android/v*-*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+              if [ -z "$previous_tag" ]; then
+                previous_tag="$(git describe --tags --abbrev=0 --match 'v*' --exclude 'v*-*' "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+              fi
+              ;;
           esac
-          previous_tag="$(git describe --tags --abbrev=0 "${match[@]}" "$GITHUB_REF_NAME^" 2>/dev/null || true)"
           notes_range=()
           if [ -n "$previous_tag" ]; then
             notes_range=(--notes-start-tag "$previous_tag")
@@ -219,7 +236,7 @@ jobs:
             release-assets/SHA256SUMS.txt \
             release-assets/SIGNING-CERTIFICATE-SHA256.txt \
             --repo "$GITHUB_REPOSITORY" \
-            --title "vocaphone Android $GITHUB_REF_NAME" \
+            --title "vocaphone Android ${version_ref}" \
             "${release_kind[@]}" \
             --generate-notes \
             "${notes_range[@]}" \
@@ -242,4 +259,4 @@ jobs:
           releaseFiles: release-assets/vocaphone.aab
           tracks: internal
           status: completed
-          releaseName: ${{ github.ref_name }}
+          releaseName: ${{ steps.github-release.outputs.release_name }}

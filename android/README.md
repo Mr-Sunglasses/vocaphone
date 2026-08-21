@@ -65,17 +65,20 @@ sherpa models are hidden from the picker when the library is absent.
 
 ## GitHub releases
 
-Pushing a version tag runs `.github/workflows/android-release.yml`. Both shapes
-build identically and semver decides how each is published: a tag with a hyphen
-in it, such as `v0.1.0-beta.20`, becomes a GitHub prerelease, and a plain
-`v0.1.0` becomes the latest release. Generated notes span the previous tag of
-the same kind, so a stable tag summarizes everything since the last stable one
-rather than only what followed its own last beta.
+Android tags are prefixed: `android/v0.1.1` or `android/v0.1.1-beta.1`. Pushing
+one runs `.github/workflows/android-release.yml` only. iOS is a different
+prefix (`ios/v1.0.21`); the two can share a commit but never a tag. See
+[releasing.md](../docs/releasing.md).
+
+A hyphen in the version (`android/v0.1.1-beta.1`) is a GitHub prerelease. A
+plain `android/v0.1.1` becomes the latest release. Generated notes span the
+previous Android tag of the same kind (falling back to historical bare `v*`
+tags so the changelog does not restart).
 
 Before tagging, bump `versionCode` and `versionName` in `app/build.gradle.kts`;
-the workflow refuses to publish when the tag and APK version do not match. Both
-kinds upload to Play Internal testing and nothing promotes itself past that:
-closed testing, open testing and production are Console decisions.
+the workflow refuses to publish when the tag is not `android/v$versionName`.
+Both kinds upload to Play Internal testing and nothing promotes itself past
+that: closed testing, open testing and production are Console decisions.
 
 The repository needs these GitHub Actions secrets: `KEYSTORE_BASE64`,
 `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`, and

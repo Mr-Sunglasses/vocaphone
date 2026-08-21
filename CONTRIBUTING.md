@@ -188,6 +188,10 @@ tester's device UDID):
 Without those secrets, `/build` still produces the Android APK and notes that
 iOS was skipped. You can also run the workflow manually under Actions → PR Build.
 
+Version tags are platform-prefixed: `android/v0.1.1` publishes Android,
+`ios/v1.0.21` uploads iOS to TestFlight. They can share a commit but never a
+tag. See [releasing.md](docs/releasing.md).
+
 ## Community
 
 [Discord](https://discord.gg/t6muquAJbm) is the fastest place to talk with
