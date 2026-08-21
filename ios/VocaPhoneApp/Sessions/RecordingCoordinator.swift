@@ -286,6 +286,7 @@ final class RecordingCoordinator {
     }
 
     init() {
+        KeyboardPreferences.migrateKeyboardPracticeIfNeeded()
         localModels = LocalModelManager()
         // A process exit can leave an otherwise valid-looking availability
         // marker behind. The new app process is not warm until it arms audio.

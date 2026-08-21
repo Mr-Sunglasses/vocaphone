@@ -320,23 +320,24 @@ extension DictationBarModel {
     }
 
     private static func waitingForField(_ context: DictationContext) -> DictationBarModel {
-        DictationBarModel(
-            title: "Waiting for the original field",
-            body: .message(
-                quoted(context.transcript) ?? "Return to that field, or insert it here."
-            ),
+        let detail = quoted(context.transcript).map {
+            $0 + " This is a different text field from the one where you started."
+        } ?? "Go back to the field you dictated for, or insert the text in this field."
+        return DictationBarModel(
+            title: "Your text is ready",
+            body: .message(detail),
             accent: .working,
             pulse: .steady,
             primary: DictationButton(
-                title: "Insert here",
+                title: "Insert in this field",
                 symbol: "text.badge.plus",
                 action: .insertHere,
-                hint: "Inserts the waiting transcript into this field instead."
+                hint: "Inserts the waiting transcript at the cursor in this field."
             ),
             secondaries: [.cancel],
             showsElapsedTime: false,
             isExpanded: true,
-            announcement: "Waiting for the field this was dictated for"
+            announcement: "Text ready in a different field. Return to the original field or insert in this field."
         )
     }
 

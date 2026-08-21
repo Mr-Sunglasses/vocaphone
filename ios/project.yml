@@ -166,6 +166,10 @@ targets:
       # Guided setup decides what the app claims is done, and every signal it
       # reads can be undone from iOS Settings. The model behind it is pure.
       - path: VocaPhoneApp/App/SetupStatus.swift
+      - path: VocaPhoneApp/App/OnboardingPresentation.swift
+      # The external-dictation screen stays truthful through recording,
+      # processing, a ready transcript, and recoverable failures.
+      - path: VocaPhoneApp/App/KeyboardHandoffPresentation.swift
       # Which transcription route is selected, whether it is ready, and what the
       # interface is allowed to claim about where audio goes.
       - path: VocaPhoneApp/App/TranscriptionSourceStatus.swift

@@ -19,7 +19,6 @@ struct LocalModelPicker: View {
     var previewSelectedModelID: String?
 #endif
 
-    @State private var downloadTask: Task<Void, Never>?
     @State private var modelLoadTask: Task<Void, Never>?
     @State private var modelLoadError: String?
     @State private var availableModelsExpanded = false
@@ -157,8 +156,7 @@ struct LocalModelPicker: View {
                     }
                     ProgressView(value: manager.progress)
                     Button("Cancel") {
-                        downloadTask?.cancel()
-                        downloadTask = nil
+                        manager.cancelDownload()
                     }
                     .buttonStyle(.bordered)
                 }
@@ -258,17 +256,8 @@ struct LocalModelPicker: View {
     }
 
     private func download(_ model: LocalModelDescriptor) {
-        downloadTask?.cancel()
-        downloadTask = Task { @MainActor in
-            do {
-                try await manager.download(model)
-            } catch is CancellationError {
-                // The picker shows cancellation as a normal action.
-            } catch {
-                // LocalModelManager publishes the actionable error.
-            }
+        manager.startDownload(model) {
             onChange()
-            downloadTask = nil
         }
     }
 

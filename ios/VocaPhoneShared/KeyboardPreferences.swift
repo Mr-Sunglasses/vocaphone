@@ -248,7 +248,22 @@ enum KeyboardPreferences {
     static let recordingSoundsKey = "recordingSoundsEnabled"
     static let containingAppForegroundKey = "containingAppForeground"
     static let setupCompletedKey = "setupCompleted"
+    /// The exact first-run page to restore if iOS terminates the app while the
+    /// user is in Settings. Setup is mandatory, so a relaunch must continue the
+    /// task instead of replaying Welcome or falling through to Home.
+    static let onboardingStageKey = "onboardingStage"
+    /// Set before onboarding opens iOS Settings for the keyboard. Unlike view
+    /// state, this survives iOS reclaiming the app while Settings is in front,
+    /// so the first return can reveal the confirmation action immediately.
+    static let keyboardSettingsRoundTripKey = "keyboardSettingsRoundTripStarted"
     static let firstDictationKey = "hasCompletedFirstDictation"
+    /// Separate from the first transcript milestone: this proves the user has
+    /// seen a transcript make the complete trip through the keyboard and into a
+    /// field hosted by vocaphone.
+    static let keyboardPracticeKey = "hasCompletedKeyboardPractice"
+    /// Lets an upgrade distinguish an existing first transcript from a new user
+    /// completing a diagnostic microphone test after this key was introduced.
+    static let keyboardPracticeMigrationKey = "hasMigratedKeyboardPractice"
     static let modelLanguagesKey = "gatewayModelLanguages"
     static let modelDetectsLanguageKey = "gatewayModelDetectsLanguage"
     static let recentLanguagesKey = "recentTranscriptionLanguages"
@@ -480,9 +495,8 @@ enum KeyboardPreferences {
         set { defaults?.set(newValue, forKey: containingAppForegroundKey) }
     }
 
-    /// Set when the user leaves guided setup, so it opens once rather than on
-    /// every launch. Whether setup is actually finished is re-derived from the
-    /// system each time; this only records that the screen has been seen.
+    /// Set only after every required setup proof and the real keyboard practice
+    /// insertion have succeeded. It is no longer a dismiss/seen flag.
     static var setupCompleted: Bool {
         get { defaults?.bool(forKey: setupCompletedKey) ?? false }
         set { defaults?.set(newValue, forKey: setupCompletedKey) }
@@ -493,6 +507,24 @@ enum KeyboardPreferences {
     static var hasCompletedFirstDictation: Bool {
         get { defaults?.bool(forKey: firstDictationKey) ?? false }
         set { defaults?.set(newValue, forKey: firstDictationKey) }
+    }
+
+    /// A successful keyboard insertion into vocaphone's own practice field.
+    /// This powers the stronger onboarding confirmation without changing the
+    /// existing first-transcript activation milestone.
+    static var hasCompletedKeyboardPractice: Bool {
+        get { defaults?.bool(forKey: keyboardPracticeKey) ?? false }
+        set { defaults?.set(newValue, forKey: keyboardPracticeKey) }
+    }
+
+    /// Existing users already proved a working transcript before the guided
+    /// keyboard exercise existed. Preserve that experience on upgrade, but run
+    /// the migration once so a later in-app diagnostic recording cannot satisfy
+    /// the new keyboard-practice proof by accident.
+    static func migrateKeyboardPracticeIfNeeded() {
+        guard defaults?.bool(forKey: keyboardPracticeMigrationKey) != true else { return }
+        defaults?.set(hasCompletedFirstDictation, forKey: keyboardPracticeKey)
+        defaults?.set(true, forKey: keyboardPracticeMigrationKey)
     }
 
     static var microphonePreference: MicrophonePreference {

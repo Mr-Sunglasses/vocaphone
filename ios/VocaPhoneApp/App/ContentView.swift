@@ -15,13 +15,17 @@ struct ContentView: View {
         KeyboardPreferences.setupCompletedKey,
         store: KeyboardPreferences.defaults
     ) private var setupCompleted = false
-    /// Deliberately not derived from `setupCompleted`: the cover opens once per
-    /// install, and leaving setup must not reopen it.
+    /// Presentation state only. `SetupView` stores the durable required page
+    /// that survives a Settings trip or process restart.
     @State private var isShowingSetup = false
     @AppStorage(
         KeyboardPreferences.firstDictationKey,
         store: KeyboardPreferences.defaults
     ) private var hasDictatedOnce = false
+    @AppStorage(
+        KeyboardPreferences.keyboardPracticeKey,
+        store: KeyboardPreferences.defaults
+    ) private var hasCompletedKeyboardPractice = false
     @State private var testText = ""
     @State private var isShowingSourceDetail = false
     @FocusState private var diagFocused: Bool
@@ -57,7 +61,12 @@ struct ContentView: View {
                 }
             }
             .task {
-                if !setupCompleted { isShowingSetup = true }
+                if OnboardingPresentation.requiresFirstRunCover(
+                    setupCompleted: setupCompleted,
+                    hasCompletedKeyboardPractice: hasCompletedKeyboardPractice
+                ) {
+                    isShowingSetup = true
+                }
                 coordinator.refreshSetupStatus()
                 await coordinator.recoverRecentSession()
                 coordinator.prepareQuickDictationIfEnabled()
@@ -70,21 +79,19 @@ struct ContentView: View {
             }
             .fullScreenCover(isPresented: $isShowingSetup) {
                 NavigationStack {
-                    SetupView()
+                    SetupView(mode: .onboarding)
                 }
             }
         }
         .overlay {
-            if showsKeyboardReturnGuide {
-                KeyboardReturnGuide(
-                    startedAt: coordinator.activeRecord?.createdAt ?? Date(),
-                    finish: coordinator.requestFinish,
-                    cancel: coordinator.cancel
-                )
+            if let record = keyboardHandoffRecord,
+               let presentation = KeyboardHandoffPresentation.make(record)
+            {
+                KeyboardHandoffView(record: record, presentation: presentation)
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: showsKeyboardReturnGuide)
+        .animation(.easeInOut(duration: 0.2), value: keyboardHandoffRecord?.state)
     }
 
     // MARK: - Attention
@@ -395,13 +402,11 @@ struct ContentView: View {
         }
     }
 
-    private var showsKeyboardReturnGuide: Bool {
-        if coordinator.isKeyboardRecording { return true }
-#if DEBUG
-        return ProcessInfo.processInfo.arguments.contains("-previewKeyboardReturnGuide")
-#else
-        return false
-#endif
+    private var keyboardHandoffRecord: SessionRecord? {
+        guard let record = coordinator.activeRecord,
+              KeyboardHandoffPresentation.shouldPresent(record)
+        else { return nil }
+        return record
     }
 }
 
@@ -468,91 +473,6 @@ struct RecordingMeter: View {
         let level = CGFloat(coordinator.meterLevel)
         let position = CGFloat(index) / CGFloat(Self.barCount - 1)
         return Color.vocaRecording.opacity(level * (0.45 + 0.55 * sin(position * .pi)) > 0.06 ? 1 : 0.22)
-    }
-}
-
-private struct RecordingPulse: View {
-    @Environment(RecordingCoordinator.self) private var coordinator
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private var level: CGFloat {
-        coordinator.isKeyboardRecording ? CGFloat(coordinator.meterLevel) : 0.42
-    }
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color.vocaRecording.opacity(0.12))
-                .frame(width: 108, height: 108)
-            Circle()
-                .fill(Color.vocaRecording)
-                .frame(width: 58 + responsiveLevel * 18, height: 58 + responsiveLevel * 18)
-                .animation(.linear(duration: 0.12), value: responsiveLevel)
-            Image(systemName: "mic.fill")
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(.white)
-        }
-        .accessibilityHidden(true)
-    }
-
-    /// Reduce Motion stops the size following the microphone; the state stays
-    /// perfectly visible without it, which is the test the setting asks for.
-    private var responsiveLevel: CGFloat { reduceMotion ? 0.42 : level }
-}
-
-/// Shown while the keyboard is recording, to say the one thing that is not
-/// obvious: go back to where you were typing.
-///
-/// It used to draw a fake home bar with an arrow animating across it forever.
-/// The drawing was a picture of a gesture rather than the gesture, the loop ran
-/// for the whole recording, and between them they made a routine hand-off feel
-/// like an alert. What is left is the live state — a pulse that follows the
-/// input level, and a timer — plus one sentence of instruction.
-private struct KeyboardReturnGuide: View {
-    let startedAt: Date
-    let finish: () -> Void
-    let cancel: () -> Void
-
-    var body: some View {
-        ZStack {
-            Color.vocaCanvas
-                .ignoresSafeArea()
-
-            VStack(spacing: VocaMetrics.grouping + 4) {
-                Spacer()
-
-                RecordingPulse()
-
-                VStack(spacing: VocaMetrics.related) {
-                    Text("vocaphone is listening")
-                        .font(.title2.weight(.semibold))
-                    Text(startedAt, style: .timer)
-                        .font(.title3.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-
-                VStack(spacing: VocaMetrics.related - 2) {
-                    Text("Swipe right across the bottom edge to go back")
-                        .font(.headline)
-                    Text(
-                        "Recording continues in the background. When the keyboard "
-                            + "reappears, tap Finish — or use Finish in the Dynamic Island."
-                    )
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                }
-                .multilineTextAlignment(.center)
-
-                Spacer()
-
-                VStack(spacing: VocaMetrics.related) {
-                    VocaPrimaryButton(title: "Finish recording here instead", action: finish)
-                    Button("Cancel recording", role: .destructive, action: cancel)
-                        .font(.subheadline)
-                }
-            }
-            .padding(VocaMetrics.grouping + 4)
-        }
     }
 }
 

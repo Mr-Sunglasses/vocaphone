@@ -98,7 +98,7 @@ struct SetupStatusTests {
     @Test func theKeyboardListMatchesEntriesCarryingLayoutOptions() {
         let entries = [
             "en_US@sw=QWERTY;hw=Automatic",
-            "com.vocahq.vocaphone.keyboard@sw=QWERTY;hw=Automatic",
+            "\(AppConfiguration.keyboardBundleIdentifier)@sw=QWERTY;hw=Automatic",
         ]
 
         #expect(InstalledKeyboards.includesVocaPhone(entries) == true)

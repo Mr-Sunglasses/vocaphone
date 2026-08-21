@@ -6,6 +6,14 @@ import Observation
 @MainActor
 @Observable
 final class LocalModelManager {
+    /// A background `URLSession` is identified by the containing app, not by a
+    /// particular SwiftUI screen. Keeping this stable lets iOS own the active
+    /// transfer while VocaPhone is suspended and reconnect the session when the
+    /// app is awakened for background events.
+    nonisolated static var backgroundDownloadSessionIdentifier: String {
+        "\(Bundle.main.bundleIdentifier ?? "com.vocahq.vocaphone").model-downloads"
+    }
+
     private(set) var downloadedModelIDs: Set<String> = []
     private(set) var downloadingModelID: String?
     private(set) var progress: Double = 0
@@ -49,6 +57,33 @@ final class LocalModelManager {
     /// The sherpa load currently running, so a second request waits for it
     /// instead of building a second ONNX graph beside the first.
     private var sherpaLoad: Task<SherpaRecognizer, Error>?
+    /// Download ownership belongs to the manager rather than the picker view.
+    /// SwiftUI is free to recreate either onboarding or Settings while a model
+    /// is downloading; a view-local task handle made their Cancel buttons lose
+    /// the operation they were meant to stop.
+    @ObservationIgnored private var modelDownloadTask: Task<Void, Never>?
+
+    private static let backgroundDownloadDelegate = FileDownloadDelegate()
+    private static let backgroundDownloadSession: URLSession = {
+        let configuration = URLSessionConfiguration.background(
+            withIdentifier: backgroundDownloadSessionIdentifier
+        )
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 15 * 60
+        configuration.timeoutIntervalForResource = 24 * 60 * 60
+        configuration.sessionSendsLaunchEvents = true
+        configuration.isDiscretionary = false
+        // Model downloads are explicitly user-initiated. Low Data Mode and an
+        // expensive connection should not silently pause a download the user
+        // has already chosen to make.
+        configuration.allowsExpensiveNetworkAccess = true
+        configuration.allowsConstrainedNetworkAccess = true
+        return URLSession(
+            configuration: configuration,
+            delegate: backgroundDownloadDelegate,
+            delegateQueue: nil
+        )
+    }()
     private var modelsDirectory: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?
@@ -62,6 +97,9 @@ final class LocalModelManager {
     }
 
     init() {
+        // Recreate the session at launch so iOS can reconnect any background
+        // events belonging to the stable identifier above.
+        _ = Self.backgroundDownloadSession
         refresh()
     }
 
@@ -188,27 +226,31 @@ final class LocalModelManager {
     /// every byte cross back through the main actor before it could be written.
     private final class FileDownloadDelegate: NSObject, URLSessionDownloadDelegate,
         @unchecked Sendable {
-        private let progressHandler: @Sendable (Int64) -> Void
-        private let lock = NSLock()
-        private var task: URLSessionDownloadTask?
-        private var continuation: CheckedContinuation<(URL, URLResponse), Error>?
-        private var lastReportedBytes: Int64 = 0
-
-        init(progressHandler: @escaping @Sendable (Int64) -> Void) {
-            self.progressHandler = progressHandler
+        private struct Transfer {
+            let task: URLSessionDownloadTask
+            let continuation: CheckedContinuation<(URL, URLResponse), Error>
+            let progressHandler: @Sendable (Int64) -> Void
+            var lastReportedBytes: Int64 = 0
         }
+
+        private let lock = NSLock()
+        private var transfers: [Int: Transfer] = [:]
 
         func start(
             session: URLSession,
-            request: URLRequest
+            request: URLRequest,
+            progressHandler: @escaping @Sendable (Int64) -> Void
         ) async throws -> (URL, URLResponse) {
             try await withTaskCancellationHandler(operation: {
                 try await withCheckedThrowingContinuation {
                     (continuation: CheckedContinuation<(URL, URLResponse), Error>) in
                     lock.lock()
-                    self.continuation = continuation
                     let task = session.downloadTask(with: request)
-                    self.task = task
+                    transfers[task.taskIdentifier] = Transfer(
+                        task: task,
+                        continuation: continuation,
+                        progressHandler: progressHandler
+                    )
                     let isCancelled = Task.isCancelled
                     lock.unlock()
 
@@ -225,9 +267,9 @@ final class LocalModelManager {
 
         func cancel() {
             lock.lock()
-            let task = self.task
+            let tasks = transfers.values.map(\.task)
             lock.unlock()
-            task?.cancel()
+            tasks.forEach { $0.cancel() }
         }
 
         func urlSession(
@@ -237,7 +279,7 @@ final class LocalModelManager {
             totalBytesWritten: Int64,
             totalBytesExpectedToWrite: Int64
         ) {
-            report(totalBytesWritten)
+            report(totalBytesWritten, taskIdentifier: downloadTask.taskIdentifier)
         }
 
         func urlSession(
@@ -245,14 +287,25 @@ final class LocalModelManager {
             downloadTask: URLSessionDownloadTask,
             didFinishDownloadingTo location: URL
         ) {
-            report(downloadTask.countOfBytesReceived)
+            let taskIdentifier = downloadTask.taskIdentifier
+            guard isTracking(taskIdentifier) else {
+                // A transfer may finish after iOS relaunched the process. Its
+                // original continuation no longer exists, so ignore this
+                // system-owned temporary file rather than allowing the stale
+                // callback to complete a newer model file.
+                return
+            }
+            report(downloadTask.countOfBytesReceived, taskIdentifier: taskIdentifier)
             let persistentLocation = FileManager.default.temporaryDirectory
                 .appendingPathComponent("vocaphone-download-\(UUID().uuidString)")
             do {
                 try FileManager.default.moveItem(at: location, to: persistentLocation)
-                finish(.success((persistentLocation, downloadTask.response ?? URLResponse())))
+                finish(
+                    taskIdentifier: taskIdentifier,
+                    result: .success((persistentLocation, downloadTask.response ?? URLResponse()))
+                )
             } catch {
-                finish(.failure(error))
+                finish(taskIdentifier: taskIdentifier, result: .failure(error))
             }
         }
 
@@ -262,27 +315,43 @@ final class LocalModelManager {
             didCompleteWithError error: Error?
         ) {
             guard let error else { return }
-            finish(.failure(error))
+            finish(taskIdentifier: task.taskIdentifier, result: .failure(error))
         }
 
-        private func report(_ totalBytesWritten: Int64) {
+        func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+            guard let identifier = session.configuration.identifier else { return }
+            ModelDownloadBackgroundEvents.shared.finish(identifier: identifier)
+        }
+
+        private func isTracking(_ taskIdentifier: Int) -> Bool {
             lock.lock()
-            let shouldReport = totalBytesWritten > lastReportedBytes
-            lastReportedBytes = max(lastReportedBytes, totalBytesWritten)
+            let isTracking = transfers[taskIdentifier] != nil
+            lock.unlock()
+            return isTracking
+        }
+
+        private func report(_ totalBytesWritten: Int64, taskIdentifier: Int) {
+            lock.lock()
+            guard var transfer = transfers[taskIdentifier] else {
+                lock.unlock()
+                return
+            }
+            let shouldReport = totalBytesWritten > transfer.lastReportedBytes
+            transfer.lastReportedBytes = max(transfer.lastReportedBytes, totalBytesWritten)
+            transfers[taskIdentifier] = transfer
+            let progressHandler = transfer.progressHandler
             lock.unlock()
             if shouldReport { progressHandler(totalBytesWritten) }
         }
 
-        private func finish(_ result: Result<(URL, URLResponse), Error>) {
+        private func finish(
+            taskIdentifier: Int,
+            result: Result<(URL, URLResponse), Error>
+        ) {
             lock.lock()
-            guard let continuation else {
-                lock.unlock()
-                return
-            }
-            self.continuation = nil
-            task = nil
+            let transfer = transfers.removeValue(forKey: taskIdentifier)
             lock.unlock()
-            continuation.resume(with: result)
+            transfer?.continuation.resume(with: result)
         }
     }
 
@@ -589,6 +658,37 @@ final class LocalModelManager {
         }
     }
 
+    /// Starts a model download whose lifetime is independent of the SwiftUI
+    /// view that initiated it. Both onboarding and Settings use this entry
+    /// point, so navigating, backgrounding, or a view refresh cannot detach the
+    /// Cancel button from the active operation.
+    func startDownload(
+        _ descriptor: LocalModelDescriptor,
+        onCompletion: @escaping @MainActor () -> Void = {}
+    ) {
+        guard !isInert, modelDownloadTask == nil, downloadingModelID == nil else { return }
+        modelDownloadTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.modelDownloadTask = nil
+                onCompletion()
+            }
+            do {
+                try await self.download(descriptor)
+            } catch {
+                // `download` publishes either the actionable error or the
+                // normal cancellation message used by both picker surfaces.
+            }
+        }
+    }
+
+    func cancelDownload() {
+        guard modelDownloadTask != nil || downloadingModelID != nil else { return }
+        message = "Canceling model download…"
+        Self.backgroundDownloadDelegate.cancel()
+        modelDownloadTask?.cancel()
+    }
+
     /// A failed download that failed its integrity check is worth telling apart
     /// from one that simply could not finish: the first means a pinned digest no
     /// longer matches what the host serves, which is a supply-chain signal
@@ -733,7 +833,7 @@ final class LocalModelManager {
         for attempt in 1...maxAttempts {
             try Task.checkCancellation()
             let generation = await progressTracker.beginFile(expectedBytes: expectedBytes)
-            let delegate = FileDownloadDelegate { [weak self] bytesWritten in
+            let progressHandler: @Sendable (Int64) -> Void = { [weak self] bytesWritten in
                 Task { @MainActor [weak self] in
                     guard let value = await progressTracker.updateFile(
                         bytesWritten: bytesWritten,
@@ -742,29 +842,15 @@ final class LocalModelManager {
                     self?.progress = value
                 }
             }
-            let configuration = URLSessionConfiguration.default
-            configuration.waitsForConnectivity = true
-            configuration.timeoutIntervalForRequest = 15 * 60
-            configuration.timeoutIntervalForResource = 24 * 60 * 60
-            // Model downloads are explicitly user-initiated. Do not let Low
-            // Data Mode or the system's expensive-network policy silently defer
-            // or suspend a multi-hundred-megabyte download.
-            configuration.allowsExpensiveNetworkAccess = true
-            configuration.allowsConstrainedNetworkAccess = true
-            let session = URLSession(
-                configuration: configuration,
-                delegate: delegate,
-                delegateQueue: nil
-            )
 
             do {
                 var request = URLRequest(url: url)
                 request.timeoutInterval = 15 * 60
-                let (temporaryFile, response) = try await delegate.start(
-                    session: session,
-                    request: request
+                let (temporaryFile, response) = try await Self.backgroundDownloadDelegate.start(
+                    session: Self.backgroundDownloadSession,
+                    request: request,
+                    progressHandler: progressHandler
                 )
-                defer { session.invalidateAndCancel() }
                 try Task.checkCancellation()
                 guard let httpResponse = response as? HTTPURLResponse,
                       200..<300 ~= httpResponse.statusCode
@@ -779,7 +865,6 @@ final class LocalModelManager {
                 progress = await progressTracker.completeFile(generation: generation)
                 return target
             } catch {
-                session.invalidateAndCancel()
                 progress = await progressTracker.resetFile(generation: generation)
                 guard attempt < maxAttempts, isRetryableDownloadError(error) else {
                     throw error

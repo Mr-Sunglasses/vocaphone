@@ -140,8 +140,16 @@ struct DictationPresentationTests {
 
     @Test func aStrandedTranscriptCanBeRedirectedToTheCurrentField() {
         let model = Self.model(.targetContextChanged, transcript: "Redirect me")
+        #expect(model.title == "Your text is ready")
         #expect(model.primary.action == .insertHere)
-        #expect(model.body == .message("“Redirect me”"))
+        #expect(model.primary.title == "Insert in this field")
+        #expect(model.body == .message(
+            "“Redirect me” This is a different text field from the one where you started."
+        ))
+        #expect(
+            model.announcement
+                == "Text ready in a different field. Return to the original field or insert in this field."
+        )
     }
 
     @Test func elapsedTimeReadsAsMinutesAndSeconds() {

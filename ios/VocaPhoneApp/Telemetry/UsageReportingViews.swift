@@ -1,39 +1,109 @@
 import SwiftUI
 
-/// The onboarding step that asks.
-///
-/// Deliberately placed at the end of guided setup, after the user has a working
-/// transcript rather than while they are still deciding whether the app is worth
-/// their time. Both buttons carry the same weight: no greyed-out decline, and
-/// nothing that makes saying no look like a mistake. The controls are on this
-/// screen rather than behind a link, because a notice whose switch lives
-/// somewhere else is not a choice.
+/// The optional onboarding choice shown after dictation is already working.
+/// This is a card rather than a `Section`: setup lives in a ScrollView, and a
+/// list-only section there loses its hierarchy and shrinks the decision buttons
+/// to their labels. Both choices remain equally prominent and full width.
 struct UsageReportingSetupSection: View {
     let onDecision: (Bool) -> Void
 
     @State private var isShowingPayload = false
+    @State private var isShowingDetails = false
 
     var body: some View {
-        Section {
-            Button(UsageReportingCopy.turnOn) { onDecision(true) }
-                .brandProminentButton()
-                .listRowSeparator(.hidden)
+        VocaCard(padding: VocaMetrics.padding) {
+            VStack(alignment: .leading, spacing: VocaMetrics.padding) {
+                HStack(alignment: .firstTextBaseline) {
+                    Label(UsageReportingCopy.title, systemImage: "wrench.and.screwdriver.fill")
+                        .font(.title3.weight(.bold))
+                    Spacer(minLength: VocaMetrics.related)
+                    Text("Optional")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(Color.brand)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Color.brand.opacity(0.12),
+                            in: Capsule()
+                        )
+                }
 
-            Button(UsageReportingCopy.notNow) { onDecision(false) }
-                .listRowSeparator(.hidden)
+                Text("Share anonymous setup and dictation reliability counters with VocaHQ.")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            Button(UsageReportingCopy.seeWhatIsSent) { isShowingPayload = true }
-                .font(.subheadline)
-        } header: {
-            Text(UsageReportingCopy.title)
-        } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(UsageReportingCopy.whatIsSent)
-                Text(UsageReportingCopy.whatIsNeverSent)
-                Text(UsageReportingCopy.changeLater)
+                Label(
+                    "Never your audio, transcripts, typed text, gateway address, or an identifier.",
+                    systemImage: "lock.shield.fill"
+                )
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.brand)
+                .fixedSize(horizontal: false, vertical: true)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: VocaMetrics.related) {
+                        decisionButton(
+                            UsageReportingCopy.turnOn,
+                            symbol: "checkmark",
+                            enabled: true
+                        )
+                        decisionButton(
+                            UsageReportingCopy.notNow,
+                            symbol: "xmark",
+                            enabled: false
+                        )
+                    }
+
+                    VStack(spacing: VocaMetrics.related) {
+                        decisionButton(
+                            UsageReportingCopy.turnOn,
+                            symbol: "checkmark",
+                            enabled: true
+                        )
+                        decisionButton(
+                            UsageReportingCopy.notNow,
+                            symbol: "xmark",
+                            enabled: false
+                        )
+                    }
+                }
+
+                DisclosureGroup("Privacy details", isExpanded: $isShowingDetails) {
+                    VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                        Text(UsageReportingCopy.whatIsSent)
+                        Text(UsageReportingCopy.whatIsNeverSent)
+                        Text(UsageReportingCopy.changeLater)
+                    }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, VocaMetrics.related)
+                }
+                .font(.subheadline.weight(.semibold))
+
+                Button { isShowingPayload = true } label: {
+                    Label(UsageReportingCopy.seeWhatIsSent, systemImage: "doc.text.magnifyingglass")
+                        .frame(maxWidth: .infinity, minHeight: VocaMetrics.minimumTarget)
+                }
+                .font(.subheadline.weight(.semibold))
             }
         }
         .sheet(isPresented: $isShowingPayload) { PendingPayloadSheet() }
+    }
+
+    private func decisionButton(
+        _ title: String,
+        symbol: String,
+        enabled: Bool
+    ) -> some View {
+        Button {
+            onDecision(enabled)
+        } label: {
+            Label(title, systemImage: symbol)
+                .frame(maxWidth: .infinity, minHeight: VocaMetrics.minimumTarget)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.large)
     }
 }
 

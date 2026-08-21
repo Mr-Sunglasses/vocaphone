@@ -309,7 +309,10 @@ enum PreviewFixtures {
     static func registerAppGroupDefaults(hasDictatedOnce: Bool = true) {
         KeyboardPreferences.defaults?.register(defaults: [
             KeyboardPreferences.setupCompletedKey: true,
+            KeyboardPreferences.onboardingStageKey: OnboardingStage.complete.rawValue,
             KeyboardPreferences.firstDictationKey: hasDictatedOnce,
+            KeyboardPreferences.keyboardPracticeKey: hasDictatedOnce,
+            KeyboardPreferences.keyboardPracticeMigrationKey: true,
             KeyboardPreferences.keyboardHeightKey: KeyboardHeightPreference.standard.rawValue,
             KeyboardPreferences.writingStyleKey: WritingStyle.casual.rawValue,
             KeyboardPreferences.transcriptionLanguageKey: TranscriptionLanguage.automatic.rawValue,
