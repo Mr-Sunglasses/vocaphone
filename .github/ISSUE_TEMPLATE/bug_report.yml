@@ -9,6 +9,8 @@ body:
       value: |
         Leave out recordings, transcripts, tokens, and private hostnames.
         Security issues go through SECURITY.md or a private advisory, not this form.
+  # Heading "App" and these option strings are parsed by
+  # .github/workflows/label-issue-app.yml to apply the android or ios label.
   - type: dropdown
     id: app
     attributes:

@@ -9,6 +9,8 @@ body:
       value: |
         VocaPhone stays on-device by default and does not need an account.
         Leave out tokens, recordings, transcripts, and private hostnames.
+  # Heading "App" and these option strings are parsed by
+  # .github/workflows/label-issue-app.yml to apply the android or ios label.
   - type: dropdown
     id: app
     attributes:

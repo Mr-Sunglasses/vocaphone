@@ -1,0 +1,104 @@
+name: Label issues by app
+
+# Issue forms can attach static labels (bug, enhancement) but not labels that
+# depend on a dropdown. This reads the required App field and adds android or
+# ios so the issues list filters without opening each report.
+#
+# The parser keys off the "App" heading and the option strings in
+# .github/ISSUE_TEMPLATE/{bug_report,feature_request}.yml. Keep those in sync.
+on:
+  issues:
+    types: [opened, edited]
+  # Merging this file, or a manual run, tags already-open issues.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/label-issue-app.yml'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.issue.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'issues' }}
+
+jobs:
+  label:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Tag the selected app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          ISSUE: ${{ github.event_name == 'issues' && github.event.issue.number || '' }}
+        run: |
+          set -euo pipefail
+
+          ensure_label() {
+            local name="$1" color="$2" desc="$3"
+            if gh api --silent "repos/${REPO}/labels/${name}" >/dev/null 2>&1; then
+              return 0
+            fi
+            if gh label create "$name" --repo "$REPO" --color "$color" --description "$desc"; then
+              return 0
+            fi
+            # A parallel run may have created it first.
+            gh api --silent "repos/${REPO}/labels/${name}" >/dev/null 2>&1
+          }
+
+          app_from_body() {
+            awk '
+              { gsub(/\r/, "") }
+              /^### App[[:space:]]*$/ { in_app = 1; next }
+              in_app && /^### / { exit }
+              in_app && NF {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+                print
+                exit
+              }
+            '
+          }
+
+          label_issue() {
+            local number="$1"
+            local body app want drop current
+
+            body=$(gh issue view "$number" --repo "$REPO" --json body --jq -r .body)
+            app=$(printf '%s\n' "$body" | app_from_body)
+
+            case "$app" in
+              "Android app") want=android; drop=ios ;;
+              "iOS app") want=ios; drop=android ;;
+              *)
+                echo "Issue #${number}: App field is '${app:-<empty>}', skipping"
+                return 0
+                ;;
+            esac
+
+            current=$(gh issue view "$number" --repo "$REPO" --json labels --jq '[.labels[].name] | join("\n")')
+
+            if ! printf '%s\n' "$current" | grep -Fxq "$want"; then
+              gh issue edit "$number" --repo "$REPO" --add-label "$want"
+            fi
+            if printf '%s\n' "$current" | grep -Fxq "$drop"; then
+              gh issue edit "$number" --repo "$REPO" --remove-label "$drop"
+            fi
+
+            echo "Issue #${number}: labeled ${want}"
+          }
+
+          ensure_label android 3DDC84 "Android app"
+          ensure_label ios 007AFF "iOS app"
+
+          if [ "$EVENT_NAME" = "issues" ]; then
+            label_issue "$ISSUE"
+            exit 0
+          fi
+
+          gh issue list --repo "$REPO" --state open --limit 1000 --json number --jq '.[].number' \
+            | while IFS= read -r number; do
+                label_issue "$number"
+              done
