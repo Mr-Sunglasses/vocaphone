@@ -17,7 +17,7 @@ checklist. Re-check any row you've touched since.
 | App icon (1024×1024, light/dark/tinted, no alpha on the base image) | present | `ios/VocaPhoneApp/Assets.xcassets/AppIcon.appiconset` |
 | Privacy manifests (App, Keyboard, Live Activity) | present | `PrivacyInfo.xcprivacy` in each target directory |
 | Export compliance answered in the plist | `ITSAppUsesNonExemptEncryption = false` | `ios/VocaPhoneApp/Info.plist` — true because the app only uses HTTPS/Keychain, no custom or non-exempt cryptography |
-| Marketing version / build number | `1.0` / `19` | `ios/project.yml` (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`) |
+| Marketing version / build number | `1.0` / `21` | `ios/project.yml` (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`) |
 | App Group entitlement present on all three targets | app, keyboard, Live Activity all declare `group.com.vocahq` | `ios/VocaPhone*/*.entitlements` |
 
 Before archiving, always run:
