@@ -528,6 +528,10 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun deleteRecord(sessionId: String) =
         viewModelScope.launch { container.history.delete(sessionId) }
 
+    fun deleteRecords(sessionIds: Collection<String>) = viewModelScope.launch {
+        sessionIds.forEach { container.history.delete(it) }
+    }
+
     fun deleteAllHistory() = viewModelScope.launch { container.history.deleteAll() }
 
     fun diagnosticEvents(): String = container.diagnostics.read()

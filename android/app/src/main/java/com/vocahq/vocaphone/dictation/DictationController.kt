@@ -211,7 +211,9 @@ class DictationController(
             val record = history.find(sessionId) ?: return@launch
             val audio = record.audioPath?.let(::File)
             if (audio == null || !audio.exists()) {
+                val id = UUID.fromString(sessionId)
                 _state.value = _state.value.copy(
+                    sessionId = id,
                     phase = DictationPhase.FAILED,
                     failure = DictationFailure(
                         "audio_expired",
@@ -219,6 +221,7 @@ class DictationController(
                         recoverable = false,
                     ),
                 )
+                lingerThenIdle(id, DictationPhase.FAILED, FAILED_LINGER_MILLIS)
                 return@launch
             }
             val configuration = settings.current()
@@ -915,16 +918,7 @@ class DictationController(
         if (report.outcome == InsertionOutcome.INSERTED) {
             // "Inserted" is a confirmation, not a state the user acts on: after a
             // moment the keyboard returns to its idle mic on its own.
-            scope.launch {
-                delay(INSERTED_LINGER_MILLIS)
-                _state.update { current ->
-                    if (current.sessionId == sessionId && current.phase == DictationPhase.INSERTED) {
-                        DictationState()
-                    } else {
-                        current
-                    }
-                }
-            }
+            lingerThenIdle(sessionId, DictationPhase.INSERTED, INSERTED_LINGER_MILLIS)
         }
     }
 
@@ -965,6 +959,23 @@ class DictationController(
             level = 0f,
             failure = DictationFailure(error.code, error.userMessage, error.recoverable),
         )
+        // Same idea as the "Inserted" confirmation: the keyboard needs the
+        // strip back for suggestions and the clipboard chip. History still
+        // has Retry if they want another pass.
+        lingerThenIdle(sessionId, DictationPhase.FAILED, FAILED_LINGER_MILLIS)
+    }
+
+    private fun lingerThenIdle(sessionId: UUID, from: DictationPhase, millis: Long) {
+        scope.launch {
+            delay(millis)
+            _state.update { current ->
+                if (current.sessionId == sessionId && current.phase == from) {
+                    DictationState()
+                } else {
+                    current
+                }
+            }
+        }
     }
 
     private fun announceStopped(tone: DictationTone) {
@@ -1049,6 +1060,9 @@ class DictationController(
 
         /** How long the "Inserted" confirmation stays before the keyboard goes idle. */
         const val INSERTED_LINGER_MILLIS = 2_000L
+
+        /** Long enough to read the empty-transcript line, short enough to give the strip back. */
+        const val FAILED_LINGER_MILLIS = 3_000L
 
         /** File writing should stay far ahead of this six-second safety buffer. */
         const val FILE_FRAME_BUFFER_CAPACITY = 64

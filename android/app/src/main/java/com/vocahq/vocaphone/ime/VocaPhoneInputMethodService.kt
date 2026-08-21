@@ -67,7 +67,14 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private val suggestionDictionary = MutableStateFlow<SuggestionDictionary?>(null)
     private val emojiCatalog = MutableStateFlow<List<EmojiEntry>>(emptyList())
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener { refreshClipboard() }
+    private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
+        // A failed empty dictation owns the suggestion strip. A new copy is
+        // the user moving on; drop the banner so the clipboard chip can show.
+        if (lastState.phase == DictationPhase.FAILED) {
+            container.dictation.clearTransient()
+        }
+        refreshClipboard()
+    }
     private val preferenceWrites by lazy {
         KeyboardPreferenceCoordinator(scope) {
             container.diagnostics.recordError("settings", DictationSource.IME.name)

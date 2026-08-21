@@ -2,7 +2,9 @@ package com.vocahq.vocaphone.ime
 
 import com.vocahq.vocaphone.core.DictationPhase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MicDictationControlTest {
@@ -31,5 +33,14 @@ class MicDictationControlTest {
         )
         assertNull(MicDictationControl.longPress(DictationPhase.IDLE))
         assertNull(MicDictationControl.longPress(DictationPhase.FAILED))
+    }
+
+    @Test
+    fun `a failed empty transcript does not lock the keyboard menu`() {
+        assertTrue(MicDictationControl.allowsMenu(DictationPhase.IDLE))
+        assertTrue(MicDictationControl.allowsMenu(DictationPhase.FAILED))
+        assertTrue(MicDictationControl.allowsMenu(DictationPhase.INSERTED))
+        assertFalse(MicDictationControl.allowsMenu(DictationPhase.LISTENING))
+        assertFalse(MicDictationControl.allowsMenu(DictationPhase.TRANSCRIBING))
     }
 }

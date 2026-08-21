@@ -20,4 +20,7 @@ internal object MicDictationControl {
 
     fun longPress(phase: DictationPhase): MicDictationAction? =
         if (phase.isBusy) MicDictationAction.CANCEL else null
+
+    /** Menu, clipboard, and models stay reachable unless dictation is actually running. */
+    fun allowsMenu(phase: DictationPhase): Boolean = !phase.isBusy
 }

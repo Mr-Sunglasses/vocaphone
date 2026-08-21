@@ -47,4 +47,17 @@ class DictateCopyTest {
         assertFalse(DictateCopy.DICTATE.contains("Tap"))
         assertFalse(DictateCopy.DICTATE.contains("Start dictation"))
     }
+
+    @Test
+    fun scratchpadHintLeavesOnceThereIsTextOrARecording() {
+        assertEquals(
+            "Inserted at the cursor. Nothing here is uploaded.",
+            DictateCopy.HINT,
+        )
+        assertTrue(showScratchpadHint("", DictationPhase.IDLE))
+        assertFalse(showScratchpadHint("hello", DictationPhase.IDLE))
+        assertFalse(showScratchpadHint("", DictationPhase.LISTENING))
+        assertFalse(showScratchpadHint("", DictationPhase.TRANSCRIBING))
+        assertTrue(showScratchpadHint("", DictationPhase.FAILED))
+    }
 }

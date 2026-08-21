@@ -202,7 +202,7 @@ internal fun VocaPhoneKeyboard(
     }
 
     LaunchedEffect(dictationState.phase, editor.dictationAllowed) {
-        if (dictationState.phase != DictationPhase.IDLE || !editor.dictationAllowed) {
+        if (!MicDictationControl.allowsMenu(dictationState.phase) || !editor.dictationAllowed) {
             preferencePanel = null
         }
     }
@@ -673,6 +673,7 @@ private fun DictationBar(
 ) {
     val view = LocalView.current
     val idle = state.phase == DictationPhase.IDLE
+    val menuEnabled = MicDictationControl.allowsMenu(state.phase)
     val status = when {
         editor.sensitive -> "Private field"
         !editor.dictationAllowed -> "Typing only"
@@ -717,11 +718,11 @@ private fun DictationBar(
                     role = Role.Button
                     contentDescription = "Keyboard menu"
                 }
-                .pointerInput(idle, menuOpen) {
+                .pointerInput(menuEnabled, menuOpen) {
                     detectTapGestures(
                         onTap = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            if (idle) onMenuTap()
+                            if (menuEnabled) onMenuTap()
                         },
                     )
                 },
