@@ -3,12 +3,12 @@ package com.vocahq.vocaphone.ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -43,7 +43,7 @@ import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
 
-internal const val MORE_MODELS_LABEL = "More models"
+internal const val MORE_MODELS_LABEL = SetupCopy.BROWSE_MODELS
 
 /**
  * The on-device model list, shared by setup and settings.
@@ -71,7 +71,7 @@ fun LocalModelPicker(
     val profile = remember(state.totalRamGB) {
         DeviceProfile.current(state.totalRamGB)
     }
-    val recommended = remember(profile) {
+    val recommended = remember(profile, profile.language) {
         LocalModelCatalog.recommended(profile)
     }
     val selectedModel = usable.firstOrNull { it.id == selectedModelId }
@@ -127,6 +127,13 @@ fun LocalModelPicker(
         )
     }
 
+    if (!compact && selectedModel != null) {
+        Text(
+            "In use · ${selectedModel.displayName} · ${selectedModel.sizeLabel}",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+
     if (
         showPickerBusyBanner(
             downloadingId = state.downloading,
@@ -137,9 +144,9 @@ fun LocalModelPicker(
         ModelBusyBanner(state = state, onCancelDownload = onCancelDownload)
     }
 
-    if (selectedModel != null &&
+    val oversizedWarning = selectedModel != null &&
         LocalModelCatalog.needsHeavierWarning(selectedModel, profile)
-    ) {
+    if (oversizedWarning) {
         OversizedModelNotice(
             recommended = recommended,
             installed = recommended.id in state.downloaded,
@@ -150,17 +157,24 @@ fun LocalModelPicker(
     }
 
     sections.recommended?.let { model ->
-        RecommendedModelCard(
-            model = model,
-            profile = profile,
-            state = state,
-            selected = selectedModelId == model.id,
-            busy = busy,
-            compact = compact,
-            onSelect = onSelect,
-            onDownloadAndUse = onDownloadAndUse,
-            onCancelDownload = onCancelDownload,
-        )
+        if (compact || model.id != selectedModelId) {
+            RecommendedModelCard(
+                model = model,
+                state = state,
+                selected = selectedModelId == model.id,
+                busy = busy,
+                compact = compact,
+                showActions = !oversizedWarning,
+                onSelect = onSelect,
+                onDownloadAndUse = onDownloadAndUse,
+                onCancelDownload = onCancelDownload,
+                onBrowse = if (compact) {
+                    { catalogOpen = true }
+                } else {
+                    null
+                },
+            )
+        }
     }
 
     if (compact) {
@@ -173,11 +187,12 @@ fun LocalModelPicker(
                 onInspect = { inspecting = it },
             )
         }
-        TextButton(
-            onClick = { catalogOpen = true },
-            contentPadding = PaddingValues(horizontal = 0.dp),
-        ) {
-            Text(MORE_MODELS_LABEL)
+        if (sections.recommended == null) {
+            SecondaryButton(
+                text = SetupCopy.BROWSE_MODELS,
+                onClick = { catalogOpen = true },
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     } else {
         ModelCatalogSearch(
@@ -221,7 +236,12 @@ fun LocalModelPicker(
                     .padding(bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(MORE_MODELS_LABEL, style = MaterialTheme.typography.titleLarge)
+                Text(SetupCopy.BROWSE_SHEET_TITLE, style = MaterialTheme.typography.titleLarge)
+                Text(
+                    SetupCopy.BROWSE_SHEET_SUPPORTING,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 ModelCatalogSearch(
                     query = query,
                     onQuery = { query = it },
@@ -238,6 +258,7 @@ fun LocalModelPicker(
                     state = state,
                     selectedModelId = selectedModelId,
                     onInspect = { inspecting = it },
+                    elevated = true,
                 )
             }
         }
@@ -313,14 +334,15 @@ private fun ModelBusyBanner(state: LocalModelState, onCancelDownload: () -> Unit
 @Composable
 private fun RecommendedModelCard(
     model: LocalModelDescriptor,
-    profile: DeviceProfile,
     state: LocalModelState,
     selected: Boolean,
     busy: Boolean,
     compact: Boolean,
+    showActions: Boolean = true,
     onSelect: (LocalModelDescriptor) -> Unit,
     onDownloadAndUse: (LocalModelDescriptor) -> Unit,
     onCancelDownload: () -> Unit,
+    onBrowse: (() -> Unit)? = null,
 ) {
     FeaturedCard {
         Text("Recommended for this phone", style = MaterialTheme.typography.titleSmall)
@@ -330,24 +352,96 @@ private fun RecommendedModelCard(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (!compact) {
-            Text(
-                profile.summary(),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Text(
+            model.recommendationWhy(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (showActions) {
+            val browse = onBrowse
+            if (
+                browse != null &&
+                state.downloading != model.id &&
+                state.preparing != model.displayName
+            ) {
+                CompactRecommendedActions(
+                    model = model,
+                    downloaded = model.id in state.downloaded,
+                    selected = selected,
+                    busy = busy,
+                    onSelect = onSelect,
+                    onDownloadAndUse = onDownloadAndUse,
+                    onBrowse = browse,
+                )
+            } else {
+                ModelActions(
+                    model = model,
+                    state = state,
+                    selected = selected,
+                    busy = busy,
+                    useLabel = "Use recommended",
+                    downloadLabel = "Download and use",
+                    onSelect = onSelect,
+                    onDownload = onDownloadAndUse,
+                    onCancelDownload = onCancelDownload,
+                    onDelete = null,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactRecommendedActions(
+    model: LocalModelDescriptor,
+    downloaded: Boolean,
+    selected: Boolean,
+    busy: Boolean,
+    onSelect: (LocalModelDescriptor) -> Unit,
+    onDownloadAndUse: (LocalModelDescriptor) -> Unit,
+    onBrowse: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (!downloaded) {
+            PrimaryButton(
+                text = SetupCopy.DOWNLOAD,
+                onClick = { onDownloadAndUse(model) },
+                enabled = !busy,
+                modifier = Modifier.weight(1f),
+            )
+        } else if (selected) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_step_done),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    "In use",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        } else {
+            SecondaryButton(
+                text = "Use",
+                onClick = { onSelect(model) },
+                enabled = !busy,
+                modifier = Modifier.weight(1f),
             )
         }
-        ModelActions(
-            model = model,
-            state = state,
-            selected = selected,
-            busy = busy,
-            useLabel = "Use recommended",
-            downloadLabel = "Download and use",
-            onSelect = onSelect,
-            onDownload = onDownloadAndUse,
-            onCancelDownload = onCancelDownload,
-            onDelete = null,
+        SecondaryButton(
+            text = SetupCopy.BROWSE_MODELS,
+            onClick = onBrowse,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -371,14 +465,11 @@ private fun ModelCatalogSearch(
         label = { Text("Find a model") },
         placeholder = { Text("Name, language, or engine") },
     )
-    // Three chips do not fit one line at a large display scale, and a Row has
-    // nowhere to put the third: it squeezes the chip past its own label, which
-    // then sets one character per line and grows the row to the height of the
-    // page. FlowRow moves it to a second line instead.
-    FlowRow(
-        modifier = Modifier.fillMaxWidth(),
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         FilterChipMenu(
             unselectedLabel = ModelEngineFilter.ALL.displayName,
@@ -414,6 +505,7 @@ private fun AvailableModelCatalog(
     state: LocalModelState,
     selectedModelId: String,
     onInspect: (LocalModelDescriptor) -> Unit,
+    elevated: Boolean = false,
 ) {
     ModelSectionHeading(
         if (available.isEmpty()) "Catalog" else "Catalog (${available.size})",
@@ -434,6 +526,7 @@ private fun AvailableModelCatalog(
             state = state,
             selectedModelId = selectedModelId,
             onInspect = onInspect,
+            elevated = elevated,
         )
     }
 }
@@ -446,7 +539,7 @@ private fun OversizedModelNotice(
     onSelect: (LocalModelDescriptor) -> Unit,
     onDownloadAndUse: (LocalModelDescriptor) -> Unit,
 ) {
-    Notice(tone = NoticeTone.Attention) {
+    Notice(tone = NoticeTone.Warning) {
         Text(
             "This Whisper model can be slow on this phone. " +
                 "${recommended.displayName} is the faster match we would start with.",
@@ -472,7 +565,6 @@ private fun ModelSectionHeading(title: String) {
     Text(
         title,
         style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.padding(top = 4.dp),
     )
 }
@@ -483,6 +575,7 @@ private fun ModelTileGrid(
     state: LocalModelState,
     selectedModelId: String,
     onInspect: (LocalModelDescriptor) -> Unit,
+    elevated: Boolean = false,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         models.chunked(2).forEach { row ->
@@ -501,6 +594,7 @@ private fun ModelTileGrid(
                         progress = state.progress,
                         onClick = { onInspect(model) },
                         modifier = Modifier.weight(1f),
+                        elevated = elevated,
                     )
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
@@ -518,12 +612,19 @@ private fun ModelTile(
     progress: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    elevated: Boolean = false,
 ) {
     val colors = MaterialTheme.colorScheme
+    val slow = LocalModelCatalog.isSlowOnMobile(model)
     Surface(
         modifier = modifier.fillMaxHeight(),
         onClick = onClick,
-        color = if (selected) colors.primaryContainer else colors.surfaceContainerLow,
+        color = when {
+            selected -> colors.primaryContainer
+            slow -> colors.tertiaryContainer
+            elevated -> colors.surfaceContainerHigh
+            else -> colors.surfaceContainerLow
+        },
         shape = MaterialTheme.shapes.large,
         border = if (selected) BorderStroke(1.dp, colors.primary) else null,
     ) {
@@ -542,7 +643,7 @@ private fun ModelTile(
             Text(
                 "${model.sizeLabel} · ${model.engineLabel()}",
                 style = MaterialTheme.typography.bodySmall,
-                color = colors.onSurfaceVariant,
+                color = if (slow && !selected) colors.onTertiaryContainer else colors.onSurfaceVariant,
             )
             Spacer(Modifier.weight(1f))
             Text(
@@ -550,10 +651,15 @@ private fun ModelTile(
                     downloading -> "Downloading $progress%"
                     selected -> "In use"
                     installed -> "Installed"
+                    slow -> SetupCopy.SLOW_ON_PHONES
                     else -> model.languages
                 },
                 style = MaterialTheme.typography.labelSmall,
-                color = if (selected || downloading) colors.primary else colors.onSurfaceVariant,
+                color = when {
+                    selected || downloading -> colors.primary
+                    slow -> colors.tertiary
+                    else -> colors.onSurfaceVariant
+                },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -602,6 +708,14 @@ private fun ModelDetailSheet(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (LocalModelCatalog.isSlowOnMobile(model)) {
+                Notice(tone = NoticeTone.Warning) {
+                    Text(
+                        SetupCopy.SLOW_ON_PHONES_DETAIL,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             ModelActions(
                 model = model,
                 state = state,

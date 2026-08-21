@@ -55,6 +55,12 @@ private val VocaPhoneLightColors = lightColorScheme(
     outline = Color(0xFF767F7A),
     outlineVariant = Color(0xFFC6CDC8),
     error = Color(0xFFB3261E),
+    errorContainer = Color(0xFFF9DEDC),
+    onErrorContainer = Color(0xFF410E0B),
+    tertiary = Color(0xFF8B5A00),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFFFE2B0),
+    onTertiaryContainer = Color(0xFF2A1A00),
 )
 
 // internal, not private: ColorPaletteTest reads it to pin res/values/colors.xml
@@ -85,6 +91,12 @@ internal val VocaPhoneDarkColors = darkColorScheme(
     outline = Color(0xFF89928C),
     outlineVariant = Color(0xFF3C403D),
     error = Color(0xFFFFB4AB),
+    errorContainer = Color(0xFF8C1D18),
+    onErrorContainer = Color(0xFFFFDAD6),
+    tertiary = Color(0xFFF0B35A),
+    onTertiary = Color(0xFF3D2800),
+    tertiaryContainer = Color(0xFF5C3D00),
+    onTertiaryContainer = Color(0xFFFFE2B0),
 )
 
 /** A stable, quiet palette that does not inherit a device wallpaper's colours. */

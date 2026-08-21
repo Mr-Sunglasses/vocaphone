@@ -3,10 +3,6 @@ package com.vocahq.vocaphone.ime
 import android.graphics.BitmapFactory
 import android.os.SystemClock
 import android.view.HapticFeedbackConstants
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -48,6 +44,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -147,7 +144,7 @@ internal fun VocaPhoneKeyboard(
     emojiCatalog: List<EmojiEntry>,
     onCommand: (KeyboardCommand) -> Unit,
     onMicTap: () -> Unit,
-    onOpenApp: () -> Unit,
+    onMicLongPress: () -> Unit,
     onOpenSettings: (String) -> Unit,
     onLanguageSelected: (TranscriptionLanguage) -> Unit,
     onStyleSelected: (WritingStyle) -> Unit,
@@ -350,19 +347,12 @@ internal fun VocaPhoneKeyboard(
         ) {
             clearSwipe()
         }
-        if (
-            key.type == KeyboardKeyType.SHIFT &&
-            editorText.selected.any { it.isLetter() }
-        ) {
-            keyboardState = keyboardState.copy(composing = "")
-            onCommand(KeyboardCommand.CycleSelectionCase)
-            return
-        }
         val reduction = KeyboardReducer.press(
             state = keyboardState,
             key = key,
             nowMillis = SystemClock.uptimeMillis(),
             composeWords = composeWords,
+            hasSelection = editorText.hasSelection || editorText.selected.any { it.isLetter() },
         )
         keyboardState = reduction.state
         reduction.command?.let(onCommand)
@@ -493,8 +483,26 @@ internal fun VocaPhoneKeyboard(
                     asciiEmojiEnabled = settings.asciiEmojiEnabled,
                     onEmojiCategory = { emojiCategory = it },
                     onMicTap = onMicTap,
-                    onOpenApp = onOpenApp,
+                    onMicLongPress = onMicLongPress,
                     menuOpen = preferencePanel == PreferencePanel.MENU,
+                    panelTitle = when (preferencePanel) {
+                        PreferencePanel.MENU -> "Keyboard"
+                        PreferencePanel.LANGUAGE -> "Language"
+                        PreferencePanel.STYLE -> "Style"
+                        PreferencePanel.CLIPBOARD -> "Clipboard"
+                        null -> null
+                    },
+                    panelActionLabel = if (
+                        preferencePanel == PreferencePanel.CLIPBOARD &&
+                            settings.clipboardHistory.isNotEmpty()
+                    ) {
+                        "Clear"
+                    } else {
+                        null
+                    },
+                    panelActionDestructive = true,
+                    onPanelAction = onClearClipboardHistory,
+                    onClosePanel = { preferencePanel = null },
                     onMenuTap = {
                         preferencePanel = if (preferencePanel == PreferencePanel.MENU) {
                             null
@@ -552,7 +560,6 @@ internal fun VocaPhoneKeyboard(
                             onPasteClipboard(text)
                         },
                         onRemove = onRemoveClipboardHistory,
-                        onClear = onClearClipboardHistory,
                         onClose = { preferencePanel = null },
                     )
                     PreferencePanel.LANGUAGE -> LanguagePreferencePanel(
@@ -630,6 +637,14 @@ internal fun VocaPhoneKeyboard(
 
 private val RowGap = 5.dp
 
+/** Material 3 icon-button minimum. Fits Compact's 48 dp dictation bar. */
+private val ToolbarControlSize = 48.dp
+
+/** Suggestion-strip slot for a clipboard chip. Short clips pad out; long ones ellipsize. */
+private val ClipboardChipMinWidth = 148.dp
+private val ClipboardChipMaxWidth = 220.dp
+private val ClipboardChipHeight = 32.dp
+
 @Composable
 private fun DictationBar(
     state: DictationState,
@@ -644,8 +659,13 @@ private fun DictationBar(
     asciiEmojiEnabled: Boolean,
     onEmojiCategory: (EmojiCategory) -> Unit,
     onMicTap: () -> Unit,
-    onOpenApp: () -> Unit,
+    onMicLongPress: () -> Unit,
     menuOpen: Boolean,
+    panelTitle: String? = null,
+    panelActionLabel: String? = null,
+    panelActionDestructive: Boolean = false,
+    onPanelAction: () -> Unit = {},
+    onClosePanel: () -> Unit = {},
     onMenuTap: () -> Unit,
     onPaste: () -> Unit,
     onDismissClipboard: () -> Unit,
@@ -666,7 +686,8 @@ private fun DictationBar(
         idle -> ""
         state.phase == DictationPhase.LISTENING && state.partialTranscript.isNotBlank() ->
             state.partialTranscript.replace('\n', ' ').take(64)
-        state.phase == DictationPhase.LISTENING -> state.inputRouteLabel ?: "Tap the mic again to finish"
+        state.phase == DictationPhase.LISTENING ->
+            state.inputRouteLabel ?: "Tap the red button to finish"
         state.phase.isBusy -> "You can keep typing while VocaPhone works"
         state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone to finish setup"
         state.phase == DictationPhase.FAILED -> "Tap the mic to try again"
@@ -683,7 +704,7 @@ private fun DictationBar(
     ) {
         Box(
             modifier = Modifier
-                .size(36.dp)
+                .size(ToolbarControlSize)
                 .clip(CircleShape)
                 .background(
                     if (menuOpen) {
@@ -694,7 +715,7 @@ private fun DictationBar(
                 )
                 .semantics {
                     role = Role.Button
-                    contentDescription = "Keyboard menu. Long press to open VocaPhone."
+                    contentDescription = "Keyboard menu"
                 }
                 .pointerInput(idle, menuOpen) {
                     detectTapGestures(
@@ -702,18 +723,15 @@ private fun DictationBar(
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                             if (idle) onMenuTap()
                         },
-                        onLongPress = {
-                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                            onOpenApp()
-                        },
                     )
                 },
             contentAlignment = Alignment.Center,
         ) {
-            KeyboardIcon(
-                glyph = Glyph.SETTINGS,
+            Icon(
+                painter = painterResource(R.drawable.ic_keyboard_menu),
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
             )
         }
 
@@ -725,6 +743,18 @@ private fun DictationBar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             when {
+                panelTitle != null -> {
+                    Text(
+                        text = panelTitle,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(start = 8.dp),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 !idle || !editor.dictationAllowed -> {
                     Box(
                         modifier = Modifier
@@ -776,13 +806,21 @@ private fun DictationBar(
                     onSelect = onEmojiCategory,
                     modifier = Modifier.weight(1f),
                 )
-                clipboard != null -> ClipboardChipButton(
-                    preview = clipboard.preview,
-                    imagePath = clipboard.imagePath,
-                    onClick = onPaste,
-                    onLongClick = onDismissClipboard,
-                    modifier = Modifier.weight(1f),
-                )
+                clipboard != null -> {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ClipboardChipButton(
+                            preview = clipboard.preview,
+                            imagePath = clipboard.imagePath,
+                            onClick = onPaste,
+                            onLongClick = onDismissClipboard,
+                        )
+                    }
+                }
                 suggestions.isNotEmpty() -> SuggestionStripRow(
                     suggestions = suggestions,
                     onSuggestion = onSuggestion,
@@ -791,6 +829,35 @@ private fun DictationBar(
             }
         }
 
+        if (panelActionLabel != null) {
+            TextButton(
+                onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    onPanelAction()
+                },
+                enabled = !isPreferenceWritePending,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = if (panelActionDestructive) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp),
+            ) {
+                Text(
+                    panelActionLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                )
+            }
+        }
+        if (panelTitle != null) {
+            ToolbarCloseButton(onClick = onClosePanel)
+        }
+        if (state.phase.isBusy) {
+            DictationCancelButton(onClick = onMicLongPress)
+        }
         MicButton(
             state = state,
             enabled = editor.dictationAllowed && !isPreferenceWritePending,
@@ -809,7 +876,7 @@ private fun ToolbarIconButton(
 ) {
     Surface(
         modifier = Modifier
-            .size(36.dp)
+            .size(ToolbarControlSize)
             .semantics {
                 role = Role.Button
                 this.contentDescription = contentDescription
@@ -847,12 +914,7 @@ private fun ToolbarMenuPanel(
     onOpenSettings: (String) -> Unit,
     onClose: () -> Unit,
 ) {
-    PreferencePanelShell(
-        title = "Keyboard",
-        subtitle = "Tiles open a panel or the app.",
-        height = height,
-        onClose = onClose,
-    ) {
+    PreferencePanelShell(height = height) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -948,28 +1010,9 @@ private fun ClipboardHistoryPanel(
     enabled: Boolean,
     onPaste: (String) -> Unit,
     onRemove: (String) -> Unit,
-    onClear: () -> Unit,
     onClose: () -> Unit,
 ) {
-    PreferencePanelShell(
-        title = "Clipboard",
-        subtitle = if (items.isEmpty()) {
-            "Copy text or an image to save it here"
-        } else {
-            "Tap to paste. Long press to remove."
-        },
-        height = height,
-        onClose = onClose,
-    ) {
-        if (items.isNotEmpty()) {
-            TextButton(
-                onClick = onClear,
-                enabled = enabled,
-                modifier = Modifier.align(Alignment.End),
-            ) {
-                Text("Clear", fontSize = 12.sp)
-            }
-        }
+    PreferencePanelShell(height = height) {
         if (items.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -984,48 +1027,91 @@ private fun ClipboardHistoryPanel(
                 )
             }
         } else {
-            LazyColumn(
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+                contentPadding = PaddingValues(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                items(items, key = { it.hashCode().toString() + it.take(12) }) { stored ->
-                    val image = ClipboardHistory.parseImage(stored)
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .pointerInput(stored) {
-                                detectTapGestures(
-                                    onTap = { if (enabled) onPaste(stored) },
-                                    onLongPress = { if (enabled) onRemove(stored) },
-                                )
-                            },
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            if (image != null) {
-                                ClipboardThumb(
-                                    relativePath = image.second,
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(6.dp)),
-                                )
-                            }
-                            Text(
-                                text = ClipboardHistory.preview(stored),
-                                fontSize = 13.sp,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
+                gridItems(
+                    items,
+                    key = { it.hashCode().toString() + it.take(12) },
+                ) { stored ->
+                    ClipboardHistoryTile(
+                        stored = stored,
+                        enabled = enabled,
+                        onPaste = { onPaste(stored) },
+                        onRemove = { onRemove(stored) },
+                    )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ClipboardHistoryTile(
+    stored: String,
+    enabled: Boolean,
+    onPaste: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val image = ClipboardHistory.parseImage(stored)
+    val preview = if (image != null) {
+        "Image"
+    } else {
+        KeyboardChrome.clipboardPreview(stored).let { short ->
+            if (short == "Copied JSON") short else ClipboardHistory.preview(stored)
+        }
+    }
+    Surface(
+        modifier = Modifier.height(88.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        enabled = enabled,
+        onClick = onPaste,
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            if (image != null) {
+                ClipboardThumb(
+                    relativePath = image.second,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(6.dp)),
+                )
+            } else {
+                Text(
+                    text = preview,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(start = 10.dp, end = 28.dp, top = 8.dp, bottom = 8.dp),
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(32.dp)
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Remove from clipboard"
+                    }
+                    .clickable(enabled = enabled, onClick = onRemove),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_cancel),
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -1063,12 +1149,15 @@ private fun LanguagePreferencePanel(
         onDevice = settings.localTranscriptionEnabled,
     )
 
-    PreferencePanelShell(
-        title = "Transcription language",
-        subtitle = restriction ?: "Choose the language used for voice dictation",
-        height = height,
-        onClose = onClose,
-    ) {
+    PreferencePanelShell(height = height) {
+        if (restriction != null) {
+            Text(
+                restriction,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            )
+        }
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1149,12 +1238,7 @@ private fun StylePreferencePanel(
     onSelected: (WritingStyle) -> Unit,
     onClose: () -> Unit,
 ) {
-    PreferencePanelShell(
-        title = "Writing style",
-        subtitle = "Controls punctuation and capitalization only",
-        height = height,
-        onClose = onClose,
-    ) {
+    PreferencePanelShell(height = height) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1240,10 +1324,7 @@ private fun RowScope.StyleOptionCard(
 
 @Composable
 private fun PreferencePanelShell(
-    title: String,
-    subtitle: String,
     height: Dp,
-    onClose: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
@@ -1254,49 +1335,37 @@ private fun PreferencePanelShell(
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow,
     ) {
-        Column(Modifier.padding(4.dp)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(34.dp)
-                    .padding(start = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                    )
-                    Text(
-                        text = subtitle,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 9.sp,
-                        lineHeight = 10.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Surface(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .semantics { contentDescription = "Close selector" },
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    onClick = onClose,
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "×",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 20.sp,
-                        )
-                    }
-                }
+        Column(
+            modifier = Modifier.padding(4.dp),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun ToolbarCloseButton(onClick: () -> Unit) {
+    val view = LocalView.current
+    Box(
+        modifier = Modifier
+            .size(ToolbarControlSize)
+            .clip(CircleShape)
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .semantics {
+                role = Role.Button
+                contentDescription = "Close"
             }
-            content()
-        }
+            .clickable {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onClick()
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_cancel),
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -1309,6 +1378,34 @@ private val WritingStyle.keyboardDetail: String
         WritingStyle.VERY_CASUAL -> "Lowercase + commas"
         WritingStyle.EXCITED -> "Statements end with !"
     }
+
+@Composable
+private fun DictationCancelButton(onClick: () -> Unit) {
+    val view = LocalView.current
+    Surface(
+        modifier = Modifier
+            .size(ToolbarControlSize)
+            .semantics {
+                role = Role.Button
+                contentDescription = "Cancel dictation"
+            }
+            .clickable {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                onClick()
+            },
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.errorContainer,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                painter = painterResource(R.drawable.ic_cancel),
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
+    }
+}
 
 @Composable
 private fun MicButton(
@@ -1327,7 +1424,7 @@ private fun MicButton(
     val description = when {
         !enabled -> "Dictation unavailable"
         recording -> "Finish dictation"
-        processing -> "Cancel dictation"
+        processing -> "Dictation in progress"
         state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone"
         else -> "Start dictation"
     }
@@ -1346,19 +1443,23 @@ private fun MicButton(
 
     Surface(
         modifier = Modifier
-            .size(40.dp)
+            .size(ToolbarControlSize)
             .semantics {
                 role = Role.Button
                 contentDescription = description
                 if (!enabled) disabled()
+            }
+            .pointerInput(enabled) {
+                if (!enabled) return@pointerInput
+                detectTapGestures(
+                    onTap = {
+                        view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                        onClick()
+                    },
+                )
             },
         shape = CircleShape,
         color = container,
-        enabled = enabled,
-        onClick = {
-            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-            onClick()
-        },
     ) {
         Box(contentAlignment = Alignment.Center) {
             when {
@@ -1419,66 +1520,78 @@ private fun ClipboardChipButton(
     imagePath: String? = null,
 ) {
     val view = LocalView.current
-    var dismissing by remember(preview) { mutableStateOf(false) }
-    LaunchedEffect(dismissing) {
-        if (dismissing) {
-            delay(180)
-            onLongClick()
-        }
-    }
-    AnimatedVisibility(
-        visible = !dismissing,
-        enter = fadeIn(),
-        exit = fadeOut() + shrinkHorizontally(),
-        modifier = modifier,
-    ) {
+    // Material 3 input chip: label + trailing remove, fixed height, ellipsis
+    // instead of growing with the clip. Centered in the suggestion strip so a
+    // short paste and a long one occupy the same slot.
     Surface(
-        modifier = Modifier
-            .height(32.dp)
-            .semantics {
-                role = Role.Button
-                contentDescription = "Clipboard, $preview. Long press to dismiss."
-            }
-            .pointerInput(preview) {
-                detectTapGestures(
-                    onTap = { onClick() },
-                    onLongPress = {
-                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        dismissing = true
-                    },
-                )
-            },
-        shape = RoundedCornerShape(10.dp),
+        modifier = modifier
+            .height(ClipboardChipHeight)
+            .widthIn(min = ClipboardChipMinWidth, max = ClipboardChipMaxWidth),
+        shape = RoundedCornerShape(percent = 50),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            if (imagePath != null) {
-                ClipboardThumb(
-                    relativePath = imagePath,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                )
-            } else {
-                KeyboardIcon(
-                    glyph = Glyph.CLIPBOARD,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp),
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Paste clipboard, $preview"
+                    }
+                    .clickable {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        onClick()
+                    }
+                    .padding(start = 12.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (imagePath != null) {
+                    ClipboardThumb(
+                        relativePath = imagePath,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clip(RoundedCornerShape(4.dp)),
+                    )
+                } else {
+                    KeyboardIcon(
+                        glyph = Glyph.CLIPBOARD,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+                Text(
+                    text = preview,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = preview,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Box(
+                modifier = Modifier
+                    .size(ClipboardChipHeight)
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Dismiss clipboard"
+                    }
+                    .clickable {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        onLongClick()
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_cancel),
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-    }
     }
 }
 
@@ -2200,8 +2313,8 @@ private fun KeyContent(
             ReturnKeyKind.GO -> KeyLabel("Go", tint, utility = true)
             ReturnKeyKind.SEND -> KeyLabel("Send", tint, utility = true)
         }
-        KeyboardKeyType.SPACE -> if (!SplitKeyboardLayout.isSplitSpace(key)) {
-            KeyLabel("VocaPhone", tint.copy(alpha = 0.78f), utility = true)
+        KeyboardKeyType.SPACE -> {
+            // Unlabeled, same as the system space bar.
         }
         KeyboardKeyType.LAYER_SWITCH -> KeyLabel(displayLabel, tint, utility = true)
         KeyboardKeyType.CHARACTER -> {
@@ -2249,7 +2362,6 @@ private enum class Glyph {
     PREVIOUS,
     DONE,
     CLIPBOARD,
-    SETTINGS,
 }
 
 @Composable
@@ -2366,38 +2478,6 @@ private fun KeyboardIcon(
                 )
                 drawLine(tint, Offset(w * 0.34f, h * 0.48f), Offset(w * 0.66f, h * 0.48f), stroke.width)
                 drawLine(tint, Offset(w * 0.34f, h * 0.64f), Offset(w * 0.58f, h * 0.64f), stroke.width)
-            }
-            Glyph.SETTINGS -> {
-                drawCircle(
-                    color = tint,
-                    radius = w * 0.16f,
-                    center = Offset(w * 0.5f, h * 0.5f),
-                    style = stroke,
-                )
-                drawCircle(
-                    color = tint,
-                    radius = w * 0.34f,
-                    center = Offset(w * 0.5f, h * 0.5f),
-                    style = stroke,
-                )
-                repeat(6) { index ->
-                    val angle = (index * 60f) * (PI.toFloat() / 180f)
-                    val inner = w * 0.34f
-                    val outer = w * 0.46f
-                    drawLine(
-                        color = tint,
-                        start = Offset(
-                            w * 0.5f + kotlin.math.cos(angle) * inner,
-                            h * 0.5f + sin(angle) * inner,
-                        ),
-                        end = Offset(
-                            w * 0.5f + kotlin.math.cos(angle) * outer,
-                            h * 0.5f + sin(angle) * outer,
-                        ),
-                        strokeWidth = stroke.width,
-                        cap = StrokeCap.Round,
-                    )
-                }
             }
         }
     }

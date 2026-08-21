@@ -14,7 +14,8 @@ class DeviceProfileTest {
         abi: String = "arm64-v8a",
         khz: Int = 0,
         sherpa: Boolean = true,
-    ) = DeviceProfile(ram, cores, mpc, abi, khz, sherpa)
+        language: String = "en",
+    ) = DeviceProfile(ram, cores, mpc, abi, khz, sherpa, language)
 
     @Test
     fun `tiers follow ram, abi, clock and performance class`() {
@@ -39,16 +40,55 @@ class DeviceProfileTest {
     }
 
     @Test
-    fun `sherpa phones pick the best fitting transducer, not a hardcoded id`() {
-        for (ram in listOf(8L, 16L, 20L)) {
-            val pick = LocalModelCatalog.recommended(profile(ram))
-            assertEquals(SherpaFamily.NEMO_TRANSDUCER, pick.sherpaFamily)
+    fun `english default is a small moonshine, not a 670 MB parakeet`() {
+        for (ram in listOf(4L, 8L, 16L, 20L)) {
+            val pick = LocalModelCatalog.recommended(profile(ram, language = "en"))
+            assertEquals("moonshine-tiny-en", pick.id)
+            assertTrue(pick.sizeBytes < 200_000_000L)
             assertTrue(pick.minimumRamGB <= profile(ram).modelRamBudgetGB)
         }
-        // Current catalog: multilingual Parakeet is the only transducer that
-        // also covers more than English, so it wins the score on every tier
-        // that can hold a 4 GB floor.
-        assertEquals("parakeet-tdt-0.6b-v3", LocalModelCatalog.recommended(profile(8)).id)
+        val parakeet = LocalModelCatalog.find("parakeet-tdt-0.6b-v3")!!
+        assertTrue(LocalModelCatalog.isUsableOnDevice(parakeet, 8, sherpaAvailable = true))
+    }
+
+    @Test
+    fun `the default follows the phone language`() {
+        assertEquals(
+            "canary-180m-flash",
+            LocalModelCatalog.recommended(profile(8, language = "de")).id,
+        )
+        assertEquals(
+            "canary-180m-flash",
+            LocalModelCatalog.recommended(profile(8, language = "es")).id,
+        )
+        assertEquals(
+            "canary-180m-flash",
+            LocalModelCatalog.recommended(profile(8, language = "fr")).id,
+        )
+        assertEquals(
+            "paraformer-zh-small",
+            LocalModelCatalog.recommended(profile(8, language = "zh")).id,
+        )
+        assertEquals(
+            "sense-voice",
+            LocalModelCatalog.recommended(profile(8, language = "ja")).id,
+        )
+        assertEquals(
+            "sense-voice",
+            LocalModelCatalog.recommended(profile(8, language = "ko")).id,
+        )
+        assertEquals(
+            "giga-am-ctc-ru",
+            LocalModelCatalog.recommended(profile(8, language = "ru")).id,
+        )
+        assertEquals(
+            "dolphin-base-ctc",
+            LocalModelCatalog.recommended(profile(8, language = "hi")).id,
+        )
+        val italian = LocalModelCatalog.recommended(profile(8, language = "it"))
+        assertEquals(LocalModelEngine.WHISPER, italian.engine)
+        assertTrue(italian.sizeBytes < 200_000_000L)
+        assertTrue(italian.coversLanguage("it"))
     }
 
     @Test
@@ -76,10 +116,12 @@ class DeviceProfileTest {
             "base-q5_1",
             LocalModelCatalog.recommended(profile(8, mpc = 0, sherpa = false)).id,
         )
-        assertEquals(
-            "large-v3-turbo",
-            LocalModelCatalog.recommended(profile(12, mpc = 34, sherpa = false)).id,
-        )
+        // Large v3 / turbo stays in the catalog with a slow-on-phone mark.
+        // First-run must not start a 1.6 GB download even on a flagship.
+        val flagship = LocalModelCatalog.recommended(profile(12, mpc = 34, sherpa = false))
+        assertEquals(LocalModelEngine.WHISPER, flagship.engine)
+        assertTrue(flagship.sizeBytes < 600_000_000L)
+        assertTrue(!flagship.id.contains("large"))
         assertEquals(
             "small-q5_1",
             LocalModelCatalog.recommended(profile(16, sherpa = false)).id,

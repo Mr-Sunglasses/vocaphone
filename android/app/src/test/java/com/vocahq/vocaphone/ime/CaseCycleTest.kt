@@ -18,11 +18,23 @@ class CaseCycleTest {
     }
 
     @Test
-    fun `several words cycle camel, sentence title, upper, then lower`() {
-        assertEquals("hello World", CaseCycle.next("hello world"))
-        assertEquals("Hello world", CaseCycle.next("hello World"))
+    fun `several words cycle title, upper, then lower`() {
+        assertEquals("Hello world", CaseCycle.next("hello world"))
         assertEquals("HELLO WORLD", CaseCycle.next("Hello world"))
         assertEquals("hello world", CaseCycle.next("HELLO WORLD"))
+    }
+
+    @Test
+    fun `mixed original spelling comes back after lower`() {
+        val original = "iPhone"
+        val title = CaseCycle.next(original, original)
+        val upper = CaseCycle.next(title, original)
+        val lower = CaseCycle.next(upper, original)
+        val restored = CaseCycle.next(lower, original)
+        assertEquals("Iphone", title)
+        assertEquals("IPHONE", upper)
+        assertEquals("iphone", lower)
+        assertEquals("iPhone", restored)
     }
 
     @Test
@@ -32,9 +44,9 @@ class CaseCycleTest {
 
     @Test
     fun `apostrophes stay inside the word`() {
-        assertEquals("don't Stop", CaseCycle.next("don't stop"))
-        assertEquals("Don't stop", CaseCycle.next("don't Stop"))
+        assertEquals("Don't stop", CaseCycle.next("don't stop"))
         assertEquals("DON'T STOP", CaseCycle.next("Don't stop"))
+        assertEquals("don't stop", CaseCycle.next("DON'T STOP"))
     }
 
     @Test

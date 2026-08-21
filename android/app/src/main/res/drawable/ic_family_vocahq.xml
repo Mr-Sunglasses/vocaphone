@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Headset mark from assets/vocaphone-mark.svg, origin-shifted into 276×329. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="276"
+    android:viewportHeight="329">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M73.5,65 A65,65 0,0,1 203.5,65 L203.5,162 A65,65 0,0,1 73.5,162 Z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M54.37,140.02 A87,87 0,1,0 221.63,140.02" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M138,251 L138,320" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M79.5,320 L196.5,320" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M32.62,106.78 A129,99.2 0,0,0 32.62,221.22" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FF000000"
+        android:strokeWidth="18"
+        android:strokeLineCap="round"
+        android:pathData="M243.38,106.78 A129,99.2 0,0,1 243.38,221.22" />
+</vector>

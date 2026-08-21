@@ -18,6 +18,20 @@ class KeyboardReducerTest {
     }
 
     @Test
+    fun `shift on a selection cycles case instead of arming caps`() {
+        val result = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF, composing = "hi"),
+            shiftKey(),
+            nowMillis = 1_000,
+            hasSelection = true,
+        )
+
+        assertEquals(KeyboardCommand.CycleSelectionCase, result.command)
+        assertEquals(ShiftState.OFF, result.state.shift)
+        assertEquals("", result.state.composing)
+    }
+
+    @Test
     fun `double tapping shift enables caps lock`() {
         val first = KeyboardReducer.press(
             KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),

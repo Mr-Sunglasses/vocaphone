@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.ui
 
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelEngine
+import com.vocahq.vocaphone.local.SherpaFamily
 
 enum class ModelEngineFilter(val displayName: String) {
     ALL("All engines"),
@@ -38,6 +39,30 @@ fun LocalModelDescriptor.catalogMeta(recommended: Boolean = false): String = bui
 
 /** Size and languages only. First-run does not need engine or hardware. */
 fun LocalModelDescriptor.setupMeta(): String = "$sizeLabel · $languages"
+
+/**
+ * Why this model is the default. First-run has to say that in one line,
+ * without RAM budgets or CPU clocks.
+ */
+fun LocalModelDescriptor.recommendationWhy(): String = when (sherpaFamily) {
+    SherpaFamily.NEMO_TRANSDUCER ->
+        "The fastest multilingual model that fits this phone."
+    SherpaFamily.MOONSHINE ->
+        "A small English model, so the first download stays light."
+    SherpaFamily.SENSE_VOICE, SherpaFamily.CANARY, SherpaFamily.PARAFORMER ->
+        "Matches this phone's language without a large download."
+    SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC ->
+        "A compact model for this phone's language."
+    null -> if (engine == LocalModelEngine.WHISPER) {
+        if (englishOnly) {
+            "A small English Whisper model that fits this phone."
+        } else {
+            "A small Whisper model that covers this phone's language."
+        }
+    } else {
+        "The best fit for this phone."
+    }
+}
 
 /**
  * What the model picker puts on the page.

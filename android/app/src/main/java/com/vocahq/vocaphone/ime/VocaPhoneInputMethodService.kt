@@ -87,6 +87,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var lastCandidatesEnd = -1
     private var lastSelStart = -1
     private var lastSelEnd = -1
+    private var caseCycleOriginal: String? = null
+    private var caseCycleEmitted: String? = null
 
     private val editorTextRefresh = Runnable { refreshEditorText() }
 
@@ -103,6 +105,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         scope.launch {
             container.settings.settings.collect { settings ->
                 visibleSettings.value = settings
+                if (ignoredClipboardText == null && settings.dismissedClipboardText.isNotEmpty()) {
+                    ignoredClipboardText = settings.dismissedClipboardText
+                }
                 refreshClipboard()
             }
         }
@@ -134,7 +139,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             emojiCatalog = emojis,
             onCommand = ::handleCommand,
             onMicTap = ::toggleDictation,
-            onOpenApp = { openCompanion() },
+            onMicLongPress = ::cancelDictationFromMic,
             onOpenSettings = ::openCompanion,
             onLanguageSelected = ::setLanguage,
             onStyleSelected = ::setStyle,
@@ -228,7 +233,6 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         lastSelStart = newSelStart
         lastSelEnd = newSelEnd
         if (userMove) {
-            currentInputConnection?.finishComposingText()
             editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
             // A tap somewhere else is a new sentence position, so the pending
             // shift has to be re-read there. Without this the ONCE armed at the
@@ -238,7 +242,14 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             // Only for a plain cursor. Once there is a selection the shift key
             // cycles its case instead of arming a capital, and "in a word" has
             // no answer for a span that covers several.
-            if (newSelStart == newSelEnd) syncShiftFromCursor()
+            //
+            // finishComposingText on a range selection is what made shift-to-
+            // cycle miss: several editors collapse the highlight when composing
+            // is finished, so getSelectedText came back empty.
+            if (newSelStart == newSelEnd) {
+                currentInputConnection?.finishComposingText()
+                syncShiftFromCursor()
+            }
         }
         // Selecting text is rare and the shift key changes meaning once there
         // is a selection, so that one reads straight away. Typing conflates.
@@ -258,6 +269,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         lastCandidatesEnd = -1
         lastSelStart = -1
         lastSelEnd = -1
+        caseCycleOriginal = null
+        caseCycleEmitted = null
         mainHandler.removeCallbacks(editorTextRefresh)
         editorConfig = KeyboardEditorConfig.empty().copy(sessionId = editorSession)
         super.onFinishInput()
@@ -398,7 +411,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             currentInputConnection?.commitText(text, 1) == true
         }
         if (!pasted) return
-        ignoredClipboardText = text
+        rememberDismissedClip(text)
         if (visibleClipboard.value?.fullText == text) visibleClipboard.value = null
         syncShiftFromCursor()
         scheduleEditorTextRefresh()
@@ -420,9 +433,18 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     private fun dismissClipboard() {
-        ignoredClipboardText = visibleClipboard.value?.fullText ?: return
+        val text = visibleClipboard.value?.fullText ?: return
+        rememberDismissedClip(text)
         visibleClipboard.value = null
     }
+
+    private fun rememberDismissedClip(text: String) {
+        ignoredClipboardText = text
+        persistPreference { container.settings.setDismissedClipboardText(text) }
+    }
+
+    private fun dismissedClip(settings: VocaPhoneSettings): String? =
+        ignoredClipboardText ?: settings.dismissedClipboardText.takeIf { it.isNotEmpty() }
 
     private fun removeClipboardHistory(text: String) {
         persistPreference { container.settings.removeClipboardHistory(text) }
@@ -439,18 +461,53 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private fun cycleSelectionCase() {
         val connection = currentInputConnection ?: return
         connection.finishComposingText()
-        val selected = runCatching {
-            connection.getSelectedText(0)?.toString().orEmpty()
-        }.getOrDefault("")
+        val selected = selectedText(connection)
         if (selected.none { it.isLetter() }) return
-        val next = CaseCycle.next(selected)
-        val start = runCatching {
-            connection.getExtractedText(ExtractedTextRequest(), 0)?.selectionStart
-        }.getOrNull()
-        connection.commitText(next, 1)
-        if (start != null && start >= 0) {
-            connection.setSelection(start, start + next.length)
+        val start = selectionStart(connection) ?: return
+        if (selected != caseCycleEmitted) {
+            caseCycleOriginal = selected
         }
+        val next = CaseCycle.next(selected, caseCycleOriginal ?: selected)
+        connection.beginBatchEdit()
+        connection.commitText(next, 1)
+        connection.setSelection(start, start + next.length)
+        connection.endBatchEdit()
+        lastSelStart = start
+        lastSelEnd = start + next.length
+        caseCycleEmitted = next
+        visibleEditorText.value = visibleEditorText.value.copy(
+            selected = next,
+            hasSelection = true,
+        )
+    }
+
+    private fun selectedText(connection: InputConnection): String {
+        val live = runCatching {
+            connection.getSelectedText(0)?.toString()
+        }.getOrNull()
+        if (!live.isNullOrEmpty()) return live
+        val extracted = runCatching {
+            connection.getExtractedText(ExtractedTextRequest(), 0)
+        }.getOrNull() ?: return ""
+        val start = minOf(extracted.selectionStart, extracted.selectionEnd)
+        val end = maxOf(extracted.selectionStart, extracted.selectionEnd)
+        val text = extracted.text?.toString().orEmpty()
+        if (start < 0 || end > text.length || start >= end) return ""
+        return text.substring(start, end)
+    }
+
+    private fun selectionStart(connection: InputConnection): Int? {
+        val extracted = runCatching {
+            connection.getExtractedText(ExtractedTextRequest(), 0)
+        }.getOrNull()
+        if (extracted != null) {
+            val start = minOf(extracted.selectionStart, extracted.selectionEnd)
+            if (start >= 0) return start
+        }
+        if (lastSelStart >= 0 && lastSelEnd >= 0 && lastSelStart != lastSelEnd) {
+            return minOf(lastSelStart, lastSelEnd)
+        }
+        return null
     }
 
     /**
@@ -481,6 +538,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun refreshEditorText() {
         mainHandler.removeCallbacks(editorTextRefresh)
+        val hasSelection = lastSelStart >= 0 && lastSelEnd >= 0 && lastSelStart != lastSelEnd
         val selected = if (EditorSelectionSync.mustReadSelection(lastSelStart, lastSelEnd)) {
             runCatching {
                 currentInputConnection?.getSelectedText(0)?.toString().orEmpty()
@@ -489,7 +547,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             ""
         }
         if (!visibleSettings.value.suggestionsEnabled || editorConfig.sensitive) {
-            visibleEditorText.value = EditorTextWindow(selected = selected)
+            visibleEditorText.value = EditorTextWindow(
+                selected = selected,
+                hasSelection = hasSelection,
+            )
             return
         }
         val before = runCatching {
@@ -498,7 +559,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val after = runCatching {
             currentInputConnection?.getTextAfterCursor(32, 0)?.toString().orEmpty()
         }.getOrDefault("")
-        visibleEditorText.value = EditorTextWindow(before, after, selected)
+        visibleEditorText.value = EditorTextWindow(before, after, selected, hasSelection)
     }
 
     /**
@@ -564,10 +625,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             persistPreference { container.settings.recordClipboardHistory(text) }
         }
         visibleClipboard.value = text.takeIf {
-            settings.clipboardChipEnabled && it != ignoredClipboardText
+            KeyboardChrome.offersClipboardChip(it, dismissedClip(settings), settings.clipboardChipEnabled)
         }?.let { value ->
             ClipboardChip(
-                preview = value.replace('\n', ' ').take(24),
+                preview = KeyboardChrome.clipboardPreview(value),
                 fullText = value,
             )
         }
@@ -578,7 +639,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val reused = lastRecordedClip
         if (source == lastImageSource && reused != null && ClipboardHistory.isImage(reused)) {
             visibleClipboard.value = reused.takeIf {
-                settings.clipboardChipEnabled && it != ignoredClipboardText
+                KeyboardChrome.offersClipboardChip(it, dismissedClip(settings), settings.clipboardChipEnabled)
             }?.let {
                 ClipboardChip(
                     preview = "Image",
@@ -604,7 +665,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 lastRecordedClip = encoded
             }
             visibleClipboard.value = encoded.takeIf {
-                settings.clipboardChipEnabled && it != ignoredClipboardText
+                KeyboardChrome.offersClipboardChip(it, dismissedClip(settings), settings.clipboardChipEnabled)
             }?.let {
                 ClipboardChip(preview = "Image", fullText = it, imagePath = relative)
             }
@@ -648,25 +709,34 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             !ImeInputPolicy.acceptsDictation(currentInputType) -> {
                 container.diagnostics.recordAction("input_rejected", DictationSource.IME.name)
             }
-            lastState.phase == DictationPhase.LISTENING -> {
-                container.diagnostics.recordAction("finish", DictationSource.IME.name)
-                DictationService.send(this, DictationService.ACTION_FINISH)
-            }
-            lastState.phase.isBusy -> {
-                DictationService.send(this, DictationService.ACTION_CANCEL)
-            }
-            lastState.phase == DictationPhase.PERMISSION_REPAIR -> openCompanion()
-            else -> {
-                if (lastState.phase == DictationPhase.FAILED ||
-                    lastState.phase == DictationPhase.READY_TO_INSERT ||
-                    lastState.phase == DictationPhase.INSERTED
-                ) {
-                    container.dictation.clearTransient()
+            else -> when (MicDictationControl.tap(lastState.phase)) {
+                MicDictationAction.FINISH -> {
+                    container.diagnostics.recordAction("finish", DictationSource.IME.name)
+                    DictationService.send(this, DictationService.ACTION_FINISH)
                 }
-                startedImeDictation = true
-                DictationService.start(this, DictationSource.IME)
+                MicDictationAction.CANCEL -> {
+                    container.diagnostics.recordAction("cancel", DictationSource.IME.name)
+                    DictationService.send(this, DictationService.ACTION_CANCEL)
+                }
+                MicDictationAction.OPEN_APP -> openCompanion()
+                MicDictationAction.START -> {
+                    if (lastState.phase == DictationPhase.FAILED ||
+                        lastState.phase == DictationPhase.READY_TO_INSERT ||
+                        lastState.phase == DictationPhase.INSERTED
+                    ) {
+                        container.dictation.clearTransient()
+                    }
+                    startedImeDictation = true
+                    DictationService.start(this, DictationSource.IME)
+                }
             }
         }
+    }
+
+    private fun cancelDictationFromMic() {
+        if (MicDictationControl.longPress(lastState.phase) != MicDictationAction.CANCEL) return
+        container.diagnostics.recordAction("cancel", DictationSource.IME.name)
+        DictationService.send(this, DictationService.ACTION_CANCEL)
     }
 
     private fun setLanguage(language: TranscriptionLanguage) {

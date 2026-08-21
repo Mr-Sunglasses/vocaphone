@@ -5,7 +5,6 @@ import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -30,6 +29,10 @@ class AboutCopyTest {
         assertEquals("hello@vocahq.com", CONTACT_EMAIL)
         assertEquals("mailto:hello@vocahq.com", CONTACT_MAILTO)
         assertEquals(
+            listOf("VocaHQ", "VocaLinux", "VocaMac", "VocaPhone", "VocaGateway"),
+            ABOUT_FAMILY_LINKS.map { it.label },
+        )
+        assertEquals(
             listOf(
                 "vocahq.com",
                 "vocalinux.com",
@@ -37,14 +40,26 @@ class AboutCopyTest {
                 "vocaphone.vocahq.com",
                 "vocagateway.vocahq.com",
             ),
-            ABOUT_FAMILY_LINKS.map { it.label },
+            ABOUT_FAMILY_LINKS.map { it.supporting },
         )
         assertEquals(
             listOf(FAMILY_SITE_URL, VOCALINUX_URL, VOCAMAC_URL, WEBSITE_URL, VOCAGATEWAY_SITE_URL),
             ABOUT_FAMILY_LINKS.map { it.url },
         )
-        ABOUT_FAMILY_LINKS.forEach { assertNull(it.icon) }
-        assertEquals(listOf("Discord", "X", "Email"), ABOUT_CONTACT_LINKS.map { it.label })
+        assertEquals(
+            listOf(
+                R.drawable.ic_family_vocahq,
+                R.drawable.ic_family_tux,
+                R.drawable.ic_family_apple,
+                R.drawable.ic_family_phone,
+                R.drawable.ic_family_server,
+            ),
+            ABOUT_FAMILY_LINKS.map { it.icon },
+        )
+        assertEquals(
+            listOf("Join us on Discord", "Follow us on X", "Say hi by email"),
+            ABOUT_CONTACT_LINKS.map { it.label },
+        )
         assertEquals(
             listOf(DISCORD_URL, X_URL, CONTACT_MAILTO),
             ABOUT_CONTACT_LINKS.map { it.url },
@@ -81,8 +96,9 @@ class AboutCopyTest {
     fun `about copy names the family and stays honest about status`() {
         assertEquals("VocaPhone", ABOUT_WORDMARK)
         assertEquals("Report a bug or idea", ABOUT_REPORT_BUG)
-        assertEquals("Voice-to-text for Android, kept on this phone.", ABOUT_TAGLINE)
-        assertTrue(ABOUT_TAGLINE.contains("Android"))
+        assertEquals("A keyboard you talk to. Transcription stays on this phone.", ABOUT_TAGLINE)
+        assertTrue(ABOUT_TAGLINE.contains("keyboard"))
+        assertTrue(ABOUT_TAGLINE.contains("this phone"))
         assertFalse(ABOUT_TAGLINE.contains("iPhone"))
         assertFalse(ABOUT_TAGLINE.contains("iOS"))
         assertTrue(ABOUT_STATUS.contains("Public beta"))
@@ -128,7 +144,9 @@ class AboutCopyTest {
             ABOUT_DIAGNOSTICS_NOTE,
             ABOUT_COPY_DIAGNOSTICS,
             ABOUT_CLEAR_EVENT_LOG,
-        ) + ABOUT_FAMILY_LINKS.map { it.label } + ABOUT_CONTACT_LINKS.map { it.label }) {
+        ) + ABOUT_FAMILY_LINKS.map { it.label } +
+            ABOUT_FAMILY_LINKS.mapNotNull { it.supporting } +
+            ABOUT_CONTACT_LINKS.map { it.label }) {
             assertFalse(text.contains("—"))
             assertFalse(text.contains("–"))
         }
@@ -158,8 +176,16 @@ class AboutCopyTest {
                 ?.get(1)
             assertNotNull("$stem.svg is missing a currentColor path", path)
             val xml = File(drawable, xmlName).readText()
-            assertTrue("$xmlName must keep the official $stem path", xml.contains(path!!))
             assertTrue("$xmlName must stay 24 viewport", xml.contains("android:viewportWidth=\"24\""))
+            if (stem == "discord") {
+                // Compact SVG "0 00" arc flags draw as a row of Ds on Android.
+                assertFalse(
+                    "$xmlName must expand Discord arc flags for Android",
+                    xml.contains("0 00"),
+                )
+            } else {
+                assertTrue("$xmlName must keep the official $stem path", xml.contains(path!!))
+            }
         }
     }
 }

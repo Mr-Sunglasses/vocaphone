@@ -88,7 +88,7 @@ enum class KeyboardHeight(
     val keyHeightDp: Int,
     val dictationBarDp: Int,
 ) {
-    COMPACT("compact", 42, 48),
+    COMPACT("compact", 42, 52),
     DEFAULT("default", 48, 52),
     TALL("tall", 56, 58),
     ;
@@ -175,6 +175,8 @@ data class VocaPhoneSettings(
     val clipboardChipEnabled: Boolean = true,
     val clipboardHistoryEnabled: Boolean = true,
     val clipboardHistory: List<String> = emptyList(),
+    /** Last clip the user dismissed. The chip stays down until a different copy. */
+    val dismissedClipboardText: String = "",
     val emojiRecents: List<String> = emptyList(),
     /**
      * Anonymous usage reporting. Off until the user turns it on; see
@@ -318,6 +320,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setClipboardHistoryEnabled(enabled: Boolean) = put(Keys.CLIPBOARD_HISTORY_ENABLED, enabled)
 
+    suspend fun setDismissedClipboardText(text: String) = put(Keys.DISMISSED_CLIPBOARD, text)
+
     suspend fun recordClipboardHistory(text: String) {
         var next: List<String> = emptyList()
         context.dataStore.edit { preferences ->
@@ -450,6 +454,7 @@ class SettingsRepository(private val context: Context) {
         clipboardChipEnabled = this[Keys.CLIPBOARD_CHIP] ?: true,
         clipboardHistoryEnabled = this[Keys.CLIPBOARD_HISTORY_ENABLED] ?: true,
         clipboardHistory = ClipboardHistory.decode(this[Keys.CLIPBOARD_HISTORY]),
+        dismissedClipboardText = this[Keys.DISMISSED_CLIPBOARD].orEmpty(),
         emojiRecents = decodeEmojiRecents(this[Keys.EMOJI_RECENTS]),
         telemetryEnabled = this[Keys.TELEMETRY_ENABLED]
             ?: com.vocahq.vocaphone.telemetry.TelemetryConfig.DEFAULT_ENABLED,
@@ -487,6 +492,7 @@ class SettingsRepository(private val context: Context) {
         val CLIPBOARD_CHIP = booleanPreferencesKey("keyboard_clipboard_chip")
         val CLIPBOARD_HISTORY_ENABLED = booleanPreferencesKey("keyboard_clipboard_history")
         val CLIPBOARD_HISTORY = stringPreferencesKey("keyboard_clipboard_history_items")
+        val DISMISSED_CLIPBOARD = stringPreferencesKey("keyboard_clipboard_dismissed")
         val EMOJI_RECENTS = stringPreferencesKey("keyboard_emoji_recents")
         val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
         val TELEMETRY_ASKED = booleanPreferencesKey("telemetry_asked")

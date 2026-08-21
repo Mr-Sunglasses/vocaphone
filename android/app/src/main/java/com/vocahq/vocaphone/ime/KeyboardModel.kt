@@ -156,6 +156,23 @@ internal object KeyboardChrome {
         alreadyPasted: Boolean = false,
     ): ClipboardChip? = clipboard.takeIf { !alreadyPasted && !startedTyping }
 
+    /**
+     * Dismissing the chip hides that clip until a different one is copied.
+     * Switching apps re-reads the same primary clip; that must not bring it back.
+     */
+    fun offersClipboardChip(
+        clipText: String?,
+        ignoredText: String?,
+        chipEnabled: Boolean,
+    ): Boolean = chipEnabled && !clipText.isNullOrEmpty() && clipText != ignoredText
+
+    /** Short label on the chip. JSON is named instead of dumping the first keys. */
+    fun clipboardPreview(text: String): String {
+        val compact = text.replace('\n', ' ').trim()
+        if (compact.startsWith("{") || compact.startsWith("[")) return "Copied JSON"
+        return compact.take(24)
+    }
+
     fun suggestionsForStrip(
         suggestions: List<SuggestionItem>,
         startedTyping: Boolean,
@@ -270,28 +287,32 @@ internal data class EditorTextWindow(
     val before: String = "",
     val after: String = "",
     val selected: String = "",
+    val hasSelection: Boolean = false,
 )
 
-/** Shift on a selection: camel → title → ALL CAPS → lower. */
+/**
+ * Shift on a selection: Title case → ALL CAPS → lower → the original spelling.
+ *
+ * [original] is how the span looked when the cycle started. Mixed spellings
+ * (iPhone) are not one of the three derived forms, so they come back as the
+ * fourth step instead of being lost.
+ */
 internal object CaseCycle {
-    fun next(text: String): String {
+    fun next(text: String, original: String = text): String {
         if (text.none { it.isLetter() }) return text
         val options = linkedSetOf(
-            camel(text),
             title(text),
             text.uppercase(Locale.ROOT),
             text.lowercase(Locale.ROOT),
-        ).toList()
-        val index = options.indexOf(text)
-        return options[(index + 1).mod(options.size)]
+        )
+        if (original !in options) options.add(original)
+        val list = options.toList()
+        val index = list.indexOf(text)
+        return list[(index + 1).mod(list.size)]
     }
 
     private fun title(text: String): String = mapWords(text) { index, word ->
         if (index == 0) capitalize(word) else word.lowercase(Locale.ROOT)
-    }
-
-    private fun camel(text: String): String = mapWords(text) { index, word ->
-        if (index == 0) word.lowercase(Locale.ROOT) else capitalize(word)
     }
 
     private fun capitalize(word: String): String {
@@ -333,6 +354,7 @@ internal object KeyboardReducer {
         key: KeyboardKey,
         nowMillis: Long,
         composeWords: Boolean = false,
+        hasSelection: Boolean = false,
     ): KeyboardReduction = when (key.type) {
         KeyboardKeyType.CHARACTER -> characterPress(state, key, composeWords)
 
@@ -376,19 +398,26 @@ internal object KeyboardReducer {
         )
 
         KeyboardKeyType.SHIFT -> {
-            val isDoubleTap = state.shift == ShiftState.ONCE &&
-                state.lastShiftTapMillis?.let { nowMillis - it in 0..CAPS_LOCK_WINDOW_MILLIS } == true
-            val nextShift = when {
-                isDoubleTap -> ShiftState.LOCKED
-                state.shift == ShiftState.OFF -> ShiftState.ONCE
-                else -> ShiftState.OFF
+            if (hasSelection) {
+                KeyboardReduction(
+                    state = state.copy(composing = "", lastShiftTapMillis = null),
+                    command = KeyboardCommand.CycleSelectionCase,
+                )
+            } else {
+                val isDoubleTap = state.shift == ShiftState.ONCE &&
+                    state.lastShiftTapMillis?.let { nowMillis - it in 0..CAPS_LOCK_WINDOW_MILLIS } == true
+                val nextShift = when {
+                    isDoubleTap -> ShiftState.LOCKED
+                    state.shift == ShiftState.OFF -> ShiftState.ONCE
+                    else -> ShiftState.OFF
+                }
+                KeyboardReduction(
+                    state = state.copy(
+                        shift = nextShift,
+                        lastShiftTapMillis = if (nextShift == ShiftState.ONCE) nowMillis else null,
+                    ),
+                )
             }
-            KeyboardReduction(
-                state = state.copy(
-                    shift = nextShift,
-                    lastShiftTapMillis = if (nextShift == ShiftState.ONCE) nowMillis else null,
-                ),
-            )
         }
     }
 

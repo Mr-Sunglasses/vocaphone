@@ -3,6 +3,7 @@ package com.vocahq.vocaphone.local
 import android.os.Build
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.BuildConfig
+import java.util.Locale
 
 /** Native engines that can run without the gateway. */
 enum class LocalModelEngine { WHISPER, SHERPA_ONNX }
@@ -216,6 +217,7 @@ object LocalModelCatalog {
         sherpaAvailable: Boolean = LocalModelCatalog.sherpaAvailable,
         cpuCores: Int = Runtime.getRuntime().availableProcessors(),
         maxCpuKHz: Int = 0,
+        language: String = Locale.getDefault().language,
     ): LocalModelDescriptor = recommended(
         DeviceProfile(
             totalRamGB = totalRamGB,
@@ -224,17 +226,21 @@ object LocalModelCatalog {
             abi = abi,
             maxCpuKHz = maxCpuKHz,
             sherpaAvailable = sherpaAvailable,
+            language = language,
         ),
     )
 
     /**
-     * Highest-scoring catalog entry that fits this phone's RAM budget.
-     * Adding a model does not require a new branch here; it only needs a
-     * family and a RAM floor.
+     * A small model that covers this phone's language, or the highest-scoring
+     * catalog entry that fits the RAM budget. First-run should not start a
+     * 670 MB download; Parakeet stays in the catalog as an explicit choice.
      */
     fun recommended(profile: DeviceProfile): LocalModelDescriptor {
+        val starter = starterForLanguage(profile.language)?.takeIf { profile.fits(it) }
+        if (starter != null) return starter
         val candidates = all.filter { profile.fits(it) }
-        return candidates.maxByOrNull { scoreModel(it, profile) }
+        val covering = candidates.filter { it.coversLanguage(profile.language) }
+        return (covering.ifEmpty { candidates }).maxByOrNull { scoreModel(it, profile) }
             ?: all.filter { isUsableOnDevice(it, profile.totalRamGB, profile.sherpaAvailable) }
                 .minByOrNull { it.minimumRamGB }
             ?: all.first()
@@ -247,6 +253,17 @@ object LocalModelCatalog {
             ?: whisper.filter { isUsableOnDevice(it, profile.totalRamGB, sherpaAvailable = false) }
                 .minByOrNull { it.sizeBytes }
             ?: whisper.first()
+
+    /**
+     * Whisper medium and larger are too heavy for live dictation on a phone.
+     * Medium is a full decoder; it is often slower than large-v3-turbo at the
+     * same quant. The catalog still offers them; the tile is marked so the
+     * download is an informed choice.
+     */
+    fun isSlowOnMobile(model: LocalModelDescriptor): Boolean {
+        if (model.engine != LocalModelEngine.WHISPER) return false
+        return whisperClass(model.id) >= 4
+    }
 
     /**
      * Warn only when a slower Whisper class or full-precision variant is
@@ -304,4 +321,51 @@ object LocalModelCatalog {
 
     fun downloadUrl(model: LocalModelDescriptor, file: PinnedFile): String =
         "https://huggingface.co/${model.repository}/resolve/${model.revision}/${file.path}"
+
+    /**
+     * The first-run pick for [language], or null when the catalog has no
+     * specialist and scoring should choose a small Whisper instead.
+     *
+     * Moonshine has no multilingual build, so English gets the tiny English
+     * checkpoint and other languages get a compact specialist, not Parakeet.
+     */
+    internal fun starterForLanguage(language: String): LocalModelDescriptor? {
+        val id = when (language.lowercase(Locale.ROOT)) {
+            "en" -> "moonshine-tiny-en"
+            "de", "es", "fr" -> "canary-180m-flash"
+            "zh", "yue" -> "paraformer-zh-small"
+            "ja", "ko" -> "sense-voice"
+            "ru" -> "giga-am-ctc-ru"
+            in DOLPHIN_STARTER_LANGUAGES -> "dolphin-base-ctc"
+            else -> null
+        }
+        return id?.let { find(it) }
+    }
+}
+
+/** Indic and nearby languages Dolphin actually covers well at first-run size. */
+private val DOLPHIN_STARTER_LANGUAGES = setOf(
+    "hi", "bn", "ta", "te", "gu", "pa", "mr", "as", "ne", "ur", "th", "vi", "id", "ms",
+)
+
+private val SENSE_VOICE_LANGUAGES = setOf("zh", "en", "ja", "ko", "yue")
+
+/** NVIDIA Parakeet TDT 0.6B v3: 25 European languages. */
+private val PARAKEET_V3_LANGUAGES = setOf(
+    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
+    "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
+)
+
+fun LocalModelDescriptor.coversLanguage(language: String): Boolean {
+    val lang = language.lowercase(Locale.ROOT)
+    if (lang.isBlank()) return true
+    if (englishOnly) return lang == "en"
+    if (languageCodes.isNotEmpty()) return lang in languageCodes
+    if (engine == LocalModelEngine.WHISPER) return true
+    return when (sherpaFamily) {
+        SherpaFamily.SENSE_VOICE -> lang in SENSE_VOICE_LANGUAGES
+        SherpaFamily.DOLPHIN_CTC -> lang in DOLPHIN_STARTER_LANGUAGES || lang in SENSE_VOICE_LANGUAGES
+        SherpaFamily.NEMO_TRANSDUCER -> lang in PARAKEET_V3_LANGUAGES
+        else -> true
+    }
 }

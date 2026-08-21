@@ -41,16 +41,13 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    /// Unstyled model output the picker examples are produced from.
+    /// Clean and Formal only diverge when sentence starts are still lowercase.
+    static let exampleSource = "this is VocaPhone. it is a keyboard you talk to"
+
     /// A short worked example, so the choice is obvious before dictating.
     var example: String {
-        switch self {
-        case .raw: "I don't think it's ready. It cost $1,200."
-        case .clean: "I don't think it's ready. It cost $1,200."
-        case .formal: "I don't think it's ready. It cost $1,200."
-        case .casual: "I don't think it's ready. It cost $1,200"
-        case .veryCasual: "i don't think it's ready, it cost $1,200"
-        case .excited: "I don't think it's ready! It cost $1,200!"
-        }
+        TranscriptStyler.apply(Self.exampleSource, style: self)
     }
 
     var symbolName: String {

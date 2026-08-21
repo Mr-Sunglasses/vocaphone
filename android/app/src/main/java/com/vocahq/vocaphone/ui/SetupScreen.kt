@@ -3,24 +3,19 @@ package com.vocahq.vocaphone.ui
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.R
@@ -35,6 +30,14 @@ internal object SetupCopy {
     const val TITLE = "Set up VocaPhone"
     const val INTRO = "Turn on the keyboard, allow the microphone, then download a model."
     const val START = "Start dictating"
+    const val DOWNLOAD = "Download"
+    const val BROWSE_MODELS = "Browse"
+    const val BROWSE_SHEET_TITLE = "Other models"
+    const val BROWSE_SHEET_SUPPORTING =
+        "These also run on this phone. The recommendation is still the default."
+    const val SLOW_ON_PHONES = "Slow on phones"
+    const val SLOW_ON_PHONES_DETAIL =
+        "This may not perform well on a phone."
 
     fun keyboardStatus(status: ImeSetupStatus): String = when {
         status.selected -> "VocaPhone is the selected keyboard."
@@ -84,15 +87,9 @@ fun SetupScreen(
             verticalArrangement = Arrangement.spacedBy(SectionSpacing),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Image(
-                    painter = painterResource(SetupCopy.LOGO),
-                    contentDescription = "VocaPhone",
-                    modifier = Modifier.size(56.dp),
-                )
-                Text(SetupCopy.TITLE, style = MaterialTheme.typography.headlineSmall)
                 Text(
                     SetupCopy.INTRO,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 SetupProgress(status)
@@ -177,6 +174,15 @@ fun SetupScreen(
 internal fun ImeSetupCard(status: ImeSetupStatus, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val action = SetupCopy.keyboardAction(status)
+    if (action == null) {
+        Text(
+            SetupCopy.keyboardStatus(status),
+            modifier = modifier,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
     Notice(modifier = modifier) {
         Text("VocaPhone keyboard", style = MaterialTheme.typography.titleSmall)
         Text(
@@ -184,19 +190,17 @@ internal fun ImeSetupCard(status: ImeSetupStatus, modifier: Modifier = Modifier)
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
         )
-        if (action != null) {
-            SecondaryButton(
-                text = action,
-                onClick = {
-                    if (status.enabled) {
-                        ImeSetup.showPicker(context)
-                    } else {
-                        ImeSetup.openSettings(context)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        SecondaryButton(
+            text = action,
+            onClick = {
+                if (status.enabled) {
+                    ImeSetup.showPicker(context)
+                } else {
+                    ImeSetup.openSettings(context)
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -216,25 +220,6 @@ private fun SetupProgress(status: SetupStatus, modifier: Modifier = Modifier) {
             progress = { status.completedStepCount.toFloat() / status.stepCount },
             modifier = Modifier.fillMaxWidth(),
         )
-        if (status.remainingLabels.isNotEmpty()) {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                status.remainingLabels.forEach { label ->
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = MaterialTheme.shapes.small,
-                    ) {
-                        Text(
-                            label,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        )
-                    }
-                }
-            }
-        }
+        // Remaining work is the checklist below. Chips here only repeated it.
     }
 }

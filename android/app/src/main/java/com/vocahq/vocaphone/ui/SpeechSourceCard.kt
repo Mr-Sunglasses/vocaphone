@@ -32,6 +32,8 @@ fun SpeechSourceCard(
     onLocalTranscriptionEnabled: (Boolean) -> Unit,
     onOpenModels: (() -> Unit)? = null,
     compact: Boolean = false,
+    showTitle: Boolean = !compact,
+    showGatewayActions: Boolean = !compact,
 ) {
     val context = LocalContext.current
     val localModel = LocalModelCatalog.find(settings.localModelId)
@@ -55,7 +57,7 @@ fun SpeechSourceCard(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        if (!compact) {
+        if (showTitle) {
             Text("Speech", style = MaterialTheme.typography.titleSmall)
             Text(
                 "Transcribe on this phone, or send audio to a gateway you run.",
@@ -77,11 +79,18 @@ fun SpeechSourceCard(
                 )
             }
         }
-        Text(
-            if (localOn) copy.localDetail else copy.gatewayDetail,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        val statusLine = when {
+            compact && localOn && localModel == null -> null
+            localOn -> copy.localDetail
+            else -> copy.gatewayDetail
+        }
+        if (statusLine != null) {
+            Text(
+                statusLine,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         if (compact) {
             if (!localOn) {
                 TextButton(
@@ -122,24 +131,28 @@ fun SpeechSourceCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextButton(
-                    onClick = { context.openHttpUrl(settings.gatewayUrl) },
-                    contentPadding = PaddingValues(0.dp),
-                ) {
-                    Text("Open web dashboard")
+                if (showGatewayActions) {
+                    TextButton(
+                        onClick = { context.openHttpUrl(settings.gatewayUrl) },
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Text("Open web dashboard")
+                    }
                 }
             }
-            TextButton(
-                onClick = onOpenGateway,
-                contentPadding = PaddingValues(0.dp),
-            ) {
-                Text(if (settings.isConfigured) "Gateway settings" else "Set up a gateway")
-            }
-            TextButton(
-                onClick = { context.openHttpUrl(GATEWAY_GUIDE_URL) },
-                contentPadding = PaddingValues(0.dp),
-            ) {
-                Text("How to run a gateway")
+            if (showGatewayActions) {
+                TextButton(
+                    onClick = onOpenGateway,
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    Text(if (settings.isConfigured) "Gateway settings" else "Set up a gateway")
+                }
+                TextButton(
+                    onClick = { context.openHttpUrl(GATEWAY_GUIDE_URL) },
+                    contentPadding = PaddingValues(0.dp),
+                ) {
+                    Text("How to run a gateway")
+                }
             }
         }
     }

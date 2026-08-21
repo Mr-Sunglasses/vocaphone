@@ -27,6 +27,8 @@ data class DeviceProfile(
     val abi: String = "",
     val maxCpuKHz: Int = 0,
     val sherpaAvailable: Boolean = false,
+    /** BCP-47 language subtag from the phone, used to pick a first-run model. */
+    val language: String = "en",
 ) {
     val arm64: Boolean get() = abi == "arm64-v8a"
 
@@ -88,6 +90,7 @@ data class DeviceProfile(
             abi = Build.SUPPORTED_ABIS?.firstOrNull().orEmpty(),
             maxCpuKHz = readMaxCpuKHz(),
             sherpaAvailable = sherpaAvailable,
+            language = Locale.getDefault().language,
         )
     }
 }
@@ -115,8 +118,8 @@ fun DeviceProfile.fits(model: LocalModelDescriptor): Boolean {
 }
 
 /**
- * Higher is better. Family beats file size: a transducer that fits this
- * phone's class is preferred over a larger Whisper weight.
+ * Higher is better. Language match beats family, and a 670 MB transducer is
+ * never the automatic default: first-run has to finish on a phone radio.
  *
  * Whisper entries are scored by distance from the class this tier wants.
  * RAM alone never promotes an old phone to a large encoder: devices without a
@@ -128,15 +131,17 @@ fun scoreModel(model: LocalModelDescriptor, profile: DeviceProfile): Int {
     if (!profile.fits(model)) return Int.MIN_VALUE
     var score = 0
     when (model.sherpaFamily) {
-        SherpaFamily.NEMO_TRANSDUCER -> score += 100
         SherpaFamily.MOONSHINE -> score += 80
-        SherpaFamily.SENSE_VOICE, SherpaFamily.CANARY -> score += 50
-        SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC, SherpaFamily.PARAFORMER -> score += 40
+        SherpaFamily.SENSE_VOICE, SherpaFamily.CANARY, SherpaFamily.PARAFORMER -> score += 50
+        SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC -> score += 40
+        SherpaFamily.NEMO_TRANSDUCER -> score += 20
         null -> Unit
     }
     if (model.engine == LocalModelEngine.WHISPER) {
         score += whisperClassScore(model.id, profile)
     }
+    if (!model.coversLanguage(profile.language)) score -= 100
+    if (model.sizeBytes > 500_000_000L) score -= 50
     if (!model.englishOnly) score += 10
     return score
 }

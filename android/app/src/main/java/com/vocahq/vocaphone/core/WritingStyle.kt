@@ -36,15 +36,16 @@ enum class WritingStyle(val wireValue: String) {
 
     /** A short worked example, so the choice is obvious before dictating. */
     val example: String
-        get() = when (this) {
-            RAW, CLEAN, FORMAL -> "I don't think it's ready. It cost $1,200."
-            CASUAL -> "I don't think it's ready. It cost $1,200"
-            VERY_CASUAL -> "i don't think it's ready, it cost $1,200"
-            EXCITED -> "I don't think it's ready! It cost $1,200!"
-        }
+        get() = TranscriptStyler.apply(EXAMPLE_SOURCE, this)
 
     companion object {
         val DEFAULT = CASUAL
+
+        /**
+         * Unstyled model output the picker examples are produced from.
+         * Clean and Formal only diverge when sentence starts are still lowercase.
+         */
+        internal const val EXAMPLE_SOURCE = "this is VocaPhone. it is a keyboard you talk to"
 
         fun fromWire(value: String?): WritingStyle =
             entries.firstOrNull { it.wireValue == value } ?: DEFAULT

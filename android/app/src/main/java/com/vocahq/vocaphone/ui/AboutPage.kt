@@ -6,17 +6,20 @@ import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -92,13 +95,21 @@ fun AboutPage(
         title = "Part of VocaHQ",
         supporting = ABOUT_FAMILY_NOTE,
     ) {
-        FlowRow(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             ABOUT_FAMILY_LINKS.forEach { link ->
-                AboutLinkButton(link, context)
+                val icon = link.icon ?: return@forEach
+                IconButton(onClick = { context.openHttpUrl(link.url) }) {
+                    Icon(
+                        painter = painterResource(icon),
+                        contentDescription = link.label,
+                        modifier = Modifier.size(28.dp),
+                        tint = AboutTeal,
+                    )
+                }
             }
         }
     }
@@ -107,18 +118,29 @@ fun AboutPage(
         title = "Talk to us",
         supporting = ABOUT_FEEDBACK_NOTE,
     ) {
-        ReportBugButton(
-            label = ABOUT_REPORT_BUG,
-            onClick = { context.openHttpUrl(NEW_ISSUE_URL) },
+        Column(
             modifier = Modifier.fillMaxWidth(),
-        )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ABOUT_CONTACT_LINKS.forEach { link ->
-                AboutLinkButton(link, context)
+            AboutActionButton(
+                label = ABOUT_REPORT_BUG,
+                icon = R.drawable.ic_social_github,
+                onClick = { context.openHttpUrl(NEW_ISSUE_URL) },
+                filled = true,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ABOUT_CONTACT_LINKS.forEach { link ->
+                    val icon = link.icon ?: return@forEach
+                    ContactColumnButton(
+                        label = link.label,
+                        icon = icon,
+                        onClick = { context.openHttpUrl(link.url) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
     }
@@ -206,7 +228,7 @@ fun AboutPage(
                 },
                 modifier = Modifier.weight(1f),
             )
-            SecondaryButton(
+            DestructiveButton(
                 text = ABOUT_CLEAR_EVENT_LOG,
                 onClick = onClearDiagnosticEvents,
                 modifier = Modifier.weight(1f),
@@ -215,49 +237,83 @@ fun AboutPage(
     }
 }
 
-/** Official VocaDesign marks at 16 dp. Family links are text only. */
 @Composable
-private fun AboutLinkButton(link: AboutLink, context: Context) {
-    TextButton(
-        onClick = { context.openHttpUrl(link.url) },
-        colors = ButtonDefaults.textButtonColors(contentColor = AboutTeal),
-    ) {
-        val icon = link.icon
-        if (icon != null) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = AboutTeal,
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        Text(link.label)
-    }
-}
-
-@Composable
-private fun ReportBugButton(
+private fun ContactColumnButton(
     label: String,
+    icon: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Button(
+    FilledTonalButton(
         onClick = onClick,
-        modifier = modifier.height(48.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = AboutTeal,
-            contentColor = AboutCream,
+        modifier = modifier.heightIn(min = 80.dp),
+        shape = MaterialTheme.shapes.large,
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 12.dp),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
         ),
     ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Icon(
+                painter = painterResource(icon),
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+            )
+            Text(
+                label,
+                style = MaterialTheme.typography.labelSmall,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+            )
+        }
+    }
+}
+
+/** 48 dp, icon plus verb, matching the rest of the app's button height. */
+@Composable
+private fun AboutActionButton(
+    label: String,
+    icon: Int,
+    onClick: () -> Unit,
+    filled: Boolean = false,
+) {
+    val modifier = Modifier
+        .fillMaxWidth()
+        .height(48.dp)
+    val content: @Composable () -> Unit = {
         Icon(
-            painter = painterResource(R.drawable.ic_social_github),
+            painter = painterResource(icon),
             contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = AboutCream,
+            modifier = Modifier.size(18.dp),
         )
         Spacer(Modifier.width(8.dp))
         Text(label)
+    }
+    if (filled) {
+        Button(
+            onClick = onClick,
+            modifier = modifier,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AboutTeal,
+                contentColor = AboutCream,
+            ),
+        ) {
+            content()
+        }
+    } else {
+        FilledTonalButton(
+            onClick = onClick,
+            modifier = modifier,
+            colors = ButtonDefaults.filledTonalButtonColors(
+                contentColor = AboutTeal,
+            ),
+        ) {
+            content()
+        }
     }
 }
 

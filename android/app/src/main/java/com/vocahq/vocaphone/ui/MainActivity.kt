@@ -7,9 +7,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,9 +29,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -71,6 +77,23 @@ private enum class Destination(val label: String, @param:DrawableRes val icon: I
     DICTATE("Dictate", R.drawable.ic_dictation),
     HISTORY("History", R.drawable.ic_history),
     SETTINGS("Settings", R.drawable.ic_settings),
+}
+
+/** Main destinations share the mark. Nested pages keep a plain title. */
+@Composable
+private fun BrandedAppBarTitle(text: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            painter = painterResource(SetupCopy.LOGO),
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = Color.Unspecified,
+        )
+        Text(text)
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -117,6 +140,7 @@ fun VocaPhoneApp(
     var destination by remember { mutableStateOf(Destination.DICTATE) }
     var settingsPage by remember { mutableStateOf(SettingsPage.HOME) }
     var showingGateway by remember { mutableStateOf(false) }
+    var openLanguagePicker by remember { mutableStateOf(false) }
 
     LaunchedEffect(launchIntent) {
         val incoming = launchIntent ?: return@LaunchedEffect
@@ -136,14 +160,23 @@ fun VocaPhoneApp(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        when {
-                            showingGateway -> "Gateway"
-                            showSetup -> "Setup"
-                            destination == Destination.SETTINGS -> settingsPage.title
-                            else -> destination.label
-                        }
-                    )
+                    val titleText = when {
+                        showingGateway -> "Gateway"
+                        showSetup -> "Setup"
+                        destination == Destination.SETTINGS -> settingsPage.title
+                        else -> destination.label
+                    }
+                    val branded = when {
+                        showingGateway -> false
+                        showSetup -> true
+                        destination != Destination.SETTINGS -> true
+                        else -> settingsPage == SettingsPage.HOME
+                    }
+                    if (branded) {
+                        BrandedAppBarTitle(titleText)
+                    } else {
+                        Text(titleText)
+                    }
                 },
                 navigationIcon = {
                     when {
@@ -239,6 +272,23 @@ fun VocaPhoneApp(
                 onRetry = viewModel::retry,
                 onDismiss = viewModel::dismissDictation,
                 onOpenGateway = { showingGateway = true },
+                onOpenLanguage = {
+                    destination = Destination.SETTINGS
+                    settingsPage = SettingsPage.HOME
+                    openLanguagePicker = true
+                },
+                onOpenStyle = {
+                    destination = Destination.SETTINGS
+                    settingsPage = SettingsPage.DICTATION
+                },
+                onOpenModel = {
+                    if (settings.localTranscriptionEnabled) {
+                        destination = Destination.SETTINGS
+                        settingsPage = SettingsPage.MODELS
+                    } else {
+                        showingGateway = true
+                    }
+                },
                 onTelemetryDecision = { enabled ->
                     viewModel.setTelemetryEnabled(enabled)
                     viewModel.setTelemetryAsked()
@@ -303,6 +353,8 @@ fun VocaPhoneApp(
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 page = settingsPage,
                 onPageChange = { settingsPage = it },
+                openLanguagePicker = openLanguagePicker,
+                onLanguagePickerOpened = { openLanguagePicker = false },
                 modifier = content,
             )
         }

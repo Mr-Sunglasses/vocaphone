@@ -57,9 +57,11 @@ fun HistoryScreen(
             )
         }
         item {
-            TextButton(onClick = onDeleteAll, modifier = Modifier.fillMaxWidth()) {
-                Text("Delete all history")
-            }
+            DestructiveTextButton(
+                text = "Delete all history",
+                onClick = onDeleteAll,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -98,19 +100,18 @@ private fun HistoryRow(
             Text(record.transcript.orEmpty(), style = MaterialTheme.typography.bodyMedium)
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             if (failed && record.recoverable && record.audioPath != null) {
-                PrimaryButton("Retry", onClick = onRetry, modifier = Modifier.weight(1f))
+                PrimaryButton("Retry", onClick = onRetry)
             }
             record.transcript?.takeIf { it.isNotEmpty() }?.let { transcript ->
                 // Explicit only: VocaPhone never writes to the clipboard on its own.
-                SecondaryButton(
-                    text = "Copy",
-                    onClick = { onCopy(transcript) },
-                    modifier = Modifier.weight(1f),
-                )
+                TextButton(onClick = { onCopy(transcript) }) { Text("Copy") }
             }
-            TextButton(onClick = onDelete, modifier = Modifier.weight(1f)) { Text("Delete") }
+            DestructiveTextButton("Delete", onClick = onDelete)
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.FlowRow
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -23,10 +25,12 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -39,7 +43,9 @@ import androidx.compose.runtime.setValue
 import androidx.annotation.DrawableRes
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -91,6 +97,45 @@ fun SecondaryButton(
         modifier = modifier.height(ButtonHeight),
     ) {
         ButtonLabel(text, loading)
+    }
+}
+
+@Composable
+fun DestructiveButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    FilledTonalButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(ButtonHeight),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+        ),
+    ) {
+        Text(text)
+    }
+}
+
+@Composable
+fun DestructiveTextButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        colors = ButtonDefaults.textButtonColors(
+            contentColor = MaterialTheme.colorScheme.error,
+        ),
+    ) {
+        Text(text)
     }
 }
 
@@ -221,7 +266,34 @@ fun FeaturedCard(
     }
 }
 
-/** A tappable row that opens a settings sub-screen. */
+/**
+ * One grouped settings list. Android Settings uses a single rounded
+ * container with inset dividers, not a stack of separate cards.
+ */
+@Composable
+fun SettingsMenuGroup(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(content = content)
+    }
+}
+
+/** Hairline between [SettingsMenuRow]s, inset past the leading icon. */
+@Composable
+fun SettingsMenuDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = 56.dp),
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
+}
+
+/** A tappable row that opens a settings sub-screen. Sit these in a [SettingsMenuGroup]. */
 @Composable
 fun SettingsMenuRow(
     title: String,
@@ -230,38 +302,36 @@ fun SettingsMenuRow(
     @DrawableRes icon: Int,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = MaterialTheme.shapes.large,
-        onClick = onClick,
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp),
-            )
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(
-                    supporting,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Icon(
-                painter = painterResource(R.drawable.ic_chevron),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(24.dp),
+        Icon(
+            painter = painterResource(icon),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp),
+        )
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                supporting,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
         }
+        Icon(
+            painter = painterResource(R.drawable.ic_chevron),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp),
+        )
     }
 }
 
@@ -308,10 +378,17 @@ fun Notice(
     val container = when (tone) {
         NoticeTone.Neutral -> MaterialTheme.colorScheme.surfaceContainerHigh
         NoticeTone.Attention -> MaterialTheme.colorScheme.errorContainer
+        NoticeTone.Warning -> MaterialTheme.colorScheme.tertiaryContainer
+    }
+    val onContainer = when (tone) {
+        NoticeTone.Neutral -> MaterialTheme.colorScheme.onSurface
+        NoticeTone.Attention -> MaterialTheme.colorScheme.onErrorContainer
+        NoticeTone.Warning -> MaterialTheme.colorScheme.onTertiaryContainer
     }
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = container,
+        contentColor = onContainer,
         shape = MaterialTheme.shapes.medium,
     ) {
         Column(
@@ -322,7 +399,7 @@ fun Notice(
     }
 }
 
-enum class NoticeTone { Neutral, Attention }
+enum class NoticeTone { Neutral, Attention, Warning }
 
 /** One line of the setup checklist: state, explanation, and the way to fix it. */
 @Composable
@@ -333,6 +410,7 @@ fun ChecklistRow(
     actionLabel: String,
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
+    actionColor: Color = MaterialTheme.colorScheme.primary,
 ) {
     Row(
         modifier = modifier.fillMaxWidth().padding(vertical = 6.dp),
@@ -360,7 +438,12 @@ fun ChecklistRow(
             )
         }
         if (!satisfied) {
-            TextButton(onClick = onAction) { Text(actionLabel) }
+            TextButton(
+                onClick = onAction,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = actionColor,
+                ),
+            ) { Text(actionLabel) }
         }
     }
 }
@@ -406,6 +489,12 @@ fun <T> SettingDropdown(
                 .fillMaxWidth()
                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled),
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded && enabled) },
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
+            ),
         )
         ExposedDropdownMenu(
             expanded = expanded && enabled,

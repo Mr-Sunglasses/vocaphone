@@ -34,7 +34,7 @@ const val ABOUT_REPORT_BUG = "Report a bug or idea"
 const val ABOUT_COPY_DIAGNOSTICS = "Copy diagnostics"
 const val ABOUT_CLEAR_EVENT_LOG = "Clear event log"
 
-const val ABOUT_TAGLINE = "Voice-to-text for Android, kept on this phone."
+const val ABOUT_TAGLINE = "A keyboard you talk to. Transcription stays on this phone."
 
 const val ABOUT_STATUS = "Public beta. Android 13 and newer."
 
@@ -55,26 +55,29 @@ const val ABOUT_FEEDBACK_NOTE =
 /**
  * A tap target on About.
  *
- * [icon] is a VocaDesign vocahq/social mark. Do not invent brand marks here.
+ * [label] is the accessible name. [supporting] is the host, kept for tests.
+ * Family [icon]s are platform marks. Contact [icon]s are VocaDesign
+ * vocahq/social marks — do not invent those.
  */
 data class AboutLink(
     val label: String,
     val url: String,
     val icon: Int? = null,
+    val supporting: String? = null,
 )
 
 val ABOUT_FAMILY_LINKS = listOf(
-    AboutLink("vocahq.com", FAMILY_SITE_URL),
-    AboutLink("vocalinux.com", VOCALINUX_URL),
-    AboutLink("vocamac.com", VOCAMAC_URL),
-    AboutLink("vocaphone.vocahq.com", WEBSITE_URL),
-    AboutLink("vocagateway.vocahq.com", VOCAGATEWAY_SITE_URL),
+    AboutLink("VocaHQ", FAMILY_SITE_URL, R.drawable.ic_family_vocahq, "vocahq.com"),
+    AboutLink("VocaLinux", VOCALINUX_URL, R.drawable.ic_family_tux, "vocalinux.com"),
+    AboutLink("VocaMac", VOCAMAC_URL, R.drawable.ic_family_apple, "vocamac.com"),
+    AboutLink("VocaPhone", WEBSITE_URL, R.drawable.ic_family_phone, "vocaphone.vocahq.com"),
+    AboutLink("VocaGateway", VOCAGATEWAY_SITE_URL, R.drawable.ic_family_server, "vocagateway.vocahq.com"),
 )
 
 val ABOUT_CONTACT_LINKS = listOf(
-    AboutLink("Discord", DISCORD_URL, R.drawable.ic_social_discord),
-    AboutLink("X", X_URL, R.drawable.ic_social_x),
-    AboutLink("Email", CONTACT_MAILTO, R.drawable.ic_social_mail),
+    AboutLink("Join us on Discord", DISCORD_URL, R.drawable.ic_social_discord),
+    AboutLink("Follow us on X", X_URL, R.drawable.ic_social_x),
+    AboutLink("Say hi by email", CONTACT_MAILTO, R.drawable.ic_social_mail),
 )
 
 const val ABOUT_PRIVACY_NOTE =

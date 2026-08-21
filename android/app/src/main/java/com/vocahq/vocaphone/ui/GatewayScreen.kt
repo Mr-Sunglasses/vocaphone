@@ -221,7 +221,10 @@ fun GatewayScreen(
             }
 
             if (settings.isConfigured) {
-                TextButton(onClick = onClear) { Text("Remove gateway and delete stored token") }
+                DestructiveTextButton(
+                    text = "Remove gateway and delete stored token",
+                    onClick = onClear,
+                )
             }
         }
 

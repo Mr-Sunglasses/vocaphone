@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -43,7 +44,6 @@ fun SetupRepair(
             Text(
                 "Dictation stays paused until these are back.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             missing.forEach { step ->
                 when (step) {
@@ -53,6 +53,7 @@ fun SetupRepair(
                         satisfied = false,
                         actionLabel = "Grant",
                         onAction = { requestPermission.launch(Manifest.permission.RECORD_AUDIO) },
+                        actionColor = LocalContentColor.current,
                     )
 
                     SetupStep.NOTIFICATIONS -> ChecklistRow(
@@ -61,6 +62,7 @@ fun SetupRepair(
                         satisfied = false,
                         actionLabel = "Grant",
                         onAction = { requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                        actionColor = LocalContentColor.current,
                     )
 
                     SetupStep.KEYBOARD -> ChecklistRow(
@@ -69,6 +71,7 @@ fun SetupRepair(
                         satisfied = false,
                         actionLabel = "Open",
                         onAction = { ImeSetup.openSettings(context) },
+                        actionColor = LocalContentColor.current,
                     )
 
                     SetupStep.GATEWAY -> ChecklistRow(
@@ -77,6 +80,7 @@ fun SetupRepair(
                         satisfied = false,
                         actionLabel = "Set up",
                         onAction = onOpenGateway,
+                        actionColor = LocalContentColor.current,
                     )
                 }
             }
