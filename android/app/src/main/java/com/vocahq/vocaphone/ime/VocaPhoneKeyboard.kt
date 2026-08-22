@@ -149,6 +149,7 @@ internal fun VocaPhoneKeyboard(
     onLanguageSelected: (TranscriptionLanguage) -> Unit,
     onStyleSelected: (WritingStyle) -> Unit,
     onSuggestionPicked: (String, Boolean) -> Unit,
+    onSaveToDictionary: (String) -> Unit,
     onEmojiSuggestion: (String) -> Unit,
     onPasteClipboard: (String) -> Unit,
     onDismissClipboard: () -> Unit,
@@ -186,6 +187,9 @@ internal fun VocaPhoneKeyboard(
     var swipeChoices by remember { mutableStateOf<List<String>>(emptyList()) }
     var swipeWord by remember { mutableStateOf<String?>(null) }
     var suggestionStrip by remember { mutableStateOf(SuggestionStrip(emptyList())) }
+    // Words saved this editor session, so the + chip vanishes before DataStore
+    // has come back around. Reset with the editor; the persisted list is source of truth.
+    var savedThisSession by remember { mutableStateOf(emptyList<String>()) }
 
     // The one place a new editor wipes the keyboard. Replacing the holders did
     // this implicitly and broke the handlers that had closed over them.
@@ -199,6 +203,7 @@ internal fun VocaPhoneKeyboard(
         swipeChoices = emptyList()
         swipeWord = null
         suggestionStrip = SuggestionStrip(emptyList())
+        savedThisSession = emptyList()
     }
 
     LaunchedEffect(dictationState.phase, editor.dictationAllowed) {
@@ -258,12 +263,18 @@ internal fun VocaPhoneKeyboard(
     // window would commit a suggestion for the word as it was a letter ago —
     // reachable in principle, sixteen milliseconds wide in practice, and the
     // same trade every keyboard that does this off the main thread makes.
+    val personalRaw = remember(settings.personalDictionary, savedThisSession) {
+        savedThisSession.fold(settings.personalDictionary) { acc, word ->
+            PersonalDictionary.add(acc, word)
+        }
+    }
     LaunchedEffect(
         composeWords,
         settings.correctionsEnabled,
         keyboardState.composing,
         editorText,
         suggestions,
+        personalRaw,
     ) {
         suggestionStrip = if (!composeWords || suggestions == null) {
             SuggestionStrip(emptyList())
@@ -274,6 +285,7 @@ internal fun VocaPhoneKeyboard(
                     before = editorText.before,
                     after = editorText.after,
                     correctionsEnabled = settings.correctionsEnabled,
+                    personalRaw = personalRaw,
                 )
             }
         }
@@ -520,6 +532,18 @@ internal fun VocaPhoneKeyboard(
                                 lastWasSpace = false,
                             )
                             onEmojiSuggestion(item.text)
+                        } else if (item.savesWord) {
+                            savedThisSession = savedThisSession + item.text
+                            onSaveToDictionary(item.text)
+                            if (keyboardState.composing.isNotEmpty()) {
+                                clearSwipe()
+                                keyboardState = keyboardState.copy(
+                                    composing = "",
+                                    lastWasSpace = true,
+                                    capitalizeAfterSpace = false,
+                                )
+                                onSuggestionPicked(item.text, false)
+                            }
                         } else {
                             val replace = KeyboardChrome.suggestionReplacesWord(
                                 composing = keyboardState.composing,
@@ -617,7 +641,9 @@ internal fun VocaPhoneKeyboard(
                             layer = keyboardState.layer,
                             editor = editor,
                             keyHeight = fittedKeyHeight,
-                            showKeyHints = settings.numberKeyHintsEnabled,
+                            numberKeyHints = settings.numberKeyHintsEnabled,
+                            longPressSymbols = settings.longPressSymbolsEnabled,
+                            numberRow = settings.numberRowEnabled,
                             split = splitKeys,
                             spacerFraction = spacerFraction,
                             swipeEnabled = settings.swipeTypingEnabled &&
@@ -1604,10 +1630,15 @@ private fun RowScope.SuggestionStripRow(
     if (suggestions.size <= 3) {
         suggestions.forEach { item ->
             SuggestionChip(
-                label = item.text,
+                label = if (item.savesWord) "+ ${item.text}" else item.text,
                 emoji = item.isEmoji,
                 onClick = { onSuggestion(item) },
                 modifier = Modifier.weight(1f),
+                contentDescription = if (item.savesWord) {
+                    "Add ${item.text} to dictionary"
+                } else {
+                    item.text
+                },
             )
         }
         return
@@ -1639,10 +1670,15 @@ private fun RowScope.SuggestionStripRow(
         ) {
             suggestions.forEach { item ->
                 SuggestionChip(
-                    label = item.text,
+                    label = if (item.savesWord) "+ ${item.text}" else item.text,
                     emoji = item.isEmoji,
                     onClick = { onSuggestion(item) },
                     modifier = Modifier.widthIn(min = if (item.isEmoji) 44.dp else 68.dp),
+                    contentDescription = if (item.savesWord) {
+                        "Add ${item.text} to dictionary"
+                    } else {
+                        item.text
+                    },
                 )
             }
         }
@@ -1655,13 +1691,14 @@ private fun SuggestionChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     emoji: Boolean = false,
+    contentDescription: String = label,
 ) {
     Surface(
         modifier = modifier
             .height(32.dp)
             .semantics {
                 role = Role.Button
-                contentDescription = label
+                this.contentDescription = contentDescription
             },
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1829,7 +1866,9 @@ private fun KeyboardRows(
     layer: KeyboardLayer,
     editor: KeyboardEditorConfig,
     keyHeight: Dp,
-    showKeyHints: Boolean = false,
+    numberKeyHints: Boolean = false,
+    longPressSymbols: Boolean = false,
+    numberRow: Boolean = false,
     split: Boolean = false,
     spacerFraction: Float = SplitKeyboardLayout.MIN_SPACER_FRACTION,
     swipeEnabled: Boolean = false,
@@ -1900,7 +1939,9 @@ private fun KeyboardRows(
                                     layer = layer,
                                     editor = editor,
                                     keyHeight = keyHeight,
-                                    showKeyHints = showKeyHints,
+                                    numberKeyHints = numberKeyHints,
+                                    longPressSymbols = longPressSymbols,
+                                    numberRow = numberRow,
                                     // A swipe can only begin on a letter, so a
                                     // letter is the only key whose own tap can
                                     // be the tail of one. Handing the flag to
@@ -2013,7 +2054,9 @@ private fun RowScope.KeyButton(
     layer: KeyboardLayer,
     editor: KeyboardEditorConfig,
     keyHeight: Dp,
-    showKeyHints: Boolean = false,
+    numberKeyHints: Boolean = false,
+    longPressSymbols: Boolean = false,
+    numberRow: Boolean = false,
     swipeConsumed: MutableState<Boolean>? = null,
     onPress: () -> Unit,
     onHold: (Long) -> Unit = {},
@@ -2029,7 +2072,9 @@ private fun RowScope.KeyButton(
     val currentOnCursorMove = rememberUpdatedState(onCursorMove)
     var pressed by remember(key.id) { mutableStateOf(false) }
     var accentIndex by remember(key.id) { mutableStateOf(-1) }
-    val accents = remember(key.id, shift) { KeyAccents.forKey(key, shift) }
+    val accents = remember(key.id, shift, longPressSymbols, numberRow) {
+        KeyAccents.forKey(key, shift, longPressSymbols, numberRow)
+    }
     val isReturnAction = key.type == KeyboardKeyType.RETURN && editor.returnKey != ReturnKeyKind.ENTER
     val activeShift = key.type == KeyboardKeyType.SHIFT && shift != ShiftState.OFF
     val background = when {
@@ -2105,7 +2150,12 @@ private fun RowScope.KeyButton(
             shift = shift,
             returnKey = editor.returnKey,
             tint = foreground,
-            hint = if (showKeyHints) KeyAccents.hint(key) else null,
+            hint = KeyAccents.hint(
+                key,
+                numberKeyHints = numberKeyHints,
+                longPressSymbols = longPressSymbols,
+                numberRow = numberRow,
+            ),
         )
 
         if (pressed && swipeConsumed?.value != true && key.type == KeyboardKeyType.CHARACTER) {

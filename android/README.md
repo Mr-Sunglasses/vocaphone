@@ -154,7 +154,9 @@ Typing extras, all local to the phone:
   Suggestions and swipe are English only; there is no language pack to download.
 - Clipboard chip (tap to paste, long press to dismiss) and optional clip history
 - Emoji categories, recents, and optional ASCII emoticons
-- Long-press letters for accents, long-press 1-0 for symbols, double-space for a period
+- Long-press letters for accents, long-press 1-0 for symbols, optional long-press
+  on letters for punctuation and digits, double-space for a period
+- Personal dictionary (Settings → Keyboard), also addable from a + chip on the strip
 - The globe key is gone; Android's keyboard switcher still changes IMEs
 
 Suggestions may read about 32 characters around the cursor. The clipboard chip

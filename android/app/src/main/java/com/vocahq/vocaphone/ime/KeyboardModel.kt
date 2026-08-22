@@ -127,6 +127,8 @@ internal data class ClipboardChip(
 internal data class SuggestionItem(
     val text: String,
     val isEmoji: Boolean = false,
+    /** Tapping this chip saves [text] to the personal dictionary. */
+    val savesWord: Boolean = false,
 )
 
 /** What the single Gboard-style toolbar row should show. */
@@ -222,9 +224,14 @@ internal data class SuggestionStrip(
     val words: List<String>,
     val emojis: List<String> = emptyList(),
     val replacesWord: Boolean = false,
+    val saveWord: String? = null,
 ) {
     val items: List<SuggestionItem>
-        get() = words.map { SuggestionItem(it) } + emojis.map { SuggestionItem(it, isEmoji = true) }
+        get() = buildList {
+            saveWord?.let { add(SuggestionItem(it, savesWord = true)) }
+            addAll(words.map { SuggestionItem(it) })
+            addAll(emojis.map { SuggestionItem(it, isEmoji = true) })
+        }
 }
 
 /**

@@ -151,6 +151,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             onLanguageSelected = ::setLanguage,
             onStyleSelected = ::setStyle,
             onSuggestionPicked = ::commitSuggestion,
+            onSaveToDictionary = ::addPersonalWord,
             onEmojiSuggestion = ::commitEmojiSuggestion,
             onPasteClipboard = { pasteClipboard(it) },
             onDismissClipboard = ::dismissClipboard,
@@ -463,6 +464,14 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun recordEmojiRecent(emoji: String) {
         persistPreference { container.settings.recordEmojiRecent(emoji) }
+    }
+
+    private fun addPersonalWord(word: String) {
+        // Not persistPreference: that gate drops a write while another is in
+        // flight, and two + chips in a row would lose the first word.
+        scope.launch {
+            container.settings.addPersonalWord(word)
+        }
     }
 
     private fun cycleSelectionCase() {

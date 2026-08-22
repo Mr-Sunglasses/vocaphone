@@ -132,6 +132,76 @@ class SuggestionEngineTest {
     }
 
     @Test
+    fun lastTypedWordKeepsCaseAndApostrophes() {
+        assertEquals("O'Brien", SuggestionEngine.lastTypedWord("Hello O'Brien "))
+        assertEquals("Kanishk", SuggestionEngine.lastTypedWord("Kanishk."))
+        assertEquals("kanishk", SuggestionEngine.lastTypedWord("I am kanishk"))
+        assertEquals(null, SuggestionEngine.lastTypedWord("   "))
+    }
+
+    @Test
+    fun `strip completes personal words ahead of the shipped list`() {
+        val strip = dictionary.strip(
+            composing = "kan",
+            before = "",
+            after = "",
+            correctionsEnabled = false,
+            personalRaw = "Kanishk\nVocaPhone",
+        )
+        assertEquals("Kanishk", strip.words.first())
+        assertEquals(null, strip.saveWord)
+    }
+
+    @Test
+    fun `strip offers to save an unknown word`() {
+        val strip = dictionary.strip(
+            composing = "kanishk",
+            before = "",
+            after = "",
+            correctionsEnabled = false,
+        )
+        assertEquals("kanishk", strip.saveWord)
+        assertTrue(strip.items.first().savesWord)
+        assertEquals("kanishk", strip.items.first().text)
+    }
+
+    @Test
+    fun `strip does not offer to save a prefix of a known word`() {
+        val strip = dictionary.strip(
+            composing = "hel",
+            before = "",
+            after = "",
+            correctionsEnabled = false,
+        )
+        assertEquals(null, strip.saveWord)
+        assertTrue(strip.words.isNotEmpty())
+    }
+
+    @Test
+    fun `strip offers to save a finished unknown word`() {
+        val strip = dictionary.strip(
+            composing = "",
+            before = "Thanks Kanishk ",
+            after = "",
+            correctionsEnabled = false,
+            personalRaw = "",
+        )
+        assertEquals("Kanishk", strip.saveWord)
+    }
+
+    @Test
+    fun `strip does not offer to save a word already in the personal dictionary`() {
+        val strip = dictionary.strip(
+            composing = "kanishk",
+            before = "",
+            after = "",
+            correctionsEnabled = false,
+            personalRaw = "Kanishk",
+        )
+        assertEquals(null, strip.saveWord)
+    }
+
+    @Test
     fun `strip does not offer emoji for a prefix of a trigger`() {
         val strip = dictionary.strip(
             composing = "hap",

@@ -118,24 +118,54 @@ internal class SuggestionDictionary(
         before: String,
         after: String,
         correctionsEnabled: Boolean,
+        personalRaw: String = "",
     ): SuggestionStrip {
         val token = composing.ifEmpty { SuggestionEngine.lastWordForEmoji(before).orEmpty() }
         val emojis = EmojiSuggestions.glyphs(token)
         if (composing.isNotEmpty()) {
+            val personalHits = PersonalDictionary.completions(personalRaw, composing)
             val completions = complete(composing)
             val corrections = if (correctionsEnabled) correct(composing) else emptyList()
-            return SuggestionStrip((completions + corrections).distinct().take(3), emojis)
+            val words = (personalHits + completions + corrections).distinct().take(3)
+            val save = saveCandidate(
+                word = composing,
+                personalRaw = personalRaw,
+                // Still typing a known word: hello/help already fill the strip.
+                hasCompletions = personalHits.isNotEmpty() || completions.isNotEmpty(),
+            )
+            return SuggestionStrip(words, emojis, saveWord = save)
         }
+        val finished = SuggestionEngine.lastTypedWord(before)
+        val save = saveCandidate(
+            word = finished.orEmpty(),
+            personalRaw = personalRaw,
+            hasCompletions = false,
+        )
         if (correctionsEnabled) {
             val span = SuggestionEngine.wordSpan(before, after)
             if (span != null && span.word.length >= 2) {
                 val nearby = similar(span.word)
                 if (nearby.isNotEmpty()) {
-                    return SuggestionStrip(nearby, emojis, replacesWord = true)
+                    return SuggestionStrip(nearby, emojis, replacesWord = true, saveWord = save)
                 }
             }
         }
-        return SuggestionStrip(next(SuggestionEngine.lastWord(before).orEmpty()), emojis)
+        return SuggestionStrip(
+            next(SuggestionEngine.lastWord(before).orEmpty()),
+            emojis,
+            saveWord = save,
+        )
+    }
+
+    private fun saveCandidate(
+        word: String,
+        personalRaw: String,
+        hasCompletions: Boolean,
+    ): String? {
+        if (hasCompletions) return null
+        if (!PersonalDictionary.isSavable(word)) return null
+        if (isKnown(word) || PersonalDictionary.contains(personalRaw, word)) return null
+        return word
     }
 
     fun swipe(path: String, limit: Int = 4): List<String> {
@@ -233,6 +263,24 @@ internal object SuggestionEngine {
         val word = trimmed.substring(start).replace("'", "").lowercase()
         return word.takeIf { it.any(Char::isLetter) }
     }
+
+    /**
+     * The last token as the user typed it, for adding to the personal
+     * dictionary. [lastWord] strips apostrophes and case for bigram lookup;
+     * saving "obrien" when they wrote "O'Brien" would miss the point.
+     */
+    fun lastTypedWord(textBeforeCursor: CharSequence): String? {
+        var end = textBeforeCursor.length
+        while (end > 0 && !isTypedWordChar(textBeforeCursor[end - 1])) end--
+        if (end == 0) return null
+        var start = end
+        while (start > 0 && isTypedWordChar(textBeforeCursor[start - 1])) start--
+        val word = textBeforeCursor.subSequence(start, end).toString()
+        return word.takeIf { it.any(Char::isLetter) }
+    }
+
+    private fun isTypedWordChar(character: Char): Boolean =
+        character.isLetter() || character == '\''
 
     /** Last word even when a space or period is already sitting after it. */
     fun lastWordForEmoji(textBeforeCursor: CharSequence): String? {

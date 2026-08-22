@@ -373,6 +373,16 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setNumberKeyHintsEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setNumberKeyHintsEnabled(enabled) }
 
+    fun setLongPressSymbolsEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setLongPressSymbolsEnabled(enabled) }
+
+    fun setPersonalDictionary(words: String) =
+        viewModelScope.launch {
+            container.settings.setPersonalDictionary(
+                com.vocahq.vocaphone.ime.PersonalDictionary.normalize(words),
+            )
+        }
+
     fun setAsciiEmojiEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setAsciiEmojiEnabled(enabled) }
 

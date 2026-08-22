@@ -10,27 +10,32 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.CustomVocabulary
+import com.vocahq.vocaphone.ime.PersonalDictionary
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.TranscriptionLanguage
@@ -88,11 +93,12 @@ fun SettingsScreen(
     onSuggestions: (Boolean) -> Unit,
     onCorrections: (Boolean) -> Unit,
     onNumberKeyHints: (Boolean) -> Unit,
+    onLongPressSymbols: (Boolean) -> Unit,
+    onPersonalDictionary: (String) -> Unit,
     onAsciiEmoji: (Boolean) -> Unit,
     onSwipeTyping: (Boolean) -> Unit,
     onClipboardChip: (Boolean) -> Unit,
     onClipboardHistory: (Boolean) -> Unit,
-    onClearClipboardHistory: () -> Unit,
     localModels: LocalModelState,
     onLocalTranscriptionEnabled: (Boolean) -> Unit,
     onLocalModel: (LocalModelDescriptor) -> Unit,
@@ -277,6 +283,14 @@ fun SettingsScreen(
                         onCheckedChange = onNumberKeyHints,
                     )
                     SettingToggle(
+                        title = "Long-press for symbols",
+                        detail = "Show a punctuation or digit on each letter key. " +
+                            "Hold the key to type it; slide for accents. Off by default " +
+                            "so a hold on E still types è.",
+                        checked = settings.longPressSymbolsEnabled,
+                        onCheckedChange = onLongPressSymbols,
+                    )
+                    SettingToggle(
                         title = "Text emoticons",
                         detail = "Add an ASCII category to the emoji panel, like :) and ¯\\_(ツ)_/¯.",
                         checked = settings.asciiEmojiEnabled,
@@ -290,6 +304,10 @@ fun SettingsScreen(
                         onCheckedChange = onSwipeTyping,
                     )
                 }
+                PersonalDictionarySection(
+                    words = settings.personalDictionary,
+                    onSave = onPersonalDictionary,
+                )
                 Section("Clipboard") {
                     SettingToggle(
                         title = "Clipboard chip",
@@ -301,16 +319,11 @@ fun SettingsScreen(
                     SettingToggle(
                         title = "Clipboard history",
                         detail = "Save recent text and images on this phone. Open them " +
-                            "from the keyboard menu. Off in passwords.",
+                            "from the keyboard menu, where you can paste or delete them. " +
+                            "Off in passwords.",
                         checked = settings.clipboardHistoryEnabled,
                         onCheckedChange = onClipboardHistory,
                     )
-                    if (settings.clipboardHistory.isNotEmpty()) {
-                        DestructiveButton(
-                            "Clear clipboard history (${settings.clipboardHistory.size})",
-                            onClick = onClearClipboardHistory,
-                        )
-                    }
                 }
             }
 
@@ -494,6 +507,106 @@ private fun MicrophoneSection(
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PersonalDictionarySection(
+    words: String,
+    onSave: (String) -> Unit,
+) {
+    var draft by remember(words) { mutableStateOf(PersonalDictionary.normalize(words)) }
+    var lastCleared by remember { mutableStateOf<String?>(null) }
+    var confirmClear by remember { mutableStateOf(false) }
+    val terms = remember(draft) { PersonalDictionary.terms(draft) }
+    val canUndo = lastCleared != null && words.isBlank()
+    val canClear = words.isNotBlank()
+    Section(
+        title = "Personal dictionary",
+        supporting = "Names and jargon the English list misses. " +
+            "Separate with commas. Off in passwords.",
+    ) {
+        OutlinedTextField(
+            value = draft,
+            onValueChange = { draft = it },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text("Grafana, GraphQL, Kubernetes, Docker") },
+            minLines = 3,
+            maxLines = 8,
+        )
+        Text(
+            when (terms.size) {
+                0 -> "None saved."
+                1 -> "1 word."
+                else -> "${terms.size} words."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SecondaryButton(
+                text = "Save words",
+                onClick = {
+                    lastCleared = null
+                    onSave(draft)
+                },
+                enabled = PersonalDictionary.normalize(draft) != PersonalDictionary.normalize(words),
+                modifier = Modifier.weight(1f),
+            )
+            if (canUndo) {
+                SecondaryButton(
+                    text = "Undo",
+                    onClick = {
+                        val restored = lastCleared ?: return@SecondaryButton
+                        lastCleared = null
+                        draft = restored
+                        onSave(restored)
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            } else if (canClear) {
+                DestructiveTextButton(
+                    text = "Clear",
+                    onClick = { confirmClear = true },
+                )
+            }
+        }
+    }
+    if (confirmClear) {
+        val count = PersonalDictionary.terms(words).size
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear personal dictionary?") },
+            text = {
+                Text(
+                    if (count == 1) {
+                        "This removes 1 word from this phone."
+                    } else {
+                        "This removes $count words from this phone."
+                    },
+                )
+            },
+            confirmButton = {
+                DestructiveTextButton(
+                    text = "Clear",
+                    onClick = {
+                        lastCleared = words
+                        confirmClear = false
+                        draft = ""
+                        onSave("")
+                    },
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) {
+                    Text("Cancel")
+                }
+            },
         )
     }
 }
