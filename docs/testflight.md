@@ -100,23 +100,22 @@ xcrun altool --upload-package build/export/VocaPhoneApp.ipa \
 `teamID: 92962VK378`; `--apiKey`/`--apiIssuer` are an App Store Connect API
 key (Users and Access → Integrations), not an Apple ID password.
 
-A Mac with Xcode signed into team `92962VK378` can skip the API key and
-archive unsigned, then let export create the cloud-managed Apple
-Distribution certificate:
+A Mac with Xcode signed into team `92962VK378` can skip the API key.
+Archive with automatic Release signing so App Groups stay on the binaries.
+An unsigned archive plus export drops `group.com.vocahq`, and the keyboard
+then fails with "Could not create a shared session."
 
 ```console
 cd ios && just gen
 xcodebuild -project VocaPhone.xcodeproj -scheme VocaPhone \
   -configuration Release -destination 'generic/platform=iOS' \
   -archivePath build/VocaPhone.xcarchive \
-  CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
+  -allowProvisioningUpdates \
+  CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=92962VK378 archive
 xcodebuild -exportArchive -archivePath build/VocaPhone.xcarchive \
   -exportPath build/export -exportOptionsPlist exportOptions.plist \
   -allowProvisioningUpdates
 ```
-
-Automatic *development* signing fails here if the team has no registered
-iPhone; the unsigned archive plus export path does not need one.
 
 ## 4. GitHub tag uploads
 
