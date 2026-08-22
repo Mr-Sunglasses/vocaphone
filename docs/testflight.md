@@ -101,21 +101,11 @@ xcrun altool --upload-package build/export/VocaPhoneApp.ipa \
 key (Users and Access → Integrations), not an Apple ID password.
 
 A Mac with Xcode signed into team `92962VK378` can skip the API key.
-Archive with automatic Release signing so App Groups stay on the binaries.
-An unsigned archive plus export drops `group.com.vocahq`, and the keyboard
-then fails with "Could not create a shared session."
-
-```console
-cd ios && just gen
-xcodebuild -project VocaPhone.xcodeproj -scheme VocaPhone \
-  -configuration Release -destination 'generic/platform=iOS' \
-  -archivePath build/VocaPhone.xcarchive \
-  -allowProvisioningUpdates \
-  CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM=92962VK378 archive
-xcodebuild -exportArchive -archivePath build/VocaPhone.xcarchive \
-  -exportPath build/export -exportOptionsPlist exportOptions.plist \
-  -allowProvisioningUpdates
-```
+Archive unsigned (automatic *development* signing needs a registered
+iPhone), then copy each target's entitlements into
+`archived-expanded-entitlements.xcent` so export keeps `group.com.vocahq`.
+Without that stamp, TestFlight dictation fails with "Could not create a
+shared session." `.github/workflows/ios-release.yml` does this for CI.
 
 ## 4. GitHub tag uploads
 
