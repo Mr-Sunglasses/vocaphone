@@ -77,6 +77,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Select Xcode 26
+        run: |
+          set -euo pipefail
+          # macos-15 still defaults to Xcode 16.4 / iOS 18.5. App Store
+          # Connect rejects that SDK on export.
+          app="$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+
       - name: Install xcodegen
         run: brew install xcodegen
 

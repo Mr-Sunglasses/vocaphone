@@ -67,7 +67,7 @@ git tag ios/v1.0.21
 git push origin ios/v1.0.21
 ```
 
-`.github/workflows/ios-release.yml` archives on `macos-15` and uploads to
+`.github/workflows/ios-release.yml` archives on `macos-15` with Xcode 26 and uploads to
 App Store Connect / TestFlight when the three API key secrets are set. It
 never submits for App Review and never assigns the build to a TestFlight
 group. Check TestFlight first: if this `CURRENT_PROJECT_VERSION` is already
