@@ -1319,7 +1319,6 @@ private fun LanguagePreferencePanel(
                         ModelLanguageSupport.isSelectable(
                             language,
                             settings.activeModelLanguages,
-                            settings.activeModelDetectsLanguage,
                         ) -> 1
                         else -> 2
                     }
@@ -1351,11 +1350,8 @@ private fun LanguagePreferencePanel(
             verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             items(languages, key = TranscriptionLanguage::wireValue) { language ->
-                val selectable = ModelLanguageSupport.isSelectable(
-                    language,
-                    settings.activeModelLanguages,
-                    settings.activeModelDetectsLanguage,
-                )
+                val selectable =
+                    ModelLanguageSupport.isSelectable(language, settings.activeModelLanguages)
                 LanguageOptionRow(
                     language = language,
                     selected = language == settings.effectiveLanguage,

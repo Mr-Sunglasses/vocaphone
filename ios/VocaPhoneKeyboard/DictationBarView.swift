@@ -387,22 +387,21 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
     struct LanguageMenuKey: Equatable {
         let selected: TranscriptionLanguage
         let modelLanguages: Set<String>
-        let detectsLanguage: Bool
         let recents: [TranscriptionLanguage]
 
         static func current(selected: TranscriptionLanguage) -> LanguageMenuKey {
             LanguageMenuKey(
                 selected: selected,
                 modelLanguages: KeyboardPreferences.activeModelLanguages,
-                detectsLanguage: KeyboardPreferences.activeModelDetectsLanguage,
                 recents: KeyboardPreferences.recentTranscriptionLanguages
             )
         }
     }
 
     /// Automatic, then a few recent languages, then everything else behind a
-    /// submenu. A flat list of 27 was unusable on a surface this cramped; this
-    /// keeps the top level to about five rows however many languages exist.
+    /// submenu. A flat list of every language was unusable on a surface this
+    /// cramped; this keeps the top level to about five rows however many
+    /// languages exist.
     func makeLanguageMenu(
         selected: TranscriptionLanguage,
         key: LanguageMenuKey
@@ -410,8 +409,7 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
         func action(for option: TranscriptionLanguage) -> UIAction {
             let selectable = ModelLanguageSupport.isSelectable(
                 option,
-                modelLanguages: key.modelLanguages,
-                detectsLanguageAutomatically: key.detectsLanguage
+                modelLanguages: key.modelLanguages
             )
             let action = UIAction(
                 title: option.displayName,
@@ -433,8 +431,7 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
             option != .automatic
                 && ModelLanguageSupport.isSelectable(
                     option,
-                    modelLanguages: key.modelLanguages,
-                    detectsLanguageAutomatically: key.detectsLanguage
+                    modelLanguages: key.modelLanguages
                 )
         }
         var shortcuts = [action(for: .automatic)]

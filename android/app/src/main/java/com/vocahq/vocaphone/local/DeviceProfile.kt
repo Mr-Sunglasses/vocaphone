@@ -58,12 +58,11 @@ data class DeviceProfile(
     val modelRamBudgetGB: Int
         get() = when (tier) {
             DeviceTier.CONSTRAINED -> totalRamGB.toInt().coerceIn(1, 3)
-            // A 4 GB phone does not have 4 GB available to the model: Android,
-            // the keyboard, and the ONNX Runtime all need working memory too.
-            // Keeping one GB out of the recommendation budget prevents the
-            // 0.6B Parakeet encoder from becoming the default on that tier,
-            // while the full catalog remains available as an explicit choice.
-            DeviceTier.STANDARD -> (totalRamGB.toInt() - 1).coerceIn(3, 6)
+            // A 4 GB arm64 phone does run the int8 0.6B Parakeet encoder: it is
+            // memory-mapped and quantized, not resident at full precision, and
+            // holding a gigabyte back here was the only reason that tier was
+            // pushed down to a tiny model it does not need.
+            DeviceTier.STANDARD -> totalRamGB.toInt().coerceIn(3, 6)
             DeviceTier.FAST -> (totalRamGB.toInt() - 1).coerceIn(4, 8)
             DeviceTier.FLAGSHIP -> (totalRamGB.toInt() - 2).coerceAtLeast(8)
         }

@@ -405,6 +405,7 @@ class LocalModelManager(
                     requestedLanguage = resolvedLanguage,
                     loadedQuality = loadedQuality,
                     requestedQuality = quality,
+                    languageIsBakedIn = model.sherpaFamily?.acceptsLanguage ?: true,
                 )
             ) {
                 releaseEngines()
@@ -447,7 +448,11 @@ class LocalModelManager(
     ): LocalTranscription = engineMutex.withLock {
         check(
             loadedModelID == model.id &&
-                (model.engine == LocalModelEngine.WHISPER || loadedLanguage == resolvedLanguage),
+                (
+                    model.engine == LocalModelEngine.WHISPER ||
+                        model.sherpaFamily?.acceptsLanguage != true ||
+                        loadedLanguage == resolvedLanguage
+                    ),
         ) {
             "Local transcription engine changed before inference started"
         }
@@ -531,6 +536,10 @@ class LocalModelManager(
  * Whisper receives language, quality, and vocabulary with each decode; none of
  * them change the loaded native context. Sherpa bakes language and quality into
  * its recognizer and must rebuild when either changes.
+ *
+ * [languageIsBakedIn] is false for the families whose config has no language
+ * field at all: rebuilding a 670 MB Parakeet because the user relabelled the
+ * transcript language would cost seconds and change nothing about the decode.
  */
 internal fun shouldReloadLocalEngine(
     engine: LocalModelEngine,
@@ -540,8 +549,10 @@ internal fun shouldReloadLocalEngine(
     requestedLanguage: String,
     loadedQuality: TranscriptionQuality?,
     requestedQuality: TranscriptionQuality,
+    languageIsBakedIn: Boolean = true,
 ): Boolean {
     if (loadedModelID != requestedModelID) return true
-    return engine == LocalModelEngine.SHERPA_ONNX &&
-        (loadedLanguage != requestedLanguage || loadedQuality != requestedQuality)
+    if (engine != LocalModelEngine.SHERPA_ONNX) return false
+    if (loadedQuality != requestedQuality) return true
+    return languageIsBakedIn && loadedLanguage != requestedLanguage
 }

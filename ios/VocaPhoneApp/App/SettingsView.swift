@@ -395,7 +395,7 @@ struct DictationSettingsView: View {
     }
 
     /// One row that pushes to the full list, the way a `Picker` behaves in a
-    /// form. Listing all 27 languages inline buried every setting below it, and
+    /// form. Listing every language inline buried every setting below it, and
     /// a `Picker` cannot grey out the ones the loaded model cannot honour.
     private var languageSection: some View {
         Section {
@@ -1008,7 +1008,7 @@ private struct DiagnosticShareSheet: UIViewControllerRepresentable {
     ) {}
 }
 
-/// The full language list, reached from Dictation settings. Search matters at 27
+/// The full language list, reached from Dictation settings. Search matters at 54
 /// entries, and the ones the loaded model cannot honour are grouped at the
 /// bottom and greyed rather than hidden: a language that simply disappears reads
 /// as unsupported by the app, when the fix is to change the model.
@@ -1027,11 +1027,7 @@ struct TranscriptionLanguageList: View {
     }
 
     private func isSelectable(_ language: TranscriptionLanguage) -> Bool {
-        ModelLanguageSupport.isSelectable(
-            language,
-            modelLanguages: modelLanguages,
-            detectsLanguageAutomatically: detectsLanguage
-        )
+        ModelLanguageSupport.isSelectable(language, modelLanguages: modelLanguages)
     }
 
     private var available: [TranscriptionLanguage] {
@@ -1052,7 +1048,8 @@ struct TranscriptionLanguageList: View {
                 } footer: {
                     if let restriction = ModelLanguageSupport.restriction(
                         modelLanguages: modelLanguages,
-                        detectsLanguageAutomatically: detectsLanguage
+                        detectsLanguageAutomatically: detectsLanguage,
+                        onDevice: LocalTranscriptionPreferences.enabled
                     ) {
                         Text(restriction)
                     }
@@ -1089,8 +1086,7 @@ struct TranscriptionLanguageList: View {
                 // loaded model cannot honour.
                 if language == ModelLanguageSupport.resolve(
                     TranscriptionLanguage(rawValue: selection) ?? .automatic,
-                    modelLanguages: modelLanguages,
-                    detectsLanguageAutomatically: detectsLanguage
+                    modelLanguages: modelLanguages
                 ) {
                     Image(systemName: "checkmark")
                         .foregroundStyle(.tint)

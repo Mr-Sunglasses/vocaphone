@@ -83,6 +83,7 @@ internal object SherpaModelCatalog {
         ),
         sherpa(
             id = "parakeet-tdt-0.6b-v3",
+            languageCodes = PARAKEET_V3_LANGUAGES,
             detectsLanguage = true,
             displayName = "Parakeet TDT 0.6B",
             repository = "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
@@ -104,7 +105,10 @@ internal object SherpaModelCatalog {
         ),
         sherpa(
             id = "sense-voice",
-            detectsLanguage = true,
+            languageCodes = SENSE_VOICE_LANGUAGES,
+            // sherpa-onnx exposes a language on the SenseVoice config, so a pick
+            // here really does pin the decoder rather than only the punctuation.
+            detectsLanguage = false,
             displayName = "SenseVoice Small",
             repository = "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09",
             revision = "355f4d4884d8afd08aef04b9007a8556d7b463b2",
@@ -121,6 +125,7 @@ internal object SherpaModelCatalog {
         ),
         sherpa(
             id = "dolphin-base-ctc",
+            languageCodes = DOLPHIN_LANGUAGES,
             detectsLanguage = true,
             displayName = "Dolphin Base",
             repository = "csukuangfj/sherpa-onnx-dolphin-base-ctc-multi-lang-int8-2025-04-02",
@@ -138,6 +143,7 @@ internal object SherpaModelCatalog {
         ),
         sherpa(
             id = "dolphin-small-ctc",
+            languageCodes = DOLPHIN_LANGUAGES,
             detectsLanguage = true,
             displayName = "Dolphin Small",
             repository = "csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02",

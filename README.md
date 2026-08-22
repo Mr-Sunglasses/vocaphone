@@ -68,7 +68,7 @@ the active cursor. A gateway is never required for on-device mode.
 - After you download a speech-to-text model, on-device dictation needs no gateway
 - Optional VocaGateway runs on a Mac, Linux box, or home server you control when
   you want larger models or shared compute. That path is self-hosted, not on-device
-- 27 transcription languages plus Automatic, and four writing styles: Formal,
+- 54 transcription languages plus Automatic, and four writing styles: Formal,
   Casual, Very Casual, and Excited
 - On iOS the containing app records, because a keyboard extension cannot use the
   microphone

@@ -74,10 +74,14 @@ struct LanguageMenuTests {
     /// The gateway's model can change without the selection changing, and that
     /// flips which entries are usable. Keying the cache on the selection alone
     /// left the keyboard offering languages the app had already ruled out.
+    ///
+    /// Coverage is what the key tracks, since coverage is what decides a row.
+    /// Auto-detection is not in it any more: it changes what the choice means,
+    /// not which rows exist, and it never appears in this menu.
     @Test func theCacheKeyNoticesAModelChange() {
         reset(languages: ["en"], detects: false)
         let before = DictationBarView.LanguageMenuKey.current(selected: .automatic)
-        KeyboardPreferences.modelDetectsLanguage = true
+        KeyboardPreferences.modelLanguages = ["en", "hi"]
         let after = DictationBarView.LanguageMenuKey.current(selected: .automatic)
         #expect(before != after)
     }

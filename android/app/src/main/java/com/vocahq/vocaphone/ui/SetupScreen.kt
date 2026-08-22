@@ -14,6 +14,10 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -77,6 +81,8 @@ fun SetupScreen(
     val requestPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { }
+    val askUsageReporting = BuildConfig.TELEMETRY && !settings.telemetryAsked
+    var askingUsageReporting by remember { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
         Column(
@@ -133,23 +139,6 @@ fun SetupScreen(
                     )
                 }
             }
-
-            // Last, and only once the checklist is done: asking for usage reporting
-            // before the user has a working transcript is asking a favour of someone
-            // still deciding whether the app is worth their time.
-            //
-            // The BuildConfig check is repeated here even though the card checks it
-            // too, because the payload view below is a separate call. Without it R8
-            // keeps that composable — and the ingest path string inside it — in the
-            // F-Droid APK, where nothing can ever reach it.
-            if (BuildConfig.TELEMETRY && status.isReadyToDictate && !settings.telemetryAsked) {
-                UsageReportingSetupCard(
-                    onDecision = onTelemetryDecision,
-                    inspect = telemetryInspect,
-                    pendingCount = telemetryPendingCount,
-                    deliveryStatus = telemetryDeliveryStatus,
-                )
-            }
         }
 
         Column(
@@ -161,11 +150,35 @@ fun SetupScreen(
         ) {
             PrimaryButton(
                 text = SetupCopy.START,
-                onClick = onFinish,
+                onClick = {
+                    if (askUsageReporting) askingUsageReporting = true else onFinish()
+                },
                 enabled = status.isReadyToDictate,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+
+    // The last step of setup rather than a card halfway down it: asking before
+    // the user has a working transcript is asking a favour of someone still
+    // deciding whether the app is worth their time, and a card in the scroll
+    // could be walked past without either answer ever being seen.
+    //
+    // The BuildConfig check is repeated here even though the dialog checks it
+    // too, because the payload view inside it is a separate call. Without it R8
+    // keeps that composable — and the ingest path string inside it — in the
+    // F-Droid APK, where nothing can ever reach it.
+    if (BuildConfig.TELEMETRY && askingUsageReporting) {
+        UsageReportingDialog(
+            onDecision = { enabled ->
+                askingUsageReporting = false
+                onTelemetryDecision(enabled)
+                onFinish()
+            },
+            inspect = telemetryInspect,
+            pendingCount = telemetryPendingCount,
+            deliveryStatus = telemetryDeliveryStatus,
+        )
     }
 }
 

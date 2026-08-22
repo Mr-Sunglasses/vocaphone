@@ -30,8 +30,32 @@ struct LocalModelPicker: View {
         usable.filter { manager.isDownloaded($0.id) || state(for: $0) != .notDownloaded }
     }
 
+    /// Three or four answers rather than one: the accurate English model, the
+    /// widest multilingual one, the phone language's specialist, and the
+    /// smallest download that still covers it.
+    ///
+    /// Computed once for the process: it reads the device's memory and locale,
+    /// neither of which changes while the app is running, and `role(of:)` asks
+    /// for it once per row on every redraw.
+    private static let picks = LocalModelCatalog.recommendations(
+        deviceMemoryGB: LocalModelCatalog.deviceMemoryGB
+    )
+
+    private var picks: [ModelPick] { Self.picks }
+
+    /// Picks not yet on the phone. The installed ones already have a row above
+    /// with their real state; repeating them here would say nothing new.
+    private var recommendedPicks: [ModelPick] {
+        picks.filter { state(for: $0.model) == .notDownloaded }
+    }
+
     private var availableModels: [LocalModelDescriptor] {
-        usable.filter { state(for: $0) == .notDownloaded }
+        let recommended = Set(recommendedPicks.map(\.model.id))
+        return usable.filter { state(for: $0) == .notDownloaded && !recommended.contains($0.id) }
+    }
+
+    private func role(of model: LocalModelDescriptor) -> ModelPickRole? {
+        picks.first { $0.model.id == model.id }?.role
     }
 
     /// The five states a model can be in, named once so every surface uses the
@@ -95,6 +119,21 @@ struct LocalModelPicker: View {
                     ForEach(installedModels) { model in
                         row(for: model)
                     }
+                }
+            }
+
+            if !recommendedPicks.isEmpty {
+                Section {
+                    ForEach(recommendedPicks, id: \.model.id) { pick in
+                        row(for: pick.model)
+                    }
+                } header: {
+                    Text("Recommended for this iPhone")
+                } footer: {
+                    Text(
+                        "Each of these answers a different question. Every one runs "
+                            + "on this iPhone; pick the one that matches how you dictate."
+                    )
                 }
             }
 
@@ -248,8 +287,11 @@ struct LocalModelPicker: View {
             return "\(model.languages) · verified and ready to use offline"
         default:
             var detail = "\(model.sizeLabel) · \(model.languages)"
-            if model.id == LocalModelCatalog.recommended.id {
-                detail += " · recommended"
+            // The role, not a bare "recommended": four models cannot all be the
+            // recommendation, and which question each one answers is the thing
+            // worth saying.
+            if let role = role(of: model) {
+                detail += " · \(role.label.lowercased())"
             }
             return detail
         }

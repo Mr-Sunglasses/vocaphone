@@ -95,26 +95,27 @@ fun DictateScreen(
         }
     }
 
+    // Guided setup asks once, at its end -- but only people who go through
+    // setup ever reach that screen. Everyone upgrading from an earlier beta
+    // already has onboardingComplete set, so SetupScreen never renders for
+    // them and they would never be asked at all. Asking here covers them, in
+    // the same dialog rather than a card in this column: the column does not
+    // scroll, so a card that tall hid both answers off the bottom of the phone.
+    if (BuildConfig.TELEMETRY && settings.onboardingComplete && !settings.telemetryAsked) {
+        UsageReportingDialog(
+            onDecision = onTelemetryDecision,
+            inspect = telemetryInspect,
+            pendingCount = telemetryPendingCount,
+            deliveryStatus = telemetryDeliveryStatus,
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Guided setup asks once, at its end -- but only people who go through
-        // setup ever reach that screen. Everyone upgrading from an earlier beta
-        // already has onboardingComplete set, so SetupScreen never renders for
-        // them and they would never be asked at all. Asking here covers them,
-        // and disappears for good either way once answered.
-        if (BuildConfig.TELEMETRY && settings.onboardingComplete && !settings.telemetryAsked) {
-            UsageReportingSetupCard(
-                onDecision = onTelemetryDecision,
-                inspect = telemetryInspect,
-                pendingCount = telemetryPendingCount,
-                deliveryStatus = telemetryDeliveryStatus,
-            )
-        }
-
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -12,40 +12,15 @@ struct ModelLanguageSupportTests {
     private let dolphin: Set<String> = ["hi", "bn", "ta", "zh", "ja"]
     private let englishOnly: Set<String> = ["en"]
 
-    /// Dolphin ignores the requested language, so offering Hindi promises
-    /// something it cannot deliver — it returned Cyrillic for a short Hindi clip.
-    @Test func aModelThatDetectsItsOwnLanguageOffersOnlyAutomatic() {
-        #expect(
-            ModelLanguageSupport.isSelectable(
-                .automatic, modelLanguages: dolphin, detectsLanguageAutomatically: true
-            )
-        )
-        for language in TranscriptionLanguage.allCases where language != .automatic {
-            #expect(
-                !ModelLanguageSupport.isSelectable(
-                    language, modelLanguages: dolphin, detectsLanguageAutomatically: true
-                ),
-                "\(language) must not be selectable on an auto-detecting model"
-            )
-        }
-    }
-
-    @Test func aPinnableModelOffersExactlyWhatItCovers() {
-        #expect(
-            ModelLanguageSupport.isSelectable(
-                .hindi, modelLanguages: dolphin, detectsLanguageAutomatically: false
-            )
-        )
-        #expect(
-            !ModelLanguageSupport.isSelectable(
-                .french, modelLanguages: dolphin, detectsLanguageAutomatically: false
-            )
-        )
-        #expect(
-            !ModelLanguageSupport.isSelectable(
-                .hindi, modelLanguages: englishOnly, detectsLanguageAutomatically: false
-            )
-        )
+    /// Coverage is the only test. An auto-detecting model still knows exactly
+    /// which languages it was trained on, and hiding them made a 25-language
+    /// Parakeet look like it spoke none of them.
+    @Test func aModelOffersExactlyWhatItCoversDetectedOrNot() {
+        #expect(ModelLanguageSupport.isSelectable(.automatic, modelLanguages: dolphin))
+        #expect(ModelLanguageSupport.isSelectable(.hindi, modelLanguages: dolphin))
+        #expect(!ModelLanguageSupport.isSelectable(.french, modelLanguages: dolphin))
+        #expect(ModelLanguageSupport.isSelectable(.english, modelLanguages: englishOnly))
+        #expect(!ModelLanguageSupport.isSelectable(.hindi, modelLanguages: englishOnly))
     }
 
     /// Older gateway, no model selected, or an imported one. Being uninformed
@@ -53,9 +28,7 @@ struct ModelLanguageSupportTests {
     @Test func anUnknownGatewayNeverLocksThePicker() {
         for language in TranscriptionLanguage.allCases {
             #expect(
-                ModelLanguageSupport.isSelectable(
-                    language, modelLanguages: [], detectsLanguageAutomatically: false
-                ),
+                ModelLanguageSupport.isSelectable(language, modelLanguages: []),
                 "\(language) must stay selectable when the gateway made no claim"
             )
         }
@@ -64,26 +37,9 @@ struct ModelLanguageSupportTests {
     /// The user picked Hindi, then switched the gateway to an English-only model.
     /// Sending "hi" anyway is exactly the failure this prevents.
     @Test func aStaleSelectionFallsBackToAutomatic() {
-        #expect(
-            ModelLanguageSupport.resolve(
-                .hindi, modelLanguages: englishOnly, detectsLanguageAutomatically: false
-            ) == .automatic
-        )
-        #expect(
-            ModelLanguageSupport.resolve(
-                .hindi, modelLanguages: dolphin, detectsLanguageAutomatically: true
-            ) == .automatic
-        )
-        #expect(
-            ModelLanguageSupport.resolve(
-                .hindi, modelLanguages: dolphin, detectsLanguageAutomatically: false
-            ) == .hindi
-        )
-        #expect(
-            ModelLanguageSupport.resolve(
-                .hindi, modelLanguages: [], detectsLanguageAutomatically: false
-            ) == .hindi
-        )
+        #expect(ModelLanguageSupport.resolve(.hindi, modelLanguages: englishOnly) == .automatic)
+        #expect(ModelLanguageSupport.resolve(.hindi, modelLanguages: dolphin) == .hindi)
+        #expect(ModelLanguageSupport.resolve(.hindi, modelLanguages: []) == .hindi)
     }
 
     @Test func theRestrictionIsExplainedOnlyWhenThereIsOne() {
@@ -92,29 +48,39 @@ struct ModelLanguageSupportTests {
                 modelLanguages: [], detectsLanguageAutomatically: false
             ) == nil
         )
-        let automatic = ModelLanguageSupport.restriction(
-            modelLanguages: dolphin, detectsLanguageAutomatically: true
-        )
-        #expect(automatic?.contains("detects the language itself") == true)
         let limited = ModelLanguageSupport.restriction(
             modelLanguages: dolphin, detectsLanguageAutomatically: false
         )
         #expect(limited?.contains("\(dolphin.count) languages") == true)
     }
 
+    /// The sentence has to say both things: the choice is real for punctuation,
+    /// and it is not a decoder setting. Promising either half alone is how the
+    /// picker starts lying about what the model does.
+    @Test func anAutoDetectingModelSaysWhatPickingALanguageDoes() {
+        let detected = ModelLanguageSupport.restriction(
+            modelLanguages: dolphin, detectsLanguageAutomatically: true
+        )
+        #expect(detected?.contains("\(dolphin.count) languages") == true)
+        #expect(detected?.contains("does not pin the decoder") == true)
+        #expect(detected?.contains("punctuated") == true)
+        let unclaimed = ModelLanguageSupport.restriction(
+            modelLanguages: [], detectsLanguageAutomatically: true
+        )
+        #expect(unclaimed?.contains("does not pin the decoder") == true)
+        let local = ModelLanguageSupport.restriction(
+            modelLanguages: dolphin, detectsLanguageAutomatically: true, onDevice: true
+        )
+        #expect(local?.contains("The on-device model") == true)
+    }
+
     /// Both clients must reach the same verdict, or the keyboard and the app
     /// disagree about what the user may pick.
     @Test func theRulesMatchTheAndroidImplementation() {
-        #expect(
-            ModelLanguageSupport.isSelectable(
-                .automatic, modelLanguages: [], detectsLanguageAutomatically: true
-            )
-        )
-        #expect(
-            !ModelLanguageSupport.isSelectable(
-                .english, modelLanguages: [], detectsLanguageAutomatically: true
-            )
-        )
+        #expect(ModelLanguageSupport.isSelectable(.automatic, modelLanguages: []))
+        #expect(ModelLanguageSupport.isSelectable(.english, modelLanguages: []))
+        #expect(ModelLanguageSupport.isSelectable(.russian, modelLanguages: LocalModelLanguages.parakeetV3))
+        #expect(!ModelLanguageSupport.isSelectable(.hindi, modelLanguages: LocalModelLanguages.parakeetV3))
     }
 }
 

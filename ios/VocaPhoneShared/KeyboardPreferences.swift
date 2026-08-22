@@ -67,27 +67,54 @@ enum TranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Sendabl
     case arabic = "ar"
     case assamese = "as"
     case bengali = "bn"
+    case bulgarian = "bg"
+    case cantonese = "yue"
+    case catalan = "ca"
+    case croatian = "hr"
+    case czech = "cs"
+    case danish = "da"
     case dutch = "nl"
     case english = "en"
+    case estonian = "et"
+    case filipino = "tl"
+    case finnish = "fi"
     case french = "fr"
     case german = "de"
+    case greek = "el"
     case gujarati = "gu"
+    case hebrew = "he"
     case hindi = "hi"
+    case hungarian = "hu"
+    case indonesian = "id"
     case italian = "it"
     case japanese = "ja"
     case kannada = "kn"
     case korean = "ko"
+    case latvian = "lv"
+    case lithuanian = "lt"
+    case malay = "ms"
     case malayalam = "ml"
+    case maltese = "mt"
     case mandarinChinese = "zh"
     case marathi = "mr"
     case nepali = "ne"
+    case norwegian = "no"
+    case persian = "fa"
     case polish = "pl"
     case portuguese = "pt"
     case punjabi = "pa"
+    case romanian = "ro"
     case russian = "ru"
+    case serbian = "sr"
+    case slovak = "sk"
+    case slovenian = "sl"
     case spanish = "es"
+    case swahili = "sw"
+    case swedish = "sv"
     case tamil = "ta"
     case telugu = "te"
+    case thai = "th"
+    case turkish = "tr"
     case ukrainian = "uk"
     case urdu = "ur"
     case vietnamese = "vi"
@@ -100,64 +127,64 @@ enum TranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Sendabl
         case .arabic: "Arabic"
         case .assamese: "Assamese"
         case .bengali: "Bengali"
+        case .bulgarian: "Bulgarian"
+        case .cantonese: "Cantonese"
+        case .catalan: "Catalan"
+        case .croatian: "Croatian"
+        case .czech: "Czech"
+        case .danish: "Danish"
         case .dutch: "Dutch"
         case .english: "English"
+        case .estonian: "Estonian"
+        case .filipino: "Filipino"
+        case .finnish: "Finnish"
         case .french: "French"
         case .german: "German"
+        case .greek: "Greek"
         case .gujarati: "Gujarati"
+        case .hebrew: "Hebrew"
         case .hindi: "Hindi"
+        case .hungarian: "Hungarian"
+        case .indonesian: "Indonesian"
         case .italian: "Italian"
         case .japanese: "Japanese"
         case .kannada: "Kannada"
         case .korean: "Korean"
+        case .latvian: "Latvian"
+        case .lithuanian: "Lithuanian"
+        case .malay: "Malay"
         case .malayalam: "Malayalam"
+        case .maltese: "Maltese"
         case .mandarinChinese: "Mandarin Chinese"
         case .marathi: "Marathi"
         case .nepali: "Nepali"
+        case .norwegian: "Norwegian"
+        case .persian: "Persian"
         case .polish: "Polish"
         case .portuguese: "Portuguese"
         case .punjabi: "Punjabi"
+        case .romanian: "Romanian"
         case .russian: "Russian"
+        case .serbian: "Serbian"
+        case .slovak: "Slovak"
+        case .slovenian: "Slovenian"
         case .spanish: "Spanish"
+        case .swahili: "Swahili"
+        case .swedish: "Swedish"
         case .tamil: "Tamil"
         case .telugu: "Telugu"
+        case .thai: "Thai"
+        case .turkish: "Turkish"
         case .ukrainian: "Ukrainian"
         case .urdu: "Urdu"
         case .vietnamese: "Vietnamese"
         }
     }
 
+    /// The chip label. Derived from the code rather than switched over, so a new
+    /// language is one line in the case list and not three.
     var shortLabel: String {
-        switch self {
-        case .automatic: "Auto"
-        case .arabic: "AR"
-        case .assamese: "AS"
-        case .bengali: "BN"
-        case .dutch: "NL"
-        case .english: "EN"
-        case .french: "FR"
-        case .german: "DE"
-        case .gujarati: "GU"
-        case .hindi: "HI"
-        case .italian: "IT"
-        case .japanese: "JA"
-        case .kannada: "KN"
-        case .korean: "KO"
-        case .malayalam: "ML"
-        case .mandarinChinese: "ZH"
-        case .marathi: "MR"
-        case .nepali: "NE"
-        case .polish: "PL"
-        case .portuguese: "PT"
-        case .punjabi: "PA"
-        case .russian: "RU"
-        case .spanish: "ES"
-        case .tamil: "TA"
-        case .telugu: "TE"
-        case .ukrainian: "UK"
-        case .urdu: "UR"
-        case .vietnamese: "VI"
-        }
+        self == .automatic ? "Auto" : rawValue.uppercased()
     }
 
     var detail: String {
@@ -458,7 +485,7 @@ enum KeyboardPreferences {
     }
 
     static var activeModelLanguages: Set<String> {
-        activeLocalModel?.languageCodes ?? modelLanguages
+        activeLocalModel?.selectableLanguageCodes ?? modelLanguages
     }
 
     static var activeModelDetectsLanguage: Bool {
@@ -470,8 +497,7 @@ enum KeyboardPreferences {
     static var effectiveTranscriptionLanguage: TranscriptionLanguage {
         ModelLanguageSupport.resolve(
             transcriptionLanguage,
-            modelLanguages: activeModelLanguages,
-            detectsLanguageAutomatically: activeModelDetectsLanguage
+            modelLanguages: activeModelLanguages
         )
     }
 

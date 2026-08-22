@@ -33,26 +33,73 @@ class DeviceProfileTest {
     @Test
     fun `budget leaves headroom on fast and flagship phones`() {
         assertEquals(3, profile(3).modelRamBudgetGB)
-        assertEquals(3, profile(4).modelRamBudgetGB)
+        // 4 GB is the whole point: it is what the int8 0.6B Parakeet needs.
+        assertEquals(4, profile(4).modelRamBudgetGB)
         assertEquals(7, profile(8).modelRamBudgetGB)
         assertEquals(14, profile(16).modelRamBudgetGB)
         assertEquals(18, profile(20).modelRamBudgetGB)
     }
 
     @Test
-    fun `english default is a small moonshine, not a 670 MB parakeet`() {
+    fun `english leads with parakeet wherever the budget holds it`() {
         for (ram in listOf(4L, 8L, 16L, 20L)) {
             val pick = LocalModelCatalog.recommended(profile(ram, language = "en"))
-            assertEquals("moonshine-tiny-en", pick.id)
-            assertTrue(pick.sizeBytes < 200_000_000L)
+            assertEquals("parakeet-tdt-0.6b-v2-en", pick.id)
             assertTrue(pick.minimumRamGB <= profile(ram).modelRamBudgetGB)
         }
-        val parakeet = LocalModelCatalog.find("parakeet-tdt-0.6b-v3")!!
-        assertTrue(LocalModelCatalog.isUsableOnDevice(parakeet, 8, sherpaAvailable = true))
+    }
+
+    /**
+     * The list is what makes a 670 MB default acceptable: someone on mobile
+     * data can see a 30 MB answer to the same question without going hunting
+     * through the catalog.
+     */
+    @Test
+    fun `english picks cover accuracy, breadth and a small download`() {
+        val picks = LocalModelCatalog.recommendations(profile(8, language = "en"))
+        assertEquals(
+            listOf(ModelPickRole.ENGLISH, ModelPickRole.MULTILINGUAL, ModelPickRole.COMPACT),
+            picks.map { it.role },
+        )
+        assertEquals("parakeet-tdt-0.6b-v2-en", picks[0].model.id)
+        assertEquals("parakeet-tdt-0.6b-v3", picks[1].model.id)
+        assertTrue(picks[2].model.sizeBytes < 100_000_000L)
+    }
+
+    @Test
+    fun `a regional language leads with its own specialist and still offers the rest`() {
+        val picks = LocalModelCatalog.recommendations(profile(8, language = "ru"))
+        assertEquals("giga-am-ctc-ru", picks[0].model.id)
+        assertEquals(ModelPickRole.REGIONAL, picks[0].role)
+        // The multilingual and English answers stay on offer next to it.
+        assertEquals("parakeet-tdt-0.6b-v3", picks[1].model.id)
+        assertEquals("parakeet-tdt-0.6b-v2-en", picks[2].model.id)
+        assertTrue(picks.size in 3..4)
+        picks.forEach { assertTrue(profile(8).fits(it.model)) }
+    }
+
+    @Test
+    fun `every pick covers the phone language and fits the budget`() {
+        for (language in listOf("en", "de", "hi", "zh", "yue", "ja", "ru", "it")) {
+            for (ram in listOf(3L, 4L, 8L, 16L)) {
+                val device = profile(ram, language = language)
+                val picks = LocalModelCatalog.recommendations(device)
+                assertTrue("no picks for $language on $ram GB", picks.isNotEmpty())
+                assertEquals(picks.map { it.model.id }.distinct().size, picks.size)
+                picks.forEach { pick ->
+                    assertTrue(
+                        "${pick.model.id} does not fit $ram GB",
+                        device.fits(pick.model),
+                    )
+                }
+                assertTrue(picks.first().model.coversLanguage(language))
+            }
+        }
     }
 
     @Test
     fun `the default follows the phone language`() {
+        // Languages with a compact specialist keep it as the lead pick.
         assertEquals(
             "canary-180m-flash",
             LocalModelCatalog.recommended(profile(8, language = "de")).id,
@@ -68,6 +115,11 @@ class DeviceProfileTest {
         assertEquals(
             "paraformer-zh-small",
             LocalModelCatalog.recommended(profile(8, language = "zh")).id,
+        )
+        // Paraformer is Mandarin and English only, so Cantonese gets SenseVoice.
+        assertEquals(
+            "sense-voice",
+            LocalModelCatalog.recommended(profile(8, language = "yue")).id,
         )
         assertEquals(
             "sense-voice",
@@ -85,35 +137,33 @@ class DeviceProfileTest {
             "dolphin-base-ctc",
             LocalModelCatalog.recommended(profile(8, language = "hi")).id,
         )
+        // Italian has no specialist in the catalog, so the widest multilingual
+        // model that covers it leads instead of a small Whisper.
         val italian = LocalModelCatalog.recommended(profile(8, language = "it"))
-        assertEquals(LocalModelEngine.WHISPER, italian.engine)
-        assertTrue(italian.sizeBytes < 200_000_000L)
+        assertEquals("parakeet-tdt-0.6b-v3", italian.id)
         assertTrue(italian.coversLanguage("it"))
     }
 
     @Test
-    fun `four GB sherpa phone keeps a memory margin for the default`() {
+    fun `four GB sherpa phone reaches parakeet rather than a tiny default`() {
         val pick = LocalModelCatalog.recommended(profile(4))
-        assertEquals(SherpaFamily.MOONSHINE, pick.sherpaFamily)
+        assertEquals(SherpaFamily.NEMO_TRANSDUCER, pick.sherpaFamily)
         assertTrue(pick.minimumRamGB <= profile(4).modelRamBudgetGB)
-        // Parakeet remains an explicit catalog choice when the user accepts
-        // the memory tradeoff; this test covers only the automatic default.
-        val parakeet = LocalModelCatalog.find("parakeet-tdt-0.6b-v3")!!
-        assertTrue(LocalModelCatalog.isUsableOnDevice(parakeet, 4, sherpaAvailable = true))
     }
 
     @Test
     fun `without sherpa the class picks a matching whisper, not the largest file`() {
+        // English leads, so these are the English builds of the same class.
         assertEquals(
-            "tiny-q5_1",
+            "tiny.en-q5_1",
             LocalModelCatalog.recommended(profile(2, sherpa = false)).id,
         )
         assertEquals(
-            "base-q5_1",
+            "base.en-q5_1",
             LocalModelCatalog.recommended(profile(4, sherpa = false)).id,
         )
         assertEquals(
-            "base-q5_1",
+            "base.en-q5_1",
             LocalModelCatalog.recommended(profile(8, mpc = 0, sherpa = false)).id,
         )
         // Large v3 / turbo stays in the catalog with a slow-on-phone mark.
@@ -123,8 +173,12 @@ class DeviceProfileTest {
         assertTrue(flagship.sizeBytes < 600_000_000L)
         assertTrue(!flagship.id.contains("large"))
         assertEquals(
-            "small-q5_1",
+            "small.en-q5_1",
             LocalModelCatalog.recommended(profile(16, sherpa = false)).id,
+        )
+        assertEquals(
+            "small-q5_1",
+            LocalModelCatalog.recommended(profile(16, sherpa = false, language = "it")).id,
         )
     }
 
@@ -139,7 +193,7 @@ class DeviceProfileTest {
         )
         assertEquals(DeviceTier.FAST, pocoF1.tier)
         assertEquals("base-q5_1", LocalModelCatalog.recommendedWhisper(pocoF1).id)
-        assertEquals("base-q5_1", LocalModelCatalog.recommended(pocoF1).id)
+        assertEquals("base.en-q5_1", LocalModelCatalog.recommended(pocoF1).id)
     }
 
     @Test

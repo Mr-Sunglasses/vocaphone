@@ -23,6 +23,16 @@ enum SherpaFamily: String, Codable, Sendable {
     /// family and never from the user's setting alone.
     var supportsBeamSearch: Bool { self == .nemoTransducer }
 
+    /// Whether the recognizer config for this family has a language field at all.
+    ///
+    /// The transducer and CTC families do not: sherpa-onnx exposes no language
+    /// on the transducer, Dolphin or NeMo CTC configs, so those models decide
+    /// the language from the audio whatever the user picked. The picker still
+    /// offers the languages they cover, because the choice governs how the
+    /// transcript is punctuated, but nothing here can pin the decoder and this
+    /// flag is what keeps a relabelling from rebuilding a 670 MB recognizer.
+    var acceptsLanguage: Bool { self == .senseVoice || self == .canary }
+
     static let greedySearch = "greedy_search"
 
     /// The only safe way to turn a quality setting into a decoding method.
@@ -46,6 +56,10 @@ struct LocalModelDescriptor: Identifiable, Codable, Sendable, Equatable {
     let languages: String
     let englishOnly: Bool
     let languageCodesOverride: Set<String>
+    /// True when the decoder picks the language from the audio and no request
+    /// can pin it. The languages in `languageCodes` are still offered, because
+    /// the choice decides how the transcript is punctuated, but the picker says
+    /// plainly that it does not steer the decoder.
     let detectsLanguageAutomatically: Bool
 
     /// Whether a custom word list can reach this model at all.
@@ -170,13 +184,26 @@ struct LocalModelDescriptor: Identifiable, Codable, Sendable, Equatable {
         )
     }
 
-    /// Which language codes this model can be asked for. Empty means no
-    /// restriction: the multilingual builds cover every language the picker
-    /// offers. No WhisperKit model detects the language and then ignores the
-    /// request, so there is no auto-detect case here.
+    /// Which language codes this model covers. Empty means no restriction: the
+    /// multilingual WhisperKit builds cover every language the picker offers.
+    /// A model that detects the language itself still declares its coverage
+    /// here, because detecting is not the same as covering everything.
     var languageCodes: Set<String> {
         if !languageCodesOverride.isEmpty { return languageCodesOverride }
         return englishOnly ? ["en"] : []
+    }
+
+    /// What the language picker may offer for this model.
+    ///
+    /// Almost always `languageCodes`, and empty still means "no restriction".
+    /// The exception is the pre-large-v3 Whisper builds: they cover every
+    /// language the picker knows except Cantonese, which is a claim that can
+    /// only be made by listing the rest. See `LocalModelLanguages.largeV3Only`.
+    var selectableLanguageCodes: Set<String> {
+        if !languageCodes.isEmpty { return languageCodes }
+        guard engine == .whisperKit else { return [] }
+        if id.contains("large-v3") { return [] }
+        return LocalModelLanguages.picker.subtracting(LocalModelLanguages.largeV3Only)
     }
 
     var sizeLabel: String {
@@ -186,6 +213,43 @@ struct LocalModelDescriptor: Identifiable, Codable, Sendable, Equatable {
         }
         return "\(Int(megabytes.rounded())) MB"
     }
+}
+
+/// What the multilingual models actually transcribe, mirroring
+/// `LocalModelCatalog.kt`.
+///
+/// Declared even for the models that detect the language themselves: deciding
+/// for itself does not make a model multilingual beyond what it was trained on,
+/// and the picker has to be able to say which languages those are.
+enum LocalModelLanguages {
+
+    /// NVIDIA Parakeet TDT 0.6B v3: 25 European languages.
+    static let parakeetV3: Set<String> = [
+        "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
+        "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk"
+    ]
+
+    static let senseVoice: Set<String> = ["zh", "en", "ja", "ko", "yue"]
+
+    /// Cantonese is the one language OpenAI added after Whisper v2.
+    ///
+    /// Every multilingual build before large-v3 stops at 99 language tokens, and
+    /// the hundredth id lands on the token those models use for something else:
+    /// the decode does not fail, it just comes back wrong.
+    static let largeV3Only: Set<String> = ["yue"]
+
+    /// Every code the picker can show, which is the ceiling on any coverage claim.
+    static let picker: Set<String> = Set(
+        TranscriptionLanguage.allCases.filter { $0 != .automatic }.map(\.rawValue)
+    )
+
+    /// Indic and nearby languages Dolphin covers well at first-run size.
+    static let dolphinStarters: Set<String> = [
+        "hi", "bn", "ta", "te", "gu", "pa", "mr", "as", "ne", "ur", "th", "vi", "id", "ms"
+    ]
+
+    /// Everything Dolphin transcribes that the picker also offers.
+    static let dolphin: Set<String> = dolphinStarters.union(senseVoice)
 }
 
 /// Every local model that fits on an iPhone, pinned file-by-file in the matching
@@ -474,6 +538,7 @@ enum LocalModelCatalog {
             minimumRamGB: 4,
             languages: "25 languages · auto-detect",
             englishOnly: false,
+            languageCodesOverride: LocalModelLanguages.parakeetV3,
             detectsLanguageAutomatically: true
         ),
         .init(
@@ -487,7 +552,9 @@ enum LocalModelCatalog {
             minimumRamGB: 2,
             languages: "Mandarin · Cantonese · English · Japanese · Korean",
             englishOnly: false,
-            detectsLanguageAutomatically: true
+            // sherpa-onnx exposes a language on the SenseVoice config, so a pick
+            // here pins the decoder rather than only the punctuation.
+            languageCodesOverride: LocalModelLanguages.senseVoice
         ),
         .init(
             id: "dolphin-base-ctc",
@@ -500,6 +567,7 @@ enum LocalModelCatalog {
             minimumRamGB: 2,
             languages: "40 East Asian languages",
             englishOnly: false,
+            languageCodesOverride: LocalModelLanguages.dolphin,
             detectsLanguageAutomatically: true
         ),
         .init(
@@ -513,6 +581,7 @@ enum LocalModelCatalog {
             minimumRamGB: 3,
             languages: "40 East Asian languages",
             englishOnly: false,
+            languageCodesOverride: LocalModelLanguages.dolphin,
             detectsLanguageAutomatically: true
         ),
         .init(
@@ -598,25 +667,202 @@ enum LocalModelCatalog {
     /// Everything this iPhone can actually run, smallest first.
     static var usableOnDevice: [LocalModelDescriptor] { all.filter(isUsableOnDevice) }
 
-    /// Fast, multilingual default that fits. A model fitting in memory is not a
-    /// promise that its encoder is interactive on a phone; Parakeet is preferred
-    /// where available, with compact Whisper builds as the universal fallback.
+    /// The default pick: the first of `recommendations`, which is the one that
+    /// covers this iPhone's language best.
     static var recommended: LocalModelDescriptor {
         recommended(deviceMemoryGB: deviceMemoryGB)
     }
 
-    static func recommended(deviceMemoryGB: Int) -> LocalModelDescriptor {
-        let preference = [
-            "parakeet-tdt-0.6b-v3",
-            "openai_whisper-base",
-            "openai_whisper-tiny",
-            "sense-voice",
-        ]
-        for id in preference {
-            if let descriptor = descriptor(for: id), deviceMemoryGB >= descriptor.minimumRamGB {
-                return descriptor
-            }
+    static func recommended(
+        deviceMemoryGB: Int,
+        language: String = deviceLanguage
+    ) -> LocalModelDescriptor {
+        recommendations(deviceMemoryGB: deviceMemoryGB, language: language).first?.model
+            ?? lastResort(deviceMemoryGB: deviceMemoryGB)
+    }
+
+    /// Three or four models worth offering on this iPhone, best first.
+    ///
+    /// One recommendation cannot answer the question people actually have. A
+    /// phone that can run the 0.6B Parakeet encoder should be told so, but the
+    /// person holding it may want their own language instead of English, or a
+    /// 100 MB download instead of a 670 MB one on cellular. So the picker offers
+    /// the accurate English model, the widest multilingual model, the specialist
+    /// for the phone's own language, and the smallest thing that still covers
+    /// that language, deduplicated and capped at four.
+    ///
+    /// Mirrors `recommendations` in `LocalModelCatalog.kt`; the catalogs differ,
+    /// the roles do not.
+    static func recommendations(
+        deviceMemoryGB: Int,
+        language: String = deviceLanguage
+    ) -> [ModelPick] {
+        let english = bestEnglish(deviceMemoryGB: deviceMemoryGB)
+        let multilingual = bestMultilingual(deviceMemoryGB: deviceMemoryGB, language: language)
+        let regional = starter(for: language, deviceMemoryGB: deviceMemoryGB)
+        let compact = smallestCovering(deviceMemoryGB: deviceMemoryGB, language: language)
+
+        // First role wins when two roles land on the same model, which is why
+        // the order these are added in is the order the picker shows.
+        var picks: [ModelPick] = []
+        func add(_ role: ModelPickRole, _ model: LocalModelDescriptor?) {
+            guard let model, !picks.contains(where: { $0.model.id == model.id }) else { return }
+            picks.append(ModelPick(role: role, model: model))
         }
-        return all.first { deviceMemoryGB >= $0.minimumRamGB } ?? all[0]
+        if language.lowercased() == "en" {
+            add(.english, english)
+            add(.multilingual, multilingual)
+        } else {
+            add(.regional, regional)
+            add(.multilingual, multilingual)
+            add(.english, english)
+        }
+        add(.compact, compact)
+
+        let ordered = Array(picks.prefix(4))
+        return ordered.isEmpty
+            ? [ModelPick(role: .compact, model: lastResort(deviceMemoryGB: deviceMemoryGB))]
+            : ordered
+    }
+
+    /// The BCP-47 subtag from the phone, used to pick a first-run model.
+    static var deviceLanguage: String {
+        Locale.current.language.languageCode?.identifier ?? "en"
+    }
+
+    /// The most accurate English model this iPhone can hold. Parakeet first: on
+    /// anything with the memory for it, it is both faster and more accurate than
+    /// the Whisper of the same size, and it is why this list is not one line.
+    private static func bestEnglish(deviceMemoryGB: Int) -> LocalModelDescriptor? {
+        firstFitting(englishPreference, deviceMemoryGB: deviceMemoryGB)
+            ?? fitting(deviceMemoryGB: deviceMemoryGB).first { $0.englishOnly }
+    }
+
+    /// The widest-coverage model that still covers this phone's own language.
+    private static func bestMultilingual(
+        deviceMemoryGB: Int,
+        language: String
+    ) -> LocalModelDescriptor? {
+        multilingualPreference.lazy
+            .compactMap(descriptor(for:))
+            .first {
+                deviceMemoryGB >= $0.minimumRamGB && $0.covers(language)
+            }
+            ?? fitting(deviceMemoryGB: deviceMemoryGB).first {
+                !$0.englishOnly && $0.covers(language)
+            }
+    }
+
+    /// The lightest download that still transcribes this phone's language.
+    private static func smallestCovering(
+        deviceMemoryGB: Int,
+        language: String
+    ) -> LocalModelDescriptor? {
+        fitting(deviceMemoryGB: deviceMemoryGB)
+            .filter { $0.covers(language) }
+            .min { $0.sizeBytes < $1.sizeBytes }
+    }
+
+    /// The compact specialist for `language`, or nil when the catalog has none
+    /// and scoring should fall through to a small multilingual model instead.
+    private static func starter(
+        for language: String,
+        deviceMemoryGB: Int
+    ) -> LocalModelDescriptor? {
+        guard let id = starterIDs[language.lowercased()] else { return nil }
+        guard let model = descriptor(for: id), deviceMemoryGB >= model.minimumRamGB
+        else { return nil }
+        return model
+    }
+
+    private static func fitting(deviceMemoryGB: Int) -> [LocalModelDescriptor] {
+        all.filter { deviceMemoryGB >= $0.minimumRamGB }
+    }
+
+    private static func firstFitting(
+        _ ids: [String],
+        deviceMemoryGB: Int
+    ) -> LocalModelDescriptor? {
+        ids.lazy.compactMap(descriptor(for:)).first { deviceMemoryGB >= $0.minimumRamGB }
+    }
+
+    /// Nothing fit, so fall back to whatever the phone can hold.
+    private static func lastResort(deviceMemoryGB: Int) -> LocalModelDescriptor {
+        fitting(deviceMemoryGB: deviceMemoryGB).min { $0.minimumRamGB < $1.minimumRamGB } ?? all[0]
+    }
+
+    /// English models best first. Parakeet leads wherever the memory allows it.
+    private static let englishPreference = [
+        "parakeet-tdt-0.6b-v2-en",
+        "moonshine-base-en",
+        "moonshine-tiny-en",
+        "openai_whisper-base.en",
+        "openai_whisper-tiny.en"
+    ]
+
+    /// Multilingual models by breadth of coverage, widest first.
+    private static let multilingualPreference = [
+        "parakeet-tdt-0.6b-v3",
+        "canary-180m-flash",
+        "dolphin-small-ctc",
+        "sense-voice",
+        "dolphin-base-ctc",
+        "openai_whisper-base",
+        "openai_whisper-tiny"
+    ]
+
+    /// The compact specialist each language gets at first run, where one exists.
+    private static let starterIDs: [String: String] = [
+        "de": "canary-180m-flash", "es": "canary-180m-flash", "fr": "canary-180m-flash",
+        "zh": "paraformer-zh-small",
+        // SenseVoice rather than Paraformer for Cantonese: Paraformer is
+        // Mandarin and English only, and now that Cantonese is a row in the
+        // picker, leading with a model that cannot transcribe it is worse than
+        // having offered nothing.
+        "yue": "sense-voice", "ja": "sense-voice", "ko": "sense-voice",
+        "ru": "giga-am-ctc-ru"
+    ].merging(
+        Dictionary(
+            uniqueKeysWithValues: LocalModelLanguages.dolphinStarters.map { ($0, "dolphin-base-ctc") }
+        ),
+        uniquingKeysWith: { existing, _ in existing }
+    )
+}
+
+/// Why a model is being offered. The picker shows this next to each alternate,
+/// so the picks read as several different answers rather than a ranking.
+enum ModelPickRole: String, Sendable {
+    case english
+    case multilingual
+    case regional
+    case compact
+
+    var label: String {
+        switch self {
+        case .english: "Best for English"
+        case .multilingual: "Multilingual"
+        case .regional: "Your language"
+        case .compact: "Smallest download"
+        }
+    }
+}
+
+struct ModelPick: Sendable, Equatable {
+    let role: ModelPickRole
+    let model: LocalModelDescriptor
+}
+
+extension LocalModelDescriptor {
+    /// Whether this model transcribes `language` at all. Empty coverage means no
+    /// restriction, which is the honest answer for Whisper's multilingual builds.
+    func covers(_ language: String) -> Bool {
+        let code = language.lowercased()
+        if code.isEmpty { return true }
+        if englishOnly { return code == "en" }
+        if !languageCodes.isEmpty { return languageCodes.contains(code) }
+        if engine == .whisperKit, LocalModelLanguages.largeV3Only.contains(code) {
+            return id.contains("large-v3")
+        }
+        return true
     }
 }

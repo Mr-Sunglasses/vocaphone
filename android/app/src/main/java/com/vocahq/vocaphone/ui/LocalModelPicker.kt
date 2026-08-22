@@ -42,6 +42,7 @@ import com.vocahq.vocaphone.local.DeviceProfile
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
+import com.vocahq.vocaphone.local.ModelPick
 
 internal const val MORE_MODELS_LABEL = SetupCopy.BROWSE_MODELS
 
@@ -71,9 +72,14 @@ fun LocalModelPicker(
     val profile = remember(state.totalRamGB) {
         DeviceProfile.current(state.totalRamGB)
     }
-    val recommended = remember(profile, profile.language) {
-        LocalModelCatalog.recommended(profile)
+    // Four answers rather than one: the accurate English model, the widest
+    // multilingual one, the phone language's specialist, and the smallest
+    // download that still covers it. The first leads as the recommendation.
+    val picks = remember(profile, profile.language) {
+        LocalModelCatalog.recommendations(profile)
     }
+    val recommended = picks.first().model
+    val alternates = picks.drop(1)
     val selectedModel = usable.firstOrNull { it.id == selectedModelId }
 
     var query by remember { mutableStateOf("") }
@@ -97,8 +103,19 @@ fun LocalModelPicker(
     } else {
         pickerInstalledModels(filtered, state.downloaded)
     }
+    // Searching or filtering is a request for the catalog, not for advice: the
+    // picks would otherwise sit above results they contradict, and they are
+    // taken out of those results below only while they are on screen.
+    val browsing = query.isNotBlank() ||
+        engineFilter != ModelEngineFilter.ALL ||
+        sizeFilter != ModelSizeFilter.ANY ||
+        languageFilter != ModelLanguageFilter.ANY
+    val showAlternates = alternates.isNotEmpty() && (compact || !browsing)
+    val alternateIds = if (showAlternates) alternates.map { it.model.id }.toSet() else emptySet()
     val availableModels = filtered.filter {
-        it.id !in state.downloaded && !(recommendedVisible && it.id == recommended.id)
+        it.id !in state.downloaded &&
+            it.id !in alternateIds &&
+            !(recommendedVisible && it.id == recommended.id)
     }
     val sections = modelPickerSections(
         recommended = recommended,
@@ -175,6 +192,16 @@ fun LocalModelPicker(
                 },
             )
         }
+    }
+
+    if (showAlternates) {
+        ModelSectionHeading("Also good on this phone")
+        ModelPickGrid(
+            picks = alternates,
+            state = state,
+            selectedModelId = selectedModelId,
+            onInspect = { inspecting = it },
+        )
     }
 
     if (compact) {
@@ -569,6 +596,40 @@ private fun ModelSectionHeading(title: String) {
     )
 }
 
+/** The alternate picks, each labelled with the question it answers. */
+@Composable
+private fun ModelPickGrid(
+    picks: List<ModelPick>,
+    state: LocalModelState,
+    selectedModelId: String,
+    onInspect: (LocalModelDescriptor) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        picks.chunked(2).forEach { row ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                row.forEach { pick ->
+                    ModelTile(
+                        model = pick.model,
+                        selected = pick.model.id == selectedModelId,
+                        installed = pick.model.id in state.downloaded,
+                        downloading = state.downloading == pick.model.id,
+                        progress = state.progress,
+                        onClick = { onInspect(pick.model) },
+                        modifier = Modifier.weight(1f),
+                        roleLabel = pick.role.label,
+                    )
+                }
+                if (row.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
 @Composable
 private fun ModelTileGrid(
     models: List<LocalModelDescriptor>,
@@ -613,6 +674,7 @@ private fun ModelTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     elevated: Boolean = false,
+    roleLabel: String? = null,
 ) {
     val colors = MaterialTheme.colorScheme
     val slow = LocalModelCatalog.isSlowOnMobile(model)
@@ -634,6 +696,15 @@ private fun ModelTile(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            if (roleLabel != null) {
+                Text(
+                    roleLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (selected) colors.onPrimaryContainer else colors.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             Text(
                 model.displayName,
                 style = MaterialTheme.typography.bodyMedium,
