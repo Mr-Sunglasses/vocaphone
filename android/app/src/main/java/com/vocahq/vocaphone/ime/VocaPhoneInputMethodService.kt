@@ -96,6 +96,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var lastSelEnd = -1
     private var caseCycleOriginal: String? = null
     private var caseCycleEmitted: String? = null
+    /** True while the editor still has a composing region we set. */
+    private var composingRegionActive = false
 
     private val editorTextRefresh = Runnable { refreshEditorText() }
 
@@ -172,6 +174,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         lastCandidatesEnd = -1
         lastSelStart = attribute?.initialSelStart ?: -1
         lastSelEnd = attribute?.initialSelEnd ?: -1
+        composingRegionActive = false
         val cursorCapsMode = runCatching {
             currentInputConnection?.getCursorCapsMode(currentInputType) ?: 0
         }.getOrDefault(0)
@@ -279,6 +282,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         lastSelEnd = -1
         caseCycleOriginal = null
         caseCycleEmitted = null
+        composingRegionActive = false
         mainHandler.removeCallbacks(editorTextRefresh)
         editorConfig = KeyboardEditorConfig.empty().copy(sessionId = editorSession)
         super.onFinishInput()
@@ -326,39 +330,69 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     override fun currentTargetPackage(): String? = currentInputEditorInfo?.packageName
 
     private fun handleCommand(command: KeyboardCommand) {
+        val connection = currentInputConnection
         when (command) {
             is KeyboardCommand.CommitText -> {
-                currentInputConnection?.finishComposingText()
-                currentInputConnection?.commitText(command.text, 1)
+                if (connection == null) return
+                if (composingRegionActive) {
+                    connection.beginBatchEdit()
+                    connection.finishComposingText()
+                    connection.commitText(command.text, 1)
+                    connection.endBatchEdit()
+                } else {
+                    connection.commitText(command.text, 1)
+                }
+                composingRegionActive = false
             }
-            is KeyboardCommand.SetComposingText ->
-                currentInputConnection?.setComposingText(command.text, 1)
-            KeyboardCommand.FinishComposing -> currentInputConnection?.finishComposingText()
-            KeyboardCommand.DeleteBackward -> sendKey(KeyEvent.KEYCODE_DEL)
+            is KeyboardCommand.SetComposingText -> {
+                connection?.setComposingText(command.text, 1)
+                composingRegionActive = command.text.isNotEmpty()
+            }
+            KeyboardCommand.FinishComposing -> {
+                if (composingRegionActive) connection?.finishComposingText()
+                composingRegionActive = false
+            }
+            KeyboardCommand.DeleteBackward -> {
+                sendKey(KeyEvent.KEYCODE_DEL)
+                composingRegionActive = false
+            }
             is KeyboardCommand.DeleteSurrounding -> {
-                val connection = currentInputConnection ?: return
-                connection.finishComposingText()
+                if (connection == null) return
+                connection.beginBatchEdit()
+                if (composingRegionActive) connection.finishComposingText()
                 if (command.before > 0 || command.after > 0) {
                     connection.deleteSurroundingText(command.before, command.after)
                 }
+                connection.endBatchEdit()
+                composingRegionActive = false
             }
             KeyboardCommand.PerformEditorAction -> {
-                currentInputConnection?.finishComposingText()
+                if (composingRegionActive) connection?.finishComposingText()
+                composingRegionActive = false
                 performEditorAction()
             }
             is KeyboardCommand.MoveCursor -> {
-                currentInputConnection?.finishComposingText()
+                if (composingRegionActive) connection?.finishComposingText()
+                composingRegionActive = false
                 moveCursor(command.positions)
             }
             KeyboardCommand.DoubleSpacePeriod -> {
-                val connection = currentInputConnection ?: return
-                connection.finishComposingText()
+                if (connection == null) return
+                connection.beginBatchEdit()
+                if (composingRegionActive) connection.finishComposingText()
                 connection.deleteSurroundingText(1, 0)
                 connection.commitText(". ", 1)
+                connection.endBatchEdit()
+                composingRegionActive = false
             }
             KeyboardCommand.CycleSelectionCase -> cycleSelectionCase()
         }
-        scheduleEditorTextRefresh()
+        // Composing lives in keyboard state; the strip does not need a
+        // round-trip into the editor until a word is committed or the cursor
+        // moves.
+        if (command !is KeyboardCommand.SetComposingText) {
+            scheduleEditorTextRefresh()
+        }
     }
 
     private fun commitSuggestion(word: String, replaceWord: Boolean) {

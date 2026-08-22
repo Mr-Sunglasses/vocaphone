@@ -124,6 +124,73 @@ class KeyboardReducerTest {
     }
 
     @Test
+    fun `undo last composing letter drops one character`() {
+        val first = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            character("h"),
+            nowMillis = 1_000,
+            composeWords = true,
+        )
+        val second = KeyboardReducer.press(
+            first.state,
+            character("i"),
+            nowMillis = 1_010,
+            composeWords = true,
+        )
+
+        val undo = KeyboardReducer.undoLastCharacter(second.state, composeWords = true)
+
+        assertEquals(KeyboardCommand.SetComposingText("h"), undo.command)
+        assertEquals("h", undo.state.composing)
+    }
+
+    @Test
+    fun `undo of the first letter restores one-shot shift`() {
+        val typed = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.ONCE),
+            character("h"),
+            nowMillis = 1_000,
+            composeWords = true,
+        )
+        assertEquals(ShiftState.OFF, typed.state.shift)
+
+        val undo = KeyboardReducer.undoLastCharacter(
+            typed.state,
+            composeWords = true,
+            restoreShift = ShiftState.ONCE,
+        )
+
+        assertEquals(ShiftState.ONCE, undo.state.shift)
+        assertEquals("", undo.state.composing)
+        assertEquals(KeyboardCommand.SetComposingText(""), undo.command)
+    }
+
+    @Test
+    fun `undo last committed letter deletes backward`() {
+        val typed = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            character("h"),
+            nowMillis = 1_000,
+            composeWords = false,
+        )
+
+        val undo = KeyboardReducer.undoLastCharacter(typed.state, composeWords = false)
+
+        assertEquals(KeyboardCommand.DeleteBackward, undo.command)
+    }
+
+    @Test
+    fun `undo is a no-op when composing is already empty`() {
+        val undo = KeyboardReducer.undoLastCharacter(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            composeWords = true,
+        )
+
+        assertNull(undo.command)
+        assertEquals("", undo.state.composing)
+    }
+
+    @Test
     fun `delete while composing shortens the composing word`() {
         val typed = KeyboardReducer.press(
             KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF, composing = "hi"),

@@ -75,13 +75,21 @@ internal class SuggestionDictionary(
         return bigrams[previousWord.lowercase()].orEmpty().take(limit)
     }
 
-    fun correct(typed: String, limit: Int = 3): List<String> {
+    fun correct(
+        typed: String,
+        limit: Int = 3,
+        shouldAbort: () -> Boolean = { false },
+    ): List<String> {
         val lower = typed.lowercase()
         if (lower.length < 2 || isKnown(lower)) return emptyList()
-        return similar(typed, limit)
+        return similar(typed, limit, shouldAbort)
     }
 
-    fun similar(typed: String, limit: Int = 3): List<String> {
+    fun similar(
+        typed: String,
+        limit: Int = 3,
+        shouldAbort: () -> Boolean = { false },
+    ): List<String> {
         val lower = typed.lowercase()
         if (lower.length < 2) return emptyList()
         val neighbor = ArrayList<String>(limit)
@@ -93,6 +101,7 @@ internal class SuggestionDictionary(
         // One set of rows for the whole scan rather than three arrays per word.
         val scratch = SuggestionEngine.EditDistanceScratch(maxLen)
         for (index in words.indices) {
+            if ((index and 127) == 0 && shouldAbort()) return emptyList()
             val length = lengths[index]
             if (length < minLen || length > maxLen) continue
             if ((typedMask xor letterMasks[index]).countOneBits() > MAX_LETTER_DIFFERENCE) continue
@@ -119,13 +128,18 @@ internal class SuggestionDictionary(
         after: String,
         correctionsEnabled: Boolean,
         personalRaw: String = "",
+        shouldAbort: () -> Boolean = { false },
     ): SuggestionStrip {
         val token = composing.ifEmpty { SuggestionEngine.lastWordForEmoji(before).orEmpty() }
         val emojis = EmojiSuggestions.glyphs(token)
         if (composing.isNotEmpty()) {
             val personalHits = PersonalDictionary.completions(personalRaw, composing)
             val completions = complete(composing)
-            val corrections = if (correctionsEnabled) correct(composing) else emptyList()
+            val corrections = if (correctionsEnabled) {
+                correct(composing, shouldAbort = shouldAbort)
+            } else {
+                emptyList()
+            }
             val words = (personalHits + completions + corrections).distinct().take(3)
             val save = saveCandidate(
                 word = composing,
@@ -144,7 +158,7 @@ internal class SuggestionDictionary(
         if (correctionsEnabled) {
             val span = SuggestionEngine.wordSpan(before, after)
             if (span != null && span.word.length >= 2) {
-                val nearby = similar(span.word)
+                val nearby = similar(span.word, shouldAbort = shouldAbort)
                 if (nearby.isNotEmpty()) {
                     return SuggestionStrip(nearby, emojis, replacesWord = true, saveWord = save)
                 }
@@ -168,7 +182,11 @@ internal class SuggestionDictionary(
         return word
     }
 
-    fun swipe(path: String, limit: Int = 4): List<String> {
+    fun swipe(
+        path: String,
+        limit: Int = 4,
+        shouldAbort: () -> Boolean = { false },
+    ): List<String> {
         val keys = SuggestionEngine.collapseLetters(path)
         if (keys.length < 2) return emptyList()
         // The gesture's own sampled shape and length are the same for every
@@ -177,6 +195,7 @@ internal class SuggestionDictionary(
         val gesture = SuggestionEngine.SwipeGesture(keys)
         val scored = ArrayList<Pair<String, Float>>()
         for (rank in words.indices) {
+            if ((rank and 127) == 0 && shouldAbort()) return emptyList()
             val compact = collapsed[rank]
             val last = collapsedLength[rank] - 1
             if (last < 1) continue
@@ -451,11 +470,6 @@ internal object SuggestionEngine {
         }
     }
 
-    /**
-     * FlorisBoard / AnySoftKeyboard compare a swipe to the ideal line through
-     * the word's key centers, then rank by shape and path length. We do the
-     * same on the QWERTY grid instead of taking the first dictionary hit.
-     */
     /**
      * One gesture's key path, with everything that depends only on the gesture
      * worked out once.
