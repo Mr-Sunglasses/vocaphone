@@ -170,6 +170,12 @@ data class VocaPhoneSettings(
     val suggestionsEnabled: Boolean = true,
     val correctionsEnabled: Boolean = true,
     val numberKeyHintsEnabled: Boolean = true,
+    val longPressSymbolsEnabled: Boolean = false,
+    /**
+     * Words the suggestion strip should complete, as the user typed or pasted
+     * them. Newlines or commas; the keyboard parses the text on read.
+     */
+    val personalDictionary: String = "",
     val asciiEmojiEnabled: Boolean = true,
     val swipeTypingEnabled: Boolean = true,
     val clipboardChipEnabled: Boolean = true,
@@ -308,6 +314,28 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setNumberKeyHintsEnabled(enabled: Boolean) = put(Keys.NUMBER_KEY_HINTS, enabled)
 
+    suspend fun setLongPressSymbolsEnabled(enabled: Boolean) = put(Keys.LONG_PRESS_SYMBOLS, enabled)
+
+    suspend fun setPersonalDictionary(words: String) = put(Keys.PERSONAL_DICTIONARY, words)
+
+    /**
+     * Appends one word in a single DataStore edit so two rapid strip taps
+     * cannot drop the first. The keyboard only hands over words it already
+     * treated as savable.
+     */
+    suspend fun addPersonalWord(word: String) {
+        val cleaned = word.trim()
+        if (cleaned.length < 3) return
+        context.dataStore.edit { preferences ->
+            val current = preferences[Keys.PERSONAL_DICTIONARY].orEmpty()
+            val existing = current.split('\n', ',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.equals(cleaned, ignoreCase = true) }
+            preferences[Keys.PERSONAL_DICTIONARY] =
+                (listOf(cleaned) + existing).take(2_000).joinToString(", ")
+        }
+    }
+
     suspend fun setAsciiEmojiEnabled(enabled: Boolean) = put(Keys.ASCII_EMOJI, enabled)
 
     suspend fun setSwipeTypingEnabled(enabled: Boolean) = put(Keys.SWIPE_TYPING, enabled)
@@ -445,6 +473,8 @@ class SettingsRepository(private val context: Context) {
         suggestionsEnabled = this[Keys.SUGGESTIONS] ?: true,
         correctionsEnabled = this[Keys.CORRECTIONS] ?: true,
         numberKeyHintsEnabled = this[Keys.NUMBER_KEY_HINTS] ?: true,
+        longPressSymbolsEnabled = this[Keys.LONG_PRESS_SYMBOLS] ?: false,
+        personalDictionary = this[Keys.PERSONAL_DICTIONARY].orEmpty(),
         asciiEmojiEnabled = this[Keys.ASCII_EMOJI] ?: true,
         swipeTypingEnabled = this[Keys.SWIPE_TYPING] ?: true,
         clipboardChipEnabled = this[Keys.CLIPBOARD_CHIP] ?: true,
@@ -483,6 +513,8 @@ class SettingsRepository(private val context: Context) {
         val SUGGESTIONS = booleanPreferencesKey("keyboard_suggestions")
         val CORRECTIONS = booleanPreferencesKey("keyboard_corrections")
         val NUMBER_KEY_HINTS = booleanPreferencesKey("keyboard_number_key_hints")
+        val LONG_PRESS_SYMBOLS = booleanPreferencesKey("keyboard_long_press_symbols")
+        val PERSONAL_DICTIONARY = stringPreferencesKey("keyboard_personal_dictionary")
         val ASCII_EMOJI = booleanPreferencesKey("keyboard_ascii_emoji")
         val SWIPE_TYPING = booleanPreferencesKey("keyboard_swipe_typing")
         val CLIPBOARD_CHIP = booleanPreferencesKey("keyboard_clipboard_chip")

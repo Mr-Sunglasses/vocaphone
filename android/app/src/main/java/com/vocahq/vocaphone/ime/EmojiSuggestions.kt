@@ -7,19 +7,69 @@ package com.vocahq.vocaphone.ime
  * exist for a deliberate search in the emoji panel. Matched against ordinary
  * prose they answer "the" with 🤣, "dog" with 💩, and "clock" with 🏫.
  *
- * Exact whole words only. A prefix match would put an emoji on the strip
- * while the user is still two letters into a different word.
+ * Exact whole words first. A unique, almost-finished prefix (`pizz` → pizza)
+ * and a unique one-letter insert or delete (`piza` → pizza) are the only
+ * fuzzy paths, and only when they collapse to a single glyph. Substitution
+ * is out: `read` is one edit from `dead`, and offering 💀 for "read" is
+ * the strip crying wolf.
  */
 internal object EmojiSuggestions {
     const val MINIMUM_LENGTH = 2
+
+    /** Prefix and insert/delete matching start here. Three letters are too ambiguous. */
+    const val FUZZY_MIN_LENGTH = 4
+
+    /**
+     * How much of the trigger may still be untyped for a prefix to count.
+     * `pizz` (one short of pizza) is a finish; `read` (three short of reading)
+     * is just the word "read".
+     */
+    const val PREFIX_SLACK = 2
 
     fun glyph(word: String): String? = glyphs(word).firstOrNull()
 
     fun glyphs(word: String): List<String> {
         val key = word.lowercase()
         if (key.length < MINIMUM_LENGTH) return emptyList()
-        val primary = TRIGGERS[key] ?: return emptyList()
+        val primary = resolvePrimary(key) ?: return emptyList()
         return (listOf(primary) + EXTRAS[primary].orEmpty()).distinct()
+    }
+
+    private fun resolvePrimary(key: String): String? {
+        TRIGGERS[key]?.let { return it }
+        if (key.length < FUZZY_MIN_LENGTH) return null
+
+        val prefixGlyphs = LinkedHashSet<String>()
+        for ((trigger, glyph) in TRIGGERS) {
+            if (
+                trigger.length > key.length &&
+                trigger.startsWith(key) &&
+                key.length >= trigger.length - PREFIX_SLACK
+            ) {
+                prefixGlyphs.add(glyph)
+                if (prefixGlyphs.size > 1) return null
+            }
+        }
+        if (prefixGlyphs.size == 1) return prefixGlyphs.first()
+        if (prefixGlyphs.isNotEmpty()) return null
+
+        val fuzzyGlyphs = LinkedHashSet<String>()
+        val scratch = SuggestionEngine.EditDistanceScratch(key.length + 1)
+        for ((trigger, glyph) in TRIGGERS) {
+            if (kotlin.math.abs(trigger.length - key.length) != 1) continue
+            // A leading extra letter is how "they" becomes "hey". Trailing or
+            // mid-word inserts are typos of the trigger itself (`piza` / `pizza`).
+            if (isLeadingExtraLetter(key, trigger)) continue
+            if (SuggestionEngine.editDistance(key, trigger, max = 1, scratch = scratch) != 1) continue
+            fuzzyGlyphs.add(glyph)
+            if (fuzzyGlyphs.size > 1) return null
+        }
+        return fuzzyGlyphs.singleOrNull()
+    }
+
+    private fun isLeadingExtraLetter(left: String, right: String): Boolean {
+        val (shorter, longer) = if (left.length < right.length) left to right else right to left
+        return longer.length == shorter.length + 1 && longer.endsWith(shorter)
     }
 
     internal val TRIGGERS: Map<String, String> = mapOf(

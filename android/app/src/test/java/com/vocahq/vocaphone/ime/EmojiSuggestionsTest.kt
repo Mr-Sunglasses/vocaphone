@@ -35,6 +35,43 @@ class EmojiSuggestionsTest {
     }
 
     @Test
+    fun uniqueAlmostFinishedPrefixOffersTheGlyph() {
+        assertEquals("🍕", EmojiSuggestions.glyph("pizz"))
+        assertEquals("☕", EmojiSuggestions.glyph("coffe"))
+        assertEquals(listOf("😢", "😭", "😞"), EmojiSuggestions.glyphs("unhap"))
+    }
+
+    @Test
+    fun shortOrAmbiguousPrefixesOfferNothing() {
+        assertNull(EmojiSuggestions.glyph("hap"))
+        assertNull(EmojiSuggestions.glyph("co"))
+        // "read" is a real word, three letters short of "reading". Offering 📚
+        // here is the same failure as matching catalog keywords.
+        assertNull(EmojiSuggestions.glyph("read"))
+    }
+
+    @Test
+    fun uniqueInsertOrDeleteOffersTheGlyph() {
+        assertEquals("🍕", EmojiSuggestions.glyph("piza"))
+        assertEquals("☕", EmojiSuggestions.glyph("cofee"))
+        assertEquals("😊", EmojiSuggestions.glyph("happpy"))
+    }
+
+    @Test
+    fun substitutionDoesNotOfferANearbyTrigger() {
+        // "read" is one substitution from "dead". That must not become 💀.
+        assertNull(EmojiSuggestions.glyph("read"))
+        assertEquals("💀", EmojiSuggestions.glyph("dead"))
+    }
+
+    @Test
+    fun aLeadingExtraLetterDoesNotTurnAParticleIntoATrigger() {
+        // "they" is "t" + "hey". Offering 👋 there is the strip crying wolf.
+        assertNull(EmojiSuggestions.glyph("they"))
+        assertEquals("👋", EmojiSuggestions.glyph("hey"))
+    }
+
+    @Test
     fun ordinaryProseGetsNothing() {
         for (word in listOf(
             "the", "and", "is", "was", "of", "to", "it", "that", "this", "with",
