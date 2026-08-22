@@ -142,7 +142,7 @@ Repository secrets (all three, or the macOS job never starts):
 | `APP_STORE_CONNECT_API_KEY_ID` | Key ID from Users and Access → Integrations |
 | `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID on that same page |
 
-Create the key with the **App Manager** role so Xcode can mint a
+Create the key with the **Admin** role so Xcode can mint a
 cloud-managed Apple Distribution certificate and App Store profiles. An
 iOS-only drop without a tag is Actions → iOS TestFlight → Run workflow.
 

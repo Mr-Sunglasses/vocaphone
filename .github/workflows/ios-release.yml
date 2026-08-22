@@ -53,7 +53,7 @@ jobs:
           echo "APP_STORE_CONNECT_API_KEY, APP_STORE_CONNECT_API_KEY_ID, and"
           echo "APP_STORE_CONNECT_ISSUER_ID are not all set. Skipping the"
           echo "TestFlight upload. Create an App Store Connect API key with the"
-          echo "App Manager role (Users and Access → Integrations) and store"
+          echo "Admin role (Users and Access → Integrations) and store"
           echo "the .p8 body, Key ID, and Issuer ID as those three secrets."
           echo "See docs/releasing.md."
           if [[ "$GITHUB_REF" == refs/tags/ios/* ]]; then
