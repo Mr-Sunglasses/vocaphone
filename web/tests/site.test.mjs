@@ -171,8 +171,9 @@ test("availability and install paths are honest", () => {
   // one. The hero is where most visitors decide, so an iPhone owner reaching
   // "see how it works" without ever being shown TestFlight is the bug.
   const hero = heroActions(html);
-  assert.ok(
-    hero.includes("https://testflight.apple.com/join/wd85wQ3W"),
+  assert.match(
+    hero,
+    /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/,
     "hero is missing the TestFlight link",
   );
   // The Apple mark is filled, not stroked like the Android one beside it, and
