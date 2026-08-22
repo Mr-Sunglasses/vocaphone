@@ -68,7 +68,7 @@ not load `gateway/.env` into the shell (that is the Compose bearer token).
 
 | Path | Owns |
 | --- | --- |
-| `android/` | Kotlin IME, foreground mic service, on-device engines, unit tests |
+| `android/` | Kotlin IME, foreground mic service, on-device engines, unit tests. Read [android/AGENTS.md](android/AGENTS.md) before changing the keyboard |
 | `ios/` | Swift app, keyboard extension, Live Activity, shared App Group state, tests |
 | `gateway/` | Pinned vocagateway checkout (not developed as a first-class tree here) |
 | `assets/keyboard/` | Shared word list, bigrams, emoji catalog (both keyboards) |
@@ -149,6 +149,12 @@ Develop against the **`full`** flavor (prebuilt sherpa-onnx JNI + whisper.cpp).
 | 16 KB pages | `just android ci` runs `tools/check-page-alignment.py` on the full debug APK |
 | Native | whisper.cpp via CMake/NDK from the submodule; do not vendor a second copy |
 | Secrets | Never commit `android/local.properties`, `*.keystore`, `*.jks`, `keystore.properties` |
+
+The IME hot path (pointer handling, preview overlay, `InputConnection`
+coalescing, dictionary scans, and the 120 Hz benchmark harness) is documented in
+[android/AGENTS.md](android/AGENTS.md). Read it before touching
+`ime/`. Never load the 10k-word list on the composition thread — not in
+production code, and not to make a test pass.
 
 There is **no** `connectedAndroidTest` recipe. Instrumented tests under
 `android/app/src/androidTest/` are not a CI gate. Keyboard, bubble, and
@@ -255,6 +261,9 @@ task is a release. See [docs/releasing.md](docs/releasing.md).
 - Follow [.github/pull_request_template.md](.github/pull_request_template.md).
   Docs-only: mark `just ios ci` / `just android ci` / device testing N/A and
   say so.
+- Stacked PRs: an Android follow-up branches off the open Android PR (for
+  example `android/predictive-text`), not off `main`, so review stays stacked.
+  If that base is rebased, rebase the follow-up onto it rather than merging.
 - Keep the diff focused. Update `docs/` when data flow, permissions, retention,
   or network behavior changes.
 - Do not add recordings, tokens, tailnet names, or signing files to "make CI

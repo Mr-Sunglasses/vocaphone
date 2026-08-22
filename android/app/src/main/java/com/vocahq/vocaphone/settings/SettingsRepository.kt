@@ -102,7 +102,7 @@ enum class KeyboardHeight(
 
     companion object {
         fun fromStored(value: String?): KeyboardHeight =
-            entries.firstOrNull { it.storedValue == value } ?: DEFAULT
+            entries.firstOrNull { it.storedValue == value } ?: COMPACT
     }
 }
 
@@ -164,8 +164,8 @@ data class VocaPhoneSettings(
      * than stored pre-split, so the text they see back is the text they wrote.
      */
     val customVocabulary: String = "",
-    val numberRowEnabled: Boolean = false,
-    val keyboardHeight: KeyboardHeight = KeyboardHeight.DEFAULT,
+    val numberRowEnabled: Boolean = true,
+    val keyboardHeight: KeyboardHeight = KeyboardHeight.COMPACT,
     val splitKeyboard: SplitKeyboard = SplitKeyboard.DEFAULT,
     val suggestionsEnabled: Boolean = true,
     val correctionsEnabled: Boolean = true,
@@ -467,7 +467,7 @@ class SettingsRepository(private val context: Context) {
         localModelId = this[Keys.LOCAL_MODEL_ID].orEmpty(),
         transcriptionQuality = TranscriptionQuality.fromStored(this[Keys.TRANSCRIPTION_QUALITY]),
         customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),
-        numberRowEnabled = this[Keys.NUMBER_ROW] ?: false,
+        numberRowEnabled = this[Keys.NUMBER_ROW] ?: true,
         keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
         splitKeyboard = SplitKeyboard.fromStored(this[Keys.SPLIT_KEYBOARD]),
         suggestionsEnabled = this[Keys.SUGGESTIONS] ?: true,

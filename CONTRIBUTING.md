@@ -19,6 +19,9 @@ security issues privately via [SECURITY.md](SECURITY.md).
 Look for issues labeled `good first issue` or `help wanted` when those labels
 are available.
 
+Coding-agent instructions (IME frame budget, `InputConnection`, benchmarks)
+live in [AGENTS.md](AGENTS.md) and [android/AGENTS.md](android/AGENTS.md).
+
 ## Development setup
 
 - Clone with submodules: `git clone --recurse-submodules …` (or

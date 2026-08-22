@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.absoluteOffset
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,15 +55,17 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -101,8 +104,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.layout.positionInWindow
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.ModelLanguageSupport
@@ -115,6 +117,7 @@ import com.vocahq.vocaphone.ui.theme.VocaPhoneTheme
 import kotlin.math.PI
 import kotlin.math.sin
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -190,6 +193,13 @@ internal fun VocaPhoneKeyboard(
     // Words saved this editor session, so the + chip vanishes before DataStore
     // has come back around. Reset with the editor; the persisted list is source of truth.
     var savedThisSession by remember { mutableStateOf(emptyList<String>()) }
+    // Shift before the letter that went out on pointer down, so a swipe can
+    // restore one-shot caps after undoing that letter.
+    var swipeSeedShift by remember { mutableStateOf<ShiftState?>(null) }
+    val keyPreview = remember { mutableStateOf<KeyPreview?>(null) }
+    val onKeyPreview = remember {
+        { preview: KeyPreview? -> keyPreview.value = preview }
+    }
 
     // The one place a new editor wipes the keyboard. Replacing the holders did
     // this implicitly and broke the handlers that had closed over them.
@@ -204,6 +214,8 @@ internal fun VocaPhoneKeyboard(
         swipeWord = null
         suggestionStrip = SuggestionStrip(emptyList())
         savedThisSession = emptyList()
+        swipeSeedShift = null
+        keyPreview.value = null
     }
 
     LaunchedEffect(dictationState.phase, editor.dictationAllowed) {
@@ -268,11 +280,15 @@ internal fun VocaPhoneKeyboard(
             PersonalDictionary.add(acc, word)
         }
     }
+    // Mid-word the strip is built from [keyboardState.composing]; surrounding
+    // editor text is only needed once the word is committed. Keying on
+    // editorText during a word ran a second scan ~50ms after every letter.
+    val stripEditorText = if (keyboardState.composing.isEmpty()) editorText else null
     LaunchedEffect(
         composeWords,
         settings.correctionsEnabled,
         keyboardState.composing,
-        editorText,
+        stripEditorText,
         suggestions,
         personalRaw,
     ) {
@@ -286,6 +302,7 @@ internal fun VocaPhoneKeyboard(
                     after = editorText.after,
                     correctionsEnabled = settings.correctionsEnabled,
                     personalRaw = personalRaw,
+                    shouldAbort = { !isActive },
                 )
             }
         }
@@ -359,6 +376,9 @@ internal fun VocaPhoneKeyboard(
         ) {
             clearSwipe()
         }
+        if (key.type == KeyboardKeyType.CHARACTER) {
+            swipeSeedShift = keyboardState.shift
+        }
         val reduction = KeyboardReducer.press(
             state = keyboardState,
             key = key,
@@ -368,6 +388,19 @@ internal fun VocaPhoneKeyboard(
         )
         keyboardState = reduction.state
         reduction.command?.let(onCommand)
+    }
+
+    fun undoSwipeSeed() {
+        val reduction = KeyboardReducer.undoLastCharacter(
+            state = keyboardState,
+            composeWords = composeWords,
+            restoreShift = swipeSeedShift,
+        )
+        swipeSeedShift = null
+        if (reduction.command == null && reduction.state == keyboardState) return
+        keyboardState = reduction.state
+        reduction.command?.let(onCommand)
+        onKeyPreview(null)
     }
 
     fun applySwipe(matches: List<String>, similar: List<String>) {
@@ -419,11 +452,12 @@ internal fun VocaPhoneKeyboard(
         val dictionary = suggestions ?: return@LaunchedEffect
         for (path in swipePaths) {
             val resolved = withContext(Dispatchers.Default) {
-                val matches = dictionary.swipe(path)
+                val abort = { !isActive }
+                val matches = dictionary.swipe(path, shouldAbort = abort)
                 matches to if (matches.isEmpty()) {
                     emptyList()
                 } else {
-                    dictionary.similar(matches.first())
+                    dictionary.similar(matches.first(), shouldAbort = abort)
                 }
             }
             latestApplySwipe(resolved.first, resolved.second)
@@ -441,6 +475,7 @@ internal fun VocaPhoneKeyboard(
     val latestKey by rememberUpdatedState<(KeyboardKey) -> Unit>(::handleKey)
     val latestDelete by rememberUpdatedState<(Long) -> Unit>(::handleDelete)
     val latestSwipe by rememberUpdatedState<(String) -> Unit>(::handleSwipe)
+    val latestUndoSwipe by rememberUpdatedState(::undoSwipeSeed)
     val latestCursorMove by rememberUpdatedState<(Int) -> Unit> { positions ->
         clearSwipe()
         keyboardState = keyboardState.copy(composing = "", lastWasSpace = false)
@@ -449,6 +484,7 @@ internal fun VocaPhoneKeyboard(
     val latestEmojiUsed by rememberUpdatedState(onEmojiUsed)
     val onKeyStable = remember { { key: KeyboardKey -> latestKey(key) } }
     val onSwipeStable = remember { { path: String -> latestSwipe(path) } }
+    val onUndoSwipeStable = remember { { latestUndoSwipe() } }
     val onCursorMoveStable = remember { { positions: Int -> latestCursorMove(positions) } }
     val onKeyHoldStable = remember {
         { key: KeyboardKey, heldMs: Long ->
@@ -471,6 +507,12 @@ internal fun VocaPhoneKeyboard(
                 val widthDp = maxWidth.value.roundToInt()
                 val splitKeys = SplitKeyboardLayout.shouldSplit(settings.splitKeyboard, widthDp)
                 val spacerFraction = SplitKeyboardLayout.spacerFraction(widthDp)
+                val hostCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onGloballyPositioned { hostCoords[0] = it },
+            ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -622,13 +664,21 @@ internal fun VocaPhoneKeyboard(
                             onKey = onKeyStable,
                             onKeyHold = onKeyHoldStable,
                             onCursorMove = onCursorMoveStable,
+                            onPreview = onKeyPreview,
                         )
                     } else {
-                        val rows = KeyboardLayouts.rows(
+                        val rows = remember(
                             keyboardState.layer,
-                            editor,
-                            numberRow = settings.numberRowEnabled,
-                        )
+                            editor.returnKey,
+                            editor.leadingPunctuation,
+                            settings.numberRowEnabled,
+                        ) {
+                            KeyboardLayouts.rows(
+                                keyboardState.layer,
+                                editor,
+                                numberRow = settings.numberRowEnabled,
+                            )
+                        }
                         val fittedKeyHeight = if (rows.size <= 1) {
                             keyHeight
                         } else {
@@ -639,7 +689,7 @@ internal fun VocaPhoneKeyboard(
                             rows = rows,
                             shift = keyboardState.shift,
                             layer = keyboardState.layer,
-                            editor = editor,
+                            returnKey = editor.returnKey,
                             keyHeight = fittedKeyHeight,
                             numberKeyHints = settings.numberKeyHintsEnabled,
                             longPressSymbols = settings.longPressSymbolsEnabled,
@@ -649,6 +699,8 @@ internal fun VocaPhoneKeyboard(
                             swipeEnabled = settings.swipeTypingEnabled &&
                                 keyboardState.layer == KeyboardLayer.LETTERS,
                             onSwipe = onSwipeStable,
+                            onSwipeSeedUndo = onUndoSwipeStable,
+                            onPreview = onKeyPreview,
                             onKey = onKeyStable,
                             onKeyHold = onKeyHoldStable,
                             onCursorMove = onCursorMoveStable,
@@ -656,12 +708,118 @@ internal fun VocaPhoneKeyboard(
                     }
                 }
             }
+            KeyPreviewLayer(preview = keyPreview, hostCoords = hostCoords)
+            }
             }
         }
     }
 }
 
 private val RowGap = 5.dp
+private val KeyCorner = RoundedCornerShape(7.dp)
+private val PreviewCorner = RoundedCornerShape(9.dp)
+
+private data class KeyPreview(
+    val label: String,
+    val windowX: Float,
+    val windowY: Float,
+    val accents: List<String> = emptyList(),
+    val accentIndex: Int = -1,
+)
+
+@Composable
+private fun KeyPreviewLayer(
+    preview: MutableState<KeyPreview?>,
+    hostCoords: Array<LayoutCoordinates?>,
+) {
+    val density = LocalDensity.current
+    val current = preview.value ?: return
+    val host = hostCoords[0] ?: return
+    val local = host.windowToLocal(Offset(current.windowX, current.windowY))
+    val balloonHeightPx = with(density) { 52.dp.roundToPx() }
+    val simpleWidthPx = with(density) { 42.dp.roundToPx() }
+    val accent = current.accentIndex >= 0 && current.accents.isNotEmpty()
+    val widthPx = if (accent) {
+        with(density) { (current.accents.size * 36).dp.roundToPx() }
+    } else {
+        simpleWidthPx
+    }
+    Box(
+        modifier = Modifier.absoluteOffset {
+            IntOffset(
+                x = (local.x - widthPx / 2f).roundToInt(),
+                y = (local.y - balloonHeightPx - with(density) { 8.dp.roundToPx() }).roundToInt(),
+            )
+        },
+    ) {
+        if (accent) {
+            Row(
+                modifier = Modifier
+                    .clip(PreviewCorner)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+                    .padding(horizontal = 6.dp, vertical = 4.dp),
+            ) {
+                current.accents.forEachIndexed { index, glyph ->
+                    Box(
+                        modifier = Modifier
+                            .padding(2.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (index == current.accentIndex) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    Color.Transparent
+                                },
+                            )
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            glyph,
+                            fontSize = 20.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(width = 42.dp, height = 52.dp)
+                    .clip(PreviewCorner)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    current.label,
+                    fontSize = 27.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SwipeTrailLayer(
+    modifier: Modifier,
+    points: SnapshotStateList<Offset>,
+    color: Color,
+) {
+    val path = remember { Path() }
+    if (points.size < 2) return
+    Canvas(modifier) {
+        path.rewind()
+        path.moveTo(points[0].x, points[0].y)
+        for (index in 1 until points.size) {
+            path.lineTo(points[index].x, points[index].y)
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+    }
+}
 
 /** Material 3 icon-button minimum. Fits Compact's 48 dp dictation bar. */
 private val ToolbarControlSize = 48.dp
@@ -1755,6 +1913,7 @@ private fun EmojiLayer(
     onKey: (KeyboardKey) -> Unit,
     onKeyHold: (KeyboardKey, Long) -> Unit = { _, _ -> },
     onCursorMove: (Int) -> Unit,
+    onPreview: (KeyPreview?) -> Unit = {},
 ) {
     val bottomRow = KeyboardLayouts.rows(KeyboardLayer.EMOJI, editor)
     val glyphs = when (category) {
@@ -1774,10 +1933,11 @@ private fun EmojiLayer(
             rows = bottomRow,
             shift = shift,
             layer = layer,
-            editor = editor,
+            returnKey = editor.returnKey,
             keyHeight = keyHeight,
             split = split,
             spacerFraction = spacerFraction,
+            onPreview = onPreview,
             onKey = onKey,
             onKeyHold = onKeyHold,
             onCursorMove = onCursorMove,
@@ -1860,7 +2020,7 @@ private fun KeyboardRows(
     rows: List<KeyboardRow>,
     shift: ShiftState,
     layer: KeyboardLayer,
-    editor: KeyboardEditorConfig,
+    returnKey: ReturnKeyKind,
     keyHeight: Dp,
     numberKeyHints: Boolean = false,
     longPressSymbols: Boolean = false,
@@ -1869,16 +2029,26 @@ private fun KeyboardRows(
     spacerFraction: Float = SplitKeyboardLayout.MIN_SPACER_FRACTION,
     swipeEnabled: Boolean = false,
     onSwipe: (String) -> Unit = {},
+    onSwipeSeedUndo: () -> Unit = {},
+    onPreview: (KeyPreview?) -> Unit = {},
     onKey: (KeyboardKey) -> Unit,
     onKeyHold: (KeyboardKey, Long) -> Unit = { _, _ -> },
     onCursorMove: (Int) -> Unit,
 ) {
     val swipeConsumed = remember { mutableStateOf(false) }
     val keyBounds = remember { mutableMapOf<String, Pair<KeyboardKey, Rect>>() }
-    var parentCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-    var trail by remember { mutableStateOf<List<Offset>>(emptyList()) }
+    val parentCoords = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val trail = remember { mutableStateListOf<Offset>() }
     val trailColor = MaterialTheme.colorScheme.primary
     val currentOnSwipe = rememberUpdatedState(onSwipe)
+    val currentOnUndo = rememberUpdatedState(onSwipeSeedUndo)
+    val currentOnPreview = rememberUpdatedState(onPreview)
+    val currentOnKey = rememberUpdatedState(onKey)
+    val currentOnKeyHold = rememberUpdatedState(onKeyHold)
+    val onPreviewStable = remember {
+        { preview: KeyPreview? -> currentOnPreview.value(preview) }
+    }
+    val onUndoStable = remember { { currentOnUndo.value() } }
 
     // Only the swipe gesture clears this, and it is only installed on the
     // letter layer, so a swipe that was still consuming when the layer changed
@@ -1890,14 +2060,16 @@ private fun KeyboardRows(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .onGloballyPositioned { parentCoords = it }
+            .onGloballyPositioned { parentCoords[0] = it }
             .then(
                 if (swipeEnabled) {
                     Modifier.swipeTypingGesture(
                         keyBounds = keyBounds,
-                        parentCoords = { parentCoords },
+                        parentCoords = { parentCoords[0] },
                         swipeConsumed = swipeConsumed,
-                        onTrail = { trail = it },
+                        trail = trail,
+                        onSwipeSeedUndo = { currentOnUndo.value() },
+                        onPreview = { currentOnPreview.value(it) },
                         onSwipe = { currentOnSwipe.value(it) },
                     )
                 } else {
@@ -1929,11 +2101,29 @@ private fun KeyboardRows(
                             is SplitItem.Gap -> Spacer(Modifier.weight(item.weight))
                             is SplitItem.Key -> {
                                 val key = item.key
+                                key(key.id) {
+                                val onPress = remember(key.id) {
+                                    { currentOnKey.value(key) }
+                                }
+                                val onHold = remember(key.id) {
+                                    { heldMs: Long -> currentOnKeyHold.value(key, heldMs) }
+                                }
+                                val onCommitText = remember(key.id) {
+                                    { text: String ->
+                                        currentOnKey.value(
+                                            KeyboardKey(
+                                                id = "variant-$text",
+                                                label = text,
+                                                output = text,
+                                            ),
+                                        )
+                                    }
+                                }
                                 KeyButton(
                                     key = key,
                                     shift = shift,
                                     layer = layer,
-                                    editor = editor,
+                                    returnKey = returnKey,
                                     keyHeight = keyHeight,
                                     numberKeyHints = numberKeyHints,
                                     longPressSymbols = longPressSymbols,
@@ -1949,17 +2139,11 @@ private fun KeyboardRows(
                                     } else {
                                         null
                                     },
-                                    onPress = { onKey(key) },
-                                    onHold = { heldMs -> onKeyHold(key, heldMs) },
-                                    onCommitText = { text ->
-                                        onKey(
-                                            KeyboardKey(
-                                                id = "variant-$text",
-                                                label = text,
-                                                output = text,
-                                            ),
-                                        )
-                                    },
+                                    onPress = onPress,
+                                    onHold = onHold,
+                                    onUndo = onUndoStable,
+                                    onCommitText = onCommitText,
+                                    onPreview = onPreviewStable,
                                     onCursorMove = onCursorMove,
                                     modifier = Modifier
                                         .weight(key.weight)
@@ -1973,6 +2157,7 @@ private fun KeyboardRows(
                                             )
                                         },
                                 )
+                                }
                             }
                         }
                     }
@@ -1980,19 +2165,11 @@ private fun KeyboardRows(
                 }
             }
         }
-        if (trail.size >= 2) {
-            Canvas(Modifier.matchParentSize()) {
-                val path = Path().apply {
-                    moveTo(trail.first().x, trail.first().y)
-                    trail.drop(1).forEach { lineTo(it.x, it.y) }
-                }
-                drawPath(
-                    path = path,
-                    color = trailColor,
-                    style = Stroke(width = 5.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-                )
-            }
-        }
+        SwipeTrailLayer(
+            modifier = Modifier.matchParentSize(),
+            points = trail,
+            color = trailColor,
+        )
     }
 }
 
@@ -2000,34 +2177,42 @@ private fun Modifier.swipeTypingGesture(
     keyBounds: Map<String, Pair<KeyboardKey, Rect>>,
     parentCoords: () -> LayoutCoordinates?,
     swipeConsumed: MutableState<Boolean>,
-    onTrail: (List<Offset>) -> Unit,
+    trail: SnapshotStateList<Offset>,
+    onSwipeSeedUndo: () -> Unit,
+    onPreview: (KeyPreview?) -> Unit,
     onSwipe: (String) -> Unit,
 ) = pointerInput(Unit) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
         swipeConsumed.value = false
+        trail.clear()
         val start = hitLetter(keyBounds, parentCoords()?.localToRoot(down.position))
         if (start == null) return@awaitEachGesture
         val path = StringBuilder(start.output.lowercase())
         var lastId = start.id
-        val points = mutableListOf(down.position)
+        trail.add(down.position)
         while (true) {
             val event = awaitPointerEvent(PointerEventPass.Initial)
             val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            points.add(change.position)
+            if (trail.size < 80) trail.add(change.position)
             val hit = hitLetter(keyBounds, parentCoords()?.localToRoot(change.position))
             if (hit != null && hit.id != lastId) {
-                swipeConsumed.value = true
+                if (!swipeConsumed.value) {
+                    // The letter already went out on down. Drop only that seed
+                    // so a swipe after "he" does not wipe the whole word.
+                    onSwipeSeedUndo()
+                    onPreview(null)
+                    swipeConsumed.value = true
+                }
                 path.append(hit.output.lowercase())
                 lastId = hit.id
             }
             if (swipeConsumed.value) {
                 change.consume()
-                onTrail(points.toList())
             }
             if (!change.pressed) break
         }
-        onTrail(emptyList())
+        trail.clear()
         if (swipeConsumed.value) onSwipe(path.toString())
     }
 }
@@ -2048,7 +2233,7 @@ private fun RowScope.KeyButton(
     key: KeyboardKey,
     shift: ShiftState,
     layer: KeyboardLayer,
-    editor: KeyboardEditorConfig,
+    returnKey: ReturnKeyKind,
     keyHeight: Dp,
     numberKeyHints: Boolean = false,
     longPressSymbols: Boolean = false,
@@ -2056,22 +2241,26 @@ private fun RowScope.KeyButton(
     swipeConsumed: MutableState<Boolean>? = null,
     onPress: () -> Unit,
     onHold: (Long) -> Unit = {},
+    onUndo: () -> Unit = {},
     onCommitText: (String) -> Unit,
+    onPreview: (KeyPreview?) -> Unit,
     onCursorMove: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
-    val previewOffset = with(LocalDensity.current) { -(keyHeight + 8.dp).roundToPx() }
     val currentOnPress = rememberUpdatedState(onPress)
     val currentOnHold = rememberUpdatedState(onHold)
+    val currentOnUndo = rememberUpdatedState(onUndo)
     val currentOnCommitText = rememberUpdatedState(onCommitText)
     val currentOnCursorMove = rememberUpdatedState(onCursorMove)
+    val currentOnPreview = rememberUpdatedState(onPreview)
     var pressed by remember(key.id) { mutableStateOf(false) }
     var accentIndex by remember(key.id) { mutableStateOf(-1) }
+    val layout = remember(key.id) { arrayOfNulls<LayoutCoordinates>(1) }
     val accents = remember(key.id, shift, longPressSymbols, numberRow) {
         KeyAccents.forKey(key, shift, longPressSymbols, numberRow)
     }
-    val isReturnAction = key.type == KeyboardKeyType.RETURN && editor.returnKey != ReturnKeyKind.ENTER
+    val isReturnAction = key.type == KeyboardKeyType.RETURN && returnKey != ReturnKeyKind.ENTER
     val activeShift = key.type == KeyboardKeyType.SHIFT && shift != ShiftState.OFF
     val background = when {
         isReturnAction -> MaterialTheme.colorScheme.primary
@@ -2080,6 +2269,7 @@ private fun RowScope.KeyButton(
             MaterialTheme.colorScheme.surfaceContainerHighest
         else -> MaterialTheme.colorScheme.surfaceContainerHigh
     }
+    val pressedBackground = remember(background) { background.copy(alpha = 0.72f) }
     val foreground = when {
         isReturnAction -> MaterialTheme.colorScheme.onPrimary
         activeShift -> MaterialTheme.colorScheme.onPrimaryContainer
@@ -2094,44 +2284,85 @@ private fun RowScope.KeyButton(
     } else {
         key.label
     }
+    val publishPreview: (Boolean, Int) -> Unit = remember(key.id, previewLabel, accents) {
+        { show, index ->
+            if (!show || key.type != KeyboardKeyType.CHARACTER) {
+                currentOnPreview.value(null)
+            } else {
+                val coords = layout[0]
+                if (coords == null) {
+                    currentOnPreview.value(null)
+                } else {
+                    val pos = coords.positionInWindow()
+                    currentOnPreview.value(
+                        KeyPreview(
+                            label = previewLabel,
+                            windowX = pos.x + coords.size.width / 2f,
+                            windowY = pos.y,
+                            accents = accents,
+                            accentIndex = index,
+                        ),
+                    )
+                }
+            }
+        }
+    }
+    val haptic = {
+        view.postOnAnimation {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+        }
+    }
     val gesture = when {
         key.type == KeyboardKeyType.SPACE -> Modifier.spacebarGesture(
             pointerKey = key.id,
             onTap = { currentOnPress.value() },
             onCursorMove = { currentOnCursorMove.value(it) },
             onPressedChange = { pressed = it },
-            onHaptic = { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) },
+            onHaptic = haptic,
         )
         key.type == KeyboardKeyType.CHARACTER && accents.isNotEmpty() -> Modifier.accentGesture(
             pointerKey = key.id,
             variantCount = accents.size,
             swipeConsumed = swipeConsumed,
             onTap = { currentOnPress.value() },
+            onUndo = { currentOnUndo.value() },
             onVariant = { index -> currentOnCommitText.value(accents[index]) },
-            onPressedChange = { pressed = it },
-            onAccentIndex = { accentIndex = it },
-            onHaptic = { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) },
+            onPressedChange = { isPressed ->
+                pressed = isPressed
+                publishPreview(isPressed, if (isPressed) accentIndex else -1)
+            },
+            onAccentIndex = { index ->
+                accentIndex = index
+                // Reset to -1 after lift used to call publishPreview(true, -1),
+                // which put the balloon back after the finger had already gone.
+                if (index >= 0) publishPreview(true, index)
+            },
+            onHaptic = haptic,
         )
         else -> Modifier.keyGesture(
             pointerKey = key.id,
             repeat = key.type == KeyboardKeyType.DELETE,
-            swipeConsumed = swipeConsumed,
             onPress = { currentOnPress.value() },
             onHold = { currentOnHold.value(it) },
-            onPressedChange = { pressed = it },
-            onHaptic = { view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) },
+            onPressedChange = { isPressed ->
+                pressed = isPressed
+                if (key.type == KeyboardKeyType.CHARACTER) {
+                    publishPreview(isPressed, -1)
+                }
+            },
+            onHaptic = haptic,
         )
     }
 
     Box(
         modifier = modifier
             .height(keyHeight)
-            .shadow(1.dp, RoundedCornerShape(7.dp))
-            .clip(RoundedCornerShape(7.dp))
-            .background(if (pressed) background.copy(alpha = 0.72f) else background)
+            .onGloballyPositioned { layout[0] = it }
+            .clip(KeyCorner)
+            .background(if (pressed) pressedBackground else background)
             .semantics {
                 role = Role.Button
-                contentDescription = keyDescription(key, previewLabel, editor.returnKey, shift)
+                contentDescription = keyDescription(key, previewLabel, returnKey, shift)
                 onClick {
                     currentOnPress.value()
                     true
@@ -2144,7 +2375,7 @@ private fun RowScope.KeyButton(
             key = key,
             displayLabel = previewLabel,
             shift = shift,
-            returnKey = editor.returnKey,
+            returnKey = returnKey,
             tint = foreground,
             hint = KeyAccents.hint(
                 key,
@@ -2153,53 +2384,6 @@ private fun RowScope.KeyButton(
                 numberRow = numberRow,
             ),
         )
-
-        if (pressed && swipeConsumed?.value != true && key.type == KeyboardKeyType.CHARACTER) {
-            Popup(
-                alignment = Alignment.TopCenter,
-                offset = IntOffset(0, previewOffset),
-                properties = PopupProperties(focusable = false, clippingEnabled = false),
-            ) {
-                if (accentIndex >= 0 && accents.isNotEmpty()) {
-                    Surface(
-                        shape = RoundedCornerShape(9.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        shadowElevation = 5.dp,
-                    ) {
-                        Row(Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
-                            accents.forEachIndexed { index, glyph ->
-                                Box(
-                                    modifier = Modifier
-                                        .padding(2.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(
-                                            if (index == accentIndex) {
-                                                MaterialTheme.colorScheme.primaryContainer
-                                            } else {
-                                                Color.Transparent
-                                            },
-                                        )
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                ) {
-                                    Text(glyph, fontSize = 20.sp, color = foreground)
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    Surface(
-                        modifier = Modifier.size(width = 42.dp, height = 52.dp),
-                        shape = RoundedCornerShape(9.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        shadowElevation = 5.dp,
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(previewLabel, fontSize = 27.sp, color = foreground)
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -2210,32 +2394,32 @@ private fun Modifier.keyGesture(
     onHold: (Long) -> Unit = {},
     onPressedChange: (Boolean) -> Unit,
     onHaptic: () -> Unit,
-    swipeConsumed: MutableState<Boolean>? = null,
 ) = pointerInput(pointerKey, repeat) {
     coroutineScope {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             down.consume()
-            onPressedChange(true)
             onHaptic()
             val downAt = SystemClock.uptimeMillis()
-            if (repeat) onPress()
-            val repeatJob = if (repeat) {
-                launch {
-                    delay(DeleteHold.REPEAT_DELAY_MS)
-                    while (isActive) {
-                        val heldMs = SystemClock.uptimeMillis() - downAt
-                        onHold(heldMs)
-                        delay(DeleteHold.interval(heldMs))
+            var repeatJob: Job? = null
+            try {
+                onPressedChange(true)
+                onPress()
+                if (repeat) {
+                    repeatJob = launch {
+                        delay(DeleteHold.REPEAT_DELAY_MS)
+                        while (isActive) {
+                            val heldMs = SystemClock.uptimeMillis() - downAt
+                            onHold(heldMs)
+                            delay(DeleteHold.interval(heldMs))
+                        }
                     }
                 }
-            } else {
-                null
+                waitForUpOrCancellation()
+            } finally {
+                repeatJob?.cancel()
+                onPressedChange(false)
             }
-            val up = waitForUpOrCancellation()
-            repeatJob?.cancel()
-            onPressedChange(false)
-            if (!repeat && up != null && swipeConsumed?.value != true) onPress()
         }
     }
 }
@@ -2283,6 +2467,7 @@ private fun Modifier.accentGesture(
     pointerKey: String,
     variantCount: Int,
     onTap: () -> Unit,
+    onUndo: () -> Unit,
     onVariant: (Int) -> Unit,
     onPressedChange: (Boolean) -> Unit,
     onAccentIndex: (Int) -> Unit,
@@ -2290,48 +2475,72 @@ private fun Modifier.accentGesture(
     swipeConsumed: MutableState<Boolean>? = null,
 ) = pointerInput(pointerKey, variantCount) {
     val step = 28.dp.toPx()
+    val slopSquared = viewConfiguration.touchSlop.let { it * it }
     coroutineScope {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             down.consume()
-            onPressedChange(true)
             onHaptic()
             var showing = false
             var index = 0
-            val hold = launch {
-                delay(380L)
-                showing = true
-                onAccentIndex(0)
-                onHaptic()
-            }
-            while (true) {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                if (!change.pressed) {
-                    change.consume()
-                    break
-                }
+            var hold: Job? = null
+            var leftKey = false
+            fun abortHold() {
+                leftKey = true
+                hold?.cancel()
                 if (showing) {
-                    val delta = change.position.x - down.position.x
-                    val next = (delta / step).toInt().coerceIn(0, variantCount - 1)
-                    if (next != index) {
-                        index = next
-                        onAccentIndex(index)
-                        onHaptic()
+                    showing = false
+                    onAccentIndex(-1)
+                }
+            }
+            try {
+                onPressedChange(true)
+                onTap()
+                hold = launch {
+                    delay(380L)
+                    if (leftKey || swipeConsumed?.value == true) return@launch
+                    showing = true
+                    onAccentIndex(0)
+                    onHaptic()
+                }
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) {
+                        change.consume()
+                        break
+                    }
+                    if (swipeConsumed?.value == true) {
+                        abortHold()
+                        change.consume()
+                        break
+                    }
+                    val dx = change.position.x - down.position.x
+                    val dy = change.position.y - down.position.y
+                    if (!showing && !leftKey && dx * dx + dy * dy > slopSquared) {
+                        // Swipe or a flick off the key: do not let the 380 ms
+                        // hold pop the accent row over the trail.
+                        abortHold()
+                    }
+                    if (showing) {
+                        val next = (dx / step).toInt().coerceIn(0, variantCount - 1)
+                        if (next != index) {
+                            index = next
+                            onAccentIndex(index)
+                            onHaptic()
+                        }
+                        change.consume()
                     }
                 }
-                change.consume()
+            } finally {
+                hold?.cancel()
+                onPressedChange(false)
+                onAccentIndex(-1)
             }
-            hold.cancel()
-            onPressedChange(false)
-            if (swipeConsumed?.value != true) {
-                if (showing) {
-                    onVariant(index)
-                } else {
-                    onTap()
-                }
+            if (swipeConsumed?.value != true && showing && !leftKey) {
+                onUndo()
+                onVariant(index)
             }
-            onAccentIndex(-1)
         }
     }
 }

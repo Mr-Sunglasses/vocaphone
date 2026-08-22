@@ -466,6 +466,44 @@ internal object KeyboardReducer {
         }
     }
 
+    /**
+     * Reverses the character committed on pointer down when the gesture turns
+     * into a swipe, or when a long-press replaces it with an accent.
+     *
+     * Letters go out on down so the glyph is on screen inside the 8.3 ms
+     * 120 Hz budget (keyboard hot-path benchmark on a 120 Hz phone). A swipe
+     * that started on "l" after "he" must then drop only that "l", not the
+     * whole composing word, or the user loses "he" as well.
+     */
+    fun undoLastCharacter(
+        state: KeyboardState,
+        composeWords: Boolean,
+        restoreShift: ShiftState? = null,
+    ): KeyboardReduction {
+        if (composeWords) {
+            if (state.composing.isEmpty()) return KeyboardReduction(state)
+            val next = state.composing.dropLast(1)
+            return KeyboardReduction(
+                state = state.copy(
+                    composing = next,
+                    shift = if (next.isEmpty()) restoreShift ?: state.shift else state.shift,
+                    lastWasSpace = false,
+                    capitalizeAfterSpace = false,
+                ),
+                command = KeyboardCommand.SetComposingText(next),
+            )
+        }
+        return KeyboardReduction(
+            state = state.copy(
+                composing = "",
+                shift = restoreShift ?: state.shift,
+                lastWasSpace = false,
+                capitalizeAfterSpace = false,
+            ),
+            command = KeyboardCommand.DeleteBackward,
+        )
+    }
+
     private fun spacePress(state: KeyboardState): KeyboardReduction {
         if (state.lastWasSpace) {
             val nextShift = if (state.shift == ShiftState.LOCKED) ShiftState.LOCKED else ShiftState.ONCE

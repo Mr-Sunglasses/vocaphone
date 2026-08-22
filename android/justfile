@@ -78,6 +78,30 @@ permissions:
     done
     echo "Enable and select VocaPhone in Settings → Keyboard / Input method."
 
+# Time the IME hot path (dictionary, reducer). JVM always; phone if attached.
+#
+#     just keyboard-benchmark
+#     ANDROID_SERIAL=a775a5e9 just keyboard-benchmark
+[group('test')]
+keyboard-benchmark:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ANDROID_HOME="$({{ just_executable() }} _sdk)"
+    echo "== host JVM =="
+    ./gradlew :app:testFullDebugUnitTest -i \
+        --tests 'com.vocahq.vocaphone.ime.KeyboardHotPathTest' \
+        -Dvocaphone.benchmark=1
+    if "{{ just_executable() }}" _serial >/dev/null 2>&1; then
+        echo "== device =="
+        ./gradlew :app:connectedFullDebugAndroidTest \
+            -Pandroid.testInstrumentationRunnerArguments.keyboardBenchmark=true
+    else
+        echo "No ready device; skip connected keyboardBenchmark."
+        echo "Plug in a phone and re-run, or install the androidTest APK and:"
+        echo "  adb shell am instrument -w -e keyboardBenchmark true \\"
+        echo "    com.vocahq.vocaphone.test/androidx.test.runner.AndroidJUnitRunner"
+    fi
+
 # Run the unit tests; pass a filter, e.g. `just test '*DictationTest'`.
 [group('test')]
 test *filter:
