@@ -199,11 +199,7 @@ data class VocaPhoneSettings(
      * the wrong-language failure this whole mechanism exists to prevent.
      */
     val effectiveLanguage: TranscriptionLanguage
-        get() = ModelLanguageSupport.resolve(
-            language,
-            activeModelLanguages,
-            activeModelDetectsLanguage,
-        )
+        get() = ModelLanguageSupport.resolve(language, activeModelLanguages)
 
     /**
      * The language claim that governs the picker. With on-device transcription on
@@ -215,7 +211,7 @@ data class VocaPhoneSettings(
         get() = if (localTranscriptionEnabled) LocalModelCatalog.find(localModelId) else null
 
     val activeModelLanguages: Set<String>
-        get() = localModel?.languageCodes ?: modelLanguages
+        get() = localModel?.selectableLanguageCodes ?: modelLanguages
 
     val activeModelDetectsLanguage: Boolean
         get() = localModel?.detectsLanguage ?: modelDetectsLanguage

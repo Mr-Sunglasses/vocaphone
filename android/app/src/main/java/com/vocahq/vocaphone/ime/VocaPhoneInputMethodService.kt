@@ -748,12 +748,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private fun setLanguage(language: TranscriptionLanguage) {
         val settings = visibleSettings.value
-        if (!ModelLanguageSupport.isSelectable(
-                language,
-                settings.activeModelLanguages,
-                settings.activeModelDetectsLanguage,
-            )
-        ) {
+        if (!ModelLanguageSupport.isSelectable(language, settings.activeModelLanguages)) {
             return
         }
         persistPreference { container.settings.setLanguage(language) }

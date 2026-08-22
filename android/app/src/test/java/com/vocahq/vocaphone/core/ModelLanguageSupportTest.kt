@@ -19,28 +19,19 @@ class ModelLanguageSupportTest {
         assertEquals("", ModelLanguageSupport.transcriptLanguage("auto", ""))
     }
 
+    /**
+     * Coverage is the only test. An auto-detecting model still knows exactly
+     * which languages it was trained on, and hiding them made a 25-language
+     * Parakeet look like it spoke none of them.
+     */
     @Test
-    fun `a model that detects its own language offers only Automatic`() {
-        // Dolphin ignores the requested language, so offering Hindi promises
-        // something it cannot deliver — it returned Cyrillic for a short Hindi clip.
-        assertTrue(
-            ModelLanguageSupport.isSelectable(TranscriptionLanguage.AUTOMATIC, dolphin, true),
-        )
-        for (language in TranscriptionLanguage.entries - TranscriptionLanguage.AUTOMATIC) {
-            assertFalse(
-                "$language should not be selectable on an auto-detecting model",
-                ModelLanguageSupport.isSelectable(language, dolphin, true),
-            )
-        }
-    }
-
-    @Test
-    fun `a pinnable model offers exactly what it covers`() {
-        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.HINDI, dolphin, false))
-        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.TAMIL, dolphin, false))
-        assertFalse(ModelLanguageSupport.isSelectable(TranscriptionLanguage.FRENCH, dolphin, false))
-        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.ENGLISH, englishOnly, false))
-        assertFalse(ModelLanguageSupport.isSelectable(TranscriptionLanguage.HINDI, englishOnly, false))
+    fun `a model offers exactly what it covers, detected or not`() {
+        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.AUTOMATIC, dolphin))
+        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.HINDI, dolphin))
+        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.TAMIL, dolphin))
+        assertFalse(ModelLanguageSupport.isSelectable(TranscriptionLanguage.FRENCH, dolphin))
+        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.ENGLISH, englishOnly))
+        assertFalse(ModelLanguageSupport.isSelectable(TranscriptionLanguage.HINDI, englishOnly))
     }
 
     @Test
@@ -50,7 +41,7 @@ class ModelLanguageSupportTest {
         for (language in TranscriptionLanguage.entries) {
             assertTrue(
                 "$language must stay selectable when the gateway made no claim",
-                ModelLanguageSupport.isSelectable(language, emptySet(), false),
+                ModelLanguageSupport.isSelectable(language, emptySet()),
             )
         }
     }
@@ -61,32 +52,46 @@ class ModelLanguageSupportTest {
         // model. Sending "hi" anyway is exactly the failure this prevents.
         assertEquals(
             TranscriptionLanguage.AUTOMATIC,
-            ModelLanguageSupport.resolve(TranscriptionLanguage.HINDI, englishOnly, false),
+            ModelLanguageSupport.resolve(TranscriptionLanguage.HINDI, englishOnly),
         )
-        assertEquals(
-            TranscriptionLanguage.AUTOMATIC,
-            ModelLanguageSupport.resolve(TranscriptionLanguage.HINDI, dolphin, true),
-        )
-        // A selection the model can honour is left alone.
+        // A selection the model covers is left alone.
         assertEquals(
             TranscriptionLanguage.HINDI,
-            ModelLanguageSupport.resolve(TranscriptionLanguage.HINDI, dolphin, false),
+            ModelLanguageSupport.resolve(TranscriptionLanguage.HINDI, dolphin),
         )
         assertEquals(
             TranscriptionLanguage.HINDI,
-            ModelLanguageSupport.resolve(TranscriptionLanguage.HINDI, emptySet(), false),
+            ModelLanguageSupport.resolve(TranscriptionLanguage.HINDI, emptySet()),
         )
     }
 
     @Test
     fun `the restriction is explained only when there is one`() {
         assertNull(ModelLanguageSupport.restriction(emptySet(), false))
-        val automatic = ModelLanguageSupport.restriction(dolphin, true)
-        assertTrue(automatic!!.contains("detects the language itself"))
         val limited = ModelLanguageSupport.restriction(dolphin, false)
         assertTrue(limited!!.contains("${dolphin.size} languages"))
         val oneLanguage = ModelLanguageSupport.restriction(setOf("en"), false)
         assertTrue(oneLanguage!!.contains("1 language."))
+    }
+
+    /**
+     * The sentence has to say both things: the choice is real for punctuation,
+     * and it is not a decoder setting. Promising either half alone is how the
+     * picker starts lying about what the model does.
+     */
+    @Test
+    fun `an auto-detecting model says what picking a language does`() {
+        val detected = ModelLanguageSupport.restriction(dolphin, true)!!
+        assertTrue(detected.contains("${dolphin.size} languages"))
+        assertTrue(detected.contains("does not pin the decoder"))
+        assertTrue(detected.contains("punctuated"))
+        // With no coverage claim there is still the detection half to explain.
+        val unclaimed = ModelLanguageSupport.restriction(emptySet(), true)!!
+        assertTrue(unclaimed.contains("does not pin the decoder"))
+        assertTrue(
+            ModelLanguageSupport.restriction(dolphin, true, onDevice = true)!!
+                .contains("The on-device model"),
+        )
     }
 
     /// What Settings shows must be what dictation does. The stored choice is

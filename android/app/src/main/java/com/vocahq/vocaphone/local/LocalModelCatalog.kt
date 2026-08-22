@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.local
 
 import android.os.Build
+import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.BuildConfig
 import java.util.Locale
@@ -33,15 +34,26 @@ enum class SherpaFamily(
      * and exercised on a phone.
      */
     val supportsBeamSearch: Boolean = false,
+    /**
+     * Whether the recognizer config for this family has a language field at all.
+     *
+     * The transducer and CTC families do not: sherpa-onnx exposes no language on
+     * `OfflineTransducerModelConfig`, `OfflineDolphinModelConfig` or the NeMo CTC
+     * config, so those models decide the language from the audio whatever the
+     * user picked. The picker still offers the languages they cover, because the
+     * choice governs how the transcript is punctuated, but nothing here can pin
+     * the decoder and this flag is what keeps the two facts apart.
+     */
+    val acceptsLanguage: Boolean = false,
 ) {
     // Kaldi's dither=1 on int16 audio is approximately 1 / 32768 here. It is
     // the upstream workaround for Parakeet returning no tokens on valid audio
     // with an all-zero dither setting (sherpa-onnx #2258).
     NEMO_TRANSDUCER("nemo_transducer", featureDither = 0.00003f),
-    SENSE_VOICE,
+    SENSE_VOICE(acceptsLanguage = true),
     MOONSHINE,
     DOLPHIN_CTC,
-    CANARY,
+    CANARY(acceptsLanguage = true),
     NEMO_CTC,
     PARAFORMER,
     ;
@@ -78,7 +90,12 @@ data class LocalModelDescriptor(
      * they cover every language the picker offers.
      */
     val languageCodes: Set<String> = emptySet(),
-    /** True when the model decides the language itself and ignores the request. */
+    /**
+     * True when the decoder picks the language from the audio and no request can
+     * pin it. The languages in [languageCodes] are still offered, because the
+     * choice decides how the transcript is punctuated, but the picker says
+     * plainly that it does not steer the decoder.
+     */
     val detectsLanguage: Boolean = false,
     /** Whether short recordings may use a cropped whisper encoder window. */
     val cropsAudioContext: Boolean = false,
@@ -103,6 +120,30 @@ data class LocalModelDescriptor(
      * file that their upstream repositories do not publish.
      */
     val supportsCustomVocabulary: Boolean get() = engine == LocalModelEngine.WHISPER
+
+    /**
+     * What the language picker may offer for this model.
+     *
+     * Almost always [languageCodes], and empty still means "no restriction".
+     * The exception is the pre-large-v3 Whisper builds: they cover every
+     * language the picker knows except Cantonese, which is a claim that can only
+     * be made by listing the rest. See [LARGE_V3_ONLY_LANGUAGES].
+     */
+    val selectableLanguageCodes: Set<String>
+        get() = when {
+            languageCodes.isNotEmpty() -> languageCodes
+            engine != LocalModelEngine.WHISPER -> emptySet()
+            "large-v3" in id -> emptySet()
+            else -> PICKER_LANGUAGES - LARGE_V3_ONLY_LANGUAGES
+        }
+}
+
+/** Every code the picker can show, which is the ceiling on any coverage claim. */
+private val PICKER_LANGUAGES: Set<String> by lazy {
+    TranscriptionLanguage.entries
+        .filter { it != TranscriptionLanguage.AUTOMATIC }
+        .map { it.wireValue }
+        .toSet()
 }
 
 /**
@@ -231,20 +272,90 @@ object LocalModelCatalog {
     )
 
     /**
-     * A small model that covers this phone's language, or the highest-scoring
-     * catalog entry that fits the RAM budget. First-run should not start a
-     * 670 MB download; Parakeet stays in the catalog as an explicit choice.
+     * The default pick: the first of [recommendations], which is the one that
+     * covers this phone's language best.
      */
-    fun recommended(profile: DeviceProfile): LocalModelDescriptor {
-        val starter = starterForLanguage(profile.language)?.takeIf { profile.fits(it) }
-        if (starter != null) return starter
-        val candidates = all.filter { profile.fits(it) }
-        val covering = candidates.filter { it.coversLanguage(profile.language) }
-        return (covering.ifEmpty { candidates }).maxByOrNull { scoreModel(it, profile) }
-            ?: all.filter { isUsableOnDevice(it, profile.totalRamGB, profile.sherpaAvailable) }
-                .minByOrNull { it.minimumRamGB }
-            ?: all.first()
+    fun recommended(profile: DeviceProfile): LocalModelDescriptor =
+        recommendations(profile).firstOrNull()?.model ?: lastResort(profile)
+
+    /**
+     * Three or four models worth offering on this phone, best first.
+     *
+     * One recommendation cannot answer the question people actually have. A
+     * phone that can run the 0.6B Parakeet encoder should be told so, but the
+     * person holding it may want their own language instead of English, or a
+     * 100 MB download instead of a 670 MB one on mobile data. So the picker
+     * offers the accurate English model, the widest multilingual model, the
+     * specialist for the phone's own language, and the smallest thing that
+     * still covers that language, deduplicated and capped at four.
+     *
+     * The first entry leads: the phone's own language decides which of the
+     * roles that is.
+     */
+    fun recommendations(profile: DeviceProfile): List<ModelPick> {
+        val english = bestEnglish(profile)
+        val multilingual = bestMultilingual(profile)
+        val regional = starterForLanguage(profile.language)?.takeIf { profile.fits(it) }
+        val compact = smallestCovering(profile)
+
+        // First role wins when two roles land on the same model, which is why
+        // the order these are added in is the order the picker shows.
+        val picks = LinkedHashMap<String, ModelPick>()
+        fun add(role: ModelPickRole, model: LocalModelDescriptor?) {
+            if (model == null) return
+            picks.putIfAbsent(model.id, ModelPick(role, model))
+        }
+        if (profile.language.lowercase(Locale.ROOT) == "en") {
+            add(ModelPickRole.ENGLISH, english)
+            add(ModelPickRole.MULTILINGUAL, multilingual)
+        } else {
+            add(ModelPickRole.REGIONAL, regional)
+            add(ModelPickRole.MULTILINGUAL, multilingual)
+            add(ModelPickRole.ENGLISH, english)
+        }
+        add(ModelPickRole.COMPACT, compact)
+
+        val ordered = picks.values.toList().take(4)
+        return ordered.ifEmpty {
+            listOf(ModelPick(ModelPickRole.COMPACT, lastResort(profile)))
+        }
     }
+
+    /**
+     * The most accurate English model this phone can hold. Parakeet first: on
+     * anything with a 4 GB budget it is both faster and more accurate than the
+     * Whisper of the same size, and it is the reason this list is not one line.
+     */
+    private fun bestEnglish(profile: DeviceProfile): LocalModelDescriptor? =
+        firstFitting(profile, ENGLISH_PREFERENCE)
+            ?: whisper.filter { profile.fits(it) && it.englishOnly }
+                .maxByOrNull { scoreModel(it, profile) }
+            ?: recommendedWhisper(profile)
+
+    /** The widest-coverage model that still covers this phone's own language. */
+    private fun bestMultilingual(profile: DeviceProfile): LocalModelDescriptor? =
+        MULTILINGUAL_PREFERENCE.firstNotNullOfOrNull { id ->
+            find(id)?.takeIf { profile.fits(it) && it.coversLanguage(profile.language) }
+        } ?: whisper.filter { profile.fits(it) && !it.englishOnly }
+            .maxByOrNull { scoreModel(it, profile) }
+
+    /** The lightest download that still transcribes this phone's language. */
+    private fun smallestCovering(profile: DeviceProfile): LocalModelDescriptor? =
+        all.filter { profile.fits(it) && it.coversLanguage(profile.language) }
+            .minByOrNull { it.sizeBytes }
+
+    private fun firstFitting(
+        profile: DeviceProfile,
+        ids: List<String>,
+    ): LocalModelDescriptor? = ids.firstNotNullOfOrNull { id ->
+        find(id)?.takeIf { profile.fits(it) }
+    }
+
+    /** Nothing fit the budget, so fall back to whatever the phone can hold. */
+    private fun lastResort(profile: DeviceProfile): LocalModelDescriptor =
+        all.filter { isUsableOnDevice(it, profile.totalRamGB, profile.sherpaAvailable) }
+            .minByOrNull { it.minimumRamGB }
+            ?: all.first()
 
     /** The fastest sensible Whisper fallback for this CPU class. */
     fun recommendedWhisper(profile: DeviceProfile): LocalModelDescriptor =
@@ -333,8 +444,12 @@ object LocalModelCatalog {
         val id = when (language.lowercase(Locale.ROOT)) {
             "en" -> "moonshine-tiny-en"
             "de", "es", "fr" -> "canary-180m-flash"
-            "zh", "yue" -> "paraformer-zh-small"
-            "ja", "ko" -> "sense-voice"
+            "zh" -> "paraformer-zh-small"
+            // SenseVoice rather than Paraformer for Cantonese: Paraformer is
+            // Mandarin and English only, and now that Cantonese is a row in the
+            // picker, leading with a model that cannot transcribe it is worse
+            // than having offered nothing.
+            "yue", "ja", "ko" -> "sense-voice"
             "ru" -> "giga-am-ctc-ru"
             in DOLPHIN_STARTER_LANGUAGES -> "dolphin-base-ctc"
             else -> null
@@ -343,29 +458,77 @@ object LocalModelCatalog {
     }
 }
 
+/**
+ * Why a model is being offered. The picker shows this next to each alternate,
+ * so the four picks read as four different answers rather than a ranking.
+ */
+enum class ModelPickRole(val label: String) {
+    ENGLISH("Best for English"),
+    MULTILINGUAL("Multilingual"),
+    REGIONAL("Your language"),
+    COMPACT("Smallest download"),
+}
+
+data class ModelPick(val role: ModelPickRole, val model: LocalModelDescriptor)
+
+/** English models best first. Parakeet leads wherever the budget allows it. */
+private val ENGLISH_PREFERENCE = listOf(
+    "parakeet-tdt-0.6b-v2-en",
+    "moonshine-base-en",
+    "moonshine-tiny-en",
+)
+
+/** Multilingual models by breadth of coverage, widest first. */
+private val MULTILINGUAL_PREFERENCE = listOf(
+    "parakeet-tdt-0.6b-v3",
+    "canary-180m-flash",
+    "dolphin-small-ctc",
+    "sense-voice",
+    "dolphin-base-ctc",
+)
+
 /** Indic and nearby languages Dolphin actually covers well at first-run size. */
-private val DOLPHIN_STARTER_LANGUAGES = setOf(
+internal val DOLPHIN_STARTER_LANGUAGES = setOf(
     "hi", "bn", "ta", "te", "gu", "pa", "mr", "as", "ne", "ur", "th", "vi", "id", "ms",
 )
 
-private val SENSE_VOICE_LANGUAGES = setOf("zh", "en", "ja", "ko", "yue")
+internal val SENSE_VOICE_LANGUAGES = setOf("zh", "en", "ja", "ko", "yue")
+
+/** Everything Dolphin transcribes that the picker also offers. */
+internal val DOLPHIN_LANGUAGES = DOLPHIN_STARTER_LANGUAGES + SENSE_VOICE_LANGUAGES
 
 /** NVIDIA Parakeet TDT 0.6B v3: 25 European languages. */
-private val PARAKEET_V3_LANGUAGES = setOf(
+internal val PARAKEET_V3_LANGUAGES = setOf(
     "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
     "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
 )
 
+/**
+ * Cantonese is the one language OpenAI added after Whisper v2.
+ *
+ * Every multilingual build before large-v3 stops at 99 language tokens, and the
+ * hundredth id lands on the token those models use for something else: the
+ * decode does not fail, it just comes back wrong. whisper.cpp will happily
+ * accept the string, so the catalog is where this has to be caught.
+ */
+private val LARGE_V3_ONLY_LANGUAGES = setOf("yue")
+
+/**
+ * Whether this model transcribes [language] at all.
+ *
+ * Every model that covers a fixed list declares it in [languageCodes],
+ * including the ones that detect the language themselves: a model that decides
+ * for itself still only knows 25 languages, and the picker has to be able to say
+ * which. Empty means no restriction, which is the honest answer for whisper's
+ * multilingual builds apart from [LARGE_V3_ONLY_LANGUAGES].
+ */
 fun LocalModelDescriptor.coversLanguage(language: String): Boolean {
     val lang = language.lowercase(Locale.ROOT)
     if (lang.isBlank()) return true
     if (englishOnly) return lang == "en"
     if (languageCodes.isNotEmpty()) return lang in languageCodes
-    if (engine == LocalModelEngine.WHISPER) return true
-    return when (sherpaFamily) {
-        SherpaFamily.SENSE_VOICE -> lang in SENSE_VOICE_LANGUAGES
-        SherpaFamily.DOLPHIN_CTC -> lang in DOLPHIN_STARTER_LANGUAGES || lang in SENSE_VOICE_LANGUAGES
-        SherpaFamily.NEMO_TRANSDUCER -> lang in PARAKEET_V3_LANGUAGES
-        else -> true
+    if (engine == LocalModelEngine.WHISPER && lang in LARGE_V3_ONLY_LANGUAGES) {
+        return "large-v3" in id
     }
+    return true
 }

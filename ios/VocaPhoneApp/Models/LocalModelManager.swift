@@ -1292,8 +1292,13 @@ final class LocalModelManager {
         case .whisperKit:
             needsLoad = loadedModelID != id || whisperKit == nil
         case .sherpaOnnx:
+            // A language change only means a rebuild for the families whose
+            // config carries one. Rebuilding a 670 MB Parakeet because the user
+            // relabelled the transcript language would cost seconds and change
+            // nothing about the decode.
+            let languageIsBakedIn = descriptor.sherpaFamily?.acceptsLanguage ?? true
             needsLoad = loadedModelID != id
-                || loadedLanguage != resolvedLanguage
+                || (languageIsBakedIn && loadedLanguage != resolvedLanguage)
                 || loadedQuality != LocalTranscriptionPreferences.quality
                 || sherpaRecognizer == nil
         }
@@ -1466,7 +1471,7 @@ final class LocalModelManager {
 
         if let sherpaRecognizer,
            loadedModelID == descriptor.id,
-           loadedLanguage == resolvedLanguage,
+           descriptor.sherpaFamily?.acceptsLanguage != true || loadedLanguage == resolvedLanguage,
            loadedQuality == quality
         {
             return sherpaRecognizer

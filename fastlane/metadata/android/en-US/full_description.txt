@@ -11,7 +11,7 @@ You choose the network path to your gateway: a trusted LAN, a private Tailscale 
 
 <b>Dictation</b>
 
-- 27 selectable languages plus automatic detection: English, Mandarin Chinese, Spanish, French, German, Russian, Portuguese, Italian, Dutch, Polish, Ukrainian, Arabic, Japanese, Korean and Vietnamese, along with Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, Kannada, Malayalam, Punjabi, Assamese and Nepali
+- 54 selectable languages plus automatic detection: English, Mandarin Chinese, Cantonese, Spanish, French, German, Russian, Portuguese, Italian, Dutch, Polish, Ukrainian, Czech, Slovak, Slovenian, Croatian, Serbian, Bulgarian, Romanian, Hungarian, Greek, Danish, Swedish, Norwegian, Finnish, Estonian, Latvian, Lithuanian, Maltese, Catalan, Turkish, Arabic, Hebrew, Persian, Swahili, Japanese, Korean, Vietnamese, Thai, Indonesian, Malay and Filipino, along with Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Urdu, Kannada, Malayalam, Punjabi, Assamese and Nepali
 - Four writing styles: Formal, Casual, Very Casual and Excited, with punctuation that follows the script rather than assuming a Latin full stop
 - Start, finish, cancel, retry and undo, all from the keyboard
 - Automatic microphone routing, or pick an input explicitly, with the microphone in use shown in the app

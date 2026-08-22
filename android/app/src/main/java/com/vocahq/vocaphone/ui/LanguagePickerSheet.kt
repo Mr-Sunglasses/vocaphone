@@ -34,7 +34,7 @@ import com.vocahq.vocaphone.core.TranscriptionLanguage
 /**
  * The full language list, opened from one row in Settings.
  *
- * Twenty-seven chips in a wrapping row pushed every setting below Language off
+ * A wrapping row of chips pushed every setting below Language off
  * the screen, so the list lives behind a sheet with search. The languages the
  * gateway's model cannot honour are grouped at the bottom and greyed rather than
  * hidden: a language that simply disappears reads as unsupported by the app, when
@@ -59,7 +59,7 @@ fun LanguagePickerSheet(
             language.wireValue.contains(query, ignoreCase = true)
 
     fun selectable(language: TranscriptionLanguage) =
-        ModelLanguageSupport.isSelectable(language, modelLanguages, detectsLanguageAutomatically)
+        ModelLanguageSupport.isSelectable(language, modelLanguages)
 
     val available = TranscriptionLanguage.entries.filter { matches(it) && selectable(it) }
     val unavailable = TranscriptionLanguage.entries.filter { matches(it) && !selectable(it) }

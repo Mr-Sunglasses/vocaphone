@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -28,6 +29,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.telemetry.TelemetryInspectPayload
 
@@ -93,48 +96,88 @@ object UsageReportingCopy {
 /**
  * The onboarding step that asks.
  *
- * Deliberately placed at the end of guided setup, after the user has a working
- * transcript rather than while they are still deciding whether the app is worth
- * their time. Both buttons carry the same weight: no greyed-out decline, and
- * nothing that makes saying no look like a mistake. The switch is on this
- * screen rather than behind a link, because a notice whose control lives
- * somewhere else is not a choice.
+ * A dialog rather than a card in the page flow, because the card version could
+ * be taller than the screen it was placed on: the explanation pushed both
+ * answers below the fold on a small phone, and a question whose only answers
+ * are off screen is not a question. Here the prose scrolls inside the dialog
+ * and the two buttons stay pinned under it.
+ *
+ * Both answers carry the same weight: no greyed-out decline, and nothing that
+ * makes saying no look like a mistake. There is no dismiss-by-tapping-outside,
+ * because a dialog that vanishes without an answer would either ask again on
+ * every launch or silently record a choice the user never made.
  */
 @Composable
-fun UsageReportingSetupCard(
+fun UsageReportingDialog(
     onDecision: (Boolean) -> Unit,
     inspect: () -> TelemetryInspectPayload,
     pendingCount: () -> Int = { 0 },
     deliveryStatus: () -> String = { "" },
-    modifier: Modifier = Modifier,
 ) {
     if (!BuildConfig.TELEMETRY) return
     var showingPayload by remember { mutableStateOf(false) }
 
-    Notice(modifier = modifier) {
-        Text(UsageReportingCopy.TITLE, style = MaterialTheme.typography.titleSmall)
-        Text(UsageReportingCopy.WHAT_IS_SENT, style = MaterialTheme.typography.bodyMedium)
-        Text(UsageReportingCopy.WHAT_IS_NEVER_SENT, style = MaterialTheme.typography.bodyMedium)
-        TextButton(onClick = { showingPayload = true }, modifier = Modifier.fillMaxWidth()) {
-            Text(UsageReportingCopy.SEE_WHAT_IS_SENT)
+    Dialog(
+        onDismissRequest = { },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+        ),
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.extraLarge,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(UsageReportingCopy.TITLE, style = MaterialTheme.typography.titleLarge)
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        UsageReportingCopy.WHAT_IS_SENT,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        UsageReportingCopy.WHAT_IS_NEVER_SENT,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                TextButton(
+                    onClick = { showingPayload = true },
+                    contentPadding = PaddingValues(horizontal = 0.dp),
+                ) {
+                    Text(UsageReportingCopy.SEE_WHAT_IS_SENT)
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    SecondaryButton(
+                        text = UsageReportingCopy.NOT_NOW,
+                        onClick = { onDecision(false) },
+                        modifier = Modifier.weight(1f),
+                    )
+                    SecondaryButton(
+                        text = UsageReportingCopy.TURN_ON,
+                        onClick = { onDecision(true) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Text(
+                    UsageReportingCopy.CHANGE_LATER,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
-            SecondaryButton(
-                text = UsageReportingCopy.NOT_NOW,
-                onClick = { onDecision(false) },
-                modifier = Modifier.weight(1f),
-            )
-            SecondaryButton(
-                text = UsageReportingCopy.TURN_ON,
-                onClick = { onDecision(true) },
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Text(
-            UsageReportingCopy.CHANGE_LATER,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
     if (showingPayload) {
         UsagePayloadSheet(

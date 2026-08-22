@@ -63,7 +63,7 @@ test("VocaGateway is presented as an explicit optional path", () => {
 });
 
 test("hero presents a global supported-language mix", () => {
-  assert.match(html, /27 languages \+ automatic/i);
+  assert.match(html, /54 languages \+ automatic/i);
   assert.match(html, /support depends on model/i);
   assert.match(html, /filtered to what your selected model can\s+actually transcribe/i);
   for (const language of ["English", "Español", "Français", "日本語", "हिन्दी", "العربية"]) {
