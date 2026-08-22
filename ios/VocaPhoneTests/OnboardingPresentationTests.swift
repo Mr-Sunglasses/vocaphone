@@ -83,21 +83,53 @@ struct OnboardingPresentationTests {
         #expect(OnboardingStage.practice.requiredStepNumber == 5)
     }
 
-    @Test func keyboardEnablementCannotAdvanceBeforeTheSettingsRoundTrip() {
-        var keyboardMissing = readyToDictate
-        keyboardMissing.keyboard = .addedButNeverRun
+    /// The reported bug: opening Settings, changing nothing, and swiping back
+    /// used to be enough to walk past a button that claimed Full Access was on.
+    @Test func returningFromSettingsWithoutAddingTheKeyboardCannotAdvance() {
+        var notAdded = readyToDictate
+        notAdded.keyboard = .notAdded
+        notAdded.isKeyboardInstalled = false
 
         #expect(!OnboardingPresentation.canAdvanceFromKeyboardEnablement(
-            status: keyboardMissing,
+            status: notAdded,
             returnedFromSettings: false
         ))
-        #expect(OnboardingPresentation.canAdvanceFromKeyboardEnablement(
-            status: keyboardMissing,
+        #expect(!OnboardingPresentation.canAdvanceFromKeyboardEnablement(
+            status: notAdded,
             returnedFromSettings: true
+        ))
+    }
+
+    @Test func aKeyboardInTheListAdvancesWithoutTheSettingsRoundTrip() {
+        var added = readyToDictate
+        added.keyboard = .addedButNeverRun
+        added.isKeyboardInstalled = true
+
+        #expect(OnboardingPresentation.canAdvanceFromKeyboardEnablement(
+            status: added,
+            returnedFromSettings: false
         ))
         #expect(OnboardingPresentation.canAdvanceFromKeyboardEnablement(
             status: readyToDictate,
             returnedFromSettings: false
+        ))
+    }
+
+    /// iOS publishes the keyboard list under an undocumented key. If it ever
+    /// stops, setup must not trap the user on this page — the switch page still
+    /// refuses to move on without the extension's own proof.
+    @Test func anUnreadableKeyboardListFallsBackToTheSettingsRoundTrip() {
+        var unknown = readyToDictate
+        unknown.keyboard = .notAdded
+        unknown.isKeyboardInstalled = nil
+
+        #expect(!OnboardingPresentation.canAdvanceFromKeyboardEnablement(
+            status: unknown,
+            returnedFromSettings: false
+        ))
+        #expect(OnboardingPresentation.canAdvanceFromKeyboardEnablement(
+            status: unknown,
+            returnedFromSettings: true
         ))
     }
 

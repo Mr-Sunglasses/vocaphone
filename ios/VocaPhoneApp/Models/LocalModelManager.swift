@@ -1,6 +1,7 @@
 import AVFAudio
 import Foundation
 import Observation
+import UIKit
 @preconcurrency import WhisperKit
 
 @MainActor
@@ -63,7 +64,39 @@ final class LocalModelManager {
     /// the operation they were meant to stop.
     @ObservationIgnored private var modelDownloadTask: Task<Void, Never>?
 
-    private static let backgroundDownloadDelegate = FileDownloadDelegate()
+    /// Downloads run on a foreground session while the app is in front, and are
+    /// handed to the background session only when the user leaves. Routing every
+    /// byte through `nsurlsessiond` costs real throughput, and the app is in
+    /// front for very nearly every download.
+    private static let downloadDelegate = FileDownloadDelegate()
+
+    /// How many of a model's small files are fetched side by side.
+    static let maxParallelTransfers = 4
+
+    /// Files at or above this size are fetched one at a time rather than
+    /// alongside their siblings, so the handful of very large weights in a model
+    /// never compete with each other for the link.
+    private static let largeFileThreshold: Int64 = 32 * 1024 * 1024
+
+    private static let foregroundDownloadSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.waitsForConnectivity = true
+        configuration.timeoutIntervalForRequest = 15 * 60
+        configuration.timeoutIntervalForResource = 24 * 60 * 60
+        configuration.allowsExpensiveNetworkAccess = true
+        configuration.allowsConstrainedNetworkAccess = true
+        configuration.httpMaximumConnectionsPerHost = maxParallelTransfers
+        // Model files are verified and stored by hand. Nothing this large has
+        // any business entering the shared URL cache on the way past.
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(
+            configuration: configuration,
+            delegate: downloadDelegate,
+            delegateQueue: nil
+        )
+    }()
+
     private static let backgroundDownloadSession: URLSession = {
         let configuration = URLSessionConfiguration.background(
             withIdentifier: backgroundDownloadSessionIdentifier
@@ -80,10 +113,61 @@ final class LocalModelManager {
         configuration.allowsConstrainedNetworkAccess = true
         return URLSession(
             configuration: configuration,
-            delegate: backgroundDownloadDelegate,
+            delegate: downloadDelegate,
             delegateQueue: nil
         )
     }()
+
+    /// Holds the app awake just long enough to hand every in-flight transfer to
+    /// the background session. Without it the process can suspend mid-handoff
+    /// and the download is lost rather than continued.
+    private final class BackgroundAssertion: @unchecked Sendable {
+        private let lock = NSLock()
+        private var identifier: UIBackgroundTaskIdentifier = .invalid
+
+        @MainActor
+        func begin() {
+            let identifier = UIApplication.shared.beginBackgroundTask(
+                withName: "model-download-handoff"
+            ) { [weak self] in
+                self?.end()
+            }
+            lock.lock()
+            self.identifier = identifier
+            lock.unlock()
+        }
+
+        func end() {
+            lock.lock()
+            let identifier = self.identifier
+            self.identifier = .invalid
+            lock.unlock()
+            guard identifier != .invalid else { return }
+            Task { @MainActor in
+                UIApplication.shared.endBackgroundTask(identifier)
+            }
+        }
+    }
+
+    /// Moves anything in flight onto the background session so leaving the app
+    /// does not kill a half-finished 1.5 GB download. Called from the scene
+    /// phase hook in `VocaPhoneApp`.
+    ///
+    /// There is deliberately no move back on return to the foreground: undoing
+    /// it means cancelling a live task and hoping for resume data, and a
+    /// transfer that cannot produce any would restart from zero.
+    @MainActor
+    static func enterBackground() {
+        // This runs on every trip to the home screen, so do not take a
+        // background assertion unless there is actually a transfer to hand over.
+        guard downloadDelegate.hasTransfers else { return }
+        let assertion = BackgroundAssertion()
+        assertion.begin()
+        downloadDelegate.migrate(to: backgroundDownloadSession) {
+            assertion.end()
+        }
+    }
+
     private var modelsDirectory: URL? {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first?
@@ -161,15 +245,13 @@ final class LocalModelManager {
         case missing
     }
 
-    /// Tracks bytes across tokenizer and model files so the picker can show
-    /// meaningful progress rather than waiting for a whole multi-hundred-MB
-    /// file to finish.
+    /// Tracks bytes across every transfer in flight so the picker shows real
+    /// movement rather than a step per finished file. A unit is one file, or one
+    /// byte range within a large file, and several run at once.
     private actor DownloadProgress {
         let totalBytes: Int64
-        var completedBytes: Int64 = 0
-        private var activeFileBytes: Int64 = 0
-        private var activeFileExpectedBytes: Int64 = 0
-        private var activeFileGeneration = 0
+        private var completedBytes: Int64 = 0
+        private var inFlight: [UUID: Int64] = [:]
 
         init(totalBytes: Int64) {
             self.totalBytes = totalBytes
@@ -180,43 +262,34 @@ final class LocalModelManager {
             return fraction
         }
 
-        func beginFile(expectedBytes: Int64) -> Int {
-            activeFileGeneration += 1
-            activeFileBytes = 0
-            activeFileExpectedBytes = max(0, expectedBytes)
-            return activeFileGeneration
+        func begin(_ unit: UUID) {
+            inFlight[unit] = 0
         }
 
-        func updateFile(bytesWritten: Int64, generation: Int) -> Double? {
-            guard generation == activeFileGeneration else { return nil }
-            activeFileBytes = min(
-                max(0, bytesWritten),
-                activeFileExpectedBytes
-            )
+        /// Returns nil for a unit that has already finished or been abandoned,
+        /// so a late delegate callback cannot resurrect its bytes.
+        func update(_ unit: UUID, bytesWritten: Int64, expectedBytes: Int64) -> Double? {
+            guard inFlight[unit] != nil else { return nil }
+            inFlight[unit] = min(max(0, bytesWritten), max(0, expectedBytes))
             return fraction
         }
 
-        func completeFile(generation: Int) -> Double {
-            guard generation == activeFileGeneration else { return fraction }
-            completedBytes += activeFileExpectedBytes
-            activeFileBytes = 0
-            activeFileExpectedBytes = 0
+        func complete(_ unit: UUID, bytes: Int64) -> Double {
+            inFlight.removeValue(forKey: unit)
+            completedBytes += max(0, bytes)
             return fraction
         }
 
-        func resetFile(generation: Int) -> Double {
-            guard generation == activeFileGeneration else { return fraction }
-            activeFileBytes = 0
-            activeFileExpectedBytes = 0
+        /// A retry restarts the unit, so its bytes go back to zero.
+        func reset(_ unit: UUID) -> Double {
+            if inFlight[unit] != nil { inFlight[unit] = 0 }
             return fraction
         }
 
         private var fraction: Double {
             guard totalBytes > 0 else { return 0 }
-            return min(
-                1,
-                Double(completedBytes + activeFileBytes) / Double(totalBytes)
-            )
+            let active = inFlight.values.reduce(Int64(0), +)
+            return min(1, Double(completedBytes + active) / Double(totalBytes))
         }
     }
 
@@ -224,30 +297,60 @@ final class LocalModelManager {
     /// delivering one byte at a time through an AsyncBytes data task. This is
     /// important for multi-hundred-megabyte Core ML weights: the old path made
     /// every byte cross back through the main actor before it could be written.
+    ///
+    /// One delegate serves both sessions, so transfers are keyed by a token
+    /// carried in `taskDescription`. `taskIdentifier` is only unique within a
+    /// single session and would collide across the two.
     private final class FileDownloadDelegate: NSObject, URLSessionDownloadDelegate,
         @unchecked Sendable {
+        /// Progress is forwarded at most this often, and only once a meaningful
+        /// slice of the unit has landed. `didWriteData` fires per network chunk;
+        /// forwarding every one of them put tens of thousands of hops on the
+        /// main actor over a single gigabyte-scale file and re-rendered the
+        /// picker each time.
+        private static let progressInterval: TimeInterval = 0.1
+
         private struct Transfer {
-            let task: URLSessionDownloadTask
+            var task: URLSessionDownloadTask
+            let request: URLRequest
+            let expectedBytes: Int64
             let continuation: CheckedContinuation<(URL, URLResponse), Error>
             let progressHandler: @Sendable (Int64) -> Void
             var lastReportedBytes: Int64 = 0
+            var lastReportedAt: TimeInterval = 0
+            /// Set while a task is cancelled only so it can be restarted on the
+            /// other session. Its cancellation must not fail the continuation.
+            var isMigrating = false
+
+            /// At most a couple of hundred updates per unit, never more often
+            /// than once a megabyte.
+            var progressThreshold: Int64 {
+                max(1_048_576, expectedBytes / 200)
+            }
         }
 
         private let lock = NSLock()
-        private var transfers: [Int: Transfer] = [:]
+        private var transfers: [String: Transfer] = [:]
 
         func start(
             session: URLSession,
             request: URLRequest,
+            expectedBytes: Int64,
+            resumeData: Data?,
             progressHandler: @escaping @Sendable (Int64) -> Void
         ) async throws -> (URL, URLResponse) {
-            try await withTaskCancellationHandler(operation: {
+            let token = UUID().uuidString
+            return try await withTaskCancellationHandler(operation: {
                 try await withCheckedThrowingContinuation {
                     (continuation: CheckedContinuation<(URL, URLResponse), Error>) in
                     lock.lock()
-                    let task = session.downloadTask(with: request)
-                    transfers[task.taskIdentifier] = Transfer(
+                    let task = resumeData.map(session.downloadTask(withResumeData:))
+                        ?? session.downloadTask(with: request)
+                    task.taskDescription = token
+                    transfers[token] = Transfer(
                         task: task,
+                        request: request,
+                        expectedBytes: expectedBytes,
                         continuation: continuation,
                         progressHandler: progressHandler
                     )
@@ -261,15 +364,81 @@ final class LocalModelManager {
                     }
                 }
             }, onCancel: { [weak self] in
-                self?.cancel()
+                self?.cancel(token: token)
             })
         }
 
+        var hasTransfers: Bool {
+            lock.lock()
+            let hasTransfers = !transfers.isEmpty
+            lock.unlock()
+            return hasTransfers
+        }
+
+        /// Cancels every transfer. Used by the picker's Cancel button, which
+        /// stops the whole model rather than one file.
         func cancel() {
             lock.lock()
             let tasks = transfers.values.map(\.task)
             lock.unlock()
             tasks.forEach { $0.cancel() }
+        }
+
+        private func cancel(token: String) {
+            lock.lock()
+            let task = transfers[token]?.task
+            lock.unlock()
+            task?.cancel()
+        }
+
+        /// Cancels every in-flight transfer for its resume data and restarts it
+        /// on `session`, keeping the awaiting continuation intact. A transfer
+        /// that cannot produce resume data restarts from the beginning rather
+        /// than being dropped: losing bytes beats losing the download.
+        func migrate(to session: URLSession, completion: @escaping @Sendable () -> Void) {
+            lock.lock()
+            var pending: [String: URLSessionDownloadTask] = [:]
+            for (token, transfer) in transfers where !transfer.isMigrating {
+                transfers[token]?.isMigrating = true
+                pending[token] = transfer.task
+            }
+            lock.unlock()
+
+            guard !pending.isEmpty else {
+                completion()
+                return
+            }
+
+            let group = DispatchGroup()
+            for (token, task) in pending {
+                group.enter()
+                task.cancel(byProducingResumeData: { [weak self] resumeData in
+                    self?.restart(token: token, on: session, resumeData: resumeData)
+                    group.leave()
+                })
+            }
+            group.notify(queue: .main) { completion() }
+        }
+
+        private func restart(token: String, on session: URLSession, resumeData: Data?) {
+            lock.lock()
+            guard var transfer = transfers[token] else {
+                lock.unlock()
+                return
+            }
+            let task = resumeData.map(session.downloadTask(withResumeData:))
+                ?? session.downloadTask(with: transfer.request)
+            task.taskDescription = token
+            transfer.task = task
+            transfer.isMigrating = false
+            // Without resume data the new task counts from zero again, so a
+            // high-water mark carried over from the old one would suppress every
+            // report until it caught up.
+            transfer.lastReportedBytes = 0
+            transfer.lastReportedAt = 0
+            transfers[token] = transfer
+            lock.unlock()
+            task.resume()
         }
 
         func urlSession(
@@ -279,7 +448,7 @@ final class LocalModelManager {
             totalBytesWritten: Int64,
             totalBytesExpectedToWrite: Int64
         ) {
-            report(totalBytesWritten, taskIdentifier: downloadTask.taskIdentifier)
+            report(totalBytesWritten, token: downloadTask.taskDescription)
         }
 
         func urlSession(
@@ -287,25 +456,23 @@ final class LocalModelManager {
             downloadTask: URLSessionDownloadTask,
             didFinishDownloadingTo location: URL
         ) {
-            let taskIdentifier = downloadTask.taskIdentifier
-            guard isTracking(taskIdentifier) else {
+            guard let token = downloadTask.taskDescription, isTracking(token) else {
                 // A transfer may finish after iOS relaunched the process. Its
                 // original continuation no longer exists, so ignore this
                 // system-owned temporary file rather than allowing the stale
                 // callback to complete a newer model file.
                 return
             }
-            report(downloadTask.countOfBytesReceived, taskIdentifier: taskIdentifier)
             let persistentLocation = FileManager.default.temporaryDirectory
                 .appendingPathComponent("vocaphone-download-\(UUID().uuidString)")
             do {
                 try FileManager.default.moveItem(at: location, to: persistentLocation)
                 finish(
-                    taskIdentifier: taskIdentifier,
+                    token: token,
                     result: .success((persistentLocation, downloadTask.response ?? URLResponse()))
                 )
             } catch {
-                finish(taskIdentifier: taskIdentifier, result: .failure(error))
+                finish(token: token, result: .failure(error))
             }
         }
 
@@ -314,8 +481,16 @@ final class LocalModelManager {
             task: URLSessionTask,
             didCompleteWithError error: Error?
         ) {
-            guard let error else { return }
-            finish(taskIdentifier: task.taskIdentifier, result: .failure(error))
+            guard let error, let token = task.taskDescription else { return }
+            lock.lock()
+            let transfer = transfers[token]
+            lock.unlock()
+            // A migration cancels the task on purpose, and URLSession does not
+            // promise whether this callback or the resume-data handler runs
+            // first. Both orderings have to be ignored: still migrating, or
+            // already replaced by the task `restart` put in its place.
+            guard let transfer, transfer.task === task, !transfer.isMigrating else { return }
+            finish(token: token, result: .failure(error))
         }
 
         func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
@@ -323,33 +498,40 @@ final class LocalModelManager {
             ModelDownloadBackgroundEvents.shared.finish(identifier: identifier)
         }
 
-        private func isTracking(_ taskIdentifier: Int) -> Bool {
+        private func isTracking(_ token: String) -> Bool {
             lock.lock()
-            let isTracking = transfers[taskIdentifier] != nil
+            let isTracking = transfers[token] != nil
             lock.unlock()
             return isTracking
         }
 
-        private func report(_ totalBytesWritten: Int64, taskIdentifier: Int) {
+        private func report(_ totalBytesWritten: Int64, token: String?) {
+            guard let token else { return }
+            let now = Date().timeIntervalSinceReferenceDate
             lock.lock()
-            guard var transfer = transfers[taskIdentifier] else {
+            guard var transfer = transfers[token] else {
                 lock.unlock()
                 return
             }
-            let shouldReport = totalBytesWritten > transfer.lastReportedBytes
-            transfer.lastReportedBytes = max(transfer.lastReportedBytes, totalBytesWritten)
-            transfers[taskIdentifier] = transfer
+            let shouldReport =
+                totalBytesWritten - transfer.lastReportedBytes >= transfer.progressThreshold
+                && now - transfer.lastReportedAt >= Self.progressInterval
+            if shouldReport {
+                transfer.lastReportedBytes = totalBytesWritten
+                transfer.lastReportedAt = now
+                transfers[token] = transfer
+            }
             let progressHandler = transfer.progressHandler
             lock.unlock()
             if shouldReport { progressHandler(totalBytesWritten) }
         }
 
         private func finish(
-            taskIdentifier: Int,
+            token: String,
             result: Result<(URL, URLResponse), Error>
         ) {
             lock.lock()
-            let transfer = transfers.removeValue(forKey: taskIdentifier)
+            let transfer = transfers.removeValue(forKey: token)
             lock.unlock()
             transfer?.continuation.resume(with: result)
         }
@@ -685,7 +867,7 @@ final class LocalModelManager {
     func cancelDownload() {
         guard modelDownloadTask != nil || downloadingModelID != nil else { return }
         message = "Canceling model download…"
-        Self.backgroundDownloadDelegate.cancel()
+        Self.downloadDelegate.cancel()
         modelDownloadTask?.cancel()
     }
 
@@ -745,7 +927,7 @@ final class LocalModelManager {
                 progressTracker: progressTracker
             )
         }
-        try LocalModelIntegrity.verifyDigests(
+        try await Self.verifyDigests(
             in: staging, files: tokenizer.files, modelIdentifier: repository
         )
         if fileManager.fileExists(atPath: destination.path) {
@@ -773,40 +955,145 @@ final class LocalModelManager {
         try fileManager.createDirectory(at: stagingModel, withIntermediateDirectories: true)
         defer { try? fileManager.removeItem(at: stagingRoot) }
 
-        for file in files {
-            try Task.checkCancellation()
-            guard isSafeRelativePath(file.path) else {
-                throw LocalModelManagerError.integrityFileMissing(file.path)
-            }
-
-            let destination = stagingModel.appendingPathComponent(file.path)
-            message = "Downloading \(descriptor.displayName)…"
-            let url = try fileURL(
-                repository: repository,
-                revision: revision,
-                path: [pathPrefix, file.path].compactMap { $0 }.joined(separator: "/")
-            )
-            let temporaryFile = try await downloadFile(
-                from: url,
-                to: destination,
-                keepingPartialExtension: true,
-                expectedBytes: file.size,
-                progressTracker: progressTracker
-            )
-            try LocalModelIntegrity.verify(file: temporaryFile, against: file)
-            try fileManager.moveItem(at: temporaryFile, to: destination)
-
+        for file in files where !isSafeRelativePath(file.path) {
+            throw LocalModelManagerError.integrityFileMissing(file.path)
         }
 
-        try LocalModelIntegrity.verifyDigests(
-            in: stagingModel, files: files, modelIdentifier: descriptor.id
+        message = "Downloading \(descriptor.displayName)…"
+
+        // Every model in the catalog is one to three very large weights beside a
+        // dozen or more tiny descriptors. Fetching the small ones several at a
+        // time stops each of them paying a fresh TLS handshake and a Hugging
+        // Face redirect in turn, which is most of what they cost. The large ones
+        // stay sequential: splitting a single stream into parallel byte ranges
+        // measured no reliable gain and sometimes lost, which does not justify
+        // the reassembly pass or giving up resume on a retry.
+        let large = files.filter { $0.size >= Self.largeFileThreshold }
+        let small = files.filter { $0.size < Self.largeFileThreshold }
+
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            var pending = small.makeIterator()
+            var inFlight = 0
+            while inFlight < Self.maxParallelTransfers, let file = pending.next() {
+                group.addTask {
+                    try await self.downloadAndVerify(
+                        file,
+                        modelIdentifier: descriptor.id,
+                        repository: repository,
+                        revision: revision,
+                        pathPrefix: pathPrefix,
+                        into: stagingModel,
+                        progressTracker: progressTracker
+                    )
+                }
+                inFlight += 1
+            }
+            while inFlight > 0 {
+                try await group.next()
+                inFlight -= 1
+                guard let file = pending.next() else { continue }
+                group.addTask {
+                    try await self.downloadAndVerify(
+                        file,
+                        modelIdentifier: descriptor.id,
+                        repository: repository,
+                        revision: revision,
+                        pathPrefix: pathPrefix,
+                        into: stagingModel,
+                        progressTracker: progressTracker
+                    )
+                }
+                inFlight += 1
+            }
+        }
+
+        for file in large {
+            try Task.checkCancellation()
+            try await downloadAndVerify(
+                file,
+                modelIdentifier: descriptor.id,
+                repository: repository,
+                revision: revision,
+                pathPrefix: pathPrefix,
+                into: stagingModel,
+                progressTracker: progressTracker
+            )
+        }
+
+        // Every file was hashed as it landed, so all that is left is confirming
+        // the set is complete and recording the marker the cheap launch path
+        // reads. The whole-directory digest pass that used to run here hashed
+        // every byte of the model a second time, on the main actor.
+        try LocalModelIntegrity.verifySizes(
+            in: stagingModel, files: files, requiringMarker: false
         )
+        try LocalModelIntegrity.writeMarker(
+            LocalModelIntegrity.fingerprint(of: files), in: stagingModel
+        )
+
         let finalFolder = root.appendingPathComponent(descriptor.id, isDirectory: true)
         if fileManager.fileExists(atPath: finalFolder.path) {
             try fileManager.removeItem(at: finalFolder)
         }
         try fileManager.moveItem(at: stagingModel, to: finalFolder)
         return finalFolder
+    }
+
+    /// Fetches one manifest file into the staging folder and checks its digest
+    /// before committing it under its real name.
+    private func downloadAndVerify(
+        _ file: LocalModelIntegrity.ManifestFile,
+        modelIdentifier: String,
+        repository: String,
+        revision: String,
+        pathPrefix: String?,
+        into stagingModel: URL,
+        progressTracker: DownloadProgress
+    ) async throws {
+        let url = try fileURL(
+            repository: repository,
+            revision: revision,
+            path: [pathPrefix, file.path].compactMap { $0 }.joined(separator: "/")
+        )
+        let destination = stagingModel.appendingPathComponent(file.path)
+        let temporaryFile = try await downloadFile(
+            from: url,
+            to: destination,
+            keepingPartialExtension: true,
+            expectedBytes: file.size,
+            progressTracker: progressTracker
+        )
+        try await Self.verify(
+            file: temporaryFile, against: file, modelIdentifier: modelIdentifier
+        )
+        try FileManager.default.moveItem(at: temporaryFile, to: destination)
+    }
+
+    /// Digest work is CPU-bound file I/O over hundreds of megabytes. On the main
+    /// actor it froze the picker at the end of a large download, which reads as
+    /// a stalled progress bar rather than as verification.
+    private nonisolated static func verify(
+        file url: URL,
+        against expectedFile: LocalModelIntegrity.ManifestFile,
+        modelIdentifier: String?
+    ) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try LocalModelIntegrity.verify(
+                file: url, against: expectedFile, modelIdentifier: modelIdentifier
+            )
+        }.value
+    }
+
+    private nonisolated static func verifyDigests(
+        in directory: URL,
+        files: [LocalModelIntegrity.ManifestFile],
+        modelIdentifier: String?
+    ) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try LocalModelIntegrity.verifyDigests(
+                in: directory, files: files, modelIdentifier: modelIdentifier
+            )
+        }.value
     }
 
     /// Downloads one file into place, creating intermediate directories. When
@@ -829,26 +1116,48 @@ final class LocalModelManager {
             : destination
         try? fileManager.removeItem(at: target)
 
+        let file = try await downloadUnit(
+            from: url,
+            expectedBytes: expectedBytes,
+            progressTracker: progressTracker
+        )
+        try fileManager.moveItem(at: file, to: target)
+        return target
+    }
+
+    /// One file transfer with its own retry budget. Returns a temporary file
+    /// the caller owns.
+    private func downloadUnit(
+        from url: URL,
+        expectedBytes: Int64,
+        progressTracker: DownloadProgress
+    ) async throws -> URL {
+        let fileManager = FileManager.default
+        let unit = UUID()
+        await progressTracker.begin(unit)
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 15 * 60
+
+        let progressHandler: @Sendable (Int64) -> Void = { [weak self] bytesWritten in
+            Task { @MainActor [weak self] in
+                guard let value = await progressTracker.update(
+                    unit, bytesWritten: bytesWritten, expectedBytes: expectedBytes
+                ) else { return }
+                self?.publish(value)
+            }
+        }
+
         let maxAttempts = 3
+        var resumeData: Data?
         for attempt in 1...maxAttempts {
             try Task.checkCancellation()
-            let generation = await progressTracker.beginFile(expectedBytes: expectedBytes)
-            let progressHandler: @Sendable (Int64) -> Void = { [weak self] bytesWritten in
-                Task { @MainActor [weak self] in
-                    guard let value = await progressTracker.updateFile(
-                        bytesWritten: bytesWritten,
-                        generation: generation
-                    ) else { return }
-                    self?.progress = value
-                }
-            }
-
             do {
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 15 * 60
-                let (temporaryFile, response) = try await Self.backgroundDownloadDelegate.start(
-                    session: Self.backgroundDownloadSession,
+                let (temporaryFile, response) = try await Self.downloadDelegate.start(
+                    session: Self.foregroundDownloadSession,
                     request: request,
+                    expectedBytes: expectedBytes,
+                    resumeData: resumeData,
                     progressHandler: progressHandler
                 )
                 try Task.checkCancellation()
@@ -861,23 +1170,35 @@ final class LocalModelManager {
                         statusCode: (response as? HTTPURLResponse)?.statusCode
                     )
                 }
-                try fileManager.moveItem(at: temporaryFile, to: target)
-                progress = await progressTracker.completeFile(generation: generation)
-                return target
+                progress = await progressTracker.complete(unit, bytes: expectedBytes)
+                return temporaryFile
             } catch {
-                progress = await progressTracker.resetFile(generation: generation)
+                progress = await progressTracker.reset(unit)
                 guard attempt < maxAttempts, isRetryableDownloadError(error) else {
+                    _ = await progressTracker.complete(unit, bytes: 0)
                     throw error
                 }
+                // A dropped connection at 90% of a 1.27 GB weight used to cost
+                // the whole file. Resume data picks it up where it stopped.
+                resumeData = (error as NSError)
+                    .userInfo[NSURLSessionDownloadTaskResumeData] as? Data
                 message = "Network interruption. Retrying \(url.lastPathComponent)…"
                 try await Task.sleep(nanoseconds: UInt64(attempt) * 750_000_000)
             }
         }
 
+        _ = await progressTracker.complete(unit, bytes: 0)
         throw LocalModelManagerError.downloadFailed(
             path: url.lastPathComponent,
             statusCode: nil
         )
+    }
+
+    /// Several transfers report at once and their main-actor hops can land out
+    /// of order, which must not make the bar jump backwards mid-download.
+    private func publish(_ value: Double) {
+        guard value > progress else { return }
+        progress = value
     }
 
     private func isRetryableDownloadError(_ error: Error) -> Bool {

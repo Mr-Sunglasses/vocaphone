@@ -116,13 +116,15 @@ final class RecordingCoordinator {
     /// permission can be revoked from Settings while the app is suspended.
     func refreshSetupStatus() {
         guard !isInert else { return }
+        let isKeyboardInstalled = InstalledKeyboards.includesVocaPhone()
         let refreshed = SetupStatus(
             source: transcriptionSource,
             microphone: microphoneAccess,
             keyboard: KeyboardSetupState.resolve(
                 try? store.loadKeyboardStatus(),
-                isInstalled: InstalledKeyboards.includesVocaPhone()
+                isInstalled: isKeyboardInstalled
             ),
+            isKeyboardInstalled: isKeyboardInstalled,
             hasDictatedOnce: KeyboardPreferences.hasCompletedFirstDictation
         )
         // Guided setup re-reads this several times a second while it waits for

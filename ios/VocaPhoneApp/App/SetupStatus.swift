@@ -140,6 +140,11 @@ struct SetupStatus: Equatable, Sendable {
     var source = TranscriptionSourceStatus()
     var microphone: MicrophoneAccess = .undetermined
     var keyboard: KeyboardSetupState = .notAdded
+    /// Whether vocaphone appears in the user's keyboard list, kept as its own
+    /// tri-state because `keyboard` folds "not added" and "iOS did not say"
+    /// together. Guided setup needs them apart: the first is something to fix,
+    /// the second is something we simply cannot check.
+    var isKeyboardInstalled: Bool?
     var hasDictatedOnce = false
 
     func isSatisfied(_ step: SetupStep) -> Bool {

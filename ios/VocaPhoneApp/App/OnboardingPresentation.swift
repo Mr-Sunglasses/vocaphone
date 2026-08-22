@@ -129,15 +129,28 @@ enum OnboardingPresentation {
         )) / Double(SetupStep.allCases.count)
     }
 
-    /// The containing app cannot query the Full Access switch. It may advance
-    /// only after an already-ready keyboard proves access, or after the user
-    /// returns from the Settings trip and explicitly confirms the switch is on.
-    /// The keyboard-switch page then performs the real extension-side proof.
+    /// The containing app cannot query the Full Access switch: only the
+    /// extension's own write proves it, and the extension cannot write until it
+    /// has run. So this page advances on the strongest thing iOS does expose —
+    /// whether vocaphone is in the user's keyboard list — and the keyboard
+    /// switch page that follows performs the real Full Access proof.
+    ///
+    /// It deliberately no longer advances on the user's say-so after a trip to
+    /// Settings. Returning from Settings says nothing about what was changed
+    /// there, and offering a button that asserted Full Access was on let someone
+    /// who had granted nothing walk past it.
     static func canAdvanceFromKeyboardEnablement(
         status: SetupStatus,
         returnedFromSettings: Bool
     ) -> Bool {
-        status.isSatisfied(.keyboard) || returnedFromSettings
+        if status.isSatisfied(.keyboard) { return true }
+        guard let isInstalled = status.isKeyboardInstalled else {
+            // iOS did not publish the keyboard list. Trapping the user on this
+            // page would be worse than letting them through to the page that
+            // does hold out for proof.
+            return returnedFromSettings
+        }
+        return isInstalled
     }
 
     static func previousStage(before stage: OnboardingStage) -> OnboardingStage? {

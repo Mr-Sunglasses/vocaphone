@@ -415,10 +415,14 @@ struct SetupView: View {
                     symbol: "arrow.right",
                     action: advance
                 )
-            } else if keyboardSettingsRoundTripStarted {
+            } else if status.isKeyboardInstalled == true {
+                // Being in the keyboard list is observable; Full Access is not.
+                // Say only the part we actually checked — the next page is what
+                // proves the rest.
+                CompletionNotice("vocaphone is in your keyboard list")
                 VocaCard(padding: VocaMetrics.padding) {
                     Label(
-                        "iOS confirms Full Access only after vocaphone opens as the keyboard. The next step performs that check.",
+                        "Full Access cannot be checked from here. iOS confirms it only once vocaphone opens as the keyboard, which the next step walks you through.",
                         systemImage: "checkmark.shield"
                     )
                     .font(.subheadline)
@@ -427,18 +431,52 @@ struct SetupView: View {
                 }
 
                 VocaPrimaryButton(
-                    title: "Full Access is on — continue",
-                    symbol: "checkmark.shield",
+                    title: "Continue to keyboard switch",
+                    symbol: "arrow.right",
+                    action: advance
+                )
+            } else if status.isKeyboardInstalled == nil, keyboardSettingsRoundTripStarted {
+                // iOS did not publish the keyboard list, so there is nothing to
+                // check against. Blocking here would strand the user.
+                VocaCard(padding: VocaMetrics.padding) {
+                    Label(
+                        "iOS did not report your keyboard list, so this cannot be confirmed here. The next step verifies Full Access for real.",
+                        systemImage: "questionmark.circle"
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VocaPrimaryButton(
+                    title: "Continue to keyboard switch",
+                    symbol: "arrow.right",
                     action: advance
                 )
             } else {
                 Button(action: {}) {
-                    Label("Enable Full Access before continuing", systemImage: "lock.fill")
+                    Label("Add the keyboard to continue", systemImage: "lock.fill")
                         .frame(maxWidth: .infinity, minHeight: VocaMetrics.minimumTarget)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
                 .disabled(true)
+
+                if keyboardSettingsRoundTripStarted {
+                    Text("vocaphone is not in your keyboard list yet. In Settings, use Add New Keyboard to add it, then turn on Allow Full Access.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    // iOS can publish the keyboard list a moment behind the
+                    // change. Without this the page would look like a dead end
+                    // to someone who has in fact just added the keyboard.
+                    Button("Check again") {
+                        Task { await refreshAfterForegroundReturn() }
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: VocaMetrics.minimumTarget)
+                }
             }
         }
     }
@@ -496,14 +534,16 @@ struct SetupView: View {
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity)
 
-                if case .seenWithoutFullAccess = status.keyboard {
-                    Button("Full Access is still off — review Settings") {
-                        keyboardSettingsRoundTripStarted = false
-                        stage = .keyboard
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: VocaMetrics.minimumTarget)
+                // Always offer the way back. This page waits on the extension
+                // running, and a keyboard that was never added — or was removed
+                // again — will never make that happen, so a state-specific
+                // escape hatch left those users watching a spinner forever.
+                Button(keyboardSwitchReviewLabel) {
+                    keyboardSettingsRoundTripStarted = false
+                    stage = .keyboard
                 }
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: VocaMetrics.minimumTarget)
             }
         }
     }
@@ -697,6 +737,18 @@ struct SetupView: View {
                 }
             }
         }
+    }
+
+    /// Names the reason this page is still waiting, so the way back to the
+    /// Settings instructions describes the user's actual situation.
+    private var keyboardSwitchReviewLabel: String {
+        if status.isKeyboardInstalled == false {
+            return "vocaphone is not in your keyboard list — review Settings"
+        }
+        if case .seenWithoutFullAccess = status.keyboard {
+            return "Full Access is still off — review Settings"
+        }
+        return "Not working? Review the Settings steps"
     }
 
     private var keyboardWatchID: String {

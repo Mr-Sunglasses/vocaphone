@@ -78,6 +78,12 @@ struct VocaPhoneApp: App {
                         // reliably has something to send. A deferred background
                         // task would usually wake to an empty queue.
                         Task { await Telemetry.shared.flush() }
+                        if phase == .background {
+                            // Hands any in-flight model download to the
+                            // background session, which is the only one the
+                            // system keeps running once we are suspended.
+                            LocalModelManager.enterBackground()
+                        }
                         return
                     }
                     Task {
