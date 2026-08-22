@@ -13,11 +13,10 @@ Then open `http://127.0.0.1:4173/`. The iPhone setup guide is available at
 `http://127.0.0.1:4173/privacy/`.
 
 The site uses only local brand assets and system fonts. The Android install and
-download CTAs point at a pinned release tag (`v0.1.0`), where the release
-includes the APK and its verification files. That tag is a historical
-unprefixed Android release. New Android tags are `android/v*`; **move the pin
-when you cut the next Android release people should install** (see
-[releasing.md](../docs/releasing.md)). `npm run check` asserts the tag the
+download CTAs point at a pinned release tag (`android/v0.1.1`), where the release
+includes the APK and its verification files. New Android tags are `android/v*`;
+**move the pin when you cut the next Android release people should install**
+(see [releasing.md](../docs/releasing.md)). `npm run check` asserts the tag the
 install block links to, so a stale pin fails there rather than on the live
 site.
 
