@@ -100,11 +100,11 @@ test("production metadata is complete", () => {
     /property="og:image:type" content="image\/png"/,
     /property="og:image:width" content="1200"/,
     /property="og:image:height" content="630"/,
-    /property="og:image:alt"\s+content="VocaPhone voice typing that stays yours, on-device first with an optional gateway"/,
+    /property="og:image:alt"\s+content="VocaPhone on Android and iPhone. Voice typing that stays yours, on-device first with an optional gateway"/,
     /name="twitter:card" content="summary_large_image"/,
     /name="twitter:title" content="VocaPhone: voice typing that stays yours"/,
     /name="twitter:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
-    /name="twitter:image:alt"\s+content="VocaPhone voice typing that stays yours, on-device first with an optional gateway"/,
+    /name="twitter:image:alt"\s+content="VocaPhone on Android and iPhone. Voice typing that stays yours, on-device first with an optional gateway"/,
   ]) {
     assert.match(html, tag);
   }
@@ -117,11 +117,11 @@ test("production metadata is complete", () => {
     /property="og:image:type" content="image\/png"/,
     /property="og:image:width" content="1200"/,
     /property="og:image:height" content="630"/,
-    /property="og:image:alt"\s+content="VocaPhone private voice typing, on-device first with an optional self-hosted gateway"/,
+    /property="og:image:alt"\s+content="VocaPhone on Android and iPhone, on-device first with an optional self-hosted gateway"/,
     /name="twitter:title" content="Install VocaPhone on iPhone"/,
     /name="twitter:description"\s+content="Build VocaPhone from source, install the private keyboard, and run speech-to-text on your iPhone\."/,
     /name="twitter:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
-    /name="twitter:image:alt"\s+content="VocaPhone private voice typing, on-device first with an optional self-hosted gateway"/,
+    /name="twitter:image:alt"\s+content="VocaPhone on Android and iPhone, on-device first with an optional self-hosted gateway"/,
   ]) {
     assert.match(iphoneHtml, tag);
   }
@@ -151,8 +151,24 @@ test("Open Graph card follows the Voca paper language", () => {
   assert.match(ogSource, /--paper:\s*#f4f1e8/);
   assert.match(ogSource, /--ink:\s*#14231c/);
   assert.match(ogSource, /--brand:\s*#0f6b57/);
-  assert.match(ogSource, /android-keyboard\.jpg/);
+  assert.match(ogSource, /class="device iphone"/);
+  assert.match(ogSource, /class="device android"/);
+  assert.match(ogSource, /class="island"/);
+  assert.match(ogSource, /iMessage/);
+  assert.match(ogSource, /WhatsApp/);
+  assert.match(ogSource, /class="hole"/);
+  assert.match(ogSource, /class="thread"/);
+  assert.match(ogSource, /still on for 7\?/);
+  assert.match(ogSource, /running 5 late/);
+  assert.match(ogSource, /want the usual\?/);
+  assert.match(ogSource, /the usual\. thanks/);
+  assert.match(ogSource, /class="kb-ios"/);
+  assert.match(ogSource, /class="kb-android"/);
+  assert.match(ogSource, /class="plat"/);
   assert.match(ogSource, /gateway optional/);
+  assert.doesNotMatch(ogSource, /android-keyboard\.jpg/);
+  assert.doesNotMatch(ogSource, /class="badge"/);
+  assert.doesNotMatch(ogSource, /class="m3-nav"/);
   assert.doesNotMatch(ogSource, /iPhone source/i);
   const bannedFunction = ["linear-" + "gradient", "radial-" + "gradient", "conic-" + "gradient"];
   for (const token of bannedFunction) {
