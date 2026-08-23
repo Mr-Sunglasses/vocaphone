@@ -193,14 +193,26 @@ class KeyboardReducerTest {
     }
 
     @Test
-    fun `undo is a no-op when composing is already empty`() {
-        val undo = KeyboardReducer.undoLastCharacter(
-            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+    fun `undo of a committed digit deletes backward`() {
+        val typed = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.NUMBERS, ShiftState.OFF),
+            character("2"),
+            nowMillis = 1_000,
             composeWords = true,
         )
+        assertEquals(KeyboardCommand.CommitText("2"), typed.command)
+        assertEquals("", typed.state.composing)
 
-        assertNull(undo.command)
-        assertEquals("", undo.state.composing)
+        val undo = KeyboardReducer.undoLastCharacter(typed.state, composeWords = true)
+        assertEquals(KeyboardCommand.DeleteBackward, undo.command)
+
+        val symbol = KeyboardReducer.press(
+            undo.state,
+            character("@"),
+            nowMillis = 1_400,
+            composeWords = true,
+        )
+        assertEquals(KeyboardCommand.CommitText("@"), symbol.command)
     }
 
     @Test

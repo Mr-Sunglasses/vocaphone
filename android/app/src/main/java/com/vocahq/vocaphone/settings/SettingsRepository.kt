@@ -103,7 +103,7 @@ enum class KeyboardHeight(
 
     companion object {
         fun fromStored(value: String?): KeyboardHeight =
-            entries.firstOrNull { it.storedValue == value } ?: COMPACT
+            entries.firstOrNull { it.storedValue == value } ?: DEFAULT
     }
 }
 
@@ -221,7 +221,7 @@ data class VocaPhoneSettings(
      */
     val syncWhisperDictionary: Boolean = true,
     val numberRowEnabled: Boolean = true,
-    val keyboardHeight: KeyboardHeight = KeyboardHeight.COMPACT,
+    val keyboardHeight: KeyboardHeight = KeyboardHeight.DEFAULT,
     val splitKeyboard: SplitKeyboard = SplitKeyboard.DEFAULT,
     val suggestionsEnabled: Boolean = true,
     val correctionsEnabled: Boolean = true,

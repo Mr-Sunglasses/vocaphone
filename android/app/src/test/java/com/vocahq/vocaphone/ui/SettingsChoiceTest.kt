@@ -5,7 +5,9 @@ import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.TranscriptStyler
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.settings.AudioRetention
+import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
+import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -51,6 +53,9 @@ class SettingsChoiceTest {
         assertEquals(AudioRetention.SIX_HOURS, AudioRetention.DEFAULT)
         assertEquals(3, AudioRetention.entries.size)
         assertEquals(5, MicrophonePreference.entries.size)
+        assertEquals(KeyboardHeight.DEFAULT, KeyboardHeight.fromStored(null))
+        assertEquals(KeyboardHeight.DEFAULT, VocaPhoneSettings().keyboardHeight)
+        assertEquals(48, KeyboardHeight.DEFAULT.keyHeightDp)
     }
 
     @Test
