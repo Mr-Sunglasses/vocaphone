@@ -82,13 +82,39 @@ enum ModelTranslationSupport {
     static func summary(
         _ selected: TranscriptionLanguage,
         targets: Set<String>,
-        onDevice: Bool = true
+        onDevice: Bool = true,
+        needsExplicitSource: Bool = false,
+        sourceIsAutomatic: Bool = false
     ) -> String {
         guard isSupported(targets) else {
             return onDevice ? "Not supported by this model" : "Needs an on-device model"
         }
         let resolved = resolve(selected, targets: targets)
-        return resolved == off ? "Off" : resolved.displayName
+        if resolved == off { return "Off" }
+        if needsExplicitSource && sourceIsAutomatic {
+            return "\(resolved.displayName) · set Language first"
+        }
+        return resolved.displayName
+    }
+
+    /// Whether a language row matches the search field.
+    ///
+    /// In translation mode the off row is labelled "Don't translate", not
+    /// "Automatic". Matching `.automatic`'s raw value (`"auto"`) made that
+    /// row show up for the one word that describes the opposite of what it
+    /// does.
+    static func matchesQuery(
+        _ query: String,
+        language: TranscriptionLanguage,
+        translating: Bool
+    ) -> Bool {
+        if query.isEmpty { return true }
+        let rowLabel = translating && language == off ? offLabel : language.displayName
+        if rowLabel.localizedCaseInsensitiveContains(query) { return true }
+        if translating && language == off {
+            return "off".localizedCaseInsensitiveContains(query)
+        }
+        return language.rawValue.localizedCaseInsensitiveContains(query)
     }
 
     /// Why the picker is limited, or nil when it is not.

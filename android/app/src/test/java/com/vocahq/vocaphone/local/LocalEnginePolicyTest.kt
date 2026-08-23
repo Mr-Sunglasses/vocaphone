@@ -146,6 +146,9 @@ class LocalEnginePolicyTest {
         assertEquals("", canary.resolveTranslationTarget("hi"))
         assertEquals("", canary.resolveTranslationTarget(""))
         assertEquals("", parakeet.resolveTranslationTarget("ru"))
+        // Named Automatic is English-as-source, not a translation.
+        assertEquals("", canary.resolveTranslationTarget("de", spokenLanguage = "auto"))
+        assertEquals("de", canary.resolveTranslationTarget("de", spokenLanguage = "de"))
     }
 
     @Test

@@ -24,6 +24,10 @@ struct ModelTranslationSupportTests {
         // v3 is the one people expect to translate because it is multilingual.
         #expect(try targets("parakeet-tdt-0.6b-v3").isEmpty)
         #expect(try targets("sense-voice").isEmpty)
+        // Distil-whisper is an English-only distillation; the catalog still
+        // says "100 languages", but it has no translate task.
+        #expect(try targets("distil-whisper_distil-large-v3").isEmpty)
+        #expect(try targets("distil-whisper_distil-large-v3_turbo").isEmpty)
     }
 
     @Test func offIsAlwaysSelectableAndATargetOnlyWhereTrained() {
@@ -119,6 +123,56 @@ struct ModelTranslationSupportTests {
         #expect(try needsSource("canary-180m-flash"))
         #expect(try !needsSource("openai_whisper-small"))
         #expect(try !needsSource("parakeet-tdt-0.6b-v3"))
+    }
+
+    @Test func canaryOnAutomaticIsLabelledAsNeedingASpokenLanguage() {
+        #expect(
+            ModelTranslationSupport.summary(
+                .german,
+                targets: canary,
+                needsExplicitSource: true,
+                sourceIsAutomatic: true
+            ) == "German · set Language first"
+        )
+        #expect(
+            ModelTranslationSupport.summary(
+                .german,
+                targets: canary,
+                needsExplicitSource: true,
+                sourceIsAutomatic: false
+            ) == "German"
+        )
+    }
+
+    @Test func translationSearchDoesNotFindDontTranslateByTypingAutomatic() {
+        #expect(
+            !ModelTranslationSupport.matchesQuery(
+                "automatic",
+                language: ModelTranslationSupport.off,
+                translating: true
+            )
+        )
+        #expect(
+            !ModelTranslationSupport.matchesQuery(
+                "auto",
+                language: ModelTranslationSupport.off,
+                translating: true
+            )
+        )
+        #expect(
+            ModelTranslationSupport.matchesQuery(
+                "don't",
+                language: ModelTranslationSupport.off,
+                translating: true
+            )
+        )
+        #expect(
+            ModelTranslationSupport.matchesQuery(
+                "off",
+                language: ModelTranslationSupport.off,
+                translating: true
+            )
+        )
     }
 
     /// Both clients must reach the same verdict, or the keyboard and the app

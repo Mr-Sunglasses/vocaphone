@@ -44,11 +44,11 @@ struct ModelLanguageSupportTests {
 
     @Test func aCoverageLimitIsSpelledOutWheneverThereIsOne() {
         let unclaimed = ModelLanguageSupport.restriction(
-            modelLanguages: [], detectsLanguageAutomatically: false
+            modelLanguages: [], detectsLanguageAutomatically: false, canTranslate: false
         )
         #expect(unclaimed?.contains("covers") == false)
         let limited = ModelLanguageSupport.restriction(
-            modelLanguages: dolphin, detectsLanguageAutomatically: false
+            modelLanguages: dolphin, detectsLanguageAutomatically: false, canTranslate: false
         )
         #expect(limited?.contains("\(dolphin.count) languages") == true)
     }
@@ -61,7 +61,7 @@ struct ModelLanguageSupportTests {
     @Test func everyModelSaysTheLanguageRowIsNotATranslationSetting() {
         for detects in [false, true] {
             let sentence = ModelLanguageSupport.restriction(
-                modelLanguages: [], detectsLanguageAutomatically: detects
+                modelLanguages: [], detectsLanguageAutomatically: detects, canTranslate: false
             )
             #expect(sentence?.contains("not the language you want back") == true)
             #expect(sentence?.contains("cannot translate") == true)
@@ -69,8 +69,8 @@ struct ModelLanguageSupportTests {
         let canary = ModelLanguageSupport.restriction(
             modelLanguages: ["en", "de", "es", "fr"],
             detectsLanguageAutomatically: false,
-            onDevice: true,
-            canTranslate: true
+            canTranslate: true,
+            onDevice: true
         )
         #expect(canary?.contains("use Translate to") == true)
         #expect(canary?.contains("cannot translate") == false)
@@ -107,17 +107,20 @@ struct ModelLanguageSupportTests {
     /// picker starts lying about what the model does.
     @Test func anAutoDetectingModelSaysWhatPickingALanguageDoes() {
         let detected = ModelLanguageSupport.restriction(
-            modelLanguages: dolphin, detectsLanguageAutomatically: true
+            modelLanguages: dolphin, detectsLanguageAutomatically: true, canTranslate: false
         )
         #expect(detected?.contains("\(dolphin.count) languages") == true)
         #expect(detected?.contains("does not pin the decoder") == true)
         #expect(detected?.contains("punctuated") == true)
         let unclaimed = ModelLanguageSupport.restriction(
-            modelLanguages: [], detectsLanguageAutomatically: true
+            modelLanguages: [], detectsLanguageAutomatically: true, canTranslate: false
         )
         #expect(unclaimed?.contains("does not pin the decoder") == true)
         let local = ModelLanguageSupport.restriction(
-            modelLanguages: dolphin, detectsLanguageAutomatically: true, onDevice: true
+            modelLanguages: dolphin,
+            detectsLanguageAutomatically: true,
+            canTranslate: false,
+            onDevice: true
         )
         #expect(local?.contains("The on-device model") == true)
     }

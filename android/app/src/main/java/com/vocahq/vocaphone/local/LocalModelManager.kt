@@ -207,7 +207,7 @@ class LocalModelManager(
     ): SherpaIncrementalSession? {
         val model = LocalModelCatalog.find(modelID) ?: return null
         val resolved = if (model.englishOnly) "en" else language
-        val target = model.resolveTranslationTarget(translateTo)
+        val target = model.resolveTranslationTarget(translateTo, resolved)
         if (!canStreamIncrementally(model.engine, target)) return null
         return SherpaIncrementalSession(
             scope = scope,
@@ -398,10 +398,15 @@ class LocalModelManager(
      * Start loading weights without waiting. Recording can begin on the same
      * tap; [transcribe] joins this work via [engineMutex].
      */
-    fun warm(modelID: String, language: String, quality: TranscriptionQuality) {
+    fun warm(
+        modelID: String,
+        language: String,
+        quality: TranscriptionQuality,
+        translateTo: String,
+    ) {
         cancelIdleUnload()
         engineScope.launch {
-            runCatching { prepare(modelID, language, quality) }
+            runCatching { prepare(modelID, language, quality, translateTo) }
         }
     }
 
@@ -443,15 +448,16 @@ class LocalModelManager(
         modelID: String,
         language: String,
         quality: TranscriptionQuality,
-        translateTo: String = "",
+        translateTo: String,
     ) {
         val model = LocalModelCatalog.find(modelID) ?: return
         if (!isDownloaded(model.id)) return
+        val spoken = if (model.englishOnly) "en" else language
         prepareEngine(
             model,
-            if (model.englishOnly) "en" else language,
+            spoken,
             quality,
-            model.resolveTranslationTarget(translateTo),
+            model.resolveTranslationTarget(translateTo, spoken),
         )
     }
 
@@ -466,7 +472,7 @@ class LocalModelManager(
     ): LocalTranscription {
         val model = LocalModelCatalog.find(modelID) ?: error("Unknown local model: $modelID")
         val resolved = if (model.englishOnly) "en" else language
-        val target = model.resolveTranslationTarget(translateTo)
+        val target = model.resolveTranslationTarget(translateTo, resolved)
         prepareEngine(model, resolved, quality, target)
         // One gain and one DC-offset correction cover the complete recording.
         // Sherpa used to have a separate during-recording path that could apply
@@ -689,8 +695,23 @@ internal fun shouldReloadLocalEngine(
  * can never reach an engine that would misread it, nor force a reload of one
  * that would ignore it.
  */
-internal fun LocalModelDescriptor.resolveTranslationTarget(requested: String): String =
-    requested.takeIf { it.isNotEmpty() && it in translationTargets }.orEmpty()
+internal fun LocalModelDescriptor.resolveTranslationTarget(
+    requested: String,
+    spokenLanguage: String? = null,
+): String {
+    val target = requested.takeIf { it.isNotEmpty() && it in translationTargets }.orEmpty()
+    if (target.isEmpty()) return ""
+    // Canary has no detection. Automatic is resolved to English before the
+    // recognizer is built, so a target with no spoken language named is a
+    // translation out of English, not out of whatever was actually said.
+    if (spokenLanguage != null &&
+        translationNeedsExplicitSource &&
+        (spokenLanguage.isEmpty() || spokenLanguage == "auto")
+    ) {
+        return ""
+    }
+    return target
+}
 
 /**
  * Whether a dictation may be decoded in windows while it is still being spoken.

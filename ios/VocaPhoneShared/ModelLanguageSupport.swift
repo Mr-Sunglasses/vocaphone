@@ -89,8 +89,8 @@ enum ModelLanguageSupport {
     static func restriction(
         modelLanguages: Set<String>,
         detectsLanguageAutomatically: Bool,
-        onDevice: Bool = false,
-        canTranslate: Bool = false
+        canTranslate: Bool,
+        onDevice: Bool = false
     ) -> String? {
         let owner = onDevice ? "The on-device model" : "Your gateway's model"
         var coverage: String?

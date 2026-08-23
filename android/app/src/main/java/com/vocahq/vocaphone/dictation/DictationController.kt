@@ -239,6 +239,7 @@ class DictationController(
                         it,
                         record.language,
                         configuration.transcriptionQuality,
+                        configuration.translationTarget,
                     )
                 }
                 try {
@@ -313,6 +314,7 @@ class DictationController(
                     modelID,
                     configuration.effectiveLanguage.wireValue,
                     configuration.transcriptionQuality,
+                    configuration.translationTarget,
                 )
             }
         }

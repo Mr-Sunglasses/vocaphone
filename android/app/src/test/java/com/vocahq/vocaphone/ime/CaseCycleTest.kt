@@ -1,6 +1,8 @@
 package com.vocahq.vocaphone.ime
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CaseCycleTest {
@@ -53,5 +55,30 @@ class CaseCycleTest {
     fun `text with no letters is left alone`() {
         assertEquals("123", CaseCycle.next("123"))
         assertEquals("", CaseCycle.next(""))
+    }
+
+    @Test
+    fun `a composing span must restore the selection after finish`() {
+        val plan = planCaseCycle(
+            selected = "hello",
+            original = "hello",
+            start = 4,
+            composingActive = true,
+        )!!
+        assertEquals("Hello", plan.next)
+        assertEquals(4, plan.start)
+        assertEquals(9, plan.end)
+        assertTrue(plan.restoreSelectionAfterFinish)
+    }
+
+    @Test
+    fun `no composing span does not finish composing first`() {
+        val plan = planCaseCycle(
+            selected = "hello",
+            original = "hello",
+            start = 0,
+            composingActive = false,
+        )!!
+        assertFalse(plan.restoreSelectionAfterFinish)
     }
 }

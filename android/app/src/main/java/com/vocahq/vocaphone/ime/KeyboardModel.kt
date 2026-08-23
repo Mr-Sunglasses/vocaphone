@@ -58,6 +58,12 @@ internal sealed interface KeyboardCommand {
     data object DoubleSpacePeriod : KeyboardCommand
     data object FinishComposing : KeyboardCommand
     data object CycleSelectionCase : KeyboardCommand
+    /**
+     * Shift was pressed while Compose did not think there was a selection.
+     * The service still checks the live editor range: a stale `editorText`
+     * snapshot used to arm caps instead of cycling case.
+     */
+    data object ShiftTap : KeyboardCommand
 }
 
 /** Hold-delete starts on characters, then words, then the rest of the line. */
@@ -351,6 +357,39 @@ internal object CaseCycle {
         character.isLetterOrDigit() || character == '\''
 }
 
+/**
+ * How to apply a case cycle to a live selection.
+ *
+ * [restoreSelectionAfterFinish] is true when a composing span is still
+ * active. `finishComposingText` on several editors (Messages among them)
+ * drops the highlight, so the range has to be put back before `commitText`
+ * can replace it. Capturing the selected string *before* that finish is
+ * what keeps shift-to-cycle working after letters started going out as
+ * composing text.
+ */
+internal data class CaseCycleApply(
+    val next: String,
+    val start: Int,
+    val end: Int,
+    val restoreSelectionAfterFinish: Boolean,
+)
+
+internal fun planCaseCycle(
+    selected: String,
+    original: String?,
+    start: Int,
+    composingActive: Boolean,
+): CaseCycleApply? {
+    if (selected.none { it.isLetter() }) return null
+    val next = CaseCycle.next(selected, original ?: selected)
+    return CaseCycleApply(
+        next = next,
+        start = start,
+        end = start + next.length,
+        restoreSelectionAfterFinish = composingActive,
+    )
+}
+
 
 /** Pure keyboard-state reducer so behavior stays testable outside the IME process. */
 internal object KeyboardReducer {
@@ -423,6 +462,7 @@ internal object KeyboardReducer {
                         shift = nextShift,
                         lastShiftTapMillis = if (nextShift == ShiftState.ONCE) nowMillis else null,
                     ),
+                    command = KeyboardCommand.ShiftTap,
                 )
             }
         }

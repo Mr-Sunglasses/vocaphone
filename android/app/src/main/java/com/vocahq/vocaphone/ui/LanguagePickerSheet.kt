@@ -83,12 +83,8 @@ fun LanguagePickerSheet(
             language.displayName
         }
 
-    // Searched against the label actually on the row: "Don't translate" is not
-    // findable by typing "automatic", and should not be.
     fun matches(language: TranscriptionLanguage) =
-        query.isBlank() ||
-            label(language).contains(query, ignoreCase = true) ||
-            language.wireValue.contains(query, ignoreCase = true)
+        ModelTranslationSupport.matchesQuery(query, language, translating)
 
     fun selectable(language: TranscriptionLanguage) = if (translating) {
         ModelTranslationSupport.isSelectable(language, translationTargets)

@@ -88,12 +88,40 @@ object ModelTranslationSupport {
         selected: TranscriptionLanguage,
         targets: Set<String>,
         onDevice: Boolean = true,
+        needsExplicitSource: Boolean = false,
+        sourceIsAutomatic: Boolean = false,
     ): String {
         if (!isSupported(targets)) {
             return if (onDevice) "Not supported by this model" else "Needs an on-device model"
         }
         val resolved = resolve(selected, targets)
-        return if (resolved == OFF) "Off" else resolved.displayName
+        if (resolved == OFF) return "Off"
+        if (needsExplicitSource && sourceIsAutomatic) {
+            return "${resolved.displayName} · set Language first"
+        }
+        return resolved.displayName
+    }
+
+    /**
+     * Whether a language row matches the search field.
+     *
+     * In translation mode the off row is labelled "Don't translate", not
+     * "Automatic". Matching [TranscriptionLanguage.AUTOMATIC.wireValue]
+     * (`"auto"`) made that row show up for the one word that describes the
+     * opposite of what it does.
+     */
+    fun matchesQuery(
+        query: String,
+        language: TranscriptionLanguage,
+        translating: Boolean,
+    ): Boolean {
+        if (query.isBlank()) return true
+        val label = if (translating && language == OFF) OFF_LABEL else language.displayName
+        if (label.contains(query, ignoreCase = true)) return true
+        if (translating && language == OFF) {
+            return "off".contains(query, ignoreCase = true)
+        }
+        return language.wireValue.contains(query, ignoreCase = true)
     }
 
     /**

@@ -95,8 +95,8 @@ object ModelLanguageSupport {
     fun restriction(
         modelLanguages: Set<String>,
         detectsLanguageAutomatically: Boolean,
+        canTranslate: Boolean,
         onDevice: Boolean = false,
-        canTranslate: Boolean = false,
     ): String? {
         val owner = if (onDevice) "The on-device model" else "Your gateway's model"
         val coverage = if (modelLanguages.isEmpty()) {

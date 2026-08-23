@@ -217,7 +217,7 @@ struct LocalModelDescriptor: Identifiable, Codable, Sendable, Equatable {
     /// `LocalModelCatalog.kt`; see `ModelTranslationSupport`.
     var translationTargets: Set<String> {
         if sherpaFamily == .canary { return languageCodes }
-        if englishOnly { return [] }
+        if englishOnly || id.contains("distil") { return [] }
         return engine == .whisperKit ? ["en"] : []
     }
 
@@ -230,10 +230,16 @@ struct LocalModelDescriptor: Identifiable, Codable, Sendable, Equatable {
     /// still stored after a switch to Parakeet — reaching an engine that would
     /// misread it or forcing a rebuild of one that would ignore it.
     var resolvedTranslationTarget: String {
-        ModelTranslationSupport.target(
+        let target = ModelTranslationSupport.target(
             KeyboardPreferences.translateTo,
             targets: translationTargets
         )
+        if translationNeedsExplicitSource,
+           KeyboardPreferences.effectiveTranscriptionLanguage == .automatic
+        {
+            return ""
+        }
+        return target
     }
 
     /// Whether translating needs the spoken language named explicitly.

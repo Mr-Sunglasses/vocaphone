@@ -66,13 +66,13 @@ class ModelLanguageSupportTest {
 
     @Test
     fun `a coverage limit is spelled out whenever there is one`() {
-        val limited = ModelLanguageSupport.restriction(dolphin, false)
+        val limited = ModelLanguageSupport.restriction(dolphin, false, canTranslate = false)
         assertTrue(limited!!.contains("${dolphin.size} languages"))
-        val oneLanguage = ModelLanguageSupport.restriction(setOf("en"), false)
+        val oneLanguage = ModelLanguageSupport.restriction(setOf("en"), false, canTranslate = false)
         assertTrue(oneLanguage!!.contains("1 language."))
         // No coverage claim leaves nothing to say about coverage.
         assertFalse(
-            ModelLanguageSupport.restriction(emptySet(), false)!!.contains("covers"),
+            ModelLanguageSupport.restriction(emptySet(), false, canTranslate = false)!!.contains("covers"),
         )
     }
 
@@ -86,7 +86,7 @@ class ModelLanguageSupportTest {
     @Test
     fun `every model says the language row is not a translation setting`() {
         for (detects in listOf(false, true)) {
-            val sentence = ModelLanguageSupport.restriction(emptySet(), detects)!!
+            val sentence = ModelLanguageSupport.restriction(emptySet(), detects, canTranslate = false)!!
             assertTrue(sentence.contains("not the language you want back"))
             assertTrue(sentence.contains("cannot translate"))
         }
@@ -95,8 +95,8 @@ class ModelLanguageSupportTest {
         val canary = ModelLanguageSupport.restriction(
             setOf("en", "de", "es", "fr"),
             false,
-            onDevice = true,
             canTranslate = true,
+            onDevice = true,
         )!!
         assertTrue(canary.contains("use Translate to"))
         assertFalse(canary.contains("cannot translate"))
@@ -123,15 +123,15 @@ class ModelLanguageSupportTest {
      */
     @Test
     fun `an auto-detecting model says what picking a language does`() {
-        val detected = ModelLanguageSupport.restriction(dolphin, true)!!
+        val detected = ModelLanguageSupport.restriction(dolphin, true, canTranslate = false)!!
         assertTrue(detected.contains("${dolphin.size} languages"))
         assertTrue(detected.contains("does not pin the decoder"))
         assertTrue(detected.contains("punctuated"))
         // With no coverage claim there is still the detection half to explain.
-        val unclaimed = ModelLanguageSupport.restriction(emptySet(), true)!!
+        val unclaimed = ModelLanguageSupport.restriction(emptySet(), true, canTranslate = false)!!
         assertTrue(unclaimed.contains("does not pin the decoder"))
         assertTrue(
-            ModelLanguageSupport.restriction(dolphin, true, onDevice = true)!!
+            ModelLanguageSupport.restriction(dolphin, true, canTranslate = false, onDevice = true)!!
                 .contains("The on-device model"),
         )
     }

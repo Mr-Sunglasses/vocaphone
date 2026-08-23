@@ -115,7 +115,7 @@ data class LocalModelDescriptor(
     val translationTargets: Set<String>
         get() = when {
             sherpaFamily == SherpaFamily.CANARY -> languageCodes
-            englishOnly -> emptySet()
+            englishOnly || "distil" in id -> emptySet()
             engine == LocalModelEngine.WHISPER -> setOf("en")
             else -> emptySet()
         }

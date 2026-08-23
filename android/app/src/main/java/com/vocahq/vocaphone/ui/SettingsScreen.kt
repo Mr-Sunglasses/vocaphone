@@ -172,6 +172,9 @@ fun SettingsScreen(
                             settings.translateTo,
                             settings.activeModelTranslationTargets,
                             onDevice = settings.localTranscriptionEnabled,
+                            needsExplicitSource = localModel?.translationNeedsExplicitSource == true,
+                            sourceIsAutomatic = settings.effectiveLanguage ==
+                                TranscriptionLanguage.AUTOMATIC,
                         ),
                         icon = R.drawable.ic_language,
                         onClick = { pickingTranslation = true },

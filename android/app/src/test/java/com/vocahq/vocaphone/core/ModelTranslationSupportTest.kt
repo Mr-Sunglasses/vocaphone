@@ -184,4 +184,65 @@ class ModelTranslationSupportTest {
         // A gateway has no translation field at all.
         assertEquals("", onCanary.copy(localTranscriptionEnabled = false).translationTarget)
     }
+
+    @Test
+    fun `canary on automatic is labelled as needing a spoken language`() {
+        assertEquals(
+            "German · set Language first",
+            ModelTranslationSupport.summary(
+                TranscriptionLanguage.GERMAN,
+                canary,
+                needsExplicitSource = true,
+                sourceIsAutomatic = true,
+            ),
+        )
+        assertEquals(
+            "German",
+            ModelTranslationSupport.summary(
+                TranscriptionLanguage.GERMAN,
+                canary,
+                needsExplicitSource = true,
+                sourceIsAutomatic = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `translation search does not find don't translate by typing automatic`() {
+        assertFalse(
+            ModelTranslationSupport.matchesQuery(
+                "automatic",
+                ModelTranslationSupport.OFF,
+                translating = true,
+            ),
+        )
+        assertFalse(
+            ModelTranslationSupport.matchesQuery(
+                "auto",
+                ModelTranslationSupport.OFF,
+                translating = true,
+            ),
+        )
+        assertTrue(
+            ModelTranslationSupport.matchesQuery(
+                "don't",
+                ModelTranslationSupport.OFF,
+                translating = true,
+            ),
+        )
+        assertTrue(
+            ModelTranslationSupport.matchesQuery(
+                "off",
+                ModelTranslationSupport.OFF,
+                translating = true,
+            ),
+        )
+        assertTrue(
+            ModelTranslationSupport.matchesQuery(
+                "auto",
+                TranscriptionLanguage.AUTOMATIC,
+                translating = false,
+            ),
+        )
+    }
 }

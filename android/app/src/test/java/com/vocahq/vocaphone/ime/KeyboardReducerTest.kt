@@ -32,12 +32,25 @@ class KeyboardReducerTest {
     }
 
     @Test
+    fun `shift without a selection still notifies the service`() {
+        val result = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            shiftKey(),
+            nowMillis = 1_000,
+        )
+
+        assertEquals(KeyboardCommand.ShiftTap, result.command)
+        assertEquals(ShiftState.ONCE, result.state.shift)
+    }
+
+    @Test
     fun `double tapping shift enables caps lock`() {
         val first = KeyboardReducer.press(
             KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
             shiftKey(),
             nowMillis = 1_000,
         )
+        assertEquals(KeyboardCommand.ShiftTap, first.command)
         val second = KeyboardReducer.press(first.state, shiftKey(), nowMillis = 1_250)
         val letter = KeyboardReducer.press(second.state, character("p"), nowMillis = 1_300)
 
