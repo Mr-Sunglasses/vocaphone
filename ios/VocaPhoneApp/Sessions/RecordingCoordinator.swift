@@ -1105,15 +1105,19 @@ final class RecordingCoordinator {
             }
             let text = transcribed.text
             // The styles punctuate by script, so the language has to be the one
-            // actually spoken. With Automatic selected the record only says
-            // "auto", and a model that detected Hindi would otherwise have its
-            // Devanagari finished with a Latin full stop.
+            // the finished text is written in. With Automatic selected the
+            // record only says "auto", and a model that detected Hindi would
+            // otherwise have its Devanagari finished with a Latin full stop.
+            // When translating, that language is the target rather than the one
+            // that was spoken — which is why the target has to be named here
+            // and not left to the requested language to win.
             record.transcript = DictatedTranscript.finished(
                 text,
                 style: WritingStyle(rawValue: record.style) ?? .casual,
-                language: ModelLanguageSupport.transcriptLanguage(
+                language: ModelLanguageSupport.outputLanguage(
                     requested: record.language,
-                    reported: transcribed.language
+                    reported: transcribed.language,
+                    translateTo: KeyboardPreferences.translationTarget
                 ),
                 numbersAsDigits: KeyboardPreferences.numbersAsDigits
             )

@@ -23,12 +23,40 @@ import java.io.File
  */
 internal class SherpaRecognizer private constructor(
     private val recognizer: OfflineRecognizer,
+    /**
+     * Whether this recognizer was built to translate, which changes how a
+     * recording too long for one decode may be cut up. See [transcribe].
+     */
+    private val translating: Boolean = false,
 ) {
+    /**
+     * Decodes the whole recording, in windows if it is longer than one decode
+     * should be.
+     *
+     * Those windows are where translation and transcription part company. Each
+     * window retains a little of the one before it so that a word on the
+     * boundary survives, and the merger matches the repeated words and removes
+     * them. That second half only works if the same audio returns the same
+     * words, which a transcriber promises and a translator does not: the
+     * retained audio is translated again inside a different sentence and comes
+     * back worded differently, so there is nothing to pair.
+     *
+     * Left on, the merger would then be matching text it was never able to
+     * align, and the only thing it can still find is a phrase the speaker
+     * genuinely said twice — which it would delete. A translated seam is
+     * therefore left exactly as it decoded. The audio overlap stays: almost all
+     * of it is the measured quiet run the boundary was found in, which
+     * duplicates nothing, and where the boundary was misjudged a word repeated
+     * beats a word lost.
+     */
     fun transcribe(samples: FloatArray): SherpaTranscript {
         var transcript = SherpaTranscript.EMPTY
         SherpaLongAudio.chunks(samples).forEach { chunk ->
             val chunkResult = transcribeChunk(samples.copyOfRange(chunk.start, chunk.endExclusive))
-            transcript = transcript.append(chunkResult, deduplicateOverlap = chunk.overlapsPrevious)
+            transcript = transcript.append(
+                chunkResult,
+                deduplicateOverlap = chunk.overlapsPrevious && !translating,
+            )
         }
         return transcript.copy(text = transcript.text.trim())
     }
@@ -37,6 +65,7 @@ internal class SherpaRecognizer private constructor(
     fun transcribeChunk(samples: FloatArray): SherpaTranscript = SherpaEmptyChunkRecovery.decode(
         samples = samples,
         decodeOnce = ::decode,
+        deduplicateOverlap = !translating,
     )
 
     private fun decode(samples: FloatArray): SherpaTranscript {
@@ -60,6 +89,9 @@ internal class SherpaRecognizer private constructor(
         /**
          * @param language a two-letter code, or "auto" to let the model decide.
          *   Only the families that accept a language hint use it.
+         * @param translateTo the language to translate into, or empty to
+         *   transcribe. Canary is the only family that can honour it; see
+         *   [com.vocahq.vocaphone.core.ModelTranslationSupport].
          */
         fun create(
             model: LocalModelDescriptor,
@@ -67,6 +99,7 @@ internal class SherpaRecognizer private constructor(
             language: String,
             threads: Int,
             quality: TranscriptionQuality,
+            translateTo: String = "",
         ): SherpaRecognizer {
             val family = requireNotNull(model.sherpaFamily) {
                 "${model.displayName} has no sherpa-onnx family"
@@ -108,15 +141,23 @@ internal class SherpaRecognizer private constructor(
                     dolphin = OfflineDolphinModelConfig(model = path("model.int8.onnx")),
                 )
 
-                SherpaFamily.CANARY -> OfflineModelConfig(
-                    canary = OfflineCanaryModelConfig(
-                        encoder = path("encoder.int8.onnx"),
-                        decoder = path("decoder.int8.onnx"),
-                        srcLang = if (language == "auto") "en" else language,
-                        tgtLang = if (language == "auto") "en" else language,
-                        usePnc = true,
-                    ),
-                )
+                // The one family that can translate. Equal source and target is
+                // transcription; differing them is what Canary was trained for,
+                // and "auto" has to become a real code because the config has no
+                // detection mode — English is the safest guess and the one
+                // upstream's own examples use.
+                SherpaFamily.CANARY -> {
+                    val source = if (language == "auto") "en" else language
+                    OfflineModelConfig(
+                        canary = OfflineCanaryModelConfig(
+                            encoder = path("encoder.int8.onnx"),
+                            decoder = path("decoder.int8.onnx"),
+                            srcLang = source,
+                            tgtLang = translateTo.ifEmpty { source },
+                            usePnc = true,
+                        ),
+                    )
+                }
 
                 // Upstream is inconsistent about whether the single CTC graph is
                 // quantized, so whichever one the catalog pinned is the one here.
@@ -149,6 +190,9 @@ internal class SherpaRecognizer private constructor(
                         maxActivePaths = quality.sherpaMaxActivePaths,
                     ),
                 ),
+                // Only the families that can honour a target are translating,
+                // whatever the caller asked for.
+                translating = family.acceptsLanguage && translateTo.isNotEmpty(),
             )
         }
     }
@@ -198,9 +242,16 @@ internal data class SherpaTranscript(val text: String, val language: String = ""
  */
 internal object SherpaEmptyChunkRecovery {
 
+    /**
+     * @param deduplicateOverlap false when the caller is translating. The two
+     *   halves overlap so the word crossing the centre survives, and matching
+     *   the repeat back out only works when the same audio returns the same
+     *   words — which is exactly what a translator does not promise.
+     */
     fun decode(
         samples: FloatArray,
         decodeOnce: (FloatArray) -> SherpaTranscript,
+        deduplicateOverlap: Boolean = true,
     ): SherpaTranscript {
         val firstAttempt = decodeOnce(samples)
         // Length is what this recovers from, so a window that is not long
@@ -229,7 +280,7 @@ internal object SherpaEmptyChunkRecovery {
         return decodeOnce(samples.copyOfRange(0, leftEnd))
             .append(
                 decodeOnce(samples.copyOfRange(rightStart, samples.size)),
-                deduplicateOverlap = true,
+                deduplicateOverlap = deduplicateOverlap,
             )
     }
 }

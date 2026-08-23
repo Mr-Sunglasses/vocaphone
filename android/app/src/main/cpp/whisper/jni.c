@@ -83,8 +83,9 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_freeContext(
 JNIEXPORT jint JNICALL
 Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
         JNIEnv *env, jobject thiz, jlong context_ptr, jint num_threads,
-        jfloatArray audio_data, jstring language_str, jint beam_size,
-        jfloat temperature_increment, jint audio_context, jstring prompt_str) {
+        jfloatArray audio_data, jstring language_str, jboolean translate,
+        jint beam_size, jfloat temperature_increment, jint audio_context,
+        jstring prompt_str) {
     UNUSED(thiz);
     struct whisper_context *context = (struct whisper_context *) context_ptr;
     jfloat *audio = (*env)->GetFloatArrayElements(env, audio_data, NULL);
@@ -105,7 +106,11 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
     params.print_progress = false;
     params.print_timestamps = false;
     params.print_special = false;
-    params.translate = false;
+    // Whisper's translate task has exactly one trained target: English. The
+    // caller is responsible for never asking for another one — see
+    // ModelTranslationSupport — because whisper.cpp would accept any language
+    // token here and quietly decode something that is not a translation.
+    params.translate = translate == JNI_TRUE;
     params.language = language;
     params.n_threads = num_threads;
     params.no_context = true;

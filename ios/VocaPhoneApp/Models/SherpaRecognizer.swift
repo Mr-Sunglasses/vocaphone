@@ -5,9 +5,13 @@ import Foundation
 /// VocaPhone needs.
 final class SherpaRecognizer: @unchecked Sendable {
     private let native: UnsafeMutableRawPointer
+    /// Whether this recognizer was built to translate, which changes how a
+    /// recording too long for one decode is put back together. See `transcribe`.
+    private let translating: Bool
 
-    private init(native: UnsafeMutableRawPointer) {
+    private init(native: UnsafeMutableRawPointer, translating: Bool = false) {
         self.native = native
+        self.translating = translating
     }
 
     deinit {
@@ -19,7 +23,8 @@ final class SherpaRecognizer: @unchecked Sendable {
         directory: URL,
         language: String,
         threads: Int,
-        quality: TranscriptionQuality
+        quality: TranscriptionQuality,
+        translateTo: String = ""
     ) throws -> SherpaRecognizer {
         guard let family = model.sherpaFamily else {
             throw LocalModelManagerError.unsupportedModel(model.id)
@@ -57,12 +62,18 @@ final class SherpaRecognizer: @unchecked Sendable {
         let languageHint: String
         switch family {
         case .canary:
+            // Canary's config has no detection mode, so "auto" has to become a
+            // real code — English is the safest guess and the one upstream's
+            // own examples use.
             languageHint = language == "auto" ? "en" : language
         case .senseVoice:
             languageHint = language == "auto" ? "" : language
         default:
             languageHint = ""
         }
+        // Only Canary has a target at all; the bridge falls back to the source
+        // when this is empty, which is what transcription is.
+        let targetHint = family == .canary ? translateTo : ""
 
         // Never `quality.sherpaDecodingMethod` on its own: a family that does
         // not support beam search answers it by killing the process.
@@ -73,12 +84,16 @@ final class SherpaRecognizer: @unchecked Sendable {
                     models[3].withCString { model4 in
                         tokens.withCString { tokensPointer in
                             languageHint.withCString { languagePointer in
-                                decodingMethod.withCString { decodingMethodPointer in
-                                    VocaPhoneSherpaCreate(
-                                        Int32(family.bridgeValue), model1, model2, model3, model4,
-                                        tokensPointer, languagePointer, Int32(threads),
-                                        decodingMethodPointer, quality.sherpaMaxActivePaths
-                                    )
+                                targetHint.withCString { targetPointer in
+                                    decodingMethod.withCString { decodingMethodPointer in
+                                        VocaPhoneSherpaCreate(
+                                            Int32(family.bridgeValue),
+                                            model1, model2, model3, model4,
+                                            tokensPointer, languagePointer, targetPointer,
+                                            Int32(threads), decodingMethodPointer,
+                                            quality.sherpaMaxActivePaths
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -89,16 +104,35 @@ final class SherpaRecognizer: @unchecked Sendable {
         guard let native else {
             throw LocalModelManagerError.engineLoadFailed(model.id)
         }
-        return SherpaRecognizer(native: native)
+        // Only the families that can honour a target are translating, whatever
+        // the caller asked for.
+        return SherpaRecognizer(
+            native: native,
+            translating: family.acceptsLanguage && !translateTo.isEmpty
+        )
     }
 
+    /// Decodes the whole recording, in windows if it is longer than one decode
+    /// should be.
+    ///
+    /// Those windows are where translation and transcription part company. A
+    /// transcriber returns the same words for the same audio, so a window that
+    /// retains a little of the one before it can have the repeat matched and
+    /// removed. A translator does not: the retained audio is translated again
+    /// inside a different sentence, comes back in different words, and nothing
+    /// can pair the two. Worse, a merger still looking for a repeat can only
+    /// match a phrase the speaker genuinely said twice — and delete it.
+    ///
+    /// A boundary the silence search found is already cut clean here, so only
+    /// a guessed one carries audio across, and while translating that seam is
+    /// left as it decoded rather than merged by matching words.
     func transcribe(_ samples: [Float]) -> SherpaTranscript {
         let transcript = SherpaLongAudio.chunks(samples)
             .reduce(into: SherpaTranscript.empty) { transcript, chunk in
                 let bounded = Array(samples[chunk.start..<chunk.endExclusive])
                 let decoded = SherpaEmptyChunkRecovery.decode(samples: bounded, decodeOnce: decode)
                 transcript = transcript.appending(
-                    decoded, deduplicateOverlap: chunk.overlapsPrevious
+                    decoded, deduplicateOverlap: chunk.overlapsPrevious && !translating
                 )
             }
         return SherpaTranscript(

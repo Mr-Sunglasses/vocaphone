@@ -13,6 +13,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelLanguageSupport
+import com.vocahq.vocaphone.core.ModelTranslationSupport
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.core.TranscriptionLanguage
@@ -177,6 +178,16 @@ data class VocaPhoneSettings(
     val gatewayUrl: String = "",
     val hasToken: Boolean = false,
     val language: TranscriptionLanguage = TranscriptionLanguage.DEFAULT,
+    /**
+     * The language dictation should come out in, or
+     * [ModelTranslationSupport.OFF] to keep the language that was spoken.
+     *
+     * Deliberately a second setting rather than a meaning layered onto
+     * [language]. That row says what is being spoken, which is what a decoder
+     * needs; this one says what should come back, which only two models can
+     * honour at all.
+     */
+    val translateTo: TranscriptionLanguage = ModelTranslationSupport.OFF,
     val style: WritingStyle = WritingStyle.DEFAULT,
     val dictationTone: DictationTone = DictationTone.DEFAULT,
     val microphone: MicrophonePreference = MicrophonePreference.DEFAULT,
@@ -251,6 +262,28 @@ data class VocaPhoneSettings(
      */
     val effectiveLanguage: TranscriptionLanguage
         get() = ModelLanguageSupport.resolve(language, activeModelLanguages)
+
+    /** Languages the active model can translate into; empty when it cannot. */
+    val activeModelTranslationTargets: Set<String>
+        get() = localModel?.translationTargets.orEmpty()
+
+    /** Whether translating needs [language] set to something other than Automatic. */
+    val activeModelTranslationNeedsSource: Boolean
+        get() = localModel?.translationNeedsExplicitSource ?: false
+
+    /** The picker's own selection, corrected for a model that cannot honour it. */
+    val effectiveTranslateTo: TranscriptionLanguage
+        get() = ModelTranslationSupport.resolve(translateTo, activeModelTranslationTargets)
+
+    /**
+     * What the engines take: a language code, or empty for no translation.
+     *
+     * Gateway transcription is empty by construction — [activeModelTranslationTargets]
+     * is empty without a local model — because translation lives entirely in
+     * the on-device engines and the gateway protocol has no field for it.
+     */
+    val translationTarget: String
+        get() = ModelTranslationSupport.target(translateTo, activeModelTranslationTargets)
 
     /**
      * The language claim that governs the picker. With on-device transcription on
@@ -331,6 +364,9 @@ class SettingsRepository(private val context: Context) {
     }
 
     suspend fun setLanguage(language: TranscriptionLanguage) = put(Keys.LANGUAGE, language.wireValue)
+
+    suspend fun setTranslateTo(language: TranscriptionLanguage) =
+        put(Keys.TRANSLATE_TO, language.wireValue)
 
     suspend fun setStyle(style: WritingStyle) = put(Keys.STYLE, style.wireValue)
 
@@ -510,6 +546,7 @@ class SettingsRepository(private val context: Context) {
         gatewayUrl = this[Keys.GATEWAY_URL].orEmpty(),
         hasToken = this[Keys.TOKEN_CIPHERTEXT] != null,
         language = TranscriptionLanguage.fromWire(this[Keys.LANGUAGE]),
+        translateTo = TranscriptionLanguage.fromWire(this[Keys.TRANSLATE_TO]),
         style = WritingStyle.fromWire(this[Keys.STYLE]),
         dictationTone = DictationTone.fromStored(this[Keys.DICTATION_TONE]),
         microphone = MicrophonePreference.fromStored(this[Keys.MICROPHONE]),
@@ -552,6 +589,7 @@ class SettingsRepository(private val context: Context) {
         val TOKEN_CIPHERTEXT = stringPreferencesKey("gateway_token_ciphertext")
         val TOKEN_NONCE = stringPreferencesKey("gateway_token_nonce")
         val LANGUAGE = stringPreferencesKey("transcription_language")
+        val TRANSLATE_TO = stringPreferencesKey("translate_to")
         val STYLE = stringPreferencesKey("writing_style")
         val DICTATION_TONE = stringPreferencesKey("dictation_tone")
         val MICROPHONE = stringPreferencesKey("microphone_preference")

@@ -13,6 +13,10 @@ enum VocaPhoneSherpaFamily {
     VocaPhoneSherpaParaformer = 6,
 };
 
+/// `language` is the language being spoken, and `target_language` the one to
+/// translate it into — empty to transcribe rather than translate. Canary is the
+/// only family with a target at all; see `ModelTranslationSupport`.
+///
 /// `decoding_method` is one of sherpa-onnx's literals — "greedy_search" or
 /// "modified_beam_search" — and `max_active_paths` is the beam width the latter
 /// searches. Only the transducer families act on either.
@@ -24,6 +28,7 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     const char *model4,
     const char *tokens,
     const char *language,
+    const char *target_language,
     int32_t threads,
     const char *decoding_method,
     int32_t max_active_paths

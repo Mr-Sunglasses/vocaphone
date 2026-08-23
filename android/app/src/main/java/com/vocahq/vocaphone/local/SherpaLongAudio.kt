@@ -108,6 +108,13 @@ internal object SherpaLongAudio {
             // ownership: a quiet consonant can satisfy an RMS threshold, and
             // dropping the overlap on that guess loses the word. It is trusted
             // with how much to retain, which is only a question of cost.
+            //
+            // This holds while translating too, and it is worth saying why,
+            // because the retained audio is what a translator cannot merge back
+            // out. Almost all of it is the measured quiet run itself, which
+            // translates to nothing and duplicates nothing. What is left is the
+            // case the classification got wrong — and there the choice is
+            // between a word said twice and a word not said at all.
             val retainedSamples =
                 if (silence != null) foundOverlapSamples else guessedOverlapSamples
             start = (end - retainedSamples).coerceAtLeast(start + 1)

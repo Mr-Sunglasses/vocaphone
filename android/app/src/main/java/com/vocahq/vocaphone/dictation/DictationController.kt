@@ -324,6 +324,7 @@ class DictationController(
                     language = configuration.effectiveLanguage.wireValue,
                     scope = scope,
                     quality = configuration.transcriptionQuality,
+                    translateTo = configuration.translationTarget,
                 )
             }
         } else {
@@ -830,6 +831,7 @@ class DictationController(
                 configuration.transcriptionQuality,
                 configuration.whisperVocabulary,
                 conditioningStartSample,
+                configuration.translationTarget,
             )
             val transcript = styleLocalTranscript(local, configuration)
             if (transcript.isEmpty()) {
@@ -861,9 +863,10 @@ class DictationController(
 
     /**
      * The styles punctuate by script, so the language they are given has to be
-     * the one that was actually spoken. With Automatic selected the request only
-     * says "auto", and a model that detected Hindi would otherwise have its
-     * Devanagari finished with a Latin full stop.
+     * the one the finished text is written in. With Automatic selected the
+     * request only says "auto", and a model that detected Hindi would otherwise
+     * have its Devanagari finished with a Latin full stop. When translating,
+     * that language is the target rather than the one that was spoken.
      */
     private fun styleLocalTranscript(
         local: LocalTranscription,
@@ -871,9 +874,10 @@ class DictationController(
     ): String = TranscriptStyler.apply(
         TranscriptSanitizer.clean(local.text),
         configuration.style,
-        ModelLanguageSupport.transcriptLanguage(
+        ModelLanguageSupport.outputLanguage(
             requested = configuration.effectiveLanguage.wireValue,
             reported = local.language,
+            translateTo = configuration.translationTarget,
         ),
     )
 

@@ -54,6 +54,8 @@ internal class WhisperLib {
         external fun initContext(modelPath: String): Long
         external fun freeContext(contextPtr: Long)
         /**
+         * @param translate whether to run whisper's translate task, whose only
+         *   trained target is English.
          * @param beamSize a beam search width, or zero for greedy sampling.
          * @param audioContext the encoder window in 20 ms units, or zero for
          *   whisper's full thirty-second default.
@@ -65,6 +67,7 @@ internal class WhisperLib {
             numThreads: Int,
             audioData: FloatArray,
             language: String,
+            translate: Boolean,
             beamSize: Int,
             temperatureIncrement: Float,
             audioContext: Int,

@@ -42,16 +42,64 @@ struct ModelLanguageSupportTests {
         #expect(ModelLanguageSupport.resolve(.hindi, modelLanguages: []) == .hindi)
     }
 
-    @Test func theRestrictionIsExplainedOnlyWhenThereIsOne() {
-        #expect(
-            ModelLanguageSupport.restriction(
-                modelLanguages: [], detectsLanguageAutomatically: false
-            ) == nil
+    @Test func aCoverageLimitIsSpelledOutWheneverThereIsOne() {
+        let unclaimed = ModelLanguageSupport.restriction(
+            modelLanguages: [], detectsLanguageAutomatically: false
         )
+        #expect(unclaimed?.contains("covers") == false)
         let limited = ModelLanguageSupport.restriction(
             modelLanguages: dolphin, detectsLanguageAutomatically: false
         )
         #expect(limited?.contains("\(dolphin.count) languages") == true)
+    }
+
+    /// The picker used to say nothing at all for an unrestricted model, which is
+    /// exactly the case — a multilingual Whisper — where someone picks Russian,
+    /// speaks English, and concludes the app translates. It never did: Whisper
+    /// forces the language token and renders the meaning it heard in that
+    /// script, untrained and unreliable.
+    @Test func everyModelSaysTheLanguageRowIsNotATranslationSetting() {
+        for detects in [false, true] {
+            let sentence = ModelLanguageSupport.restriction(
+                modelLanguages: [], detectsLanguageAutomatically: detects
+            )
+            #expect(sentence?.contains("not the language you want back") == true)
+            #expect(sentence?.contains("cannot translate") == true)
+        }
+        let canary = ModelLanguageSupport.restriction(
+            modelLanguages: ["en", "de", "es", "fr"],
+            detectsLanguageAutomatically: false,
+            onDevice: true,
+            canTranslate: true
+        )
+        #expect(canary?.contains("use Translate to") == true)
+        #expect(canary?.contains("cannot translate") == false)
+    }
+
+    /// With translation on, two languages are in play and only one of them is
+    /// the one on screen. The styler punctuates by script, so it has to be given
+    /// the target.
+    @Test func theOutputLanguageIsTheTranslationTargetWhenTranslating() {
+        #expect(
+            ModelLanguageSupport.outputLanguage(
+                requested: "hi", reported: "hi", translateTo: "de"
+            ) == "de"
+        )
+        #expect(
+            ModelLanguageSupport.outputLanguage(
+                requested: "auto", reported: "hi", translateTo: "de"
+            ) == "de"
+        )
+        #expect(
+            ModelLanguageSupport.outputLanguage(
+                requested: "hi", reported: "en", translateTo: ""
+            ) == "hi"
+        )
+        #expect(
+            ModelLanguageSupport.outputLanguage(
+                requested: "auto", reported: "hi", translateTo: ""
+            ) == "hi"
+        )
     }
 
     /// The sentence has to say both things: the choice is real for punctuation,

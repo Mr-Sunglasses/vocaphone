@@ -70,6 +70,10 @@ the active cursor. A gateway is never required for on-device mode.
   you want larger models or shared compute. That path is self-hosted, not on-device
 - 54 transcription languages plus Automatic, and four writing styles: Formal,
   Casual, Very Casual, and Excited
+- Optional on-device translation where the model was actually trained for it:
+  Canary between English, German, Spanish and French, and the multilingual
+  Whisper models into English. Language says what you are speaking; Translate to
+  says what comes back
 - On iOS the containing app records, because a keyboard extension cannot use the
   microphone
 

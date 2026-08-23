@@ -29,6 +29,7 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     const char *model4,
     const char *tokens,
     const char *language,
+    const char *target_language,
     int32_t threads,
     const char *decoding_method,
     int32_t max_active_paths
@@ -71,7 +72,13 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
             config.model_config.canary.encoder = model1;
             config.model_config.canary.decoder = model2;
             config.model_config.canary.src_lang = language;
-            config.model_config.canary.tgt_lang = language;
+            // Equal source and target is transcription; differing them is what
+            // Canary was trained for. An empty target means the caller asked
+            // for no translation, or asked for one this model cannot do.
+            config.model_config.canary.tgt_lang =
+                target_language == NULL || target_language[0] == '\0'
+                    ? language
+                    : target_language;
             config.model_config.canary.use_pnc = 1;
             break;
         case VocaPhoneSherpaNemoCtc:

@@ -116,6 +116,13 @@ class LocalModelManager(
     private var loadedLanguage: String? = null
 
     /**
+     * Canary bakes source and target into the recognizer exactly as it bakes
+     * the language, so a change of translation target has to rebuild it too.
+     * Empty means transcribe.
+     */
+    private var loadedTranslateTo: String = ""
+
+    /**
      * Sherpa bakes the decoding method into the recognizer, so changing quality
      * means building a new one. Whisper takes its search parameters per call and
      * does not care.
@@ -196,14 +203,18 @@ class LocalModelManager(
         language: String,
         scope: CoroutineScope,
         quality: TranscriptionQuality = TranscriptionQuality.DEFAULT,
+        translateTo: String = "",
     ): SherpaIncrementalSession? {
         val model = LocalModelCatalog.find(modelID) ?: return null
-        if (model.engine != LocalModelEngine.SHERPA_ONNX) return null
         val resolved = if (model.englishOnly) "en" else language
+        val target = model.resolveTranslationTarget(translateTo)
+        if (!canStreamIncrementally(model.engine, target)) return null
         return SherpaIncrementalSession(
             scope = scope,
-            prepare = { prepareEngine(model, resolved, quality) },
-            decode = { samples -> decodePreparedSherpa(samples, model.id, resolved, quality) },
+            prepare = { prepareEngine(model, resolved, quality, target) },
+            decode = { samples ->
+                decodePreparedSherpa(samples, model.id, resolved, quality, target)
+            },
         )
     }
 
@@ -363,6 +374,7 @@ class LocalModelManager(
         sherpaRecognizer = null
         loadedModelID = null
         loadedLanguage = null
+        loadedTranslateTo = ""
         loadedQuality = null
     }
 
@@ -427,10 +439,20 @@ class LocalModelManager(
      * explanation. Failures are the caller's to ignore: this is an optimization,
      * and the real attempt will report the same problem properly.
      */
-    suspend fun prepare(modelID: String, language: String, quality: TranscriptionQuality) {
+    suspend fun prepare(
+        modelID: String,
+        language: String,
+        quality: TranscriptionQuality,
+        translateTo: String = "",
+    ) {
         val model = LocalModelCatalog.find(modelID) ?: return
         if (!isDownloaded(model.id)) return
-        prepareEngine(model, if (model.englishOnly) "en" else language, quality)
+        prepareEngine(
+            model,
+            if (model.englishOnly) "en" else language,
+            quality,
+            model.resolveTranslationTarget(translateTo),
+        )
     }
 
     suspend fun transcribe(
@@ -440,10 +462,12 @@ class LocalModelManager(
         quality: TranscriptionQuality = TranscriptionQuality.DEFAULT,
         vocabulary: String = "",
         conditioningStartSample: Int = 0,
+        translateTo: String = "",
     ): LocalTranscription {
         val model = LocalModelCatalog.find(modelID) ?: error("Unknown local model: $modelID")
         val resolved = if (model.englishOnly) "en" else language
-        prepareEngine(model, resolved, quality)
+        val target = model.resolveTranslationTarget(translateTo)
+        prepareEngine(model, resolved, quality, target)
         // One gain and one DC-offset correction cover the complete recording.
         // Sherpa used to have a separate during-recording path that could apply
         // different conditioning and silently omit a window; the complete WAV
@@ -454,6 +478,7 @@ class LocalModelManager(
             resolved,
             quality,
             vocabulary,
+            target,
         )
     }
 
@@ -461,6 +486,7 @@ class LocalModelManager(
         model: LocalModelDescriptor,
         resolvedLanguage: String,
         quality: TranscriptionQuality,
+        resolvedTranslateTo: String,
     ) {
         val directory = directoryFor(model)
         // Stat-only: cheap enough to run per dictation, unlike a digest pass.
@@ -478,6 +504,8 @@ class LocalModelManager(
                     loadedQuality = loadedQuality,
                     requestedQuality = quality,
                     languageIsBakedIn = model.sherpaFamily?.acceptsLanguage ?: true,
+                    loadedTranslateTo = loadedTranslateTo,
+                    requestedTranslateTo = resolvedTranslateTo,
                 )
             ) {
                 releaseEngines()
@@ -494,6 +522,7 @@ class LocalModelManager(
                                 language = resolvedLanguage,
                                 threads = WhisperCpuConfig.preferredSherpaThreadCount,
                                 quality = quality,
+                                translateTo = resolvedTranslateTo,
                             )
                         } else {
                             whisperContext = WhisperContext.create(
@@ -506,6 +535,7 @@ class LocalModelManager(
                 }
                 loadedModelID = model.id
                 loadedLanguage = resolvedLanguage
+                loadedTranslateTo = resolvedTranslateTo
                 loadedQuality = quality
             }
         }
@@ -517,13 +547,17 @@ class LocalModelManager(
         resolvedLanguage: String,
         quality: TranscriptionQuality,
         vocabulary: String,
+        resolvedTranslateTo: String,
     ): LocalTranscription = engineMutex.withLock {
         check(
             loadedModelID == model.id &&
                 (
                     model.engine == LocalModelEngine.WHISPER ||
                         model.sherpaFamily?.acceptsLanguage != true ||
-                        loadedLanguage == resolvedLanguage
+                        (
+                            loadedLanguage == resolvedLanguage &&
+                                loadedTranslateTo == resolvedTranslateTo
+                            )
                     ),
         ) {
             "Local transcription engine changed before inference started"
@@ -533,13 +567,18 @@ class LocalModelManager(
                 val result = recognizer.transcribe(samples)
                 LocalTranscription(
                     result.text,
-                    ModelLanguageSupport.transcriptLanguage(resolvedLanguage, result.language),
+                    ModelLanguageSupport.outputLanguage(
+                        requested = resolvedLanguage,
+                        reported = result.language,
+                        translateTo = resolvedTranslateTo,
+                    ),
                 )
             }
         }
         whisperContext?.transcribe(
             samples,
             resolvedLanguage,
+            resolvedTranslateTo,
             quality,
             CustomVocabulary.whisperPrompt(vocabulary),
             model.cropsAudioContext,
@@ -552,10 +591,12 @@ class LocalModelManager(
         modelID: String,
         resolvedLanguage: String,
         quality: TranscriptionQuality,
+        resolvedTranslateTo: String,
     ): SherpaTranscript = engineMutex.withLock {
         check(
             loadedModelID == modelID &&
                 loadedLanguage == resolvedLanguage &&
+                loadedTranslateTo == resolvedTranslateTo &&
                 loadedQuality == quality,
         ) {
             "On-device model changed during transcription"
@@ -571,6 +612,7 @@ class LocalModelManager(
         quality: TranscriptionQuality = TranscriptionQuality.DEFAULT,
         vocabulary: String = "",
         conditioningStartSample: Int = 0,
+        translateTo: String = "",
     ): LocalTranscription = transcribe(
         withContext(Dispatchers.IO) { readWavSamples(wavFile) },
         modelID,
@@ -578,6 +620,7 @@ class LocalModelManager(
         quality,
         vocabulary,
         conditioningStartSample,
+        translateTo,
     )
 
     private fun readWavSamples(file: File): FloatArray {
@@ -612,6 +655,12 @@ class LocalModelManager(
  * [languageIsBakedIn] is false for the families whose config has no language
  * field at all: rebuilding a 670 MB Parakeet because the user relabelled the
  * transcript language would cost seconds and change nothing about the decode.
+ *
+ * The translation target is baked in wherever the language is — it is the other
+ * half of the same Canary config — so it is gated by the same flag. A family
+ * that cannot translate has already had the target resolved away to empty by
+ * [LocalModelDescriptor.resolveTranslationTarget], so it can never reload for a
+ * setting it would ignore.
  */
 internal fun shouldReloadLocalEngine(
     engine: LocalModelEngine,
@@ -622,9 +671,39 @@ internal fun shouldReloadLocalEngine(
     loadedQuality: TranscriptionQuality?,
     requestedQuality: TranscriptionQuality,
     languageIsBakedIn: Boolean = true,
+    loadedTranslateTo: String = "",
+    requestedTranslateTo: String = "",
 ): Boolean {
     if (loadedModelID != requestedModelID) return true
     if (engine != LocalModelEngine.SHERPA_ONNX) return false
     if (loadedQuality != requestedQuality) return true
-    return languageIsBakedIn && loadedLanguage != requestedLanguage
+    if (!languageIsBakedIn) return false
+    return loadedLanguage != requestedLanguage || loadedTranslateTo != requestedTranslateTo
 }
+
+/**
+ * The translation target this model can actually honour, or empty.
+ *
+ * Resolved here rather than trusted from the caller so that a stale setting —
+ * a target picked under Canary and still stored after a switch to Parakeet —
+ * can never reach an engine that would misread it, nor force a reload of one
+ * that would ignore it.
+ */
+internal fun LocalModelDescriptor.resolveTranslationTarget(requested: String): String =
+    requested.takeIf { it.isNotEmpty() && it in translationTargets }.orEmpty()
+
+/**
+ * Whether a dictation may be decoded in windows while it is still being spoken.
+ *
+ * Whisper never streams here; only the sherpa families do. Translation rules
+ * the rest out. Streaming decodes ten-second windows and stitches them by
+ * matching repeated words across a half-second overlap, and both halves of that
+ * assume the model returns the same words for the same audio. A translator does
+ * not: the overlap comes back reworded, so nothing is deduplicated and the seam
+ * is duplicated instead — and a sentence split across two windows is translated
+ * twice, as two fragments that were never sentences. A translated dictation
+ * gives up the latency and takes the whole-file path, where anything under
+ * twelve seconds is a single decode of the whole thing.
+ */
+internal fun canStreamIncrementally(engine: LocalModelEngine, translateTo: String): Boolean =
+    engine == LocalModelEngine.SHERPA_ONNX && translateTo.isEmpty()

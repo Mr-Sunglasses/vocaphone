@@ -38,6 +38,7 @@ import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.ime.PersonalDictionary
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
+import com.vocahq.vocaphone.core.ModelTranslationSupport
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.WritingStyle
@@ -80,6 +81,7 @@ fun SettingsScreen(
     setup: SetupStatus,
     microphone: MicrophoneStatus,
     onLanguage: (TranscriptionLanguage) -> Unit,
+    onTranslateTo: (TranscriptionLanguage) -> Unit,
     onStyle: (WritingStyle) -> Unit,
     onDictationTone: (DictationTone) -> Unit,
     onPreviewDictationTone: (DictationTone) -> Unit,
@@ -126,6 +128,7 @@ fun SettingsScreen(
     val appInfo = remember { context.readAppInfo() }
     val onDevice = context.readOnDeviceDiagnostics(localModels.downloaded)
     var pickingLanguage by remember { mutableStateOf(false) }
+    var pickingTranslation by remember { mutableStateOf(false) }
     val localModel = LocalModelCatalog.find(settings.localModelId)
 
     LaunchedEffect(openLanguagePicker) {
@@ -157,6 +160,21 @@ fun SettingsScreen(
                         supporting = settings.effectiveLanguage.displayName,
                         icon = R.drawable.ic_language,
                         onClick = { pickingLanguage = true },
+                    )
+                    SettingsMenuDivider()
+                    // Kept next to Language and never hidden. A row that
+                    // disappears for most models would leave the question
+                    // unanswered, and "not supported by this model" is exactly
+                    // the answer people arrive looking for.
+                    SettingsMenuRow(
+                        title = "Translate to",
+                        supporting = ModelTranslationSupport.summary(
+                            settings.translateTo,
+                            settings.activeModelTranslationTargets,
+                            onDevice = settings.localTranscriptionEnabled,
+                        ),
+                        icon = R.drawable.ic_language,
+                        onClick = { pickingTranslation = true },
                     )
                     SettingsMenuDivider()
                     SettingsMenuRow(
@@ -486,8 +504,24 @@ fun SettingsScreen(
             modelLanguages = settings.activeModelLanguages,
             detectsLanguageAutomatically = settings.activeModelDetectsLanguage,
             onDevice = settings.localTranscriptionEnabled,
+            translationTargets = settings.activeModelTranslationTargets,
             onSelect = onLanguage,
             onDismiss = { pickingLanguage = false },
+        )
+    }
+
+    if (pickingTranslation) {
+        LanguagePickerSheet(
+            selected = settings.effectiveTranslateTo,
+            modelLanguages = settings.activeModelLanguages,
+            detectsLanguageAutomatically = settings.activeModelDetectsLanguage,
+            onDevice = settings.localTranscriptionEnabled,
+            mode = LanguagePickerMode.TRANSLATION,
+            translationTargets = settings.activeModelTranslationTargets,
+            translationNeedsSource = settings.activeModelTranslationNeedsSource,
+            sourceIsAutomatic = settings.effectiveLanguage == TranscriptionLanguage.AUTOMATIC,
+            onSelect = onTranslateTo,
+            onDismiss = { pickingTranslation = false },
         )
     }
 }

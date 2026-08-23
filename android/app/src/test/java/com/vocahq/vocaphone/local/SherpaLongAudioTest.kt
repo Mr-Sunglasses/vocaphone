@@ -196,4 +196,29 @@ class SherpaLongAudioTest {
             ),
         )
     }
+
+    /**
+     * Why translating turns deduplication off rather than trusting it to do
+     * nothing. The merger cannot tell a repeat caused by overlapped audio from
+     * one the speaker actually said, so on text it was never able to align it
+     * deletes words that belong in the transcript.
+     */
+    @Test
+    fun `deduplication removes a repetition that translating must keep`() {
+        // Two windows of translated text that happen to meet on the same words.
+        val left = "I went to the shop"
+        val right = "to the shop and then home"
+
+        assertEquals(
+            "I went to the shop and then home",
+            SherpaTranscriptMerger.append(left, right, deduplicateOverlap = true),
+        )
+        // A translator gives no way to know whether that was one phrase or two,
+        // so the seam is kept verbatim instead of guessed at.
+        assertEquals(
+            "I went to the shop to the shop and then home",
+            SherpaTranscriptMerger.append(left, right, deduplicateOverlap = false),
+        )
+    }
+
 }

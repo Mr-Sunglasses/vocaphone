@@ -17,6 +17,7 @@ internal class WhisperContext private constructor(private var pointer: Long) {
     suspend fun transcribe(
         samples: FloatArray,
         language: String,
+        translateTo: String,
         quality: TranscriptionQuality,
         prompt: String,
         cropAudioContext: Boolean,
@@ -29,6 +30,7 @@ internal class WhisperContext private constructor(private var pointer: Long) {
                 threads,
                 samples,
                 if (language == "auto") "auto" else language,
+                translateTo.isNotEmpty(),
                 quality.whisperBeamSize,
                 quality.whisperTemperatureIncrement,
                 if (cropAudioContext) WhisperCpuConfig.whisperAudioContext(samples.size) else 0,
@@ -50,9 +52,12 @@ internal class WhisperContext private constructor(private var pointer: Long) {
                 // Detection is meaningful only for Automatic. With an explicit
                 // selection, the user's requested output language remains the
                 // contract even if the engine reports something contradictory.
-                language = ModelLanguageSupport.transcriptLanguage(
+                // Translating overrides both: the detected language is the one
+                // that was spoken, and the text on screen is the target.
+                language = ModelLanguageSupport.outputLanguage(
                     requested = language,
                     reported = WhisperLib.getDetectedLanguage(pointer),
+                    translateTo = translateTo,
                 ),
             )
         }

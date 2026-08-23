@@ -100,6 +100,41 @@ data class LocalModelDescriptor(
     /** Whether short recordings may use a cropped whisper encoder window. */
     val cropsAudioContext: Boolean = false,
 ) {
+    /**
+     * Which languages this model can translate speech *into*.
+     *
+     * Derived rather than declared, because only two things in the catalog can
+     * translate at all and both derive it from something already written down.
+     * Canary is a speech-translation model across exactly the languages it
+     * lists; a multilingual whisper build has the `<|translate|>` task, whose
+     * only trained target is English. Everything else transcribes the language
+     * it heard, so an empty set here is the ordinary answer and the one the
+     * translate row reports as unsupported. See
+     * [com.vocahq.vocaphone.core.ModelTranslationSupport].
+     */
+    val translationTargets: Set<String>
+        get() = when {
+            sherpaFamily == SherpaFamily.CANARY -> languageCodes
+            englishOnly -> emptySet()
+            engine == LocalModelEngine.WHISPER -> setOf("en")
+            else -> emptySet()
+        }
+
+    /**
+     * Whether translating needs the spoken language named explicitly.
+     *
+     * Canary has no detection mode: its config carries a source language and
+     * takes whatever it is given, so "auto" has to be resolved to a real code
+     * before the recognizer is built and English is the only defensible guess.
+     * That is harmless while source and target match — the model was going to
+     * assume something either way — but once the two differ it decides what the
+     * audio is being translated *from*, and a German speaker left on Automatic
+     * gets German translated as though it were English. Whisper is the opposite:
+     * it detects the language and then translates, so it needs nothing here.
+     */
+    val translationNeedsExplicitSource: Boolean
+        get() = sherpaFamily == SherpaFamily.CANARY
+
     val sizeLabel: String
         get() = if (sizeBytes >= 1_000_000_000) {
             "%.1f GB".format(sizeBytes / 1_000_000_000.0)

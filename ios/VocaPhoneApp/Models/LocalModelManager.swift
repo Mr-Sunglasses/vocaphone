@@ -52,6 +52,10 @@ final class LocalModelManager {
     private var sherpaRecognizer: SherpaRecognizer?
     private var loadedModelID: String?
     private var loadedLanguage: String?
+    /// Canary bakes source and target into the recognizer exactly as it bakes
+    /// the language, so a change of translation target has to rebuild it too.
+    /// Empty means transcribe.
+    private var loadedTranslateTo = ""
     /// Sherpa only: WhisperKit takes its decoding options per call, so quality
     /// never invalidates a loaded Whisper model.
     private var loadedQuality: TranscriptionQuality?
@@ -723,6 +727,16 @@ final class LocalModelManager {
               let descriptor = LocalModelCatalog.descriptor(for: id),
               descriptor.engine == .sherpaOnnx
         else { return nil }
+        // Streaming decodes ten-second windows and stitches them by matching
+        // repeated words across a half-second overlap. Both halves of that
+        // assume the model returns the same words for the same audio, which a
+        // translator does not: the overlap comes back reworded, so nothing is
+        // deduplicated and the seam is duplicated instead — and a sentence
+        // split across two windows is translated twice, as two fragments that
+        // were never sentences. A translated dictation gives up the latency and
+        // takes the whole-file path, where anything under twelve seconds is a
+        // single decode of the whole thing.
+        guard descriptor.resolvedTranslationTarget.isEmpty else { return nil }
         guard let folder = modelDirectory(for: id), isDownloaded(id) else {
             throw LocalModelManagerError.modelNotDownloaded(id)
         }
@@ -1297,8 +1311,10 @@ final class LocalModelManager {
             // relabelled the transcript language would cost seconds and change
             // nothing about the decode.
             let languageIsBakedIn = descriptor.sherpaFamily?.acceptsLanguage ?? true
+            let identityChanged = loadedLanguage != resolvedLanguage
+                || loadedTranslateTo != descriptor.resolvedTranslationTarget
             needsLoad = loadedModelID != id
-                || (languageIsBakedIn && loadedLanguage != resolvedLanguage)
+                || (languageIsBakedIn && identityChanged)
                 || loadedQuality != LocalTranscriptionPreferences.quality
                 || sherpaRecognizer == nil
         }
@@ -1348,8 +1364,13 @@ final class LocalModelManager {
             let promptTokens = promptText.isEmpty
                 ? nil
                 : whisperKit.tokenizer?.encode(text: promptText)
+            // Whisper's translate task has exactly one trained target, English,
+            // and `translationTarget` can only ever be "en" for a Whisper
+            // model. Asking it for another target is not a smaller version of
+            // the same feature; it is nothing at all.
+            let translateTo = descriptor.resolvedTranslationTarget
             let options = DecodingOptions(
-                task: .transcribe,
+                task: translateTo.isEmpty ? .transcribe : .translate,
                 language: requested,
                 temperature: 0,
                 temperatureIncrementOnFallback: quality.whisperKitTemperatureIncrement,
@@ -1381,11 +1402,14 @@ final class LocalModelManager {
             // Detection is meaningful only for Automatic. With an explicit
             // selection, the user's requested output language remains the
             // contract even if the engine reports something contradictory.
+            // Translating overrides both: the detected language is the one that
+            // was spoken, and the text on screen is the target.
             return LocalTranscription(
                 text: text,
-                language: ModelLanguageSupport.transcriptLanguage(
+                language: ModelLanguageSupport.outputLanguage(
                     requested: resolvedLanguage,
-                    reported: results.first?.language ?? ""
+                    reported: results.first?.language ?? "",
+                    translateTo: translateTo
                 )
             )
 
@@ -1403,9 +1427,10 @@ final class LocalModelManager {
             }
             return LocalTranscription(
                 text: decoded.text,
-                language: ModelLanguageSupport.transcriptLanguage(
+                language: ModelLanguageSupport.outputLanguage(
                     requested: resolvedLanguage,
-                    reported: decoded.language
+                    reported: decoded.language,
+                    translateTo: descriptor.resolvedTranslationTarget
                 )
             )
         }
@@ -1458,6 +1483,10 @@ final class LocalModelManager {
         // Sherpa bakes the decoding method into the recognizer, so a change of
         // quality means building a new one.
         let quality = LocalTranscriptionPreferences.quality
+        // Resolved from the catalog rather than trusted from a caller, so a
+        // target picked under Canary and still stored after a switch to
+        // Parakeet can never reach an engine that would misread it.
+        let translateTo = descriptor.resolvedTranslationTarget
 
         // Never two loads at once. Building an ONNX graph while another is
         // still being built puts both models' weights in memory at the same
@@ -1471,7 +1500,8 @@ final class LocalModelManager {
 
         if let sherpaRecognizer,
            loadedModelID == descriptor.id,
-           descriptor.sherpaFamily?.acceptsLanguage != true || loadedLanguage == resolvedLanguage,
+           descriptor.sherpaFamily?.acceptsLanguage != true
+               || (loadedLanguage == resolvedLanguage && loadedTranslateTo == translateTo),
            loadedQuality == quality
         {
             return sherpaRecognizer
@@ -1487,6 +1517,7 @@ final class LocalModelManager {
         sherpaRecognizer = nil
         loadedModelID = nil
         loadedLanguage = nil
+        loadedTranslateTo = ""
         loadedQuality = nil
 
         // Off the main actor: `SherpaRecognizer.create` is synchronous and
@@ -1502,7 +1533,8 @@ final class LocalModelManager {
                 // workers on iPhone; using every logical core throttles long
                 // recordings and competes with audio/UI work.
                 threads: threads,
-                quality: quality
+                quality: quality,
+                translateTo: translateTo
             )
         }
         sherpaLoad = task
@@ -1512,6 +1544,7 @@ final class LocalModelManager {
         sherpaRecognizer = recognizer
         loadedModelID = descriptor.id
         loadedLanguage = resolvedLanguage
+        loadedTranslateTo = translateTo
         loadedQuality = quality
         return recognizer
     }

@@ -2,7 +2,6 @@ package com.vocahq.vocaphone.core
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -66,12 +65,55 @@ class ModelLanguageSupportTest {
     }
 
     @Test
-    fun `the restriction is explained only when there is one`() {
-        assertNull(ModelLanguageSupport.restriction(emptySet(), false))
+    fun `a coverage limit is spelled out whenever there is one`() {
         val limited = ModelLanguageSupport.restriction(dolphin, false)
         assertTrue(limited!!.contains("${dolphin.size} languages"))
         val oneLanguage = ModelLanguageSupport.restriction(setOf("en"), false)
         assertTrue(oneLanguage!!.contains("1 language."))
+        // No coverage claim leaves nothing to say about coverage.
+        assertFalse(
+            ModelLanguageSupport.restriction(emptySet(), false)!!.contains("covers"),
+        )
+    }
+
+    /**
+     * The picker used to say nothing at all for an unrestricted model, which is
+     * exactly the case — a multilingual Whisper — where someone picks Russian,
+     * speaks English, and concludes the app translates. It never did: Whisper
+     * forces the language token and renders the meaning it heard in that
+     * script, untrained and unreliable.
+     */
+    @Test
+    fun `every model says the language row is not a translation setting`() {
+        for (detects in listOf(false, true)) {
+            val sentence = ModelLanguageSupport.restriction(emptySet(), detects)!!
+            assertTrue(sentence.contains("not the language you want back"))
+            assertTrue(sentence.contains("cannot translate"))
+        }
+        // A model that can translate points at the row that does it instead of
+        // repeating the warning.
+        val canary = ModelLanguageSupport.restriction(
+            setOf("en", "de", "es", "fr"),
+            false,
+            onDevice = true,
+            canTranslate = true,
+        )!!
+        assertTrue(canary.contains("use Translate to"))
+        assertFalse(canary.contains("cannot translate"))
+    }
+
+    /**
+     * With translation on, two languages are in play and only one of them is
+     * the one on screen. The styler punctuates by script, so it has to be given
+     * the target.
+     */
+    @Test
+    fun `the output language is the translation target when translating`() {
+        assertEquals("de", ModelLanguageSupport.outputLanguage("hi", "hi", "de"))
+        assertEquals("de", ModelLanguageSupport.outputLanguage("auto", "hi", "de"))
+        // Empty is no translation, which leaves the old contract untouched.
+        assertEquals("hi", ModelLanguageSupport.outputLanguage("hi", "en", ""))
+        assertEquals("hi", ModelLanguageSupport.outputLanguage("auto", "hi", ""))
     }
 
     /**

@@ -10,20 +10,36 @@ import UIKit
 /// owns the switch.
 struct SettingsView: View {
     @Environment(RecordingCoordinator.self) private var coordinator
+    // The hub's rows carry the values their destinations set, so they have to
+    // be read through storage SwiftUI can see. Reading them from
+    // `KeyboardPreferences` instead left every row showing the previous value
+    // until the coordinator happened to publish something unrelated — which is
+    // why the language row appeared to update "eventually" rather than never.
+    @AppStorage(
+        KeyboardPreferences.keyboardHeightKey,
+        store: KeyboardPreferences.defaults
+    ) private var keyboardHeightRawValue = KeyboardHeightPreference.standard.rawValue
+    @AppStorage(
+        KeyboardPreferences.transcriptionLanguageKey,
+        store: KeyboardPreferences.defaults
+    ) private var transcriptionLanguageRawValue = TranscriptionLanguage.automatic.rawValue
+    @AppStorage(
+        KeyboardPreferences.writingStyleKey,
+        store: KeyboardPreferences.defaults
+    ) private var writingStyleRawValue = WritingStyle.casual.rawValue
 
     var body: some View {
         List {
             Section {
                 destination(
                     "Keyboard",
-                    detail: KeyboardPreferences.keyboardHeight.displayName,
+                    detail: keyboardHeight.displayName,
                     symbol: "keyboard"
                 ) { KeyboardSettingsView() }
 
                 destination(
                     "Dictation",
-                    detail: KeyboardPreferences.effectiveTranscriptionLanguage.displayName
-                        + " · " + KeyboardPreferences.writingStyle.displayName,
+                    detail: language.displayName + " · " + writingStyle.displayName,
                     symbol: "mic"
                 ) { DictationSettingsView() }
 
@@ -61,6 +77,23 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var keyboardHeight: KeyboardHeightPreference {
+        KeyboardHeightPreference(rawValue: keyboardHeightRawValue) ?? .standard
+    }
+
+    /// Resolved the same way the Dictation screen resolves it, so the hub never
+    /// advertises a language the loaded model has already ruled out.
+    private var language: TranscriptionLanguage {
+        ModelLanguageSupport.resolve(
+            TranscriptionLanguage(rawValue: transcriptionLanguageRawValue) ?? .automatic,
+            modelLanguages: KeyboardPreferences.activeModelLanguages
+        )
+    }
+
+    private var writingStyle: WritingStyle {
+        WritingStyle(rawValue: writingStyleRawValue) ?? .casual
     }
 
     /// A row that carries its current value, so the hub answers most questions
@@ -334,6 +367,10 @@ struct DictationSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var transcriptionLanguageRawValue = TranscriptionLanguage.automatic.rawValue
     @AppStorage(
+        KeyboardPreferences.translateToKey,
+        store: KeyboardPreferences.defaults
+    ) private var translateToRawValue = ModelTranslationSupport.off.rawValue
+    @AppStorage(
         KeyboardPreferences.microphonePreferenceKey,
         store: KeyboardPreferences.defaults
     ) private var microphonePreferenceRawValue = MicrophonePreference.automatic.rawValue
@@ -402,13 +439,29 @@ struct DictationSettingsView: View {
             NavigationLink {
                 TranscriptionLanguageList(selection: $transcriptionLanguageRawValue)
             } label: {
+                LabeledContent("Language", value: selectedLanguage.displayName)
+            }
+            // Kept next to Language and never hidden. A row that disappears for
+            // most models would leave the question unanswered, and "Not
+            // supported by this model" is exactly the answer people arrive
+            // looking for.
+            NavigationLink {
+                TranscriptionLanguageList(
+                    selection: $translateToRawValue,
+                    mode: .translation
+                )
+            } label: {
                 LabeledContent(
-                    "Language",
-                    value: KeyboardPreferences.effectiveTranscriptionLanguage.displayName
+                    "Translate to",
+                    value: ModelTranslationSupport.summary(
+                        storedTranslateTo,
+                        targets: KeyboardPreferences.activeModelTranslationTargets,
+                        onDevice: LocalTranscriptionPreferences.enabled
+                    )
                 )
             }
         } footer: {
-            Text(KeyboardPreferences.effectiveTranscriptionLanguage.detail)
+            Text(selectedLanguage.detail)
         }
     }
 
@@ -556,6 +609,31 @@ struct DictationSettingsView: View {
 
     private var selectedWritingStyle: WritingStyle {
         WritingStyle(rawValue: writingStyleRawValue) ?? .casual
+    }
+
+    /// Read back out of the `@AppStorage` value rather than through
+    /// `KeyboardPreferences`, exactly as `selectedWritingStyle` is.
+    ///
+    /// This is not a style preference. SwiftUI invalidates a view from the
+    /// dynamic properties its body *reads*, and a static accessor is not one:
+    /// `KeyboardPreferences.effectiveTranscriptionLanguage` reaches the same
+    /// `UserDefaults` by a route SwiftUI cannot see, so a row that read it kept
+    /// showing the previous language until something unrelated redrew the
+    /// screen. Passing `$transcriptionLanguageRawValue` to the picker is not a
+    /// read — it hands over the projected binding — so the property was written
+    /// on every pick and never once observed here.
+    private var selectedLanguage: TranscriptionLanguage {
+        ModelLanguageSupport.resolve(
+            TranscriptionLanguage(rawValue: transcriptionLanguageRawValue) ?? .automatic,
+            modelLanguages: KeyboardPreferences.activeModelLanguages
+        )
+    }
+
+    /// The stored target, before resolving: `ModelTranslationSupport.summary`
+    /// does its own resolving, and needs to tell "Off" from a pick the current
+    /// model cannot honour.
+    private var storedTranslateTo: TranscriptionLanguage {
+        TranscriptionLanguage(rawValue: translateToRawValue) ?? ModelTranslationSupport.off
     }
 
     private var selectedMicrophonePreference: MicrophonePreference {
@@ -1013,21 +1091,77 @@ private struct DiagnosticShareSheet: UIViewControllerRepresentable {
 /// bottom and greyed rather than hidden: a language that simply disappears reads
 /// as unsupported by the app, when the fix is to change the model.
 struct TranscriptionLanguageList: View {
+
+    /// Which of the two language questions this list is asking.
+    ///
+    /// The rows, the search and the greying are identical; what differs is the
+    /// title, what the first row means, which languages are selectable and what
+    /// the footer says. Keeping them one view is what stops the two questions
+    /// drifting apart in the ways that made them look like one setting in the
+    /// first place.
+    enum Mode {
+        /// The language being spoken, which is what a decoder is told.
+        case spoken
+        /// The language the transcript should come back in.
+        case translation
+    }
+
     @Binding var selection: String
+    var mode: Mode = .spoken
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
 
+    private var translating: Bool { mode == .translation }
     private var modelLanguages: Set<String> { KeyboardPreferences.activeModelLanguages }
     private var detectsLanguage: Bool { KeyboardPreferences.activeModelDetectsLanguage }
+    private var translationTargets: Set<String> {
+        KeyboardPreferences.activeModelTranslationTargets
+    }
 
+    // Searched against the label actually on the row: "Don't translate" is not
+    // findable by typing "automatic", and should not be.
     private func matches(_ language: TranscriptionLanguage) -> Bool {
         query.isEmpty
-            || language.displayName.localizedCaseInsensitiveContains(query)
+            || label(language).localizedCaseInsensitiveContains(query)
             || language.rawValue.localizedCaseInsensitiveContains(query)
     }
 
     private func isSelectable(_ language: TranscriptionLanguage) -> Bool {
-        ModelLanguageSupport.isSelectable(language, modelLanguages: modelLanguages)
+        translating
+            ? ModelTranslationSupport.isSelectable(language, targets: translationTargets)
+            : ModelLanguageSupport.isSelectable(language, modelLanguages: modelLanguages)
+    }
+
+    /// `.automatic` is the shared enum's way of storing "no choice", and in the
+    /// translation list the absence of a choice is not language detection but
+    /// no translation at all.
+    private func label(_ language: TranscriptionLanguage) -> String {
+        translating && language == ModelTranslationSupport.off
+            ? ModelTranslationSupport.offLabel
+            : language.displayName
+    }
+
+    private var footer: String? {
+        translating
+            ? ModelTranslationSupport.restriction(
+                translationTargets,
+                onDevice: LocalTranscriptionPreferences.enabled,
+                needsExplicitSource: KeyboardPreferences.activeModelTranslationNeedsSource,
+                sourceIsAutomatic: KeyboardPreferences.effectiveTranscriptionLanguage == .automatic
+            )
+            : ModelLanguageSupport.restriction(
+                modelLanguages: modelLanguages,
+                detectsLanguageAutomatically: detectsLanguage,
+                onDevice: LocalTranscriptionPreferences.enabled,
+                canTranslate: ModelTranslationSupport.isSupported(translationTargets)
+            )
+    }
+
+    private var checked: TranscriptionLanguage {
+        let stored = TranscriptionLanguage(rawValue: selection) ?? .automatic
+        return translating
+            ? ModelTranslationSupport.resolve(stored, targets: translationTargets)
+            : ModelLanguageSupport.resolve(stored, modelLanguages: modelLanguages)
     }
 
     private var available: [TranscriptionLanguage] {
@@ -1046,12 +1180,8 @@ struct TranscriptionLanguageList: View {
                         row(language, selectable: true)
                     }
                 } footer: {
-                    if let restriction = ModelLanguageSupport.restriction(
-                        modelLanguages: modelLanguages,
-                        detectsLanguageAutomatically: detectsLanguage,
-                        onDevice: LocalTranscriptionPreferences.enabled
-                    ) {
-                        Text(restriction)
+                    if let footer {
+                        Text(footer)
                     }
                 }
             }
@@ -1067,7 +1197,7 @@ struct TranscriptionLanguageList: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .navigationTitle("Language")
+        .navigationTitle(translating ? "Translate to" : "Language")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: "Search languages")
     }
@@ -1075,19 +1205,20 @@ struct TranscriptionLanguageList: View {
     private func row(_ language: TranscriptionLanguage, selectable: Bool) -> some View {
         Button {
             selection = language.rawValue
-            KeyboardPreferences.noteTranscriptionLanguageUse(language)
+            // Recents feed the keyboard's short spoken-language menu, which a
+            // translation target has no place in.
+            if !translating {
+                KeyboardPreferences.noteTranscriptionLanguageUse(language)
+            }
             dismiss()
         } label: {
             HStack {
-                Text(language.displayName)
+                Text(label(language))
                     .foregroundStyle(selectable ? .primary : .secondary)
                 Spacer()
                 // Ticks what is in force, so the mark never sits on a row the
                 // loaded model cannot honour.
-                if language == ModelLanguageSupport.resolve(
-                    TranscriptionLanguage(rawValue: selection) ?? .automatic,
-                    modelLanguages: modelLanguages
-                ) {
+                if language == checked {
                     Image(systemName: "checkmark")
                         .foregroundStyle(.tint)
                         .accessibilityLabel("Selected")
@@ -1102,9 +1233,11 @@ struct TranscriptionLanguageList: View {
 
 // MARK: - Previews
 
-// All five destinations, plus the hub. The hub's own finding — three rows that
-// read their value as a plain static property and never invalidate — shows up
-// here as a value that does not follow the store the preview supplies.
+// All five destinations, plus the hub. The hub's rows used to read their value
+// as a plain static property, which showed up here as a value that did not
+// follow the store the preview supplies — and on device as a row that changed
+// only when something unrelated redrew the screen. They read `@AppStorage` now,
+// so the preview store is what they show.
 
 #Preview("Settings — hub") {
     PreviewHost(coordinator: .previewIdle()) {

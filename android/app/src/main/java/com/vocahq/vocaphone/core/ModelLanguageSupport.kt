@@ -26,6 +26,19 @@ object ModelLanguageSupport {
         if (requested == TranscriptionLanguage.AUTOMATIC.wireValue) reported else requested
 
     /**
+     * The language the finished transcript is actually written in.
+     *
+     * [translateTo] wins outright when set, and that is the whole point of the
+     * overload: with translation on, the spoken language governs the decoder
+     * while the target governs the text, and it is the text the writing styles
+     * punctuate. Styling translated German by the Hindi that was spoken would
+     * end a Latin sentence with a danda. Empty means no translation, which
+     * leaves [transcriptLanguage] answering exactly as before.
+     */
+    fun outputLanguage(requested: String, reported: String, translateTo: String): String =
+        translateTo.ifEmpty { transcriptLanguage(requested, reported) }
+
+    /**
      * [modelLanguages] empty means nothing was claimed — an older gateway build,
      * no model selected, or one the user imported. Nothing is disabled in that
      * case: a client that has not been told must never lock the user out.
@@ -59,16 +72,31 @@ object ModelLanguageSupport {
         }
 
     /**
-     * Why the picker is restricted, or null when it is not.
+     * What the picker's choice does and does not do here.
+     *
+     * Never null any more: even an unrestricted model needs the sentence below
+     * saying that this row is the language being spoken rather than the
+     * language wanted back. The return type stays nullable so callers that
+     * already handle absence keep compiling.
      *
      * [onDevice] only changes which model the sentence blames, but pointing a
      * user at their gateway when the constraint comes from the model on their
      * phone sends them to the wrong screen.
+     *
+     * [canTranslate] adds the sentence that says what this row is not. Whisper
+     * takes its output language from a token forced into the decoder, so
+     * picking a language nobody is speaking makes it emit that language
+     * anyway — untrained behaviour that reads as translation and is the single
+     * most common misreading of this screen. The sentence is unconditional
+     * because the misreading survives being right about one model: someone who
+     * learned the trick on Whisper carries it to Parakeet, where the pick is
+     * discarded entirely.
      */
     fun restriction(
         modelLanguages: Set<String>,
         detectsLanguageAutomatically: Boolean,
         onDevice: Boolean = false,
+        canTranslate: Boolean = false,
     ): String? {
         val owner = if (onDevice) "The on-device model" else "Your gateway's model"
         val coverage = if (modelLanguages.isEmpty()) {
@@ -77,7 +105,17 @@ object ModelLanguageSupport {
             val noun = if (modelLanguages.size == 1) "language" else "languages"
             "$owner covers ${modelLanguages.size} $noun. The rest need a different model."
         }
-        if (!detectsLanguageAutomatically) return coverage
+        val remedy = if (canTranslate) {
+            "To change the language of the transcript, use Translate to."
+        } else {
+            "This model cannot translate, and picking a language you are not " +
+                "speaking gives unreliable text rather than a translation."
+        }
+        val translation =
+            "This is the language you are speaking, not the language you want back. $remedy"
+        if (!detectsLanguageAutomatically) {
+            return listOfNotNull(coverage, translation).joinToString(" ")
+        }
         // Said plainly rather than by disabling the rows: this model decides the
         // language from the audio, and the pick only tells the app how to
         // punctuate what comes back.
@@ -85,6 +123,6 @@ object ModelLanguageSupport {
         val detection = "$subject works out the spoken language itself, so picking one " +
             "here does not pin the decoder. Your choice sets the language the transcript " +
             "is punctuated and formatted in, which is what short phrases get wrong."
-        return listOfNotNull(coverage, detection).joinToString(" ")
+        return listOfNotNull(coverage, detection, translation).joinToString(" ")
     }
 }

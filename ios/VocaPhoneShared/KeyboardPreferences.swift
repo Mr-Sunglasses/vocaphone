@@ -271,6 +271,7 @@ enum KeyboardPreferences {
     static let writingStyleKey = "writingStyle"
     static let numbersAsDigitsKey = "numbersAsDigitsEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
+    static let translateToKey = "translateTo"
     static let microphonePreferenceKey = "microphonePreference"
     static let recordingSoundsKey = "recordingSoundsEnabled"
     static let containingAppForegroundKey = "containingAppForeground"
@@ -511,6 +512,48 @@ enum KeyboardPreferences {
         set {
             defaults?.set(newValue.rawValue, forKey: transcriptionLanguageKey)
         }
+    }
+
+    /// The language dictation should come out in, or `ModelTranslationSupport.off`
+    /// to keep the language that was spoken.
+    ///
+    /// Deliberately a second setting rather than a meaning layered onto
+    /// `transcriptionLanguage`. That one says what is being spoken, which is
+    /// what a decoder needs; this one says what should come back, which only
+    /// two models can honour at all.
+    static var translateTo: TranscriptionLanguage {
+        get {
+            guard let rawValue = defaults?.string(forKey: translateToKey),
+                  let language = TranscriptionLanguage(rawValue: rawValue)
+            else { return ModelTranslationSupport.off }
+            return language
+        }
+        set {
+            defaults?.set(newValue.rawValue, forKey: translateToKey)
+        }
+    }
+
+    /// Languages the active model can translate into; empty when it cannot.
+    ///
+    /// Empty for a gateway too, and not by omission: translation lives entirely
+    /// in the on-device engines and the gateway protocol has no field for it.
+    static var activeModelTranslationTargets: Set<String> {
+        activeLocalModel?.translationTargets ?? []
+    }
+
+    /// Whether translating needs the spoken language set to something real.
+    static var activeModelTranslationNeedsSource: Bool {
+        activeLocalModel?.translationNeedsExplicitSource ?? false
+    }
+
+    /// The picker's own selection, corrected for a model that cannot honour it.
+    static var effectiveTranslateTo: TranscriptionLanguage {
+        ModelTranslationSupport.resolve(translateTo, targets: activeModelTranslationTargets)
+    }
+
+    /// What the engines take: a language code, or empty for no translation.
+    static var translationTarget: String {
+        ModelTranslationSupport.target(translateTo, targets: activeModelTranslationTargets)
     }
 
     /// Maintained by the containing app across foreground transitions. A custom

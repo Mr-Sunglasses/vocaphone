@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.local
 
 import com.vocahq.vocaphone.core.TranscriptionQuality
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -76,6 +77,75 @@ class LocalEnginePolicyTest {
                 requestedQuality = TranscriptionQuality.ACCURATE,
             ),
         )
+    }
+
+    /**
+     * Canary bakes source and target into the recognizer together, so changing
+     * what it translates into is as much a rebuild as changing the language.
+     */
+    @Test
+    fun `sherpa recognizer reloads for a translation target change`() {
+        assertTrue(
+            shouldReloadLocalEngine(
+                engine = LocalModelEngine.SHERPA_ONNX,
+                loadedModelID = "canary-180m-flash",
+                requestedModelID = "canary-180m-flash",
+                loadedLanguage = "en",
+                requestedLanguage = "en",
+                loadedQuality = TranscriptionQuality.BALANCED,
+                requestedQuality = TranscriptionQuality.BALANCED,
+                loadedTranslateTo = "",
+                requestedTranslateTo = "de",
+            ),
+        )
+    }
+
+    /**
+     * A family with no language field has already had the target resolved away
+     * to empty, so a 670 MB Parakeet is never rebuilt for a setting it ignores.
+     */
+    @Test
+    fun `a family that ignores language never reloads for one`() {
+        assertFalse(
+            shouldReloadLocalEngine(
+                engine = LocalModelEngine.SHERPA_ONNX,
+                loadedModelID = "parakeet-tdt-0.6b-v3",
+                requestedModelID = "parakeet-tdt-0.6b-v3",
+                loadedLanguage = "en",
+                requestedLanguage = "ru",
+                loadedQuality = TranscriptionQuality.BALANCED,
+                requestedQuality = TranscriptionQuality.BALANCED,
+                languageIsBakedIn = false,
+                loadedTranslateTo = "",
+                requestedTranslateTo = "ru",
+            ),
+        )
+    }
+
+    /**
+     * Streaming stitches overlapping windows by matching the words that come
+     * back twice. A translator rewords the overlap, so there is nothing to
+     * match — and a sentence spanning two windows is translated as two
+     * fragments. Translation takes the whole-file path instead.
+     */
+    @Test
+    fun `streaming is off while translating and on otherwise`() {
+        assertTrue(canStreamIncrementally(LocalModelEngine.SHERPA_ONNX, ""))
+        assertFalse(canStreamIncrementally(LocalModelEngine.SHERPA_ONNX, "de"))
+        // Whisper has never streamed here whatever the target.
+        assertFalse(canStreamIncrementally(LocalModelEngine.WHISPER, ""))
+        assertFalse(canStreamIncrementally(LocalModelEngine.WHISPER, "en"))
+    }
+
+    /** The catalog decides; a stale request can never reach the recognizer. */
+    @Test
+    fun `a target the model cannot honour resolves away`() {
+        val canary = requireNotNull(LocalModelCatalog.find("canary-180m-flash"))
+        val parakeet = requireNotNull(LocalModelCatalog.find("parakeet-tdt-0.6b-v3"))
+        assertEquals("de", canary.resolveTranslationTarget("de"))
+        assertEquals("", canary.resolveTranslationTarget("hi"))
+        assertEquals("", canary.resolveTranslationTarget(""))
+        assertEquals("", parakeet.resolveTranslationTarget("ru"))
     }
 
     @Test

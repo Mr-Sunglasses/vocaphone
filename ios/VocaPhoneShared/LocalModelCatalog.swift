@@ -206,6 +206,48 @@ struct LocalModelDescriptor: Identifiable, Codable, Sendable, Equatable {
         return LocalModelLanguages.picker.subtracting(LocalModelLanguages.largeV3Only)
     }
 
+    /// Which languages this model can translate speech *into*.
+    ///
+    /// Derived rather than declared, because only two things in the catalog can
+    /// translate at all and both derive it from something already written down.
+    /// Canary is a speech-translation model across the languages it lists; a
+    /// multilingual Whisper build has the translate task, whose only trained
+    /// target is English. Everything else transcribes the language it heard, so
+    /// an empty set here is the ordinary answer. Mirrors
+    /// `LocalModelCatalog.kt`; see `ModelTranslationSupport`.
+    var translationTargets: Set<String> {
+        if sherpaFamily == .canary { return languageCodes }
+        if englishOnly { return [] }
+        return engine == .whisperKit ? ["en"] : []
+    }
+
+    /// The stored translation target, if this model can honour it.
+    ///
+    /// Read here rather than threaded through every call for the same reason
+    /// accuracy is: a setting that takes effect on the next dictation cannot be
+    /// carried by a session that started before it changed. Resolving against
+    /// `translationTargets` is what stops a stale pick — chosen under Canary,
+    /// still stored after a switch to Parakeet — reaching an engine that would
+    /// misread it or forcing a rebuild of one that would ignore it.
+    var resolvedTranslationTarget: String {
+        ModelTranslationSupport.target(
+            KeyboardPreferences.translateTo,
+            targets: translationTargets
+        )
+    }
+
+    /// Whether translating needs the spoken language named explicitly.
+    ///
+    /// Canary has no detection mode: its config carries a source language and
+    /// takes whatever it is given, so "auto" has to be resolved to a real code
+    /// before the recognizer is built and English is the only defensible guess.
+    /// That is harmless while source and target match — the model was going to
+    /// assume something either way — but once the two differ it decides what the
+    /// audio is being translated *from*, and a German speaker left on Automatic
+    /// gets German translated as though it were English. Whisper is the
+    /// opposite: it detects the language and then translates.
+    var translationNeedsExplicitSource: Bool { sherpaFamily == .canary }
+
     var sizeLabel: String {
         let megabytes = Double(sizeBytes) / 1_000_000
         if megabytes >= 1_000 {

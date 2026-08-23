@@ -307,6 +307,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setLanguage(language: TranscriptionLanguage) =
         viewModelScope.launch { container.settings.setLanguage(language) }
 
+    fun setTranslateTo(language: TranscriptionLanguage) =
+        viewModelScope.launch { container.settings.setTranslateTo(language) }
+
     fun setStyle(style: WritingStyle) =
         viewModelScope.launch { container.settings.setStyle(style) }
 
@@ -473,6 +476,7 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
                     modelID = modelID,
                     language = configuration.effectiveLanguage.wireValue,
                     quality = configuration.transcriptionQuality,
+                    translateTo = configuration.translationTarget,
                 )
             }
         }

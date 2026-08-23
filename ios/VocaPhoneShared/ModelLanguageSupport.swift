@@ -27,6 +27,20 @@ enum ModelLanguageSupport {
         requested == TranscriptionLanguage.automatic.rawValue ? reported : requested
     }
 
+    /// The language the finished transcript is actually written in.
+    ///
+    /// `translateTo` wins outright when set, and that is the whole point of the
+    /// overload: with translation on, the spoken language governs the decoder
+    /// while the target governs the text, and it is the text the writing styles
+    /// punctuate. Styling translated German by the Hindi that was spoken would
+    /// end a Latin sentence with a danda. Empty means no translation, which
+    /// leaves `transcriptLanguage` answering exactly as before.
+    static func outputLanguage(requested: String, reported: String, translateTo: String) -> String {
+        translateTo.isEmpty
+            ? transcriptLanguage(requested: requested, reported: reported)
+            : translateTo
+    }
+
     /// `modelLanguages` empty means nothing was claimed — an older gateway
     /// build, no model selected, or one the user imported. Nothing is disabled
     /// then: a client that has not been told must never lock the user out.
@@ -53,15 +67,30 @@ enum ModelLanguageSupport {
         isSelectable(selected, modelLanguages: modelLanguages) ? selected : .automatic
     }
 
-    /// Why the picker is restricted, or nil when it is not.
+    /// What the picker's choice does and does not do here.
+    ///
+    /// Never nil any more: even an unrestricted model needs the sentence saying
+    /// that this row is the language being spoken rather than the language
+    /// wanted back. The return type stays optional so callers that already
+    /// handle absence keep compiling.
     ///
     /// `onDevice` only changes which model the sentence blames, but pointing a
     /// user at their gateway when the constraint comes from the model on their
     /// phone sends them to the wrong screen.
+    ///
+    /// `canTranslate` adds the sentence that says what this row is not. Whisper
+    /// takes its output language from a token forced into the decoder, so
+    /// picking a language nobody is speaking makes it emit that language
+    /// anyway — untrained behaviour that reads as translation and is the single
+    /// most common misreading of this screen. The sentence is unconditional
+    /// because the misreading survives being right about one model: someone who
+    /// learned the trick on Whisper carries it to Parakeet, where the pick is
+    /// discarded entirely.
     static func restriction(
         modelLanguages: Set<String>,
         detectsLanguageAutomatically: Bool,
-        onDevice: Bool = false
+        onDevice: Bool = false,
+        canTranslate: Bool = false
     ) -> String? {
         let owner = onDevice ? "The on-device model" : "Your gateway's model"
         var coverage: String?
@@ -72,7 +101,19 @@ enum ModelLanguageSupport {
             The rest need a different model.
             """
         }
-        guard detectsLanguageAutomatically else { return coverage }
+        let remedy = canTranslate
+            ? "To change the language of the transcript, use Translate to."
+            : """
+            This model cannot translate, and picking a language you are not \
+            speaking gives unreliable text rather than a translation.
+            """
+        let translation = """
+        This is the language you are speaking, not the language you want back. \
+        \(remedy)
+        """
+        guard detectsLanguageAutomatically else {
+            return [coverage, translation].compactMap { $0 }.joined(separator: " ")
+        }
         // Said plainly rather than by disabling the rows: this model decides the
         // language from the audio, and the pick only tells the app how to
         // punctuate what comes back.
@@ -81,6 +122,6 @@ enum ModelLanguageSupport {
         not pin the decoder. It sets the language the transcript is punctuated \
         and formatted in, which is what short phrases get wrong.
         """
-        return [coverage, detection].compactMap { $0 }.joined(separator: " ")
+        return [coverage, detection, translation].compactMap { $0 }.joined(separator: " ")
     }
 }
