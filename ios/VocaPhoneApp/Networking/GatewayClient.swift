@@ -150,7 +150,9 @@ struct GatewayClient: Sendable {
     func finish(sessionID: UUID) async throws -> GatewaySession {
         var request = URLRequest(url: endpoint("v1/sessions/\(sessionID.uuidString.lowercased())/finish"))
         request.httpMethod = "POST"
-        request.timeoutInterval = 90
+        // One-shot local engines can spend several minutes loading or compiling
+        // a newly selected model before their first transcription completes.
+        request.timeoutInterval = 540
         return try await perform(request, as: GatewaySession.self)
     }
 

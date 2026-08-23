@@ -78,7 +78,9 @@ class GatewayClient(
             .url(endpoint("v1", "sessions", sessionId.toString(), "finish"))
             .post(EMPTY_BODY)
             .build()
-        GatewaySession.from(execute(request, timeoutSeconds = 120).asJsonObject())
+        // One-shot local engines can spend several minutes loading or compiling
+        // a newly selected model before their first transcription completes.
+        GatewaySession.from(execute(request, timeoutSeconds = 540).asJsonObject())
     }
 
     suspend fun delete(sessionId: UUID) = withContext(Dispatchers.IO) {
