@@ -16,6 +16,64 @@ class TranscriptStylerTest {
     }
 
     @Test
+    fun `clean and formal flatten mid-sentence title case from the model`() {
+        val titled = "Hello There. The Keyboard Is Ready"
+        assertEquals(
+            "hello there. the keyboard is ready.",
+            TranscriptStyler.apply(titled, WritingStyle.CLEAN),
+        )
+        assertEquals(
+            "Hello there. The keyboard is ready.",
+            TranscriptStyler.apply(titled, WritingStyle.FORMAL),
+        )
+        assertEquals(
+            "Hello there. The keyboard is ready",
+            TranscriptStyler.apply(titled, WritingStyle.CASUAL),
+        )
+    }
+
+    @Test
+    fun `parakeet title case and chunk joins flatten under formal`() {
+        // Parakeet TDT emits native capitalization, and sherpa joins windows
+        // with a space, so the next window often starts with a capital mid-sentence.
+        assertEquals(
+            "I think we should go to the store.",
+            TranscriptStyler.apply(
+                "I Think We Should Go To The Store",
+                WritingStyle.FORMAL,
+            ),
+        )
+        assertEquals(
+            "Hello there how are you today.",
+            TranscriptStyler.apply(
+                "Hello there How are you today",
+                WritingStyle.FORMAL,
+            ),
+        )
+        assertEquals(
+            "Yes, it's ready now.",
+            TranscriptStyler.apply("Yes, It's Ready Now", WritingStyle.FORMAL),
+        )
+    }
+
+    @Test
+    fun `flattening keeps mixed-case names, acronyms, and the pronoun I`() {
+        val source = "I use VocaPhone and GraphQL at NASA today"
+        assertEquals(
+            "I use VocaPhone and GraphQL at NASA today.",
+            TranscriptStyler.apply(source, WritingStyle.CLEAN),
+        )
+        assertEquals(
+            "I use VocaPhone and GraphQL at NASA today.",
+            TranscriptStyler.apply(source, WritingStyle.FORMAL),
+        )
+        assertEquals(
+            "I went home.",
+            TranscriptStyler.apply("i went home", WritingStyle.CLEAN),
+        )
+    }
+
+    @Test
     fun `local styling keeps protected spans intact`() {
         val source = "Email John@Example.com at 3:30."
         assertEquals(

@@ -29,9 +29,9 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
         case .raw:
             "Exactly what the model returned, with nothing changed."
         case .clean:
-            "Spacing tidied and a closing full stop. Capitalization untouched."
+            "Spacing tidied and a closing full stop. Random capitals from the model are flattened; names like VocaPhone stay."
         case .formal:
-            "Sentence capitalization and a closing full stop."
+            "Sentence capitalization and a closing full stop. Mid-sentence Title Case from the model is flattened."
         case .casual:
             "Sentences kept, but no closing full stop."
         case .veryCasual:

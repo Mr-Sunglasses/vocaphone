@@ -134,6 +134,45 @@ enum class AudioRetention(val hours: Int) {
     }
 }
 
+/**
+ * How long an on-device model stays in RAM after the last dictation.
+ *
+ * Unloading frees battery and memory. Keeping it skips the multi-second load
+ * on the next tap. [WHILE_OPEN] only unloads if Android trims the process.
+ */
+enum class ModelIdleTimeout(val storedValue: String, val delayMs: Long) {
+    IMMEDIATELY("immediately", 0L),
+    THIRTY_SECONDS("30s", 30_000L),
+    TWO_MINUTES("2m", 2 * 60 * 1000L),
+    TEN_MINUTES("10m", 10 * 60 * 1000L),
+    WHILE_OPEN("while_open", -1L),
+    ;
+
+    val displayName: String
+        get() = when (this) {
+            IMMEDIATELY -> "Immediately"
+            THIRTY_SECONDS -> "30 seconds"
+            TWO_MINUTES -> "2 minutes"
+            TEN_MINUTES -> "10 minutes"
+            WHILE_OPEN -> "Until the app closes"
+        }
+
+    val detail: String
+        get() = when (this) {
+            IMMEDIATELY -> "Unload as soon as you stop dictating."
+            THIRTY_SECONDS -> "Keep the model ready for a quick follow-up."
+            TWO_MINUTES -> "A short pause between dictations will not reload."
+            TEN_MINUTES -> "Stay warm through a longer break."
+            WHILE_OPEN -> "Stay loaded until VocaPhone is killed or Android needs the RAM."
+        }
+
+    companion object {
+        val DEFAULT = TWO_MINUTES
+        fun fromStored(value: String?): ModelIdleTimeout =
+            entries.firstOrNull { it.storedValue == value } ?: DEFAULT
+    }
+}
+
 data class VocaPhoneSettings(
     val gatewayUrl: String = "",
     val hasToken: Boolean = false,
@@ -142,6 +181,7 @@ data class VocaPhoneSettings(
     val dictationTone: DictationTone = DictationTone.DEFAULT,
     val microphone: MicrophonePreference = MicrophonePreference.DEFAULT,
     val audioRetention: AudioRetention = AudioRetention.DEFAULT,
+    val modelIdleTimeout: ModelIdleTimeout = ModelIdleTimeout.DEFAULT,
     val onboardingComplete: Boolean = false,
     val lastEngine: String = "",
     val lastEngineReady: Boolean = false,
@@ -164,6 +204,11 @@ data class VocaPhoneSettings(
      * than stored pre-split, so the text they see back is the text they wrote.
      */
     val customVocabulary: String = "",
+    /**
+     * When true (the default), Whisper is biased with [personalDictionary]
+     * instead of [customVocabulary]. Turn it off to keep a separate list.
+     */
+    val syncWhisperDictionary: Boolean = true,
     val numberRowEnabled: Boolean = true,
     val keyboardHeight: KeyboardHeight = KeyboardHeight.COMPACT,
     val splitKeyboard: SplitKeyboard = SplitKeyboard.DEFAULT,
@@ -223,6 +268,13 @@ data class VocaPhoneSettings(
         get() = localModel?.detectsLanguage ?: modelDetectsLanguage
     val isConfigured: Boolean get() = gatewayUrl.isNotEmpty() && hasToken
     val hasLocalModelSelection: Boolean get() = localModelId.isNotEmpty()
+
+    /**
+     * Words actually handed to Whisper. The personal dictionary is the default
+     * source so names taught on the strip also bias dictation.
+     */
+    val whisperVocabulary: String
+        get() = if (syncWhisperDictionary) personalDictionary else customVocabulary
 }
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "vocaphone")
@@ -289,6 +341,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setAudioRetention(retention: AudioRetention) = put(Keys.RETENTION_HOURS, retention.hours)
 
+    suspend fun setModelIdleTimeout(timeout: ModelIdleTimeout) =
+        put(Keys.MODEL_IDLE_TIMEOUT, timeout.storedValue)
+
     suspend fun setOnboardingComplete(complete: Boolean) = put(Keys.ONBOARDING_COMPLETE, complete)
 
     suspend fun setLocalTranscriptionEnabled(enabled: Boolean) =
@@ -301,6 +356,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setCustomVocabulary(vocabulary: String) =
         put(Keys.CUSTOM_VOCABULARY, vocabulary)
+
+    suspend fun setSyncWhisperDictionary(enabled: Boolean) =
+        put(Keys.SYNC_WHISPER_DICTIONARY, enabled)
 
     suspend fun setNumberRowEnabled(enabled: Boolean) = put(Keys.NUMBER_ROW, enabled)
 
@@ -456,6 +514,7 @@ class SettingsRepository(private val context: Context) {
         dictationTone = DictationTone.fromStored(this[Keys.DICTATION_TONE]),
         microphone = MicrophonePreference.fromStored(this[Keys.MICROPHONE]),
         audioRetention = AudioRetention.fromHours(this[Keys.RETENTION_HOURS]),
+        modelIdleTimeout = ModelIdleTimeout.fromStored(this[Keys.MODEL_IDLE_TIMEOUT]),
         onboardingComplete = this[Keys.ONBOARDING_COMPLETE] ?: false,
         lastEngine = this[Keys.LAST_ENGINE].orEmpty(),
         lastEngineReady = this[Keys.LAST_ENGINE_READY] ?: false,
@@ -467,6 +526,7 @@ class SettingsRepository(private val context: Context) {
         localModelId = this[Keys.LOCAL_MODEL_ID].orEmpty(),
         transcriptionQuality = TranscriptionQuality.fromStored(this[Keys.TRANSCRIPTION_QUALITY]),
         customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),
+        syncWhisperDictionary = this[Keys.SYNC_WHISPER_DICTIONARY] ?: true,
         numberRowEnabled = this[Keys.NUMBER_ROW] ?: true,
         keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
         splitKeyboard = SplitKeyboard.fromStored(this[Keys.SPLIT_KEYBOARD]),
@@ -496,6 +556,7 @@ class SettingsRepository(private val context: Context) {
         val DICTATION_TONE = stringPreferencesKey("dictation_tone")
         val MICROPHONE = stringPreferencesKey("microphone_preference")
         val RETENTION_HOURS = intPreferencesKey("audio_retention_hours")
+        val MODEL_IDLE_TIMEOUT = stringPreferencesKey("model_idle_timeout")
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
         val LAST_ENGINE = stringPreferencesKey("last_engine")
         val LAST_ENGINE_READY = booleanPreferencesKey("last_engine_ready")
@@ -507,6 +568,7 @@ class SettingsRepository(private val context: Context) {
         val LOCAL_MODEL_ID = stringPreferencesKey("local_model_id")
         val TRANSCRIPTION_QUALITY = stringPreferencesKey("transcription_quality")
         val CUSTOM_VOCABULARY = stringPreferencesKey("custom_vocabulary")
+        val SYNC_WHISPER_DICTIONARY = booleanPreferencesKey("sync_whisper_dictionary")
         val NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
         val KEYBOARD_HEIGHT = stringPreferencesKey("keyboard_height")
         val SPLIT_KEYBOARD = stringPreferencesKey("keyboard_split")

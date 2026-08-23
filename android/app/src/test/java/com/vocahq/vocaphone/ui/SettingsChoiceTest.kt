@@ -5,6 +5,7 @@ import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.TranscriptStyler
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.settings.AudioRetention
+import com.vocahq.vocaphone.settings.ModelIdleTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,6 +27,16 @@ class SettingsChoiceTest {
         assertEquals(DictationTone.VOCA, DictationTone.fromStored("voca"))
         assertEquals(MicrophonePreference.AUTOMATIC, MicrophonePreference.fromStored("automatic"))
         assertEquals(AudioRetention.SIX_HOURS, AudioRetention.fromHours(6))
+        assertEquals(2 * 60 * 1000L, ModelIdleTimeout.TWO_MINUTES.delayMs)
+        assertEquals(-1L, ModelIdleTimeout.WHILE_OPEN.delayMs)
+        assertEquals(
+            ModelIdleTimeout.TWO_MINUTES,
+            ModelIdleTimeout.fromStored(null),
+        )
+        assertEquals(
+            ModelIdleTimeout.THIRTY_SECONDS,
+            ModelIdleTimeout.fromStored("30s"),
+        )
     }
 
     @Test
@@ -47,6 +58,7 @@ class SettingsChoiceTest {
         DictationTone.entries.forEach { assertTrue(it.detail.isNotBlank()) }
         MicrophonePreference.entries.forEach { assertTrue(it.detail.isNotBlank()) }
         AudioRetention.entries.forEach { assertTrue(it.detail.isNotBlank()) }
+        ModelIdleTimeout.entries.forEach { assertTrue(it.detail.isNotBlank()) }
         WritingStyle.entries.forEach { assertTrue(it.detail.isNotBlank()) }
     }
 

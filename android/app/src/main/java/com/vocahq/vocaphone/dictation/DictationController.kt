@@ -232,14 +232,29 @@ class DictationController(
                 style = configuration.style,
             )
             if (configuration.localTranscriptionEnabled) {
-                deliverLocal(
-                    sessionId = UUID.fromString(sessionId),
-                    wavFile = audio,
-                    language = record.language,
-                    configuration = configuration,
-                    source = DictationSource.COMPANION_APP,
-                    generation = generation,
-                )
+                val modelID = configuration.localModelId.takeIf { it.isNotEmpty() }
+                modelID?.let {
+                    localModels.beginUse()
+                    localModels.warm(
+                        it,
+                        record.language,
+                        configuration.transcriptionQuality,
+                    )
+                }
+                try {
+                    deliverLocal(
+                        sessionId = UUID.fromString(sessionId),
+                        wavFile = audio,
+                        language = record.language,
+                        configuration = configuration,
+                        source = DictationSource.COMPANION_APP,
+                        generation = generation,
+                    )
+                } finally {
+                    if (modelID != null) {
+                        localModels.endUse(configuration.modelIdleTimeout.delayMs)
+                    }
+                }
             } else {
                 val token = settings.token() ?: return@launch
                 deliverBatch(
@@ -288,6 +303,20 @@ class DictationController(
         val sessionFinishSignal = finishSignal
         val frames = Channel<ShortArray>(capacity = FILE_FRAME_BUFFER_CAPACITY)
         val selectedLocalModelID = configuration.localModelId.takeIf { it.isNotEmpty() }
+        if (configuration.localTranscriptionEnabled) {
+            selectedLocalModelID?.let { modelID ->
+                localModels.beginUse()
+                // Load weights while the mic is already capturing. Whisper used
+                // to wait until Finish, so the first dictation after a cold
+                // start spent seconds on "Transcribing" before the decoder ran.
+                localModels.warm(
+                    modelID,
+                    configuration.effectiveLanguage.wireValue,
+                    configuration.transcriptionQuality,
+                )
+            }
+        }
+        try {
         val incrementalSession = if (configuration.localTranscriptionEnabled) {
             selectedLocalModelID?.let { modelID ->
                 localModels.startIncrementalSession(
@@ -688,6 +717,11 @@ class DictationController(
             source,
             generation,
         )
+        } finally {
+            if (configuration.localTranscriptionEnabled && selectedLocalModelID != null) {
+                localModels.endUse(settings.current().modelIdleTimeout.delayMs)
+            }
+        }
     }
 
     /**
@@ -794,7 +828,7 @@ class DictationController(
                 modelID,
                 language,
                 configuration.transcriptionQuality,
-                configuration.customVocabulary,
+                configuration.whisperVocabulary,
                 conditioningStartSample,
             )
             val transcript = styleLocalTranscript(local, configuration)

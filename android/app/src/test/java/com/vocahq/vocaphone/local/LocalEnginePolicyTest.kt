@@ -92,4 +92,13 @@ class LocalEnginePolicyTest {
             ),
         )
     }
+
+    @Test
+    fun `an idle engine is unloaded after two minutes with no users`() {
+        assertFalse(idleEngineUnloadDue(users = 1, lastIdleAtMs = 0L, nowMs = 10 * 60 * 1000L))
+        assertFalse(idleEngineUnloadDue(users = 0, lastIdleAtMs = 0L, nowMs = 60_000L))
+        assertTrue(idleEngineUnloadDue(users = 0, lastIdleAtMs = 0L, nowMs = LOCAL_ENGINE_IDLE_UNLOAD_MS))
+        assertTrue(idleEngineUnloadDue(users = 0, lastIdleAtMs = 0L, nowMs = 30_000L, idleMs = 30_000L))
+        assertFalse(idleEngineUnloadDue(users = 0, lastIdleAtMs = 0L, nowMs = 10_000L, idleMs = 30_000L))
+    }
 }

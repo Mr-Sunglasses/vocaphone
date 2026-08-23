@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone
 
 import android.app.Application
+import android.content.ComponentCallbacks2
 import android.content.Context
 import androidx.room.Room
 import com.vocahq.vocaphone.audio.DictationTonePlayer
@@ -135,6 +136,13 @@ class VocaPhoneApplication : Application() {
         // is explained in the log the user pastes, not only after they manage
         // to reproduce it with a cable attached.
         container.reportProcessExits()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) {
+            container.localModels.releaseIfIdle()
+        }
     }
 
     companion object {

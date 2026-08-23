@@ -46,6 +46,7 @@ import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.KeyboardHeight
+import com.vocahq.vocaphone.settings.ModelIdleTimeout
 import com.vocahq.vocaphone.settings.SplitKeyboard
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.telemetry.TelemetryInspectPayload
@@ -85,8 +86,10 @@ fun SettingsScreen(
     tonePreviewListening: Boolean,
     onMicrophone: (MicrophonePreference) -> Unit,
     onAudioRetention: (AudioRetention) -> Unit,
+    onModelIdleTimeout: (ModelIdleTimeout) -> Unit,
     onTranscriptionQuality: (TranscriptionQuality) -> Unit,
     onCustomVocabulary: (String) -> Unit,
+    onSyncWhisperDictionary: (Boolean) -> Unit,
     onNumberRow: (Boolean) -> Unit,
     onKeyboardHeight: (KeyboardHeight) -> Unit,
     onSplitKeyboard: (SplitKeyboard) -> Unit,
@@ -372,6 +375,25 @@ fun SettingsScreen(
                     onSelect = onMicrophone,
                 )
                 Section(
+                    title = "Keep model loaded",
+                    supporting = "After you stop dictating, how long the on-device model " +
+                        "stays in RAM. Unloading saves battery; keeping it makes the next " +
+                        "dictation start faster.",
+                ) {
+                    SettingDropdown(
+                        options = ModelIdleTimeout.entries,
+                        selected = settings.modelIdleTimeout,
+                        label = { it.displayName },
+                        detail = { it.detail },
+                        onSelect = onModelIdleTimeout,
+                    )
+                    Text(
+                        settings.modelIdleTimeout.detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Section(
                     title = "Audio and transcript retention",
                     supporting = "Successful dictations delete their audio immediately. A " +
                         "failed one keeps it only this long, so Retry still works.",
@@ -400,6 +422,9 @@ fun SettingsScreen(
                 )
                 CustomVocabularySection(
                     vocabulary = settings.customVocabulary,
+                    personalDictionary = settings.personalDictionary,
+                    synced = settings.syncWhisperDictionary,
+                    onSyncedChange = onSyncWhisperDictionary,
                     onSave = onCustomVocabulary,
                     unsupportedModel = localModel
                         ?.takeIf { settings.localTranscriptionEnabled && !it.supportsCustomVocabulary }
@@ -525,7 +550,8 @@ private fun PersonalDictionarySection(
     Section(
         title = "Personal dictionary",
         supporting = "Names and jargon the English list misses. " +
-            "Separate with commas. Off in passwords.",
+            "Separate with commas. Off in passwords. " +
+            "Whisper uses this list too unless you turn that off under Dictation.",
     ) {
         OutlinedTextField(
             value = draft,
@@ -619,11 +645,15 @@ private fun PersonalDictionarySection(
 @Composable
 private fun CustomVocabularySection(
     vocabulary: String,
+    personalDictionary: String,
+    synced: Boolean,
+    onSyncedChange: (Boolean) -> Unit,
     onSave: (String) -> Unit,
     unsupportedModel: String?,
 ) {
     var draft by remember(vocabulary) { mutableStateOf(vocabulary) }
-    val terms = remember(draft) { CustomVocabulary.terms(draft) }
+    val source = if (synced) personalDictionary else draft
+    val terms = remember(source) { CustomVocabulary.terms(source) }
     val whisperWarning = CustomVocabulary.whisperOnlyWarning(unsupportedModel)
     val whisperOnly = whisperWarning != null
 
@@ -632,6 +662,15 @@ private fun CustomVocabularySection(
         supporting = "Names, places, and jargon an on-device Whisper model is " +
             "unlikely to know. One per line, or separated by commas.",
     ) {
+        // Switch, not a checkbox: Material 3 uses switches for independent
+        // on/off settings. A checkbox is for picking items from a list.
+        SettingToggle(
+            title = "Use personal dictionary",
+            detail = "Whisper sees the same names as the suggestion strip. " +
+                "Turn this off to keep a separate list.",
+            checked = synced,
+            onCheckedChange = onSyncedChange,
+        )
         if (whisperWarning != null) {
             Notice(tone = NoticeTone.Warning) {
                 Text(whisperWarning, style = MaterialTheme.typography.bodyMedium)
@@ -641,34 +680,51 @@ private fun CustomVocabularySection(
                 )
             }
         }
-        OutlinedTextField(
-            value = draft,
-            onValueChange = { draft = it },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !whisperOnly,
-            label = { Text("Words and phrases") },
-            placeholder = { Text("Kanishk\nVocaHQ\nTailscale") },
-            minLines = 3,
-            maxLines = 6,
-        )
-        if (!whisperOnly) {
+        if (synced) {
             Text(
-                if (terms.isEmpty()) {
-                    "No custom words. Transcription is unchanged."
-                } else {
-                    "${terms.size} word${if (terms.size == 1) "" else "s"} will bias the decoder. " +
-                        "This nudges spelling rather than guaranteeing it, and a very long " +
-                        "list starts to crowd out the speech itself."
+                when (terms.size) {
+                    0 -> "No words in the personal dictionary. Transcription is unchanged."
+                    1 -> "1 word from the personal dictionary will bias Whisper."
+                    else -> "${terms.size} words from the personal dictionary will bias Whisper."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(
+                "Edit them under Keyboard → Personal dictionary.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !whisperOnly,
+                label = { Text("Words and phrases") },
+                placeholder = { Text("Kanishk\nVocaHQ\nTailscale") },
+                minLines = 3,
+                maxLines = 6,
+            )
+            if (!whisperOnly) {
+                Text(
+                    if (terms.isEmpty()) {
+                        "No custom words. Transcription is unchanged."
+                    } else {
+                        "${terms.size} word${if (terms.size == 1) "" else "s"} will bias the decoder. " +
+                            "This nudges spelling rather than guaranteeing it, and a very long " +
+                            "list starts to crowd out the speech itself."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            SecondaryButton(
+                text = "Save words",
+                onClick = { onSave(draft) },
+                enabled = !whisperOnly && draft != vocabulary,
+            )
         }
-        SecondaryButton(
-            text = "Save words",
-            onClick = { onSave(draft) },
-            enabled = !whisperOnly && draft != vocabulary,
-        )
     }
 }
 

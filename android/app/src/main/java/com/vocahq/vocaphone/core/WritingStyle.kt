@@ -27,8 +27,10 @@ enum class WritingStyle(val wireValue: String) {
     val detail: String
         get() = when (this) {
             RAW -> "Exactly what the model returned, with nothing changed."
-            CLEAN -> "Spacing tidied and a closing full stop. Capitalization untouched."
-            FORMAL -> "Sentence capitalization and a closing full stop."
+            CLEAN -> "Spacing tidied and a closing full stop. " +
+                "Random capitals from the model are flattened; names like VocaPhone stay."
+            FORMAL -> "Sentence capitalization and a closing full stop. " +
+                "Mid-sentence Title Case from the model is flattened."
             CASUAL -> "Sentences kept, but no closing full stop."
             VERY_CASUAL -> "All lowercase, sentences joined with commas."
             EXCITED -> "Every statement ends with an exclamation mark."

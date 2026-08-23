@@ -29,12 +29,47 @@ struct TranscriptStylerTests {
         )
     }
 
+    @Test func cleanAndFormalFlattenMidSentenceTitleCase() {
+        let titled = "Hello There. The Keyboard Is Ready"
+        #expect(TranscriptStyler.apply(titled, style: .clean) == "hello there. the keyboard is ready.")
+        #expect(TranscriptStyler.apply(titled, style: .formal) == "Hello there. The keyboard is ready.")
+        #expect(TranscriptStyler.apply(titled, style: .casual) == "Hello there. The keyboard is ready")
+    }
+
+    @Test func parakeetTitleCaseAndChunkJoinsFlattenUnderFormal() {
+        #expect(
+            TranscriptStyler.apply("I Think We Should Go To The Store", style: .formal)
+                == "I think we should go to the store."
+        )
+        #expect(
+            TranscriptStyler.apply("Hello there How are you today", style: .formal)
+                == "Hello there how are you today."
+        )
+        #expect(
+            TranscriptStyler.apply("Yes, It's Ready Now", style: .formal)
+                == "Yes, it's ready now."
+        )
+    }
+
+    @Test func flatteningKeepsMixedCaseNamesAcronymsAndPronounI() {
+        let source = "I use VocaPhone and GraphQL at NASA today"
+        #expect(TranscriptStyler.apply(source, style: .clean) == "I use VocaPhone and GraphQL at NASA today.")
+        #expect(TranscriptStyler.apply(source, style: .formal) == "I use VocaPhone and GraphQL at NASA today.")
+        #expect(TranscriptStyler.apply("i went home", style: .clean) == "I went home.")
+    }
+
     @Test func localStylingKeepsProtectedSpansIntact() {
         #expect(
             TranscriptStyler.apply(
                 "Email John@Example.com at 3:30.",
                 style: .veryCasual
             ) == "email John@Example.com at 3:30"
+        )
+        #expect(
+            TranscriptStyler.apply(
+                "Email John@Example.com at 3:30.",
+                style: .formal
+            ) == "Email John@Example.com at 3:30."
         )
     }
 

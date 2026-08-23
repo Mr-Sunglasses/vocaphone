@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.core
 
+import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -60,5 +61,28 @@ class CustomVocabularyTest {
         )
         assertEquals(null, CustomVocabulary.whisperOnlyWarning(null))
         assertEquals(null, CustomVocabulary.whisperOnlyWarning(""))
+    }
+
+    @Test
+    fun `whisper uses the personal dictionary until the user unlinks them`() {
+        val personal = "Grafana, Kubernetes"
+        val custom = "Kanishk\nVocaHQ"
+        assertEquals(
+            personal,
+            VocaPhoneSettings(
+                personalDictionary = personal,
+                customVocabulary = custom,
+                syncWhisperDictionary = true,
+            ).whisperVocabulary,
+        )
+        assertEquals(
+            custom,
+            VocaPhoneSettings(
+                personalDictionary = personal,
+                customVocabulary = custom,
+                syncWhisperDictionary = false,
+            ).whisperVocabulary,
+        )
+        assertTrue(VocaPhoneSettings().syncWhisperDictionary)
     }
 }

@@ -60,7 +60,7 @@ enum TranscriptStyler {
         terminators: "།.!?", join: " "
     )
 
-    private static let protectedPattern = "(?i)(https?://[^\\s]+[^\\s.,;:!?\\\"“”'\\)\\]]|[\\w.+-]+@(?:[\\w-]+\\.)+[A-Za-z]{2,}|(?:[\\w-]+\\.)+[A-Za-z]{2,}(?:/[^\\s.,;:!?\\\"“”'\\)\\]]*)?|\\d+(?:[.,:/]\\d+)+|\\d+(?:st|nd|rd|th)\\b|(?:[A-Za-z]\\.){2,}|\\w+['’]\\w+)"
+    private static let protectedPattern = "(?i)(https?://[^\\s]+[^\\s.,;:!?\\\"“”'\\)\\]]|[\\w.+-]+@(?:[\\w-]+\\.)+[A-Za-z]{2,}|(?:[\\w-]+\\.)+[A-Za-z]{2,}(?:/[^\\s.,;:!?\\\"“”'\\)\\]]*)?|\\d+(?:[.,:/]\\d+)+|\\d+(?:st|nd|rd|th)\\b|(?:[A-Za-z]\\.){2,})"
     private static let placeholderPattern = "__VOCA_TOKEN_(\\d+)__"
 
     static func apply(
@@ -78,23 +78,33 @@ enum TranscriptStyler {
             normalizeSpacing(masked.text),
             punctuation: punctuation
         )
+        // Whisper and Parakeet Title-Case content words. Flatten those before
+        // Clean/Formal/Casual so mid-sentence capitals are not left as-is.
+        // Mixed-case names and ALL-CAPS acronyms stay.
+        let flattened: String
+        switch style {
+        case .raw, .veryCasual:
+            flattened = normalized
+        default:
+            flattened = flattenModelCaps(normalized)
+        }
         let result: String
         switch style {
         case .raw:
             result = normalized
         case .clean:
-            result = ensureTerminator(normalized, punctuation: punctuation)
+            result = ensureTerminator(flattened, punctuation: punctuation)
         case .formal:
             result = ensureTerminator(
-                capitalizeSentenceStarts(normalized, punctuation: punctuation),
+                capitalizeSentenceStarts(flattened, punctuation: punctuation),
                 punctuation: punctuation
             )
         case .casual:
-            result = casual(normalized, punctuation: punctuation)
+            result = casual(flattened, punctuation: punctuation)
         case .veryCasual:
             result = veryCasual(segments(normalized, punctuation: punctuation), punctuation: punctuation)
         case .excited:
-            result = excited(segments(normalized, punctuation: punctuation), punctuation: punctuation)
+            result = excited(segments(flattened, punctuation: punctuation), punctuation: punctuation)
         }
         let lowered = style == .veryCasual ? lowerOutsidePlaceholders(result) : result
         return restore(lowered, tokens: masked.tokens)
@@ -161,6 +171,29 @@ enum TranscriptStyler {
         return Masked(text: String(result), tokens: tokens)
     }
 
+    /// Index of the last character of `__VOCA_TOKEN_<n>__` starting at `index`.
+    private static func endOfPlaceholder(in characters: [Character], from index: Int) -> Int? {
+        let prefix: [Character] = Array("__VOCA_TOKEN_")
+        guard index + prefix.count + 3 <= characters.count else { return nil }
+        for offset in prefix.indices where characters[index + offset] != prefix[offset] {
+            return nil
+        }
+        var cursor = index + prefix.count
+        var sawDigit = false
+        while cursor < characters.count {
+            let character = characters[cursor]
+            guard character >= "0", character <= "9" else { break }
+            sawDigit = true
+            cursor += 1
+        }
+        guard sawDigit,
+              cursor + 1 < characters.count,
+              characters[cursor] == "_",
+              characters[cursor + 1] == "_"
+        else { return nil }
+        return cursor + 1
+    }
+
     private static func restore(_ text: String, tokens: [String]) -> String {
         let regex = try! NSRegularExpression(pattern: placeholderPattern)
         let original = text as NSString
@@ -216,6 +249,70 @@ enum TranscriptStyler {
         guard !text.isEmpty, !punctuation.terminator.isEmpty else { return text }
         guard let last = text.last, !punctuation.terminators.contains(last) else { return text }
         return text + punctuation.terminator
+    }
+
+    /// Drop Title Case the model invented, keep tokens that look like names.
+    private static func flattenModelCaps(_ text: String) -> String {
+        var result = ""
+        result.reserveCapacity(text.count)
+        let characters = Array(text)
+        var index = 0
+        while index < characters.count {
+            // `__VOCA_TOKEN_N__` contains the letters TOKEN. Copy the marker
+            // whole; flatten would lowercase it and restore could not match.
+            if let end = endOfPlaceholder(in: characters, from: index) {
+                result.append(contentsOf: characters[index...end])
+                index = end + 1
+                continue
+            }
+            let character = characters[index]
+            if character.isLetter {
+                let start = index
+                index += 1
+                while index < characters.count {
+                    let next = characters[index]
+                    if next.isLetter || next == "'" || next == "’" {
+                        index += 1
+                    } else {
+                        break
+                    }
+                }
+                result += softenToken(String(characters[start..<index]))
+            } else {
+                result.append(character)
+                index += 1
+            }
+        }
+        return result
+    }
+
+    private static func softenToken(_ token: String) -> String {
+        if isPronounI(token) {
+            let body = token.drop { !$0.isLetter }
+            return String(token.dropLast(body.count)) + "I" + body.dropFirst()
+        }
+        let letters = token.filter(\.isLetter)
+        if letters.isEmpty { return token }
+        let hasLower = letters.contains { $0.isLowercase }
+        let hasUpper = letters.contains { $0.isUppercase }
+        if !hasLower && (2...4).contains(letters.count) { return token }
+        if !hasLower && letters.count > 4 { return token.lowercased() }
+        if hasLower && hasUpper {
+            let body = token.drop { !$0.isLetter }
+            guard let first = body.first else { return token }
+            let titleCase = first.isUppercase && !body.dropFirst().contains(where: \.isUppercase)
+            if !titleCase { return token }
+        }
+        return token.lowercased()
+    }
+
+    private static func isPronounI(_ token: String) -> Bool {
+        let letters = token.filter(\.isLetter)
+        guard let first = letters.first, first == "I" || first == "i" else { return false }
+        let rest = String(letters.dropFirst()).lowercased()
+        if rest.isEmpty { return true }
+        let contracted = token.contains("'") || token.contains("’")
+        return contracted && ["m", "ll", "d", "ve", "re", "s"].contains(rest)
     }
 
     private static func capitalizeSentenceStarts(_ text: String, punctuation: Punctuation) -> String {

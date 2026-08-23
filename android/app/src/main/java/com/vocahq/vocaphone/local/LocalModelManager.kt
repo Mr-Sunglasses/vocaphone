@@ -15,11 +15,13 @@ import java.nio.ByteOrder
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,6 +72,21 @@ data class LocalModelState(
 /** Leaving the picker or the activity must not cancel a running download. */
 const val CANCEL_MODEL_DOWNLOAD_WHEN_HOST_LEAVES = false
 
+/**
+ * After the last dictation the native weights sit in RAM and keep the CPU
+ * from sleeping. Two minutes of no use is long enough to start another
+ * dictation without a reload, and short enough that a phone left in a bag
+ * is not holding a gigabyte of weights all afternoon.
+ */
+internal const val LOCAL_ENGINE_IDLE_UNLOAD_MS = 2 * 60 * 1000L
+
+internal fun idleEngineUnloadDue(
+    users: Int,
+    lastIdleAtMs: Long,
+    nowMs: Long,
+    idleMs: Long = LOCAL_ENGINE_IDLE_UNLOAD_MS,
+): Boolean = users <= 0 && nowMs - lastIdleAtMs >= idleMs
+
 /** Owns model storage, atomic downloads, and the verified inference engine. */
 class LocalModelManager(
     context: Context,
@@ -83,6 +100,9 @@ class LocalModelManager(
     private val modelRoot = File(appContext.filesDir, LOCAL_MODELS_DIR).also { it.mkdirs() }
     private val downloadMutex = Mutex()
     private val engineMutex = Mutex()
+    private val engineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val engineUsers = AtomicInteger(0)
+    private var idleUnloadJob: Job? = null
     private val _state = MutableStateFlow(LocalModelState())
     val state: StateFlow<LocalModelState> = _state.asStateFlow()
     private val totalRamGB: Long by lazy {
@@ -347,6 +367,57 @@ class LocalModelManager(
     }
 
     /**
+     * A dictation owns the engine until [endUse]. Cancels an idle unload so a
+     * model loaded during recording is not freed under the decoder.
+     */
+    fun beginUse() {
+        cancelIdleUnload()
+        engineUsers.incrementAndGet()
+    }
+
+    fun endUse(idleMs: Long = LOCAL_ENGINE_IDLE_UNLOAD_MS) {
+        if (engineUsers.decrementAndGet() <= 0) {
+            engineUsers.set(0)
+            scheduleIdleUnload(idleMs)
+        }
+    }
+
+    /**
+     * Start loading weights without waiting. Recording can begin on the same
+     * tap; [transcribe] joins this work via [engineMutex].
+     */
+    fun warm(modelID: String, language: String, quality: TranscriptionQuality) {
+        cancelIdleUnload()
+        engineScope.launch {
+            runCatching { prepare(modelID, language, quality) }
+        }
+    }
+
+    /** Drop native weights now if nothing is dictating. Used on memory trim. */
+    fun releaseIfIdle() {
+        if (engineUsers.get() > 0) return
+        cancelIdleUnload()
+        engineScope.launch {
+            engineMutex.withLock { releaseEngines() }
+        }
+    }
+
+    private fun scheduleIdleUnload(idleMs: Long) {
+        cancelIdleUnload()
+        if (idleMs < 0L) return
+        idleUnloadJob = engineScope.launch {
+            if (idleMs > 0L) delay(idleMs)
+            if (engineUsers.get() > 0) return@launch
+            engineMutex.withLock { releaseEngines() }
+        }
+    }
+
+    private fun cancelIdleUnload() {
+        idleUnloadJob?.cancel()
+        idleUnloadJob = null
+    }
+
+    /**
      * Loads the engine before a dictation needs it.
      *
      * Model loading is measured in seconds, and until now it always happened on
@@ -395,6 +466,7 @@ class LocalModelManager(
         // Stat-only: cheap enough to run per dictation, unlike a digest pass.
         withContext(Dispatchers.IO) { LocalModelIntegrity.verifySizes(model, directory) }
 
+        cancelIdleUnload()
         engineMutex.withLock {
             if (
                 shouldReloadLocalEngine(

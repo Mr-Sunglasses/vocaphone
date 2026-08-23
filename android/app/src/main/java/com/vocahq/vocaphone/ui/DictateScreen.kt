@@ -4,7 +4,6 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,6 +31,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.R
@@ -116,10 +116,13 @@ fun DictateScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        FlowRow(
+        // One row. FlowRow dropped the model chip onto a second line as soon as
+        // the name got longer than "Moonshine Tiny" (Parakeet TDT 0.6B). Language
+        // and style hug; the model takes what is left and ellipsizes. VoiceOver
+        // still reads the full labels.
+        Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             DictateAssistChip(
                 icon = R.drawable.ic_language,
@@ -143,6 +146,7 @@ fun DictateScreen(
                 label = compactModelChipLabel(modelLabel),
                 contentDescription = "${DictateCopy.MODEL}, $modelLabel",
                 onClick = onOpenModel,
+                modifier = Modifier.weight(1f, fill = false),
             )
         }
 
@@ -299,11 +303,18 @@ private fun DictateAssistChip(
     label: String,
     contentDescription: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     AssistChip(
         onClick = onClick,
-        modifier = Modifier.semantics { this.contentDescription = contentDescription },
-        label = { Text(label, maxLines = 1) },
+        modifier = modifier.semantics { this.contentDescription = contentDescription },
+        label = {
+            Text(
+                text = label,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
         leadingIcon = {
             Icon(
                 painter = painterResource(icon),
