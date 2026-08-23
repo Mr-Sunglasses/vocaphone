@@ -19,6 +19,14 @@ function heroActions(source) {
   return match[0];
 }
 
+function pngDimensions(buffer) {
+  assert.equal(buffer.toString("ascii", 1, 4), "PNG", "asset must be a PNG");
+  return {
+    width: buffer.readUInt32BE(16),
+    height: buffer.readUInt32BE(20),
+  };
+}
+
 function androidInstallBlock(source) {
   const match = source.match(
     /<article class="install-card reveal">[\s\S]*?<h3>Android<\/h3>[\s\S]*?<\/article>/,
@@ -121,6 +129,8 @@ test("production metadata is complete", () => {
   for (const asset of [
     "assets/og-image.png",
     "assets/social-card.png",
+    "assets/og/src/og-default.html",
+    "assets/og/src/preview.html",
     "assets/apple-touch-icon.png",
     "favicon.ico",
     "robots.txt",
@@ -128,6 +138,25 @@ test("production metadata is complete", () => {
     "site.webmanifest",
   ]) {
     assert.ok(existsSync(join(siteRoot, asset)), `Missing ${asset}`);
+  }
+
+  const ogImage = readFileSync(join(siteRoot, "assets/og-image.png"));
+  const socialCard = readFileSync(join(siteRoot, "assets/social-card.png"));
+  assert.deepEqual(pngDimensions(ogImage), { width: 1200, height: 630 });
+  assert.deepEqual(pngDimensions(socialCard), { width: 1200, height: 630 });
+});
+
+test("Open Graph card follows the Voca paper language", () => {
+  const ogSource = readFileSync(join(siteRoot, "assets/og/src/og-default.html"), "utf8");
+  assert.match(ogSource, /--paper:\s*#f4f1e8/);
+  assert.match(ogSource, /--ink:\s*#14231c/);
+  assert.match(ogSource, /--brand:\s*#0f6b57/);
+  assert.match(ogSource, /android-keyboard\.jpg/);
+  assert.match(ogSource, /gateway optional/);
+  assert.doesNotMatch(ogSource, /iPhone source/i);
+  const bannedFunction = ["linear-" + "gradient", "radial-" + "gradient", "conic-" + "gradient"];
+  for (const token of bannedFunction) {
+    assert.ok(!ogSource.includes(token), `Unexpected ${token} in OG source`);
   }
 });
 

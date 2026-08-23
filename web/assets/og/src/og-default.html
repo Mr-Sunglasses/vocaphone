@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1200, initial-scale=1">
+<title>VocaPhone social card</title>
+<style>
+/* Rasterize at 1200x630. From web/, serve this file and screenshot the
+ * viewport with Playwright (Chromium --screenshot clips the proof line):
+ *
+ *   python3 -m http.server 4173 --bind 127.0.0.1
+ *   then capture 1200x630 to assets/og-image.png and copy to social-card.png
+ *
+ * Keep this file gradient-free.
+ */
+:root {
+  --paper: #f4f1e8;
+  --paper-deep: #ebe5d8;
+  --paper-bright: #fffdf7;
+  --ink: #14231c;
+  --muted: #58625c;
+  --faint: #5f6861;
+  --line: #c9c8bd;
+  --line-dark: #9ea59f;
+  --brand: #0f6b57;
+  --brand-dark: #0b493d;
+  --mint: #cfe9dc;
+  --mint-soft: #e5f2eb;
+  --sun: #e9b949;
+  --red: #de6a57;
+  --display: "Avenir Next", "SF Pro Display", "Helvetica Neue", "Nimbus Sans", Helvetica, Arial, sans-serif;
+  --body: Inter, "Nimbus Sans", ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, "Ubuntu Mono", Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 1200px;
+  height: 630px;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  color: var(--ink);
+  background: var(--paper) url("../../paper-dots.svg") repeat;
+  font-family: var(--body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.frame {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 62px 64px 56px 72px;
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  padding-bottom: 48px;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 520px;
+  gap: 28px;
+  align-items: stretch;
+  height: 100%;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--display);
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.brand img {
+  width: 38px;
+  height: 38px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  align-self: start;
+  margin: 28px 0 0;
+  padding: 9px 16px;
+  border: 1.5px solid var(--mint);
+  border-radius: 18px;
+  background: var(--mint-soft);
+  color: var(--brand-dark);
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 26px 0 0;
+  font-family: var(--display);
+  font-size: 62px;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.08;
+}
+
+h1 em {
+  display: block;
+  font-style: italic;
+  font-weight: 600;
+}
+
+.lede {
+  max-width: 34ch;
+  margin: 24px 0 0;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.proof {
+  position: absolute;
+  left: 72px;
+  bottom: 56px;
+  z-index: 4;
+  width: 464px;
+  margin: 0;
+  padding-top: 16px;
+  border-top: 1.5px solid var(--line);
+  color: #5f6861;
+  font-family: "Ubuntu Mono", Consolas, monospace;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.stage {
+  position: relative;
+  height: 512px;
+}
+
+.phone {
+  position: absolute;
+  top: 8px;
+  left: 96px;
+  width: 236px;
+  height: 508px;
+  padding: 8px;
+  overflow: hidden;
+  border-radius: 34px;
+  background: #171b19;
+  border: 1.5px solid #111;
+  box-shadow: 0 22px 55px rgb(21 37 29 / 16%);
+  transform: rotate(-2.5deg);
+}
+
+.phone img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+  border-radius: 26px;
+  background: var(--paper-bright);
+}
+
+.sticker {
+  position: absolute;
+  top: 18px;
+  right: 4px;
+  z-index: 3;
+  width: 168px;
+  padding: 16px 14px 14px;
+  border: 1px solid #829a65;
+  background: #dfecc6;
+  box-shadow: 0 8px 18px rgb(26 44 34 / 15%);
+  color: #2b3a32;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  text-transform: uppercase;
+  text-align: center;
+  transform: rotate(7deg);
+}
+
+.chip {
+  position: absolute;
+  right: 10px;
+  bottom: 42px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1.5px solid var(--mint);
+  border-radius: 7px;
+  background: var(--mint-soft);
+  color: var(--brand-dark);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  transform: rotate(5deg);
+}
+
+.chip i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand);
+}
+</style>
+</head>
+<body>
+  <main class="frame">
+    <div class="layout">
+      <section class="copy">
+        <div class="brand">
+          <img src="../../vocaphone-logo.svg" width="38" height="38" alt="">
+          <span>VocaPhone</span>
+        </div>
+        <p class="tag">Private voice keyboard</p>
+        <h1>voice typing<br><em>that stays yours.</em></h1>
+        <p class="lede">Run speech-to-text on your phone, or use your optional private gateway.</p>
+      </section>
+
+      <section class="stage" aria-label="VocaPhone keyboard on Android">
+        <div class="phone">
+          <img
+            src="../../screenshots/android-keyboard.jpg"
+            width="576"
+            height="1280"
+            alt=""
+          >
+        </div>
+        <div class="sticker">Real Android app<br>gateway optional</div>
+        <div class="chip"><i></i>on-device first</div>
+      </section>
+    </div>
+    <p class="proof">Android 13+ · iOS 17+ · gateway optional · AGPL-3.0</p>
+  </main>
+</body>
+</html>
