@@ -31,7 +31,7 @@ VocaPhone is the phone side of the [Voca](https://github.com/VocaHQ) family,
 next to [VocaLinux](https://github.com/VocaHQ/vocalinux),
 [VocaMac](https://github.com/VocaHQ/vocamac), and
 [VocaWin](https://github.com/VocaHQ/vocawin). VocaWin is an unsigned
-Beta on [GitHub Releases](https://github.com/VocaHQ/vocawin/releases).
+Beta on [GitHub Releases](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-beta.1).
 SmartScreen is expected; it is not a store ship.
 
 Licensed under [AGPL-3.0](LICENSE): free to use, study, modify, and share, with
@@ -84,7 +84,7 @@ the active cursor. A gateway is never required for on-device mode.
 | --- | --- | --- | --- |
 | Linux | VocaLinux | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available now |
 | macOS | VocaMac | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
-| Windows | VocaWin | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta · [releases](https://github.com/VocaHQ/vocawin/releases) |
+| Windows | VocaWin | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta · [v0.1.0-beta.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-beta.1) |
 | iOS / Android | VocaPhone | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS TestFlight · [site](https://vocaphone.vocahq.com) |
 
 Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
