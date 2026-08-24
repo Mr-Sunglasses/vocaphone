@@ -1,0 +1,571 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:KeyboardModel.kt:EditorCursorSync$newCandidatesStart &lt; 0 &amp;&amp; oldCandidatesStart &gt;= 0 &amp;&amp; collapsed &amp;&amp; newSelStart &gt;= oldCandidatesEnd &amp;&amp; newSelStart &lt;= oldCandidatesEnd + 1</ID>
+    <ID>ComplexCondition:LocalModelManager.kt:spokenLanguage != null &amp;&amp; translationNeedsExplicitSource &amp;&amp; (spokenLanguage.isEmpty() || spokenLanguage == "auto")</ID>
+    <ID>ComplexCondition:MainActivity.kt:!showSetup &amp;&amp; !showingGateway &amp;&amp; destination == Destination.HISTORY &amp;&amp; history.isNotEmpty()</ID>
+    <ID>ComplexCondition:SuggestionEngine.kt:SuggestionEngine$i &gt; 1 &amp;&amp; j &gt; 1 &amp;&amp; leftChar == right[j - 2] &amp;&amp; left[i - 2] == right[j - 1]</ID>
+    <ID>ComplexCondition:TextInsertion.kt:TextInsertion$next != null &amp;&amp; !next.isWhitespace() &amp;&amp; !isPunctuation(next) &amp;&amp; !result.last().isWhitespace()</ID>
+    <ID>ComplexCondition:TranscriptStyler.kt:TranscriptStyler$index &lt; text.length &amp;&amp; (text[index].isLetter() || text[index] == '\'' || text[index] == '’')</ID>
+    <ID>CyclomaticComplexMethod:DictateScreen.kt:@Composable fun DictateScreen</ID>
+    <ID>CyclomaticComplexMethod:DictationController.kt:DictationController$@SuppressLint("MissingPermission") private suspend fun runDictation</ID>
+    <ID>CyclomaticComplexMethod:DictationController.kt:DictationController$private fun telemetryReason: TelemetryReason</ID>
+    <ID>CyclomaticComplexMethod:DictationTonePlayer.kt:private fun parseWav: Long</ID>
+    <ID>CyclomaticComplexMethod:EmojiSuggestions.kt:EmojiSuggestions$private fun resolvePrimary: String?</ID>
+    <ID>CyclomaticComplexMethod:GatewayEndpoint.kt:GatewayEndpoint$private fun isPrivateIPv4: Boolean</ID>
+    <ID>CyclomaticComplexMethod:GatewayScreen.kt:@Composable fun GatewayScreen</ID>
+    <ID>CyclomaticComplexMethod:GatewayScreen.kt:@Composable private fun GatewayNextStepBar</ID>
+    <ID>CyclomaticComplexMethod:HistoryScreen.kt:@OptIn(ExperimentalFoundationApi::class) @Composable private fun HistoryRow</ID>
+    <ID>CyclomaticComplexMethod:KeyboardModel.kt:KeyboardReducer$fun press: KeyboardReduction</ID>
+    <ID>CyclomaticComplexMethod:LanguagePickerSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LanguagePickerSheet</ID>
+    <ID>CyclomaticComplexMethod:LocalModelPicker.kt:@Composable private fun ModelTile</ID>
+    <ID>CyclomaticComplexMethod:LocalModelPicker.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LocalModelPicker</ID>
+    <ID>CyclomaticComplexMethod:MainActivity.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun VocaPhoneApp</ID>
+    <ID>CyclomaticComplexMethod:OfflineRecognizer.kt:fun getOfflineModelConfig: OfflineModelConfig?</ID>
+    <ID>CyclomaticComplexMethod:ProcessExit.kt:ProcessExitVocabulary$fun reason: String</ID>
+    <ID>CyclomaticComplexMethod:SettingsRepository.kt:SettingsRepository$private fun Preferences.toSettings</ID>
+    <ID>CyclomaticComplexMethod:SettingsScreen.kt:@Composable fun SettingsScreen</ID>
+    <ID>CyclomaticComplexMethod:SherpaIncrementalSession.kt:SherpaIncrementalSession$private suspend fun transcribe: SherpaIncrementalResult</ID>
+    <ID>CyclomaticComplexMethod:SpeechSourceCard.kt:@Composable fun SpeechSourceCard</ID>
+    <ID>CyclomaticComplexMethod:SuggestionEngine.kt:SuggestionDictionary$fun similar: List&lt;String&gt;</ID>
+    <ID>CyclomaticComplexMethod:TranscriptStyler.kt:TranscriptStyler$private fun punctuation: Punctuation</ID>
+    <ID>CyclomaticComplexMethod:TranscriptStyler.kt:TranscriptStyler$private fun segments: List&lt;String&gt;</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneInputMethodService.kt:VocaPhoneInputMethodService$private fun handleCommand</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneKeyboard.kt:@Composable internal fun VocaPhoneKeyboard</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneKeyboard.kt:@Composable private fun DictationBar</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneKeyboard.kt:@Composable private fun KeyContent</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneKeyboard.kt:@Composable private fun KeyboardIcon</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneKeyboard.kt:@Composable private fun MicButton</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneKeyboard.kt:@Composable private fun RowScope.KeyButton</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneKeyboard.kt:private fun Modifier.accentGesture</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneKeyboard.kt:private fun Modifier.swipeTypingGesture</ID>
+    <ID>CyclomaticComplexMethod:VocaPhoneKeyboard.kt:private fun keyDescription: String</ID>
+    <ID>FunctionNaming:AboutPage.kt:@Composable fun AboutPage</ID>
+    <ID>FunctionNaming:AboutPage.kt:@Composable private fun AboutActionButton</ID>
+    <ID>FunctionNaming:AboutPage.kt:@Composable private fun ContactColumnButton</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun &lt;T&gt; ChipChoiceRow</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun ChecklistRow</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun DestructiveButton</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun DestructiveTextButton</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun EmptyState</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun FeaturedCard</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun InfoRow</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun Notice</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun PrimaryButton</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun ResponsiveActionRow</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun SecondaryButton</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun Section</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun SettingToggle</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun SettingsCategory</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun SettingsMenuDivider</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun SettingsMenuGroup</ID>
+    <ID>FunctionNaming:Components.kt:@Composable fun SettingsMenuRow</ID>
+    <ID>FunctionNaming:Components.kt:@Composable private fun ButtonLabel</ID>
+    <ID>FunctionNaming:Components.kt:@Composable private fun ChecklistContent</ID>
+    <ID>FunctionNaming:Components.kt:@Composable private fun InfoLabel</ID>
+    <ID>FunctionNaming:Components.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun &lt;T&gt; FilterChipMenu</ID>
+    <ID>FunctionNaming:Components.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun &lt;T&gt; SettingDropdown</ID>
+    <ID>FunctionNaming:DictateScreen.kt:@Composable fun DictateScreen</ID>
+    <ID>FunctionNaming:DictateScreen.kt:@Composable private fun DictateActionRow</ID>
+    <ID>FunctionNaming:DictateScreen.kt:@Composable private fun DictateAssistChip</ID>
+    <ID>FunctionNaming:GatewayScreen.kt:@Composable fun GatewayScreen</ID>
+    <ID>FunctionNaming:GatewayScreen.kt:@Composable private fun GatewayNextStepBar</ID>
+    <ID>FunctionNaming:GatewayScreen.kt:@Composable private fun NextStepIndicator</ID>
+    <ID>FunctionNaming:GatewayScreen.kt:@Composable private fun StatusLine</ID>
+    <ID>FunctionNaming:HistoryScreen.kt:@Composable fun HistoryScreen</ID>
+    <ID>FunctionNaming:HistoryScreen.kt:@OptIn(ExperimentalFoundationApi::class) @Composable private fun HistoryRow</ID>
+    <ID>FunctionNaming:LanguagePickerSheet.kt:@Composable private fun LanguageRow</ID>
+    <ID>FunctionNaming:LanguagePickerSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LanguagePickerSheet</ID>
+    <ID>FunctionNaming:LifecycleInputMethodService.kt:LifecycleInputMethodService$@Composable protected abstract fun KeyboardContent</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun AvailableModelCatalog</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun CompactRecommendedActions</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun ModelActions</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun ModelBusyBanner</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun ModelCatalogSearch</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun ModelPickGrid</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun ModelSectionHeading</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun ModelTile</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun ModelTileGrid</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun OversizedModelNotice</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@Composable private fun RecommendedModelCard</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LocalModelPicker</ID>
+    <ID>FunctionNaming:LocalModelPicker.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable private fun ModelDetailSheet</ID>
+    <ID>FunctionNaming:MainActivity.kt:@Composable private fun BrandedAppBarTitle</ID>
+    <ID>FunctionNaming:MainActivity.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun VocaPhoneApp</ID>
+    <ID>FunctionNaming:SettingsScreen.kt:@Composable fun SettingsScreen</ID>
+    <ID>FunctionNaming:SettingsScreen.kt:@Composable private fun CustomVocabularySection</ID>
+    <ID>FunctionNaming:SettingsScreen.kt:@Composable private fun MicrophoneSection</ID>
+    <ID>FunctionNaming:SettingsScreen.kt:@Composable private fun PersonalDictionarySection</ID>
+    <ID>FunctionNaming:SettingsScreen.kt:@Composable private fun TonePreviewMeter</ID>
+    <ID>FunctionNaming:SetupRepair.kt:@Composable fun SetupRepair</ID>
+    <ID>FunctionNaming:SetupScreen.kt:@Composable fun SetupScreen</ID>
+    <ID>FunctionNaming:SetupScreen.kt:@Composable internal fun ImeSetupCard</ID>
+    <ID>FunctionNaming:SetupScreen.kt:@Composable private fun SetupProgress</ID>
+    <ID>FunctionNaming:SpeechSourceCard.kt:@Composable fun SpeechSourceCard</ID>
+    <ID>FunctionNaming:Theme.kt:@Composable fun VocaPhoneTheme</ID>
+    <ID>FunctionNaming:UsageReporting.kt:@Composable fun PendingPayloadView</ID>
+    <ID>FunctionNaming:UsageReporting.kt:@Composable fun UsageReportingDialog</ID>
+    <ID>FunctionNaming:UsageReporting.kt:@Composable fun UsageReportingSection</ID>
+    <ID>FunctionNaming:UsageReporting.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun UsagePayloadSheet</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable internal fun VocaPhoneKeyboard</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun ClipboardChipButton</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun ClipboardHistoryPanel</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun ClipboardHistoryTile</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun ClipboardThumb</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun DictationBar</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun DictationCancelButton</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun EmojiCategoryRow</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun EmojiGrid</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun EmojiLayer</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun KeyContent</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun KeyLabel</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun KeyPreviewLayer</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun KeyboardIcon</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun KeyboardRows</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun LanguageOptionRow</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun LanguagePreferencePanel</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun MicButton</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun PreferencePanelShell</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun RowScope.KeyButton</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun RowScope.StyleOptionCard</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun RowScope.SuggestionStripRow</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun RowScope.ToolbarMenuTile</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun SelectedMark</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun StylePreferencePanel</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun SuggestionChip</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun SwipeTrailLayer</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun ToolbarCloseButton</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun ToolbarIconButton</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun ToolbarMenuPanel</ID>
+    <ID>FunctionNaming:VocaPhoneKeyboard.kt:@Composable private fun Waveform</ID>
+    <ID>LargeClass:DictationController.kt:DictationController</ID>
+    <ID>LargeClass:VocaPhoneInputMethodService.kt:VocaPhoneInputMethodService : LifecycleInputMethodServiceTranscriptInserter</ID>
+    <ID>LongMethod:AboutPage.kt:@Composable fun AboutPage</ID>
+    <ID>LongMethod:DictateScreen.kt:@Composable fun DictateScreen</ID>
+    <ID>LongMethod:DictationController.kt:DictationController$@SuppressLint("MissingPermission") private suspend fun runDictation</ID>
+    <ID>LongMethod:DictationController.kt:DictationController$fun retry</ID>
+    <ID>LongMethod:DictationController.kt:DictationController$private suspend fun deliver</ID>
+    <ID>LongMethod:GatewayScreen.kt:@Composable fun GatewayScreen</ID>
+    <ID>LongMethod:HistoryScreen.kt:@OptIn(ExperimentalFoundationApi::class) @Composable private fun HistoryRow</ID>
+    <ID>LongMethod:KeyboardModel.kt:KeyboardReducer$fun press: KeyboardReduction</ID>
+    <ID>LongMethod:LanguagePickerSheet.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LanguagePickerSheet</ID>
+    <ID>LongMethod:LocalEngineEndToEndTest.kt:LocalEngineEndToEndTest$@Test fun anInstalledWhisperModelTranscribesReferenceAudio</ID>
+    <ID>LongMethod:LocalModelManager.kt:LocalModelManager$suspend fun download</ID>
+    <ID>LongMethod:LocalModelPicker.kt:@Composable private fun ModelActions</ID>
+    <ID>LongMethod:LocalModelPicker.kt:@Composable private fun ModelTile</ID>
+    <ID>LongMethod:LocalModelPicker.kt:@OptIn(ExperimentalMaterial3Api::class) @Composable fun LocalModelPicker</ID>
+    <ID>LongMethod:MainActivity.kt:@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class) @Composable fun VocaPhoneApp</ID>
+    <ID>LongMethod:OfflineRecognizer.kt:fun getOfflineModelConfig: OfflineModelConfig?</ID>
+    <ID>LongMethod:SettingsScreen.kt:@Composable fun SettingsScreen</ID>
+    <ID>LongMethod:SettingsScreen.kt:@Composable private fun CustomVocabularySection</ID>
+    <ID>LongMethod:SettingsScreen.kt:@Composable private fun PersonalDictionarySection</ID>
+    <ID>LongMethod:SetupScreen.kt:@Composable fun SetupScreen</ID>
+    <ID>LongMethod:SherpaRecognizer.kt:SherpaRecognizer.Companion$fun create: SherpaRecognizer</ID>
+    <ID>LongMethod:SpeechSourceCard.kt:@Composable fun SpeechSourceCard</ID>
+    <ID>LongMethod:UsageReporting.kt:@Composable fun UsageReportingDialog</ID>
+    <ID>LongMethod:VocaPhoneInputMethodService.kt:VocaPhoneInputMethodService$private fun handleCommand</ID>
+    <ID>LongMethod:VocaPhoneKeyboard.kt:@Composable internal fun VocaPhoneKeyboard</ID>
+    <ID>LongMethod:VocaPhoneKeyboard.kt:@Composable private fun ClipboardChipButton</ID>
+    <ID>LongMethod:VocaPhoneKeyboard.kt:@Composable private fun DictationBar</ID>
+    <ID>LongMethod:VocaPhoneKeyboard.kt:@Composable private fun KeyPreviewLayer</ID>
+    <ID>LongMethod:VocaPhoneKeyboard.kt:@Composable private fun KeyboardIcon</ID>
+    <ID>LongMethod:VocaPhoneKeyboard.kt:@Composable private fun KeyboardRows</ID>
+    <ID>LongMethod:VocaPhoneKeyboard.kt:@Composable private fun MicButton</ID>
+    <ID>LongMethod:VocaPhoneKeyboard.kt:@Composable private fun RowScope.KeyButton</ID>
+    <ID>LoopWithTooManyJumpStatements:AudioCapture.kt:AudioCapture$while</ID>
+    <ID>LoopWithTooManyJumpStatements:DictationTonePlayer.kt:while</ID>
+    <ID>LoopWithTooManyJumpStatements:EmojiSuggestions.kt:EmojiSuggestions$for</ID>
+    <ID>LoopWithTooManyJumpStatements:LocalModelManager.kt:LocalModelManager$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SherpaIncrementalSession.kt:SherpaIncrementalSession$while</ID>
+    <ID>LoopWithTooManyJumpStatements:SuggestionEngine.kt:SuggestionDictionary$for</ID>
+    <ID>LoopWithTooManyJumpStatements:SuggestionEngine.kt:SuggestionDictionary.Companion$for</ID>
+    <ID>LoopWithTooManyJumpStatements:SuggestionIndexTest.kt:SuggestionIndexTest$for</ID>
+    <ID>LoopWithTooManyJumpStatements:VocaPhoneKeyboard.kt:while</ID>
+    <ID>MagicNumber:AppInfo.kt:1_000</ID>
+    <ID>MagicNumber:AppInfo.kt:1_000L</ID>
+    <ID>MagicNumber:AppInfo.kt:1_000_000</ID>
+    <ID>MagicNumber:AppInfo.kt:1_000_000L</ID>
+    <ID>MagicNumber:AppInfo.kt:1_000_000_000.0</ID>
+    <ID>MagicNumber:AppInfo.kt:1_000_000_000L</ID>
+    <ID>MagicNumber:AudioCapture.kt:AudioCapture$500</ID>
+    <ID>MagicNumber:AudioFormatting.kt:PcmConversion$32_768f</ID>
+    <ID>MagicNumber:AudioFormatting.kt:PcmConversion$4</ID>
+    <ID>MagicNumber:AudioFormatting.kt:WavWriter.Companion$16</ID>
+    <ID>MagicNumber:AudioFormatting.kt:WavWriter.Companion$36</ID>
+    <ID>MagicNumber:Components.kt:AdaptiveLayout$320f</ID>
+    <ID>MagicNumber:Components.kt:AdaptiveLayout$360f</ID>
+    <ID>MagicNumber:Components.kt:AdaptiveLayout$400f</ID>
+    <ID>MagicNumber:DeviceProfile.kt:10</ID>
+    <ID>MagicNumber:DeviceProfile.kt:100</ID>
+    <ID>MagicNumber:DeviceProfile.kt:2</ID>
+    <ID>MagicNumber:DeviceProfile.kt:20</ID>
+    <ID>MagicNumber:DeviceProfile.kt:3</ID>
+    <ID>MagicNumber:DeviceProfile.kt:31</ID>
+    <ID>MagicNumber:DeviceProfile.kt:34</ID>
+    <ID>MagicNumber:DeviceProfile.kt:4</ID>
+    <ID>MagicNumber:DeviceProfile.kt:40</ID>
+    <ID>MagicNumber:DeviceProfile.kt:5</ID>
+    <ID>MagicNumber:DeviceProfile.kt:50</ID>
+    <ID>MagicNumber:DeviceProfile.kt:500_000_000L</ID>
+    <ID>MagicNumber:DeviceProfile.kt:6</ID>
+    <ID>MagicNumber:DeviceProfile.kt:8</ID>
+    <ID>MagicNumber:DeviceProfile.kt:80</ID>
+    <ID>MagicNumber:DeviceProfile.kt:DeviceProfile$1_000_000.0</ID>
+    <ID>MagicNumber:DictateScreen.kt:1000</ID>
+    <ID>MagicNumber:DictationController.kt:DictationController$1_000.0</ID>
+    <ID>MagicNumber:DictationTonePlayer.kt:0xFF</ID>
+    <ID>MagicNumber:DictationTonePlayer.kt:1000L</ID>
+    <ID>MagicNumber:DictationTonePlayer.kt:14</ID>
+    <ID>MagicNumber:DictationTonePlayer.kt:16</ID>
+    <ID>MagicNumber:DictationTonePlayer.kt:24</ID>
+    <ID>MagicNumber:DictationTonePlayer.kt:3</ID>
+    <ID>MagicNumber:DictationTonePlayer.kt:4</ID>
+    <ID>MagicNumber:DictationTonePlayer.kt:8</ID>
+    <ID>MagicNumber:GatewayClient.kt:GatewayClient$20</ID>
+    <ID>MagicNumber:GatewayClient.kt:GatewayClient$8</ID>
+    <ID>MagicNumber:GatewayClient.kt:GatewayClient.Companion$8</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$0xfc</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$0xfe</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$10</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$100</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$127</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$16</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$168</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$169</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$172</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$192</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$254</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$255</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$31</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$4</ID>
+    <ID>MagicNumber:GatewayEndpoint.kt:GatewayEndpoint$64</ID>
+    <ID>MagicNumber:GatewayModels.kt:GatewayException.Companion$401</ID>
+    <ID>MagicNumber:GatewayModels.kt:GatewayException.Companion$403</ID>
+    <ID>MagicNumber:GatewayModels.kt:GatewayException.Companion$404</ID>
+    <ID>MagicNumber:GatewayModels.kt:GatewayException.Companion$413</ID>
+    <ID>MagicNumber:GatewayModels.kt:GatewayException.Companion$415</ID>
+    <ID>MagicNumber:GatewayModels.kt:GatewayException.Companion$422</ID>
+    <ID>MagicNumber:GatewayModels.kt:GatewayException.Companion$429</ID>
+    <ID>MagicNumber:GatewayModels.kt:GatewayException.Companion$500</ID>
+    <ID>MagicNumber:GatewayModels.kt:GatewayException.Companion$599</ID>
+    <ID>MagicNumber:HistoryRepository.kt:HistoryRepository$3_600_000L</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$0.7f</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$0.85f</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$1.25f</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$1.35f</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$1.4f</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$1.95f</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$4</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$4.0f</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$4.1f</ID>
+    <ID>MagicNumber:KeyboardLayouts.kt:KeyboardLayouts$5</ID>
+    <ID>MagicNumber:KeyboardModel.kt:KeyboardChrome$24</ID>
+    <ID>MagicNumber:LifecycleInputMethodService.kt:LifecycleInputMethodService$0x10</ID>
+    <ID>MagicNumber:LifecycleInputMethodService.kt:LifecycleInputMethodService$0x12</ID>
+    <ID>MagicNumber:LocalModelCatalog.kt:LocalModelCatalog$4</ID>
+    <ID>MagicNumber:LocalModelManager.kt:LocalModelManager$10</ID>
+    <ID>MagicNumber:LocalModelManager.kt:LocalModelManager$30</ID>
+    <ID>MagicNumber:LocalModelManager.kt:LocalModelManager$32_768f</ID>
+    <ID>MagicNumber:LocalModelManager.kt:LocalModelManager$4</ID>
+    <ID>MagicNumber:LocalModelManager.kt:LocalModelManager$99</ID>
+    <ID>MagicNumber:ModelCatalogQuery.kt:ModelSizeFilter.UNDER_100MB$100_000_000L</ID>
+    <ID>MagicNumber:ModelCatalogQuery.kt:ModelSizeFilter.UNDER_250MB$250_000_000L</ID>
+    <ID>MagicNumber:ModelCatalogQuery.kt:ModelSizeFilter.UNDER_600MB$600_000_000L</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:10</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:11</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:12</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:13</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:14</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:15</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:16</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:17</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:18</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:19</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:20</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:21</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:22</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:23</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:24</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:25</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:26</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:27</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:28</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:29</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:3</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:30</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:31</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:32</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:33</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:34</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:35</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:36</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:37</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:38</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:39</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:4</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:40</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:41</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:42</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:43</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:44</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:45</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:46</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:47</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:48</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:49</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:5</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:50</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:51</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:52</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:53</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:54</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:55</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:56</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:57</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:58</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:59</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:6</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:60</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:61</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:62</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:7</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:8</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9000</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9001</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9002</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9003</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9004</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9005</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9006</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9007</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9008</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9009</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9010</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9011</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9012</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9013</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9014</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9015</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9016</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9017</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9018</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9019</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9020</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9021</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9022</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9023</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9024</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9025</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9026</ID>
+    <ID>MagicNumber:OfflineRecognizer.kt:9027</ID>
+    <ID>MagicNumber:PairingPayload.kt:PairingPayload$32</ID>
+    <ID>MagicNumber:ProcessExit.kt:ProcessExitVocabulary$1024</ID>
+    <ID>MagicNumber:ProcessExit.kt:ProcessExitVocabulary$256</ID>
+    <ID>MagicNumber:ProcessExit.kt:ProcessExitVocabulary$4</ID>
+    <ID>MagicNumber:ProcessExit.kt:ProcessExitVocabulary$512</ID>
+    <ID>MagicNumber:SettingsRepository.kt:AudioRetention.ONE_DAY$24</ID>
+    <ID>MagicNumber:SettingsRepository.kt:AudioRetention.SIX_HOURS$6</ID>
+    <ID>MagicNumber:SettingsRepository.kt:KeyboardHeight.COMPACT$42</ID>
+    <ID>MagicNumber:SettingsRepository.kt:KeyboardHeight.COMPACT$52</ID>
+    <ID>MagicNumber:SettingsRepository.kt:KeyboardHeight.DEFAULT$48</ID>
+    <ID>MagicNumber:SettingsRepository.kt:KeyboardHeight.DEFAULT$52</ID>
+    <ID>MagicNumber:SettingsRepository.kt:KeyboardHeight.TALL$56</ID>
+    <ID>MagicNumber:SettingsRepository.kt:KeyboardHeight.TALL$58</ID>
+    <ID>MagicNumber:SettingsRepository.kt:ModelIdleTimeout.TEN_MINUTES$10</ID>
+    <ID>MagicNumber:SettingsRepository.kt:ModelIdleTimeout.TEN_MINUTES$1000L</ID>
+    <ID>MagicNumber:SettingsRepository.kt:ModelIdleTimeout.TEN_MINUTES$60</ID>
+    <ID>MagicNumber:SettingsRepository.kt:ModelIdleTimeout.THIRTY_SECONDS$30_000L</ID>
+    <ID>MagicNumber:SettingsRepository.kt:ModelIdleTimeout.TWO_MINUTES$1000L</ID>
+    <ID>MagicNumber:SettingsRepository.kt:ModelIdleTimeout.TWO_MINUTES$60</ID>
+    <ID>MagicNumber:SettingsRepository.kt:SettingsRepository$2_000</ID>
+    <ID>MagicNumber:SettingsRepository.kt:SettingsRepository$3</ID>
+    <ID>MagicNumber:SherpaRecognizer.kt:SherpaTranscript.Companion$3</ID>
+    <ID>MagicNumber:SpeechAudioConditioning.kt:SpeechAudioConditioning$1e-4f</ID>
+    <ID>MagicNumber:SuggestionEngine.kt:SuggestionDictionary$127</ID>
+    <ID>MagicNumber:SuggestionEngine.kt:SuggestionEngine$25</ID>
+    <ID>MagicNumber:SuggestionEngine.kt:SuggestionEngine$26</ID>
+    <ID>MagicNumber:SuggestionEngine.kt:SuggestionEngine.SwipeGesture$0.35f</ID>
+    <ID>MagicNumber:SuggestionEngine.kt:SuggestionEngine.SwipeGesture$3f</ID>
+    <ID>MagicNumber:TelemetryEvent.kt:TelemetryDurationBucket.Companion$10</ID>
+    <ID>MagicNumber:TelemetryEvent.kt:TelemetryDurationBucket.Companion$30</ID>
+    <ID>MagicNumber:TelemetryEvent.kt:TelemetryDurationBucket.Companion$60</ID>
+    <ID>MagicNumber:TelemetrySink.kt:AptabaseSink$400</ID>
+    <ID>MagicNumber:TelemetrySink.kt:AptabaseSink$499</ID>
+    <ID>MagicNumber:TelemetrySink.kt:AptabaseSink.Companion$10</ID>
+    <ID>MagicNumber:TokenVault.kt:TokenVault$256</ID>
+    <ID>MagicNumber:TokenVault.kt:TokenVault$4</ID>
+    <ID>MagicNumber:TokenVault.kt:TokenVault$8</ID>
+    <ID>MagicNumber:TranscriptSanitizer.kt:TranscriptSanitizer$3</ID>
+    <ID>MagicNumber:TranscriptSanitizer.kt:TranscriptSanitizer$4</ID>
+    <ID>MagicNumber:TranscriptStyler.kt:TranscriptStyler$0x0900</ID>
+    <ID>MagicNumber:TranscriptStyler.kt:TranscriptStyler$0x097F</ID>
+    <ID>MagicNumber:TranscriptStyler.kt:TranscriptStyler$0x0980</ID>
+    <ID>MagicNumber:TranscriptStyler.kt:TranscriptStyler$0x09FF</ID>
+    <ID>MagicNumber:TranscriptStyler.kt:TranscriptStyler$0x0A00</ID>
+    <ID>MagicNumber:TranscriptStyler.kt:TranscriptStyler$0x0A7F</ID>
+    <ID>MagicNumber:TranscriptStyler.kt:TranscriptStyler$4</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.08f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.12f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.15f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.16f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.1f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.22f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.23f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.25f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.26f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.27f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.2f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.32f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.34f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.38f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.3f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.42f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.43f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.44f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.45f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.46f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.48f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.52f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.56f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.58f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.5f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.62f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.63f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.64f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.66f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.68f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.6f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.72f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.75f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.78f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.7f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.82f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.83f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.85f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.86f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.88f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.8f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.91f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:0.96f</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:12</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:3</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:60</ID>
+    <ID>MagicNumber:VocaPhoneKeyboard.kt:80</ID>
+    <ID>MatchingDeclarationName:DictateScreen.kt:DictateCopy</ID>
+    <ID>MatchingDeclarationName:LanguagePickerSheet.kt:LanguagePickerMode</ID>
+    <ID>MatchingDeclarationName:SettingsScreen.kt:SettingsPage</ID>
+    <ID>MatchingDeclarationName:SetupScreen.kt:SetupCopy</ID>
+    <ID>MatchingDeclarationName:UsageReporting.kt:UsageReportingCopy</ID>
+    <ID>MaxLineLength:DictationController.kt:DictationController$userMessage = error.message ?: "On-device transcription failed. Download the model again and retry."</ID>
+    <ID>MaxLineLength:GatewayClientTest.kt:GatewayClientTest$server.enqueue(json(code = 404, body = """{"error":{"code":"not_found","message":"gone","recoverable":false}}"""))</ID>
+    <ID>MaxLineLength:PairingPayloadTest.kt:PairingPayloadTest$"""{"v":1,"url":"http://homelab.tail1234.ts.net:8765","token":"test-token-with-at-least-thirty-two-characters"}"""</ID>
+    <ID>MaxLineLength:SettingsScreen.kt:supporting = "${settings.style.displayName} · ${settings.dictationTone.displayName} · ${settings.microphone.displayName}"</ID>
+    <ID>MaxLineLength:VocaPhoneViewModel.kt:VocaPhoneViewModel$!health.engineReady -&gt; "Connected, but no model is loaded yet. Select one in your gateway's Models page."</ID>
+    <ID>MayBeConstant:TranscriptStyler.kt:TranscriptStyler$private val universalTerminators = ".!?。！？।۔။។།؟"</ID>
+    <ID>NestedBlockDepth:ClipboardImages.kt:ClipboardImages$fun cache: String?</ID>
+    <ID>NestedBlockDepth:DictationController.kt:DictationController$@SuppressLint("MissingPermission") private suspend fun runDictation</ID>
+    <ID>NestedBlockDepth:LocalModelManager.kt:LocalModelManager$private suspend fun downloadFile: String</ID>
+    <ID>ReturnCount:AudioCapture.kt:AudioCapture$@RequiresPermission(Manifest.permission.RECORD_AUDIO) suspend fun start: Boolean</ID>
+    <ID>ReturnCount:AudioCapture.kt:AudioCapture$@Synchronized @RequiresPermission(Manifest.permission.RECORD_AUDIO) private fun openRecorder: Boolean</ID>
+    <ID>ReturnCount:AudioCapture.kt:AudioCapture$private fun confirmSilenced</ID>
+    <ID>ReturnCount:ClipboardImages.kt:ClipboardImages$fun cache: String?</ID>
+    <ID>ReturnCount:DeviceProfile.kt:fun DeviceProfile.fits: Boolean</ID>
+    <ID>ReturnCount:DictationController.kt:DictationController$@SuppressLint("MissingPermission") private suspend fun runDictation</ID>
+    <ID>ReturnCount:DictationController.kt:DictationController$private suspend fun awaitSignalUntil: Boolean</ID>
+    <ID>ReturnCount:DictationTonePlayer.kt:DictationTonePlayer$private fun sound: Long</ID>
+    <ID>ReturnCount:DictationTonePlayer.kt:private fun parseWav: Long</ID>
+    <ID>ReturnCount:EmojiSuggestions.kt:EmojiCommit$fun shouldReplaceTrigger: Boolean</ID>
+    <ID>ReturnCount:EmojiSuggestions.kt:EmojiSuggestions$fun glyphs: List&lt;String&gt;</ID>
+    <ID>ReturnCount:EmojiSuggestions.kt:EmojiSuggestions$private fun resolvePrimary: String?</ID>
+    <ID>ReturnCount:GatewayAudioStream.kt:GatewayAudioStream.&lt;no name provided&gt;$override fun onMessage</ID>
+    <ID>ReturnCount:GatewayEndpoint.kt:GatewayEndpoint$fun isPrivateHost: Boolean</ID>
+    <ID>ReturnCount:GatewayEndpoint.kt:GatewayEndpoint$fun validate: Validation</ID>
+    <ID>ReturnCount:GatewayEndpoint.kt:GatewayEndpoint$private fun isPrivateIPv4: Boolean</ID>
+    <ID>ReturnCount:GatewayEndpoint.kt:GatewayEndpoint$private fun isPrivateIPv6: Boolean</ID>
+    <ID>ReturnCount:GatewayStreamingPolicy.kt:GatewayStreamingPolicy$fun shouldAttemptStreaming: Boolean</ID>
+    <ID>ReturnCount:InputDevices.kt:InputDevices$fun match: AudioDeviceInfo?</ID>
+    <ID>ReturnCount:KeyAccents.kt:KeyAccents$fun forKey: List&lt;String&gt;</ID>
+    <ID>ReturnCount:KeyAccents.kt:KeyAccents$fun hint: String?</ID>
+    <ID>ReturnCount:KeyAccents.kt:KeyAccents$private fun letterSymbol: String?</ID>
+    <ID>ReturnCount:KeyboardModel.kt:AccentPicker$fun rowLeft: Float</ID>
+    <ID>ReturnCount:KeyboardModel.kt:EditorCursorSync$fun isUserMove: Boolean</ID>
+    <ID>ReturnCount:KeyboardModel.kt:KeyboardChrome$fun swipeWordArmed: Boolean</ID>
+    <ID>ReturnCount:LifecycleInputMethodService.kt:LifecycleInputMethodService$private fun navigationBarBottomInsetPx: Int</ID>
+    <ID>ReturnCount:LocalModelCatalog.kt:fun LocalModelDescriptor.coversLanguage: Boolean</ID>
+    <ID>ReturnCount:LocalModelManager.kt:LocalModelManager$internal fun startIncrementalSession: SherpaIncrementalSession?</ID>
+    <ID>ReturnCount:LocalModelManager.kt:internal fun LocalModelDescriptor.resolveTranslationTarget: String</ID>
+    <ID>ReturnCount:LocalModelManager.kt:internal fun shouldReloadLocalEngine: Boolean</ID>
+    <ID>ReturnCount:ModelCatalogQuery.kt:fun showPickerBusyBanner: Boolean</ID>
+    <ID>ReturnCount:ModelLanguageSupport.kt:ModelLanguageSupport$fun isSelectable: Boolean</ID>
+    <ID>ReturnCount:ModelTranslationSupport.kt:ModelTranslationSupport$fun matchesQuery: Boolean</ID>
+    <ID>ReturnCount:ModelTranslationSupport.kt:ModelTranslationSupport$fun restriction: String?</ID>
+    <ID>ReturnCount:ModelTranslationSupport.kt:ModelTranslationSupport$fun summary: String</ID>
+    <ID>ReturnCount:OfflineRecognizer.kt:fun getOfflineModelConfig: OfflineModelConfig?</ID>
+    <ID>ReturnCount:PairingPayload.kt:PairingPayload$fun parse: Result</ID>
+    <ID>ReturnCount:SettingsRepository.kt:ClipboardHistory$fun parseImage: Pair&lt;String, String&gt;?</ID>
+    <ID>ReturnCount:SettingsRepository.kt:SettingsRepository$suspend fun token: String?</ID>
+    <ID>ReturnCount:SherpaLongAudio.kt:SherpaTranscriptMerger$fun append: String</ID>
+    <ID>ReturnCount:SpeechAudioConditioning.kt:SpeechAudioConditioning$fun condition: FloatArray</ID>
+    <ID>ReturnCount:SpeechAudioConditioning.kt:SpeechAudioConditioning$fun conditionStreaming: FloatArray</ID>
+    <ID>ReturnCount:SplitKeyboardLayout.kt:SplitKeyboardLayout$fun insertIndex: Int</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionDictionary$fun complete: List&lt;String&gt;</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionDictionary$fun similar: List&lt;String&gt;</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionDictionary$fun strip: SuggestionStrip</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionDictionary$fun swipe: List&lt;String&gt;</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionDictionary$private fun saveCandidate: String?</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionEngine$fun lineBefore: Int</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionEngine$fun replaceableWord: WordSpan?</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionEngine$fun wordBefore: Int</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionEngine$fun wordSpan: WordSpan?</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionEngine$internal fun editDistance: Int</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionEngine$internal fun isNeighborSubstitution: Boolean</ID>
+    <ID>ReturnCount:SuggestionEngine.kt:SuggestionEngine$private fun samplePath: List&lt;KeyXY&gt;</ID>
+    <ID>ReturnCount:TextInsertion.kt:TextInsertion$fun fieldContents: String</ID>
+    <ID>ReturnCount:TextInsertion.kt:TextInsertion$fun plan: Plan?</ID>
+    <ID>ReturnCount:TextInsertion.kt:TextInsertion$fun undo: String?</ID>
+    <ID>ReturnCount:TranscriptSanitizer.kt:TranscriptSanitizer$private fun collapseRepetition: String</ID>
+    <ID>ReturnCount:TranscriptStyler.kt:TranscriptStyler$fun apply: String</ID>
+    <ID>ReturnCount:TranscriptStyler.kt:TranscriptStyler$private fun isPronounI: Boolean</ID>
+    <ID>ReturnCount:TranscriptStyler.kt:TranscriptStyler$private fun softenToken: String</ID>
+    <ID>ReturnCount:TranscriptStyler.kt:TranscriptStyler$private fun splitTerminator: Pair&lt;String, String&gt;</ID>
+    <ID>ReturnCount:VocaPhoneInputMethodService.kt:VocaPhoneInputMethodService$private fun clipImageMime: String?</ID>
+    <ID>ReturnCount:VocaPhoneInputMethodService.kt:VocaPhoneInputMethodService$private fun cycleSelectionCase: Boolean</ID>
+    <ID>ReturnCount:VocaPhoneInputMethodService.kt:VocaPhoneInputMethodService$private fun handleCommand</ID>
+    <ID>ReturnCount:VocaPhoneInputMethodService.kt:VocaPhoneInputMethodService$private fun selectedText: String</ID>
+    <ID>ReturnCount:VocaPhoneInputMethodService.kt:VocaPhoneInputMethodService$private fun selectionStart: Int?</ID>
+    <ID>ReturnCount:VocaPhoneKeyboard.kt:private fun hitLetter: KeyboardKey?</ID>
+    <ID>ReturnCount:VocaPhoneViewModel.kt:VocaPhoneViewModel$private suspend fun runConnectionTest: ConnectionReport</ID>
+    <ID>SwallowedException:QrPairingActivity.kt:QrPairingActivity$error: Exception</ID>
+    <ID>ThrowsCount:GatewayAudioStream.kt:GatewayAudioStream$private suspend fun awaitComplete: String</ID>
+    <ID>ThrowsCount:GatewayAudioStream.kt:GatewayAudioStream$suspend fun connect</ID>
+    <ID>TooGenericExceptionCaught:DictationController.kt:DictationController$error: Throwable</ID>
+    <ID>TooGenericExceptionCaught:LocalModelManager.kt:LocalModelManager$error: Throwable</ID>
+    <ID>TooGenericExceptionCaught:QrPairingActivity.kt:QrPairingActivity$error: Exception</ID>
+    <ID>TooGenericExceptionCaught:SherpaIncrementalSession.kt:SherpaIncrementalSession$error: Throwable</ID>
+    <ID>TooManyFunctions:AudioCapture.kt:AudioCapture</ID>
+    <ID>TooManyFunctions:Components.kt:com.vocahq.vocaphone.ui.Components.kt</ID>
+    <ID>TooManyFunctions:DiagnosticLog.kt:DiagnosticLog</ID>
+    <ID>TooManyFunctions:DictationController.kt:DictationController</ID>
+    <ID>TooManyFunctions:GatewayClient.kt:GatewayClient</ID>
+    <ID>TooManyFunctions:KeyboardLayouts.kt:KeyboardLayouts</ID>
+    <ID>TooManyFunctions:LocalModelCatalog.kt:LocalModelCatalog</ID>
+    <ID>TooManyFunctions:LocalModelManager.kt:LocalModelManager</ID>
+    <ID>TooManyFunctions:LocalModelPicker.kt:com.vocahq.vocaphone.ui.LocalModelPicker.kt</ID>
+    <ID>TooManyFunctions:ModelCatalogQuery.kt:com.vocahq.vocaphone.ui.ModelCatalogQuery.kt</ID>
+    <ID>TooManyFunctions:OfflineRecognizer.kt:OfflineRecognizer</ID>
+    <ID>TooManyFunctions:SettingsRepository.kt:SettingsRepository</ID>
+    <ID>TooManyFunctions:SuggestionEngine.kt:SuggestionEngine</ID>
+    <ID>TooManyFunctions:Telemetry.kt:Telemetry</ID>
+    <ID>TooManyFunctions:TranscriptStyler.kt:TranscriptStyler</ID>
+    <ID>TooManyFunctions:VocaPhoneInputMethodService.kt:VocaPhoneInputMethodService : LifecycleInputMethodServiceTranscriptInserter</ID>
+    <ID>TooManyFunctions:VocaPhoneKeyboard.kt:com.vocahq.vocaphone.ime.VocaPhoneKeyboard.kt</ID>
+    <ID>TooManyFunctions:VocaPhoneViewModel.kt:VocaPhoneViewModel : AndroidViewModel</ID>
+    <ID>UnusedParameter:SherpaLongAudio.kt:SherpaLongAudio$start: Int</ID>
+    <ID>UnusedParameter:TranscriptStyler.kt:TranscriptStyler$text: String</ID>
+    <ID>UnusedParameter:VocaPhoneKeyboard.kt:onClose: () -&gt; Unit</ID>
+    <ID>UnusedParameter:VocaPhoneKeyboard.kt:settings: VocaPhoneSettings</ID>
+    <ID>UtilityClassWithPublicConstructor:WhisperLib.kt:WhisperLib</ID>
+  </CurrentIssues>
+</SmellBaseline>

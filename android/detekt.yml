@@ -1,0 +1,17 @@
+config:
+  validation: true
+  warningsAsErrors: true
+
+complexity:
+  active: true
+
+style:
+  active: true
+
+# This repository already has a separate Android Lint gate for platform and
+# resource checks. Detekt is focused on Kotlin code smells and complexity.
+comments:
+  active: true
+
+performance:
+  active: true

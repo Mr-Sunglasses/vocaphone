@@ -123,6 +123,12 @@ class LocalEngineEndToEndTest {
                     "${model.id} run ${run + 1}: ${elapsed.inWholeMilliseconds} ms; " +
                         "threads=$threads; audio_ctx=$audioContext; $transcript",
                 )
+                Log.i(
+                    "VocaPhoneBenchmark",
+                    "VocaPhoneBenchmark|transcription|model=${model.id}" +
+                        "|run=${run + 1}|elapsed_ms=${elapsed.inWholeMilliseconds}" +
+                        "|threads=$threads|audio_ctx=$audioContext",
+                )
             }
         } finally {
             WhisperLib.freeContext(pointer)

@@ -50,6 +50,11 @@ class KeyboardHotPathTest {
                     nanos[(iterations * 95) / 100] / 1_000.0,
                 ),
             )
+            println(
+                "VocaPhoneBenchmark|metric|name=${label.replace('|', ' ')}" +
+                    "|median_us=${nanos[iterations / 2] / 1_000.0}" +
+                    "|p95_us=${nanos[(iterations * 95) / 100] / 1_000.0}",
+            )
         }
 
         println("120 Hz frame budget is 8333 us")

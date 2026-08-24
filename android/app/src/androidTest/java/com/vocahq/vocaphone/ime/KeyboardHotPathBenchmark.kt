@@ -170,6 +170,10 @@ class KeyboardHotPathBenchmark {
             val median = nanos[nanos.size / 2] / 1_000.0
             val p95 = nanos[(nanos.size * 95) / 100] / 1_000.0
             log("%-40s median %7.1f us   p95 %7.1f us".format(label, median, p95))
+            log(
+                "VocaPhoneBenchmark|metric|name=${label.replace('|', ' ')}" +
+                    "|median_us=$median|p95_us=$p95",
+            )
         }
 
         fun log(line: String) {

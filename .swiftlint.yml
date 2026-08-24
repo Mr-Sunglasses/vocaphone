@@ -1,0 +1,12 @@
+included:
+  - ios
+
+excluded:
+  - ios/ThirdParty
+  - ios/VocaPhone.xcodeproj
+  - ios/build
+
+strict: true
+
+# Existing findings are captured in .swiftlint.baseline.json. New findings are
+# still reported in strict mode by the iOS quality workflow.

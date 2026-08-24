@@ -14,6 +14,9 @@ on:
       - '!ios/**.md'
       - '.github/actions/report-size/**'
       - '.github/workflows/quality-ios.yml'
+      - '.swiftlint.yml'
+      - '.swiftlint.baseline.json'
+      - 'tools/prepare-swiftlint-baseline.py'
   pull_request:
     branches: [main]
     # A draft pull request is filtered out below; listing ready_for_review makes
@@ -28,6 +31,9 @@ on:
       - '!ios/**.md'
       - '.github/actions/report-size/**'
       - '.github/workflows/quality-ios.yml'
+      - '.swiftlint.yml'
+      - '.swiftlint.baseline.json'
+      - 'tools/prepare-swiftlint-baseline.py'
   workflow_dispatch:
 
 permissions:
@@ -63,6 +69,32 @@ jobs:
           lfs: true
           persist-credentials: false
       - run: brew install xcodegen
+      - name: Install SwiftLint
+        env:
+          SWIFTLINT_VERSION: 0.65.1
+          SWIFTLINT_SHA256: c3a1d77647ca18c1b7e9be7dbc6cd4490d26422f28814b76370244ff61970869
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/swiftlint.artifactbundle.zip"
+          curl --fail --location --show-error --silent \
+            "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/SwiftLintBinary.artifactbundle.zip" \
+            --output "${archive}"
+          echo "${SWIFTLINT_SHA256}  ${archive}" | shasum -a 256 --check --status
+          unzip -q "${archive}" -d "${RUNNER_TEMP}/swiftlint"
+          chmod +x "${RUNNER_TEMP}/swiftlint/SwiftLintBinary.artifactbundle/macos/swiftlint"
+          echo "${RUNNER_TEMP}/swiftlint/SwiftLintBinary.artifactbundle/macos" >> "${GITHUB_PATH}"
+          "${RUNNER_TEMP}/swiftlint/SwiftLintBinary.artifactbundle/macos/swiftlint" version
+      - name: Run SwiftLint against Swift sources
+        run: |
+          set -euo pipefail
+          python3 tools/prepare-swiftlint-baseline.py \
+            .swiftlint.baseline.json \
+            "${RUNNER_TEMP}/swiftlint-baseline.json"
+          swiftlint lint \
+            --config .swiftlint.yml \
+            --baseline "${RUNNER_TEMP}/swiftlint-baseline.json" \
+            --reporter github-actions-logging \
+            ios
       - name: Fail if the checked-in Xcode project is stale
         working-directory: ios
         run: |

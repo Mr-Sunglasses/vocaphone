@@ -31,6 +31,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
   # Lets report-size post/update its size comment on same-repo pull requests.
   # Fork pull requests get a read-only token regardless, which the action
   # already tolerates.
@@ -61,6 +62,41 @@ jobs:
           # and evicting the entry everything else restores from.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+      - name: Install Detekt
+        env:
+          DETEKT_VERSION: 2.0.0-alpha.3
+          DETEKT_SHA256: 4ed610e47a73501c36ff4cc6a46079ce47f260a13408b4176b9e878e2bee8264
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/detekt-cli.zip"
+          curl --fail --location --show-error --silent \
+            "https://github.com/detekt/detekt/releases/download/v${DETEKT_VERSION}/detekt-cli-${DETEKT_VERSION}.zip" \
+            --output "${archive}"
+          echo "${DETEKT_SHA256}  ${archive}" | sha256sum --check --status
+          unzip -q "${archive}" -d "${RUNNER_TEMP}/detekt"
+      - name: Run Detekt against Kotlin sources
+        working-directory: android
+        env:
+          DETEKT_BIN: ${{ runner.temp }}/detekt/detekt-cli-2.0.0-alpha.3/bin/detekt-cli
+        run: |
+          set -euo pipefail
+          "${DETEKT_BIN}" \
+            --build-upon-default-config \
+            --config detekt.yml \
+            --baseline detekt-baseline.xml \
+            --base-path . \
+            --input app/src/main/java:app/src/test/java:app/src/androidTest/java \
+            --excludes '**/build/**,**/generated/**' \
+            --language-version 2.3 \
+            --jvm-target 17 \
+            --fail-on-severity Warning \
+            --report sarif:detekt.sarif
+      - name: Upload Detekt results
+        if: always() && hashFiles('android/detekt.sarif') != ''
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+        with:
+          sarif_file: android/detekt.sarif
+          category: detekt
       - run: ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
         working-directory: android
       - name: Fail if the checked-in Room schema is stale
