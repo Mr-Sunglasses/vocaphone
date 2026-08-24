@@ -142,6 +142,7 @@
 		6A62B202B2F9C76E00794A3D /* SwipeRecognizerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 924E5D73CB086A4210BF6052 /* SwipeRecognizerTests.swift */; };
 		6BDE1B7BE51A2350AFE05074 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0AC0739F69438AEC347C44A4 /* Assets.xcassets */; };
 		6BF87A2C089381E060D13D22 /* KeyAlternativesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF0326EF6FB3E96C942C6065 /* KeyAlternativesTests.swift */; };
+		6C439119A0C81D69A527744B /* TypingPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D19633456C58707A71A00BA /* TypingPerformanceTests.swift */; };
 		6C48D9ED8AF4FE61AB76AE49 /* StopQuickDictationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332854D2644CFCE5843E3F31 /* StopQuickDictationIntent.swift */; };
 		6CEF2A686643F72F4BCDD51D /* SemanticPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF6C44F954E7A62974C66109 /* SemanticPalette.swift */; };
 		70232F18D7B4AA7F6BB15C64 /* TelemetrySink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E413C2A7ADDFE5C3B5F27C7 /* TelemetrySink.swift */; };
@@ -415,6 +416,7 @@
 		653FBC305F7EB4B9F7EB354B /* UsageReportingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageReportingViews.swift; sourceTree = "<group>"; };
 		6B6743BB4173E2F719E3D8CB /* TypingWordList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingWordList.swift; sourceTree = "<group>"; };
 		6CF871FC84B4C6B2627A43C2 /* RecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinator.swift; sourceTree = "<group>"; };
+		6D19633456C58707A71A00BA /* TypingPerformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingPerformanceTests.swift; sourceTree = "<group>"; };
 		70B3F1DBA8332A13B095E4BA /* PairingScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScannerView.swift; sourceTree = "<group>"; };
 		70CAE08F934281250A314597 /* PreviewMatrix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewMatrix.swift; sourceTree = "<group>"; };
 		755A4279065D41A705E1F19D /* DesignSystemTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignSystemTests.swift; sourceTree = "<group>"; };
@@ -783,6 +785,7 @@
 				A45A3914F898AD0570486806 /* TranscriptStylerTests.swift */,
 				0B31528AA0DAB644EFBBE967 /* TypingCandidatesTests.swift */,
 				CDBE3CB8FFE4DDA7B459C2A7 /* TypingFieldPolicyTests.swift */,
+				6D19633456C58707A71A00BA /* TypingPerformanceTests.swift */,
 				05735C847A47FF442B4FB21A /* TypingPrivacyTests.swift */,
 				D80C83295868E17F215D9382 /* TypingStripPresentationTests.swift */,
 				867A5BD6049E4D6788DB704C /* TypingWordListTests.swift */,
@@ -1327,6 +1330,7 @@
 				FC7578BC51E4E30002077CAC /* TypingCandidatesTests.swift in Sources */,
 				044611DCE2FFB3B38B4BFACE /* TypingFieldPolicy.swift in Sources */,
 				4700DB7F7BE95078E7A8A563 /* TypingFieldPolicyTests.swift in Sources */,
+				6C439119A0C81D69A527744B /* TypingPerformanceTests.swift in Sources */,
 				7E28776EDC2BD3E8A8AFCED9 /* TypingPrivacyTests.swift in Sources */,
 				01A0F8C43B7A8290B87B8228 /* TypingStripPresentationTests.swift in Sources */,
 				B799AC1ACFA93756FA43069D /* TypingStripView.swift in Sources */,

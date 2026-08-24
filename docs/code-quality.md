@@ -43,6 +43,19 @@ threshold supplied by `--max-regression-absolute` to be exceeded. It reports
 missing markers and missing baseline metrics as failures, so a broken
 benchmark cannot silently pass.
 
+## Runtime diagnostics
+
+Debug Android builds now enable StrictMode logging before the application
+container is created and include LeakCanary. Exercise the app and keyboard with
+`adb logcat` attached; these checks are deliberately debug-only and do not
+change release or F-Droid production artifacts.
+
+iOS tests now include `TypingPerformanceTests`, which records XCTest clock, CPU,
+and memory metrics for candidate ranking and word-list completion. Establish
+baselines on the simulator or representative phone in Xcode; the hosted
+quality job records measurements but does not turn noisy runner timings into a
+hard threshold.
+
 Do not check in a benchmark baseline until it comes from a documented device,
 OS, model, and workload. Emulator or hosted-runner timings are useful for
 trend investigation, but they are not a substitute for a representative

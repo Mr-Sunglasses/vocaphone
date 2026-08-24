@@ -3,6 +3,7 @@ package com.vocahq.vocaphone
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.Context
+import android.os.StrictMode
 import androidx.room.Room
 import com.vocahq.vocaphone.audio.DictationTonePlayer
 import com.vocahq.vocaphone.data.HistoryRepository
@@ -128,6 +129,7 @@ class VocaPhoneApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        enableDebugRuntimeChecks()
         // Audio kept for a retry that never happened must not outlive its window,
         // including across a process that was killed mid-dictation.
         container.purgeExpiredAudio()
@@ -146,6 +148,29 @@ class VocaPhoneApplication : Application() {
     }
 
     companion object {
+        /**
+         * Debug builds should make accidental main-thread I/O and leaked Android
+         * objects visible while the keyboard is exercised. Release behavior is
+         * unchanged: this is deliberately configured before the lazy container
+         * is first touched and never enabled for a shipping build.
+         */
+        private fun enableDebugRuntimeChecks() {
+            if (!BuildConfig.DEBUG) return
+
+            StrictMode.setThreadPolicy(
+                StrictMode.ThreadPolicy.Builder()
+                    .detectAll()
+                    .penaltyLog()
+                    .build(),
+            )
+            StrictMode.setVmPolicy(
+                StrictMode.VmPolicy.Builder()
+                    .detectAll()
+                    .penaltyLog()
+                    .build(),
+            )
+        }
+
         fun container(context: Context): AppContainer =
             (context.applicationContext as VocaPhoneApplication).container
     }
