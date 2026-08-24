@@ -192,6 +192,18 @@ internal object KeyboardChrome {
         stripReplacesWord: Boolean,
     ): Boolean = composing.isEmpty() && (swipeChoicesActive || stripReplacesWord)
 
+    /**
+     * What has to reach the editor before a swiped word is committed.
+     *
+     * A word typed but never spaced is still a composing region when the swipe
+     * resolves. Clearing that region (`setComposingText("")`) deleted the word
+     * from the editor, so the swiped word landed where it had been and read as
+     * a replacement. Commit the pending word instead and add the space the user
+     * never typed, so the swipe follows it.
+     */
+    fun swipePrefixCommand(composing: String): KeyboardCommand? =
+        if (composing.isEmpty()) null else KeyboardCommand.CommitText(" ")
+
     /** True only while the cursor is still sitting after the swiped word and its space. */
     fun swipeWordArmed(word: String?, before: CharSequence, after: CharSequence): Boolean {
         if (word.isNullOrEmpty()) return false

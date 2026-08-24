@@ -409,9 +409,7 @@ internal fun VocaPhoneKeyboard(
 
     fun applySwipe(matches: List<String>, similar: List<String>) {
         if (matches.isEmpty()) return
-        if (keyboardState.composing.isNotEmpty()) {
-            onCommand(KeyboardCommand.SetComposingText(""))
-        }
+        KeyboardChrome.swipePrefixCommand(keyboardState.composing)?.let(onCommand)
         val capitalize = keyboardState.shift != ShiftState.OFF
         fun cased(word: String) = if (capitalize) word.replaceFirstChar { it.uppercase() } else word
         val chosen = cased(matches.first())

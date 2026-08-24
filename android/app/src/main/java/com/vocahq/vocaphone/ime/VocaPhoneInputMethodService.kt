@@ -425,6 +425,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         // Leave composing alone so commitText replaces "hel" with "hello ".
         // Finishing first commits the stub, then this would insert in front of it.
         connection.commitText(SuggestionEngine.suggestionCommit(word, after), 1)
+        // `commitText` ends the composing region whether or not it replaced one.
+        composingRegionActive = false
         syncShiftFromCursor()
         scheduleEditorTextRefresh()
     }
@@ -447,6 +449,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         } else {
             connection.commitText(EmojiCommit.insertText(before, emoji), 1)
         }
+        composingRegionActive = false
         recordEmojiRecent(emoji)
         syncShiftFromCursor()
         scheduleEditorTextRefresh()
