@@ -3,12 +3,18 @@ package com.vocahq.vocaphone.ui
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.FilledTonalIconButton
@@ -113,131 +119,150 @@ fun DictateScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .wrapContentWidth(Alignment.CenterHorizontally)
+            .widthIn(max = AppContentMaxWidth)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // One row. FlowRow dropped the model chip onto a second line as soon as
-        // the name got longer than "Moonshine Tiny" (Parakeet TDT 0.6B). Language
-        // and style hug; the model takes what is left and ellipsizes. VoiceOver
-        // still reads the full labels.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            DictateAssistChip(
-                icon = R.drawable.ic_language,
-                label = settings.effectiveLanguage.displayName,
-                contentDescription = "${DictateCopy.LANGUAGE}, ${settings.effectiveLanguage.displayName}",
-                onClick = onOpenLanguage,
-            )
-            DictateAssistChip(
-                icon = R.drawable.ic_style,
-                label = settings.style.displayName,
-                contentDescription = "${DictateCopy.STYLE}, ${settings.style.displayName}",
-                onClick = onOpenStyle,
-            )
-            val modelLabel = dictateModelChipLabel(settings)
-            DictateAssistChip(
-                icon = if (settings.localTranscriptionEnabled) {
-                    R.drawable.ic_models
-                } else {
-                    R.drawable.ic_connection
-                },
-                label = compactModelChipLabel(modelLabel),
-                contentDescription = "${DictateCopy.MODEL}, $modelLabel",
-                onClick = onOpenModel,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-        }
-
-        if (showDictateStatus(state.phase) || state.isRecording || state.phase == DictationPhase.FAILED) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (showDictateStatus(state.phase)) {
-                    Text(state.statusText, style = MaterialTheme.typography.bodyLarge)
-                }
-                if (state.isRecording) {
-                    LinearProgressIndicator(
-                        progress = { state.level.coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        "${state.recordedMillis / 1000}s" +
-                            (state.inputRouteLabel?.let { " · $it" } ?: "") +
-                            (if (state.streaming) " · streaming" else " · batch upload"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (state.approachingLimit) {
-                        Text(
-                            "One minute left before the five-minute limit stops this recording.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                        )
-                    }
-                    if (state.partialTranscript.isNotEmpty()) {
-                        Text(
-                            state.partialTranscript,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                if (state.phase == DictationPhase.FAILED) {
-                    Text(
-                        state.failure?.message.orEmpty(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-        }
-
-        SetupRepair(
-            status = setup,
-            onOpenGateway = onOpenGateway,
-        )
-
-        val fieldColors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent,
-        )
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
         ) {
-            TextField(
-                value = scratchpad,
-                onValueChange = { scratchpad = it },
-                modifier = Modifier.fillMaxSize(),
-                placeholder = if (showScratchpadHint(scratchpad.text, state.phase)) {
-                    {
-                        Text(
-                            DictateCopy.HINT,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
-                } else {
-                    null
-                },
-                shape = MaterialTheme.shapes.large,
-                colors = fieldColors,
-            )
-            if (scratchpad.text.isNotEmpty()) {
-                FilledTonalIconButton(
-                    onClick = { scratchpad = TextFieldValue() },
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 12.dp),
+            // Keep the scratchpad large on an ordinary phone, but let the whole
+            // content region scroll when landscape, setup repair, status text,
+            // or accessibility text would otherwise push actions off-screen.
+            val scratchpadHeight = (maxHeight - 64.dp).coerceAtLeast(180.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_delete),
-                        contentDescription = DictateCopy.CLEAR,
+                    DictateAssistChip(
+                        icon = R.drawable.ic_language,
+                        label = settings.effectiveLanguage.displayName,
+                        contentDescription = "${DictateCopy.LANGUAGE}, ${settings.effectiveLanguage.displayName}",
+                        onClick = onOpenLanguage,
                     )
+                    DictateAssistChip(
+                        icon = R.drawable.ic_style,
+                        label = settings.style.displayName,
+                        contentDescription = "${DictateCopy.STYLE}, ${settings.style.displayName}",
+                        onClick = onOpenStyle,
+                    )
+                    val modelLabel = dictateModelChipLabel(settings)
+                    DictateAssistChip(
+                        icon = if (settings.localTranscriptionEnabled) {
+                            R.drawable.ic_models
+                        } else {
+                            R.drawable.ic_connection
+                        },
+                        label = compactModelChipLabel(modelLabel),
+                        contentDescription = "${DictateCopy.MODEL}, $modelLabel",
+                        onClick = onOpenModel,
+                    )
+                }
+
+                if (
+                    showDictateStatus(state.phase) ||
+                    state.isRecording ||
+                    state.phase == DictationPhase.FAILED
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (showDictateStatus(state.phase)) {
+                            Text(state.statusText, style = MaterialTheme.typography.bodyLarge)
+                        }
+                        if (state.isRecording) {
+                            LinearProgressIndicator(
+                                progress = { state.level.coerceIn(0f, 1f) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Text(
+                                "${state.recordedMillis / 1000}s" +
+                                    (state.inputRouteLabel?.let { " · $it" } ?: "") +
+                                    (if (state.streaming) " · streaming" else " · batch upload"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            if (state.approachingLimit) {
+                                Text(
+                                    "One minute left before the five-minute limit stops this recording.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                            if (state.partialTranscript.isNotEmpty()) {
+                                Text(
+                                    state.partialTranscript,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        if (state.phase == DictationPhase.FAILED) {
+                            Text(
+                                state.failure?.message.orEmpty(),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+
+                SetupRepair(
+                    status = setup,
+                    onOpenGateway = onOpenGateway,
+                )
+
+                val fieldColors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    disabledIndicatorColor = Color.Transparent,
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(scratchpadHeight),
+                ) {
+                    TextField(
+                        value = scratchpad,
+                        onValueChange = { scratchpad = it },
+                        modifier = Modifier.fillMaxSize(),
+                        placeholder = if (showScratchpadHint(scratchpad.text, state.phase)) {
+                            {
+                                Text(
+                                    DictateCopy.HINT,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        } else {
+                            null
+                        },
+                        shape = MaterialTheme.shapes.large,
+                        colors = fieldColors,
+                    )
+                    if (scratchpad.text.isNotEmpty()) {
+                        FilledTonalIconButton(
+                            onClick = { scratchpad = TextFieldValue() },
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 12.dp),
+                        ) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_delete),
+                                contentDescription = DictateCopy.CLEAR,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -265,29 +290,27 @@ private fun DictateActionRow(
     onDismiss: () -> Unit,
 ) {
     when {
-        state.isRecording -> Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SecondaryButton("Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
-            PrimaryButton("Finish", onClick = onFinish, modifier = Modifier.weight(2f))
-        }
+        state.isRecording -> ResponsiveActionRow(
+            leading = { item -> SecondaryButton("Cancel", onClick = onCancel, modifier = item) },
+            trailing = { item -> PrimaryButton("Finish", onClick = onFinish, modifier = item) },
+            trailingWeight = 2f,
+        )
         state.phase.isBusy -> SecondaryButton(
             "Cancel",
             onClick = onCancel,
             modifier = Modifier.fillMaxWidth(),
         )
-        state.canRetry -> Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            SecondaryButton("Dismiss", onClick = onDismiss, modifier = Modifier.weight(1f))
-            PrimaryButton(
-                text = "Retry",
-                onClick = { state.sessionId?.let { onRetry(it.toString()) } },
-                modifier = Modifier.weight(2f),
-            )
-        }
+        state.canRetry -> ResponsiveActionRow(
+            leading = { item -> SecondaryButton("Dismiss", onClick = onDismiss, modifier = item) },
+            trailing = { item ->
+                PrimaryButton(
+                    text = "Retry",
+                    onClick = { state.sessionId?.let { onRetry(it.toString()) } },
+                    modifier = item,
+                )
+            },
+            trailingWeight = 2f,
+        )
         else -> PrimaryButton(
             text = DictateCopy.DICTATE,
             onClick = onStart,

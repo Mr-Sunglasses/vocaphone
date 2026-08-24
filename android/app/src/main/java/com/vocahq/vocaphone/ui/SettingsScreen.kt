@@ -10,11 +10,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -143,6 +144,8 @@ fun SettingsScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .wrapContentWidth(Alignment.CenterHorizontally)
+            .widthIn(max = AppContentMaxWidth)
             .verticalScroll(rememberScrollState())
             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(SectionSpacing),
@@ -607,11 +610,7 @@ private fun PersonalDictionarySection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        val saveWords: @Composable (Modifier) -> Unit = { item ->
             SecondaryButton(
                 text = "Save words",
                 onClick = {
@@ -619,25 +618,36 @@ private fun PersonalDictionarySection(
                     onSave(draft)
                 },
                 enabled = PersonalDictionary.normalize(draft) != PersonalDictionary.normalize(words),
-                modifier = Modifier.weight(1f),
+                modifier = item,
             )
-            if (canUndo) {
-                SecondaryButton(
-                    text = "Undo",
-                    onClick = {
-                        val restored = lastCleared ?: return@SecondaryButton
-                        lastCleared = null
-                        draft = restored
-                        onSave(restored)
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-            } else if (canClear) {
-                DestructiveTextButton(
-                    text = "Clear",
-                    onClick = { confirmClear = true },
-                )
-            }
+        }
+        when {
+            canUndo -> ResponsiveActionRow(
+                leading = saveWords,
+                trailing = { item ->
+                    SecondaryButton(
+                        text = "Undo",
+                        onClick = {
+                            val restored = lastCleared ?: return@SecondaryButton
+                            lastCleared = null
+                            draft = restored
+                            onSave(restored)
+                        },
+                        modifier = item,
+                    )
+                },
+            )
+            canClear -> ResponsiveActionRow(
+                leading = saveWords,
+                trailing = { item ->
+                    DestructiveTextButton(
+                        text = "Clear",
+                        onClick = { confirmClear = true },
+                        modifier = item,
+                    )
+                },
+            )
+            else -> saveWords(Modifier.fillMaxWidth())
         }
     }
     if (confirmClear) {
@@ -804,5 +814,3 @@ private fun TonePreviewMeter(active: Boolean, modifier: Modifier = Modifier) {
         }
     }
 }
-
-

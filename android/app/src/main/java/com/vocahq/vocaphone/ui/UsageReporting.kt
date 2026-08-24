@@ -7,7 +7,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -156,21 +155,18 @@ fun UsageReportingDialog(
                 ) {
                     Text(UsageReportingCopy.SEE_WHAT_IS_SENT)
                 }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    SecondaryButton(
+                ResponsiveActionRow(
+                    leading = { item -> SecondaryButton(
                         text = UsageReportingCopy.NOT_NOW,
                         onClick = { onDecision(false) },
-                        modifier = Modifier.weight(1f),
-                    )
-                    SecondaryButton(
+                        modifier = item,
+                    ) },
+                    trailing = { item -> SecondaryButton(
                         text = UsageReportingCopy.TURN_ON,
                         onClick = { onDecision(true) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                        modifier = item,
+                    ) },
+                )
                 Text(
                     UsageReportingCopy.CHANGE_LATER,
                     style = MaterialTheme.typography.bodySmall,

@@ -5,12 +5,12 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -128,18 +129,38 @@ fun AboutPage(
                 onClick = { context.openHttpUrl(NEW_ISSUE_URL) },
                 filled = true,
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ABOUT_CONTACT_LINKS.forEach { link ->
-                    val icon = link.icon ?: return@forEach
-                    ContactColumnButton(
-                        label = link.label,
-                        icon = icon,
-                        onClick = { context.openHttpUrl(link.url) },
-                        modifier = Modifier.weight(1f),
-                    )
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val stacked = AdaptiveLayout.stackActions(
+                    maxWidth.value,
+                    LocalDensity.current.fontScale,
+                )
+                if (stacked) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ABOUT_CONTACT_LINKS.forEach { link ->
+                            val icon = link.icon ?: return@forEach
+                            ContactColumnButton(
+                                label = link.label,
+                                icon = icon,
+                                onClick = { context.openHttpUrl(link.url) },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ABOUT_CONTACT_LINKS.forEach { link ->
+                            val icon = link.icon ?: return@forEach
+                            ContactColumnButton(
+                                label = link.label,
+                                icon = icon,
+                                onClick = { context.openHttpUrl(link.url) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -209,11 +230,8 @@ fun AboutPage(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            SecondaryButton(
+        ResponsiveActionRow(
+            leading = { item -> SecondaryButton(
                 text = ABOUT_COPY_DIAGNOSTICS,
                 onClick = {
                     context.copyDiagnostics(
@@ -226,14 +244,14 @@ fun AboutPage(
                         ),
                     )
                 },
-                modifier = Modifier.weight(1f),
-            )
-            DestructiveButton(
+                modifier = item,
+            ) },
+            trailing = { item -> DestructiveButton(
                 text = ABOUT_CLEAR_EVENT_LOG,
                 onClick = onClearDiagnosticEvents,
-                modifier = Modifier.weight(1f),
-            )
-        }
+                modifier = item,
+            ) },
+        )
     }
 }
 
@@ -273,7 +291,7 @@ private fun ContactColumnButton(
     }
 }
 
-/** 48 dp, icon plus verb, matching the rest of the app's button height. */
+/** At least 48 dp, growing when enlarged text needs another line. */
 @Composable
 private fun AboutActionButton(
     label: String,
@@ -283,7 +301,7 @@ private fun AboutActionButton(
 ) {
     val modifier = Modifier
         .fillMaxWidth()
-        .height(48.dp)
+        .heightIn(min = 48.dp)
     val content: @Composable () -> Unit = {
         Icon(
             painter = painterResource(icon),

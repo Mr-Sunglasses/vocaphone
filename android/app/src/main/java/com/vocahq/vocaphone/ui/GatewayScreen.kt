@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -90,10 +91,15 @@ fun GatewayScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Column(
             modifier = Modifier
                 .weight(1f)
+                .widthIn(max = AppContentMaxWidth)
+                .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(SectionSpacing),
@@ -178,21 +184,21 @@ fun GatewayScreen(
 
                 // Saving is confirmed by the footer, which reports the connection
                 // test it kicks off rather than just that bytes hit the disk.
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryButton(
+                ResponsiveActionRow(
+                    leading = { item -> PrimaryButton(
                         text = "Save",
                         onClick = submit,
                         enabled = url.isNotBlank() && (token.isNotBlank() || settings.hasToken),
-                        modifier = Modifier.weight(1f),
-                    )
-                    SecondaryButton(
+                        modifier = item,
+                    ) },
+                    trailing = { item -> SecondaryButton(
                         text = "Test connection",
                         onClick = onTest,
                         enabled = settings.isConfigured,
                         loading = testing,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                        modifier = item,
+                    ) },
+                )
             }
 
             connection?.let { report ->
@@ -234,6 +240,7 @@ fun GatewayScreen(
             testing = testing,
             connection = connection,
             onDone = onDone,
+            modifier = Modifier.widthIn(max = AppContentMaxWidth),
         )
     }
 }

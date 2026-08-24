@@ -3,13 +3,14 @@ package com.vocahq.vocaphone.ui
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -44,6 +45,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
@@ -66,6 +68,28 @@ import com.vocahq.vocaphone.R
  */
 private val ButtonHeight = 48.dp
 
+/**
+ * Width decisions use the space a composable actually receives, not the device
+ * model or a global screen bucket. Dividing by font scale makes the same layout
+ * fold earlier when accessibility text needs more room.
+ */
+internal object AdaptiveLayout {
+    private fun effectiveWidth(widthDp: Float, fontScale: Float): Float =
+        widthDp / fontScale.coerceAtLeast(1f)
+
+    fun stackActions(widthDp: Float, fontScale: Float): Boolean =
+        effectiveWidth(widthDp, fontScale) < 360f
+
+    fun stackChecklistAction(widthDp: Float, fontScale: Float): Boolean =
+        effectiveWidth(widthDp, fontScale) < 400f
+
+    fun stackInfo(widthDp: Float, fontScale: Float): Boolean =
+        effectiveWidth(widthDp, fontScale) < 320f
+
+    fun modelGridColumns(widthDp: Float, fontScale: Float): Int =
+        if (effectiveWidth(widthDp, fontScale) < 400f) 1 else 2
+}
+
 @Composable
 fun PrimaryButton(
     text: String,
@@ -77,7 +101,7 @@ fun PrimaryButton(
     Button(
         onClick = onClick,
         enabled = enabled && !loading,
-        modifier = modifier.height(ButtonHeight),
+        modifier = modifier.heightIn(min = ButtonHeight),
     ) {
         ButtonLabel(text, loading)
     }
@@ -94,7 +118,7 @@ fun SecondaryButton(
     FilledTonalButton(
         onClick = onClick,
         enabled = enabled && !loading,
-        modifier = modifier.height(ButtonHeight),
+        modifier = modifier.heightIn(min = ButtonHeight),
     ) {
         ButtonLabel(text, loading)
     }
@@ -110,7 +134,7 @@ fun DestructiveButton(
     FilledTonalButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(ButtonHeight),
+        modifier = modifier.heightIn(min = ButtonHeight),
         colors = ButtonDefaults.filledTonalButtonColors(
             containerColor = MaterialTheme.colorScheme.errorContainer,
             contentColor = MaterialTheme.colorScheme.onErrorContainer,
@@ -148,24 +172,67 @@ private fun ButtonLabel(text: String, loading: Boolean) {
     }
 }
 
-/** A label and its value on one line, for the About section. */
+/** A label and its value, stacked when narrow or enlarged text needs the room. */
 @Composable
 fun InfoRow(label: String, value: String, modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            value,
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.End,
-            modifier = Modifier.weight(1f),
-        )
+    BoxWithConstraints(modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        val stacked = AdaptiveLayout.stackInfo(maxWidth.value, LocalDensity.current.fontScale)
+        if (stacked) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                InfoLabel(label)
+                Text(value, style = MaterialTheme.typography.bodyMedium)
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                InfoLabel(label)
+                Text(
+                    value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoLabel(label: String) {
+    Text(
+        label,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** Two actions share a row until either the available width or text scale says otherwise. */
+@Composable
+fun ResponsiveActionRow(
+    leading: @Composable (Modifier) -> Unit,
+    trailing: @Composable (Modifier) -> Unit,
+    modifier: Modifier = Modifier,
+    leadingWeight: Float = 1f,
+    trailingWeight: Float = 1f,
+) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val stacked = AdaptiveLayout.stackActions(maxWidth.value, LocalDensity.current.fontScale)
+        if (stacked) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                leading(Modifier.fillMaxWidth())
+                trailing(Modifier.fillMaxWidth())
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                leading(Modifier.weight(leadingWeight))
+                trailing(Modifier.weight(trailingWeight))
+            }
+        }
     }
 }
 
@@ -210,6 +277,9 @@ val SectionSpacing = 28.dp
 
 /** The gap between page-level [SettingsCategory] blocks. */
 val CategorySpacing = 36.dp
+
+/** Keeps app pages readable on unfolded foldables and wide landscape phones. */
+val AppContentMaxWidth = 720.dp
 
 /**
  * A page-level heading. Settings used to be a flat stack of identically
@@ -322,8 +392,6 @@ fun SettingsMenuRow(
                 supporting,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
             )
         }
         Icon(
@@ -412,10 +480,47 @@ fun ChecklistRow(
     modifier: Modifier = Modifier,
     actionColor: Color = MaterialTheme.colorScheme.primary,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    BoxWithConstraints(modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+        val stacked = !satisfied && AdaptiveLayout.stackChecklistAction(
+            maxWidth.value,
+            LocalDensity.current.fontScale,
+        )
+        if (stacked) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                ChecklistContent(title = title, detail = detail, satisfied = false)
+                TextButton(
+                    onClick = onAction,
+                    modifier = Modifier.align(Alignment.End),
+                    colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
+                ) { Text(actionLabel) }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ChecklistContent(
+                    title = title,
+                    detail = detail,
+                    satisfied = satisfied,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!satisfied) {
+                    TextButton(
+                        onClick = onAction,
+                        colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
+                    ) { Text(actionLabel) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChecklistContent(
+    title: String,
+    detail: String,
+    satisfied: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         Icon(
             painter = painterResource(
                 if (satisfied) R.drawable.ic_step_done else R.drawable.ic_step_pending
@@ -436,14 +541,6 @@ fun ChecklistRow(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-        if (!satisfied) {
-            TextButton(
-                onClick = onAction,
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = actionColor,
-                ),
-            ) { Text(actionLabel) }
         }
     }
 }

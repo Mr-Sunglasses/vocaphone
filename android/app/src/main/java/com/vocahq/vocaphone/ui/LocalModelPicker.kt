@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,6 +35,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -327,6 +329,7 @@ private fun ModelBusyBanner(state: LocalModelState, onCancelDownload: () -> Unit
                 Text(
                     "Loading ${state.preparing}… Please wait.",
                     style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
                 )
             }
             state.downloading != null -> {
@@ -341,6 +344,7 @@ private fun ModelBusyBanner(state: LocalModelState, onCancelDownload: () -> Unit
                         "Downloading $name",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f),
                     )
                     TextButton(onClick = onCancelDownload) { Text("Cancel") }
                 }
@@ -428,49 +432,49 @@ private fun CompactRecommendedActions(
     onDownloadAndUse: (LocalModelDescriptor) -> Unit,
     onBrowse: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (!downloaded) {
-            PrimaryButton(
-                text = SetupCopy.DOWNLOAD,
-                onClick = { onDownloadAndUse(model) },
-                enabled = !busy,
-                modifier = Modifier.weight(1f),
-            )
-        } else if (selected) {
-            Row(
-                modifier = Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_step_done),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+    ResponsiveActionRow(
+        leading = { item ->
+            if (!downloaded) {
+                PrimaryButton(
+                    text = SetupCopy.DOWNLOAD,
+                    onClick = { onDownloadAndUse(model) },
+                    enabled = !busy,
+                    modifier = item,
                 )
-                Text(
-                    "In use",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
+            } else if (selected) {
+                Row(
+                    modifier = item,
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_step_done),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        "In use",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            } else {
+                SecondaryButton(
+                    text = "Use",
+                    onClick = { onSelect(model) },
+                    enabled = !busy,
+                    modifier = item,
                 )
             }
-        } else {
+        },
+        trailing = { item ->
             SecondaryButton(
-                text = "Use",
-                onClick = { onSelect(model) },
-                enabled = !busy,
-                modifier = Modifier.weight(1f),
+                text = SetupCopy.BROWSE_MODELS,
+                onClick = onBrowse,
+                modifier = item,
             )
-        }
-        SecondaryButton(
-            text = SetupCopy.BROWSE_MODELS,
-            onClick = onBrowse,
-            modifier = Modifier.weight(1f),
-        )
-    }
+        },
+    )
 }
 
 @Composable
@@ -604,27 +608,33 @@ private fun ModelPickGrid(
     selectedModelId: String,
     onInspect: (LocalModelDescriptor) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        picks.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                row.forEach { pick ->
-                    ModelTile(
-                        model = pick.model,
-                        selected = pick.model.id == selectedModelId,
-                        installed = pick.model.id in state.downloaded,
-                        downloading = state.downloading == pick.model.id,
-                        progress = state.progress,
-                        onClick = { onInspect(pick.model) },
-                        modifier = Modifier.weight(1f),
-                        roleLabel = pick.role.label,
-                    )
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = AdaptiveLayout.modelGridColumns(
+            maxWidth.value,
+            LocalDensity.current.fontScale,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            picks.chunked(columns).forEach { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    row.forEach { pick ->
+                        ModelTile(
+                            model = pick.model,
+                            selected = pick.model.id == selectedModelId,
+                            installed = pick.model.id in state.downloaded,
+                            downloading = state.downloading == pick.model.id,
+                            progress = state.progress,
+                            onClick = { onInspect(pick.model) },
+                            modifier = Modifier.weight(1f),
+                            roleLabel = pick.role.label,
+                        )
+                    }
+                    if (columns > 1 && row.size == 1) Spacer(Modifier.weight(1f))
                 }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -638,27 +648,33 @@ private fun ModelTileGrid(
     onInspect: (LocalModelDescriptor) -> Unit,
     elevated: Boolean = false,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        models.chunked(2).forEach { row ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(IntrinsicSize.Min),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                row.forEach { model ->
-                    ModelTile(
-                        model = model,
-                        selected = model.id == selectedModelId,
-                        installed = model.id in state.downloaded,
-                        downloading = state.downloading == model.id,
-                        progress = state.progress,
-                        onClick = { onInspect(model) },
-                        modifier = Modifier.weight(1f),
-                        elevated = elevated,
-                    )
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val columns = AdaptiveLayout.modelGridColumns(
+            maxWidth.value,
+            LocalDensity.current.fontScale,
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            models.chunked(columns).forEach { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    row.forEach { model ->
+                        ModelTile(
+                            model = model,
+                            selected = model.id == selectedModelId,
+                            installed = model.id in state.downloaded,
+                            downloading = state.downloading == model.id,
+                            progress = state.progress,
+                            onClick = { onInspect(model) },
+                            modifier = Modifier.weight(1f),
+                            elevated = elevated,
+                        )
+                    }
+                    if (columns > 1 && row.size == 1) Spacer(Modifier.weight(1f))
                 }
-                if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -826,6 +842,7 @@ private fun ModelActions(
                 "Loading model… Please wait.",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
             )
         }
         state.downloading == model.id -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -838,6 +855,7 @@ private fun ModelActions(
                     "Downloading",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = onCancelDownload) { Text("Cancel") }
             }
