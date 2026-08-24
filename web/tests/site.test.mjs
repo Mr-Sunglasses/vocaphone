@@ -199,9 +199,9 @@ test("availability and install paths are honest", () => {
   assert.match(html, /There is\s+no App Store release yet/);
   assert.match(
     html,
-    /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases\/tag\/android\/v0\.1\.2"/,
+    /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases\/tag\/android\/v0\.1\.3"/,
   );
-  assert.match(html, /v0\.1\.2/);
+  assert.match(html, /v0\.1\.3/);
   assert.match(html, /io\.github\.mrsunglasses\.localflow/);
   assert.match(html, /href="\/iphone\/"/);
   assert.match(html, /SHA256SUMS\.txt/);
@@ -227,14 +227,14 @@ test("availability and install paths are honest", () => {
   assert.match(hero, /<use href="#mark-android"/);
   assert.match(hero, /<use href="#mark-apple"/);
   assert.ok(
-    hero.includes("https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.1.2"),
+    hero.includes("https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.1.3"),
     "hero is missing the Android release link",
   );
 
   const androidCard = androidInstallBlock(html);
   const uninstallAt = androidCard.indexOf("io.github.mrsunglasses.localflow");
   const tagHrefAt = androidCard.indexOf(
-    "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.1.2",
+    "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.1.3",
   );
   const checksumAt = androidCard.indexOf("SHA256SUMS.txt");
   assert.ok(uninstallAt !== -1, "uninstall note missing from Android install block");

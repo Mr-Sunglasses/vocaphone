@@ -1,0 +1,1 @@
+Hold 2 for @, or A for @ with long-press-for-symbols, now types only the symbol. Accents stay on the keyboard so you can slide to è or æ. QWERTY shows the #+= row when the number row is already on. Swiping the next word no longer wipes the one you just typed. Setup, Dictate, History, and Settings wrap on smaller phones and large text.
