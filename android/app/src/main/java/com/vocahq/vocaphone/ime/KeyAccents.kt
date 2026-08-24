@@ -4,8 +4,11 @@ import java.util.Locale
 
 internal object KeyAccents {
     /**
-     * Gboard / AOSP letter → symbol map. Hold-and-release types the hint;
+     * Letter → first row of the `?123` page. Hold-and-release types the hint;
      * accents stay in the same popup behind it.
+     *
+     * q-p are `1`-`0`. a-l and z-m follow the two punctuation rows under
+     * those digits (`@#$…` then `*"'…`).
      */
     private val letterSymbols = mapOf(
         "q" to "1", "w" to "2", "e" to "3", "r" to "4", "t" to "5",
@@ -16,8 +19,14 @@ internal object KeyAccents {
         "n" to "!", "m" to "?",
     )
 
-    /** q-p duplicate the number row. Hide those hints when 1-0 are already showing. */
-    private val digitLetters = setOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
+    /**
+     * When the number row already shows `1`-`0`, q-p would be blank if they
+     * kept those digits. They take the first row of the `#+=` page instead.
+     */
+    private val qwertySymbolsWhenNumberRow = mapOf(
+        "q" to "[", "w" to "]", "e" to "{", "r" to "}", "t" to "#",
+        "y" to "%", "u" to "^", "i" to "*", "o" to "+", "p" to "=",
+    )
 
     private val variants = mapOf(
         "a" to listOf("à", "á", "â", "ä", "æ", "ã", "å", "ā"),
@@ -75,8 +84,9 @@ internal object KeyAccents {
 
     /**
      * Light corner mark. Digits keep `!` on `1` when number-key hints are on.
-     * Letters show the Gboard symbol only when long-press-for-symbols is on,
-     * and q-p hide `1`-`0` while the number row is already there.
+     * Letters show a `?123` / `#+=` symbol when long-press-for-symbols is on.
+     * q-p show `1`-`0` unless the number row is already there, then the
+     * first `#+=` row (`[]{}#%^*+=`).
      */
     fun hint(
         key: KeyboardKey,
@@ -99,7 +109,7 @@ internal object KeyAccents {
         numberRow: Boolean,
     ): String? {
         if (!longPressSymbols) return null
-        if (numberRow && base in digitLetters) return null
+        if (numberRow) qwertySymbolsWhenNumberRow[base]?.let { return it }
         return letterSymbols[base]
     }
 }

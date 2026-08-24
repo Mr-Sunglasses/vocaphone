@@ -179,7 +179,7 @@ class KeyboardReducerTest {
     }
 
     @Test
-    fun `undo last committed letter deletes backward`() {
+    fun `undo last committed letter deletes surrounding`() {
         val typed = KeyboardReducer.press(
             KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
             character("h"),
@@ -189,13 +189,13 @@ class KeyboardReducerTest {
 
         val undo = KeyboardReducer.undoLastCharacter(typed.state, composeWords = false)
 
-        assertEquals(KeyboardCommand.DeleteBackward, undo.command)
+        assertEquals(KeyboardCommand.DeleteSurrounding(1, 0), undo.command)
     }
 
     @Test
-    fun `undo of a committed digit deletes backward`() {
+    fun `long-press on a digit replaces it in one batch`() {
         val typed = KeyboardReducer.press(
-            KeyboardState(KeyboardLayer.NUMBERS, ShiftState.OFF),
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
             character("2"),
             nowMillis = 1_000,
             composeWords = true,
@@ -203,16 +203,51 @@ class KeyboardReducerTest {
         assertEquals(KeyboardCommand.CommitText("2"), typed.command)
         assertEquals("", typed.state.composing)
 
-        val undo = KeyboardReducer.undoLastCharacter(typed.state, composeWords = true)
-        assertEquals(KeyboardCommand.DeleteBackward, undo.command)
-
-        val symbol = KeyboardReducer.press(
-            undo.state,
-            character("@"),
-            nowMillis = 1_400,
+        val replaced = KeyboardReducer.replaceLastCharacter(
+            typed.state,
+            replacement = "@",
             composeWords = true,
         )
-        assertEquals(KeyboardCommand.CommitText("@"), symbol.command)
+        assertEquals(KeyboardCommand.ReplaceLastCommitted("@"), replaced.command)
+        assertEquals("", replaced.state.composing)
+    }
+
+    @Test
+    fun `long-press on a composing letter rewrites the composing word`() {
+        val typed = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            character("e"),
+            nowMillis = 1_000,
+            composeWords = true,
+        )
+        assertEquals(KeyboardCommand.SetComposingText("e"), typed.command)
+
+        val replaced = KeyboardReducer.replaceLastCharacter(
+            typed.state,
+            replacement = "é",
+            composeWords = true,
+        )
+        assertEquals(KeyboardCommand.SetComposingText("é"), replaced.command)
+        assertEquals("é", replaced.state.composing)
+    }
+
+    @Test
+    fun `long-press on a composing letter for a symbol replaces in one batch`() {
+        val typed = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            character("a"),
+            nowMillis = 1_000,
+            composeWords = true,
+        )
+        assertEquals(KeyboardCommand.SetComposingText("a"), typed.command)
+
+        val replaced = KeyboardReducer.replaceLastCharacter(
+            typed.state,
+            replacement = "@",
+            composeWords = true,
+        )
+        assertEquals(KeyboardCommand.ReplaceLastCommitted("@"), replaced.command)
+        assertEquals("", replaced.state.composing)
     }
 
     @Test

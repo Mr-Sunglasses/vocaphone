@@ -48,7 +48,7 @@ class KeyAccentsTest {
         assertEquals("3", KeyAccents.hint(e, longPressSymbols = true))
         assertEquals("@", KeyAccents.hint(a, longPressSymbols = true))
         assertEquals("1", KeyAccents.hint(q, longPressSymbols = true, numberRow = false))
-        assertEquals(null, KeyAccents.hint(q, longPressSymbols = true, numberRow = true))
+        assertEquals("[", KeyAccents.hint(q, longPressSymbols = true, numberRow = true))
         assertEquals("@", KeyAccents.hint(a, longPressSymbols = true, numberRow = true))
         assertEquals(null, KeyAccents.hint(e, longPressSymbols = false))
     }
@@ -70,13 +70,32 @@ class KeyAccentsTest {
     }
 
     @Test
-    fun qLongPressesToOneOnlyWithoutANumberRow() {
+    fun qLongPressesToOneWithoutANumberRowAndBracketWithOne() {
         val q = KeyboardKey(id = "q", label = "q", output = "q")
         assertTrue(KeyAccents.forKey(q, ShiftState.OFF).isEmpty())
         assertEquals(listOf("1"), KeyAccents.forKey(q, ShiftState.OFF, longPressSymbols = true))
-        assertTrue(
-            KeyAccents.forKey(q, ShiftState.OFF, longPressSymbols = true, numberRow = true)
-                .isEmpty(),
+        assertEquals(
+            listOf("["),
+            KeyAccents.forKey(q, ShiftState.OFF, longPressSymbols = true, numberRow = true),
         )
+    }
+
+    @Test
+    fun qwertyMirrorsTheSymbolsPageWhenTheNumberRowIsShowing() {
+        val expected = mapOf(
+            "q" to "[", "w" to "]", "e" to "{", "r" to "}", "t" to "#",
+            "y" to "%", "u" to "^", "i" to "*", "o" to "+", "p" to "=",
+        )
+        expected.forEach { (letter, symbol) ->
+            val key = KeyboardKey(id = letter, label = letter, output = letter)
+            assertEquals(
+                symbol,
+                KeyAccents.hint(key, longPressSymbols = true, numberRow = true),
+            )
+            assertTrue(
+                "$letter should long-press to $symbol",
+                symbol in KeyAccents.forKey(key, ShiftState.OFF, longPressSymbols = true, numberRow = true),
+            )
+        }
     }
 }

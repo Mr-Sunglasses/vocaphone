@@ -376,6 +376,15 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 composingRegionActive = false
                 moveCursor(command.positions)
             }
+            is KeyboardCommand.ReplaceLastCommitted -> {
+                if (connection == null) return
+                connection.beginBatchEdit()
+                if (composingRegionActive) connection.finishComposingText()
+                connection.deleteSurroundingText(1, 0)
+                connection.commitText(command.text, 1)
+                connection.endBatchEdit()
+                composingRegionActive = false
+            }
             KeyboardCommand.DoubleSpacePeriod -> {
                 if (connection == null) return
                 connection.beginBatchEdit()

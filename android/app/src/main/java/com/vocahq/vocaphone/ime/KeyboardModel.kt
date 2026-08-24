@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.ime
 
 import java.util.Locale
+import kotlin.math.floor
 
 internal enum class KeyboardLayer {
     LETTERS,
@@ -53,6 +54,12 @@ internal sealed interface KeyboardCommand {
     data class SetComposingText(val text: String) : KeyboardCommand
     data object DeleteBackward : KeyboardCommand
     data class DeleteSurrounding(val before: Int, val after: Int) : KeyboardCommand
+    /**
+     * Drop the character that went out on pointer down and insert [text]
+     * in the same batch. [DeleteBackward] is a key event, so a following
+     * [CommitText] can land first and leave `2@` from a hold on `2`.
+     */
+    data class ReplaceLastCommitted(val text: String) : KeyboardCommand
     data object PerformEditorAction : KeyboardCommand
     data class MoveCursor(val positions: Int) : KeyboardCommand
     data object DoubleSpacePeriod : KeyboardCommand
@@ -64,6 +71,31 @@ internal sealed interface KeyboardCommand {
      * snapshot used to arm caps instead of cycling case.
      */
     data object ShiftTap : KeyboardCommand
+}
+
+/**
+ * Long-press accent row: hold still this long, then slide to pick a variant.
+ *
+ * The row grows to the right of the key and is shifted so every cell stays
+ * on the keyboard. Swipe typing uses the same hold time so a slide after
+ * the popup is up does not become a swipe.
+ */
+internal object AccentPicker {
+    const val HOLD_MS = 380L
+    const val CELL_DP = 36
+
+    fun rowLeft(centerX: Float, count: Int, cellPx: Float, parentWidth: Float): Float {
+        val width = count * cellPx
+        if (count <= 0 || cellPx <= 0f) return 0f
+        if (width >= parentWidth) return 0f
+        val preferred = centerX - cellPx / 2f
+        return preferred.coerceIn(0f, parentWidth - width)
+    }
+
+    fun indexAt(x: Float, rowLeft: Float, cellPx: Float, count: Int): Int {
+        if (count <= 0 || cellPx <= 0f) return 0
+        return floor((x - rowLeft) / cellPx).toInt().coerceIn(0, count - 1)
+    }
 }
 
 /** Hold-delete starts on characters, then words, then the rest of the line. */
@@ -530,6 +562,11 @@ internal object KeyboardReducer {
      * Digits and punctuation skip composing ([characterPress] uses
      * [KeyboardCommand.CommitText]), so a hold on `2` for `@` has to delete
      * that committed `2` instead of no-op'ing on empty composing.
+     *
+     * The delete is [KeyboardCommand.DeleteSurrounding], not
+     * [KeyboardCommand.DeleteBackward]. Backward-delete is a `KEYCODE_DEL`
+     * key event in the IME; the editor can apply it after the following
+     * commit, so a hold on `2` typed `2@`.
      */
     fun undoLastCharacter(
         state: KeyboardState,
@@ -555,8 +592,44 @@ internal object KeyboardReducer {
                 lastWasSpace = false,
                 capitalizeAfterSpace = false,
             ),
-            command = KeyboardCommand.DeleteBackward,
+            command = KeyboardCommand.DeleteSurrounding(1, 0),
         )
+    }
+
+    /**
+     * Long-press replacement after the seed character has already gone out
+     * on pointer down.
+     *
+     * A composing letter is rewritten in place (`hel` + hold `l` for `ł`
+     * becomes `heł`). A digit or a letter-key symbol (`a` for `@`) is
+     * deleted and replaced in one batch so the editor cannot keep both.
+     */
+    fun replaceLastCharacter(
+        state: KeyboardState,
+        replacement: String,
+        composeWords: Boolean,
+        restoreShift: ShiftState? = null,
+    ): KeyboardReduction {
+        val undone = undoLastCharacter(state, composeWords, restoreShift)
+        val typed = characterPress(
+            undone.state,
+            KeyboardKey(
+                id = "variant-$replacement",
+                label = replacement,
+                output = replacement,
+            ),
+            composeWords,
+        )
+        // Accents stay in the composing region (`e` → `é`). A symbol is
+        // CommitText, and finishing composing first would keep the letter
+        // (`a` then `@`). Batch-delete the seed and insert the symbol.
+        val command = when (val typedCommand = typed.command) {
+            is KeyboardCommand.SetComposingText -> typedCommand
+            is KeyboardCommand.CommitText ->
+                KeyboardCommand.ReplaceLastCommitted(typedCommand.text)
+            else -> typedCommand
+        }
+        return KeyboardReduction(state = typed.state, command = command)
     }
 
     private fun spacePress(state: KeyboardState): KeyboardReduction {
