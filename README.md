@@ -80,12 +80,13 @@ the active cursor. A gateway is never required for on-device mode.
 
 ## Part of Voca
 
-| Platform | Project | Repo | Status |
-| --- | --- | --- | --- |
-| Linux | VocaLinux | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available now |
-| macOS | VocaMac | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
-| Windows | VocaWin | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta · [v0.1.0-beta.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-beta.1) |
-| iOS / Android | VocaPhone | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS TestFlight · [site](https://vocaphone.vocahq.com) |
+| Platform | Project | Website | Source | Status |
+| --- | --- | --- | --- | --- |
+| Linux | VocaLinux | [vocalinux.com](https://vocalinux.com) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available now |
+| macOS | VocaMac | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
+| Windows | VocaWin | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta · [v0.1.0-beta.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-beta.1) |
+| iOS / Android | VocaPhone | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS TestFlight |
+| Gateway | VocaGateway | [vocagateway.vocahq.com](https://vocagateway.vocahq.com) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
 
 Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
 [hello@vocahq.com](mailto:hello@vocahq.com)
