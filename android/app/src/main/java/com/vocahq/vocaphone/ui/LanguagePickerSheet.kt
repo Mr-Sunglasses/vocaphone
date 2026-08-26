@@ -138,7 +138,16 @@ fun LanguagePickerSheet(
             modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).padding(top = 8.dp),
         ) {
             items(available, key = { it.wireValue }) { language ->
-                LanguageRow(label(language), selected == language, enabled = true) {
+                LanguageRow(
+                    label(language),
+                    // Every other row is a language and needs no explaining.
+                    // Roman Hinglish is a script promise about two languages at
+                    // once, and it is experimental, so it says both here rather
+                    // than leaving the name to carry it.
+                    detail = language.detail.takeIf { language.isExperimental },
+                    isSelected = selected == language,
+                    enabled = true,
+                ) {
                     onSelect(language)
                     onDismiss()
                 }
@@ -153,7 +162,12 @@ fun LanguagePickerSheet(
                     )
                 }
                 items(unavailable, key = { it.wireValue }) { language ->
-                    LanguageRow(label(language), selected == language, enabled = false) {}
+                    LanguageRow(
+                        label(language),
+                        detail = language.detail.takeIf { language.isExperimental },
+                        isSelected = selected == language,
+                        enabled = false,
+                    ) {}
                 }
             }
             if (available.isEmpty() && unavailable.isEmpty()) {
@@ -174,6 +188,7 @@ fun LanguagePickerSheet(
 @Composable
 private fun LanguageRow(
     label: String,
+    detail: String?,
     isSelected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -191,12 +206,17 @@ private fun LanguageRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = colour,
-            modifier = Modifier.weight(1f),
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = colour)
+            if (detail != null) {
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                        .copy(alpha = if (enabled) 1f else 0.5f),
+                )
+            }
+        }
         if (isSelected) {
             Icon(
                 painter = painterResource(R.drawable.ic_step_done),

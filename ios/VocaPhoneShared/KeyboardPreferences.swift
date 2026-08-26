@@ -84,6 +84,11 @@ enum TranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Sendabl
     case gujarati = "gu"
     case hebrew = "he"
     case hindi = "hi"
+    /// Not a language: an output contract. Mixed Hindi and English, as spoken,
+    /// written in one Latin script. Mirrors `TranscriptionLanguage.kt`; only a
+    /// model that names this code can honour it, which `ModelLanguageSupport`
+    /// enforces rather than assuming.
+    case hinglishRoman = "hinglish_roman"
     case hungarian = "hu"
     case indonesian = "id"
     case italian = "it"
@@ -144,6 +149,7 @@ enum TranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Sendabl
         case .gujarati: "Gujarati"
         case .hebrew: "Hebrew"
         case .hindi: "Hindi"
+        case .hinglishRoman: "Hinglish — Roman"
         case .hungarian: "Hungarian"
         case .indonesian: "Indonesian"
         case .italian: "Italian"
@@ -184,13 +190,31 @@ enum TranscriptionLanguage: String, Codable, CaseIterable, Identifiable, Sendabl
     /// The chip label. Derived from the code rather than switched over, so a new
     /// language is one line in the case list and not three.
     var shortLabel: String {
-        self == .automatic ? "Auto" : rawValue.uppercased()
+        switch self {
+        case .automatic: "Auto"
+        // The only raw value that is not a two- or three-letter code, and
+        // "HINGLISH_ROMAN" on a keyboard chip is unreadable.
+        case .hinglishRoman: "Hinglish"
+        default: rawValue.uppercased()
+        }
     }
+
+    /// Whether this row describes an output script rather than a spoken
+    /// language. See `ModelLanguageSupport.isSelectable`.
+    var isOutputScript: Bool { self == .hinglishRoman }
+
+    /// Marked in the UI so nobody mistakes it for a finished feature.
+    var isExperimental: Bool { self == .hinglishRoman }
 
     var detail: String {
         switch self {
         case .automatic:
             "Uses the language of the model selected on your gateway."
+        case .hinglishRoman:
+            """
+            Experimental. Writes mixed Hindi and English in the Latin alphabet, \
+            as spoken. Needs the Hinglish model on this phone.
+            """
         default:
             "Requires a matching multilingual or \(displayName) model on your gateway."
         }

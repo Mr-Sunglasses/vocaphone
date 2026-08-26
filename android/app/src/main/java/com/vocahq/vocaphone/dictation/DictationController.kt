@@ -19,10 +19,12 @@ import com.vocahq.vocaphone.core.DictationFailure
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.DictationTone
+import com.vocahq.vocaphone.core.HinglishNormalizer
 import com.vocahq.vocaphone.core.MissingPermission
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptSanitizer
 import com.vocahq.vocaphone.core.TranscriptStyler
+import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.gateway.GatewayClient
@@ -873,15 +875,25 @@ class DictationController(
     private fun styleLocalTranscript(
         local: LocalTranscription,
         configuration: VocaPhoneSettings,
-    ): String = TranscriptStyler.apply(
-        TranscriptSanitizer.clean(local.text),
-        configuration.style,
-        ModelLanguageSupport.outputLanguage(
+    ): String {
+        val outputLanguage = ModelLanguageSupport.outputLanguage(
             requested = configuration.effectiveLanguage.wireValue,
             reported = local.language,
             translateTo = configuration.translationTarget,
-        ),
-    )
+        )
+        val cleaned = TranscriptSanitizer.clean(local.text)
+        // Roman Hinglish is the one mode whose output script is a promise rather
+        // than a side effect, so it gets the pass that keeps that promise. Every
+        // other language reaches the styles exactly as it did before: the
+        // normalizer would be a no-op on Latin text, but running it on Hindi
+        // would romanize a transcript nobody asked to have romanized.
+        val normalized = if (outputLanguage == TranscriptionLanguage.HINGLISH_ROMAN.wireValue) {
+            HinglishNormalizer.normalize(cleaned)
+        } else {
+            cleaned
+        }
+        return TranscriptStyler.apply(normalized, configuration.style, outputLanguage)
+    }
 
     private suspend fun deliver(
         transcript: String,

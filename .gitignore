@@ -54,3 +54,7 @@ android/*.hprof
 
 # Local Netlify folder
 .netlify
+
+# Roman Hinglish benchmark audio. Downloaded by tools/hinglish/benchmark/fetch.py
+# or recorded by record.py; never committed, per the recordings rule above.
+tools/hinglish/benchmark/audio/

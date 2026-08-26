@@ -14,6 +14,14 @@ package com.vocahq.vocaphone.core
  * Odia and Kashmiri are deliberately absent: only Dolphin covers them, and no
  * Whisper build can be pinned to either, so a row for them could never be
  * honoured by anything the user could switch to.
+ *
+ * [HINGLISH_ROMAN] is the one entry that is not a language. It is an output
+ * contract — Hindi and English as spoken, written in one Latin script — and it
+ * exists as a row here because that is the choice the user is actually making
+ * and because everything downstream, from the picker to the writing styles,
+ * already keys off this enum. Exactly one model in the catalog can honour it,
+ * and [com.vocahq.vocaphone.core.ModelLanguageSupport] refuses to offer the row
+ * to anything that has not said so in as many words.
  */
 enum class TranscriptionLanguage(val wireValue: String) {
     AUTOMATIC("auto"),
@@ -37,6 +45,7 @@ enum class TranscriptionLanguage(val wireValue: String) {
     GUJARATI("gu"),
     HEBREW("he"),
     HINDI("hi"),
+    HINGLISH_ROMAN("hinglish_roman"),
     HUNGARIAN("hu"),
     INDONESIAN("id"),
     ITALIAN("it"),
@@ -95,6 +104,7 @@ enum class TranscriptionLanguage(val wireValue: String) {
             GUJARATI -> "Gujarati"
             HEBREW -> "Hebrew"
             HINDI -> "Hindi"
+            HINGLISH_ROMAN -> "Hinglish — Roman"
             HUNGARIAN -> "Hungarian"
             INDONESIAN -> "Indonesian"
             ITALIAN -> "Italian"
@@ -132,13 +142,34 @@ enum class TranscriptionLanguage(val wireValue: String) {
         }
 
     val shortLabel: String
-        get() = if (this == AUTOMATIC) "Auto" else wireValue.uppercase()
+        get() = when (this) {
+            AUTOMATIC -> "Auto"
+            // The only wire value that is not a two- or three-letter code, and
+            // "HINGLISH_ROMAN" on a keyboard chip is unreadable.
+            HINGLISH_ROMAN -> "Hinglish"
+            else -> wireValue.uppercase()
+        }
 
     val detail: String
         get() = when (this) {
             AUTOMATIC -> "Uses the language of the model selected on your gateway."
+            HINGLISH_ROMAN ->
+                "Experimental. Writes mixed Hindi and English in the Latin alphabet, " +
+                    "as spoken. Needs the Hinglish model on this phone."
             else -> "Requires a matching multilingual or $displayName model on your gateway."
         }
+
+    /**
+     * Whether this row describes an output script rather than a spoken language.
+     *
+     * The distinction matters in two places: the picker's explanatory copy, and
+     * every check that assumes a row can be honoured by any model claiming to
+     * cover it. See [com.vocahq.vocaphone.core.ModelLanguageSupport.isSelectable].
+     */
+    val isOutputScript: Boolean get() = this == HINGLISH_ROMAN
+
+    /** Marked in the UI so nobody mistakes it for a finished feature. */
+    val isExperimental: Boolean get() = this == HINGLISH_ROMAN
 
     companion object {
         val DEFAULT = AUTOMATIC

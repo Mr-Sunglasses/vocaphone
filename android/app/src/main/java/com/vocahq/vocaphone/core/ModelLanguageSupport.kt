@@ -26,6 +26,19 @@ object ModelLanguageSupport {
         if (requested == TranscriptionLanguage.AUTOMATIC.wireValue) reported else requested
 
     /**
+     * The language token an engine is actually given.
+     *
+     * Roman Hinglish is not a language a decoder knows. The model that produces
+     * it is a Hindi fine-tune, and the token it wants is `hi`; passing
+     * `hinglish_roman` through to whisper.cpp gets the string rejected and the
+     * decode falls back to detection. The distinction is kept everywhere else —
+     * the transcript language stays `hinglish_roman`, which is what tells the
+     * normalizer and the writing styles they are looking at Latin text.
+     */
+    fun decoderLanguage(requested: String): String =
+        if (requested == TranscriptionLanguage.HINGLISH_ROMAN.wireValue) "hi" else requested
+
+    /**
      * The language the finished transcript is actually written in.
      *
      * [translateTo] wins outright when set, and that is the whole point of the
@@ -52,6 +65,14 @@ object ModelLanguageSupport {
         modelLanguages: Set<String>,
     ): Boolean {
         if (language == TranscriptionLanguage.AUTOMATIC) return true
+        // An output script inverts the default. "Nothing was claimed" is a good
+        // reason not to lock a user out of Hindi, because almost everything
+        // transcribes Hindi; it is a bad reason to offer Roman Hinglish, which
+        // exactly one model in the catalog can produce and which every other
+        // model would answer with Devanagari or an English translation. Silence
+        // is a no here, and a gateway that has never heard of the value would
+        // reject it as unsupported anyway.
+        if (language.isOutputScript) return language.wireValue in modelLanguages
         if (modelLanguages.isEmpty()) return true
         return language.wireValue in modelLanguages
     }

@@ -27,6 +27,17 @@ enum ModelLanguageSupport {
         requested == TranscriptionLanguage.automatic.rawValue ? reported : requested
     }
 
+    /// The language token an engine is actually given.
+    ///
+    /// Roman Hinglish is not a language a decoder knows. The model that produces
+    /// it is a Hindi fine-tune and the token it wants is `hi`. The distinction is
+    /// kept everywhere else — the transcript language stays `hinglish_roman`,
+    /// which is what tells the normalizer and the writing styles they are looking
+    /// at Latin text. Mirrors `ModelLanguageSupport.kt`.
+    static func decoderLanguage(_ requested: String) -> String {
+        requested == TranscriptionLanguage.hinglishRoman.rawValue ? "hi" : requested
+    }
+
     /// The language the finished transcript is actually written in.
     ///
     /// `translateTo` wins outright when set, and that is the whole point of the
@@ -53,6 +64,13 @@ enum ModelLanguageSupport {
         modelLanguages: Set<String>
     ) -> Bool {
         if language == .automatic { return true }
+        // An output script inverts the default. "Nothing was claimed" is a good
+        // reason not to lock a user out of Hindi, because almost everything
+        // transcribes Hindi; it is a bad reason to offer Roman Hinglish, which
+        // exactly one model can produce and which every other model would answer
+        // with Devanagari or an English translation. Silence is a no here, and a
+        // gateway that has never heard of the value would reject it anyway.
+        if language.isOutputScript { return modelLanguages.contains(language.rawValue) }
         if modelLanguages.isEmpty { return true }
         return modelLanguages.contains(language.rawValue)
     }

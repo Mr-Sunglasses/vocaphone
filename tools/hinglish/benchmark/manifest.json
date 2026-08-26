@@ -1,0 +1,580 @@
+{
+  "$comment": [
+    "Roman Hinglish evaluation set. Audio is never committed; fetch.py",
+    "downloads it into a gitignored directory. See README.md for what each",
+    "field means, how references are sourced, and how to add a sample.",
+    "",
+    "Two tiers, because Roman-Hinglish audio with an independent Roman",
+    "reference does not exist as a public corpus. `samples` is real public",
+    "audio; `prompts` is a read-aloud script whose reference is exact by",
+    "construction because it is the text the speaker was reading."
+  ],
+  "spelling_convention": "docs/hinglish-roman.md",
+  "samples": [
+    {
+      "id": "oriserve-01",
+      "category": "conversational",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/c0637211-7384-4abc-af69-5aacf7549824_1_2629072_2656224.wav",
+      "file": "oriserve-01.wav",
+      "license": "Apache-2.0",
+      "attribution": "Oriserve/Whisper-Hindi2Hinglish-Apex demo clips",
+      "reference": "Mehnat to poora karte hain.",
+      "reference_provenance": "model-card",
+      "english_words": []
+    },
+    {
+      "id": "oriserve-02",
+      "category": "conversational",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/c0faba11-27ba-4837-a2eb-ccd67be07f40_1_3185088_3227568.wav",
+      "file": "oriserve-02.wav",
+      "license": "Apache-2.0",
+      "attribution": "Oriserve/Whisper-Hindi2Hinglish-Apex demo clips",
+      "reference": "Haan vahi dekh aapko bataen na.",
+      "reference_provenance": "model-card",
+      "english_words": []
+    },
+    {
+      "id": "oriserve-03",
+      "category": "conversational",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/663eb653-d6b5-4fda-b5f2-9ef98adc0a61_0_1098400_1118688.wav",
+      "file": "oriserve-03.wav",
+      "license": "Apache-2.0",
+      "attribution": "Oriserve/Whisper-Hindi2Hinglish-Apex demo clips",
+      "reference": "Aap pandrah log hain.",
+      "reference_provenance": "model-card",
+      "english_words": []
+    },
+    {
+      "id": "oriserve-04",
+      "category": "conversational",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/f5e0178c-354c-40c9-b3a7-687c86240a77_1_2613728_2630112.wav",
+      "file": "oriserve-04.wav",
+      "license": "Apache-2.0",
+      "attribution": "Oriserve/Whisper-Hindi2Hinglish-Apex demo clips",
+      "reference": "Thik hai saal ki.",
+      "reference_provenance": "model-card",
+      "english_words": []
+    },
+    {
+      "id": "oriserve-05",
+      "category": "conversational",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/f5e0178c-354c-40c9-b3a7-687c86240a77_1_1152496_1175488.wav",
+      "file": "oriserve-05.wav",
+      "license": "Apache-2.0",
+      "attribution": "Oriserve/Whisper-Hindi2Hinglish-Apex demo clips",
+      "reference": "Nahin, just thank you, thank you.",
+      "reference_provenance": "model-card",
+      "english_words": [
+        "just",
+        "thank",
+        "you",
+        "thank",
+        "you"
+      ]
+    },
+    {
+      "id": "oriserve-06",
+      "category": "conversational",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/c0637211-7384-4abc-af69-5aacf7549824_1_2417088_2444224.wav",
+      "file": "oriserve-06.wav",
+      "license": "Apache-2.0",
+      "attribution": "Oriserve/Whisper-Hindi2Hinglish-Apex demo clips",
+      "reference": "Haan haan, dekhe hain.",
+      "reference_provenance": "model-card",
+      "english_words": []
+    },
+    {
+      "id": "commonvoice-01",
+      "category": "hindi-heavy",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/common_voice_hi_23796065.mp3",
+      "file": "commonvoice-01.wav",
+      "license": "CC0-1.0",
+      "attribution": "Mozilla Common Voice hi, redistributed in the Apex model repo",
+      "reference": null,
+      "reference_provenance": "unlabelled",
+      "english_words": []
+    },
+    {
+      "id": "commonvoice-02",
+      "category": "hindi-heavy",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/common_voice_hi_40904697.mp3",
+      "file": "commonvoice-02.wav",
+      "license": "CC0-1.0",
+      "attribution": "Mozilla Common Voice hi, redistributed in the Apex model repo",
+      "reference": null,
+      "reference_provenance": "unlabelled",
+      "english_words": []
+    },
+    {
+      "id": "commonvoice-03",
+      "category": "hindi-heavy",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/common_voice_hi_41429198.mp3",
+      "file": "commonvoice-03.wav",
+      "license": "CC0-1.0",
+      "attribution": "Mozilla Common Voice hi, redistributed in the Apex model repo",
+      "reference": null,
+      "reference_provenance": "unlabelled",
+      "english_words": []
+    },
+    {
+      "id": "commonvoice-04",
+      "category": "hindi-heavy",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/common_voice_hi_41429259.mp3",
+      "file": "commonvoice-04.wav",
+      "license": "CC0-1.0",
+      "attribution": "Mozilla Common Voice hi, redistributed in the Apex model repo",
+      "reference": null,
+      "reference_provenance": "unlabelled",
+      "english_words": []
+    },
+    {
+      "id": "commonvoice-05",
+      "category": "hindi-heavy",
+      "url": "https://huggingface.co/Oriserve/Whisper-Hindi2Hinglish-Apex/resolve/f3214eed20b4e4d4144e739982d911f87b9cb223/audios/common_voice_hi_41666099.mp3",
+      "file": "commonvoice-05.wav",
+      "license": "CC0-1.0",
+      "attribution": "Mozilla Common Voice hi, redistributed in the Apex model repo",
+      "reference": null,
+      "reference_provenance": "unlabelled",
+      "english_words": []
+    }
+  ],
+  "prompts": [
+    {
+      "id": "prompt-01",
+      "category": "conversational",
+      "file": "prompt-01.wav",
+      "reference": "Aaj mausam kaafi accha hai, chalo bahar chalte hain.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-02",
+      "category": "conversational",
+      "file": "prompt-02.wav",
+      "reference": "Mujhe samajh nahin aa raha ki kya karna chahiye.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-03",
+      "category": "conversational",
+      "file": "prompt-03.wav",
+      "reference": "Kal shaam ko free ho to milte hain.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-04",
+      "category": "conversational",
+      "file": "prompt-04.wav",
+      "reference": "Bahut din ho gaye tumse baat kiye hue.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-05",
+      "category": "conversational",
+      "file": "prompt-05.wav",
+      "reference": "Theek hai, main tumhe baad mein call karta hoon.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "call"
+      ]
+    },
+    {
+      "id": "prompt-06",
+      "category": "technical",
+      "file": "prompt-06.wav",
+      "reference": "Server pe naya deployment push kar diya hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Server",
+        "deployment",
+        "push"
+      ]
+    },
+    {
+      "id": "prompt-07",
+      "category": "technical",
+      "file": "prompt-07.wav",
+      "reference": "Database migration chal rahi hai, thoda wait karo.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Database",
+        "migration",
+        "wait"
+      ]
+    },
+    {
+      "id": "prompt-08",
+      "category": "technical",
+      "file": "prompt-08.wav",
+      "reference": "API ka response time kaafi slow ho gaya hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "API",
+        "response",
+        "time",
+        "slow"
+      ]
+    },
+    {
+      "id": "prompt-09",
+      "category": "technical",
+      "file": "prompt-09.wav",
+      "reference": "Model ko GPU pe train karna padega, CPU pe bahut time lagega.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Model",
+        "GPU",
+        "train",
+        "CPU",
+        "time"
+      ]
+    },
+    {
+      "id": "prompt-10",
+      "category": "technical",
+      "file": "prompt-10.wav",
+      "reference": "Pull request review kar do, main merge kar dunga.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Pull",
+        "request",
+        "review",
+        "merge"
+      ]
+    },
+    {
+      "id": "prompt-11",
+      "category": "technical",
+      "file": "prompt-11.wav",
+      "reference": "Yeh bug production mein aa raha hai, staging mein nahin.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "bug",
+        "production",
+        "staging"
+      ]
+    },
+    {
+      "id": "prompt-12",
+      "category": "proper-nouns",
+      "file": "prompt-12.wav",
+      "reference": "Priya ne Google Meet ka link bheja hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Google",
+        "Meet",
+        "link"
+      ]
+    },
+    {
+      "id": "prompt-13",
+      "category": "proper-nouns",
+      "file": "prompt-13.wav",
+      "reference": "Rahul aur Ananya dono Bangalore shift ho rahe hain.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Bangalore",
+        "shift"
+      ]
+    },
+    {
+      "id": "prompt-14",
+      "category": "proper-nouns",
+      "file": "prompt-14.wav",
+      "reference": "Maine Swiggy se khana order kiya tha.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Swiggy",
+        "order"
+      ]
+    },
+    {
+      "id": "prompt-15",
+      "category": "proper-nouns",
+      "file": "prompt-15.wav",
+      "reference": "WhatsApp pe message kar dena, main dekh lunga.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "WhatsApp",
+        "message"
+      ]
+    },
+    {
+      "id": "prompt-16",
+      "category": "numbers",
+      "file": "prompt-16.wav",
+      "reference": "Meeting kal subah saade das baje hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Meeting"
+      ]
+    },
+    {
+      "id": "prompt-17",
+      "category": "numbers",
+      "file": "prompt-17.wav",
+      "reference": "Iska price pandrah hazar rupaye hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "price"
+      ]
+    },
+    {
+      "id": "prompt-18",
+      "category": "numbers",
+      "file": "prompt-18.wav",
+      "reference": "Mera flight number six A one four seven hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "flight",
+        "number"
+      ]
+    },
+    {
+      "id": "prompt-19",
+      "category": "numbers",
+      "file": "prompt-19.wav",
+      "reference": "Twenty six January ko chhutti hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "January"
+      ]
+    },
+    {
+      "id": "prompt-20",
+      "category": "numbers",
+      "file": "prompt-20.wav",
+      "reference": "Batch size thirty two rakho aur learning rate point zero zero one.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Batch",
+        "size",
+        "learning",
+        "rate"
+      ]
+    },
+    {
+      "id": "prompt-21",
+      "category": "hindi-heavy",
+      "file": "prompt-21.wav",
+      "reference": "Kal raat ko bahut tez baarish hui thi.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-22",
+      "category": "hindi-heavy",
+      "file": "prompt-22.wav",
+      "reference": "Maa ne kaha tha ki jaldi ghar aa jaana.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-23",
+      "category": "hindi-heavy",
+      "file": "prompt-23.wav",
+      "reference": "Yeh kitaab maine pichle saal padhi thi.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-24",
+      "category": "hindi-heavy",
+      "file": "prompt-24.wav",
+      "reference": "Usne kuch nahin kaha, bas chup chaap chala gaya.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-25",
+      "category": "hindi-heavy",
+      "file": "prompt-25.wav",
+      "reference": "Humein kal subah jaldi nikalna hoga.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-26",
+      "category": "english-heavy",
+      "file": "prompt-26.wav",
+      "reference": "The quarterly report is ready, bas ek review baaki hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "The",
+        "quarterly",
+        "report",
+        "is",
+        "ready",
+        "review"
+      ]
+    },
+    {
+      "id": "prompt-27",
+      "category": "english-heavy",
+      "file": "prompt-27.wav",
+      "reference": "I think we should postpone the launch, kya lagta hai tumhe?",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "I",
+        "think",
+        "we",
+        "should",
+        "postpone",
+        "the",
+        "launch"
+      ]
+    },
+    {
+      "id": "prompt-28",
+      "category": "english-heavy",
+      "file": "prompt-28.wav",
+      "reference": "Send me the invoice by Friday, please, warna delay ho jayega.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Send",
+        "me",
+        "the",
+        "invoice",
+        "by",
+        "Friday",
+        "please",
+        "delay"
+      ]
+    },
+    {
+      "id": "prompt-29",
+      "category": "english-heavy",
+      "file": "prompt-29.wav",
+      "reference": "The build is failing on CI, thoda dekh lo.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "The",
+        "build",
+        "is",
+        "failing",
+        "on",
+        "CI"
+      ]
+    },
+    {
+      "id": "prompt-30",
+      "category": "disfluent",
+      "file": "prompt-30.wav",
+      "reference": "Matlab, umm, mujhe abhi decide nahin karna hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "decide"
+      ]
+    },
+    {
+      "id": "prompt-31",
+      "category": "disfluent",
+      "file": "prompt-31.wav",
+      "reference": "Haan haan bilkul, koi problem nahin hai.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "problem"
+      ]
+    },
+    {
+      "id": "prompt-32",
+      "category": "disfluent",
+      "file": "prompt-32.wav",
+      "reference": "Toh basically yeh hua ki flight cancel ho gayi.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "basically",
+        "flight",
+        "cancel"
+      ]
+    },
+    {
+      "id": "prompt-33",
+      "category": "disfluent",
+      "file": "prompt-33.wav",
+      "reference": "Arre yaar, phir se wahi galti kar di maine.",
+      "reference_provenance": "read-aloud",
+      "english_words": []
+    },
+    {
+      "id": "prompt-34",
+      "category": "questions",
+      "file": "prompt-34.wav",
+      "reference": "Tum kahan ho abhi, office pahunche ya nahin?",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "office"
+      ]
+    },
+    {
+      "id": "prompt-35",
+      "category": "questions",
+      "file": "prompt-35.wav",
+      "reference": "Kyun nahin aaye kal party mein?",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "party"
+      ]
+    },
+    {
+      "id": "prompt-36",
+      "category": "questions",
+      "file": "prompt-36.wav",
+      "reference": "Kitna time lagega yeh kaam khatam hone mein?",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "time"
+      ]
+    },
+    {
+      "id": "prompt-37",
+      "category": "questions",
+      "file": "prompt-37.wav",
+      "reference": "Kya main tumhe kal wapas call kar sakta hoon?",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "call"
+      ]
+    },
+    {
+      "id": "prompt-38",
+      "category": "protected",
+      "file": "prompt-38.wav",
+      "reference": "Log file yahan hai slash var slash log slash whisper dot log.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Log",
+        "file",
+        "log",
+        "whisper"
+      ]
+    },
+    {
+      "id": "prompt-39",
+      "category": "protected",
+      "file": "prompt-39.wav",
+      "reference": "Mujhe mail bhej do priya at example dot com pe.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "mail"
+      ]
+    },
+    {
+      "id": "prompt-40",
+      "category": "protected",
+      "file": "prompt-40.wav",
+      "reference": "Repo clone karo aur phir npm install chala dena.",
+      "reference_provenance": "read-aloud",
+      "english_words": [
+        "Repo",
+        "clone",
+        "npm",
+        "install"
+      ]
+    }
+  ]
+}

@@ -99,7 +99,29 @@ data class LocalModelDescriptor(
     val detectsLanguage: Boolean = false,
     /** Whether short recordings may use a cropped whisper encoder window. */
     val cropsAudioContext: Boolean = false,
+    /**
+     * Kept out of every recommendation, and labelled where it is offered.
+     *
+     * Not the same as "big" or "slow", both of which the picker already warns
+     * about. This says the model's *output* has not been validated to the
+     * standard the rest of the catalog is held to, so it must never be reached
+     * by a user who did not go looking for it.
+     */
+    val experimental: Boolean = false,
 ) {
+    /**
+     * Whether this model's output script is the whole point of it.
+     *
+     * The Roman Hinglish model is the only one so far: it does not transcribe
+     * "Hindi", it transcribes Hindi and English into one Latin script, and that
+     * is a different promise from any language code. Declaring the output-script
+     * code in [languageCodes] is how a model says so, and it is what stops the
+     * translate row offering to turn the result into English — which is exactly
+     * the failure this mode exists to avoid.
+     */
+    val producesFixedScript: Boolean
+        get() = com.vocahq.vocaphone.core.TranscriptionLanguage.HINGLISH_ROMAN.wireValue in
+            languageCodes
     /**
      * Which languages this model can translate speech *into*.
      *
@@ -116,6 +138,11 @@ data class LocalModelDescriptor(
         get() = when {
             sherpaFamily == SherpaFamily.CANARY -> languageCodes
             englishOnly || "distil" in id -> emptySet()
+            // A fixed-script model has one output contract and translating is
+            // not it. Whisper's translate task would still run — it is the same
+            // decoder — and it would hand back the English translation this mode
+            // exists to avoid, from a row the user reasonably read as harmless.
+            producesFixedScript -> emptySet()
             engine == LocalModelEngine.WHISPER -> setOf("en")
             else -> emptySet()
         }
@@ -270,7 +297,56 @@ object LocalModelCatalog {
             "9a423fe4d40c82774b6af34115b8b935f34152246eb19e80e376071d3f999487", 12, "100 languages"),
     )
 
-    val all: List<LocalModelDescriptor> = whisper + SherpaModelCatalog.all
+    /**
+     * Roman Hinglish: mixed Hindi and English, written in one Latin script.
+     *
+     * `Oriserve/Whisper-Hindi2Hinglish-Apex` is a fine-tune of
+     * `openai/whisper-large-v3-turbo` (Apache-2.0) whose training target is
+     * romanized Hindi, so the script comes out of the decoder rather than out of
+     * a transliteration pass. Its `config.json` is turbo's topology exactly — 32
+     * encoder layers, 4 decoder layers, `d_model` 1280, 128 mel bins, 51866
+     * tokens — which is why whisper.cpp runs it unmodified and why the quantized
+     * file is byte-for-byte the size of the stock turbo build.
+     *
+     * Upstream publishes safetensors and nothing else. The GGML conversion is
+     * pinned at a third-party repository, at an immutable commit, by SHA-256 —
+     * and the digest was not taken on trust: `tools/hinglish/convert-apex-ggml.sh`
+     * reproduces it from Oriserve's own weights, and that script is how it should
+     * be re-checked before this pin is ever moved.
+     *
+     * [languageCodes] holds one entry and it is not a language. That is the
+     * honest claim: asking this model for Hindi gets Roman Hinglish, and asking
+     * it for German gets Roman Hinglish too.
+     */
+    private val hinglish: List<LocalModelDescriptor> = listOf(
+        LocalModelDescriptor(
+            id = "hinglish-apex-large-v3-turbo-q5_0",
+            displayName = "Hinglish — Roman (Experimental)",
+            engine = LocalModelEngine.WHISPER,
+            repository = "Marquestra/Whisper-Hindi2Hinglish-Apex-GGML",
+            revision = "d1de3ff618856e5675c47d3158ca820506fb4d9e",
+            files = listOf(
+                PinnedFile(
+                    "ggml-apex-hinglish-q5_0.bin",
+                    574_041_195L,
+                    "9d877151b15cec1feb9110cfbc0a3162cf377bcc0ab1935174226f461cf60f13",
+                ),
+            ),
+            sizeBytes = 574_041_195L,
+            minimumRamGB = 4,
+            languages = "Hindi + English, Roman script",
+            languageCodes = setOf(TranscriptionLanguage.HINGLISH_ROMAN.wireValue),
+            // Fine-tuned onto one output contract, so nothing is detected and
+            // nothing can be pinned to something else.
+            detectsLanguage = false,
+            // Large-class encoder: the same reason the stock turbo builds keep
+            // whisper's full thirty-second window.
+            cropsAudioContext = false,
+            experimental = true,
+        ),
+    )
+
+    val all: List<LocalModelDescriptor> = whisper + SherpaModelCatalog.all + hinglish
 
     /**
      * sherpa-onnx ships as a prebuilt JNI library, so it is absent from builds
@@ -376,8 +452,18 @@ object LocalModelCatalog {
 
     /** The lightest download that still transcribes this phone's language. */
     private fun smallestCovering(profile: DeviceProfile): LocalModelDescriptor? =
-        all.filter { profile.fits(it) && it.coversLanguage(profile.language) }
+        recommendable.filter { profile.fits(it) && it.coversLanguage(profile.language) }
             .minByOrNull { it.sizeBytes }
+
+    /**
+     * Everything a recommendation may land on.
+     *
+     * An experimental model has to be gone looking for. Reaching one by way of
+     * "smallest download" or "nothing else fit" would put unvalidated output in
+     * front of a user who never asked for it, which is the one thing the flag is
+     * there to prevent.
+     */
+    private val recommendable: List<LocalModelDescriptor> get() = all.filterNot { it.experimental }
 
     private fun firstFitting(
         profile: DeviceProfile,
@@ -388,9 +474,9 @@ object LocalModelCatalog {
 
     /** Nothing fit the budget, so fall back to whatever the phone can hold. */
     private fun lastResort(profile: DeviceProfile): LocalModelDescriptor =
-        all.filter { isUsableOnDevice(it, profile.totalRamGB, profile.sherpaAvailable) }
+        recommendable.filter { isUsableOnDevice(it, profile.totalRamGB, profile.sherpaAvailable) }
             .minByOrNull { it.minimumRamGB }
-            ?: all.first()
+            ?: recommendable.first()
 
     /** The fastest sensible Whisper fallback for this CPU class. */
     fun recommendedWhisper(profile: DeviceProfile): LocalModelDescriptor =

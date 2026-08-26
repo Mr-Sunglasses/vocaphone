@@ -37,12 +37,27 @@ class ModelLanguageSupportTest {
     fun `an unknown gateway never locks the picker`() {
         // Older gateway, no model selected, or an imported one. Being uninformed
         // must not look like being unsupported.
-        for (language in TranscriptionLanguage.entries) {
+        //
+        // Output-script rows are the one exception, and they are excluded here
+        // rather than weakening the rule. "Almost every model transcribes Hindi"
+        // is what makes silence a yes; nothing about that reasoning carries over
+        // to Roman Hinglish, which one model in the catalog produces and every
+        // other model would answer with Devanagari. See
+        // `HinglishModelTest.the roman row needs a model that says so`.
+        for (language in TranscriptionLanguage.entries.filterNot { it.isOutputScript }) {
             assertTrue(
                 "$language must stay selectable when the gateway made no claim",
                 ModelLanguageSupport.isSelectable(language, emptySet()),
             )
         }
+    }
+
+    @Test
+    fun `an output script is offered only where it is claimed outright`() {
+        val roman = TranscriptionLanguage.HINGLISH_ROMAN
+        assertFalse(ModelLanguageSupport.isSelectable(roman, emptySet()))
+        assertFalse(ModelLanguageSupport.isSelectable(roman, dolphin))
+        assertTrue(ModelLanguageSupport.isSelectable(roman, setOf(roman.wireValue)))
     }
 
     @Test

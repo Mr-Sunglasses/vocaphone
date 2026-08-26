@@ -26,12 +26,23 @@ struct ModelLanguageSupportTests {
     /// Older gateway, no model selected, or an imported one. Being uninformed
     /// must not look like being unsupported.
     @Test func anUnknownGatewayNeverLocksThePicker() {
-        for language in TranscriptionLanguage.allCases {
+        // Output-script rows are excluded rather than the rule being weakened.
+        // "Almost every model transcribes Hindi" is what makes silence a yes;
+        // nothing about that carries over to Roman Hinglish, which one model
+        // produces and every other model would answer with Devanagari.
+        for language in TranscriptionLanguage.allCases where !language.isOutputScript {
             #expect(
                 ModelLanguageSupport.isSelectable(language, modelLanguages: []),
                 "\(language) must stay selectable when the gateway made no claim"
             )
         }
+    }
+
+    @Test func anOutputScriptIsOfferedOnlyWhereItIsClaimedOutright() {
+        let roman = TranscriptionLanguage.hinglishRoman
+        #expect(!ModelLanguageSupport.isSelectable(roman, modelLanguages: []))
+        #expect(!ModelLanguageSupport.isSelectable(roman, modelLanguages: ["hi", "en"]))
+        #expect(ModelLanguageSupport.isSelectable(roman, modelLanguages: [roman.rawValue]))
     }
 
     /// The user picked Hindi, then switched the gateway to an English-only model.

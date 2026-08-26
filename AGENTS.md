@@ -74,6 +74,7 @@ not load `gateway/.env` into the shell (that is the Compose bearer token).
 | `assets/keyboard/` | Shared word list, bigrams, emoji catalog (both keyboards) |
 | `web/` | Static marketing site (vocaphone.vocahq.com) |
 | `docs/` | Architecture, privacy, device setup, releasing — not marketing |
+| `tools/hinglish/` | Roman Hinglish: the weight-conversion reproduction script and the evaluation harness. Desktop-only; nothing here ships in either app |
 | `fdroid/` | F-Droid metadata |
 | `telemetry/` | Optional self-hosted Aptabase (usage counters, not STT) |
 
@@ -84,7 +85,16 @@ the submodule can still run `just`, `just ios …`, `just android …`, and
 `just doctor`.
 
 Do not edit `android/third_party/whisper.cpp/` except as an intentional submodule
-pin. Ignore its upstream `AGENTS.md`.
+pin. Ignore its upstream `AGENTS.md`. (`tools/hinglish/convert-apex-ggml.sh`
+clones its own copy at the pinned revision and patches that clone; it never
+touches the submodule.)
+
+Model weights are never committed. A catalog entry pins a Hugging Face
+repository, an immutable revision, and a SHA-256 per file, and the client
+verifies the digest as it downloads. A pin that points at a third-party
+conversion needs its provenance established rather than assumed — see
+[docs/hinglish-roman.md](docs/hinglish-roman.md) for how that was done for the
+one entry that has one.
 
 ## Commands that exist
 
@@ -208,7 +218,9 @@ insertion, or network code.
 **Do not commit** (even in fixtures, screenshots, or docs):
 
 - Recordings or transcripts (`*.m4a`, `*.caf`, `*.wav` except the checked-in
-  Android cue/test fixtures already allowlisted)
+  Android cue/test fixtures already allowlisted). This includes the Roman
+  Hinglish benchmark audio under `tools/hinglish/benchmark/audio/`, which is
+  gitignored and fetched or recorded locally
 - Bearer tokens, `gateway/.env`, Keychain dumps
 - Signing material: `*.p12`, `*.mobileprovision`, keystores, provisioning profiles
 - Tailnet hostnames, personal gateway URLs, LAN IPs of real deployments

@@ -244,6 +244,7 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 | [Google Play prep](docs/play-store.md) | Full-flavor AAB, upload signing, listing and Console checklist |
 | [Tailscale](docs/tailscale.md) | Private HTTPS ingress for the gateway |
 | [Architecture](docs/architecture.md) | Components, state transitions, engine boundary, and observability |
+| [Roman Hinglish](docs/hinglish-roman.md) | The experimental Hinglish mode: model, spelling convention, privacy, and how to benchmark it |
 | [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
 | [Troubleshooting](docs/troubleshooting.md) | Keyboard, microphone, model, network, and Docker failures |
 | [Decisions](docs/decisions.md) | Current assumptions and choices still requiring confirmation |

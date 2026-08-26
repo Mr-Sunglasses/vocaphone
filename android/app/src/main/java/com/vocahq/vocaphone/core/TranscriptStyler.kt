@@ -74,6 +74,11 @@ object TranscriptStyler {
     private fun punctuation(language: String, text: String): Punctuation {
         val code = language.lowercase().substringBefore('-')
         return when (code) {
+            // Roman Hinglish is Latin by definition. Inference would reach the
+            // same answer today only because the normalizer runs first; saying
+            // it here is what keeps a leaked danda from re-scripting the whole
+            // sentence.
+            TranscriptionLanguage.HINGLISH_ROMAN.wireValue -> latin
             "ja", "zh" -> cjk
             "ar", "fa", "ps" -> arabic
             "ur", "sd", "ks" -> urdu

@@ -29,7 +29,12 @@ internal class WhisperContext private constructor(private var pointer: Long) {
                 pointer,
                 threads,
                 samples,
-                if (language == "auto") "auto" else language,
+                // Roman Hinglish is an output contract, not a token the
+                // decoder knows: the model behind it is a Hindi fine-tune and
+                // "hi" is what it wants. The transcript keeps the original code,
+                // which is what tells the normalizer and the writing styles what
+                // script they are looking at.
+                ModelLanguageSupport.decoderLanguage(language),
                 translateTo.isNotEmpty(),
                 quality.whisperBeamSize,
                 quality.whisperTemperatureIncrement,
