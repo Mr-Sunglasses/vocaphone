@@ -156,6 +156,47 @@ language, exactly as it does for Hindi or German.
 Every pass is individually switchable through `HinglishNormalizer.Options`, for
 a build that wants transliteration without the spelling opinions.
 
+## Measured, so far
+
+One run of `tools/hinglish/benchmark/` over the 11 public clips, on an Apple
+Silicon Mac, `q5_0` in both cases. Both models are the same size and the same
+architecture, so this is close to a controlled comparison of the fine-tune
+alone.
+
+| | stock `large-v3-turbo` | + the normalization layer | **Hinglish Apex** |
+| --- | --- | --- | --- |
+| Devanagari leakage | **100%** | 0% | **0%** |
+| Translation rate | — | — | 0% |
+| Real-time factor | 0.34 | 0.34 | 0.30 |
+| Time to first transcript | 1.53 s | 1.51 s | 1.35 s |
+| Peak RSS | 846 MB | 847 MB | 835 MB |
+| Download | 574 MB | 574 MB | 574 MB |
+
+The first column is why the mode exists: asked for Hindi, the stock model
+returns Devanagari every single time, which is a different feature.
+
+The second column is the more interesting one, because it is the cheap
+alternative — keep the model you already have and just transliterate. It fixes
+the script and nothing else, and the English is where it falls down:
+
+| | stock turbo + transliteration | Hinglish Apex |
+| --- | --- | --- |
+| | `…gul par parpormens pul` | `…gul par performance full` |
+| | `apanra logan` | `Aap pandrah log hain.` |
+| | `yenjar saaink rikhenge` | `Main just thank you, thank you.` |
+
+A transliterator cannot recover an English word the decoder already wrote in
+Devanagari — "performance" comes back as "parpormens" — and on conversational
+audio the stock model's Hindi is poor enough that romanizing it faithfully just
+produces readable nonsense. The fine-tune is doing the work.
+
+Indicative accuracy, over the six clips whose reference the model card
+publishes: **WER 0.23, CER 0.14, English preservation 1.00, translation rate 0.**
+Treat that as a smoke test rather than a result — the references are Apex's own
+published output, which is why `score.py` excludes them unless you pass
+`--trust-model-card`. A real word error rate needs the read-aloud set recorded;
+see the benchmark README.
+
 ## Known limitations
 
 - **Android only.** iOS runs WhisperKit, which needs a Core ML build; no verified
@@ -172,11 +213,12 @@ a build that wants transliteration without the spelling opinions.
 - **574 MB and 4 GB of RAM.** A large-class encoder. On a mid-range phone expect
   it to be slower than the small multilingual models, and it will not stream —
   whisper never does here.
-- **Accuracy is unmeasured on real speech.** The upstream WER figures are
-  Oriserve's, on their benchmarks. This repository's own harness exists
-  (`tools/hinglish/benchmark/`) but has not been run against a recorded set;
-  until it has, "experimental" is the accurate label and the reason the mode is
-  kept out of every recommendation.
+- **Word error rate is not properly measured yet.** The numbers above come from
+  11 short public clips, six of which are scored against the model's own
+  published output. The 40-prompt read-aloud set exists in the manifest and has
+  not been recorded, so nothing here covers accent breadth, noise, or fast
+  speech. Until it has, "experimental" is the accurate label and the reason the
+  mode is kept out of every recommendation.
 - **Not a corrector.** It will not fix grammar, and it will not rescue a word it
   heard wrong. Deliberately: over-correction on a dictation transcript is worse
   than an odd spelling, because the user cannot tell it happened.
