@@ -33,12 +33,13 @@ AutoName: VocaPhone
 
 RepoType: git
 Repo: https://github.com/VocaHQ/vocaphone.git
-Binaries: https://github.com/VocaHQ/vocaphone/releases/download/android/v%v/vocaphone-fdroid.apk
+Binaries: 
+  https://github.com/VocaHQ/vocaphone/releases/download/android/v%v/vocaphone-fdroid.apk
 
 Builds:
   - versionName: 0.1.3
     versionCode: 24
-    commit: android/v0.1.3
+    commit: 561ae515550b502100c661153be62668a1b74bfb
     subdir: android/app
     submodules: true
     gradle:
