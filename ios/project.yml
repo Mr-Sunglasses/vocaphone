@@ -146,8 +146,8 @@ targets:
       - path: VocaPhoneKeyboard/TypingWordList.swift
       - path: VocaPhoneKeyboard/SpellChecking.swift
       - path: VocaPhoneKeyboard/SmartPunctuation.swift
-      # The curated word-to-emoji table is the whole feature, so it is the part
-      # worth pinning: which words are in it, and which are deliberately not.
+      # The word-to-emoji table is the feature worth pinning: which names
+      # offer an emoji, and which ordinary words deliberately do not.
       - path: VocaPhoneKeyboard/EmojiSuggestions.swift
       - path: VocaPhoneKeyboard/SwipeRecognizer.swift
       # Replacing a swiped word is arithmetic over the space the swipe left

@@ -64,9 +64,9 @@ other app’s main thread.
 
 ## Suggestions and swipe
 
-- Load `en.txt`, bigrams, and the emoji catalog on `Dispatchers.Default` in
-  `onCreate`, never inside the first composition. The strip and emoji panel
-  already render empty.
+- Load `en.txt`, bigrams, the emoji catalog, and `emoji/suggestions.tsv` on
+  `Dispatchers.Default` in `onCreate`, never inside the first composition. The
+  strip and emoji panel already render empty.
 - `strip()` / `swipe()` / `similar()` run off the composition thread
   (`LaunchedEffect` + `Dispatchers.Default`). Do not move them back into
   `remember`.

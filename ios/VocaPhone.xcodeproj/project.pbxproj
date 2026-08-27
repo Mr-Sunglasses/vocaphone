@@ -273,6 +273,7 @@
 		DC775A81F32818BCC08CA795 /* SherpaIncrementalSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D41205764F091734B2DE6D02 /* SherpaIncrementalSession.swift */; };
 		DCAAD00B7ED79568106DAD0C /* DictatedTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575BDB070A428051B623F095 /* DictatedTranscript.swift */; };
 		DCF552B58B7A7A12C517C17B /* PairingPayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E9E5CE913B4FA5EF8EECD4E /* PairingPayloadTests.swift */; };
+		DDA6AC6CD7EC0A3EFE58DE84 /* suggestions.tsv in Resources */ = {isa = PBXBuildFile; fileRef = 9532218075A83B4122807217 /* suggestions.tsv */; };
 		DEB245BAC4DEE643F2EB38B0 /* DictationPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56047A6705008B5F17F003CE /* DictationPresentationTests.swift */; };
 		E03E7A333C00AA2821D622C0 /* TelemetryConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4CAEF7B3212512BACDE655 /* TelemetryConfig.swift */; };
 		E0450895D68708027C1BC77E /* TypingWordList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B6743BB4173E2F719E3D8CB /* TypingWordList.swift */; };
@@ -446,6 +447,7 @@
 		8F8E5D91EDE2C0E67DFC0250 /* KeyboardViewPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewPreview.swift; sourceTree = "<group>"; };
 		924E5D73CB086A4210BF6052 /* SwipeRecognizerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeRecognizerTests.swift; sourceTree = "<group>"; };
 		934F25D30F7D00565D83CAA0 /* VocaPhoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaPhoneApp.swift; sourceTree = "<group>"; };
+		9532218075A83B4122807217 /* suggestions.tsv */ = {isa = PBXFileReference; path = suggestions.tsv; sourceTree = "<group>"; };
 		97639A09609D9E6E76153CDB /* KeyboardHapticsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardHapticsTests.swift; sourceTree = "<group>"; };
 		98325CD266139FCDEE156D8F /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
 		9859ACCB32CD57E4F3E4D46A /* WordComposerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordComposerTests.swift; sourceTree = "<group>"; };
@@ -733,6 +735,7 @@
 			isa = PBXGroup;
 			children = (
 				822DD18B4E8BBF63F64E656C /* catalog.tsv */,
+				9532218075A83B4122807217 /* suggestions.tsv */,
 			);
 			path = emoji;
 			sourceTree = "<group>";
@@ -1014,6 +1017,7 @@
 				AB11765BF143D832E2B89511 /* catalog.tsv in Resources */,
 				4C26EF1A498140E6AEE51D86 /* en-bigrams.txt in Resources */,
 				1B6EE0F70EFC9078A48F7EB6 /* en.txt in Resources */,
+				DDA6AC6CD7EC0A3EFE58DE84 /* suggestions.tsv in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

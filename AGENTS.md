@@ -192,10 +192,10 @@ changes. Pin Android download links to a concrete `android/v*` tag — never
 
 Keyboard word lists and the emoji catalog live once at `assets/keyboard/`.
 iOS references that directory from `project.yml`; Android merges it via
-`sourceSets`. Do not fork a second copy. Generated emoji catalog:
-`python3 tools/generate-emoji-catalog.py --check` (and `--write` when
-regenerating). Brand vectors: edit constants in `assets/generate.py`, not the
-output SVGs.
+`sourceSets`. Do not fork a second copy. Generated emoji catalog and
+suggestion table: `python3 tools/generate-emoji-catalog.py --check` (and
+`--write` when regenerating). Brand vectors: edit constants in
+`assets/generate.py`, not the output SVGs.
 
 No nested `web/AGENTS.md` — the site has no extra agent rules beyond this.
 

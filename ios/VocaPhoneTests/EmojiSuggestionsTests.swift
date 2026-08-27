@@ -1,7 +1,9 @@
 import Testing
 
 /// The table is the feature. Matching is three lines; what decides whether the
-/// strip reads as clever or as broken is which words are in it.
+/// strip reads as clever or as broken is which words are in it — slang,
+/// obvious associations, and the distinctive Unicode name of almost every
+/// emoji, but never ordinary prose.
 struct EmojiSuggestionsTests {
     @Test func theWordsPeopleExpectAreOffered() {
         #expect(EmojiSuggestions.glyph(for: "lol") == "😂")
@@ -9,6 +11,11 @@ struct EmojiSuggestionsTests {
         #expect(EmojiSuggestions.glyph(for: "birthday") == "🎂")
         #expect(EmojiSuggestions.glyph(for: "thanks") == "🙏")
         #expect(EmojiSuggestions.glyph(for: "fire") == "🔥")
+        #expect(EmojiSuggestions.glyph(for: "flamingo") == "🦩")
+        #expect(EmojiSuggestions.glyph(for: "saxophone") == "🎷")
+        #expect(EmojiSuggestions.glyph(for: "thumbsup") == "👍")
+        #expect(EmojiSuggestions.glyph(for: "trex") == "🦖")
+        #expect(EmojiSuggestions.glyph(for: "laugh") == "😂")
     }
 
     /// Case is not part of the word. "LOL" is the same trigger as "lol".
@@ -66,9 +73,22 @@ struct EmojiSuggestionsTests {
         }
     }
 
-    /// Enough to be worth the code, small enough to stay hand-checked.
-    @Test func theTableIsCuratedRatherThanExhaustive() {
-        #expect(EmojiSuggestions.triggers.count > 100)
-        #expect(EmojiSuggestions.triggers.count < 400)
+    /// Distinctive Unicode names are generated; the curated list is only the
+    /// slang and the cases where the obvious glyph is not the literal name.
+    @Test func distinctiveNamesAreOffered() {
+        #expect(EmojiSuggestions.glyph(for: "cactus") == "🌵")
+        #expect(EmojiSuggestions.glyph(for: "penguin") == "🐧")
+        #expect(EmojiSuggestions.glyph(for: "unicorn") == "🦄")
+        #expect(EmojiSuggestions.glyph(for: "abacus") == "🧮")
+        #expect(EmojiSuggestions.glyph(for: "dragon") == "🐉")
+        #expect(EmojiSuggestions.glyph(for: "hotdog") == "🌭")
+    }
+
+    /// Most of the catalog is reachable by typing a name. The uncovered rest
+    /// are long phrases and ambiguous generics (`face`, `person` sequences).
+    @Test func theTableCoversMostNamedEmoji() {
+        #expect(EmojiSuggestions.triggers.count > 2_000)
+        let glyphs = Set(EmojiSuggestions.triggers.values)
+        #expect(glyphs.count > 1_500)
     }
 }

@@ -100,12 +100,12 @@ Three constraints shape the design:
 3. **The extension has a hard memory ceiling.** One checker, one word list, a
    bounded cache and a capped learned-word store.
 
-The word list, the bigram table and the emoji catalog live once at
-`assets/keyboard/` in the repository root. The iOS keyboard target references
-that directory from `project.yml`; the Android build merges the same directory
-through `sourceSets` in `app/build.gradle.kts`. Two hand-maintained copies would
-drift, and nothing would notice until the platforms started suggesting different
-words.
+The word list, the bigram table, the emoji catalog and the emoji suggestion
+table live once at `assets/keyboard/` in the repository root. The iOS keyboard
+target references that directory from `project.yml`; the Android build merges
+the same directory through `sourceSets` in `app/build.gradle.kts`. Two
+hand-maintained copies would drift, and nothing would notice until the
+platforms started suggesting different words.
 
 ## Preview harness (iOS)
 

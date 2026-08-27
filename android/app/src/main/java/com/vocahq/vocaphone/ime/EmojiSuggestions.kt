@@ -1,11 +1,20 @@
 package com.vocahq.vocaphone.ime
 
+import android.content.res.AssetManager
+import java.io.File
+
 /**
- * Emoji offered for a word as it is typed: "lol" offers 😂.
+ * Emoji offered for a word as it is typed: "lol" offers 😂, "flamingo" 🦩.
  *
- * A curated table, not a lookup into [EmojiCatalog]. The catalog's keywords
- * exist for a deliberate search in the emoji panel. Matched against ordinary
- * prose they answer "the" with 🤣, "dog" with 💩, and "clock" with 🏫.
+ * Not a lookup into [EmojiCatalog]. The catalog's keywords exist for a
+ * deliberate search in the emoji panel. Matched against ordinary prose they
+ * answer "the" with 🤣, "dog" with 💩, and "clock" with 🏫.
+ *
+ * The strip table is `assets/keyboard/emoji/suggestions.tsv`, generated
+ * from Unicode names, CLDR spoken names, and a short curated override
+ * list. Function words stay off it. Distinctive names cover most of the
+ * catalog; `lol` and `dog` → 🐶 are overrides because Unicode does not
+ * call them that.
  *
  * Exact whole words first. A unique, almost-finished prefix (`pizz` → pizza)
  * and a unique one-letter insert or delete (`piza` → pizza) are the only
@@ -72,111 +81,50 @@ internal object EmojiSuggestions {
         return longer.length == shorter.length + 1 && longer.endsWith(shorter)
     }
 
-    internal val TRIGGERS: Map<String, String> = mapOf(
-        "lol" to "😂", "lmao" to "🤣", "rofl" to "🤣", "haha" to "😂", "hehe" to "😄",
-        "funny" to "😂", "omg" to "😱", "wow" to "😮", "yay" to "🎉", "oops" to "🙈",
-        "ugh" to "😩", "meh" to "😐", "cool" to "😎", "nice" to "👍", "awesome" to "🤩",
-        "amazing" to "🤩", "perfect" to "👌", "done" to "✅", "agree" to "👍",
-        "congrats" to "🎉", "congratulations" to "🎉", "welcome" to "🤗",
+    /**
+     * Word → glyph. Production fills this from assets in [load]. JVM tests
+     * that never call [load] pick up the same file by walking up to the
+     * repository root on first read, so the object's init does no I/O.
+     */
+    @Volatile
+    private var table: Map<String, String> = emptyMap()
 
-        "love" to "❤️", "loved" to "❤️", "heart" to "❤️", "happy" to "😊", "sad" to "😢",
-        "cry" to "😭", "crying" to "😭", "angry" to "😠", "mad" to "😠", "tired" to "😴",
-        "sleepy" to "😴", "sleep" to "😴", "sick" to "🤒", "scared" to "😱",
-        "confused" to "😕", "bored" to "🥱", "excited" to "🤩", "shy" to "😊",
-        "hungry" to "😋", "thirsty" to "🥤", "stressed" to "😰", "relieved" to "😌",
+    val TRIGGERS: Map<String, String>
+        get() {
+            val current = table
+            if (current.isNotEmpty()) return current
+            val discovered = discoverFromRepository()
+            if (discovered.isNotEmpty()) table = discovered
+            return table
+        }
 
-        "hi" to "👋", "hello" to "👋", "hey" to "👋", "bye" to "👋", "goodbye" to "👋",
-        "thanks" to "🙏", "thankyou" to "🙏", "please" to "🙏", "sorry" to "😔",
-        "hug" to "🤗", "hugs" to "🤗", "kiss" to "😘", "wink" to "😉",
+    fun parse(text: String): Map<String, String> {
+        val parsed = LinkedHashMap<String, String>()
+        for (line in text.lineSequence()) {
+            if (line.isEmpty() || line.startsWith("#")) continue
+            val tab = line.indexOf('\t')
+            if (tab <= 0) continue
+            val word = line.substring(0, tab).lowercase()
+            val glyph = line.substring(tab + 1)
+            if (word.isEmpty() || glyph.isEmpty()) continue
+            parsed.putIfAbsent(word, glyph)
+        }
+        return parsed
+    }
 
-        "ok" to "👌", "okay" to "👌", "clap" to "👏", "applause" to "👏", "bravo" to "👏",
-        "wave" to "👋", "pray" to "🙏", "prayers" to "🙏", "muscle" to "💪",
-        "strong" to "💪", "facepalm" to "🤦", "shrug" to "🤷", "thinking" to "🤔",
-        "eyes" to "👀", "brain" to "🧠",
+    fun load(assets: AssetManager) {
+        table = assets.open("emoji/suggestions.tsv").bufferedReader().use { reader ->
+            parse(reader.readText())
+        }
+    }
 
-        "fire" to "🔥", "lit" to "🔥", "skull" to "💀", "ghost" to "👻", "alien" to "👽",
-        "robot" to "🤖", "poop" to "💩", "party" to "🎉", "birthday" to "🎂",
-        "cake" to "🎂", "gift" to "🎁", "present" to "🎁", "balloon" to "🎈",
-        "fireworks" to "🎆", "crown" to "👑", "diamond" to "💎", "trophy" to "🏆",
-        "winner" to "🏆", "medal" to "🥇", "idea" to "💡", "bug" to "🐛",
-        "warning" to "⚠️", "rocket" to "🚀",
-
-        "pizza" to "🍕", "burger" to "🍔", "fries" to "🍟", "coffee" to "☕",
-        "tea" to "🍵", "beer" to "🍺", "wine" to "🍷", "water" to "💧",
-        "breakfast" to "🥞", "lunch" to "🍽️", "dinner" to "🍽️", "snack" to "🍿",
-        "chocolate" to "🍫", "cookie" to "🍪", "icecream" to "🍦", "apple" to "🍎",
-        "banana" to "🍌", "biryani" to "🍛", "chai" to "🍵",
-
-        "dog" to "🐶", "puppy" to "🐶", "cat" to "🐱", "kitten" to "🐱", "bird" to "🐦",
-        "fish" to "🐟", "tree" to "🌳", "flower" to "🌸", "rose" to "🌹",
-        "sun" to "☀️", "sunny" to "☀️", "moon" to "🌙", "star" to "⭐",
-        "rain" to "🌧️", "rainy" to "🌧️", "snow" to "❄️", "storm" to "⛈️",
-        "rainbow" to "🌈", "beach" to "🏖️",
-
-        "home" to "🏠", "house" to "🏠", "office" to "🏢", "school" to "🏫",
-        "hospital" to "🏥", "bank" to "🏦", "gym" to "🏋️", "workout" to "🏋️",
-        "running" to "🏃", "walk" to "🚶", "travel" to "✈️", "vacation" to "✈️",
-        "holiday" to "✈️", "flight" to "✈️", "plane" to "✈️", "airport" to "✈️",
-        "car" to "🚗", "train" to "🚆", "bike" to "🚲", "shopping" to "🛒",
-        "money" to "💰", "cash" to "💰", "salary" to "💰",
-
-        "music" to "🎵", "song" to "🎵", "book" to "📚", "reading" to "📚",
-        "phone" to "📱", "laptop" to "💻", "computer" to "💻", "email" to "📧",
-        "mail" to "📧", "calendar" to "📅", "meeting" to "🗓️", "deadline" to "⏰",
-        "clock" to "⏰", "alarm" to "⏰", "camera" to "📷", "photo" to "📷",
-        "movie" to "🎬", "game" to "🎮", "gaming" to "🎮", "art" to "🎨",
-        "football" to "⚽", "cricket" to "🏏", "basketball" to "🏀",
-
-        "christmas" to "🎄", "halloween" to "🎃", "diwali" to "🪔",
-
-        // Extra doors into the same glyphs. Gemoji / chat short names, not
-        // catalog keywords: each one should still mean that emoji.
-        "laugh" to "😂", "laughing" to "😂", "joy" to "😂",
-        "grin" to "😄", "grinning" to "😄",
-        "smile" to "😊", "smiling" to "😊", "blush" to "😊",
-        "unhappy" to "😢", "upset" to "😢", "tear" to "😢",
-        "sob" to "😭", "tears" to "😭",
-        "annoyed" to "😠", "pissed" to "😠",
-        "sleeping" to "😴", "zzz" to "😴", "exhausted" to "😴", "nap" to "😴",
-        "yawn" to "🥱", "yawning" to "🥱",
-        "ill" to "🤒", "unwell" to "🤒",
-        "scream" to "😱", "shocked" to "😱",
-        "nervous" to "😰", "worried" to "😰",
-        "weary" to "😩",
-        "whew" to "😌",
-        "starstruck" to "🤩",
-        "ily" to "❤️",
-        "xoxo" to "😘",
-        "thx" to "🙏", "ty" to "🙏", "thank" to "🙏", "pls" to "🙏",
-        "tada" to "🎉", "hooray" to "🎉",
-        "smh" to "🤦",
-        "idk" to "🤷", "dunno" to "🤷",
-        "think" to "🤔",
-        "flex" to "💪",
-        "thumbsup" to "👍",
-        "howdy" to "👋", "cya" to "👋",
-        "flame" to "🔥", "burn" to "🔥",
-        "dead" to "💀",
-        "poo" to "💩", "crap" to "💩",
-        "spooky" to "👻",
-        "bday" to "🎂",
-        "bulb" to "💡",
-        "launch" to "🚀",
-        "hamburger" to "🍔",
-        "latte" to "☕", "espresso" to "☕", "cafe" to "☕",
-        "doggo" to "🐶", "doggy" to "🐶", "pup" to "🐶",
-        "kitty" to "🐱", "meow" to "🐱",
-        "goodnight" to "🌙", "nite" to "🌙",
-        "airplane" to "✈️",
-        "taxi" to "🚗", "cab" to "🚗",
-        "bicycle" to "🚲",
-        "pic" to "📷",
-        "film" to "🎬",
-        "mobile" to "📱",
-        "tune" to "🎵",
-        "books" to "📚",
-        "soccer" to "⚽",
-    )
+    private fun discoverFromRepository(): Map<String, String> {
+        val file = generateSequence(File("").absoluteFile) { it.parentFile }
+            .map { File(it, "assets/keyboard/emoji/suggestions.tsv") }
+            .firstOrNull(File::isFile)
+            ?: return emptyMap()
+        return parse(file.readText())
+    }
 
     // Related chips, keyed by the primary glyph so every alias shares them.
     private val EXTRAS: Map<String, List<String>> = mapOf(

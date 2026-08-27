@@ -35,4 +35,23 @@ class EmojiCatalogTest {
         assertTrue(EmojiCategory.browsable(asciiEnabled = true).contains(EmojiCategory.ASCII))
         assertTrue(EmojiCategory.ASCII !in EmojiCategory.browsable(asciiEnabled = false))
     }
+
+    @Test
+    fun `shipped catalog includes concatenated names people type`() {
+        val catalog = generateSequence(java.io.File("").absoluteFile) { it.parentFile }
+            .map { java.io.File(it, "assets/keyboard/emoji/catalog.tsv") }
+            .firstOrNull(java.io.File::isFile)
+        org.junit.Assume.assumeTrue(
+            "assets/keyboard is only present in the repository",
+            catalog != null,
+        )
+        val byGlyph = catalog!!.readLines().associate { line ->
+            val tab = line.indexOf('\t')
+            val second = line.indexOf('\t', tab + 1)
+            line.substring(0, tab) to line.substring(second + 1)
+        }
+        assertTrue(byGlyph.getValue("👍").contains("thumbsup"))
+        assertTrue(byGlyph.getValue("🌭").contains("hotdog"))
+        assertTrue(byGlyph.getValue("🦖").contains("trex"))
+    }
 }

@@ -2,9 +2,9 @@ name: Quality (shared assets)
 
 # The keyboard assets at the repository root are read by both platforms, so
 # they belong to neither platform's workflow. This one checks that the
-# generated ones still match their generator: the emoji catalog is 3,781 lines
-# nobody reviews by eye, and a hand edit to it is silently undone by the next
-# person to run --write.
+# generated ones still match their generator: the emoji catalog and the
+# suggestion table are thousands of lines nobody reviews by eye, and a hand
+# edit to either is silently undone by the next person to run --write.
 #
 # Nothing here needs the network. tools/unicode/ carries the pinned Unicode and
 # CLDR sources, which is what makes this check mean the same thing on every run
@@ -49,5 +49,5 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Fail if the emoji catalog does not match its generator
+      - name: Fail if the emoji catalog or suggestions do not match the generator
         run: python3 tools/generate-emoji-catalog.py --check

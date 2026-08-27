@@ -114,6 +114,9 @@ final class TypingEngine {
         // Pure Swift, so unlike the checker this may leave the main actor.
         Task.detached(priority: .utility) {
             let loaded = TypingWordList.load(from: Bundle(for: TypingEngine.self))
+            // Parse the suggestion table off the main actor too. It is small,
+            // but the first keystroke is the wrong moment to notice.
+            _ = EmojiSuggestions.triggers
             await MainActor.run { [weak self] in
                 self?.wordList = loaded
                 self?.onWordListLoaded?(loaded)

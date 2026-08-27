@@ -78,5 +78,10 @@ struct EmojiCatalogTests {
             )
         }
         #expect(!catalog.search("heart").isEmpty)
+        // Concatenated Unicode names, so a search for the name people type
+        // still hits — "thumbs up" was already there as two words.
+        #expect(catalog.search("thumbsup").map(\.glyph).contains("👍"))
+        #expect(catalog.search("hotdog").map(\.glyph).contains("🌭"))
+        #expect(catalog.search("trex").map(\.glyph).contains("🦖"))
     }
 }

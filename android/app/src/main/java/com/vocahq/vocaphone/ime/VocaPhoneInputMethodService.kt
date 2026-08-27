@@ -56,9 +56,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
      *
      * Both were `by lazy`, and the first thing to touch them was composition:
      * bringing the keyboard up for the first time parsed a ten thousand word
-     * list, its bigram table and a four thousand entry emoji catalog — roughly
-     * three hundred kilobytes of assets — inside the first frame. Nothing could
-     * be drawn until it finished.
+     * list, its bigram table, a four thousand entry emoji catalog and the
+     * suggestion table — a few hundred kilobytes of assets — inside the first
+     * frame. Nothing could be drawn until it finished.
      *
      * Both surfaces already render without them: the strip takes a nullable
      * dictionary and the emoji panel an empty catalog, so the keyboard appears
@@ -125,6 +125,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             // word list still types, and there is no screen here to report on.
             suggestionDictionary.value = runCatching { SuggestionDictionary.load(assets) }.getOrNull()
             emojiCatalog.value = runCatching { EmojiCatalog.load(assets) }.getOrNull().orEmpty()
+            runCatching { EmojiSuggestions.load(assets) }
         }
     }
 

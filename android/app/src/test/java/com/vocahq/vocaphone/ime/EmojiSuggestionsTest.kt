@@ -17,6 +17,10 @@ class EmojiSuggestionsTest {
         assertEquals("😊", EmojiSuggestions.glyph("happy"))
         assertEquals("😢", EmojiSuggestions.glyph("sad"))
         assertEquals("💀", EmojiSuggestions.glyph("skull"))
+        assertEquals("🦩", EmojiSuggestions.glyph("flamingo"))
+        assertEquals("🎷", EmojiSuggestions.glyph("saxophone"))
+        assertEquals("👍", EmojiSuggestions.glyph("thumbsup"))
+        assertEquals("🦖", EmojiSuggestions.glyph("trex"))
     }
 
     @Test
@@ -113,21 +117,29 @@ class EmojiSuggestionsTest {
     }
 
     @Test
-    fun theTableIsCuratedRatherThanExhaustive() {
-        assertTrue(EmojiSuggestions.TRIGGERS.size > 100)
-        assertTrue(EmojiSuggestions.TRIGGERS.size < 400)
+    fun distinctiveNamesAreOffered() {
+        assertEquals("🌵", EmojiSuggestions.glyph("cactus"))
+        assertEquals("🐧", EmojiSuggestions.glyph("penguin"))
+        assertEquals("🦄", EmojiSuggestions.glyph("unicorn"))
+        assertEquals("🧮", EmojiSuggestions.glyph("abacus"))
+        assertEquals("🐉", EmojiSuggestions.glyph("dragon"))
+        assertEquals("🌭", EmojiSuggestions.glyph("hotdog"))
+    }
+
+    @Test
+    fun theTableCoversMostNamedEmoji() {
+        assertTrue(EmojiSuggestions.TRIGGERS.size > 2_000)
+        assertTrue(EmojiSuggestions.TRIGGERS.values.toSet().size > 1_500)
     }
 
     /**
      * Every glyph the strip can offer is one the shipped catalog also carries.
      *
-     * The trigger table is curated by hand and stays that way -- CLDR's
-     * keywords are for a deliberate search in the emoji panel, and matched
-     * against ordinary prose they answer "the" with an emoji. What the table
-     * has no way to catch on its own is a glyph that nothing can draw. The
-     * catalog is generated from a pinned Unicode release, so agreeing with it
-     * is what rules out pasting in a draft codepoint that renders as a blank
-     * box on every phone in the field.
+     * The table is generated from the same Unicode release as the catalog, plus
+     * a short override list. CLDR's keywords stay out of it -- matched against
+     * ordinary prose they answer "the" with an emoji. Agreeing with the
+     * catalog is what rules out a draft codepoint that renders as a blank box
+     * on every phone in the field.
      */
     @Test
     fun `every offered emoji exists in the shipped catalog`() {
