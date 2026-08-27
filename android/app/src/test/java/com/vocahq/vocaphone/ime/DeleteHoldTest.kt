@@ -31,6 +31,33 @@ class DeleteHoldTest {
     }
 
     @Test
+    fun `a hold session ramps from characters to words on a local buffer`() {
+        // Editor text is not read on every repeat (50 ms coalesce). The hold
+        // has to shrink its own copy or the 1 s tick still looks like a char.
+        var before = "one two three"
+        fun tick(heldMs: Long): KeyboardCommand {
+            val command = DeleteHold.command(
+                heldMs = heldMs,
+                swipeUndo = false,
+                before = before,
+                after = "",
+            )
+            before = DeleteHold.remainingBefore(before, command)
+            return command
+        }
+        assertEquals(KeyboardCommand.DeleteBackward, tick(0))
+        assertEquals("one two thre", before)
+        assertEquals(KeyboardCommand.DeleteBackward, tick(DeleteHold.WORD_AFTER_MS - 1))
+        assertEquals("one two thr", before)
+        val word = tick(DeleteHold.WORD_AFTER_MS)
+        assertEquals(KeyboardCommand.DeleteSurrounding(3, 0), word)
+        assertEquals("one two ", before)
+        val nextWord = tick(DeleteHold.WORD_AFTER_MS + DeleteHold.WORD_INTERVAL_MS)
+        assertEquals(KeyboardCommand.DeleteSurrounding(4, 0), nextWord)
+        assertEquals("one ", before)
+    }
+
+    @Test
     fun `hold later deletes a word then a line`() {
         assertEquals(
             KeyboardCommand.DeleteBackward,

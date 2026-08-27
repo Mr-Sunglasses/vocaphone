@@ -149,6 +149,13 @@ internal object DeleteHold {
             }
         }
     }
+
+    /** Apply [command] to the local before-cursor buffer used during a hold. */
+    fun remainingBefore(before: String, command: KeyboardCommand): String = when (command) {
+        KeyboardCommand.DeleteBackward -> before.dropLast(1)
+        is KeyboardCommand.DeleteSurrounding -> before.dropLast(command.before)
+        else -> before
+    }
 }
 
 internal data class KeyboardReduction(
@@ -236,12 +243,16 @@ internal object KeyboardChrome {
     fun swipePrefixCommand(composing: String): KeyboardCommand? =
         if (composing.isEmpty()) null else KeyboardCommand.CommitText(" ")
 
-    /** True only while the cursor is still sitting after the swiped word and its space. */
+    /**
+     * True while the cursor is still sitting on the swiped word. Some hosts
+     * (Chrome omnibox, some web editors) drop the trailing space we send;
+     * the strip still has to show the other same-path words so the user
+     * can tap a neighbour of the path.
+     */
     fun swipeWordArmed(word: String?, before: CharSequence, after: CharSequence): Boolean {
         if (word.isNullOrEmpty()) return false
         val span = SuggestionEngine.replaceableWord(before, after) ?: return false
         return span.afterLength == 0 &&
-            span.beforeLength > span.word.length &&
             span.word.equals(word, ignoreCase = true)
     }
 

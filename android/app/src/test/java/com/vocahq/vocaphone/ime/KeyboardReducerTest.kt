@@ -158,6 +158,26 @@ class KeyboardReducerTest {
     }
 
     @Test
+    fun `a sentence-start letter stays capitalized unless the seed is undone`() {
+        val afterStop = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            character("."),
+            nowMillis = 1_000,
+        )
+        val spaced = KeyboardReducer.press(afterStop.state, spaceKey(), nowMillis = 1_100)
+        assertEquals(ShiftState.ONCE, spaced.state.shift)
+
+        val letter = KeyboardReducer.press(
+            spaced.state,
+            character("h"),
+            nowMillis = 1_200,
+            composeWords = true,
+        )
+        assertEquals("H", letter.state.composing)
+        assertEquals(ShiftState.OFF, letter.state.shift)
+    }
+
+    @Test
     fun `undo of the first letter restores one-shot shift`() {
         val typed = KeyboardReducer.press(
             KeyboardState(KeyboardLayer.LETTERS, ShiftState.ONCE),

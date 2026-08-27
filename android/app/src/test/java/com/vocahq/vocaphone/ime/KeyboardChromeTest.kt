@@ -170,10 +170,10 @@ class KeyboardChromeTest {
     }
 
     @Test
-    fun `swipe word stays armed only after the word and its trailing space`() {
+    fun `swipe word stays armed while the cursor is on that word`() {
         assertTrue(KeyboardChrome.swipeWordArmed("hello", "hello ", ""))
         assertTrue(KeyboardChrome.swipeWordArmed("Hello", "hello ", ""))
-        assertFalse(KeyboardChrome.swipeWordArmed("hello", "hello", ""))
+        assertTrue(KeyboardChrome.swipeWordArmed("hello", "hello", ""))
         assertFalse(KeyboardChrome.swipeWordArmed("hello", "hel", "lo "))
         assertFalse(KeyboardChrome.swipeWordArmed("hello", "hello ", "there"))
         assertFalse(KeyboardChrome.swipeWordArmed("hello", "other ", ""))

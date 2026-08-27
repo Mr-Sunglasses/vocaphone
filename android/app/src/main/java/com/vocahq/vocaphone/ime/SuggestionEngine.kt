@@ -54,6 +54,22 @@ internal class SuggestionDictionary(
     /** Unboxed lengths for [collapsed], so the reject path never derefs a String. */
     private val collapsedLength = IntArray(words.size) { collapsed[it].length }
 
+    /**
+     * Ideal resampled paths, one per word, so a geometric swipe does not
+     * rebuild twenty-four points for every candidate. Letter-string swipes
+     * do not read these: they keep the previous scorer so those tests stay
+     * a lock.
+     */
+    private val swipeIdeal: Array<FloatArray> =
+        Array(words.size) { SwipeLayout.sampleWord(collapsed[it]) }
+
+    /** Colinear shortcut of each word, same length as [swipeIdeal]. */
+    private val swipeShortcut: Array<FloatArray> =
+        Array(words.size) { SwipeLayout.sampleWordShortcut(words[it]) }
+
+    /** Word indices whose collapsed form starts with each letter, still in frequency order. */
+    private val swipeByFirst: Array<IntArray> = buildSwipeFirst(collapsed)
+
     fun isKnown(word: String): Boolean = known.contains(word.lowercase())
 
     fun complete(prefix: String, limit: Int = 3): List<String> {
@@ -184,14 +200,30 @@ internal class SuggestionDictionary(
 
     fun swipe(
         path: String,
-        limit: Int = 4,
+        limit: Int = 6,
         shouldAbort: () -> Boolean = { false },
+        points: FloatArray = FloatArray(0),
+        previousWord: String = "",
     ): List<String> {
         val keys = SuggestionEngine.collapseLetters(path)
         if (keys.length < 2) return emptyList()
-        // The gesture's own sampled shape and length are the same for every
-        // candidate. They used to be recomputed inside the score, so a ten
-        // thousand word list resampled the user's path ten thousand times.
+        return if (points.size >= 4) {
+            swipeGeometric(keys, points, previousWord, limit, shouldAbort)
+        } else {
+            swipeFromKeys(keys, limit, shouldAbort)
+        }
+    }
+
+    /**
+     * The matcher the letter-string tests lock. Changing it is a behaviour
+     * change for every caller that only has the keys the finger entered, so
+     * keep the formula here even after the geometric scorer grows.
+     */
+    private fun swipeFromKeys(
+        keys: String,
+        limit: Int,
+        shouldAbort: () -> Boolean,
+    ): List<String> {
         val gesture = SuggestionEngine.SwipeGesture(keys)
         val scored = ArrayList<Pair<String, Float>>()
         for (rank in words.indices) {
@@ -200,11 +232,69 @@ internal class SuggestionDictionary(
             val last = collapsedLength[rank] - 1
             if (last < 1) continue
             if (!gesture.endsAreReachable(compact[0], compact[last])) continue
-            // Exact first: it is the cheaper test, it rejects most of the list,
-            // and whether it succeeded is itself part of the score below.
             val exact = SuggestionEngine.isSubsequence(compact, keys)
             if (!exact && !SuggestionEngine.isReachableSubsequence(compact, keys)) continue
             scored.add(words[rank] to gesture.score(compact, rank, approximate = !exact))
+        }
+        return scored
+            .sortedByDescending { it.second }
+            .take(limit)
+            .map { it.first }
+    }
+
+    /**
+     * Real (x, y) traces. Start-letter buckets are the first level of the
+     * candidate tree; when the finger turned, a word also has to cover
+     * every apex (the keys around each direction change) in order.
+     */
+    private fun swipeGeometric(
+        keys: String,
+        points: FloatArray,
+        previousWord: String,
+        limit: Int,
+        shouldAbort: () -> Boolean,
+    ): List<String> {
+        val gesture = SwipeLayout.Gesture(keys, points)
+        val predicted = if (previousWord.isEmpty()) {
+            emptySet()
+        } else {
+            bigrams[previousWord.lowercase()].orEmpty().toHashSet()
+        }
+        val scored = ArrayList<Pair<String, Float>>()
+        fun consider(requireTurns: Boolean): Boolean {
+            var seen = 0
+            for (letter in 'a'..'z') {
+                if (!gesture.mayBeginWith(letter)) continue
+                val bucket = swipeByFirst[letter - 'a']
+                for (rank in bucket) {
+                    if ((seen and 127) == 0 && shouldAbort()) return true
+                    seen++
+                    val compact = collapsed[rank]
+                    val last = collapsedLength[rank] - 1
+                    if (last < 1) continue
+                    if (!gesture.endsAreReachable(compact[0], compact[last])) continue
+                    if (requireTurns && !gesture.coversWord(compact)) continue
+                    scored.add(
+                        words[rank] to gesture.score(
+                            compactWord = compact,
+                            originalWord = words[rank],
+                            frequencyRank = rank,
+                            wordCount = words.size,
+                            predictedWord = words[rank] in predicted,
+                            full = swipeIdeal[rank],
+                            shortcut = swipeShortcut[rank],
+                        ),
+                    )
+                }
+            }
+            return false
+        }
+        val aborted = consider(requireTurns = gesture.hasTurns)
+        if (aborted) return emptyList()
+        // A noisy trace can invent extra apexes and empty the tree. Fall
+        // back to start/end so we still commit a word the strip can fix.
+        if (scored.isEmpty() && gesture.hasTurns) {
+            if (consider(requireTurns = false)) return emptyList()
         }
         return scored
             .sortedByDescending { it.second }
@@ -227,6 +317,16 @@ internal class SuggestionDictionary(
             var mask = 0
             for (character in word) mask = mask or SuggestionEngine.letterBit(character)
             return mask
+        }
+
+        private fun buildSwipeFirst(collapsed: Array<String>): Array<IntArray> {
+            val buckets = Array(26) { ArrayList<Int>() }
+            collapsed.forEachIndexed { index, compact ->
+                if (compact.length < 2) return@forEachIndexed
+                val first = compact[0]
+                if (first in 'a'..'z') buckets[first - 'a'].add(index)
+            }
+            return Array(26) { buckets[it].toIntArray() }
         }
 
         private fun buildPrefixIndex(words: List<String>): Map<String, IntArray> {
