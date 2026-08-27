@@ -21,6 +21,7 @@
   --font-display: "Avenir Next", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
   --font-body: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --menu-bar-height: 58px;
 }
 
 * {
@@ -30,7 +31,7 @@
 html {
   overflow-x: clip;
   scroll-behavior: smooth;
-  scroll-padding-top: 76px;
+  scroll-padding-top: calc(var(--menu-bar-height) + 18px);
 }
 
 body {
@@ -1035,6 +1036,25 @@ svg {
   word-spacing: 0.035em;
 }
 
+/* The menu bar is fixed and opaque. scroll-padding-top already saves
+   in-page jumps; these titles also need their own top padding so a
+   heading that scrolls up on its own does not sit under the bar.
+   The extra 18px matches the html scroll offset and covers the
+   first-line ink that tight display line-heights paint above the box. */
+.section-heading h2,
+.platform-intro h2,
+.faq-heading h2,
+.manifesto-copy h2,
+.download-copy h2,
+.real-proof-copy h2,
+.gateway-copy h2,
+.guide-hero h1,
+.guide-intro h2,
+.guide-callout h2 {
+  padding-top: calc(var(--menu-bar-height) + 18px);
+  scroll-margin-top: calc(var(--menu-bar-height) + 18px);
+}
+
 .section-heading > p,
 .platform-intro > p {
   max-width: 570px;
@@ -1132,20 +1152,21 @@ svg {
   letter-spacing: 0.04em;
 }
 
-.note-page h4 {
-  margin: 8px 0 24px;
-  font-family: var(--font-display);
-  font-size: 34px;
-  font-weight: 650;
-  letter-spacing: -0.05em;
-}
-
 .note-page p {
   max-width: 430px;
   margin: 0;
   font-family: "New York", Georgia, serif;
   font-size: 25px;
   line-height: 1.52;
+}
+
+.note-page .note-title {
+  margin: 8px 0 24px;
+  font-family: var(--font-display);
+  font-size: 34px;
+  font-weight: 650;
+  letter-spacing: -0.05em;
+  line-height: 1.05;
 }
 
 .note-page mark {
@@ -2061,6 +2082,13 @@ svg {
   color: #59625d;
   font-size: 11px;
   line-height: 1.55;
+}
+
+.gateway-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
 }
 
 .gateway-button {
@@ -3737,6 +3765,10 @@ svg {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --menu-bar-height: 54px;
+  }
+
   .menu-bar {
     min-height: 54px;
     padding-inline: 14px;
@@ -4020,7 +4052,7 @@ svg {
     padding: 15px;
   }
 
-  .gateway-button {
+  .gateway-actions .button {
     width: 100%;
     justify-content: center;
     text-align: center;
@@ -4150,7 +4182,7 @@ svg {
     padding: 42px 28px;
   }
 
-  .note-page p {
+  .note-page p:not(.note-title) {
     font-size: 20px;
   }
 
