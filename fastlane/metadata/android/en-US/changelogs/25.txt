@@ -1,0 +1,1 @@
+Setup Grant stays beside the permission labels; finished rows collapse so the next step stays on screen; a permanent deny opens app Settings instead of a dead Grant; brief ready line after a grant. Emoji suggestions match official Unicode names. Swipe paths decode from direction-change apexes.
