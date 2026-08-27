@@ -47,7 +47,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,9 +82,6 @@ internal object AdaptiveLayout {
 
     fun stackActions(widthDp: Float, fontScale: Float): Boolean =
         effectiveWidth(widthDp, fontScale) < 360f
-
-    fun stackChecklistAction(widthDp: Float, fontScale: Float): Boolean =
-        effectiveWidth(widthDp, fontScale) < 400f
 
     fun stackInfo(widthDp: Float, fontScale: Float): Boolean =
         effectiveWidth(widthDp, fontScale) < 320f
@@ -479,36 +479,32 @@ fun ChecklistRow(
     onAction: () -> Unit,
     modifier: Modifier = Modifier,
     actionColor: Color = MaterialTheme.colorScheme.primary,
+    /**
+     * Compact rows keep title + check only. Used for satisfied steps and for
+     * unfinished steps that are not the current spotlight target.
+     */
+    compact: Boolean = false,
 ) {
-    BoxWithConstraints(modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-        val stacked = !satisfied && AdaptiveLayout.stackChecklistAction(
-            maxWidth.value,
-            LocalDensity.current.fontScale,
+    // Always a single row: label takes the leftover width and wraps, the short
+    // action (Grant, Open, Set up) stays vertically centered. Stacking under
+    // 400dp looked broken on every handset and still looked wrong on a foldable
+    // cover screen; weight + wrap scales from a tiny phone to an open foldable.
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ChecklistContent(
+            title = title,
+            detail = detail,
+            satisfied = satisfied,
+            compact = compact,
+            modifier = Modifier.weight(1f),
         )
-        if (stacked) {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                ChecklistContent(title = title, detail = detail, satisfied = false)
-                TextButton(
-                    onClick = onAction,
-                    modifier = Modifier.align(Alignment.End),
-                    colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
-                ) { Text(actionLabel) }
-            }
-        } else {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                ChecklistContent(
-                    title = title,
-                    detail = detail,
-                    satisfied = satisfied,
-                    modifier = Modifier.weight(1f),
-                )
-                if (!satisfied) {
-                    TextButton(
-                        onClick = onAction,
-                        colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
-                    ) { Text(actionLabel) }
-                }
-            }
+        if (!satisfied && !compact) {
+            TextButton(
+                onClick = onAction,
+                colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
+            ) { Text(actionLabel) }
         }
     }
 }
@@ -518,6 +514,7 @@ private fun ChecklistContent(
     title: String,
     detail: String,
     satisfied: Boolean,
+    compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
@@ -536,11 +533,18 @@ private fun ChecklistContent(
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (!compact && detail.isNotEmpty()) {
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = if (satisfied) {
+                        Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+                    } else {
+                        Modifier
+                    },
+                )
+            }
         }
     }
 }

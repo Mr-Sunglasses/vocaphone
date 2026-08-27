@@ -33,12 +33,6 @@ class AdaptiveLayoutTest {
     }
 
     @Test
-    fun `long checklist actions stack in inset cards on a pixel`() {
-        assertTrue(AdaptiveLayout.stackChecklistAction(widthDp = 347f, fontScale = 1f))
-        assertFalse(AdaptiveLayout.stackChecklistAction(widthDp = 480f, fontScale = 1f))
-    }
-
-    @Test
     fun `diagnostic rows stack only when values lose useful width`() {
         assertTrue(AdaptiveLayout.stackInfo(widthDp = 300f, fontScale = 1f))
         assertFalse(AdaptiveLayout.stackInfo(widthDp = 379f, fontScale = 1f))

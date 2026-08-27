@@ -73,6 +73,7 @@ fun DictateScreen(
     onRetry: (String) -> Unit,
     onDismiss: () -> Unit,
     onOpenGateway: () -> Unit,
+    onRefreshSetup: () -> Unit,
     onOpenLanguage: () -> Unit,
     onOpenStyle: () -> Unit,
     onOpenModel: () -> Unit,
@@ -218,6 +219,7 @@ fun DictateScreen(
                 SetupRepair(
                     status = setup,
                     onOpenGateway = onOpenGateway,
+                    onRefreshSetup = onRefreshSetup,
                 )
 
                 val fieldColors = TextFieldDefaults.colors(

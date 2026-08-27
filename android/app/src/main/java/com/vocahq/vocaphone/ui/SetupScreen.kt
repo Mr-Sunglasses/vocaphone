@@ -15,6 +15,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -22,6 +23,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.currentStateAsState
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.R
@@ -29,6 +32,14 @@ import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.telemetry.TelemetryInspectPayload
+import kotlinx.coroutines.delay
+
+/** Satisfied or non-spotlight rows collapse to title + check. Ready notice expands briefly. */
+internal fun collapseChecklistRow(
+    satisfied: Boolean,
+    isNextUnfinished: Boolean,
+    showingReady: Boolean = false,
+): Boolean = !showingReady && (satisfied || !isNextUnfinished)
 
 internal object SetupCopy {
     /** Vector mark. Adaptive mipmaps crash painterResource. */
@@ -56,6 +67,27 @@ internal object SetupCopy {
         status.enabled -> "Choose VocaPhone keyboard"
         else -> "Enable keyboard"
     }
+
+    /** One wrap-friendly line under the IME card about what to tap next. */
+    fun keyboardTapHint(status: ImeSetupStatus): String? = when {
+        status.selected -> null
+        status.enabled -> "Pick VocaPhone from the list that appears."
+        else -> "In keyboard settings, turn on VocaPhone."
+    }
+
+    fun stepReady(step: SetupStep): String = when (step) {
+        SetupStep.MICROPHONE -> "Microphone ready"
+        SetupStep.NOTIFICATIONS -> "Notifications ready"
+        SetupStep.KEYBOARD -> "Keyboard ready"
+        SetupStep.GATEWAY -> "Speech source ready"
+    }
+
+    fun permissionDetail(step: SetupStep): String = when (step) {
+        SetupStep.MICROPHONE -> "Only while you dictate."
+        SetupStep.NOTIFICATIONS -> "Shown while you record."
+        SetupStep.KEYBOARD -> keyboardStatus(ImeSetupStatus())
+        SetupStep.GATEWAY -> "The speech source that transcribes your speech."
+    }
 }
 
 /**
@@ -78,13 +110,17 @@ fun SetupScreen(
     telemetryPendingCount: () -> Int,
     telemetryDeliveryStatus: () -> String,
     onFinish: () -> Unit,
+    onRefreshSetup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val activity = context.findActivity()
     val requestPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
+        ActivityResultContracts.RequestPermission(),
+    ) { onRefreshSetup() }
     val askUsageReporting = BuildConfig.TELEMETRY && !settings.telemetryAsked
     var askingUsageReporting by remember { mutableStateOf(false) }
+    val recentlyReady = rememberRecentlyReadySteps(status)
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -109,21 +145,32 @@ fun SetupScreen(
             }
 
             ImeSetupCard(status.ime)
+            SetupCopy.keyboardTapHint(status.ime)?.let { hint ->
+                Text(
+                    hint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
             Section("Permissions") {
-                ChecklistRow(
-                    title = "Microphone",
-                    detail = "Only while you dictate.",
+                SetupPermissionRow(
+                    step = SetupStep.MICROPHONE,
+                    permission = Manifest.permission.RECORD_AUDIO,
                     satisfied = status.microphone,
-                    actionLabel = "Grant",
-                    onAction = { requestPermission.launch(Manifest.permission.RECORD_AUDIO) },
+                    nextStep = status.remainingSteps.firstOrNull(),
+                    recentlyReady = recentlyReady,
+                    activity = activity,
+                    requestPermission = requestPermission::launch,
                 )
-                ChecklistRow(
-                    title = "Notifications",
-                    detail = "Shown while you record.",
+                SetupPermissionRow(
+                    step = SetupStep.NOTIFICATIONS,
+                    permission = Manifest.permission.POST_NOTIFICATIONS,
                     satisfied = status.notifications,
-                    actionLabel = "Grant",
-                    onAction = { requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                    nextStep = status.remainingSteps.firstOrNull(),
+                    recentlyReady = recentlyReady,
+                    activity = activity,
+                    requestPermission = requestPermission::launch,
                 )
             }
 
@@ -188,6 +235,78 @@ fun SetupScreen(
             deliveryStatus = telemetryDeliveryStatus,
         )
     }
+}
+
+@Composable
+internal fun SetupPermissionRow(
+    step: SetupStep,
+    permission: String,
+    satisfied: Boolean,
+    nextStep: SetupStep?,
+    recentlyReady: Set<SetupStep>,
+    activity: android.app.Activity?,
+    requestPermission: (String) -> Unit,
+    actionColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary,
+) {
+    val showingReady = satisfied && step in recentlyReady
+    val compact = collapseChecklistRow(
+        satisfied = satisfied,
+        isNextUnfinished = nextStep == step,
+        showingReady = showingReady,
+    )
+    val detail = when {
+        satisfied -> SetupCopy.stepReady(step)
+        else -> SetupCopy.permissionDetail(step)
+    }
+    // Permission dialogs and Settings pause the activity. Equal SetupStatus
+    // after a denial does not recompose on its own, so watch lifecycle and
+    // re-read Grant vs Open when we resume.
+    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+    val label = when {
+        activity == null -> "Grant"
+        else -> when (lifecycleState) {
+            else -> SetupPermissions.grantOrOpenLabel(activity, permission)
+        }
+    }
+    ChecklistRow(
+        title = step.label,
+        detail = detail,
+        satisfied = satisfied,
+        actionLabel = label,
+        onAction = {
+            if (activity != null) {
+                SetupPermissions.requestOrOpenSettings(activity, permission, requestPermission)
+            } else {
+                requestPermission(permission)
+            }
+        },
+        actionColor = actionColor,
+        compact = compact,
+    )
+}
+
+/**
+ * Tracks steps that just flipped to satisfied so the row can show a brief
+ * ready line and TalkBack can announce it, then collapses again.
+ */
+@Composable
+internal fun rememberRecentlyReadySteps(status: SetupStatus): Set<SetupStep> {
+    var recentlyReady by remember { mutableStateOf(emptySet<SetupStep>()) }
+    var previous by remember { mutableStateOf(status) }
+    LaunchedEffect(status) {
+        val newly = SetupStep.entries.filter { status.isSatisfied(it) && !previous.isSatisfied(it) }
+        previous = status
+        if (newly.isEmpty()) return@LaunchedEffect
+        recentlyReady = recentlyReady + newly
+        try {
+            delay(2_000)
+        } finally {
+            // Cancellation (another step flipping mid-delay) must still clear,
+            // or the ready line and live region stick forever.
+            recentlyReady = recentlyReady - newly.toSet()
+        }
+    }
+    return recentlyReady
 }
 
 /** Setup handoff for enabling and selecting the system keyboard. */

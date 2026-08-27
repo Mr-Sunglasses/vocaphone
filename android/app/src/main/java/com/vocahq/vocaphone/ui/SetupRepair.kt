@@ -22,15 +22,20 @@ import androidx.compose.ui.unit.dp
 fun SetupRepair(
     status: SetupStatus,
     onOpenGateway: () -> Unit,
+    onRefreshSetup: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Launcher must register unconditionally; early-return after the last
+    // remaining step would otherwise skip remember* and crash composition.
+    val context = LocalContext.current
+    val activity = context.findActivity()
+    val requestPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { onRefreshSetup() }
+
     val missing = status.remainingSteps
     if (missing.isEmpty()) return
-
-    val context = LocalContext.current
-    val requestPermission = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { }
+    val nextStep = missing.first()
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -46,32 +51,44 @@ fun SetupRepair(
                 style = MaterialTheme.typography.bodyMedium,
             )
             missing.forEach { step ->
+                val spotlight = step == nextStep
                 when (step) {
-                    SetupStep.MICROPHONE -> ChecklistRow(
-                        title = "Microphone",
-                        detail = "Records only while you are dictating.",
+                    SetupStep.MICROPHONE -> SetupPermissionRow(
+                        step = step,
+                        permission = Manifest.permission.RECORD_AUDIO,
                         satisfied = false,
-                        actionLabel = "Grant",
-                        onAction = { requestPermission.launch(Manifest.permission.RECORD_AUDIO) },
+                        nextStep = nextStep,
+                        recentlyReady = emptySet(),
+                        activity = activity,
+                        requestPermission = requestPermission::launch,
                         actionColor = LocalContentColor.current,
                     )
 
-                    SetupStep.NOTIFICATIONS -> ChecklistRow(
-                        title = "Notifications",
-                        detail = "Shows the ongoing recording notification Android requires.",
+                    SetupStep.NOTIFICATIONS -> SetupPermissionRow(
+                        step = step,
+                        permission = Manifest.permission.POST_NOTIFICATIONS,
                         satisfied = false,
-                        actionLabel = "Grant",
-                        onAction = { requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                        nextStep = nextStep,
+                        recentlyReady = emptySet(),
+                        activity = activity,
+                        requestPermission = requestPermission::launch,
                         actionColor = LocalContentColor.current,
                     )
 
                     SetupStep.KEYBOARD -> ChecklistRow(
-                        title = "VocaPhone keyboard",
-                        detail = "Enable and select VocaPhone in Android's keyboard settings.",
+                        title = step.label,
+                        detail = SetupCopy.keyboardStatus(status.ime),
                         satisfied = false,
-                        actionLabel = "Open",
-                        onAction = { ImeSetup.openSettings(context) },
+                        actionLabel = SetupCopy.keyboardAction(status.ime) ?: "Open",
+                        onAction = {
+                            if (status.ime.enabled) {
+                                ImeSetup.showPicker(context)
+                            } else {
+                                ImeSetup.openSettings(context)
+                            }
+                        },
                         actionColor = LocalContentColor.current,
+                        compact = !spotlight,
                     )
 
                     SetupStep.GATEWAY -> ChecklistRow(
@@ -81,6 +98,7 @@ fun SetupRepair(
                         actionLabel = "Set up",
                         onAction = onOpenGateway,
                         actionColor = LocalContentColor.current,
+                        compact = !spotlight,
                     )
                 }
             }

@@ -35,6 +35,12 @@ class SetupCopyTest {
             SetupCopy.SLOW_ON_PHONES,
             SetupCopy.SLOW_ON_PHONES_DETAIL,
             MORE_MODELS_LABEL,
+            SetupCopy.keyboardTapHint(ImeSetupStatus()).orEmpty(),
+            SetupCopy.keyboardTapHint(ImeSetupStatus(enabled = true)).orEmpty(),
+            SetupCopy.stepReady(SetupStep.MICROPHONE),
+            SetupCopy.stepReady(SetupStep.NOTIFICATIONS),
+            SetupCopy.stepReady(SetupStep.KEYBOARD),
+            SetupCopy.stepReady(SetupStep.GATEWAY),
         )
         copy.forEach { line ->
             assertTrue(line.isNotBlank())
@@ -59,5 +65,8 @@ class SetupCopyTest {
         assertEquals("Choose VocaPhone keyboard", SetupCopy.keyboardAction(enabled))
         assertEquals("VocaPhone is the selected keyboard.", SetupCopy.keyboardStatus(selected))
         assertNull(SetupCopy.keyboardAction(selected))
+        assertEquals("In keyboard settings, turn on VocaPhone.", SetupCopy.keyboardTapHint(off))
+        assertEquals("Pick VocaPhone from the list that appears.", SetupCopy.keyboardTapHint(enabled))
+        assertNull(SetupCopy.keyboardTapHint(selected))
     }
 }
