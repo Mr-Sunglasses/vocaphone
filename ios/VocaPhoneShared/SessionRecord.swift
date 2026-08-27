@@ -105,6 +105,13 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// no other app to return to, so the hand-off guidance must be suppressed.
     /// Optional so records written before this field still decode.
     var startedInContainingApp: Bool?
+    /// Captured by the keyboard when it finds a fresh Quick Dictation heartbeat.
+    /// It records the requested no-switch route for this session, not a promise
+    /// that capture has already started: the containing app still independently
+    /// validates its active audio input before it can claim the request. It flips
+    /// to `false` if the keyboard has to foreground vocaphone as a fallback.
+    /// Optional so records written before this field still decode.
+    var prefersQuickDictation: Bool?
     /// When the containing app took ownership of a hand-off, written before the
     /// microphone is warm. The keyboard's launch fallback waits on this: warming
     /// the graph can take longer than the fallback window — a first on-device
@@ -140,6 +147,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         self.style = style
         meterLevel = 0
         startedInContainingApp = nil
+        prefersQuickDictation = nil
         claimedAt = nil
         processingLocation = nil
     }

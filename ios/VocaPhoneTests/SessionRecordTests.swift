@@ -111,6 +111,21 @@ struct SessionRecordTests {
         #expect(try store.load(record.sessionID)?.startedInContainingApp == true)
     }
 
+    @Test func quickDictationPreferenceRoundTripsAndDefaultsToUnknown() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedStore(rootOverride: directory)
+
+        var record = SessionRecord()
+        #expect(record.prefersQuickDictation == nil)
+        record.prefersQuickDictation = true
+        try record.transition(to: .launchingApp)
+        try store.save(record)
+
+        #expect(try store.load(record.sessionID)?.prefersQuickDictation == true)
+    }
+
     /// Records written before the field existed must still decode, otherwise a
     /// pending dictation would be dropped on upgrade.
     @Test func recordsWithoutTheContainingAppFlagStillDecode() throws {
@@ -124,6 +139,7 @@ struct SessionRecordTests {
         let record = try decoder.decode(SessionRecord.self, from: Data(json.utf8))
 
         #expect(record.startedInContainingApp == nil)
+        #expect(record.prefersQuickDictation == nil)
         #expect(record.state == .recording)
         // No processing location either. The interface answers that with
         // neutral wording rather than guessing a route.

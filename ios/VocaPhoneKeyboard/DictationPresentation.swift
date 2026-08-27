@@ -142,6 +142,10 @@ struct DictationContext: Equatable {
     /// Typing candidates for the idle bar. Empty in every state that owns a
     /// session, because the strip is not shown there.
     var candidates: [TypingCandidate] = []
+    /// The keyboard found a fresh Quick Dictation heartbeat when it created this
+    /// session. This is presentation state only; the containing app confirms its
+    /// active audio input before recording starts.
+    var prefersQuickDictation = false
     /// Where this session's transcription runs, when the containing app has
     /// resolved it. `nil` for a legacy or interrupted record, and the copy stays
     /// neutral rather than guessing — naming the wrong place is worse than
@@ -156,7 +160,7 @@ extension DictationBarModel {
         case .idle, .completed, .canceled, .expired:
             return resting(context)
         case .launchingApp, .awaitingReturn:
-            return handoff
+            return handoff(context)
         case .recording:
             return listening
         case .finalizing, .uploading, .transcribing:
@@ -223,22 +227,43 @@ extension DictationBarModel {
         )
     }
 
-    private static let handoff = DictationBarModel(
-        title: "Opening vocaphone",
-        body: .message("Speak when the app appears."),
-        accent: .brand,
-        pulse: .working,
-        primary: DictationButton(
-            title: "Open app",
-            symbol: "arrow.up.forward.app.fill",
-            action: .openApp,
-            hint: "Opens vocaphone to continue."
-        ),
-        secondaries: [.cancel],
-        showsElapsedTime: false,
-        isExpanded: true,
-        announcement: nil
-    )
+    private static func handoff(_ context: DictationContext) -> DictationBarModel {
+        if context.state == .launchingApp, context.prefersQuickDictation {
+            return DictationBarModel(
+                title: "Starting dictation",
+                body: .message("Quick Dictation keeps you in this app."),
+                accent: .brand,
+                pulse: .working,
+                primary: DictationButton(
+                    title: "Open app",
+                    symbol: "arrow.up.forward.app.fill",
+                    action: .openApp,
+                    hint: "Opens vocaphone if starting here does not complete."
+                ),
+                secondaries: [.cancel],
+                showsElapsedTime: false,
+                isExpanded: true,
+                announcement: nil
+            )
+        }
+
+        return DictationBarModel(
+            title: "Opening vocaphone",
+            body: .message("Speak when the app appears."),
+            accent: .brand,
+            pulse: .working,
+            primary: DictationButton(
+                title: "Open app",
+                symbol: "arrow.up.forward.app.fill",
+                action: .openApp,
+                hint: "Opens vocaphone to continue."
+            ),
+            secondaries: [.cancel],
+            showsElapsedTime: false,
+            isExpanded: true,
+            announcement: nil
+        )
+    }
 
     private static let listening = DictationBarModel(
         title: "Listening",

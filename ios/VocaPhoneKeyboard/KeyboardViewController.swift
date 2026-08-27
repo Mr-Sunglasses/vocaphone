@@ -635,14 +635,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // back to; the app needs to know so it does not cover that field with
         // hand-off instructions.
         record.startedInContainingApp = KeyboardPreferences.containingAppIsForeground
+        let availability = try? store.loadQuickDictationAvailability()
+        record.prefersQuickDictation = availability?.isReady() == true
         do {
             try record.transition(to: .launchingApp)
             try store.save(record)
             activeSessionID = record.sessionID
             sessionTargetDocumentID = record.sourceDocumentID
             render(record)
-            let availability = try? store.loadQuickDictationAvailability()
-            if availability?.isReady() == true {
+            if record.prefersQuickDictation == true {
                 dictationBar.flash("Starting with Quick Dictation…")
                 scheduleContainingAppFallback(for: record)
             } else {
@@ -728,17 +729,28 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
-    private func openContainingApp(for record: SessionRecord) {
+    private func openContainingApp(for incoming: SessionRecord) {
         appLaunchFallbackTask?.cancel()
         appLaunchFallbackTask = nil
+        var record = incoming
+        // A healthy standby path starts in the host app. Once this fallback runs,
+        // persist the real route before opening vocaphone so the keyboard never
+        // continues to promise a no-switch start after it has begun foregrounding
+        // the containing app.
+        if record.prefersQuickDictation == true {
+            record.prefersQuickDictation = false
+            try? store.save(record)
+            render(record)
+        }
+        let sessionID = record.sessionID
         guard let url = URL(
-            string: "\(AppConfiguration.urlScheme)://dictate?session=\(record.sessionID.uuidString)"
+            string: "\(AppConfiguration.urlScheme)://dictate?session=\(sessionID.uuidString)"
         ) else { return }
         openURLFromKeyboard(url) { [weak self] opened in
             DispatchQueue.main.async {
                 guard let self else { return }
                 if opened { return }
-                if var waiting = try? self.store.load(record.sessionID),
+                if var waiting = try? self.store.load(sessionID),
                    waiting.state == .launchingApp
                 {
                     self.transition(&waiting, to: .awaitingReturn)
@@ -939,6 +951,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 // the document, and only once the session it came from is over.
                 canUndo: lastInsertedText != nil,
                 candidates: typing.strip.candidates,
+                prefersQuickDictation: record?.prefersQuickDictation == true,
                 processingLocation: record?.processingLocation
             )
         )

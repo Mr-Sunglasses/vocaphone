@@ -11,6 +11,7 @@ struct DictationPresentationTests {
         canRetry: Bool = false,
         canUndo: Bool = false,
         hasFullAccess: Bool = true,
+        prefersQuickDictation: Bool = false,
         location: SessionProcessingLocation? = nil
     ) -> DictationBarModel {
         DictationBarModel.make(
@@ -22,6 +23,7 @@ struct DictationPresentationTests {
                 autoInsertsTranscripts: autoInsert,
                 canRetry: canRetry,
                 canUndo: canUndo,
+                prefersQuickDictation: prefersQuickDictation,
                 processingLocation: location
             )
         )
@@ -135,6 +137,22 @@ struct DictationPresentationTests {
         ]
         for state in live {
             #expect(Self.model(state).secondaries.contains { $0.action == .cancel })
+        }
+    }
+
+    @Test func quickDictationExplainsThatItStaysInTheCurrentApp() {
+        let model = Self.model(.launchingApp, prefersQuickDictation: true)
+
+        #expect(model.title == "Starting dictation")
+        #expect(model.body == .message("Quick Dictation keeps you in this app."))
+        #expect(model.primary.action == .openApp)
+        #expect(model.primary.hint?.contains("if starting here does not complete") == true)
+    }
+
+    @Test func normalAndFallbackHandoffsStillExplainThatVocaphoneOpens() {
+        for state in [SessionState.launchingApp, .awaitingReturn] {
+            let model = Self.model(state)
+            #expect(model.title == "Opening vocaphone")
         }
     }
 
