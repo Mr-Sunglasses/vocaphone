@@ -321,6 +321,7 @@ fun VocaPhoneApp(
                 settings = settings,
                 localModels = localModels,
                 onOpenGateway = { showingGateway = true },
+                onLanguage = viewModel::setLanguage,
                 onLocalTranscriptionEnabled = viewModel::setLocalTranscriptionEnabled,
                 onLocalModel = viewModel::setLocalModel,
                 onDownloadLocalModel = viewModel::downloadLocalModel,

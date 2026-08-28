@@ -167,6 +167,10 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun refreshSetup() {
         viewModelScope.launch {
+            // Cheap, and stale here is wrong in the direction that matters: the
+            // setup card decides whether to warn about a 670 MB download from
+            // the radio the phone came back on, not the one it left on.
+            container.localModels.refreshConditions()
             val configuration = container.settings.current()
             _setup.value = SetupStatus.read(
                 context = getApplication(),
@@ -519,10 +523,27 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
                     )
                     if (useWhenReady) {
                         container.workScope.launch {
+                            val current = container.settings.current()
+                            val intended = current.copy(
+                                localTranscriptionEnabled = true,
+                                localModelId = model.id,
+                            )
+                            try {
+                                container.localModels.prepare(
+                                    modelID = model.id,
+                                    language = intended.effectiveLanguage.wireValue,
+                                    quality = intended.transcriptionQuality,
+                                    translateTo = intended.translationTarget,
+                                )
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                container.localModels.reportPreparationFailure(model)
+                                return@launch
+                            }
                             container.settings.setLocalModel(model.id)
                             container.settings.setLocalTranscriptionEnabled(true)
                             refreshSetup()
-                            preloadLocalEngine()
                         }
                     }
                 }

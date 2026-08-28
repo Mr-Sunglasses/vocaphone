@@ -728,9 +728,13 @@ struct TranscriptionSettingsView: View {
             )
         }
 
-        LocalModelPicker(manager: coordinator.localModels) {
-            coordinator.refreshSetupStatus()
-        }
+        LocalModelPicker(
+            manager: coordinator.localModels,
+            onChange: {
+                coordinator.refreshSetupStatus()
+            },
+            guidanceLanguage: KeyboardPreferences.transcriptionLanguage.rawValue
+        )
 
         Section {
             Picker("Accuracy", selection: $transcriptionQualityRawValue) {

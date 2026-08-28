@@ -203,6 +203,7 @@ enum LocalModelManagerError: LocalizedError, Equatable {
     case modelNotDownloaded(String)
     case noModelContainer
     case insufficientMemory(requiredGB: Int)
+    case insufficientStorage(freeBytes: Int64, requiredBytes: Int64)
     case engineLoadFailed(String)
     case downloadFailed(path: String, statusCode: Int?)
 
@@ -220,6 +221,12 @@ enum LocalModelManagerError: LocalizedError, Equatable {
         case .noModelContainer: "The app's model directory is unavailable."
         case let .insufficientMemory(requiredGB):
             "This model needs a device with at least \(requiredGB) GB of memory."
+        // Says what to do, not only what is wrong: the two figures together are
+        // what tells someone how much they have to clear.
+        case let .insufficientStorage(freeBytes, requiredBytes):
+            "This model needs \(DownloadReadiness.byteLabel(requiredBytes)) free and this "
+                + "iPhone has \(DownloadReadiness.byteLabel(freeBytes)). "
+                + "Free up some space and try again."
         case let .engineLoadFailed(id): "Could not load the on-device model \(id)."
         case let .downloadFailed(path, statusCode):
             if let statusCode {

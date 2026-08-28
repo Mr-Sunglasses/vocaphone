@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.local
 
 import android.app.ActivityManager
 import android.content.Context
+import android.os.SystemClock
 import com.vocahq.vocaphone.audio.CaptureFormat
 import com.vocahq.vocaphone.audio.SpeechAudioConditioning
 import com.vocahq.vocaphone.core.CustomVocabulary
@@ -67,6 +68,15 @@ data class LocalModelState(
      * just appears to hang.
      */
     val preparing: String? = null,
+    /** Bytes transferred and expected, so progress can say more than a percent. */
+    val downloadedBytes: Long = 0,
+    val totalBytes: Long = 0,
+    /** `SystemClock.elapsedRealtime()` when the transfer began, for the estimate. */
+    val startedAtMillis: Long = 0,
+    /** Free space on the models volume, refreshed when the picker asks. */
+    val availableStorageBytes: Long = 0,
+    /** Whether the active connection bills by the byte. */
+    val meteredNetwork: Boolean = false,
 )
 
 /** Leaving the picker or the activity must not cancel a running download. */
@@ -137,8 +147,26 @@ class LocalModelManager(
      * hashed once afterwards, off this path: an IME process starts often enough
      * that hashing gigabytes on every start is a battery bug of its own.
      */
+    /**
+     * Re-reads only what can change while the app is backgrounded: the radio the
+     * phone came back on, and the space left after whatever else was deleted.
+     *
+     * Split out of [refresh] because that one migrates layouts and hashes
+     * gigabytes, which is not what every return to the foreground should cost.
+     */
+    suspend fun refreshConditions() = withContext(Dispatchers.IO) {
+        _state.value = _state.value.copy(
+            availableStorageBytes = availableStorageBytes(modelRoot),
+            meteredNetwork = appContext.isOnMeteredNetwork(),
+        )
+    }
+
     suspend fun refresh() = withContext(Dispatchers.IO) {
-        _state.value = _state.value.copy(totalRamGB = totalRamGB)
+        _state.value = _state.value.copy(
+            totalRamGB = totalRamGB,
+            availableStorageBytes = availableStorageBytes(modelRoot),
+            meteredNetwork = appContext.isOnMeteredNetwork(),
+        )
         migrateLegacyLayout()
         val verified = mutableSetOf<String>()
         val pending = mutableListOf<LocalModelDescriptor>()
@@ -236,7 +264,33 @@ class LocalModelManager(
         activeDownloadJob.getAndSet(null)?.cancel()
     }
 
+    /**
+     * Keeps a verified download recoverable when native engine initialization
+     * fails. Selection is deliberately not changed: setup must not claim that a
+     * model is ready until the runtime has loaded it successfully once.
+     */
+    fun reportPreparationFailure(model: LocalModelDescriptor) {
+        _state.value = _state.value.copy(
+            message = "Could not load ${model.displayName}. " +
+                "The verified download is still available; try using it again.",
+        )
+    }
+
     suspend fun download(model: LocalModelDescriptor) = downloadMutex.withLock {
+        // Checked here rather than only in the picker: a download reaching 95%
+        // and then failing on a full phone is minutes of the user's time and an
+        // error that does not say what to delete.
+        val free = availableStorageBytes(modelRoot)
+        val needed = requiredStorageBytes(model.sizeBytes)
+        if (free in 1..<needed) {
+            val sentence = "${model.displayName} needs ${byteLabel(needed)} free and this " +
+                "phone has ${byteLabel(free)}. Free up some space and try again."
+            _state.value = _state.value.copy(message = sentence)
+            // Thrown rather than returned: the caller reads a normal return as a
+            // finished download, reports it as one, and then tries to load a
+            // model that was never fetched.
+            throw LocalModelStorageException(sentence)
+        }
         require(LocalModelCatalog.isUsableOnDevice(model, totalRamGB)) {
             if (model.engine == LocalModelEngine.SHERPA_ONNX && !LocalModelCatalog.sherpaAvailable) {
                 "${model.displayName} needs an Arm device."
@@ -258,6 +312,9 @@ class LocalModelManager(
                 downloading = model.id,
                 progress = 0,
                 message = null,
+                downloadedBytes = 0,
+                totalBytes = model.sizeBytes,
+                startedAtMillis = SystemClock.elapsedRealtime(),
             )
             try {
                 var completed = 0L
@@ -289,6 +346,7 @@ class LocalModelManager(
                 _state.value = _state.value.copy(
                     downloaded = _state.value.downloaded + model.id,
                     progress = 100,
+                    downloadedBytes = model.sizeBytes,
                     message = "${model.displayName} downloaded and verified.",
                 )
             } catch (error: CancellationException) {
@@ -307,7 +365,12 @@ class LocalModelManager(
                 )
                 throw error
             } finally {
-                _state.value = _state.value.copy(downloading = null)
+                _state.value = _state.value.copy(
+                    downloading = null,
+                    downloadedBytes = 0,
+                    totalBytes = 0,
+                    startedAtMillis = 0,
+                )
             }
         }
     }
@@ -347,6 +410,8 @@ class LocalModelManager(
                             _state.value = _state.value.copy(
                                 progress = (((alreadyCompleted + written) * 100) / totalBytes)
                                     .toInt().coerceIn(0, 99),
+                                downloadedBytes = (alreadyCompleted + written)
+                                    .coerceAtMost(totalBytes),
                             )
                         }
                     }

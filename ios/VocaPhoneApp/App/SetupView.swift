@@ -1046,12 +1046,21 @@ private struct SetupReviewCard: View {
 
 private struct OnDeviceModelSetupView: View {
     @Environment(RecordingCoordinator.self) private var coordinator
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         List {
-            LocalModelPicker(manager: coordinator.localModels) {
-                coordinator.refreshSetupStatus()
-            }
+            LocalModelPicker(
+                manager: coordinator.localModels,
+                onChange: {
+                    coordinator.refreshSetupStatus()
+                    if coordinator.setupStatus.source.isReady {
+                        dismiss()
+                    }
+                },
+                onboarding: true,
+                guidanceLanguage: KeyboardPreferences.transcriptionLanguage.rawValue
+            )
         }
         .navigationTitle("Speech-to-text model")
         .navigationBarTitleDisplayMode(.inline)

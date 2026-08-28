@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.ui
 
+import android.os.SystemClock
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,12 +41,25 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.vocahq.vocaphone.R
+import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.local.DeviceProfile
+import com.vocahq.vocaphone.local.DownloadWarning
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
+import com.vocahq.vocaphone.local.ModelGuidance
+import com.vocahq.vocaphone.local.ModelGuidanceIntent
+import com.vocahq.vocaphone.local.ModelGuidancePriority
+import com.vocahq.vocaphone.local.ModelGuidanceResult
 import com.vocahq.vocaphone.local.ModelPick
+import com.vocahq.vocaphone.local.byteLabel
+import com.vocahq.vocaphone.local.downloadSizeProgress
+import com.vocahq.vocaphone.local.downloadTimeRemaining
+import com.vocahq.vocaphone.local.downloadWarning
+import java.util.Locale
 
 internal const val MORE_MODELS_LABEL = SetupCopy.BROWSE_MODELS
 
@@ -67,6 +82,8 @@ fun LocalModelPicker(
     onDelete: ((LocalModelDescriptor) -> Unit)? = null,
     usingGateway: Boolean = false,
     compact: Boolean = false,
+    guidanceLanguage: String = "",
+    onGuidanceLanguage: (String) -> Unit = {},
 ) {
     val usable = remember(state.totalRamGB) {
         LocalModelCatalog.usableOnDevice(state.totalRamGB).sortedBy { it.sizeBytes }
@@ -74,13 +91,62 @@ fun LocalModelPicker(
     val profile = remember(state.totalRamGB) {
         DeviceProfile.current(state.totalRamGB)
     }
-    // Four answers rather than one: the accurate English model, the widest
-    // multilingual one, the phone language's specialist, and the smallest
-    // download that still covers it. The first leads as the recommendation.
-    val picks = remember(profile, profile.language) {
-        LocalModelCatalog.recommendations(profile)
+    var guidancePriority by rememberSaveable { mutableStateOf(ModelGuidancePriority.BALANCED) }
+    var guidanceOpen by rememberSaveable { mutableStateOf(false) }
+    var guidanceLanguageSelection by rememberSaveable(guidanceLanguage, profile.language) {
+        mutableStateOf(guidanceLanguage.ifBlank { TranscriptionLanguage.AUTOMATIC.wireValue })
     }
-    val recommended = picks.first().model
+    val selectedGuidanceLanguage = if (
+        guidanceLanguageSelection.isBlank() ||
+            guidanceLanguageSelection == TranscriptionLanguage.AUTOMATIC.wireValue
+    ) {
+        profile.language
+    } else {
+        guidanceLanguageSelection
+    }
+    val guidanceProfile = remember(profile, selectedGuidanceLanguage) {
+        profile.copy(language = selectedGuidanceLanguage)
+    }
+    val guidance = remember(guidanceProfile, guidancePriority) {
+        ModelGuidance.recommend(
+            guidanceProfile,
+            ModelGuidanceIntent(
+                language = guidanceProfile.language,
+                priority = guidancePriority,
+            ),
+        )
+    }
+    // The same guidance run at the other end of the trade-off. Shown as one
+    // concrete swap rather than a grid: the setup card stays a single answer,
+    // but the fact that a 32 MB option exists no longer lives only behind a
+    // sheet most people never open.
+    val lighter = remember(guidanceProfile) {
+        ModelGuidance.recommend(
+            guidanceProfile,
+            ModelGuidanceIntent(
+                language = guidanceProfile.language,
+                priority = ModelGuidancePriority.LIGHTER,
+            ),
+        ).model
+    }
+    val guidanceAlternative = lighter?.takeIf { it.id != guidance.model?.id }
+    val warning = guidance.model
+        ?.takeIf { state.downloading == null && it.id !in state.downloaded }
+        ?.let {
+            downloadWarning(
+                sizeBytes = it.sizeBytes,
+                freeBytes = state.availableStorageBytes,
+                metered = state.meteredNetwork,
+            )
+        }
+    // Settings keeps the richer role-based catalog. Setup gets one answer so
+    // people do not have to compare several technical model names.
+    val picks = remember(profile, guidance.intent.language) {
+        LocalModelCatalog.recommendations(
+            profile.copy(language = guidance.intent.language),
+        )
+    }
+    val recommended = if (compact) guidance.model ?: picks.first().model else picks.first().model
     val alternates = picks.drop(1)
     val selectedModel = usable.firstOrNull { it.id == selectedModelId }
 
@@ -96,7 +162,7 @@ fun LocalModelPicker(
         filterModelCatalog(usable, query, engineFilter, sizeFilter, languageFilter)
     }
     val recommendedVisible = if (compact) {
-        usable.any { it.id == recommended.id }
+        guidance.model != null && usable.any { it.id == recommended.id }
     } else {
         filtered.any { it.id == recommended.id }
     }
@@ -112,7 +178,7 @@ fun LocalModelPicker(
         engineFilter != ModelEngineFilter.ALL ||
         sizeFilter != ModelSizeFilter.ANY ||
         languageFilter != ModelLanguageFilter.ANY
-    val showAlternates = alternates.isNotEmpty() && (compact || !browsing)
+    val showAlternates = alternates.isNotEmpty() && !compact && !browsing
     val alternateIds = if (showAlternates) alternates.map { it.model.id }.toSet() else emptySet()
     val availableModels = filtered.filter {
         it.id !in state.downloaded &&
@@ -144,6 +210,20 @@ fun LocalModelPicker(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+
+    if (compact && guidance.model == null) {
+        Notice {
+            Text(
+                "No model on this phone matches ${guidance.languageName}.",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                "Choose another language or use your self-hosted gateway. Browse shows models that need a different language or setup.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 
     if (!compact && selectedModel != null) {
@@ -192,8 +272,30 @@ fun LocalModelPicker(
                 } else {
                     null
                 },
+                guidanceReason = guidance.reason.takeIf { compact },
+                guidanceDetail = guidance.downloadDetail.takeIf { compact },
+                warning = warning.takeIf { compact },
+                alternative = guidanceAlternative.takeIf { compact },
+                onUseAlternative = onDownloadAndUse,
             )
         }
+    }
+
+    if (compact) {
+        SecondaryButton(
+            text = SetupCopy.HELP_ME_CHOOSE,
+            onClick = { guidanceOpen = true },
+            enabled = !busy,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        // Names the two answers the pick was made on. Without it the button
+        // reads as an unrelated second question rather than a way to change
+        // something the screen has already decided.
+        Text(
+            "Chosen for ${guidance.languageName} · ${guidancePriority.title}.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 
     if (showAlternates) {
@@ -293,6 +395,34 @@ fun LocalModelPicker(
         }
     }
 
+    if (compact && guidanceOpen) {
+        ModelGuidanceSheet(
+            selected = guidancePriority,
+            selectedLanguage = guidanceLanguageSelection,
+            deviceLanguageName = deviceLanguageDisplayName(profile.language),
+            previewFor = { language, priority ->
+                val resolved = if (
+                    language.isBlank() || language == TranscriptionLanguage.AUTOMATIC.wireValue
+                ) {
+                    profile.language
+                } else {
+                    language
+                }
+                ModelGuidance.recommend(
+                    profile.copy(language = resolved),
+                    ModelGuidanceIntent(language = resolved, priority = priority),
+                )
+            },
+            onApply = { language, priority ->
+                guidanceLanguageSelection = language
+                guidancePriority = priority
+                onGuidanceLanguage(language)
+                guidanceOpen = false
+            },
+            onDismiss = { guidanceOpen = false },
+        )
+    }
+
     state.message?.let {
         Text(
             it,
@@ -353,13 +483,48 @@ private fun ModelBusyBanner(state: LocalModelState, onCancelDownload: () -> Unit
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Text(
-                    "${state.progress}%",
+                    downloadProgressLine(state),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
     }
+}
+
+/**
+ * "38% · 254 MB of 670 MB · about 3 minutes left".
+ *
+ * A bare percentage on a 670 MB download reads as stuck. The size says how much
+ * is actually moving, and the estimate is dropped entirely until it has settled
+ * rather than shown while it would still swing wildly.
+ */
+private fun downloadProgressLine(state: LocalModelState): String {
+    // Read at each recomposition, which progress updates already drive often
+    // enough to keep the estimate current without a timer of its own.
+    val elapsed = if (state.startedAtMillis > 0) {
+        SystemClock.elapsedRealtime() - state.startedAtMillis
+    } else {
+        0L
+    }
+    return listOfNotNull(
+        "${state.progress}%",
+        downloadSizeProgress(state.downloadedBytes, state.totalBytes),
+        downloadTimeRemaining(state.downloadedBytes, state.totalBytes, elapsed),
+    ).joinToString(" · ")
+}
+
+/**
+ * The one sentence a warning is worth. Written so it says what to do, not only
+ * what is wrong: "free up space" and "may charge for data" are both actionable,
+ * where "insufficient storage" is not.
+ */
+private fun warningHeadline(warning: DownloadWarning): String = when (warning) {
+    is DownloadWarning.NotEnoughStorage ->
+        "Needs ${byteLabel(warning.requiredBytes)} free · " +
+            "${byteLabel(warning.freeBytes)} available. Free up space first."
+    is DownloadWarning.MeteredConnection ->
+        "This connection may charge for data · ${byteLabel(warning.sizeBytes)} download."
 }
 
 @Composable
@@ -374,20 +539,64 @@ private fun RecommendedModelCard(
     onDownloadAndUse: (LocalModelDescriptor) -> Unit,
     onCancelDownload: () -> Unit,
     onBrowse: (() -> Unit)? = null,
+    guidanceReason: String? = null,
+    guidanceDetail: String? = null,
+    warning: DownloadWarning? = null,
+    alternative: LocalModelDescriptor? = null,
+    onUseAlternative: (LocalModelDescriptor) -> Unit = {},
 ) {
     FeaturedCard {
-        Text("Recommended for this phone", style = MaterialTheme.typography.titleSmall)
+        Text(
+            if (compact) "Recommended for you" else "Recommended for this phone",
+            style = MaterialTheme.typography.titleSmall,
+        )
         Text(model.displayName, style = MaterialTheme.typography.titleMedium)
         Text(
-            if (compact) model.setupMeta() else model.catalogMeta(),
+            if (compact) (guidanceDetail ?: model.setupMeta()) else model.catalogMeta(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            model.recommendationWhy(),
+            guidanceReason ?: model.recommendationWhy(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        if (warning != null) {
+            Text(
+                warningHeadline(warning),
+                style = MaterialTheme.typography.bodySmall,
+                // Only the storage case is a hard stop. Painting "you are on
+                // mobile data" in the error colour reads as something broken
+                // rather than a cost worth knowing.
+                color = if (warning is DownloadWarning.NotEnoughStorage) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        // One concrete alternative, named and priced, next to the action it
+        // replaces. The warning above is what makes it worth reading; without
+        // one it still answers the question everyone has about a 670 MB
+        // download, and answers it in a single tap.
+        if (alternative != null && alternative.id !in state.downloaded) {
+            Text(
+                if (warning is DownloadWarning.NotEnoughStorage) {
+                    "${alternative.displayName} needs only ${alternative.sizeLabel}."
+                } else {
+                    "Need something smaller? ${alternative.displayName} · " +
+                        "${alternative.sizeLabel}."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            SecondaryButton(
+                text = "Use ${alternative.displayName} instead",
+                onClick = { onUseAlternative(alternative) },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         if (showActions) {
             val browse = onBrowse
             if (
@@ -436,7 +645,7 @@ private fun CompactRecommendedActions(
         leading = { item ->
             if (!downloaded) {
                 PrimaryButton(
-                    text = SetupCopy.DOWNLOAD,
+                    text = SetupCopy.DOWNLOAD_AND_CONTINUE,
                     onClick = { onDownloadAndUse(model) },
                     enabled = !busy,
                     modifier = item,
@@ -476,6 +685,147 @@ private fun CompactRecommendedActions(
         },
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelGuidanceSheet(
+    selected: ModelGuidancePriority,
+    selectedLanguage: String,
+    deviceLanguageName: String,
+    previewFor: (String, ModelGuidancePriority) -> ModelGuidanceResult,
+    onApply: (String, ModelGuidancePriority) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var languageSelection by rememberSaveable(selectedLanguage) {
+        mutableStateOf(selectedLanguage.ifBlank { TranscriptionLanguage.AUTOMATIC.wireValue })
+    }
+    var prioritySelection by rememberSaveable(selected) { mutableStateOf(selected) }
+    // Only languages that survive TranscriptionLanguage.fromWire are offered:
+    // an unlisted code round-trips to AUTOMATIC, which silently discarded the
+    // choice the moment it was applied. "Use phone language" is the honest row
+    // for a locale the catalog has no entry for.
+    val languageOptions = remember {
+        buildList {
+            add(TranscriptionLanguage.AUTOMATIC.wireValue)
+            addAll(
+                TranscriptionLanguage.entries
+                    .filter { it != TranscriptionLanguage.AUTOMATIC }
+                    .map { it.wireValue },
+            )
+        }
+    }
+    val preview = previewFor(languageSelection, prioritySelection)
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                // Two questions, three options and a live preview do not fit a
+                // half-height sheet on a small phone, and the confirm button is
+                // the last thing in the column.
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text("Tell us about your dictation", style = MaterialTheme.typography.titleLarge)
+            Text(
+                "Choose the language you speak most and what matters most for the download. " +
+                    "The match below updates as you choose.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text("Primary language", style = MaterialTheme.typography.titleMedium)
+            SettingDropdown(
+                options = languageOptions,
+                selected = languageSelection,
+                label = { guidanceLanguageLabel(it, deviceLanguageName) },
+                detail = { guidanceLanguageDetail(it, deviceLanguageName) },
+                onSelect = { languageSelection = it },
+            )
+            Text("What matters most?", style = MaterialTheme.typography.titleMedium)
+            ModelGuidancePriority.entries.forEach { priority ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (priority == prioritySelection) {
+                        PrimaryButton(
+                            text = priority.title,
+                            onClick = {
+                                prioritySelection = priority
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        SecondaryButton(
+                            text = priority.title,
+                            onClick = {
+                                prioritySelection = priority
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    Text(
+                        priority.detail,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            // Two abstract questions with no visible consequence is what made
+            // this sheet hard to answer. The match recomputes as either answer
+            // changes, so the trade-off is read before it is committed.
+            Text("You would get", style = MaterialTheme.typography.titleMedium)
+            val previewModel = preview.model
+            if (previewModel == null) {
+                Text(
+                    preview.reason,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(previewModel.displayName, style = MaterialTheme.typography.titleSmall)
+                Text(
+                    preview.downloadDetail ?: previewModel.sizeLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    preview.reason,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            PrimaryButton(
+                text = "Use this match",
+                onClick = { onApply(languageSelection, prioritySelection) },
+                enabled = previewModel != null,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+private fun guidanceLanguageLabel(code: String, deviceLanguageName: String): String {
+    if (code == TranscriptionLanguage.AUTOMATIC.wireValue) {
+        return "Use phone language ($deviceLanguageName)"
+    }
+    return TranscriptionLanguage.entries
+        .firstOrNull { it.wireValue == code }
+        ?.displayName
+        ?: deviceLanguageDisplayName(code)
+}
+
+private fun guidanceLanguageDetail(code: String, deviceLanguageName: String): String =
+    if (code == TranscriptionLanguage.AUTOMATIC.wireValue) {
+        "Currently detected as $deviceLanguageName."
+    } else {
+        "Prefer models that cover ${guidanceLanguageLabel(code, deviceLanguageName)}."
+    }
+
+private fun deviceLanguageDisplayName(code: String): String =
+    TranscriptionLanguage.entries
+        .firstOrNull { it.wireValue == code }
+        ?.displayName
+        ?: Locale.forLanguageTag(code).getDisplayLanguage(Locale.getDefault())
+            .ifBlank { code.uppercase(Locale.ROOT) }
 
 @Composable
 private fun ModelCatalogSearch(

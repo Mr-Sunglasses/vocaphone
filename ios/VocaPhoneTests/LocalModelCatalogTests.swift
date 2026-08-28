@@ -72,6 +72,99 @@ struct LocalModelCatalogTests {
         )
     }
 
+    @Test func guidanceReturnsOnePlainLanguageMatch() {
+        let result = LocalModelCatalog.guidance(
+            deviceMemoryGB: 4,
+            intent: ModelGuidanceIntent(language: "en")
+        )
+
+        #expect(result.confidence == .goodDefault)
+        #expect(result.intent.language == "en")
+        #expect(result.model?.id == "parakeet-tdt-0.6b-v2-en")
+        #expect(result.reason.contains("English"))
+    }
+
+    @Test func guidancePriorityChangesTheDownloadTradeoff() {
+        let balanced = LocalModelCatalog.guidance(
+            deviceMemoryGB: 8,
+            intent: ModelGuidanceIntent(language: "en", priority: .balanced)
+        )
+        let lighter = LocalModelCatalog.guidance(
+            deviceMemoryGB: 8,
+            intent: ModelGuidanceIntent(language: "en", priority: .lighter)
+        )
+        let smallest = LocalModelCatalog.all
+            .filter { $0.minimumRamGB <= 8 && $0.covers("en") }
+            .min { $0.sizeBytes < $1.sizeBytes }
+
+        #expect(lighter.model?.id == smallest?.id)
+        #expect(lighter.reason.contains("smallest"))
+        #expect(balanced.model != nil)
+
+    }
+
+    /// The reason this option exists at all. "Best accuracy" was replaced
+    /// because it returned the balanced match on every language and every
+    /// memory size, which is a control that does nothing.
+    @Test func multilingualIsADifferentAnswerWhereverAWiderModelFits() {
+        var differed = 0
+        for language in ["en", "ru", "de", "ja", "zh"] {
+            for memory in [8, 4, 3] {
+                let balanced = LocalModelCatalog.guidance(
+                    deviceMemoryGB: memory,
+                    intent: ModelGuidanceIntent(language: language, priority: .balanced)
+                ).model
+                let wide = LocalModelCatalog.guidance(
+                    deviceMemoryGB: memory,
+                    intent: ModelGuidanceIntent(language: language, priority: .multilingual)
+                ).model
+
+                #expect(wide != nil, "no multilingual match for \(language) at \(memory)GB")
+                #expect(wide?.covers(language) == true, "\(language) pick cannot transcribe it")
+                #expect(wide?.englishOnly == false, "\(language) got an English-only model")
+                #expect((wide?.minimumRamGB ?? .max) <= memory, "\(language) pick does not fit")
+                if wide?.id != balanced?.id { differed += 1 }
+            }
+        }
+        // The option has to actually earn its place on ordinary iPhones.
+        #expect(differed >= 10, "multilingual never differed from balanced")
+    }
+
+
+
+
+    @Test func guidanceAutomaticLanguageUsesThePhoneLanguage() {
+        let result = LocalModelCatalog.guidance(
+            deviceMemoryGB: 8,
+            intent: ModelGuidanceIntent(language: "auto", priority: .balanced)
+        )
+
+        #expect(result.intent.language == LocalModelCatalog.deviceLanguage)
+        #expect(result.model?.covers(result.intent.language) == true)
+    }
+
+    @Test func guidanceReportsNoMatchWhenNothingFits() {
+        let result = LocalModelCatalog.guidance(
+            deviceMemoryGB: 1,
+            intent: ModelGuidanceIntent(language: "en")
+        )
+
+        #expect(result.confidence == .noMatch)
+        #expect(result.model == nil)
+        #expect(result.reason.contains("English"))
+    }
+
+    @Test func guidanceDoesNotMislabelAnUnlistedPhoneLanguageAsAutomatic() {
+        let result = LocalModelCatalog.guidance(
+            deviceMemoryGB: 8,
+            intent: ModelGuidanceIntent(language: "af", priority: .balanced)
+        )
+
+        #expect(result.intent.language == "af")
+        #expect(!result.languageName.isEmpty)
+        #expect(result.languageName != TranscriptionLanguage.automatic.displayName)
+    }
+
     /// The list is what makes a 670 MB default acceptable: someone on cellular
     /// can see a small answer to the same question without going hunting through
     /// the catalog.

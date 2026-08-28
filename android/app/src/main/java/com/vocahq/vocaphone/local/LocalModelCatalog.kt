@@ -368,7 +368,7 @@ object LocalModelCatalog {
             ?: recommendedWhisper(profile)
 
     /** The widest-coverage model that still covers this phone's own language. */
-    private fun bestMultilingual(profile: DeviceProfile): LocalModelDescriptor? =
+    internal fun bestMultilingual(profile: DeviceProfile): LocalModelDescriptor? =
         MULTILINGUAL_PREFERENCE.firstNotNullOfOrNull { id ->
             find(id)?.takeIf { profile.fits(it) && it.coversLanguage(profile.language) }
         } ?: whisper.filter { profile.fits(it) && !it.englishOnly }

@@ -18,6 +18,40 @@ final class LocalModelManager {
     private(set) var downloadedModelIDs: Set<String> = []
     private(set) var downloadingModelID: String?
     private(set) var progress: Double = 0
+    /// Bytes expected for the transfer in flight, and when it began. Published
+    /// so the picker can say more than a percent: on a 670 MB download a bare
+    /// percentage reads as stuck.
+    private(set) var downloadTotalBytes: Int64 = 0
+    private(set) var downloadStartedAt: Date?
+
+    /// Derived rather than counted a second time: `progress` is already
+    /// completed-over-total from the same aggregator.
+    var downloadedBytes: Int64 {
+        guard downloadTotalBytes > 0 else { return 0 }
+        return Int64(progress * Double(downloadTotalBytes))
+    }
+
+    var downloadSizeProgress: String? {
+        DownloadReadiness.sizeProgress(
+            downloadedBytes: downloadedBytes,
+            totalBytes: downloadTotalBytes
+        )
+    }
+
+    var downloadTimeRemaining: String? {
+        guard let downloadStartedAt else { return nil }
+        return DownloadReadiness.timeRemaining(
+            downloadedBytes: downloadedBytes,
+            totalBytes: downloadTotalBytes,
+            elapsed: Date().timeIntervalSince(downloadStartedAt)
+        )
+    }
+
+    /// Free space on the volume models are written to, or 0 when unreadable.
+    var availableStorageBytes: Int64 {
+        guard let modelsDirectory else { return 0 }
+        return DownloadReadiness.availableStorageBytes(at: modelsDirectory)
+    }
     private(set) var loadingModelID: String?
     private(set) var loadingMessage: String?
     private(set) var message: String?
@@ -754,11 +788,17 @@ final class LocalModelManager {
         guard !isInert else { return }
         downloadingModelID = descriptor.id
         progress = 0
+        // A first figure so the line has something to show before the manifest
+        // is read; replaced below by the total the fraction is measured against.
+        downloadTotalBytes = descriptor.sizeBytes
+        downloadStartedAt = Date()
         message = nil
         hasError = false
         defer {
             downloadingModelID = nil
             progress = 0
+            downloadTotalBytes = 0
+            downloadStartedAt = nil
         }
 
         do {
@@ -768,6 +808,17 @@ final class LocalModelManager {
             }
             guard let modelsDirectory, let tokenizersDirectory else {
                 throw LocalModelManagerError.noModelContainer
+            }
+            // Checked here rather than only in the picker: a download reaching
+            // 95% and then failing on a full iPhone is minutes of the user's
+            // time and an error that does not say what to delete.
+            let free = DownloadReadiness.availableStorageBytes(at: modelsDirectory)
+            let needed = DownloadReadiness.requiredStorageBytes(descriptor.sizeBytes)
+            if free > 0, free < needed {
+                throw LocalModelManagerError.insufficientStorage(
+                    freeBytes: free,
+                    requiredBytes: needed
+                )
             }
             try FileManager.default.createDirectory(
                 at: modelsDirectory, withIntermediateDirectories: true
@@ -785,6 +836,7 @@ final class LocalModelManager {
                     totalBytes: tokenizer.files.reduce(Int64(0)) { $0 + $1.size }
                         + modelFiles.reduce(Int64(0)) { $0 + $1.size }
                 )
+                downloadTotalBytes = progressTracker.totalBytes
                 try FileManager.default.createDirectory(
                     at: tokenizersDirectory, withIntermediateDirectories: true
                 )
@@ -816,6 +868,7 @@ final class LocalModelManager {
                 progressTracker = DownloadProgress(
                     totalBytes: manifest.files.reduce(Int64(0)) { $0 + $1.size }
                 )
+                downloadTotalBytes = progressTracker.totalBytes
                 folder = try await downloadModel(
                     descriptor,
                     into: modelsDirectory,

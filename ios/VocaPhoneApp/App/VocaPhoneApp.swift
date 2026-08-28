@@ -69,6 +69,10 @@ struct VocaPhoneApp: App {
                 .onAppear {
                     KeyboardPreferences.containingAppIsForeground = true
                     Telemetry.shared.appFirstOpen()
+                    // Started once here rather than lazily from the setup card:
+                    // the first path update has to have landed by the time that
+                    // card decides whether to warn about a 670 MB download.
+                    NetworkConditions.shared.start()
                 }
                 .onChange(of: scenePhase) { _, phase in
                     KeyboardPreferences.containingAppIsForeground = phase == .active

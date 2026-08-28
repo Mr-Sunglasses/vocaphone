@@ -29,6 +29,8 @@ class SetupCopyTest {
             SetupCopy.INTRO,
             SetupCopy.START,
             SetupCopy.DOWNLOAD,
+            SetupCopy.DOWNLOAD_AND_CONTINUE,
+            SetupCopy.HELP_ME_CHOOSE,
             SetupCopy.BROWSE_MODELS,
             SetupCopy.BROWSE_SHEET_TITLE,
             SetupCopy.BROWSE_SHEET_SUPPORTING,
