@@ -696,6 +696,23 @@ struct TranscriptionSettingsView: View {
 
     private var source: TranscriptionSourceStatus { coordinator.transcriptionSource }
 
+    /// The engine the accuracy control is currently describing. Whisper is the
+    /// safe default: it is the engine the setting has always applied to.
+    private var selectedLocalEngine: LocalModelEngine {
+        LocalTranscriptionPreferences.modelIdentifier
+            .flatMap(LocalModelCatalog.descriptor(for:))?
+            .engine ?? .whisperKit
+    }
+
+    /// Whether changing accuracy would build a different recognizer at all.
+    private var selectedLocalEngineVariesWithQuality: Bool {
+        guard let descriptor = LocalTranscriptionPreferences.modelIdentifier
+            .flatMap(LocalModelCatalog.descriptor(for:))
+        else { return true }
+        guard descriptor.engine == .sherpaOnnx else { return true }
+        return descriptor.sherpaFamily?.nativeConfigVariesWithQuality ?? true
+    }
+
     var body: some View {
         List {
             routeSection
@@ -774,7 +791,13 @@ struct TranscriptionSettingsView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .onChange(of: transcriptionQualityRawValue) { _, _ in reloadLocalEngine() }
+            .onChange(of: transcriptionQualityRawValue) { _, _ in
+                // Only where the setting reaches the native config. Rebuilding a
+                // several-hundred-megabyte graph to produce a byte-identical one
+                // is a long "Loading…" and a peak-memory spike for nothing.
+                guard selectedLocalEngineVariesWithQuality else { return }
+                reloadLocalEngine()
+            }
             if let loading = coordinator.localModels.loadingMessage {
                 Text(loading).foregroundStyle(.secondary)
             }
@@ -788,7 +811,7 @@ struct TranscriptionSettingsView: View {
             Text("Accuracy")
         } footer: {
             VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(selectedTranscriptionQuality.detail)
+                Text(selectedTranscriptionQuality.detail(for: selectedLocalEngine))
                 Text(
                     "This governs models running on this iPhone. Transcription on "
                         + "your gateway is unaffected."

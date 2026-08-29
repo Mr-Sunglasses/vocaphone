@@ -15,10 +15,18 @@ static int copy_text(
     char *output,
     int32_t output_capacity
 ) {
-    if (output == NULL || output_capacity <= 0) return -1;
+    if (output == NULL || output_capacity <= 0) {
+        return VocaPhoneSherpaDecodeInvalidArgument;
+    }
     if (text == NULL) text = "";
     int written = snprintf(output, (size_t)output_capacity, "%s", text);
-    return written < 0 || written >= output_capacity ? -1 : written;
+    // snprintf reports what it *would* have written, so a return at or past the
+    // capacity means the transcript was cut. Saying so is the point: a truncated
+    // decode and an empty one are opposite failures, and only one is worth
+    // retrying a smaller window for.
+    if (written < 0) return VocaPhoneSherpaDecodeInvalidArgument;
+    if (written >= output_capacity) return VocaPhoneSherpaDecodeOutputTruncated;
+    return written;
 }
 
 VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
@@ -122,11 +130,11 @@ int VocaPhoneSherpaDecode(
         (struct VocaPhoneSherpaContext *)recognizer;
     if (context == NULL || context->recognizer == NULL ||
         samples == NULL || sample_count <= 0) {
-        return -1;
+        return VocaPhoneSherpaDecodeInvalidArgument;
     }
     const SherpaOnnxOfflineStream *stream =
         SherpaOnnxCreateOfflineStream(context->recognizer);
-    if (stream == NULL) return -1;
+    if (stream == NULL) return VocaPhoneSherpaDecodeStreamUnavailable;
 
     SherpaOnnxAcceptWaveformOffline(
         stream, 16000, samples, sample_count);
@@ -134,7 +142,7 @@ int VocaPhoneSherpaDecode(
     const SherpaOnnxOfflineRecognizerResult *result =
         SherpaOnnxGetOfflineStreamResult(stream);
     int copied = result == NULL
-        ? -1
+        ? VocaPhoneSherpaDecodeResultMissing
         : copy_text(result->text, output, output_capacity);
     if (result != NULL) {
         // Optional in the struct and left null by every family except

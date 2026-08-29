@@ -218,6 +218,45 @@ internal object SherpaLongAudio {
     fun carriesSpeech(loudestFrame: Double, loudestFrameSoFar: Double): Boolean =
         loudestFrame >= maxOf(SILENT_CHUNK_RMS, loudestFrameSoFar * SILENCE_RMS_RATIO)
 
+    /**
+     * The part of [chunk] that is not inherited from the window before it.
+     *
+     * A chunk that overlaps its predecessor begins with audio that predecessor
+     * already decoded. Everything a later window can *lose* is what comes after
+     * that, so it is what the emptiness of its answer has to be judged on.
+     */
+    fun newRegion(samples: FloatArray, chunk: SherpaAudioChunk, previousEnd: Int): FloatArray {
+        val start = maxOf(chunk.start, previousEnd).coerceAtMost(chunk.endExclusive)
+        return samples.copyOfRange(start, chunk.endExclusive)
+    }
+
+    /**
+     * Whether an empty answer for [newRegion] is a loss worth spending decodes
+     * on, rather than the ordinary silence at the end of a recording.
+     *
+     * It must carry speech next to what the recording has already been heard to
+     * contain, so a trailing pause is not amplified into a retry.
+     *
+     * [inheritsAudio] is what the length bar is for, and why it does not always
+     * apply. A window that begins inside the one before it has to be told apart
+     * from that retained overlap, and below the widest overlap the chunker ever
+     * retains it cannot be -- a recording ending just after a boundary leaves
+     * exactly such a tail, a fragment of a word at best. A window that inherited
+     * nothing has no overlap to be confused with: it is the whole of what the
+     * user has said, and a two-word dictation is short precisely because that is
+     * all there was to say. Applying the bar there was what stopped "yes" from
+     * ever being retried.
+     */
+    fun carriesRecoverableSpeech(
+        newRegion: FloatArray,
+        inheritsAudio: Boolean,
+        loudestFrame: Double,
+        loudestFrameSoFar: Double,
+    ): Boolean {
+        if (inheritsAudio && newRegion.size <= OVERLAP_MILLIS * SAMPLE_RATE / 1_000) return false
+        return carriesSpeech(loudestFrame, loudestFrameSoFar)
+    }
+
     private fun rms(samples: FloatArray, start: Int, endExclusive: Int): Double {
         if (endExclusive <= start) return 0.0
         var sum = 0.0
@@ -235,12 +274,28 @@ internal object SherpaTranscriptMerger {
     // only be a phrase the speaker genuinely repeated, not duplicated audio.
     private const val MAX_OVERLAP_WORDS = 4
 
+    /**
+     * The same bound for scripts written without spaces, where half a second of
+     * speech is a few characters rather than a few words.
+     *
+     * Without this path a Chinese or Japanese transcript is one "word" on each
+     * side of the seam, nothing ever matches, and the overlap is written twice
+     * with a space wedged between it -- in a script that does not use spaces.
+     * iOS has had this branch; matching it is what keeps the two transcripts of
+     * one recording the same transcript.
+     */
+    private const val MAX_OVERLAP_CHARACTERS = 6
+
     fun append(existing: String, next: String, deduplicateOverlap: Boolean = true): String {
         val left = existing.trim()
         val right = next.trim()
         if (left.isEmpty()) return right
         if (right.isEmpty()) return left
         if (!deduplicateOverlap) return join(left, right)
+
+        if (!left.any(Char::isWhitespace) && !right.any(Char::isWhitespace)) {
+            return appendUnspaced(left, right)
+        }
 
         val leftWords = left.split(Regex("\\s+"))
         val rightWords = right.split(Regex("\\s+"))
@@ -256,6 +311,20 @@ internal object SherpaTranscriptMerger {
         val suffix = rightWords.joinToString(" ")
         if (prefix.isEmpty()) return suffix
         return join(prefix, suffix)
+    }
+
+    /**
+     * Joins two segments of a script that does not separate words with spaces.
+     *
+     * The longest suffix of [left] that opens [right] is the repeat, bounded the
+     * same way the word path is bounded and joined without a separator.
+     */
+    private fun appendUnspaced(left: String, right: String): String {
+        val maxOverlap = minOf(MAX_OVERLAP_CHARACTERS, left.length, right.length)
+        val overlap = (maxOverlap downTo 1).firstOrNull { count ->
+            left.regionMatches(left.length - count, right, 0, count)
+        } ?: 0
+        return left + right.substring(overlap)
     }
 
     private fun wordKey(word: String): String = word

@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.local
 
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -59,5 +60,56 @@ class SherpaDecodingMethodTest {
                 )
             }
         }
+    }
+
+    /**
+     * The accuracy control reaches `decodingMethod` and `maxActivePaths`, and
+     * greedy search reads neither. Letting it stay part of the loaded identity
+     * rebuilds a several-hundred-megabyte graph to produce an identical one.
+     */
+    @Test
+    fun `a greedy family builds the same recognizer at every accuracy setting`() {
+        for (family in SherpaFamily.entries) {
+            assertFalse(family.nativeConfigVariesWithQuality)
+            for (quality in TranscriptionQuality.entries) {
+                assertEquals(TranscriptionQuality.DEFAULT, family.effectiveQuality(quality))
+            }
+        }
+    }
+
+    @Test
+    fun `changing accuracy alone does not reload a sherpa engine`() {
+        for (quality in TranscriptionQuality.entries) {
+            val effective = SherpaFamily.NEMO_TRANSDUCER.effectiveQuality(quality)
+            assertFalse(
+                shouldReloadLocalEngine(
+                    engine = LocalModelEngine.SHERPA_ONNX,
+                    loadedModelID = "parakeet",
+                    requestedModelID = "parakeet",
+                    loadedLanguage = "en",
+                    requestedLanguage = "en",
+                    loadedQuality = SherpaFamily.NEMO_TRANSDUCER
+                        .effectiveQuality(TranscriptionQuality.FAST),
+                    requestedQuality = effective,
+                    languageIsBakedIn = false,
+                ),
+            )
+        }
+    }
+
+    /** Everything else still invalidates it. */
+    @Test
+    fun `a different model still reloads`() {
+        assertTrue(
+            shouldReloadLocalEngine(
+                engine = LocalModelEngine.SHERPA_ONNX,
+                loadedModelID = "parakeet",
+                requestedModelID = "canary",
+                loadedLanguage = "en",
+                requestedLanguage = "en",
+                loadedQuality = TranscriptionQuality.DEFAULT,
+                requestedQuality = TranscriptionQuality.DEFAULT,
+            ),
+        )
     }
 }

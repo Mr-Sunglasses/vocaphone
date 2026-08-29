@@ -46,6 +46,7 @@ enum class SherpaFamily(
      */
     val acceptsLanguage: Boolean = false,
 ) {
+
     // Kaldi's dither=1 on int16 audio is approximately 1 / 32768 here. It is
     // the upstream workaround for Parakeet returning no tokens on valid audio
     // with an all-zero dither setting (sherpa-onnx #2258).
@@ -57,6 +58,25 @@ enum class SherpaFamily(
     NEMO_CTC,
     PARAFORMER,
     ;
+
+    /**
+     * Whether the accuracy setting changes the recognizer this family builds.
+     *
+     * It reaches exactly two config fields, and greedy search reads neither:
+     * `decodingMethod` is pinned, and `maxActivePaths` is the beam width a beam
+     * search would have used. So while [supportsBeamSearch] is false the three
+     * accuracy settings produce an identical recognizer -- and treating quality
+     * as part of this family's loaded identity rebuilds a several-hundred-
+     * megabyte ONNX graph to arrive at the one already in memory.
+     */
+    val nativeConfigVariesWithQuality: Boolean get() = supportsBeamSearch
+
+    /**
+     * The quality this family's recognizer is actually built at, so a reload
+     * decision cannot turn on a distinction the native config does not have.
+     */
+    fun effectiveQuality(quality: TranscriptionQuality): TranscriptionQuality =
+        if (nativeConfigVariesWithQuality) quality else TranscriptionQuality.DEFAULT
 
     /** The only safe way to turn a quality setting into a decoding method. */
     fun decodingMethod(quality: TranscriptionQuality): String =

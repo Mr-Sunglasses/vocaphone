@@ -205,6 +205,12 @@ enum LocalModelManagerError: LocalizedError, Equatable {
     case insufficientMemory(requiredGB: Int)
     case insufficientStorage(freeBytes: Int64, requiredBytes: Int64)
     case engineLoadFailed(String)
+    /// The native engine failed to answer at all — see `SherpaNativeFailure`.
+    /// Separate from `emptyTranscript` because the two need different fixes and
+    /// a device report that cannot tell them apart cannot say which one landed.
+    case engineDecodeFailed(String)
+    /// The model was asked and returned no tokens, after the recovery ladder.
+    case emptyTranscript
     case downloadFailed(path: String, statusCode: Int?)
 
     var errorDescription: String? {
@@ -218,6 +224,10 @@ enum LocalModelManagerError: LocalizedError, Equatable {
         case let .integrityUnverified(name):
             "\(name) has not been verified on this device. Download it again."
         case let .modelNotDownloaded(id): "Download \(id) before using on-device transcription."
+        case .engineDecodeFailed:
+            "The on-device model could not run. The recording is preserved; try again."
+        case .emptyTranscript:
+            "The on-device model found no speech in this recording."
         case .noModelContainer: "The app's model directory is unavailable."
         case let .insufficientMemory(requiredGB):
             "This model needs a device with at least \(requiredGB) GB of memory."

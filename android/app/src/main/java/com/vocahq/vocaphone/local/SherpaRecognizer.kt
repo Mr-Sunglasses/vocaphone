@@ -51,8 +51,33 @@ internal class SherpaRecognizer private constructor(
      */
     fun transcribe(samples: FloatArray): SherpaTranscript {
         var transcript = SherpaTranscript.EMPTY
+        var previousEnd = 0
+        var loudestSoFar = 0.0
         SherpaLongAudio.chunks(samples).forEach { chunk ->
-            val chunkResult = transcribeChunk(samples.copyOfRange(chunk.start, chunk.endExclusive))
+            // Whether a short empty answer is ordinary is a question about the
+            // audio this window did not inherit from the one before it. A final
+            // window that is only the retained overlap has nothing new in it,
+            // and an empty answer there is correct. A final window carrying a
+            // whole further sentence is the reported failure, and it is that
+            // whether or not an earlier window already produced text -- judging
+            // it by the transcript so far is what let a closing sentence
+            // disappear behind a successful opening one.
+            val newRegion = SherpaLongAudio.newRegion(samples, chunk, previousEnd)
+            val newRegionLevel = SherpaLongAudio.loudestFrame(newRegion)
+            val carriesNewSpeech = SherpaLongAudio.carriesRecoverableSpeech(
+                newRegion = newRegion,
+                inheritsAudio = chunk.overlapsPrevious,
+                loudestFrame = newRegionLevel,
+                loudestFrameSoFar = loudestSoFar,
+            )
+            val chunkResult = SherpaEmptyChunkRecovery.decode(
+                samples = samples.copyOfRange(chunk.start, chunk.endExclusive),
+                decodeOnce = ::decode,
+                deduplicateOverlap = !translating,
+                recoverAudibleShortInput = carriesNewSpeech,
+            )
+            loudestSoFar = maxOf(loudestSoFar, newRegionLevel)
+            previousEnd = chunk.endExclusive
             transcript = transcript.append(
                 chunkResult,
                 deduplicateOverlap = chunk.overlapsPrevious && !translating,
@@ -247,24 +272,49 @@ internal object SherpaEmptyChunkRecovery {
      *   halves overlap so the word crossing the centre survives, and matching
      *   the repeat back out only works when the same audio returns the same
      *   words — which is exactly what a translator does not promise.
+     * @param recoverAudibleShortInput true when an empty answer here cannot be
+     *   the ordinary short trailing overlap. See [SherpaRecognizer.transcribe]
+     *   for how that is decided.
      */
     fun decode(
         samples: FloatArray,
         decodeOnce: (FloatArray) -> SherpaTranscript,
         deduplicateOverlap: Boolean = true,
+        recoverAudibleShortInput: Boolean = false,
     ): SherpaTranscript {
+        // Room tone is the ordinary reason for an empty answer, and the cheapest
+        // thing to rule out -- before the first decode, not after it. The scan
+        // costs one pass over the samples; a decode of a pause costs inference
+        // to be told what the scan already knew. iOS guards in the same place.
+        if (SherpaLongAudio.isEffectivelySilent(samples)) return SherpaTranscript.EMPTY
+
         val firstAttempt = decodeOnce(samples)
-        // Length is what this recovers from, so a window that is not long
-        // enough to be dropped for its length has nothing to recover. Room
-        // tone is the other ordinary reason for an empty answer, and the
-        // cheapest thing to rule out before spending two more decodes: the
-        // scan costs a pass over the samples, the retry costs inference.
-        if (firstAttempt.text.isNotEmpty() ||
-            samples.size <=
-            SherpaLongAudio.MIN_SUSPECT_CHUNK_SECONDS * SherpaLongAudio.SAMPLE_RATE ||
-            SherpaLongAudio.isEffectivelySilent(samples)
-        ) {
-            return firstAttempt
+        if (firstAttempt.text.isNotEmpty()) return firstAttempt
+
+        // Length is what the split recovers from, so a window that is not long
+        // enough to be dropped for its length has nothing there to recover --
+        // unless the caller has already established that this window is the
+        // whole of what the user has said so far.
+        val short =
+            samples.size <= SherpaLongAudio.MIN_SUSPECT_CHUNK_SECONDS * SherpaLongAudio.SAMPLE_RATE
+        if (!recoverAudibleShortInput && short) return firstAttempt
+
+        // The two extra rungs are for short speech and stay there. A ten-second
+        // window is already the length the split recovers from, and padding it
+        // by half a second either side buys nothing for the cost of a whole
+        // further decode -- so a long window keeps the established ladder and
+        // its predictable latency however little has been decoded before it.
+        if (short) {
+            // A fresh offline stream can recover a nondeterministic no-token
+            // answer.
+            val repeated = decodeOnce(samples)
+            if (repeated.text.isNotEmpty()) return repeated
+            // Very short speech can begin or end too close to the encoder
+            // context. Half a second either side moves it inside, and is
+            // bounded so a recording cannot grow its own decode cost.
+            val padding = FloatArray(SherpaLongAudio.SAMPLE_RATE / 2)
+            val padded = decodeOnce(padding + samples + padding)
+            if (padded.text.isNotEmpty()) return padded
         }
 
         // Retain context on both sides of the recovery boundary. A plain
@@ -272,9 +322,13 @@ internal object SherpaEmptyChunkRecovery {
         // word crossing its exact centre. One split and no more: a half-length
         // window that is still empty is not being lost to its length, and
         // subdividing again multiplies the decodes for nothing.
+        // Clamped to a quarter of the waveform: without it a recording shorter
+        // than the overlap itself hands both halves the entire thing, which is
+        // two identical full decodes and no split at all. Only reachable now
+        // that a short complete recording gets this far.
         val midpoint = samples.size / 2
-        val halfOverlap = SherpaLongAudio.OVERLAP_MILLIS *
-            SherpaLongAudio.SAMPLE_RATE / 2_000
+        val halfOverlap = (SherpaLongAudio.OVERLAP_MILLIS * SherpaLongAudio.SAMPLE_RATE / 2_000)
+            .coerceAtMost(midpoint / 2)
         val leftEnd = (midpoint + halfOverlap).coerceAtMost(samples.size)
         val rightStart = (midpoint - halfOverlap).coerceAtLeast(0)
         return decodeOnce(samples.copyOfRange(0, leftEnd))

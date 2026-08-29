@@ -1,5 +1,7 @@
 package com.vocahq.vocaphone.core
 
+import com.vocahq.vocaphone.local.LocalModelEngine
+
 /**
  * How much decoding work an on-device model may spend on one dictation.
  *
@@ -25,7 +27,24 @@ enum class TranscriptionQuality(val storedValue: String) {
             ACCURATE -> "Accurate"
         }
 
-    val detail: String
+    /**
+     * What this setting buys, for the engine it is being shown next to.
+     *
+     * whisper.cpp reads it: [whisperBeamSize] widens the search for Accurate.
+     * No sherpa family does — every bundled one is pinned to greedy search (see
+     * [com.vocahq.vocaphone.local.SherpaFamily.supportsBeamSearch]), greedy
+     * ignores the beam width, and the empty-result recovery is a fixed ladder
+     * that never consults quality. Promising a wider search there describes a
+     * control that currently does nothing.
+     */
+    fun detail(engine: LocalModelEngine): String = when (engine) {
+        LocalModelEngine.WHISPER -> whisperDetail
+        LocalModelEngine.SHERPA_ONNX ->
+            "This model runs one safe decoding mode, so the accuracy setting " +
+                "does not change its result. It applies to Whisper models."
+    }
+
+    private val whisperDetail: String
         get() = when (this) {
             FAST -> "Quickest result. Skips the retries that rescue a hard passage."
             BALANCED -> "Beam search where it is cheap, and a retry when a window looks wrong."

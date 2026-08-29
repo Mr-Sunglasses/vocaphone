@@ -44,6 +44,7 @@ import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.local.LocalModelCatalog
+import com.vocahq.vocaphone.local.LocalModelEngine
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
@@ -236,7 +237,11 @@ fun SettingsScreen(
             SettingsPage.MODELS -> {
                 Section(
                     title = "Accuracy",
-                    supporting = "${settings.transcriptionQuality.detail}\n" +
+                    supporting = "${
+                        settings.transcriptionQuality.detail(
+                            localModel?.engine ?: LocalModelEngine.WHISPER,
+                        )
+                    }\n" +
                         "Applies to models running on this phone. The gateway decides for itself.",
                 ) {
                     ChipChoiceRow(

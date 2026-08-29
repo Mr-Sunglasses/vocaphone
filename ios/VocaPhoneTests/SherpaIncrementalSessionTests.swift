@@ -41,9 +41,9 @@ struct SherpaIncrementalSessionTests {
     /// What a transducer does: words for a chunk with speech in it, nothing for
     /// a chunk of room tone. Reads the levelled audio the session hands over,
     /// where speech has been brought to the 0.85 target and a pause has not.
-    private static func healthyModel(_ chunk: [Float]) -> SherpaTranscript {
+    private static func healthyModel(_ chunk: [Float]) -> SherpaDecodeOutcome {
         let peak = chunk.reduce(Float(0)) { max($0, abs($1)) }
-        return SherpaTranscript(text: peak > 0.3 ? "spoken" : "")
+        return .decoded(SherpaTranscript(text: peak > 0.3 ? "spoken" : ""))
     }
 
     @Test func aHealthyModelNeverPaysForASecondPass() async {
@@ -81,7 +81,7 @@ struct SherpaIncrementalSessionTests {
             // Exactly the failure this exists for: the first long chunk comes
             // back empty and every later one succeeds, so the merged text reads
             // as a whole sentence that starts ten seconds in.
-            decoded.increment() == 1 ? SherpaTranscript(text: "") : SherpaTranscript(text: "later")
+            decoded.increment() == 1 ? .decoded(SherpaTranscript(text: "")) : .decoded(SherpaTranscript(text: "later"))
         }
         let result = await session.finish()
 
@@ -93,7 +93,7 @@ struct SherpaIncrementalSessionTests {
     @Test func aCompleteRunReportsNothingDropped() async {
         let session = SherpaIncrementalSession(
             chunks: Self.stream(Self.tone(seconds: 25, amplitude: 0.4))
-        ) { _ in SherpaTranscript(text: "spoken") }
+        ) { _ in .decoded(SherpaTranscript(text: "spoken")) }
         let result = await session.finish()
 
         #expect(!result.droppedAudibleChunk)
@@ -103,7 +103,7 @@ struct SherpaIncrementalSessionTests {
     @Test func silenceIsNotMistakenForADroppedChunk() async {
         let session = SherpaIncrementalSession(
             chunks: Self.stream([Float](repeating: 0, count: Self.sampleRate * 25))
-        ) { _ in SherpaTranscript(text: "") }
+        ) { _ in .decoded(SherpaTranscript(text: "")) }
         let result = await session.finish()
 
         // Nothing was said, so nothing was lost, and a whole-file retry of the
@@ -118,7 +118,7 @@ struct SherpaIncrementalSessionTests {
             chunks: Self.stream(Self.tone(seconds: 25, amplitude: 0.05))
         ) { samples in
             peaks.record(samples.reduce(Float(0)) { max($0, abs($1)) })
-            return SherpaTranscript(text: "spoken")
+            return .decoded(SherpaTranscript(text: "spoken"))
         }
         _ = await session.finish()
 
@@ -135,7 +135,7 @@ struct SherpaIncrementalSessionTests {
         let peaks = OSAllocatedPeaks()
         let session = SherpaIncrementalSession(chunks: Self.stream(samples)) { chunk in
             peaks.record(chunk.reduce(Float(0)) { max($0, abs($1)) })
-            return SherpaTranscript(text: "spoken")
+            return .decoded(SherpaTranscript(text: "spoken"))
         }
         _ = await session.finish()
 
@@ -147,25 +147,102 @@ struct SherpaIncrementalSessionTests {
         #expect(peaks.recorded.last! < 0.1)
     }
 
-    @Test func aShortTailThatDecodesToNothingIsNotADroppedChunk() async {
+    /// The bug a chunk-length bar hid. A window can be well under the suspect
+    /// length and still be the last two seconds of the recording: the tail after
+    /// a split is never smaller than the streaming window minus what it
+    /// retained. Asking whether the *chunk* was long enough let a closing
+    /// sentence vanish with nothing downstream able to tell.
+    @Test func aShortTailCarryingNewSpeechIsADroppedChunk() async {
         let sizes = RecordedSizes()
         let session = SherpaIncrementalSession(
             chunks: Self.stream(Self.tone(seconds: 22, amplitude: 0.4))
         ) { samples in
             sizes.record(samples.count)
-            // A recording that ends just after a boundary leaves the half
-            // second of retained overlap and a fragment of a word behind, and
-            // that answers with no tokens all the time.
             return samples.count < 6 * Self.sampleRate
-                ? SherpaTranscript(text: "")
-                : SherpaTranscript(text: "spoken")
+                ? .decoded(SherpaTranscript(text: ""))
+                : .decoded(SherpaTranscript(text: "spoken"))
         }
         let result = await session.finish()
 
         #expect(sizes.recorded.last! < 6 * Self.sampleRate)
-        // Calling that a loss re-runs the whole recording through the model at
-        // finish, which is the exact wait the streaming path exists to remove.
-        #expect(!result.droppedAudibleChunk)
+        #expect(result.droppedAudibleChunk)
+    }
+
+    /// The tail that stays ignorable, stated as the rule the session applies.
+    /// A recording ending just after a boundary leaves the retained overlap
+    /// behind and nothing else, and an empty answer for audio the previous
+    /// window already decoded is not a loss — calling it one re-runs the whole
+    /// recording through the model at finish, which is the exact wait the
+    /// streaming path exists to remove.
+    @Test func aTailThatIsOnlyRetainedOverlapIsNotADroppedChunk() {
+        let overlapOnly = [Float](repeating: 0.4, count: SherpaLongAudio.overlapSamples)
+
+        #expect(!SherpaLongAudio.carriesRecoverableSpeech(
+            newRegion: overlapOnly,
+            inheritsAudio: true,
+            loudestFrame: SherpaLongAudio.loudestFrame(overlapOnly),
+            loudestFrameSoFar: 0.4
+        ))
+    }
+
+    /// And the same rule the other way: new audio past the overlap, at the level
+    /// of the speech around it, is a loss whatever the window's total length.
+    @Test func newAudioPastTheOverlapIsRecoverable() {
+        let region = [Float](repeating: 0.4, count: 2 * SherpaLongAudio.sampleRate)
+
+        #expect(SherpaLongAudio.carriesRecoverableSpeech(
+            newRegion: region,
+            inheritsAudio: true,
+            loudestFrame: SherpaLongAudio.loudestFrame(region),
+            loudestFrameSoFar: 0.4
+        ))
+    }
+
+    /// Room tone past the overlap is still not a loss: the bar is the level of
+    /// the speech already heard, not merely the presence of samples.
+    @Test func roomTonePastTheOverlapIsNotRecoverable() {
+        let region = [Float](repeating: 0.01, count: 2 * SherpaLongAudio.sampleRate)
+
+        #expect(!SherpaLongAudio.carriesRecoverableSpeech(
+            newRegion: region,
+            inheritsAudio: true,
+            loudestFrame: SherpaLongAudio.loudestFrame(region),
+            loudestFrameSoFar: 0.4
+        ))
+    }
+
+    /// The length bar is for telling new audio apart from retained overlap, so
+    /// it cannot apply where nothing was retained. A one-word dictation is short
+    /// because that is all there was to say, and it was never decoded before.
+    @Test func aSoleWindowShorterThanTheOverlapIsStillRecoverable() {
+        let oneWord = [Float](repeating: 0.4, count: SherpaLongAudio.sampleRate / 4)
+
+        #expect(SherpaLongAudio.carriesRecoverableSpeech(
+            newRegion: oneWord,
+            inheritsAudio: false,
+            loudestFrame: SherpaLongAudio.loudestFrame(oneWord),
+            loudestFrameSoFar: 0
+        ))
+        // The same audio arriving as a tail behind a decoded window is not.
+        #expect(!SherpaLongAudio.carriesRecoverableSpeech(
+            newRegion: oneWord,
+            inheritsAudio: true,
+            loudestFrame: SherpaLongAudio.loudestFrame(oneWord),
+            loudestFrameSoFar: 0.4
+        ))
+    }
+
+    /// A native failure is not a model that heard nothing, but the seconds are
+    /// missing either way, so the whole-file pass still has to run.
+    @Test func aNativeFailureIsCountedAsALossRatherThanAnEmptyAnswer() async {
+        let session = SherpaIncrementalSession(
+            chunks: Self.stream(Self.tone(seconds: 22, amplitude: 0.4))
+        ) { _ in .failed(.streamUnavailable) }
+
+        let result = await session.finish()
+
+        #expect(result.transcript.text.isEmpty)
+        #expect(result.droppedAudibleChunk)
     }
 
     @Test func aPauseInTheMiddleOfARecordingIsNotADroppedChunk() async {
@@ -179,8 +256,8 @@ struct SherpaIncrementalSessionTests {
         let session = SherpaIncrementalSession(chunks: Self.stream(samples)) { chunk in
             decoded.record(chunk.count)
             return decoded.recorded.count > 2
-                ? SherpaTranscript(text: "")
-                : SherpaTranscript(text: "spoken")
+                ? .decoded(SherpaTranscript(text: ""))
+                : .decoded(SherpaTranscript(text: "spoken"))
         }
         let result = await session.finish()
 
@@ -210,8 +287,8 @@ struct SherpaIncrementalSessionTests {
         let session = SherpaIncrementalSession(chunks: Self.stream(samples)) { chunk in
             decoded.record(chunk.count)
             return decoded.recorded.count > 2
-                ? SherpaTranscript(text: "")
-                : SherpaTranscript(text: "spoken")
+                ? .decoded(SherpaTranscript(text: ""))
+                : .decoded(SherpaTranscript(text: "spoken"))
         }
         let result = await session.finish()
 

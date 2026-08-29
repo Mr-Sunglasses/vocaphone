@@ -143,17 +143,110 @@ class SherpaLongAudioTest {
     }
 
     @Test
-    fun `a silent chunk is never retried`() {
+    fun `an audible complete short recording gets a bounded fresh-stream retry`() {
+        val decodedSizes = mutableListOf<Int>()
+        var attempts = 0
+        val transcript = SherpaEmptyChunkRecovery.decode(
+            samples = FloatArray(5 * SherpaLongAudio.SAMPLE_RATE) { 0.2f },
+            recoverAudibleShortInput = true,
+            decodeOnce = { samples ->
+                decodedSizes += samples.size
+                SherpaTranscript(if (attempts++ == 1) "recovered" else "")
+            },
+        )
+
+        assertEquals("recovered", transcript.text)
+        assertEquals(listOf(80_000, 80_000), decodedSizes)
+    }
+
+    @Test
+    fun `a silent chunk is never decoded at all`() {
         val decodedSizes = mutableListOf<Int>()
         SherpaEmptyChunkRecovery.decode(
             samples = FloatArray(10 * SherpaLongAudio.SAMPLE_RATE),
+            recoverAudibleShortInput = true,
             decodeOnce = { samples ->
                 decodedSizes += samples.size
                 SherpaTranscript.EMPTY
             },
         )
 
-        assertEquals(listOf(160_000), decodedSizes)
+        // Room tone answering with nothing is the correct answer, and the scan
+        // that says so is cheaper than the decode that would agree with it.
+        assertTrue(decodedSizes.isEmpty())
+    }
+
+    @Test
+    fun `a short recording still empty on a fresh stream is padded then split`() {
+        val decodedSizes = mutableListOf<Int>()
+        SherpaEmptyChunkRecovery.decode(
+            samples = FloatArray(3 * SherpaLongAudio.SAMPLE_RATE) { 0.2f },
+            recoverAudibleShortInput = true,
+            decodeOnce = { samples ->
+                decodedSizes += samples.size
+                SherpaTranscript.EMPTY
+            },
+        )
+
+        // Whole, whole again, padded half a second either side, then the two
+        // halves. The ladder is fixed-length: it never subdivides again.
+        assertEquals(listOf(48_000, 48_000, 64_000, 28_000, 28_000), decodedSizes)
+    }
+
+    /**
+     * The extra rungs are for short speech. A long first chunk with nothing
+     * decoded ahead of it is still a long window: repeating it and padding it
+     * costs two whole further decodes and recovers what the split already does.
+     */
+    @Test
+    fun `a long window keeps the split ladder even with nothing decoded before it`() {
+        val decodedSizes = mutableListOf<Int>()
+        SherpaEmptyChunkRecovery.decode(
+            samples = FloatArray(10 * SherpaLongAudio.SAMPLE_RATE) { 0.2f },
+            recoverAudibleShortInput = true,
+            decodeOnce = { samples ->
+                decodedSizes += samples.size
+                SherpaTranscript.EMPTY
+            },
+        )
+
+        assertEquals(listOf(160_000, 84_000, 84_000), decodedSizes)
+    }
+
+    @Test
+    fun `the recovery split never decodes the whole waveform twice`() {
+        val decodedSizes = mutableListOf<Int>()
+        SherpaEmptyChunkRecovery.decode(
+            samples = FloatArray(SherpaLongAudio.SAMPLE_RATE / 4) { 0.2f },
+            recoverAudibleShortInput = true,
+            decodeOnce = { samples ->
+                decodedSizes += samples.size
+                SherpaTranscript.EMPTY
+            },
+        )
+
+        assertTrue(decodedSizes.takeLast(2).all { it < SherpaLongAudio.SAMPLE_RATE / 4 })
+    }
+
+    /**
+     * Translated windows are joined verbatim: the same audio does not come back
+     * as the same words, so nothing can pair the repeat the split creates.
+     */
+    @Test
+    fun `a translated recovery split is never text deduplicated`() {
+        val transcript = SherpaEmptyChunkRecovery.decode(
+            samples = FloatArray(10 * SherpaLongAudio.SAMPLE_RATE) { 0.2f },
+            deduplicateOverlap = false,
+            decodeOnce = { samples ->
+                if (samples.size > 6 * SherpaLongAudio.SAMPLE_RATE) {
+                    SherpaTranscript.EMPTY
+                } else {
+                    SherpaTranscript("to the shop")
+                }
+            },
+        )
+
+        assertEquals("to the shop to the shop", transcript.text)
     }
 
     @Test
@@ -168,6 +261,112 @@ class SherpaLongAudioTest {
         )
 
         assertEquals(listOf(224_000, 116_000, 116_000), decodedSizes)
+    }
+
+    /**
+     * The tail that stays ignorable, and the one that never was. A window can be
+     * well under the suspect length and still be the last seconds of the
+     * recording; asking whether the *chunk* was long enough let a closing
+     * sentence vanish behind a successful opening one.
+     */
+    @Test
+    fun `only new audio past the retained overlap is worth recovering`() {
+        val overlapSamples = SherpaLongAudio.OVERLAP_MILLIS * SherpaLongAudio.SAMPLE_RATE / 1_000
+        val overlapOnly = FloatArray(overlapSamples) { 0.4f }
+        val newSpeech = FloatArray(2 * SherpaLongAudio.SAMPLE_RATE) { 0.4f }
+        val roomTone = FloatArray(2 * SherpaLongAudio.SAMPLE_RATE) { 0.01f }
+
+        assertFalse(
+            SherpaLongAudio.carriesRecoverableSpeech(
+                overlapOnly, true, SherpaLongAudio.loudestFrame(overlapOnly), 0.4,
+            ),
+        )
+        assertTrue(
+            SherpaLongAudio.carriesRecoverableSpeech(
+                newSpeech, true, SherpaLongAudio.loudestFrame(newSpeech), 0.4,
+            ),
+        )
+        // Past the overlap but not speech next to what has already been heard.
+        assertFalse(
+            SherpaLongAudio.carriesRecoverableSpeech(
+                roomTone, true, SherpaLongAudio.loudestFrame(roomTone), 0.4,
+            ),
+        )
+    }
+
+    /**
+     * The length bar is for telling new audio apart from retained overlap, so it
+     * cannot apply where nothing was retained. A one-word dictation is short
+     * because that is all there was to say, and it was never decoded before.
+     */
+    @Test
+    fun `a sole window shorter than the overlap is still recoverable`() {
+        val oneWord = FloatArray(SherpaLongAudio.SAMPLE_RATE / 4) { 0.4f }
+
+        assertTrue(
+            SherpaLongAudio.carriesRecoverableSpeech(
+                oneWord, false, SherpaLongAudio.loudestFrame(oneWord), 0.0,
+            ),
+        )
+        // The same audio arriving as a tail behind a decoded window is not.
+        assertFalse(
+            SherpaLongAudio.carriesRecoverableSpeech(
+                oneWord, true, SherpaLongAudio.loudestFrame(oneWord), 0.4,
+            ),
+        )
+    }
+
+    @Test
+    fun `a new region is what the window did not inherit from the one before it`() {
+        val samples = FloatArray(20 * SherpaLongAudio.SAMPLE_RATE) { 0.2f }
+        val chunk = SherpaAudioChunk(
+            start = 9 * SherpaLongAudio.SAMPLE_RATE,
+            endExclusive = 20 * SherpaLongAudio.SAMPLE_RATE,
+            overlapsPrevious = true,
+        )
+
+        val newRegion = SherpaLongAudio.newRegion(
+            samples, chunk, previousEnd = 10 * SherpaLongAudio.SAMPLE_RATE,
+        )
+
+        // The second onward, not the eleven seconds the window covers.
+        assertEquals(10 * SherpaLongAudio.SAMPLE_RATE, newRegion.size)
+    }
+
+    /**
+     * Scripts written without spaces. Every transcript is one "word" on each
+     * side of the seam, so the word matcher never fires: the overlap is written
+     * twice with a space wedged into a script that does not use spaces. iOS has
+     * had a bounded character path; this is Android's.
+     */
+    @Test
+    fun `an unspaced script has its overlap removed without a separator`() {
+        assertEquals(
+            "你好世界再见",
+            SherpaTranscriptMerger.append("你好世界", "世界再见"),
+        )
+        assertEquals(
+            "こんにちは世界",
+            SherpaTranscriptMerger.append("こんにちは", "にちは世界"),
+        )
+    }
+
+    @Test
+    fun `an unspaced repeat wider than the audio overlap is preserved`() {
+        // Seven characters is more than half a second of speech can hold, so it
+        // is repetition the speaker produced rather than duplicated audio.
+        assertEquals(
+            "一二三四五六七一二三四五六七",
+            SherpaTranscriptMerger.append("一二三四五六七", "一二三四五六七"),
+        )
+    }
+
+    @Test
+    fun `a translated unspaced seam is never deduplicated`() {
+        assertEquals(
+            "你好世界 世界再见",
+            SherpaTranscriptMerger.append("你好世界", "世界再见", deduplicateOverlap = false),
+        )
     }
 
     @Test

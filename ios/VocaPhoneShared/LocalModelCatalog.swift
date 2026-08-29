@@ -14,14 +14,36 @@ enum SherpaFamily: String, Codable, Sendable {
     case nemoCtc
     case paraformer
 
-    /// Whether this family accepts `modified_beam_search`.
+    /// Whether this family can safely use `modified_beam_search`.
     ///
-    /// This is not a preference. sherpa-onnx validates the decoding method when
-    /// the recognizer is built, and every family except the transducer answers
-    /// an unsupported one with `exit(-1)` — not an exception, not an error
-    /// return, but the process gone. So the method has to be decided from the
-    /// family and never from the user's setting alone.
-    var supportsBeamSearch: Bool { self == .nemoTransducer }
+    /// This is not a preference, and it is false for two separate reasons that
+    /// both have to stay written down.
+    ///
+    /// sherpa-onnx validates the decoding method when the recognizer is built,
+    /// and every family except the transducer answers an unsupported one with
+    /// `exit(-1)` — not an exception, not an error return, but the process
+    /// gone. So the method can never be taken from the user's setting alone.
+    ///
+    /// NeMo TDT does accept the value, but its implementation in the bundled
+    /// runtimes can intermittently emit empty or hallucinated text (upstream
+    /// #3267; its proposed fix #3657 is not merged). That keeps the transducer
+    /// false too, until a fixed native runtime is pinned and exercised on a
+    /// phone. Both halves are load-bearing: restoring the transducer here is
+    /// only ever safe for the transducer.
+    var supportsBeamSearch: Bool { false }
+
+    /// Tiny feature noise used only where zero dither can collapse valid speech.
+    ///
+    /// Kaldi's `dither=1` on int16 audio is approximately `1 / 32768` in the
+    /// float scale VocaPhone captures at. It is the upstream workaround for
+    /// Parakeet returning no tokens on valid audio with an all-zero dither
+    /// setting (sherpa-onnx #2258), and matches the Android client exactly.
+    ///
+    /// Android passes this into `FeatureConfig.dither`. The pinned iOS runtime
+    /// (v1.12.34) has no `dither` field on `SherpaOnnxFeatureConfig` at all, so
+    /// `SherpaFeatureDither` reproduces its effect on the waveform instead. Move
+    /// this to `config.feat_config.dither` once the runtime upgrade lands.
+    var featureDither: Float { self == .nemoTransducer ? 0.00003 : 0 }
 
     /// Whether the recognizer config for this family has a language field at all.
     ///
@@ -34,6 +56,22 @@ enum SherpaFamily: String, Codable, Sendable {
     var acceptsLanguage: Bool { self == .senseVoice || self == .canary }
 
     static let greedySearch = "greedy_search"
+
+    /// Whether the accuracy setting changes the recognizer this family builds.
+    ///
+    /// It changes exactly two config fields, and greedy search reads neither:
+    /// `decoding_method` is pinned, and `max_active_paths` is the beam width a
+    /// beam search would have used. So while `supportsBeamSearch` is false the
+    /// three accuracy settings produce a byte-identical recognizer — and
+    /// treating quality as part of this family's cached identity rebuilds a
+    /// several-hundred-megabyte ONNX graph to arrive at the one already loaded.
+    var nativeConfigVariesWithQuality: Bool { supportsBeamSearch }
+
+    /// The quality this family's recognizer is actually built at, so a cache key
+    /// cannot record a distinction the native config does not have.
+    func effectiveQuality(_ quality: TranscriptionQuality) -> TranscriptionQuality {
+        nativeConfigVariesWithQuality ? quality : .default
+    }
 
     /// The only safe way to turn a quality setting into a decoding method.
     func decodingMethod(for quality: TranscriptionQuality) -> String {

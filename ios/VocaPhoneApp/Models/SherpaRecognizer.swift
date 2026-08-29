@@ -5,13 +5,27 @@ import Foundation
 /// VocaPhone needs.
 final class SherpaRecognizer: @unchecked Sendable {
     private let native: UnsafeMutableRawPointer
+    /// sherpa-onnx recognizers are mutable native objects. Incremental decoding
+    /// runs off the main actor while a retry or settings preparation can also
+    /// reach this instance, so one recognizer must never decode two streams at
+    /// once.
+    private let decodeLock = NSLock()
     /// Whether this recognizer was built to translate, which changes how a
     /// recording too long for one decode is put back together. See `transcribe`.
     private let translating: Bool
+    /// The feature noise this family needs, applied to the waveform because the
+    /// pinned runtime has no `dither` field to ask for it. See
+    /// `SherpaFeatureDither` and `SherpaFamily.featureDither`.
+    private let featureDither: Float
 
-    private init(native: UnsafeMutableRawPointer, translating: Bool = false) {
+    private init(
+        native: UnsafeMutableRawPointer,
+        translating: Bool = false,
+        featureDither: Float = 0
+    ) {
         self.native = native
         self.translating = translating
+        self.featureDither = featureDither
     }
 
     deinit {
@@ -108,7 +122,8 @@ final class SherpaRecognizer: @unchecked Sendable {
         // the caller asked for.
         return SherpaRecognizer(
             native: native,
-            translating: family.acceptsLanguage && !translateTo.isEmpty
+            translating: family.acceptsLanguage && !translateTo.isEmpty,
+            featureDither: family.featureDither
         )
     }
 
@@ -126,27 +141,62 @@ final class SherpaRecognizer: @unchecked Sendable {
     /// A boundary the silence search found is already cut clean here, so only
     /// a guessed one carries audio across, and while translating that seam is
     /// left as it decoded rather than merged by matching words.
-    func transcribe(_ samples: [Float]) -> SherpaTranscript {
-        let transcript = SherpaLongAudio.chunks(samples)
-            .reduce(into: SherpaTranscript.empty) { transcript, chunk in
-                let bounded = Array(samples[chunk.start..<chunk.endExclusive])
-                let decoded = SherpaEmptyChunkRecovery.decode(samples: bounded, decodeOnce: decode)
-                transcript = transcript.appending(
-                    decoded, deduplicateOverlap: chunk.overlapsPrevious && !translating
-                )
-            }
-        return SherpaTranscript(
-            text: transcript.text.trimmingCharacters(in: .whitespacesAndNewlines),
-            language: transcript.language
+    func transcribe(_ samples: [Float]) -> SherpaDecodeOutcome {
+        var transcript = SherpaTranscript.empty
+        var previousEnd = 0
+        var loudestSoFar = 0.0
+        for chunk in SherpaLongAudio.chunks(samples) {
+            let bounded = Array(samples[chunk.start..<chunk.endExclusive])
+            // Whether a short empty answer is ordinary is a question about the
+            // audio this window did not inherit from the one before it. A final
+            // window that is only the retained overlap has nothing new in it,
+            // and an empty answer there is correct. A final window carrying a
+            // whole further sentence is the reported failure, and it is that
+            // whether or not an earlier window already produced text — judging
+            // it by the transcript so far is what let a closing sentence
+            // disappear behind a successful opening one.
+            let newRegion = SherpaLongAudio.newRegion(
+                of: samples, chunk: chunk, previousEnd: previousEnd
+            )
+            let newRegionLevel = SherpaLongAudio.loudestFrame(newRegion)
+            let carriesNewSpeech = SherpaLongAudio.carriesRecoverableSpeech(
+                newRegion: newRegion,
+                inheritsAudio: chunk.overlapsPrevious,
+                loudestFrame: newRegionLevel,
+                loudestFrameSoFar: loudestSoFar
+            )
+            let outcome = SherpaEmptyChunkRecovery.decode(
+                samples: bounded,
+                decodeOnce: decode,
+                deduplicateOverlap: !translating,
+                recoverAudibleShortInput: carriesNewSpeech
+            )
+            guard case let .decoded(decoded) = outcome else { return outcome }
+            loudestSoFar = max(loudestSoFar, newRegionLevel)
+            previousEnd = chunk.endExclusive
+            transcript = transcript.appending(
+                decoded, deduplicateOverlap: chunk.overlapsPrevious && !translating
+            )
+        }
+        return .decoded(
+            SherpaTranscript(
+                text: transcript.text.trimmingCharacters(in: .whitespacesAndNewlines),
+                language: transcript.language
+            )
         )
     }
 
-    func transcribeChunk(_ samples: [Float]) -> SherpaTranscript {
-        SherpaEmptyChunkRecovery.decode(samples: samples, decodeOnce: decode)
+    func transcribeChunk(_ samples: [Float]) -> SherpaDecodeOutcome {
+        SherpaEmptyChunkRecovery.decode(
+            samples: samples, decodeOnce: decode, deduplicateOverlap: !translating
+        )
     }
 
-    private func decode(_ samples: [Float]) -> SherpaTranscript {
-        guard !samples.isEmpty else { return .empty }
+    private func decode(_ samples: [Float]) -> SherpaDecodeOutcome {
+        guard !samples.isEmpty else { return .failed(.invalidArgument) }
+        let samples = SherpaFeatureDither.applied(to: samples, dither: featureDither)
+        decodeLock.lock()
+        defer { decodeLock.unlock() }
         var output = [CChar](repeating: 0, count: 131_072)
         // Only ever holds a short tag such as "<|en|>".
         var languageOutput = [CChar](repeating: 0, count: 32)
@@ -165,10 +215,14 @@ final class SherpaRecognizer: @unchecked Sendable {
                 }
             }
         }
-        guard result >= 0 else { return .empty }
-        return SherpaTranscript(
-            text: Self.string(from: output),
-            language: SherpaTranscript.languageCode(Self.string(from: languageOutput))
+        // A negative status is the engine failing to answer, and it must never
+        // reach the caller looking like a model that answered nothing.
+        guard result >= 0 else { return .failed(.forStatus(result)) }
+        return .decoded(
+            SherpaTranscript(
+                text: Self.string(from: output),
+                language: SherpaTranscript.languageCode(Self.string(from: languageOutput))
+            )
         )
     }
 
@@ -188,25 +242,6 @@ private extension SherpaFamily {
         case .nemoCtc: 5
         case .paraformer: 6
         }
-    }
-}
-
-private enum SherpaEmptyChunkRecovery {
-    static func decode(
-        samples: [Float], decodeOnce: ([Float]) -> SherpaTranscript
-    ) -> SherpaTranscript {
-        guard !SherpaLongAudio.isEffectivelySilent(samples) else { return .empty }
-        let attempt = decodeOnce(samples)
-        let first = SherpaTranscript(
-            text: attempt.text.trimmingCharacters(in: .whitespacesAndNewlines),
-            language: attempt.language
-        )
-        guard first.text.isEmpty,
-              samples.count > SherpaLongAudio.minimumSuspectChunkSamples
-        else { return first }
-        let midpoint = samples.count / 2
-        return decodeOnce(Array(samples[..<midpoint]))
-            .appending(decodeOnce(Array(samples[midpoint...])), deduplicateOverlap: false)
     }
 }
 

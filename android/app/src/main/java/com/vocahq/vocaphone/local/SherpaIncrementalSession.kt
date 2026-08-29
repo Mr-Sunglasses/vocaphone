@@ -83,6 +83,10 @@ internal class SherpaIncrementalSession(
         )
         var transcript = SherpaTranscript.EMPTY
         var overlapsPrevious = false
+        // How much of the front of the next chunk the previous split already
+        // decoded. Everything a window can lose sits after it, so it is what
+        // the emptiness of its answer is judged on.
+        var retainedHead = 0
         var droppedAudibleChunk = false
         var conditioningChanged = false
         // The gain the first decoded window was levelled with. `gainFor` is
@@ -110,9 +114,19 @@ internal class SherpaIncrementalSession(
             }
             val levelled = SpeechAudioConditioning.conditionStreaming(chunk, audio.peak)
             val decoded = decode(levelled)
+            // Judged on what this window did not inherit from the one before
+            // it. A window that is mostly retained overlap can be six seconds
+            // long and carry half a second of new speech, and asking whether
+            // the *chunk* was long enough is what let that half second vanish
+            // without the file ever being re-read.
+            val newRegion = chunk.copyOfRange(retainedHead.coerceAtMost(chunk.size), chunk.size)
             if (decoded.text.isEmpty() &&
-                chunk.size > SherpaLongAudio.MIN_SUSPECT_CHUNK_SECONDS * SherpaLongAudio.SAMPLE_RATE &&
-                SherpaLongAudio.carriesSpeech(level, loudestFrame)
+                SherpaLongAudio.carriesRecoverableSpeech(
+                    newRegion = newRegion,
+                    inheritsAudio = retainedHead > 0,
+                    loudestFrame = SherpaLongAudio.loudestFrame(newRegion),
+                    loudestFrameSoFar = loudestFrame,
+                )
             ) {
                 droppedAudibleChunk = true
             }
@@ -132,6 +146,7 @@ internal class SherpaIncrementalSession(
                 consume(available.copyOfRange(0, split.endExclusive))
                 audio.discardPrefix(split.nextStart)
                 overlapsPrevious = split.nextStart < split.endExclusive
+                retainedHead = split.endExclusive - split.nextStart
             }
         }
 

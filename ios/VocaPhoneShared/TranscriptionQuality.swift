@@ -25,15 +25,34 @@ enum TranscriptionQuality: String, Codable, CaseIterable, Identifiable, Sendable
         }
     }
 
-    var detail: String {
-        switch self {
-        case .fast:
-            "Quickest result. Skips the retries that rescue a hard passage."
-        case .balanced:
-            "Beam search where it is cheap, and a retry when a window looks wrong."
-        case .accurate:
-            "Widest search on every model. Noticeably slower on older iPhones."
+    /// What this setting buys, for the engine it is being shown next to.
+    ///
+    /// No local engine on this platform searches wider than greedy — WhisperKit
+    /// has no beam search at all, and every bundled sherpa family is pinned to
+    /// `greedy_search`, see `SherpaFamily.supportsBeamSearch` — so nothing here
+    /// may promise that it does. What is left is re-decoding, and that is where
+    /// the two engines part company: Whisper re-runs a degenerate window at a
+    /// raised temperature and the count comes from this setting, while sherpa's
+    /// empty-result recovery is a fixed ladder that does not consult it. Saying
+    /// otherwise for sherpa describes a control that currently does nothing.
+    func detail(for engine: LocalModelEngine) -> String {
+        switch engine {
+        case .whisperKit: whisperKitDetail
+        case .sherpaOnnx: sherpaDetail
         }
+    }
+
+    private var whisperKitDetail: String {
+        switch self {
+        case .fast: "Quickest result. Skips the retries that rescue a hard passage."
+        case .balanced: "Retries a window that comes back empty or looks wrong."
+        case .accurate: "Retries hardest before giving up. Noticeably slower on older iPhones."
+        }
+    }
+
+    private var sherpaDetail: String {
+        "This model runs one safe decoding mode, so the accuracy setting does "
+            + "not change its result. It applies to Whisper models."
     }
 
     /// How many times a window whose result looks degenerate — too repetitive,
@@ -62,6 +81,10 @@ enum TranscriptionQuality: String, Codable, CaseIterable, Identifiable, Sendable
     }
 
     /// What to ask a sherpa model for *if its family supports beam search*.
+    ///
+    /// No family currently does, so this is unreachable in practice. It stays
+    /// because the mapping is the thing to restore once a fixed runtime is
+    /// pinned, and because deleting it would leave nothing to restore.
     ///
     /// Never pass this to a recognizer without checking
     /// `SherpaFamily.supportsBeamSearch` first: the families that do not

@@ -1450,7 +1450,7 @@ final class LocalModelManager {
             let text = results.map(\.text).joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
-                throw LocalModelManagerError.modelNotDownloaded("empty transcript")
+                throw LocalModelManagerError.emptyTranscript
             }
             // Detection is meaningful only for Automatic. With an explicit
             // selection, the user's requested output language remains the
@@ -1472,11 +1472,19 @@ final class LocalModelManager {
                 folder: folder,
                 resolvedLanguage: resolvedLanguage
             )
-            let decoded = await Task.detached(priority: .userInitiated) {
+            let outcome = await Task.detached(priority: .userInitiated) {
                 sherpaRecognizer.transcribe(samples)
             }.value
+            // Told apart deliberately. A recognizer that would not open a stream
+            // and a model that heard no speech both arrive here with no text,
+            // and reporting them as one thing is what made a device report
+            // unable to say whether the empty-result repair is working.
+            if let failure = outcome.nativeFailure {
+                throw LocalModelManagerError.engineDecodeFailed(failure.rawValue)
+            }
+            let decoded = outcome.transcriptOrEmpty
             guard !decoded.text.isEmpty else {
-                throw LocalModelManagerError.modelNotDownloaded("empty transcript")
+                throw LocalModelManagerError.emptyTranscript
             }
             return LocalTranscription(
                 text: decoded.text,
@@ -1534,8 +1542,13 @@ final class LocalModelManager {
         let files = try LocalModelIntegrity.sherpaModel(for: descriptor.id).files
         try LocalModelIntegrity.verifySizes(in: folder, files: files)
         // Sherpa bakes the decoding method into the recognizer, so a change of
-        // quality means building a new one.
-        let quality = LocalTranscriptionPreferences.quality
+        // quality means building a new one — but only where the two fields it
+        // reaches actually differ. Every bundled family is on greedy search
+        // today, so this normalises to one value and the accuracy control stops
+        // rebuilding a large model to produce an identical one.
+        let quality = descriptor.sherpaFamily?
+            .effectiveQuality(LocalTranscriptionPreferences.quality)
+            ?? LocalTranscriptionPreferences.quality
         // Resolved from the catalog rather than trusted from a caller, so a
         // target picked under Canary and still stored after a switch to
         // Parakeet can never reach an engine that would misread it.

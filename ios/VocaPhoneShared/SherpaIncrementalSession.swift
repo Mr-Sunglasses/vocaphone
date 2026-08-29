@@ -39,7 +39,10 @@ final class SherpaIncrementalSession: @unchecked Sendable {
     /// `decode` is handed one complete chunk at a time and must be safe to call
     /// off the main actor; the recognizer overload in the app target supplies
     /// the real one.
-    init(chunks: AsyncStream<Data>, decode: @escaping @Sendable ([Float]) -> SherpaTranscript) {
+    init(
+        chunks: AsyncStream<Data>,
+        decode: @escaping @Sendable ([Float]) -> SherpaDecodeOutcome
+    ) {
         task = Task.detached(priority: .userInitiated) {
             await Self.transcribe(chunks: chunks, decode: decode)
         }
@@ -51,7 +54,7 @@ final class SherpaIncrementalSession: @unchecked Sendable {
 
     private static func transcribe(
         chunks: AsyncStream<Data>,
-        decode: @Sendable ([Float]) -> SherpaTranscript
+        decode: @Sendable ([Float]) -> SherpaDecodeOutcome
     ) async -> SherpaIncrementalResult {
         var samples: [Float] = []
         samples.reserveCapacity(
@@ -72,6 +75,10 @@ final class SherpaIncrementalSession: @unchecked Sendable {
         // to it, so a pause is compared with the speech around it and never
         // with itself.
         var loudestFrame = 0.0
+        // How much of the front of the next chunk the previous split already
+        // decoded. Everything a window can lose sits after it, so it is what
+        // the emptiness of its answer is judged on.
+        var retainedHead = 0
 
         func consume(_ chunk: [Float]) {
             // Silence is judged on the capture as it arrived. The levelling
@@ -83,18 +90,31 @@ final class SherpaIncrementalSession: @unchecked Sendable {
             let level = SherpaLongAudio.loudestFrame(chunk)
             guard !SherpaLongAudio.isEffectivelySilent(loudestFrame: level) else { return }
             let levelled = SpeechAudioConditioning.condition(chunk, peak: peak)
-            let decoded = decode(levelled)
-            // Only a chunk long enough that the recovery has already tried and
-            // failed, and loud enough next to the rest of the recording to have
-            // held speech, is a hole worth re-reading the file for. Below those
-            // bars an empty answer is routine — the retained overlap, the
-            // fragment of a word a recording ending just after a boundary
-            // leaves, the room tone while someone pauses to think — and
-            // treating it as a loss spends a second pass over the whole
-            // recording to find out it was right the first time.
+            let outcome = decode(levelled)
+            // The engine failing to answer is not the model answering nothing.
+            // Either way the seconds are missing from the transcript, so the
+            // whole-file pass has to run — but it is recorded as a loss without
+            // pretending the audio was examined and found empty.
+            guard case let .decoded(decoded) = outcome else {
+                droppedAudibleChunk = true
+                return
+            }
+            // Judged on what this window did not inherit from the one before
+            // it. A window that is mostly retained overlap can be six seconds
+            // long and carry half a second of new speech, and asking whether
+            // the *chunk* was long enough is what let that half second vanish
+            // without the file ever being re-read. Below the bar an empty
+            // answer is routine — the retained overlap itself, a fragment of a
+            // word, the room tone while someone pauses to think — and treating
+            // it as a loss spends a second pass to find out it was right.
+            let newRegion = Array(chunk[min(retainedHead, chunk.count)...])
             if decoded.text.isEmpty,
-               chunk.count > SherpaLongAudio.minimumSuspectChunkSamples,
-               SherpaLongAudio.carriesSpeech(loudestFrame: level, loudestFrameSoFar: loudestFrame)
+               SherpaLongAudio.carriesRecoverableSpeech(
+                   newRegion: newRegion,
+                   inheritsAudio: retainedHead > 0,
+                   loudestFrame: SherpaLongAudio.loudestFrame(newRegion),
+                   loudestFrameSoFar: loudestFrame
+               )
             {
                 droppedAudibleChunk = true
             }
@@ -122,6 +142,7 @@ final class SherpaIncrementalSession: @unchecked Sendable {
                 consume(Array(samples[..<split.endExclusive]))
                 samples.removeFirst(split.nextStart)
                 overlapsPrevious = split.nextStart < split.endExclusive
+                retainedHead = split.endExclusive - split.nextStart
             }
         }
 

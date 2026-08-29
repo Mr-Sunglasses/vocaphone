@@ -9,6 +9,9 @@ __pycache__/
 .swiftpm/
 DerivedData/
 /ios/build/
+# `just ios <recipe>` from the repository root puts derived data here, not
+# under ios/ — gigabytes of it, and the last thing a stray `git add -A` needs.
+/build/
 *.xcresult
 *.xcarchive
 *.ipa
@@ -18,7 +21,7 @@ gateway/.venv/
 gateway/.pytest_cache/
 gateway/.ruff_cache/
 gateway/.mypy_cache/
-gateway/.omo/
+.omo/
 gateway/data/
 gateway/*.db
 gateway/*.sqlite

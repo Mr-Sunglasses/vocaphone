@@ -556,9 +556,15 @@ class LocalModelManager(
     private suspend fun prepareEngine(
         model: LocalModelDescriptor,
         resolvedLanguage: String,
-        quality: TranscriptionQuality,
+        requestedQuality: TranscriptionQuality,
         resolvedTranslateTo: String,
     ) {
+        // Normalised to what the recognizer is actually built at. Every bundled
+        // sherpa family is on greedy search, which reads neither field quality
+        // reaches, so without this the accuracy control rebuilds a large model
+        // to produce an identical one -- a long "Preparing…" and a peak-memory
+        // spike for no change in the transcript.
+        val quality = model.sherpaFamily?.effectiveQuality(requestedQuality) ?: requestedQuality
         val directory = directoryFor(model)
         // Stat-only: cheap enough to run per dictation, unlike a digest pass.
         withContext(Dispatchers.IO) { LocalModelIntegrity.verifySizes(model, directory) }

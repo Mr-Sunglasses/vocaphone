@@ -34,6 +34,29 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
     int32_t max_active_paths
 );
 
+/// What a decode did, for the negative half of `VocaPhoneSherpaDecode`.
+///
+/// A decode that produces no tokens is a *success* returning zero characters:
+/// the model was asked and answered nothing, which for a pause is the right
+/// answer and for speech is the failure the recovery ladder exists to retry.
+/// Everything below is the engine failing to answer at all, and retrying one of
+/// these decodes the same broken state again for the same result — so the
+/// caller must tell them apart before it spends inference on a retry.
+enum VocaPhoneSherpaDecodeStatus {
+    /// A null or already-destroyed recognizer, or no samples to decode.
+    VocaPhoneSherpaDecodeInvalidArgument = -1,
+    /// sherpa-onnx would not create an offline stream for this recognizer.
+    VocaPhoneSherpaDecodeStreamUnavailable = -2,
+    /// The stream decoded but carried no result object.
+    VocaPhoneSherpaDecodeResultMissing = -3,
+    /// The transcript did not fit the caller's output buffer. Distinct from an
+    /// empty answer in exactly the way that matters: text was produced and lost.
+    VocaPhoneSherpaDecodeOutputTruncated = -4,
+};
+
+/// Returns the number of characters written to `output` — zero being a genuine
+/// empty result — or one of `VocaPhoneSherpaDecodeStatus` on failure.
+///
 /// `language` receives the model's own language label when it reports one — of
 /// the families VocaPhone ships, only SenseVoice does, as a `<|en|>`-style tag.
 /// It is set to an empty string otherwise, and may be NULL if not wanted.
