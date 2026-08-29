@@ -195,13 +195,15 @@ data class VocaPhoneSettings(
      * Whether hesitation sounds, false starts, and missing sentence punctuation
      * are repaired before the writing style is applied.
      *
-     * On by default, and the only dictation setting that changes the words in a
-     * transcript rather than its formatting. It earns that because the words it
-     * removes are not words: "um" is a sound someone makes while deciding what
-     * to say, and nobody dictating meant to type it. Never applied to
-     * [WritingStyle.RAW], which promises the model's own output.
+     * On by default, and one of the dictation settings that changes the words
+     * in a transcript rather than its formatting. It earns that because the
+     * words it removes are not words: "um" is a sound someone makes while
+     * deciding what to say, and nobody dictating meant to type it. Never
+     * applied to [WritingStyle.RAW], which promises the model's own output.
      */
     val repairSpeech: Boolean = true,
+    /** Whether dictated English number words are written as digits. Off by default. */
+    val numbersAsDigits: Boolean = false,
     val dictationTone: DictationTone = DictationTone.DEFAULT,
     val microphone: MicrophonePreference = MicrophonePreference.DEFAULT,
     val audioRetention: AudioRetention = AudioRetention.DEFAULT,
@@ -413,6 +415,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setRepairSpeech(enabled: Boolean) = put(Keys.REPAIR_SPEECH, enabled)
 
+    suspend fun setNumbersAsDigits(enabled: Boolean) = put(Keys.NUMBERS_AS_DIGITS, enabled)
+
     suspend fun setNumberRowEnabled(enabled: Boolean) = put(Keys.NUMBER_ROW, enabled)
 
     suspend fun setKeyboardHeight(height: KeyboardHeight) = put(Keys.KEYBOARD_HEIGHT, height.storedValue)
@@ -614,6 +618,7 @@ class SettingsRepository(private val context: Context) {
         customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),
         syncWhisperDictionary = this[Keys.SYNC_WHISPER_DICTIONARY] ?: true,
         repairSpeech = this[Keys.REPAIR_SPEECH] ?: true,
+        numbersAsDigits = this[Keys.NUMBERS_AS_DIGITS] ?: false,
         numberRowEnabled = this[Keys.NUMBER_ROW] ?: true,
         keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
         splitKeyboard = SplitKeyboard.fromStored(this[Keys.SPLIT_KEYBOARD]),
@@ -659,6 +664,7 @@ class SettingsRepository(private val context: Context) {
         val CUSTOM_VOCABULARY = stringPreferencesKey("custom_vocabulary")
         val SYNC_WHISPER_DICTIONARY = booleanPreferencesKey("sync_whisper_dictionary")
         val REPAIR_SPEECH = booleanPreferencesKey("repair_speech")
+        val NUMBERS_AS_DIGITS = booleanPreferencesKey("numbers_as_digits")
         val NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
         val KEYBOARD_HEIGHT = stringPreferencesKey("keyboard_height")
         val SPLIT_KEYBOARD = stringPreferencesKey("keyboard_split")

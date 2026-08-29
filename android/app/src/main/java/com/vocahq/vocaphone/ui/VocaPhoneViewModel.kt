@@ -320,6 +320,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setRepairSpeech(enabled: Boolean) =
         viewModelScope.launch { container.settings.setRepairSpeech(enabled) }
 
+    fun setNumbersAsDigits(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setNumbersAsDigits(enabled) }
+
     fun setDictationTone(tone: DictationTone) {
         _tonePreviewListening.value = false
         viewModelScope.launch { container.settings.setDictationTone(tone) }

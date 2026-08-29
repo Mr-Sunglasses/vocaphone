@@ -55,6 +55,7 @@ class SettingsChoiceTest {
         assertEquals(5, MicrophonePreference.entries.size)
         assertEquals(KeyboardHeight.DEFAULT, KeyboardHeight.fromStored(null))
         assertEquals(KeyboardHeight.DEFAULT, VocaPhoneSettings().keyboardHeight)
+        assertFalse(VocaPhoneSettings().numbersAsDigits)
         assertEquals(48, KeyboardHeight.DEFAULT.keyHeightDp)
     }
 

@@ -702,6 +702,7 @@ class DictationController(
                 language = configuration.effectiveLanguage.wireValue,
                 styledUpstream = true,
                 repairSpeech = configuration.repairSpeech,
+                numbersAsDigits = configuration.numbersAsDigits,
             )
             if (transcript != null && cleaned.isEmpty()) {
                 wavFile.delete()
@@ -793,6 +794,7 @@ class DictationController(
                 language = configuration.effectiveLanguage.wireValue,
                 styledUpstream = true,
                 repairSpeech = configuration.repairSpeech,
+                numbersAsDigits = configuration.numbersAsDigits,
             )
             if (transcript.isEmpty()) {
                 throw GatewayException(
@@ -898,6 +900,7 @@ class DictationController(
             translateTo = configuration.translationTarget,
         ),
         repairSpeech = configuration.repairSpeech,
+        numbersAsDigits = configuration.numbersAsDigits,
     )
 
     private suspend fun deliver(
