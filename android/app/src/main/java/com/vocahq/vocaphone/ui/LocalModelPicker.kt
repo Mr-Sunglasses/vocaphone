@@ -1213,6 +1213,14 @@ private fun ModelActions(
                 progress = { state.progress / 100f },
                 modifier = Modifier.fillMaxWidth(),
             )
+            // The recommended card and the detail sheet suppress the busy
+            // banner while they are the thing being downloaded, so without
+            // this the bar is the only feedback and reads as stuck.
+            Text(
+                downloadProgressLine(state),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         model.id !in state.downloaded -> PrimaryButton(
             text = downloadLabel,
