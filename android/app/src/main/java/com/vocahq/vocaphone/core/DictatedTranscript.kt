@@ -18,9 +18,9 @@ package com.vocahq.vocaphone.core
  * 3. Style — but only for transcripts produced on this device. A gateway has
  *    already applied the writing style the session asked for, and applying it
  *    twice is how "Hello." becomes "Hello.." on one route and not the other.
- *
- * Mirrors the iOS client's `DictatedTranscript`, minus the digits step, which
- * only that platform has.
+ * 4. Digits — after styling, so sentence capitalization can still see the
+ *    first word. Matching snippets are protected so a number-word trigger
+ *    still expands literally after digit conversion finishes.
  */
 object DictatedTranscript {
     fun finished(
@@ -29,6 +29,8 @@ object DictatedTranscript {
         language: String = "auto",
         styledUpstream: Boolean = false,
         repairSpeech: Boolean,
+        numbersAsDigits: Boolean = false,
+        snippets: List<Snippet> = emptyList(),
     ): String {
         val cleaned = TranscriptSanitizer.clean(raw)
         val repaired = if (repairSpeech && style != WritingStyle.RAW) {
@@ -36,6 +38,10 @@ object DictatedTranscript {
         } else {
             cleaned
         }
-        return if (styledUpstream) repaired else TranscriptStyler.apply(repaired, style, language)
+        val styled = if (styledUpstream) repaired else TranscriptStyler.apply(repaired, style, language)
+        if (!numbersAsDigits) return SnippetExpander.expand(styled, snippets)
+
+        val protected = SnippetExpander.protect(styled, snippets)
+        return protected.restore(SpokenNumbers.digitsIn(protected.text))
     }
 }

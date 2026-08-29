@@ -92,6 +92,7 @@ fun SettingsScreen(
     onTranslateTo: (TranscriptionLanguage) -> Unit,
     onStyle: (WritingStyle) -> Unit,
     onRepairSpeech: (Boolean) -> Unit,
+    onNumbersAsDigits: (Boolean) -> Unit,
     onDictationTone: (DictationTone) -> Unit,
     onPreviewDictationTone: (DictationTone) -> Unit,
     tonePreviewListening: Boolean,
@@ -408,10 +409,9 @@ fun SettingsScreen(
                 }
                 Section(
                     title = "Clean up",
-                    // The one switch on this page that changes words rather
-                    // than formatting, which is why it says so here instead of
-                    // leaving it to be discovered.
-                    supporting = "The only setting that changes your words. " +
+                    // This switch changes spoken filler words rather than just
+                    // transcript formatting, so make that explicit here.
+                    supporting = "Changes your words, not only formatting. " +
                         "Never applied to the Raw writing style.",
                 ) {
                     SettingToggle(
@@ -424,6 +424,18 @@ fun SettingsScreen(
                             "\"uh-huh\", which are answers.",
                         checked = settings.repairSpeech,
                         onCheckedChange = onRepairSpeech,
+                    )
+                }
+                Section(
+                    title = "Numbers",
+                    supporting = "English only. Ordinals and spoken times stay as words.",
+                ) {
+                    SettingToggle(
+                        title = "Write numbers as digits",
+                        detail = "Writes “six pm” as “6 pm” and “twenty three” as “23”. " +
+                            "A lone “one” stays a word unless a unit follows it.",
+                        checked = settings.numbersAsDigits,
+                        onCheckedChange = onNumbersAsDigits,
                     )
                 }
                 Section(
