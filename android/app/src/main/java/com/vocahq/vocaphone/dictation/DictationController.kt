@@ -22,6 +22,7 @@ import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MissingPermission
 import com.vocahq.vocaphone.core.ModelLanguageSupport
+import com.vocahq.vocaphone.core.SnippetExpander
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.gateway.GatewayClient
@@ -905,6 +906,10 @@ class DictationController(
         configuration: VocaPhoneSettings,
         source: DictationSource,
     ) {
+        // After formatting, never before: the writing style's capitalization
+        // must not rewrite a snippet's literal expansion text, and trigger
+        // matching is case-insensitive so this order does not break it.
+        val transcript = SnippetExpander.expand(transcript, configuration.snippets)
         diagnostics.recordTiming("transcript_ready", source.name)
         // Reported here rather than after insertion: the transcript exists and
         // is correct at this point, and whether the keyboard managed to commit

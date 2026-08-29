@@ -20,6 +20,11 @@ import Foundation
 /// 4. Digits. After styling, never before: the styler capitalizes the first
 ///    letter of a sentence, so a sentence already reduced to "20 people came"
 ///    would have it look past the digits and capitalize "People".
+/// 5. Snippet expansion, last of all. A trigger's expansion is literal text
+///    the user wrote themselves — an email address, a signature — and must
+///    not be run back through capitalization or digit conversion. Trigger
+///    matching is case-insensitive, so it still fires however styling left
+///    the source text cased.
 enum DictatedTranscript {
     static func finished(
         _ raw: String?,
@@ -27,7 +32,9 @@ enum DictatedTranscript {
         language: String = "auto",
         styledUpstream: Bool = false,
         repairSpeech: Bool,
-        numbersAsDigits: Bool
+        numbersAsDigits: Bool,
+        snippets: [Snippet] = SnippetStore.snippets,
+        snippetExpander: SnippetExpanding = SnippetExpander()
     ) -> String {
         let cleaned = TranscriptSanitizer.clean(raw)
         let repaired = repairSpeech && style != .raw
@@ -36,7 +43,7 @@ enum DictatedTranscript {
         let styled = styledUpstream
             ? repaired
             : TranscriptStyler.apply(repaired, style: style, language: language)
-        guard numbersAsDigits else { return styled }
-        return SpokenNumbers.digits(in: styled)
+        let digited = numbersAsDigits ? SpokenNumbers.digits(in: styled) : styled
+        return snippetExpander.expand(in: digited, using: snippets)
     }
 }

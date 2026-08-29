@@ -8,8 +8,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.CustomVocabulary
@@ -40,6 +43,7 @@ import com.vocahq.vocaphone.ime.PersonalDictionary
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelTranslationSupport
+import com.vocahq.vocaphone.core.Snippet
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.WritingStyle
@@ -61,6 +65,7 @@ enum class SettingsPage(val title: String) {
     MODELS("Models"),
     KEYBOARD("Keyboard"),
     DICTATION("Dictation"),
+    SNIPPETS("Snippets"),
     CONNECTION("Speech"),
     ABOUT("About"),
     ;
@@ -70,6 +75,7 @@ enum class SettingsPage(val title: String) {
             "models" -> MODELS
             "keyboard" -> KEYBOARD
             "dictation" -> DICTATION
+            "snippets" -> SNIPPETS
             "connection" -> CONNECTION
             "about" -> ABOUT
             else -> HOME
@@ -103,6 +109,9 @@ fun SettingsScreen(
     onNumberKeyHints: (Boolean) -> Unit,
     onLongPressSymbols: (Boolean) -> Unit,
     onPersonalDictionary: (String) -> Unit,
+    onAddSnippet: (trigger: String, expansion: String) -> Unit,
+    onUpdateSnippet: (id: String, trigger: String, expansion: String) -> Unit,
+    onDeleteSnippet: (id: String) -> Unit,
     onAsciiEmoji: (Boolean) -> Unit,
     onSwipeTyping: (Boolean) -> Unit,
     onClipboardChip: (Boolean) -> Unit,
@@ -223,6 +232,17 @@ fun SettingsScreen(
                         supporting = "${settings.style.displayName} · ${settings.dictationTone.displayName} · ${settings.microphone.displayName}",
                         icon = R.drawable.ic_dictation,
                         onClick = { onPageChange(SettingsPage.DICTATION) },
+                    )
+                    SettingsMenuDivider()
+                    SettingsMenuRow(
+                        title = "Snippets",
+                        supporting = when (val count = settings.snippets.size) {
+                            0 -> "Expand a short phrase into longer text"
+                            1 -> "1 snippet"
+                            else -> "$count snippets"
+                        },
+                        icon = R.drawable.ic_snippets,
+                        onClick = { onPageChange(SettingsPage.SNIPPETS) },
                     )
                     SettingsMenuDivider()
                     SettingsMenuRow(
@@ -360,6 +380,15 @@ fun SettingsScreen(
                         onCheckedChange = onClipboardHistory,
                     )
                 }
+            }
+
+            SettingsPage.SNIPPETS -> {
+                SnippetsSection(
+                    snippets = settings.snippets,
+                    onAdd = onAddSnippet,
+                    onUpdate = onUpdateSnippet,
+                    onDelete = onDeleteSnippet,
+                )
             }
 
             SettingsPage.DICTATION -> {
@@ -710,6 +739,172 @@ private fun PersonalDictionarySection(
             },
         )
     }
+}
+
+/**
+ * Trigger phrases dictated text is expanded against once a dictation
+ * finishes, after the writing style has already run.
+ *
+ * Its own page rather than a section under Keyboard: it rewrites what
+ * dictation types, has nothing to do with the key layout, and nobody scrolls
+ * to the bottom of another page to discover a feature they don't know exists.
+ */
+@Composable
+private fun SnippetsSection(
+    snippets: List<Snippet>,
+    onAdd: (trigger: String, expansion: String) -> Unit,
+    onUpdate: (id: String, trigger: String, expansion: String) -> Unit,
+    onDelete: (id: String) -> Unit,
+) {
+    var adding by remember { mutableStateOf(false) }
+    var editing by remember { mutableStateOf<Snippet?>(null) }
+    var pendingDelete by remember { mutableStateOf<Snippet?>(null) }
+
+    Section(
+        title = "Your snippets",
+        supporting = "A short trigger that expands to longer text when dictation " +
+            "finishes. Matching ignores case, so \"brb\" and \"BRB\" both work.",
+    ) {
+        if (snippets.isEmpty()) {
+            Text(
+                "No snippets yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                snippets.forEach { snippet ->
+                    SnippetRow(
+                        snippet = snippet,
+                        onEdit = { editing = snippet },
+                        onDelete = { pendingDelete = snippet },
+                    )
+                }
+            }
+        }
+        SecondaryButton(text = "Add snippet", onClick = { adding = true })
+    }
+
+    if (adding) {
+        SnippetEditorDialog(
+            title = "Add snippet",
+            initialTrigger = "",
+            initialExpansion = "",
+            onDismiss = { adding = false },
+            onSave = { trigger, expansion ->
+                onAdd(trigger, expansion)
+                adding = false
+            },
+        )
+    }
+
+    editing?.let { snippet ->
+        SnippetEditorDialog(
+            title = "Edit snippet",
+            initialTrigger = snippet.trigger,
+            initialExpansion = snippet.expansion,
+            onDismiss = { editing = null },
+            onSave = { trigger, expansion ->
+                onUpdate(snippet.id, trigger, expansion)
+                editing = null
+            },
+        )
+    }
+
+    pendingDelete?.let { snippet ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Delete snippet?") },
+            text = { Text("\"${snippet.trigger}\" will no longer expand.") },
+            confirmButton = {
+                DestructiveTextButton(
+                    text = "Delete",
+                    onClick = {
+                        onDelete(snippet.id)
+                        pendingDelete = null
+                    },
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun SnippetRow(
+    snippet: Snippet,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onEdit)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(snippet.trigger, style = MaterialTheme.typography.titleSmall)
+            Text(
+                snippet.expansion,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+            )
+        }
+        DestructiveTextButton(text = "Delete", onClick = onDelete)
+    }
+}
+
+@Composable
+private fun SnippetEditorDialog(
+    title: String,
+    initialTrigger: String,
+    initialExpansion: String,
+    onDismiss: () -> Unit,
+    onSave: (trigger: String, expansion: String) -> Unit,
+) {
+    var trigger by remember { mutableStateOf(initialTrigger) }
+    var expansion by remember { mutableStateOf(initialExpansion) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = trigger,
+                    onValueChange = { trigger = it },
+                    label = { Text("Trigger") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = expansion,
+                    onValueChange = { expansion = it },
+                    label = { Text("Expansion") },
+                    minLines = 2,
+                    maxLines = 6,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(trigger, expansion) },
+                // The trigger is trimmed before saving; the expansion is not,
+                // since leading or trailing whitespace can be intentional. Both
+                // are still required non-blank, or a snippet could silently
+                // delete its trigger word from every future dictation.
+                enabled = trigger.isNotBlank() && expansion.isNotBlank(),
+            ) { Text("Save") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 /**

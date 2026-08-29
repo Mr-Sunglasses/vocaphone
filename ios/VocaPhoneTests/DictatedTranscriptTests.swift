@@ -128,6 +128,37 @@ struct DictatedTranscriptTests {
         )
     }
 
+    /// Expansion runs after styling and digits, and the expansion text is
+    /// literal — it must come out exactly as the user wrote it even when
+    /// styling would otherwise flatten or capitalize the words around it.
+    @Test func snippetExpansionIsNotRewrittenByStyling() {
+        let snippets = [Snippet(trigger: "sig", expansion: "kanishk@example.com")]
+        #expect(
+            DictatedTranscript.finished(
+                "reach me at sig",
+                style: .formal,
+                repairSpeech: false,
+                numbersAsDigits: false,
+                snippets: snippets
+            ) == "Reach me at kanishk@example.com."
+        )
+    }
+
+    /// Trigger matching is case-insensitive, so a style that flattens or
+    /// capitalizes the source text before expansion runs still finds it.
+    @Test func snippetTriggerMatchesRegardlessOfStyledCasing() {
+        let snippets = [Snippet(trigger: "brb", expansion: "be right back")]
+        #expect(
+            DictatedTranscript.finished(
+                "BRB everyone",
+                style: .formal,
+                repairSpeech: false,
+                numbersAsDigits: false,
+                snippets: snippets
+            ) == "be right back everyone."
+        )
+    }
+
     @Test func nothingInMeansNothingOut() {
         #expect(
             DictatedTranscript.finished(

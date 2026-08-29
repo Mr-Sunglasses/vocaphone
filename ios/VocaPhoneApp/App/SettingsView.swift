@@ -27,6 +27,10 @@ struct SettingsView: View {
         KeyboardPreferences.writingStyleKey,
         store: KeyboardPreferences.defaults
     ) private var writingStyleRawValue = WritingStyle.casual.rawValue
+    @AppStorage(
+        SnippetStore.key,
+        store: SnippetStore.defaults
+    ) private var snippetsData = Data()
 
     var body: some View {
         List {
@@ -42,6 +46,12 @@ struct SettingsView: View {
                     detail: language.displayName + " · " + writingStyle.displayName,
                     symbol: "mic"
                 ) { DictationSettingsView() }
+
+                destination(
+                    "Snippets",
+                    detail: snippetCountDetail,
+                    symbol: "text.badge.plus"
+                ) { SnippetsSettingsView() }
 
                 destination(
                     "Transcription",
@@ -94,6 +104,11 @@ struct SettingsView: View {
 
     private var writingStyle: WritingStyle {
         WritingStyle(rawValue: writingStyleRawValue) ?? .casual
+    }
+
+    private var snippetCountDetail: String {
+        let count = (try? JSONDecoder().decode([Snippet].self, from: snippetsData))?.count ?? 0
+        return count == 0 ? "None" : "\(count) snippet\(count == 1 ? "" : "s")"
     }
 
     /// A row that carries its current value, so the hub answers most questions
@@ -1288,6 +1303,172 @@ struct TranscriptionLanguageList: View {
     }
 }
 
+// MARK: - Snippets
+
+/// A trigger typed while dictating that expands into the longer text beside
+/// it — a signature, an address, anything worth saying shorter.
+struct SnippetsSettingsView: View {
+    @State private var snippets: [Snippet] = SnippetStore.snippets
+    @State private var isAddingSnippet = false
+    @State private var editing: Snippet?
+
+    var body: some View {
+        List {
+            Section {
+                if snippets.isEmpty {
+                    Text("No snippets yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(snippets) { snippet in
+                        SnippetRow(snippet: snippet) { editing = snippet }
+                    }
+                    .onDelete(perform: delete)
+                }
+            } footer: {
+                Text(
+                    "Say a trigger while dictating and vocaphone replaces it with the "
+                        + "expansion. Matching ignores case; the expansion is inserted "
+                        + "exactly as written, including its spacing."
+                )
+            }
+        }
+        .navigationTitle("Snippets")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isAddingSnippet = true
+                } label: {
+                    Label("Add Snippet", systemImage: "plus")
+                }
+            }
+        }
+        .sheet(isPresented: $isAddingSnippet) {
+            SnippetEditorView(title: "Add Snippet", confirmation: "Add") { trigger, expansion in
+                snippets.append(Snippet(trigger: trigger, expansion: expansion))
+                persist()
+            }
+        }
+        .sheet(item: $editing) { snippet in
+            SnippetEditorView(
+                title: "Edit Snippet",
+                confirmation: "Save",
+                snippet: snippet
+            ) { trigger, expansion in
+                guard let index = snippets.firstIndex(where: { $0.id == snippet.id }) else { return }
+                snippets[index].trigger = trigger
+                snippets[index].expansion = expansion
+                persist()
+            }
+        }
+    }
+
+    private func delete(at offsets: IndexSet) {
+        snippets.remove(atOffsets: offsets)
+        persist()
+    }
+
+    /// Editing happens behind Cancel and Save, so every row here is already
+    /// valid and the whole list is written as-is. Filtering at this point
+    /// instead — dropping a row that momentarily failed validation — is what
+    /// would make a half-finished edit delete an existing snippet outright.
+    private func persist() {
+        SnippetStore.snippets = snippets
+    }
+}
+
+private struct SnippetRow: View {
+    let snippet: Snippet
+    let onEdit: () -> Void
+
+    var body: some View {
+        Button(action: onEdit) {
+            HStack {
+                VStack(alignment: .leading, spacing: VocaMetrics.tight) {
+                    Text(snippet.trigger)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(snippet.expansion)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .accessibilityHint("Edits this snippet")
+    }
+}
+
+/// Add and edit share one form. Nothing it collects reaches the store until
+/// Save, so a trigger cleared halfway through retyping is never mistaken for
+/// a snippet the user wanted emptied or removed.
+private struct SnippetEditorView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var trigger: String
+    @State private var expansion: String
+    let title: String
+    let confirmation: String
+    let onSave: (String, String) -> Void
+
+    init(
+        title: String,
+        confirmation: String,
+        snippet: Snippet? = nil,
+        onSave: @escaping (String, String) -> Void
+    ) {
+        self.title = title
+        self.confirmation = confirmation
+        self.onSave = onSave
+        _trigger = State(initialValue: snippet?.trigger ?? "")
+        _expansion = State(initialValue: snippet?.expansion ?? "")
+    }
+
+    private var trimmedTrigger: String {
+        trigger.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Trigger") {
+                    TextField("e.g. sig", text: $trigger)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                }
+                Section("Expansion") {
+                    TextField("Text to insert", text: $expansion, axis: .vertical)
+                        .lineLimit(3...6)
+                }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(confirmation) {
+                        // The trigger is what matching keys off, so stray
+                        // whitespace around it is noise; the expansion is kept
+                        // as typed, since leading or trailing whitespace there
+                        // can be exactly what the user wanted.
+                        onSave(trimmedTrigger, expansion)
+                        dismiss()
+                    }
+                    .disabled(
+                        trimmedTrigger.isEmpty
+                            || expansion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                }
+            }
+        }
+    }
+}
+
 #if DEBUG
 
 // MARK: - Previews
@@ -1323,6 +1504,12 @@ struct TranscriptionLanguageList: View {
 #Preview("Settings — keyboard") {
     PreviewHost {
         NavigationStack { KeyboardSettingsView() }
+    }
+}
+
+#Preview("Settings — snippets") {
+    PreviewHost {
+        NavigationStack { SnippetsSettingsView() }
     }
 }
 

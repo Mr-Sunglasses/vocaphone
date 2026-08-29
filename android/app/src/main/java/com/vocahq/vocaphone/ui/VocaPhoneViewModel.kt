@@ -409,6 +409,15 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
             )
         }
 
+    fun addSnippet(trigger: String, expansion: String) =
+        viewModelScope.launch { container.settings.addSnippet(trigger, expansion) }
+
+    fun updateSnippet(id: String, trigger: String, expansion: String) =
+        viewModelScope.launch { container.settings.updateSnippet(id, trigger, expansion) }
+
+    fun deleteSnippet(id: String) =
+        viewModelScope.launch { container.settings.deleteSnippet(id) }
+
     fun setAsciiEmojiEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setAsciiEmojiEnabled(enabled) }
 

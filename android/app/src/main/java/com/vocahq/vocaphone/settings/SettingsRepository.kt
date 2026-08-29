@@ -14,12 +14,14 @@ import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.ModelTranslationSupport
+import com.vocahq.vocaphone.core.Snippet
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.security.TokenVault
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -264,6 +266,8 @@ data class VocaPhoneSettings(
      * again on every trip through guided setup.
      */
     val telemetryAsked: Boolean = false,
+    /** Trigger phrases dictated text is expanded against, after formatting. */
+    val snippets: List<Snippet> = emptyList(),
 ) {
 
     /**
@@ -485,6 +489,38 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    // A blank expansion would silently delete its trigger from every later
+    // transcript, so it never reaches storage; the expansion is otherwise kept
+    // as typed, since leading or trailing spaces can be the point of it.
+    suspend fun addSnippet(trigger: String, expansion: String) {
+        val cleaned = trigger.trim()
+        if (cleaned.isEmpty() || expansion.isBlank()) return
+        context.dataStore.edit { preferences ->
+            val current = Snippet.decode(preferences[Keys.SNIPPETS])
+            val added = Snippet(id = UUID.randomUUID().toString(), trigger = cleaned, expansion = expansion)
+            preferences[Keys.SNIPPETS] = Snippet.encode(current + added)
+        }
+    }
+
+    suspend fun updateSnippet(id: String, trigger: String, expansion: String) {
+        val cleaned = trigger.trim()
+        if (cleaned.isEmpty() || expansion.isBlank()) return
+        context.dataStore.edit { preferences ->
+            val current = Snippet.decode(preferences[Keys.SNIPPETS])
+            val next = current.map {
+                if (it.id == id) it.copy(trigger = cleaned, expansion = expansion) else it
+            }
+            preferences[Keys.SNIPPETS] = Snippet.encode(next)
+        }
+    }
+
+    suspend fun deleteSnippet(id: String) {
+        context.dataStore.edit { preferences ->
+            val current = Snippet.decode(preferences[Keys.SNIPPETS])
+            preferences[Keys.SNIPPETS] = Snippet.encode(current.filter { it.id != id })
+        }
+    }
+
     suspend fun setTelemetryEnabled(enabled: Boolean) = put(Keys.TELEMETRY_ENABLED, enabled)
 
     suspend fun setTelemetryAsked(asked: Boolean) = put(Keys.TELEMETRY_ASKED, asked)
@@ -596,6 +632,7 @@ class SettingsRepository(private val context: Context) {
         telemetryEnabled = this[Keys.TELEMETRY_ENABLED]
             ?: com.vocahq.vocaphone.telemetry.TelemetryConfig.DEFAULT_ENABLED,
         telemetryAsked = this[Keys.TELEMETRY_ASKED] ?: false,
+        snippets = Snippet.decode(this[Keys.SNIPPETS]),
     )
 
     private object Keys {
@@ -640,6 +677,7 @@ class SettingsRepository(private val context: Context) {
         val TELEMETRY_ENABLED = booleanPreferencesKey("telemetry_enabled")
         val TELEMETRY_ASKED = booleanPreferencesKey("telemetry_asked")
         val TELEMETRY_MILESTONES = stringSetPreferencesKey("telemetry_milestones")
+        val SNIPPETS = stringPreferencesKey("snippets")
         val LAST_REPORTED_EXIT_AT = longPreferencesKey("last_reported_process_exit_at")
     }
 
