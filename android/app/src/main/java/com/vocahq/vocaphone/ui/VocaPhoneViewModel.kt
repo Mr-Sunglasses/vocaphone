@@ -317,6 +317,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setStyle(style: WritingStyle) =
         viewModelScope.launch { container.settings.setStyle(style) }
 
+    fun setRepairSpeech(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setRepairSpeech(enabled) }
+
     fun setDictationTone(tone: DictationTone) {
         _tonePreviewListening.value = false
         viewModelScope.launch { container.settings.setDictationTone(tone) }

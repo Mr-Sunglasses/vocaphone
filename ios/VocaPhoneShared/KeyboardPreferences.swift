@@ -270,6 +270,7 @@ enum KeyboardPreferences {
     static let quickDictationKey = "quickDictationEnabled"
     static let writingStyleKey = "writingStyle"
     static let numbersAsDigitsKey = "numbersAsDigitsEnabled"
+    static let repairSpeechKey = "speechRepairEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let translateToKey = "translateTo"
     static let microphonePreferenceKey = "microphonePreference"
@@ -423,6 +424,18 @@ enum KeyboardPreferences {
     static var numbersAsDigits: Bool {
         get { boolean(numbersAsDigitsKey, default: false) }
         set { defaults?.set(newValue, forKey: numbersAsDigitsKey) }
+    }
+
+    /// Whether hesitation sounds, false starts, and missing sentence
+    /// punctuation are repaired before the writing style is applied.
+    ///
+    /// On by default, and the only setting in this file that changes the words
+    /// in a transcript rather than its formatting. It earns that because the
+    /// words it removes are not words: "um" is a sound someone makes while
+    /// deciding what to say, and nobody dictating meant to type it.
+    static var repairSpeech: Bool {
+        get { boolean(repairSpeechKey, default: true) }
+        set { defaults?.set(newValue, forKey: repairSpeechKey) }
     }
 
     static var writingStyle: WritingStyle {

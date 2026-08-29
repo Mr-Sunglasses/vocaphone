@@ -3,46 +3,21 @@ package com.vocahq.vocaphone.core
 /**
  * Applies the same presentation-only contract as the gateway to a local
  * transcript. It deliberately never adds, removes, or substitutes words.
+ *
+ * Dropping a filler or inserting a missing sentence break would both break that
+ * contract, which is why they are [TranscriptRepair]'s job and run before this
+ * stage under a switch of their own.
  */
 object TranscriptStyler {
-    private data class Punctuation(
-        val terminator: String,
-        val separator: String,
-        val exclamation: String,
-        val question: String,
-        val terminators: String,
-        val join: String,
-    )
-
-    private data class Masked(val text: String, val tokens: List<String>)
-
-    private val universalTerminators = ".!?。！？।۔။។།؟"
-    private val latin = Punctuation(".", ",", "!", "?", ".!?", " ")
-    private val cjk = Punctuation("。", "、", "！", "？", "。！？.!?", "")
-    private val arabic = Punctuation(".", "،", "!", "؟", ".!?؟", " ")
-    private val urdu = Punctuation("۔", "،", "!", "؟", "۔.!?؟", " ")
-    private val danda = Punctuation("।", ",", "!", "?", "।.!?", " ")
-    private val indicLatin = Punctuation(".", ",", "!", "?", "।.!?", " ")
-    private val unterminated = Punctuation("", " ", "!", "?", "!?", " ")
-    private val burmese = Punctuation("။", "၊", "!", "?", "။.!?", " ")
-    private val khmer = Punctuation("។", ",", "!", "?", "။.!?", " ")
-    private val tibetan = Punctuation("།", "།", "!", "?", "།.!?", " ")
-
-    private val protectedSpans = Regex(
-        """(?i)(https?://[^\s]+[^\s.,;:!?\"“”'\)\]]|[\w.+-]+@(?:[\w-]+\.)+[A-Za-z]{2,}|"""
-            + """(?:[\w-]+\.)+[A-Za-z]{2,}(?:/[^\s.,;:!?\"“”'\)\]]*)?|\d+(?:[.,:/]\d+)+|"""
-            + """\d+(?:st|nd|rd|th)\b|(?:[A-Za-z]\.){2,})""",
-    )
-    private val placeholder = Regex("\\uE000(\\d+)\\uE001")
 
     fun apply(text: String?, style: WritingStyle, language: String = "auto"): String {
         val source = text.orEmpty()
         if (style == WritingStyle.RAW) return source.trim()
         if (source.isBlank()) return ""
 
-        val punctuation = punctuation(language, source)
-        val masked = mask(source)
-        val normalized = normalizeSentenceTerminators(normalizeSpacing(masked.text), punctuation)
+        val punctuation = SentencePunctuation.resolve(language, source)
+        val spans = ProtectedSpans.mask(source)
+        val normalized = normalizeSentenceTerminators(normalizeSpacing(spans.text), punctuation)
         // Whisper and Parakeet Title-Case content words ("the Keyboard Is Ready").
         // Flatten those before Clean/Formal/Casual so mid-sentence capitals are
         // not left as-is. Mixed-case names and ALL-CAPS acronyms stay.
@@ -67,62 +42,13 @@ object TranscriptStyler {
             )
             WritingStyle.RAW -> normalized
         }
-        val lowered = if (style == WritingStyle.VERY_CASUAL) lowerOutsidePlaceholders(result) else result
-        return restore(lowered, masked.tokens)
-    }
-
-    private fun punctuation(language: String, text: String): Punctuation {
-        val code = language.lowercase().substringBefore('-')
-        return when (code) {
-            "ja", "zh" -> cjk
-            "ar", "fa", "ps" -> arabic
-            "ur", "sd", "ks" -> urdu
-            "hi", "mr", "ne", "bn", "as", "pa" -> danda
-            "ta", "te", "kn", "ml", "gu", "si" -> indicLatin
-            "th", "lo" -> unterminated
-            "my" -> burmese
-            "km" -> khmer
-            "bo" -> tibetan
-            else -> when {
-                text.any { it in "。、！？" } -> cjk
-                text.any { it in "،؟" } -> arabic
-                text.contains('۔') -> urdu
-                text.contains('।') || containsDandaScript(text) -> danda
-                else -> latin
-            }
-        }.copy(terminators = universalTerminators + terminatorsFor(language, text))
-    }
-
-    /** Automatic-language fallback for scripts that conventionally use danda. */
-    private fun containsDandaScript(text: String): Boolean = text.any { character ->
-        character.code in 0x0900..0x097F ||
-            character.code in 0x0980..0x09FF ||
-            character.code in 0x0A00..0x0A7F
-    }
-
-    private fun terminatorsFor(language: String, text: String): String = when {
-        language.lowercase().startsWith("ja") || language.lowercase().startsWith("zh") -> cjk.terminators
-        language.lowercase().startsWith("ur") -> urdu.terminators
-        language.lowercase().startsWith("hi") -> danda.terminators
-        else -> ""
-    }
-
-    private fun mask(text: String): Masked {
-        val matches = protectedSpans.findAll(text).toList()
-        var result = text
-        for (index in matches.indices.reversed()) {
-            result = result.replaceRange(
-                matches[index].range,
-                "\uE000$index\uE001",
-            )
+        val lowered = if (style == WritingStyle.VERY_CASUAL) {
+            ProtectedSpans.mapOutsidePlaceholders(result) { it.lowercase() }
+        } else {
+            result
         }
-        return Masked(result, matches.map { it.value })
+        return spans.restore(lowered)
     }
-
-    private fun restore(text: String, tokens: List<String>): String =
-        placeholder.replace(text) { match ->
-            tokens.getOrNull(match.groupValues[1].toInt()) ?: match.value
-        }
 
     private fun normalizeSpacing(text: String): String = text
         .replace(Regex("\\s+"), " ")
@@ -134,7 +60,10 @@ object TranscriptStyler {
      * the script is known, normalize sentence boundaries while masked URLs,
      * decimals, abbreviations, and ellipses remain untouched.
      */
-    private fun normalizeSentenceTerminators(text: String, punctuation: Punctuation): String {
+    private fun normalizeSentenceTerminators(
+        text: String,
+        punctuation: SentencePunctuation,
+    ): String {
         if (punctuation.terminator != "।") return text
         return buildString(text.length) {
             text.forEachIndexed { index, character ->
@@ -151,7 +80,7 @@ object TranscriptStyler {
         }
     }
 
-    private fun ensureTerminator(text: String, punctuation: Punctuation): String {
+    private fun ensureTerminator(text: String, punctuation: SentencePunctuation): String {
         if (text.isEmpty() || punctuation.terminator.isEmpty()) return text
         return if (text.last() in punctuation.terminators) text
         else text + punctuation.terminator
@@ -167,8 +96,10 @@ object TranscriptStyler {
         val result = StringBuilder(text.length)
         var index = 0
         while (index < text.length) {
-            if (text[index] == '\uE000') {
-                val end = text.indexOf('\uE001', index)
+            // Copy a protected span whole: flatten would lowercase the digits
+            // inside it, and restore could not match the placeholder afterwards.
+            if (text[index] == ProtectedSpans.OPEN) {
+                val end = text.indexOf(ProtectedSpans.CLOSE, index)
                 if (end >= 0) {
                     result.append(text, index, end + 1)
                     index = end + 1
@@ -178,7 +109,9 @@ object TranscriptStyler {
             if (text[index].isLetter()) {
                 val start = index
                 index++
-                while (index < text.length && (text[index].isLetter() || text[index] == '\'' || text[index] == '’')) {
+                while (index < text.length &&
+                    (text[index].isLetter() || text[index] == '\'' || text[index] == '’')
+                ) {
                     index++
                 }
                 result.append(softenToken(text.substring(start, index)))
@@ -221,7 +154,10 @@ object TranscriptStyler {
         return contracted && rest in setOf("m", "ll", "d", "ve", "re", "s")
     }
 
-    private fun capitalizeSentenceStarts(text: String, punctuation: Punctuation): String {
+    private fun capitalizeSentenceStarts(
+        text: String,
+        punctuation: SentencePunctuation,
+    ): String {
         val result = StringBuilder(text.length)
         var capitalize = true
         text.forEach { character ->
@@ -236,7 +172,7 @@ object TranscriptStyler {
         return result.toString()
     }
 
-    private fun casual(text: String, punctuation: Punctuation): String {
+    private fun casual(text: String, punctuation: SentencePunctuation): String {
         val capitalized = capitalizeSentenceStarts(text, punctuation)
         if (punctuation.terminator.isEmpty() || capitalized.endsWith("..")) return capitalized
         return if (capitalized.endsWith(punctuation.terminator)) {
@@ -246,7 +182,7 @@ object TranscriptStyler {
         }
     }
 
-    private fun segments(text: String, punctuation: Punctuation): List<String> {
+    private fun segments(text: String, punctuation: SentencePunctuation): List<String> {
         if (text.isEmpty()) return emptyList()
         val result = mutableListOf<String>()
         var start = 0
@@ -275,7 +211,7 @@ object TranscriptStyler {
 
     private fun splitTerminator(
         sentence: String,
-        punctuation: Punctuation,
+        punctuation: SentencePunctuation,
     ): Pair<String, String> {
         val body = sentence.trim()
         if (body.isEmpty()) return "" to ""
@@ -286,7 +222,10 @@ object TranscriptStyler {
         return body to ""
     }
 
-    private fun veryCasual(sentences: List<String>, punctuation: Punctuation): String {
+    private fun veryCasual(
+        sentences: List<String>,
+        punctuation: SentencePunctuation,
+    ): String {
         val parts = sentences.mapIndexedNotNull { index, sentence ->
             val (body, terminator) = splitTerminator(sentence, punctuation)
             if (body.isEmpty()) return@mapIndexedNotNull null
@@ -300,7 +239,7 @@ object TranscriptStyler {
         return parts.joinToString(punctuation.join)
     }
 
-    private fun excited(sentences: List<String>, punctuation: Punctuation): String {
+    private fun excited(sentences: List<String>, punctuation: SentencePunctuation): String {
         val parts = sentences.mapNotNull { sentence ->
             val (body, terminator) = splitTerminator(sentence, punctuation)
             if (body.isEmpty()) null
@@ -311,17 +250,5 @@ object TranscriptStyler {
             }
         }
         return parts.joinToString(punctuation.join)
-    }
-
-    private fun lowerOutsidePlaceholders(text: String): String {
-        val result = StringBuilder(text.length)
-        var end = 0
-        placeholder.findAll(text).forEach { match ->
-            result.append(text.substring(end, match.range.first).lowercase())
-            result.append(match.value)
-            end = match.range.last + 1
-        }
-        result.append(text.substring(end).lowercase())
-        return result.toString()
     }
 }

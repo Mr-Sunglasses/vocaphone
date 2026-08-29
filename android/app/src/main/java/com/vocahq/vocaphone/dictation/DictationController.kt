@@ -15,14 +15,13 @@ import com.vocahq.vocaphone.audio.MicrophoneInterruption
 import com.vocahq.vocaphone.audio.PcmConversion
 import com.vocahq.vocaphone.audio.SilentCapture
 import com.vocahq.vocaphone.audio.WavWriter
+import com.vocahq.vocaphone.core.DictatedTranscript
 import com.vocahq.vocaphone.core.DictationFailure
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MissingPermission
 import com.vocahq.vocaphone.core.ModelLanguageSupport
-import com.vocahq.vocaphone.core.TranscriptSanitizer
-import com.vocahq.vocaphone.core.TranscriptStyler
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.gateway.GatewayClient
@@ -691,8 +690,18 @@ class DictationController(
             }
             // The gateway has already applied the requested writing style to
             // streamed output. Local inference is styled in deliverLocal below;
-            // applying it here would style gateway text twice.
-            val cleaned = TranscriptSanitizer.clean(transcript)
+            // applying it here would style gateway text twice. It has not
+            // repaired anything, though — that stage only exists on the phone.
+            val cleaned = DictatedTranscript.finished(
+                transcript,
+                style = configuration.style,
+                // Only repair reads this on a gateway route — the style is
+                // already applied — but a German transcript keeps its "um"
+                // only if this stage is told the language.
+                language = configuration.effectiveLanguage.wireValue,
+                styledUpstream = true,
+                repairSpeech = configuration.repairSpeech,
+            )
             if (transcript != null && cleaned.isEmpty()) {
                 wavFile.delete()
                 fail(sessionId, GatewayException.emptyTranscript(), null, configuration, generation)
@@ -777,7 +786,13 @@ class DictationController(
             diagnostics.recordTiming("transcription_started", source.name)
             val session = client.finish(sessionId)
             // Marker-only output means the model heard nothing worth writing.
-            val transcript = TranscriptSanitizer.clean(session.transcript)
+            val transcript = DictatedTranscript.finished(
+                session.transcript,
+                style = configuration.style,
+                language = configuration.effectiveLanguage.wireValue,
+                styledUpstream = true,
+                repairSpeech = configuration.repairSpeech,
+            )
             if (transcript.isEmpty()) {
                 throw GatewayException(
                     session.errorCode ?: "empty_transcript",
@@ -873,14 +888,15 @@ class DictationController(
     private fun styleLocalTranscript(
         local: LocalTranscription,
         configuration: VocaPhoneSettings,
-    ): String = TranscriptStyler.apply(
-        TranscriptSanitizer.clean(local.text),
-        configuration.style,
-        ModelLanguageSupport.outputLanguage(
+    ): String = DictatedTranscript.finished(
+        local.text,
+        style = configuration.style,
+        language = ModelLanguageSupport.outputLanguage(
             requested = configuration.effectiveLanguage.wireValue,
             reported = local.language,
             translateTo = configuration.translationTarget,
         ),
+        repairSpeech = configuration.repairSpeech,
     )
 
     private suspend fun deliver(

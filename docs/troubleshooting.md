@@ -72,7 +72,7 @@ Settings is grouped by what you are trying to do, in five destinations:
 | Destination | What lives there |
 | --- | --- |
 | **Keyboard** | Height, a live preview, suggestions, autocorrect, prediction, learned words, smart punctuation, emoji suggestions, haptics, swipe typing |
-| **Dictation** | Automatic insertion, Quick Dictation, language, writing style, numbers as digits, microphone, recording sounds, custom words |
+| **Dictation** | Automatic insertion, Quick Dictation, language, writing style, clean up speech, numbers as digits, microphone, recording sounds, custom words |
 | **Transcription** | Which source is in use, on-device models, gateway pairing and health |
 | **Privacy and permissions** | Microphone status, Full Access explanation and manual path, what is kept |
 | **Diagnostics** | Version, redacted export, and clearing the log |

@@ -71,6 +71,11 @@ the active cursor. A gateway is never required for on-device mode.
   you want larger models or shared compute. That path is self-hosted, not on-device
 - 54 transcription languages plus Automatic, and four writing styles: Formal,
   Casual, Very Casual, and Excited
+- Clean up speech, on by default: hesitation sounds ("um", "uh"), false starts
+  and repeated words are dropped, and missing sentence punctuation is filled in,
+  entirely on the phone with no model and no network call. Turn it off in
+  Settings, or pick the Raw writing style, and the model's own words go in
+  untouched
 - Optional on-device translation where the model was actually trained for it:
   Canary between English, German, Spanish and French, and the multilingual
   Whisper models into English. Language says what you are speaking; Translate to
