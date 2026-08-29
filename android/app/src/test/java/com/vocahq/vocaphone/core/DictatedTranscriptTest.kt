@@ -5,10 +5,32 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The order of the three steps is the whole point of the funnel, and each wrong
+ * The order of the four steps is the whole point of the funnel, and each wrong
  * order produces text that looks like a different bug.
  */
 class DictatedTranscriptTest {
+
+    @Test
+    fun `digits run after styling only when enabled`() {
+        assertEquals(
+            "20 people came.",
+            DictatedTranscript.finished(
+                "twenty people came",
+                style = WritingStyle.FORMAL,
+                repairSpeech = false,
+                numbersAsDigits = true,
+            ),
+        )
+        assertEquals(
+            "Twenty people came.",
+            DictatedTranscript.finished(
+                "twenty people came",
+                style = WritingStyle.FORMAL,
+                repairSpeech = false,
+                numbersAsDigits = false,
+            ),
+        )
+    }
 
     /**
      * Sanitizing first, because a model's own annotations are not something to
@@ -17,11 +39,12 @@ class DictatedTranscriptTest {
     @Test
     fun `markers are removed before anything else`() {
         assertEquals(
-            "Five copies please.",
+            "5 copies please.",
             DictatedTranscript.finished(
                 "[BLANK_AUDIO] five copies please",
                 style = WritingStyle.FORMAL,
                 repairSpeech = false,
+                numbersAsDigits = true,
             ),
         )
     }

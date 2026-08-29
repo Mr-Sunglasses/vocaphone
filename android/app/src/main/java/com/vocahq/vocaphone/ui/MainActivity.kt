@@ -404,6 +404,7 @@ fun VocaPhoneApp(
                 onTranslateTo = { viewModel.setTranslateTo(it) },
                 onStyle = { viewModel.setStyle(it) },
                 onRepairSpeech = { viewModel.setRepairSpeech(it) },
+                onNumbersAsDigits = { viewModel.setNumbersAsDigits(it) },
                 onDictationTone = { viewModel.setDictationTone(it) },
                 onPreviewDictationTone = { viewModel.toggleDictationTonePreview(it) },
                 tonePreviewListening = tonePreviewListening,
