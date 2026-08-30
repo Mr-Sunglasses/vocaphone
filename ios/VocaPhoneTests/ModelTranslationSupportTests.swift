@@ -19,7 +19,7 @@ struct ModelTranslationSupportTests {
         // Whisper's translate task has exactly one trained target.
         #expect(try targets("openai_whisper-small_216MB") == whisper)
         // An English-only build has nothing to translate from.
-        #expect(try targets("moonshine-tiny-en").isEmpty)
+        #expect(try targets("moonshine-base-en").isEmpty)
         // The transducers and CTC models transcribe and nothing else. Parakeet
         // v3 is the one people expect to translate because it is multilingual.
         #expect(try targets("parakeet-tdt-0.6b-v3").isEmpty)

@@ -207,12 +207,9 @@ class DeviceProfileTest {
 
     @Test
     fun `constrained sherpa stays on a small family that fits the budget`() {
-        // Canary rather than the Moonshine Base this used to reach: 207 MB at
-        // 7.12 average WER against 287 MB at 10.07, and three more languages.
         val pick = LocalModelCatalog.recommended(profile(3))
-        assertEquals(SherpaFamily.CANARY, pick.sherpaFamily)
+        assertEquals(SherpaFamily.MOONSHINE, pick.sherpaFamily)
         assertTrue(pick.minimumRamGB <= 3)
-        assertTrue(pick.sizeBytes < 250_000_000L)
     }
 
     @Test

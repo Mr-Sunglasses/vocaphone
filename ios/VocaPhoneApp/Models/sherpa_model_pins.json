@@ -31,6 +31,37 @@
         }
       ]
     },
+    "moonshine-base-en": {
+      "repository": "csukuangfj/sherpa-onnx-moonshine-base-en-int8",
+      "revision": "052b0798ad1bf046a140fdd4efcd9426530fa3f5",
+      "files": [
+        {
+          "path": "preprocess.onnx",
+          "size": 14077290,
+          "sha256": "ffa630d395c5ccf76f5d4954be5b882df76aaf6491519ec01fd82ea7a3819fb2"
+        },
+        {
+          "path": "encode.int8.onnx",
+          "size": 50311494,
+          "sha256": "7e38770f776f2e5583a53b052936005df2ba5c833d7e09c2a5fd796b94bf73e2"
+        },
+        {
+          "path": "uncached_decode.int8.onnx",
+          "size": 122120451,
+          "sha256": "c01f4b35093bcac20d352d23a75a539e772964579f9d024a90e5e6f09cae9987"
+        },
+        {
+          "path": "cached_decode.int8.onnx",
+          "size": 99983837,
+          "sha256": "2db74e51cedf64a8b1be3c8192e0bb5e4923af0e90bd9e87f8e8771873f8ea03"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 436688,
+          "sha256": "1165c2aeb9f72f457a83be2d459a09054f27490acd9b41bd43794dfd25e296ea"
+        }
+      ]
+    },
     "parakeet-tdt-0.6b-v2-en": {
       "repository": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
       "revision": "1ab9323565ddb038682214b292f588070a538ce2",

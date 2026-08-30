@@ -395,6 +395,35 @@ enum LocalModelCatalog {
             englishOnly: true
         ),
         .init(
+            id: "moonshine-base-en",
+            displayName: "Moonshine Base English",
+            engine: .sherpaOnnx,
+            // Kept for latency, not for average WER, and the two disagree here.
+            // Canary 180M is smaller and scores better on the Open ASR English
+            // suite (7.12 against 10.07), which is an argument for dropping this
+            // row until you measure the thing a dictation keyboard is actually
+            // waiting on. On arm64 at two threads, decoding the same audio:
+            //
+            //             Moonshine Base   Canary 180M
+            //   2.0s          48 ms          122 ms
+            //   4.0s         101 ms          236 ms
+            //   6.6s         170 ms          399 ms
+            //
+            // 2.4-2.5x, at every length people actually dictate at. Moonshine
+            // encodes variable-length audio rather than padding to a fixed
+            // window, which is the whole point of the architecture and does not
+            // show up in a WER table computed over meeting and earnings-call
+            // recordings. `scoreModel` already ranks this family above every
+            // other for the same reason.
+            repository: "csukuangfj/sherpa-onnx-moonshine-base-en-int8",
+            revision: "052b0798ad1bf046a140fdd4efcd9426530fa3f5",
+            sherpaFamily: .moonshine,
+            sizeBytes: 286_929_760,
+            minimumRamGB: 3,
+            languages: "English",
+            englishOnly: true
+        ),
+        .init(
             id: "parakeet-tdt-0.6b-v2-en",
             displayName: "Parakeet TDT 0.6B English",
             engine: .sherpaOnnx,
@@ -669,17 +698,16 @@ enum LocalModelCatalog {
 
     /// English models best first. Parakeet leads wherever the memory allows it.
     ///
-    /// Moonshine Base used to sit between the first two and no longer earns the
-    /// row: Canary 180M is 207 MB to its 287 MB and averages 7.12 WER on the
-    /// Open ASR English suite against Moonshine Base's 10.07, while also
-    /// covering three more languages. Moonshine Tiny stays because nothing else
-    /// answers the question it answers -- lowest latency on a two-second
-    /// utterance, at roughly a fifth of Whisper Tiny's compute. The `.en`
-    /// WhisperKit builds are gone from the catalog for the same reason
-    /// Moonshine Base is: dominated on both size and accuracy.
+    /// Both Moonshine builds stay ahead of Canary even though Canary is smaller
+    /// and scores better on the Open ASR English suite, because this list
+    /// decides what a keyboard reaches for and Moonshine decodes the same audio
+    /// 2.4-2.5x faster on arm64. See the note on `moonshine-base-en` above.
+    ///
+    /// The `.en` WhisperKit builds are gone from the catalog, so the multilingual
+    /// Base build is the whisper fallback for English too.
     private static let englishPreference = [
         "parakeet-tdt-0.6b-v2-en",
-        "canary-180m-flash",
+        "moonshine-base-en",
         "moonshine-tiny-en",
         "openai_whisper-base"
     ]

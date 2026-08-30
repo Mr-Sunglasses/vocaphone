@@ -51,10 +51,9 @@ object RetiredModels {
             "large-v2-q5_0", "large-v2-q8_0", "large-v2",
         ).forEach { put(it, listOf("large-v3-turbo-q8_0", "small-q8_0", "base-q8_0")) }
 
-        // Sherpa. Canary is both smaller and more accurate than Moonshine Base
-        // (207 MB at 7.12 average WER against 287 MB at 10.07) and covers three
-        // more languages, so it takes both of the rows it replaced.
-        put("moonshine-base-en", listOf("canary-180m-flash", "moonshine-tiny-en"))
+        // Sherpa. Canary covers the same four languages as the Fast Conformer
+        // it replaces, in 207 MB against 461 MB, with better WER and the only
+        // speech-translation path in the catalog.
         put("fast-conformer-ctc-4-lang", listOf("canary-180m-flash"))
         put("dolphin-base-ctc", listOf("dolphin-small-ctc"))
         // Same weights family, new export: v3 with punctuation. The id changed

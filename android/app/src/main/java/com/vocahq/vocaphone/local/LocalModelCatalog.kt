@@ -523,16 +523,14 @@ data class ModelPick(val role: ModelPickRole, val model: LocalModelDescriptor)
 /**
  * English models best first. Parakeet leads wherever the budget allows it.
  *
- * Moonshine Base used to sit between these two and no longer earns the row:
- * Canary 180M is 207 MB to its 287 MB and averages 7.12 WER on the Open ASR
- * English suite against Moonshine Base's 10.07, while also covering three more
- * languages. Moonshine Tiny stays because nothing else answers the question it
- * answers -- lowest latency on a two-second utterance, at roughly a fifth of
- * Whisper Tiny's compute.
+ * Both Moonshine builds stay ahead of Canary here even though Canary is smaller
+ * and scores better on the Open ASR English suite, because this list decides
+ * what a keyboard reaches for and Moonshine decodes the same audio 2.4-2.5x
+ * faster on arm64. See the note on `moonshine-base-en` in `SherpaModelCatalog`.
  */
 private val ENGLISH_PREFERENCE = listOf(
     "parakeet-tdt-0.6b-v2-en",
-    "canary-180m-flash",
+    "moonshine-base-en",
     "moonshine-tiny-en",
 )
 

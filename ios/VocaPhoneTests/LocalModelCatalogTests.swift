@@ -3,7 +3,7 @@ import Testing
 struct LocalModelCatalogTests {
     @Test func sherpaModelsAreAvailableAlongsideWhisperKit() {
         let sherpa = LocalModelCatalog.all.filter { $0.engine == .sherpaOnnx }
-        #expect(sherpa.count == 9)
+        #expect(sherpa.count == 10)
         #expect(sherpa.allSatisfy { $0.repository != nil && $0.revision != nil })
         #expect(sherpa.allSatisfy { $0.sherpaFamily != nil })
     }
@@ -61,16 +61,13 @@ struct LocalModelCatalogTests {
             LocalModelCatalog.recommended(deviceMemoryGB: 4, language: "en").id
                 == "parakeet-tdt-0.6b-v2-en"
         )
-        // Below Parakeet's budget, Canary rather than the Moonshine builds this
-        // used to reach: 207 MB at 7.12 average WER against Moonshine Base's
-        // 287 MB at 10.07, and it needs only 2 GB.
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 3, language: "en").id
-                == "canary-180m-flash"
+                == "moonshine-base-en"
         )
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 2, language: "en").id
-                == "canary-180m-flash"
+                == "moonshine-tiny-en"
         )
     }
 

@@ -36,6 +36,47 @@ internal object SherpaModelCatalog {
             ),
         ),
         sherpa(
+            id = "moonshine-base-en",
+            languageCodes = setOf("en"),
+            displayName = "Moonshine Base English",
+            // Kept for latency, not for average WER, and the two disagree here.
+            // Canary 180M is smaller and scores better on the Open ASR English
+            // suite (7.12 against 10.07), which is an argument for dropping this
+            // row until you measure the thing a dictation keyboard is actually
+            // waiting on. On arm64 at two threads, decoding the same audio:
+            //
+            //             Moonshine Base   Canary 180M
+            //   2.0s          48 ms          122 ms
+            //   4.0s         101 ms          236 ms
+            //   6.6s         170 ms          399 ms
+            //
+            // 2.4-2.5x, at every length people actually dictate at. Moonshine
+            // encodes variable-length audio rather than padding to a fixed
+            // window, which is the whole point of the architecture and does not
+            // show up in a WER table computed over meeting and earnings-call
+            // recordings. `scoreModel` already ranks this family above every
+            // other for the same reason.
+            repository = "csukuangfj/sherpa-onnx-moonshine-base-en-int8",
+            revision = "052b0798ad1bf046a140fdd4efcd9426530fa3f5",
+            family = SherpaFamily.MOONSHINE,
+            sizeBytes = 286_929_760L,
+            minimumRamGB = 3,
+            languages = "English",
+            englishOnly = true,
+            files = listOf(
+                PinnedFile("preprocess.onnx", 14_077_290L,
+                    "ffa630d395c5ccf76f5d4954be5b882df76aaf6491519ec01fd82ea7a3819fb2"),
+                PinnedFile("encode.int8.onnx", 50_311_494L,
+                    "7e38770f776f2e5583a53b052936005df2ba5c833d7e09c2a5fd796b94bf73e2"),
+                PinnedFile("uncached_decode.int8.onnx", 122_120_451L,
+                    "c01f4b35093bcac20d352d23a75a539e772964579f9d024a90e5e6f09cae9987"),
+                PinnedFile("cached_decode.int8.onnx", 99_983_837L,
+                    "2db74e51cedf64a8b1be3c8192e0bb5e4923af0e90bd9e87f8e8771873f8ea03"),
+                PinnedFile("tokens.txt", 436_688L,
+                    "1165c2aeb9f72f457a83be2d459a09054f27490acd9b41bd43794dfd25e296ea"),
+            ),
+        ),
+        sherpa(
             id = "parakeet-tdt-0.6b-v2-en",
             languageCodes = setOf("en"),
             displayName = "Parakeet TDT 0.6B English",

@@ -91,8 +91,6 @@ class RetiredModelsTest {
 
     @Test
     fun `retired sherpa models land on what replaced them`() {
-        // Canary is smaller and more accurate than the Moonshine Base it took over.
-        assertEquals("canary-180m-flash", replacement("moonshine-base-en"))
         assertEquals(
             "canary-180m-flash",
             replacement("fast-conformer-ctc-4-lang"),

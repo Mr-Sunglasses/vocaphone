@@ -81,11 +81,6 @@ struct RetiredLocalModelsTests {
     }
 
     @Test func retiredSherpaModelsLandOnWhatReplacedThem() {
-        // Canary is smaller and more accurate than the Moonshine Base it took over.
-        #expect(
-            RetiredLocalModels.replacement(for: "moonshine-base-en", deviceMemoryGB: 8)
-                == "canary-180m-flash"
-        )
         #expect(
             RetiredLocalModels.replacement(for: "fast-conformer-ctc-4-lang", deviceMemoryGB: 8)
                 == "canary-180m-flash"
@@ -138,7 +133,7 @@ struct RetiredLocalModelsTests {
     /// Every sherpa id is shared, so the sherpa half of them has to agree.
     @Test func theSherpaHalfOfTheTableCoversTheSameIDs() {
         let sherpaRetired = Set(
-            ["moonshine-base-en", "dolphin-base-ctc", "fast-conformer-ctc-4-lang", "giga-am-ctc-ru"]
+            ["dolphin-base-ctc", "fast-conformer-ctc-4-lang", "giga-am-ctc-ru"]
         )
         #expect(sherpaRetired.isSubset(of: Set(RetiredLocalModels.replacements.keys)))
     }

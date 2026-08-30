@@ -66,10 +66,9 @@ enum RetiredLocalModels {
             ]
         }
 
-        // Sherpa. Canary is both smaller and more accurate than Moonshine Base
-        // (207 MB at 7.12 average WER against 287 MB at 10.07) and covers three
-        // more languages, so it takes both of the rows it replaced.
-        table["moonshine-base-en"] = ["canary-180m-flash", "moonshine-tiny-en"]
+        // Sherpa. Canary covers the same four languages as the Fast Conformer
+        // it replaces, in 207 MB against 461 MB, with better WER and the only
+        // speech-translation path in the catalog.
         table["fast-conformer-ctc-4-lang"] = ["canary-180m-flash"]
         table["dolphin-base-ctc"] = ["dolphin-small-ctc"]
         // Same weights family, new export: v3 with punctuation. The id changed
