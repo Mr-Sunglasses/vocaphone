@@ -13,6 +13,10 @@ enum SherpaFamily: String, Codable, Sendable {
     case canary
     case nemoCtc
     case paraformer
+    /// Moonshine v2: two `.ort` graphs instead of v1's four `.onnx` files.
+    /// A separate case rather than a flag, because the file names and the
+    /// sherpa-onnx config fields both differ and every switch has to answer.
+    case moonshineV2
 
     /// Whether this family can safely use `modified_beam_search`.
     ///
@@ -383,43 +387,39 @@ enum LocalModelCatalog {
             englishOnly: false
         ),
         .init(
-            id: "moonshine-tiny-en",
-            displayName: "Moonshine Tiny English",
+            id: "moonshine-v2-tiny-en",
+            displayName: "Moonshine v2 Tiny English",
             engine: .sherpaOnnx,
-            repository: "csukuangfj/sherpa-onnx-moonshine-tiny-en-int8",
-            revision: "bf2b762c076d8ea61e2af0b3851c9564fb77552e",
-            sherpaFamily: .moonshine,
-            sizeBytes: 123_967_539,
+            // v2 replaces v1 on every axis at once: 44 MB against 124 MB,
+            // 12.01 average WER against 12.66, and faster. Measured on arm64 at
+            // two threads, median of five, same audio -- v1 then v2:
+            //   2.0s  23.2 -> 20.9 ms   4.0s  48.3 -> 44.1   6.6s  86.9 -> 79.2
+            repository: "csukuangfj2/sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27",
+            revision: "d1e6c30921780b8508d04b492dfb3ce8a51605d4",
+            sherpaFamily: .moonshineV2,
+            sizeBytes: 44_243_206,
             minimumRamGB: 2,
             languages: "English",
             englishOnly: true
         ),
         .init(
-            id: "moonshine-base-en",
-            displayName: "Moonshine Base English",
+            id: "moonshine-v2-base-en",
+            displayName: "Moonshine v2 Base English",
             engine: .sherpaOnnx,
-            // Kept for latency, not for average WER, and the two disagree here.
-            // Canary 180M is smaller and scores better on the Open ASR English
-            // suite (7.12 against 10.07), which is an argument for dropping this
-            // row until you measure the thing a dictation keyboard is actually
-            // waiting on. On arm64 at two threads, decoding the same audio:
+            // The largest single gain in the catalog. v2 is half the size of
+            // v1 (141 MB against 287 MB), 2.2 WER points better (7.84 against
+            // 10.07), and faster. Measured on arm64 at two threads, median of
+            // five, same audio -- v1 then v2:
+            //   2.0s  43.7 -> 34.8 ms   4.0s  91.8 -> 74.4   6.6s 157.4 -> 129.7
             //
-            //             Moonshine Base   Canary 180M
-            //   2.0s          48 ms          122 ms
-            //   4.0s         101 ms          236 ms
-            //   6.6s         170 ms          399 ms
-            //
-            // 2.4-2.5x, at every length people actually dictate at. Moonshine
-            // encodes variable-length audio rather than padding to a fixed
-            // window, which is the whole point of the architecture and does not
-            // show up in a WER table computed over meeting and earnings-call
-            // recordings. `scoreModel` already ranks this family above every
-            // other for the same reason.
-            repository: "csukuangfj/sherpa-onnx-moonshine-base-en-int8",
-            revision: "052b0798ad1bf046a140fdd4efcd9426530fa3f5",
-            sherpaFamily: .moonshine,
-            sizeBytes: 286_929_760,
-            minimumRamGB: 3,
+            // For context, Canary 180M scores 7.12 on the same suite but takes
+            // 122/236/399 ms for those clips: three times the latency for
+            // 0.7 WER points, which is the wrong trade for a keyboard.
+            repository: "csukuangfj2/sherpa-onnx-moonshine-base-en-quantized-2026-02-27",
+            revision: "8f4d6c58c03d40bcea40043bb7120a878f2bbef6",
+            sherpaFamily: .moonshineV2,
+            sizeBytes: 141_300_566,
+            minimumRamGB: 2,
             languages: "English",
             englishOnly: true
         ),
@@ -701,14 +701,14 @@ enum LocalModelCatalog {
     /// Both Moonshine builds stay ahead of Canary even though Canary is smaller
     /// and scores better on the Open ASR English suite, because this list
     /// decides what a keyboard reaches for and Moonshine decodes the same audio
-    /// 2.4-2.5x faster on arm64. See the note on `moonshine-base-en` above.
+    /// 2.4-2.5x faster on arm64. See the note on `moonshine-v2-base-en` above.
     ///
     /// The `.en` WhisperKit builds are gone from the catalog, so the multilingual
     /// Base build is the whisper fallback for English too.
     private static let englishPreference = [
         "parakeet-tdt-0.6b-v2-en",
-        "moonshine-base-en",
-        "moonshine-tiny-en",
+        "moonshine-v2-base-en",
+        "moonshine-v2-tiny-en",
         "openai_whisper-base"
     ]
 

@@ -47,7 +47,7 @@ fun LocalModelDescriptor.setupMeta(): String = "$sizeLabel · $languages"
 fun LocalModelDescriptor.recommendationWhy(): String = when (sherpaFamily) {
     SherpaFamily.NEMO_TRANSDUCER ->
         "The fastest multilingual model that fits this phone."
-    SherpaFamily.MOONSHINE ->
+    SherpaFamily.MOONSHINE, SherpaFamily.MOONSHINE_V2 ->
         "A small English model, so the first download stays light."
     SherpaFamily.SENSE_VOICE, SherpaFamily.CANARY, SherpaFamily.PARAFORMER ->
         "Matches this phone's language without a large download."

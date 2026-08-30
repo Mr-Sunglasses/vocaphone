@@ -208,7 +208,7 @@ class DeviceProfileTest {
     @Test
     fun `constrained sherpa stays on a small family that fits the budget`() {
         val pick = LocalModelCatalog.recommended(profile(3))
-        assertEquals(SherpaFamily.MOONSHINE, pick.sherpaFamily)
+        assertEquals(SherpaFamily.MOONSHINE_V2, pick.sherpaFamily)
         assertTrue(pick.minimumRamGB <= 3)
     }
 

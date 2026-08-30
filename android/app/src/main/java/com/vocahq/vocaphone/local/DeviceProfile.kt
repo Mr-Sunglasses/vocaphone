@@ -130,7 +130,7 @@ fun scoreModel(model: LocalModelDescriptor, profile: DeviceProfile): Int {
     if (!profile.fits(model)) return Int.MIN_VALUE
     var score = 0
     when (model.sherpaFamily) {
-        SherpaFamily.MOONSHINE -> score += 80
+        SherpaFamily.MOONSHINE, SherpaFamily.MOONSHINE_V2 -> score += 80
         SherpaFamily.SENSE_VOICE, SherpaFamily.CANARY, SherpaFamily.PARAFORMER -> score += 50
         SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC -> score += 40
         SherpaFamily.NEMO_TRANSDUCER -> score += 20

@@ -28,15 +28,15 @@ class DictateCopyTest {
             dictateModelChipLabel(VocaPhoneSettings(localTranscriptionEnabled = false)),
         )
         assertEquals(
-            "Moonshine Tiny English",
+            "Moonshine v2 Tiny English",
             dictateModelChipLabel(
                 VocaPhoneSettings(
                     localTranscriptionEnabled = true,
-                    localModelId = "moonshine-tiny-en",
+                    localModelId = "moonshine-v2-tiny-en",
                 ),
             ),
         )
-        assertEquals("Moonshine Tiny", compactModelChipLabel("Moonshine Tiny English"))
+        assertEquals("Moonshine v2 Tiny", compactModelChipLabel("Moonshine v2 Tiny English"))
         assertEquals("Parakeet TDT 0.6B", compactModelChipLabel("Parakeet TDT 0.6B"))
     }
 

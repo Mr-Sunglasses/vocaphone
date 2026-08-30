@@ -54,7 +54,7 @@ class LocalModelLanguageTest {
     fun anEnglishOnlyLocalModelStillRejectsOtherLanguages() {
         // Every whisper build in the catalog is multilingual now, so the
         // English-only case is a sherpa model.
-        val configured = settings(TranscriptionLanguage.HINDI, localModelId = "moonshine-tiny-en")
+        val configured = settings(TranscriptionLanguage.HINDI, localModelId = "moonshine-v2-tiny-en")
         assertEquals(TranscriptionLanguage.AUTOMATIC, configured.effectiveLanguage)
         assertEquals(setOf("en"), configured.activeModelLanguages)
     }

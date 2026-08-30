@@ -55,6 +55,10 @@ object RetiredModels {
         // it replaces, in 207 MB against 461 MB, with better WER and the only
         // speech-translation path in the catalog.
         put("fast-conformer-ctc-4-lang", listOf("canary-180m-flash"))
+        // Moonshine v2 is half the size of v1, faster, and more accurate, so
+        // the v1 ids retire onto it rather than sitting beside it.
+        put("moonshine-tiny-en", listOf("moonshine-v2-tiny-en"))
+        put("moonshine-base-en", listOf("moonshine-v2-base-en", "moonshine-v2-tiny-en"))
         put("dolphin-base-ctc", listOf("dolphin-small-ctc"))
         // Same weights family, new export: v3 with punctuation. The id changed
         // rather than the pins so an already-downloaded v2 directory is an

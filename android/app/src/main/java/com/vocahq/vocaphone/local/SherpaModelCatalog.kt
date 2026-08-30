@@ -12,68 +12,56 @@ package com.vocahq.vocaphone.local
 internal object SherpaModelCatalog {
     val all: List<LocalModelDescriptor> = listOf(
         sherpa(
-            id = "moonshine-tiny-en",
+            id = "moonshine-v2-tiny-en",
             languageCodes = setOf("en"),
-            displayName = "Moonshine Tiny English",
-            repository = "csukuangfj/sherpa-onnx-moonshine-tiny-en-int8",
-            revision = "bf2b762c076d8ea61e2af0b3851c9564fb77552e",
-            family = SherpaFamily.MOONSHINE,
-            sizeBytes = 123_967_539L,
+            displayName = "Moonshine v2 Tiny English",
+            // v2 replaces v1 on every axis at once: 44 MB against 124 MB,
+            // 12.01 average WER against 12.66, and faster. Measured on arm64 at
+            // two threads, median of five, same audio -- v1 then v2:
+            //   2.0s  23.2 -> 20.9 ms   4.0s  48.3 -> 44.1   6.6s  86.9 -> 79.2
+            repository = "csukuangfj2/sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27",
+            revision = "d1e6c30921780b8508d04b492dfb3ce8a51605d4",
+            family = SherpaFamily.MOONSHINE_V2,
+            sizeBytes = 44_243_206L,
             minimumRamGB = 2,
             languages = "English",
             englishOnly = true,
             files = listOf(
-                PinnedFile("preprocess.onnx", 6_800_738L,
-                    "f33addce61a143460fe753b5ee5b7db255e5140b5b779c065b94f6c83ff0bf4e"),
-                PinnedFile("encode.int8.onnx", 18_249_187L,
-                    "8774dfba578de027ec6595c2c654a0836434489bc963a0db124a7f181f571acb"),
-                PinnedFile("uncached_decode.int8.onnx", 53_216_096L,
-                    "216737000dd5881a17aa043f6bbd286add33e4c3b0ae257153e2ec15438bdc41"),
-                PinnedFile("cached_decode.int8.onnx", 45_264_830L,
-                    "2aff28bba6a03d8dcf5c9feac45462629bae37317442299f28115ad09da773f6"),
-                PinnedFile("tokens.txt", 436_688L,
-                    "1165c2aeb9f72f457a83be2d459a09054f27490acd9b41bd43794dfd25e296ea"),
+                PinnedFile("decoder_model_merged.ort", 30_412_256L,
+                    "cf524c4862d36e9e5ab032eddc73637efd822d70e868ac575cf1a46e1e4708a0"),
+                PinnedFile("encoder_model.ort", 13_281_600L,
+                    "94e90a4654fc45cdfedb77c4c08e1739f48862998e58fada384b25118134f221"),
+                PinnedFile("tokens.txt", 549_350L,
+                    "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049"),
             ),
         ),
         sherpa(
-            id = "moonshine-base-en",
+            id = "moonshine-v2-base-en",
             languageCodes = setOf("en"),
-            displayName = "Moonshine Base English",
-            // Kept for latency, not for average WER, and the two disagree here.
-            // Canary 180M is smaller and scores better on the Open ASR English
-            // suite (7.12 against 10.07), which is an argument for dropping this
-            // row until you measure the thing a dictation keyboard is actually
-            // waiting on. On arm64 at two threads, decoding the same audio:
+            displayName = "Moonshine v2 Base English",
+            // The largest single gain in the catalog. v2 is half the size of
+            // v1 (141 MB against 287 MB), 2.2 WER points better (7.84 against
+            // 10.07), and faster. Measured on arm64 at two threads, median of
+            // five, same audio -- v1 then v2:
+            //   2.0s  43.7 -> 34.8 ms   4.0s  91.8 -> 74.4   6.6s 157.4 -> 129.7
             //
-            //             Moonshine Base   Canary 180M
-            //   2.0s          48 ms          122 ms
-            //   4.0s         101 ms          236 ms
-            //   6.6s         170 ms          399 ms
-            //
-            // 2.4-2.5x, at every length people actually dictate at. Moonshine
-            // encodes variable-length audio rather than padding to a fixed
-            // window, which is the whole point of the architecture and does not
-            // show up in a WER table computed over meeting and earnings-call
-            // recordings. `scoreModel` already ranks this family above every
-            // other for the same reason.
-            repository = "csukuangfj/sherpa-onnx-moonshine-base-en-int8",
-            revision = "052b0798ad1bf046a140fdd4efcd9426530fa3f5",
-            family = SherpaFamily.MOONSHINE,
-            sizeBytes = 286_929_760L,
-            minimumRamGB = 3,
+            // For context, Canary 180M scores 7.12 on the same suite but takes
+            // 122/236/399 ms for those clips: three times the latency for
+            // 0.7 WER points, which is the wrong trade for a keyboard.
+            repository = "csukuangfj2/sherpa-onnx-moonshine-base-en-quantized-2026-02-27",
+            revision = "8f4d6c58c03d40bcea40043bb7120a878f2bbef6",
+            family = SherpaFamily.MOONSHINE_V2,
+            sizeBytes = 141_300_566L,
+            minimumRamGB = 2,
             languages = "English",
             englishOnly = true,
             files = listOf(
-                PinnedFile("preprocess.onnx", 14_077_290L,
-                    "ffa630d395c5ccf76f5d4954be5b882df76aaf6491519ec01fd82ea7a3819fb2"),
-                PinnedFile("encode.int8.onnx", 50_311_494L,
-                    "7e38770f776f2e5583a53b052936005df2ba5c833d7e09c2a5fd796b94bf73e2"),
-                PinnedFile("uncached_decode.int8.onnx", 122_120_451L,
-                    "c01f4b35093bcac20d352d23a75a539e772964579f9d024a90e5e6f09cae9987"),
-                PinnedFile("cached_decode.int8.onnx", 99_983_837L,
-                    "2db74e51cedf64a8b1be3c8192e0bb5e4923af0e90bd9e87f8e8771873f8ea03"),
-                PinnedFile("tokens.txt", 436_688L,
-                    "1165c2aeb9f72f457a83be2d459a09054f27490acd9b41bd43794dfd25e296ea"),
+                PinnedFile("decoder_model_merged.ort", 109_424_400L,
+                    "d9d7b333af34bc552580576ddcf248a1c6c839e0d3b43b09afb9376ed009899d"),
+                PinnedFile("encoder_model.ort", 31_326_816L,
+                    "7c66495948d0d08ec1af454cd4b5514862ae6511e94712a60e6d83eaec8dc8cf"),
+                PinnedFile("tokens.txt", 549_350L,
+                    "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049"),
             ),
         ),
         sherpa(

@@ -65,7 +65,7 @@ class ModelCatalogQueryTest {
 
     @Test
     fun recommendationWhyNamesTheFitWithoutHardware() {
-        val moonshine = LocalModelCatalog.find("moonshine-tiny-en")!!
+        val moonshine = LocalModelCatalog.find("moonshine-v2-tiny-en")!!
         val why = moonshine.recommendationWhy()
         assertTrue(why.contains("small English"))
         assertTrue(!why.contains("RAM"))

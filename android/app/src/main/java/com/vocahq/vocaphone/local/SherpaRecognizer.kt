@@ -162,6 +162,15 @@ internal class SherpaRecognizer private constructor(
                     ),
                 )
 
+                // The other three fields stay empty, which is how sherpa-onnx
+                // tells the two Moonshine layouts apart.
+                SherpaFamily.MOONSHINE_V2 -> OfflineModelConfig(
+                    moonshine = OfflineMoonshineModelConfig(
+                        encoder = path("encoder_model.ort"),
+                        mergedDecoder = path("decoder_model_merged.ort"),
+                    ),
+                )
+
                 SherpaFamily.DOLPHIN_CTC -> OfflineModelConfig(
                     dolphin = OfflineDolphinModelConfig(model = path("model.int8.onnx")),
                 )

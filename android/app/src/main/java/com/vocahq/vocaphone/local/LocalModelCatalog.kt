@@ -57,6 +57,14 @@ enum class SherpaFamily(
     CANARY(acceptsLanguage = true),
     NEMO_CTC,
     PARAFORMER,
+
+    /**
+     * Moonshine v2: two `.ort` graphs instead of v1's four `.onnx` files. The
+     * preprocessor is folded into the encoder and the cached and uncached
+     * decoders are one merged graph. A separate constant rather than a flag,
+     * because the file names and the sherpa-onnx config fields both differ.
+     */
+    MOONSHINE_V2,
     ;
 
     /**
@@ -492,7 +500,7 @@ object LocalModelCatalog {
      */
     internal fun starterForLanguage(language: String): LocalModelDescriptor? {
         val id = when (language.lowercase(Locale.ROOT)) {
-            "en" -> "moonshine-tiny-en"
+            "en" -> "moonshine-v2-tiny-en"
             "de", "es", "fr" -> "canary-180m-flash"
             // SenseVoice rather than Paraformer for Cantonese: Paraformer is
             // Mandarin and English only, and now that Cantonese is a row in the
@@ -526,12 +534,12 @@ data class ModelPick(val role: ModelPickRole, val model: LocalModelDescriptor)
  * Both Moonshine builds stay ahead of Canary here even though Canary is smaller
  * and scores better on the Open ASR English suite, because this list decides
  * what a keyboard reaches for and Moonshine decodes the same audio 2.4-2.5x
- * faster on arm64. See the note on `moonshine-base-en` in `SherpaModelCatalog`.
+ * faster on arm64. See the note on `moonshine-v2-base-en` in `SherpaModelCatalog`.
  */
 private val ENGLISH_PREFERENCE = listOf(
     "parakeet-tdt-0.6b-v2-en",
-    "moonshine-base-en",
-    "moonshine-tiny-en",
+    "moonshine-v2-base-en",
+    "moonshine-v2-tiny-en",
 )
 
 /** Multilingual models by breadth of coverage, widest first. */

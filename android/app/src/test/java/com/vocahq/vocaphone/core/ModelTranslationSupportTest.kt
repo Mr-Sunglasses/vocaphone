@@ -34,7 +34,7 @@ class ModelTranslationSupportTest {
         assertTrue(targets("dolphin-small-ctc").isEmpty())
         assertTrue(targets("sense-voice").isEmpty())
         // An English-only model has nothing to translate from either way.
-        assertTrue(targets("moonshine-base-en").isEmpty())
+        assertTrue(targets("moonshine-v2-base-en").isEmpty())
         assertTrue(targets("paraformer-zh-small").isEmpty())
     }
 

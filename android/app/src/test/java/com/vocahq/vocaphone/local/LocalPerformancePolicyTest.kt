@@ -74,7 +74,7 @@ class LocalPerformancePolicyTest {
         assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("small-q8_0")!!))
         assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("base-q8_0")!!))
         assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("tiny-q8_0")!!))
-        assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("moonshine-tiny-en")!!))
+        assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("moonshine-v2-tiny-en")!!))
         assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("parakeet-tdt-0.6b-v3")!!))
     }
 }

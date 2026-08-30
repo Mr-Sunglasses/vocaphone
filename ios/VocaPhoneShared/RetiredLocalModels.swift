@@ -70,6 +70,10 @@ enum RetiredLocalModels {
         // it replaces, in 207 MB against 461 MB, with better WER and the only
         // speech-translation path in the catalog.
         table["fast-conformer-ctc-4-lang"] = ["canary-180m-flash"]
+        // Moonshine v2 is half the size of v1, faster, and more accurate, so
+        // the v1 ids retire onto it rather than sitting beside it.
+        table["moonshine-tiny-en"] = ["moonshine-v2-tiny-en"]
+        table["moonshine-base-en"] = ["moonshine-v2-base-en", "moonshine-v2-tiny-en"]
         table["dolphin-base-ctc"] = ["dolphin-small-ctc"]
         // Same weights family, new export: v3 with punctuation. The id changed
         // rather than the pins so an already-downloaded v2 directory is an

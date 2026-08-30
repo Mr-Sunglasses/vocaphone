@@ -63,11 +63,14 @@ struct LocalModelCatalogTests {
         )
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 3, language: "en").id
-                == "moonshine-base-en"
+                == "moonshine-v2-base-en"
         )
+        // Moonshine v2 Base is 141 MB where v1 was 287 MB, so it now fits a
+        // 2 GB phone as well and there is no rung below it worth dropping to.
+        // v2 Tiny stays reachable as the smallest-download pick at 44 MB.
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 2, language: "en").id
-                == "moonshine-tiny-en"
+                == "moonshine-v2-base-en"
         )
     }
 

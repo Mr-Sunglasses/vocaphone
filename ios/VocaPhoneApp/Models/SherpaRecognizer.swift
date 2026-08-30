@@ -62,6 +62,8 @@ final class SherpaRecognizer: @unchecked Sendable {
                 path("preprocess.onnx"), path("encode.int8.onnx"),
                 path("uncached_decode.int8.onnx"), path("cached_decode.int8.onnx")
             ]
+        case .moonshineV2:
+            models = try [path("encoder_model.ort"), path("decoder_model_merged.ort"), "", ""]
         case .canary:
             models = try [path("encoder.int8.onnx"), path("decoder.int8.onnx"), "", ""]
         case .senseVoice, .dolphinCtc, .paraformer:
@@ -241,6 +243,7 @@ private extension SherpaFamily {
         case .canary: 4
         case .nemoCtc: 5
         case .paraformer: 6
+        case .moonshineV2: 7
         }
     }
 }

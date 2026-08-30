@@ -73,6 +73,14 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
             config.model_config.moonshine.uncached_decoder = model3;
             config.model_config.moonshine.cached_decoder = model4;
             break;
+        // Moonshine v2 ships two graphs rather than four: the preprocessor is
+        // folded into the encoder, and the cached and uncached decoders are one
+        // merged graph. The other four fields stay NULL, which is how
+        // sherpa-onnx tells the two layouts apart.
+        case VocaPhoneSherpaMoonshineV2:
+            config.model_config.moonshine.encoder = model1;
+            config.model_config.moonshine.merged_decoder = model2;
+            break;
         case VocaPhoneSherpaDolphinCtc:
             config.model_config.dolphin.model = model1;
             break;
