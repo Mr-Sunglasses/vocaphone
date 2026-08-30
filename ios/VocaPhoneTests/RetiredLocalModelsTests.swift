@@ -102,10 +102,35 @@ struct RetiredLocalModelsTests {
         )
     }
 
-    @Test func anIDFromNeitherTheCatalogNorTheTableHasNoAnswer() {
+    /// The case a 2 GB iPhone on Dolphin Base lands in: every replacement wants
+    /// more memory than it has. Clearing the selection alone would leave
+    /// on-device transcription switched on with nothing behind it, and every
+    /// dictation would record the audio and then fail.
+    @Test func aRetiredModelWithNoReplacementThisDeviceCanRunClearsTheSelection() {
+        #expect(RetiredLocalModels.resolve("dolphin-base-ctc", deviceMemoryGB: 2) == .cleared)
+        #expect(RetiredLocalModels.replacement(for: "dolphin-base-ctc", deviceMemoryGB: 2) == nil)
+        // It fits on a 3 GB device, so nothing is cleared there.
+        #expect(
+            RetiredLocalModels.resolve("dolphin-base-ctc", deviceMemoryGB: 3)
+                == .replaced("dolphin-small-ctc")
+        )
+    }
+
+    @Test func resolveReportsTheThreeOutcomesApart() {
+        #expect(RetiredLocalModels.resolve("openai_whisper-base", deviceMemoryGB: 8) == .unchanged)
+        #expect(RetiredLocalModels.resolve("nobody-shipped-this", deviceMemoryGB: 8) == .unchanged)
+        #expect(
+            RetiredLocalModels.resolve("openai_whisper-medium", deviceMemoryGB: 8)
+                == .replaced("openai_whisper-large-v3-v20240930_626MB")
+        )
+    }
+
+    /// An id this build does not recognise is what a downgrade looks like, so
+    /// it is left alone rather than discarded.
+    @Test func anIDFromNeitherTheCatalogNorTheTableIsLeftAlone() {
         #expect(
             RetiredLocalModels.replacement(for: "something-nobody-shipped", deviceMemoryGB: 8)
-                == nil
+                == "something-nobody-shipped"
         )
     }
 

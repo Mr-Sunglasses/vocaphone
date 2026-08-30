@@ -115,8 +115,56 @@ class RetiredModelsTest {
         )
     }
 
+    /**
+     * An id this build does not recognise is what a downgrade looks like, so it
+     * is left alone rather than discarded.
+     */
     @Test
-    fun `an id from neither the catalog nor the retired table has no answer`() {
-        assertNull(replacement("something-nobody-shipped"))
+    fun `an id from neither the catalog nor the retired table is left alone`() {
+        assertEquals("something-nobody-shipped", replacement("something-nobody-shipped"))
+    }
+
+    /**
+     * The case a 2 GB phone on Dolphin Base lands in: every replacement wants
+     * more memory than it has. Clearing the selection alone would leave
+     * on-device transcription switched on with nothing behind it, and
+     * `deliverLocal` would record the audio and then fail on every dictation.
+     */
+    @Test
+    fun `a retired model with no replacement this phone can run clears the selection`() {
+        assertEquals(
+            RetiredModels.Outcome.Cleared,
+            RetiredModels.resolve("dolphin-base-ctc", totalRamGB = 2, sherpaAvailable = true),
+        )
+        assertNull(replacement("dolphin-base-ctc", ram = 2))
+    }
+
+    @Test
+    fun `resolve reports the three outcomes apart`() {
+        assertEquals(
+            RetiredModels.Outcome.Unchanged,
+            RetiredModels.resolve("small-q8_0", totalRamGB = phone, sherpaAvailable = true),
+        )
+        assertEquals(
+            RetiredModels.Outcome.Unchanged,
+            RetiredModels.resolve("", totalRamGB = phone, sherpaAvailable = true),
+        )
+        assertEquals(
+            RetiredModels.Outcome.Replaced("large-v3-turbo-q8_0"),
+            RetiredModels.resolve("medium.en", totalRamGB = phone, sherpaAvailable = true),
+        )
+    }
+
+    /**
+     * Sherpa is absent from the fdroid flavor and on x86_64, so a retired sherpa
+     * model there has nowhere to go either -- and must take the switch with it
+     * rather than leaving a dead local route.
+     */
+    @Test
+    fun `a retired sherpa model clears the selection where sherpa cannot run`() {
+        assertEquals(
+            RetiredModels.Outcome.Cleared,
+            RetiredModels.resolve("dolphin-base-ctc", totalRamGB = phone, sherpaAvailable = false),
+        )
     }
 }

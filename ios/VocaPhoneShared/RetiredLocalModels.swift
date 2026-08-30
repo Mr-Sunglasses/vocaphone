@@ -83,23 +83,61 @@ enum RetiredLocalModels {
     /// Whether `id` names something the catalog used to ship and no longer does.
     static func isRetired(_ id: String) -> Bool { replacements[id] != nil }
 
-    /// The id `stored` should become, or `stored` unchanged when it is still in
-    /// the catalog and nothing needs to happen.
+    /// What should happen to a stored selection, decided without touching
+    /// storage so it can be reasoned about and tested on its own.
+    enum Outcome: Equatable {
+        /// The selection still names a model in the catalog.
+        case unchanged
+        /// The selection was retired and this is its nearest surviving model.
+        case replaced(String)
+        /// The selection was retired and nothing that replaces it fits this
+        /// device. On-device transcription has to be turned off along with it:
+        /// see `resolve(_:deviceMemoryGB:)`.
+        case cleared
+    }
+
+    /// The id `stored` should become, or nil when it is retired and nothing
+    /// fits. Kept for callers that only want the replacement.
     ///
-    /// Returns nil only when the selection is retired and no replacement fits
-    /// this device, which is the one case where falling through to the ordinary
-    /// recommendation is the right answer.
+    /// An id in neither the catalog nor `replacements` comes back unchanged
+    /// rather than nil: this build does not recognise it, which is what a
+    /// downgrade from a newer one looks like, and discarding a selection on
+    /// that basis would lose a model the user is about to want back. The same
+    /// reason `deleteRetiredModelFiles` deletes only named ids.
     static func replacement(
         for stored: String,
         deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB
     ) -> String? {
-        if LocalModelCatalog.descriptor(for: stored) != nil { return stored }
-        guard let candidates = replacements[stored] else { return nil }
-        return candidates
+        switch resolve(stored, deviceMemoryGB: deviceMemoryGB) {
+        case .unchanged: return stored
+        case let .replaced(id): return id
+        case .cleared: return nil
+        }
+    }
+
+    /// What to do with `stored` on this device.
+    ///
+    /// `cleared` is the case worth being careful about. A 2 GB iPhone on
+    /// `dolphin-base-ctc` has nothing to move to -- every replacement needs more
+    /// memory than it has -- and clearing the model alone would leave on-device
+    /// transcription still switched on with nothing behind it. Every dictation
+    /// would then record the audio and fail at the end with "choose and download
+    /// a model first", forever, which is worse than the honest answer. So the
+    /// switch goes off with the selection, exactly as `LocalModelManager.delete`
+    /// already does when it removes the model in use: the app stops claiming a
+    /// route it cannot take, and setup says so before recording rather than
+    /// after.
+    static func resolve(
+        _ stored: String,
+        deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB
+    ) -> Outcome {
+        if LocalModelCatalog.descriptor(for: stored) != nil { return .unchanged }
+        guard let candidates = replacements[stored] else { return .unchanged }
+        let fitting = candidates
             .lazy
             .compactMap(LocalModelCatalog.descriptor(for:))
-            .first { deviceMemoryGB >= $0.minimumRamGB }?
-            .id
+            .first { deviceMemoryGB >= $0.minimumRamGB }
+        return fitting.map { Outcome.replaced($0.id) } ?? .cleared
     }
 
     /// Rewrite the stored selection once, at launch, before anything reads it.
@@ -110,12 +148,15 @@ enum RetiredLocalModels {
     static func migrateStoredSelection(
         deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB
     ) {
-        guard let stored = LocalTranscriptionPreferences.modelIdentifier,
-              isRetired(stored)
-        else { return }
-        LocalTranscriptionPreferences.modelIdentifier = replacement(
-            for: stored,
-            deviceMemoryGB: deviceMemoryGB
-        )
+        guard let stored = LocalTranscriptionPreferences.modelIdentifier else { return }
+        switch resolve(stored, deviceMemoryGB: deviceMemoryGB) {
+        case .unchanged:
+            break
+        case let .replaced(id):
+            LocalTranscriptionPreferences.modelIdentifier = id
+        case .cleared:
+            LocalTranscriptionPreferences.modelIdentifier = nil
+            LocalTranscriptionPreferences.enabled = false
+        }
     }
 }

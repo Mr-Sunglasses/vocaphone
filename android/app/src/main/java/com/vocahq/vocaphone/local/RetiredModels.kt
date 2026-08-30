@@ -67,25 +67,70 @@ object RetiredModels {
     fun isRetired(id: String): Boolean = id in replacements
 
     /**
-     * The id [stored] should become, or `stored` unchanged when it is still in
-     * the catalog and nothing needs to happen.
+     * What should happen to a stored selection, decided without touching storage
+     * so it can be reasoned about and tested on its own.
+     */
+    sealed interface Outcome {
+        /** The selection still names a model in the catalog. */
+        data object Unchanged : Outcome
+
+        /** The selection was retired and this is its nearest surviving model. */
+        data class Replaced(val id: String) : Outcome
+
+        /**
+         * The selection was retired and nothing that replaces it fits this
+         * device. On-device transcription has to be turned off along with it;
+         * see [resolve].
+         */
+        data object Cleared : Outcome
+    }
+
+    /**
+     * What to do with [stored] on this device.
      *
-     * Returns null only when the selection is retired and no replacement fits
-     * this device, which is the one case where falling through to the ordinary
-     * recommendation is the right answer.
+     * [Outcome.Cleared] is the case worth being careful about. A 2 GB phone on
+     * `dolphin-base-ctc` has nothing to move to -- every replacement needs more
+     * memory than it has -- and clearing the model alone would leave on-device
+     * transcription still switched on with nothing behind it. `deliverLocal`
+     * would then record the audio and fail at the end of every dictation with
+     * "Choose and download an on-device model first", forever. Turning the
+     * switch off with the selection sends the same person to
+     * `GATEWAY_NOT_CONFIGURED` setup *before* recording instead, which is the
+     * honest answer and the actionable one.
+     */
+    fun resolve(
+        stored: String,
+        totalRamGB: Long,
+        sherpaAvailable: Boolean = LocalModelCatalog.sherpaAvailable,
+    ): Outcome {
+        if (stored.isEmpty()) return Outcome.Unchanged
+        if (LocalModelCatalog.find(stored) != null) return Outcome.Unchanged
+        val candidates = replacements[stored] ?: return Outcome.Unchanged
+        val fitting = candidates.firstNotNullOfOrNull { id ->
+            LocalModelCatalog.find(id)
+                ?.takeIf { LocalModelCatalog.isUsableOnDevice(it, totalRamGB, sherpaAvailable) }
+                ?.id
+        }
+        return fitting?.let(Outcome::Replaced) ?: Outcome.Cleared
+    }
+
+    /**
+     * The id [stored] should become, or null when it is retired and nothing
+     * fits. Kept for callers that only want the replacement.
+     *
+     * An id in neither the catalog nor [replacements] comes back unchanged
+     * rather than null: this build does not recognise it, which is what a
+     * downgrade from a newer one looks like, and discarding a selection on that
+     * basis would lose a model the user is about to want back. The same reason
+     * `LocalModelManager.deleteRetiredModelFiles` deletes only named ids.
      */
     fun replacementFor(
         stored: String,
         totalRamGB: Long,
         sherpaAvailable: Boolean = LocalModelCatalog.sherpaAvailable,
-    ): String? {
-        if (stored.isEmpty()) return stored
-        if (LocalModelCatalog.find(stored) != null) return stored
-        val candidates = replacements[stored] ?: return null
-        return candidates.firstNotNullOfOrNull { id ->
-            LocalModelCatalog.find(id)
-                ?.takeIf { LocalModelCatalog.isUsableOnDevice(it, totalRamGB, sherpaAvailable) }
-                ?.id
-        }
+    ): String? = when (val outcome = resolve(stored, totalRamGB, sherpaAvailable)) {
+        is Outcome.Unchanged -> stored
+        is Outcome.Replaced -> outcome.id
+        is Outcome.Cleared -> null
     }
 }

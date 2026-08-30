@@ -134,16 +134,24 @@ class AppContainer(context: Context) {
      */
     private suspend fun migrateRetiredModelSelection() {
         val stored = settings.settings.first().localModelId
-        if (stored.isEmpty() || !RetiredModels.isRetired(stored)) return
-        // Empty when nothing in the replacement list fits this device, which
-        // clears the selection and lets first-run guidance answer instead --
-        // the one case where the ordinary recommendation is the right outcome.
-        settings.setLocalModel(
-            RetiredModels.replacementFor(
+        when (
+            val outcome = RetiredModels.resolve(
                 stored = stored,
                 totalRamGB = localModels.totalRamGB(),
-            ).orEmpty()
-        )
+            )
+        ) {
+            is RetiredModels.Outcome.Unchanged -> Unit
+            is RetiredModels.Outcome.Replaced -> settings.setLocalModel(outcome.id)
+            // Nothing that replaces the retired model fits this phone. Clearing
+            // the selection alone would leave on-device transcription switched
+            // on with nothing behind it, and every dictation would record and
+            // then fail. The switch goes off with it, so setup says so before
+            // recording rather than after.
+            is RetiredModels.Outcome.Cleared -> {
+                settings.setLocalModel("")
+                settings.setLocalTranscriptionEnabled(false)
+            }
+        }
     }
 
     fun purgeExpiredAudio() {

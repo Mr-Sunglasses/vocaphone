@@ -20,6 +20,12 @@ SHA-256 comes from the LFS pointer where the file is stored in LFS (that *is*
 the object's SHA-256, so nothing has to be downloaded). Small files -- tokens
 lists, configs -- are plain git blobs whose git oid is a SHA-1 over different
 bytes, so those are downloaded and hashed locally.
+
+The output is a starting point, not the final entry: some repositories publish
+several precisions of one model side by side (the 2024-07-17 SenseVoice carries
+both `model.int8.onnx` and a 937 MB `model.onnx`). Pin the one the catalog
+actually loads and set `sizeBytes` to the sum of what you kept --
+`check_catalogs.py` verifies that sum against the files you pinned.
 """
 
 from __future__ import annotations
@@ -27,6 +33,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import urllib.error
 import urllib.request
@@ -50,9 +57,20 @@ SKIP_DIRECTORIES = ("test_wavs/",)
 
 
 def _get(url: str) -> bytes:
+    """Fetch one URL from Hugging Face over HTTPS, and only from there.
+
+    Every URL here is built by prefixing the `HF` constant, so a repository name
+    cannot reach another scheme -- but `urlopen` honours `file://` and `ftp://`
+    among others, and this asserts the invariant rather than relying on every
+    future caller preserving it. Nothing in the repository name is escaped
+    either, so the check also catches a name that walks out of the API path.
+    """
+    if not url.startswith(f"{HF}/"):
+        raise SystemExit(f"refusing to fetch {url!r}: not a {HF} URL")
+
     request = urllib.request.Request(url, headers={"User-Agent": "vocaphone-pin-models"})
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310
             return response.read()
     except urllib.error.HTTPError as error:  # pragma: no cover - network path
         raise SystemExit(f"{url}: HTTP {error.code} {error.reason}") from error
@@ -143,6 +161,15 @@ def main() -> int:
         help="kotlin for SherpaModelCatalog.kt, json for the iOS pin manifests",
     )
     args = parser.parse_args()
+
+    # `owner/name`, the only shape a Hugging Face model id takes. Checked here
+    # because the repository is interpolated into a URL path unescaped, so a
+    # name carrying `..` or a query string would reach a different endpoint
+    # than the one the output claims to describe.
+    if not re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", args.repository):
+        raise SystemExit(f"{args.repository!r} is not an owner/name repository id")
+    if not re.fullmatch(r"[A-Za-z0-9._/-]*", args.prefix):
+        raise SystemExit(f"{args.prefix!r} is not a valid path prefix")
 
     revision = resolve_revision(args.repository, args.revision)
     entries = list_files(args.repository, revision, args.prefix, args.all)
