@@ -20,9 +20,11 @@ import java.io.File
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The IME, microphone service and companion app all run in one process and
@@ -98,6 +100,25 @@ class AppContainer(context: Context) {
 
     private val telemetryFlush = TelemetryFlushScheduler(telemetry, applicationScope)
 
+    /**
+     * One-time settings migration, started as early as the container exists.
+     *
+     * Held as a [Job] rather than left anonymous so [dictation] can wait on it:
+     * a dictation that begins before it finishes would read a retired model id
+     * with on-device transcription still switched on, record, and fail.
+     */
+    private val settingsMigration: Job = applicationScope.launch {
+        // Bounded, because the first dictation now waits on this and a settings
+        // read that never returns would otherwise be a keyboard that never
+        // records. Two DataStore reads and at most two writes take milliseconds;
+        // anything beyond this is broken rather than slow, and letting dictation
+        // proceed on the pre-migration settings is a far better failure than
+        // hanging. `refresh()` then sweeps and re-reads on the next launch.
+        withTimeoutOrNull(SETTINGS_MIGRATION_TIMEOUT_MILLIS) {
+            migrateRetiredModelSelection()
+        }
+    }
+
     val dictation = DictationController(
         context = context.applicationContext,
         settings = settings,
@@ -108,11 +129,14 @@ class AppContainer(context: Context) {
         telemetry = telemetry,
         cues = dictationCues,
         scope = applicationScope,
+        awaitSettingsMigration = settingsMigration::join,
     )
 
     init {
         applicationScope.launch {
-            migrateRetiredModelSelection()
+            // The manager reads the selection and sweeps retired downloads, so
+            // it has to see the migrated state rather than race it.
+            settingsMigration.join()
             localModels.refresh()
         }
         telemetryFlush.start()
@@ -152,6 +176,14 @@ class AppContainer(context: Context) {
                 settings.setLocalTranscriptionEnabled(false)
             }
         }
+    }
+
+    private companion object {
+        /**
+         * Long enough for a cold DataStore read on a slow phone, short enough
+         * that nobody waits on it before their first word.
+         */
+        const val SETTINGS_MIGRATION_TIMEOUT_MILLIS = 5_000L
     }
 
     fun purgeExpiredAudio() {

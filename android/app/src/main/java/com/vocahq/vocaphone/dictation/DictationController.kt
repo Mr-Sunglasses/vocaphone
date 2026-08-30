@@ -91,6 +91,21 @@ class DictationController(
     private val telemetry: Telemetry,
     private val cues: DictationTonePlayer,
     private val scope: CoroutineScope,
+    /**
+     * Suspends until one-time settings migration has finished.
+     *
+     * The retired-model migration runs in a coroutine launched from the
+     * application container, while this controller is constructed
+     * synchronously beside it and the keyboard can ask for a dictation as soon
+     * as the process is up. Without this the first dictation after an upgrade
+     * can read the pre-migration settings -- a retired model id with on-device
+     * transcription still enabled -- pass the permission gate, record, and then
+     * fail at `deliverLocal` on an id that is no longer in the catalog.
+     *
+     * Awaiting costs nothing once the migration has completed, which is every
+     * launch but the first after an upgrade.
+     */
+    private val awaitSettingsMigration: suspend () -> Unit = {},
 ) {
     private val _state = MutableStateFlow(DictationState())
     val state: StateFlow<DictationState> = _state.asStateFlow()
@@ -161,6 +176,7 @@ class DictationController(
         cancelRequested = false
         val generation = nextGeneration()
         pipeline = scope.launch {
+            awaitSettingsMigration()
             val configuration = settings.current()
             val missing = missingPermissions(configuration)
             if (missing.isNotEmpty()) {

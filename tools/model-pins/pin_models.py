@@ -70,6 +70,9 @@ def _get(url: str) -> bytes:
 
     request = urllib.request.Request(url, headers={"User-Agent": "vocaphone-pin-models"})
     try:
+        # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        # The guard above restricts the scheme and host to https://huggingface.co,
+        # and `main` validates the repository and prefix before either reaches a URL.
         with urllib.request.urlopen(request, timeout=120) as response:  # noqa: S310
             return response.read()
     except urllib.error.HTTPError as error:  # pragma: no cover - network path
