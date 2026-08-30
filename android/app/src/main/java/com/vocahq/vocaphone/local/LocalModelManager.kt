@@ -168,6 +168,7 @@ class LocalModelManager(
             meteredNetwork = appContext.isOnMeteredNetwork(),
         )
         migrateLegacyLayout()
+        deleteRetiredModelFiles()
         val verified = mutableSetOf<String>()
         val pending = mutableListOf<LocalModelDescriptor>()
         LocalModelCatalog.all.forEach { model ->
@@ -214,6 +215,31 @@ class LocalModelManager(
                 directory.mkdirs()
                 if (!legacy.renameTo(target)) legacy.delete()
             }
+    }
+
+    /**
+     * Reclaim the disk a model still occupies after leaving the catalog.
+     *
+     * Nothing else will: every sweep in here iterates [LocalModelCatalog.all],
+     * and the picker only ever lists catalog rows, so a removed model's files
+     * become unreachable rather than deleted -- and these are not small. A
+     * phone that had collected Whisper Medium and Large v2 is holding three
+     * gigabytes it can no longer see, let alone free.
+     *
+     * Deletes only ids [RetiredModels] names, never "anything not in the
+     * catalog": a directory this build does not recognise may belong to a newer
+     * one the user downgraded from, and guessing there would delete a model
+     * they are about to want back.
+     */
+    private fun deleteRetiredModelFiles() {
+        RetiredModels.replacements.keys.forEach { id ->
+            if (LocalModelCatalog.find(id) != null) return@forEach
+            File(modelRoot, id).takeIf(File::isDirectory)?.deleteRecursively()
+            // Whisper models predating the per-model directory sat in the root
+            // as bare GGML files, and `migrateLegacyLayout` only relocates the
+            // ones still in the catalog.
+            File(modelRoot, "ggml-$id.bin").takeIf(File::isFile)?.delete()
+        }
     }
 
     fun totalRamGB(): Long = totalRamGB

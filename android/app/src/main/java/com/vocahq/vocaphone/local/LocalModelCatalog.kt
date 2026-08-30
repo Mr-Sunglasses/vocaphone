@@ -135,7 +135,12 @@ data class LocalModelDescriptor(
     val translationTargets: Set<String>
         get() = when {
             sherpaFamily == SherpaFamily.CANARY -> languageCodes
-            englishOnly || "distil" in id -> emptySet()
+            // The `distil` special case is gone with the models it was written
+            // for. Distil-Whisper is an English-only distillation that the iOS
+            // catalog listed as "100 languages", so its rows needed excluding
+            // by id from a rule that reads `englishOnly`; nothing in either
+            // catalog is mislabelled that way any more.
+            englishOnly -> emptySet()
             engine == LocalModelEngine.WHISPER -> setOf("en")
             else -> emptySet()
         }
@@ -214,80 +219,42 @@ object LocalModelCatalog {
     private const val WHISPER_REVISION = "5359861c739e955e79d9a303bcbc70fb988958b1"
 
     /**
-     * Quantized builds are included wherever upstream publishes them, because a
-     * phone gets far more out of a q5 large than out of a full small.
+     * The Q8_0 build of each size, multilingual only.
+     *
+     * whisper.cpp is the fallback engine here, not the recommended one: it is
+     * the only engine in the `fdroid` flavor and on x86_64, and the only one a
+     * custom word list can reach. What it has to be is four rungs across the
+     * RAM range that all cover the hundred languages sherpa does not.
+     *
+     * **Q8_0 rather than Q5.** Q5 is the smaller file, which reads like the
+     * mobile-friendly choice, and on the hardware this ships to it is the worse
+     * one on both axes. ggml's ARM-accelerated GEMM/GEMV kernels -- the
+     * `__ARM_FEATURE_MATMUL_INT8` and `__ARM_FEATURE_DOTPROD` paths in
+     * `ggml/src/ggml-cpu/arch/arm/repack.cpp` -- are implemented for
+     * `block_q4_0`, `block_q8_0`, `block_iq4_nl` and `block_mxfp4`. There is no
+     * Q5_0 or Q5_1 path in that file at all, so every Q5 model on an arm64
+     * phone falls back to the generic path while Q8 gets the accelerated one.
+     * whisper.cpp's own checked-in `scripts/bench-all-gg.txt` measures the gap
+     * at 2.5-2.8x on ARM (M2 Ultra, 1024x1024: Q8_0 121.0 GFLOPS against Q5_0
+     * 49.0 and Q5_1 43.9). Q8_0 is also the more accurate build -- near-lossless
+     * against F16, where Q5 costs roughly 0.1-0.3 WER points. Q5's only
+     * advantage is disk footprint, and it pays for that twice.
+     *
+     * **No F16 builds.** Twice the size of Q8_0 for no measurable accuracy gain.
+     *
+     * **No `.en` builds.** English-only whisper is dominated by Moonshine and
+     * Parakeet at a fraction of the size, so the only thing whisper is kept
+     * for here is the language coverage the `.en` builds do not have.
      */
     private val whisper: List<LocalModelDescriptor> = listOf(
-        // Tiny
-        model("tiny-q5_1", "Whisper Tiny Q5", 32_152_673L,
-            "818710568da3ca15689e31a743197b520007872ff9576237bda97bd1b469c3d7", 2, "100 languages"),
-        model("tiny-q8_0", "Whisper Tiny Q8", 43_537_433L,
+        model("tiny-q8_0", "Whisper Tiny", 43_537_433L,
             "c2085835d3f50733e2ff6e4b41ae8a2b8d8110461e18821b09a15c40c42d1cca", 2, "100 languages"),
-        model("tiny", "Whisper Tiny", 77_691_713L,
-            "be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21", 2, "100 languages"),
-        model("tiny.en-q5_1", "Whisper Tiny English Q5", 32_166_155L,
-            "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b", 2, "English", true),
-        model("tiny.en-q8_0", "Whisper Tiny English Q8", 43_550_795L,
-            "5bc2b3860aa151a4c6e7bb095e1fcce7cf12c7b020ca08dcec0c6d018bb7dd94", 2, "English", true),
-        model("tiny.en", "Whisper Tiny English", 77_704_715L,
-            "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f", 2, "English", true),
-        // Base
-        model("base-q5_1", "Whisper Base Q5", 59_707_625L,
-            "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898", 2, "100 languages"),
-        model("base-q8_0", "Whisper Base Q8", 81_768_585L,
+        model("base-q8_0", "Whisper Base", 81_768_585L,
             "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9", 2, "100 languages"),
-        model("base", "Whisper Base", 147_951_465L,
-            "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe", 3, "100 languages"),
-        model("base.en-q5_1", "Whisper Base English Q5", 59_721_011L,
-            "4baf70dd0d7c4247ba2b81fafd9c01005ac77c2f9ef064e00dcf195d0e2fdd2f", 2, "English", true),
-        model("base.en-q8_0", "Whisper Base English Q8", 81_781_811L,
-            "a4d4a0768075e13cfd7e19df3ae2dbc4a68d37d36a7dad45e8410c9a34f8c87e", 2, "English", true),
-        model("base.en", "Whisper Base English", 147_964_211L,
-            "a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002", 3, "English", true),
-        // Small
-        model("small-q5_1", "Whisper Small Q5", 190_085_487L,
-            "ae85e4a935d7a567bd102fe55afc16bb595bdb618e11b2fc7591bc08120411bb", 3, "100 languages"),
-        model("small-q8_0", "Whisper Small Q8", 264_464_607L,
+        model("small-q8_0", "Whisper Small", 264_464_607L,
             "49c8fb02b65e6049d5fa6c04f81f53b867b5ec9540406812c643f177317f779f", 3, "100 languages"),
-        model("small", "Whisper Small", 487_601_967L,
-            "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b", 4, "100 languages"),
-        model("small.en-q5_1", "Whisper Small English Q5", 190_098_681L,
-            "bfdff4894dcb76bbf647d56263ea2a96645423f1669176f4844a1bf8e478ad30", 3, "English", true),
-        model("small.en-q8_0", "Whisper Small English Q8", 264_477_561L,
-            "67a179f608ea6114bd3fdb9060e762b588a3fb3bd00c4387971be4d177958067", 3, "English", true),
-        model("small.en", "Whisper Small English", 487_614_201L,
-            "c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d", 4, "English", true),
-        // Medium
-        model("medium-q5_0", "Whisper Medium Q5", 539_212_467L,
-            "19fea4b380c3a618ec4723c3eef2eb785ffba0d0538cf43f8f235e7b3b34220f", 4, "100 languages"),
-        model("medium-q8_0", "Whisper Medium Q8", 823_369_779L,
-            "42a1ffcbe4167d224232443396968db4d02d4e8e87e213d3ee2e03095dea6502", 6, "100 languages"),
-        model("medium", "Whisper Medium", 1_533_763_059L,
-            "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208", 8, "100 languages"),
-        model("medium.en-q5_0", "Whisper Medium English Q5", 539_225_533L,
-            "76733e26ad8fe1c7a5bf7531a9d41917b2adc0f20f2e4f5531688a8c6cd88eb0", 4, "English", true),
-        model("medium.en-q8_0", "Whisper Medium English Q8", 823_382_461L,
-            "43fa2cd084de5a04399a896a9a7a786064e221365c01700cea4666005218f11c", 6, "English", true),
-        model("medium.en", "Whisper Medium English", 1_533_774_781L,
-            "cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356", 8, "English", true),
-        // Large v3 Turbo
-        model("large-v3-turbo-q5_0", "Whisper Large v3 Turbo Q5", 574_041_195L,
-            "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 4, "100 languages"),
-        model("large-v3-turbo-q8_0", "Whisper Large v3 Turbo Q8", 874_188_075L,
+        model("large-v3-turbo-q8_0", "Whisper Large v3 Turbo", 874_188_075L,
             "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1", 6, "100 languages"),
-        model("large-v3-turbo", "Whisper Large v3 Turbo", 1_624_555_275L,
-            "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69", 8, "100 languages"),
-        // Large
-        model("large-v3-q5_0", "Whisper Large v3 Q5", 1_081_140_203L,
-            "d75795ecff3f83b5faa89d1900604ad8c780abd5739fae406de19f23ecd98ad1", 6, "100 languages"),
-        model("large-v3", "Whisper Large v3", 3_095_033_483L,
-            "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2", 12, "100 languages"),
-        model("large-v2-q5_0", "Whisper Large v2 Q5", 1_080_732_091L,
-            "3a214837221e4530dbc1fe8d734f302af393eb30bd0ed046042ebf4baf70f6f2", 6, "100 languages"),
-        model("large-v2-q8_0", "Whisper Large v2 Q8", 1_656_129_691L,
-            "fef54e6d898246a65c8285bfa83bd1807e27fadf54d5d4e81754c47634737e8c", 8, "100 languages"),
-        model("large-v2", "Whisper Large v2", 3_094_623_691L,
-            "9a423fe4d40c82774b6af34115b8b935f34152246eb19e80e376071d3f999487", 12, "100 languages"),
     )
 
     val all: List<LocalModelDescriptor> = whisper + SherpaModelCatalog.all
@@ -412,13 +379,26 @@ object LocalModelCatalog {
             .minByOrNull { it.minimumRamGB }
             ?: all.first()
 
-    /** The fastest sensible Whisper fallback for this CPU class. */
-    fun recommendedWhisper(profile: DeviceProfile): LocalModelDescriptor =
-        whisper.filter { profile.fits(it) }
-            .maxByOrNull { scoreModel(it, profile) }
+    /**
+     * The fastest sensible Whisper fallback for this CPU class.
+     *
+     * Never leads with a model [isSlowOnMobile] marks, even where the hardware
+     * could hold it. This used to be true by accident: first run picks the
+     * English build where it can, and the `.en` builds stopped at medium, so a
+     * flagship without sherpa was offered a 539 MB download rather than a large
+     * one. Dropping the `.en` builds removed that ceiling and left a first run
+     * that opens by asking for 874 MB on a phone radio. The large build stays in
+     * the catalog and stays selectable -- what it must not be is the automatic
+     * answer, which is the same rule the picker's own "heavier" mark encodes.
+     */
+    fun recommendedWhisper(profile: DeviceProfile): LocalModelDescriptor {
+        val fitting = whisper.filter { profile.fits(it) }
+        val firstRun = fitting.filterNot { isSlowOnMobile(it) }.ifEmpty { fitting }
+        return firstRun.maxByOrNull { scoreModel(it, profile) }
             ?: whisper.filter { isUsableOnDevice(it, profile.totalRamGB, sherpaAvailable = false) }
                 .minByOrNull { it.sizeBytes }
             ?: whisper.first()
+    }
 
     /**
      * Whisper medium and larger are too heavy for live dictation on a phone.
@@ -494,19 +474,33 @@ object LocalModelCatalog {
      *
      * Moonshine has no multilingual build, so English gets the tiny English
      * checkpoint and other languages get a compact specialist, not Parakeet.
+     *
+     * This is the first transcription most people ever see, so "compact" is a
+     * tie-breaker here and never the whole argument. Two entries used to be
+     * chosen on size alone and have moved:
+     *
+     *  - The Dolphin starters pointed at `dolphin-base-ctc`, which the Dolphin
+     *    paper measures at 33.3% average WER against `dolphin-small-ctc`'s
+     *    25.2%. Handing a Hindi or Bengali speaker the least accurate model in
+     *    the catalog on first launch cost far more than the 146 MB it saved,
+     *    and base is no longer in the catalog at all.
+     *  - Mandarin pointed at `paraformer-zh-small`, an 82 MB 2024 build, when
+     *    SenseVoice is stronger on both Mandarin and Cantonese. Paraformer
+     *    stays in the catalog as the smallest download that covers Chinese --
+     *    that is the one role it wins -- but it is not what first run leads
+     *    with.
      */
     internal fun starterForLanguage(language: String): LocalModelDescriptor? {
         val id = when (language.lowercase(Locale.ROOT)) {
             "en" -> "moonshine-tiny-en"
             "de", "es", "fr" -> "canary-180m-flash"
-            "zh" -> "paraformer-zh-small"
             // SenseVoice rather than Paraformer for Cantonese: Paraformer is
             // Mandarin and English only, and now that Cantonese is a row in the
             // picker, leading with a model that cannot transcribe it is worse
             // than having offered nothing.
-            "yue", "ja", "ko" -> "sense-voice"
-            "ru" -> "giga-am-ctc-ru"
-            in DOLPHIN_STARTER_LANGUAGES -> "dolphin-base-ctc"
+            "zh", "yue", "ja", "ko" -> "sense-voice"
+            "ru" -> "giga-am-ctc-v3-ru"
+            in DOLPHIN_STARTER_LANGUAGES -> "dolphin-small-ctc"
             else -> null
         }
         return id?.let { find(it) }
@@ -526,10 +520,19 @@ enum class ModelPickRole(val label: String) {
 
 data class ModelPick(val role: ModelPickRole, val model: LocalModelDescriptor)
 
-/** English models best first. Parakeet leads wherever the budget allows it. */
+/**
+ * English models best first. Parakeet leads wherever the budget allows it.
+ *
+ * Moonshine Base used to sit between these two and no longer earns the row:
+ * Canary 180M is 207 MB to its 287 MB and averages 7.12 WER on the Open ASR
+ * English suite against Moonshine Base's 10.07, while also covering three more
+ * languages. Moonshine Tiny stays because nothing else answers the question it
+ * answers -- lowest latency on a two-second utterance, at roughly a fifth of
+ * Whisper Tiny's compute.
+ */
 private val ENGLISH_PREFERENCE = listOf(
     "parakeet-tdt-0.6b-v2-en",
-    "moonshine-base-en",
+    "canary-180m-flash",
     "moonshine-tiny-en",
 )
 
@@ -539,7 +542,6 @@ private val MULTILINGUAL_PREFERENCE = listOf(
     "canary-180m-flash",
     "dolphin-small-ctc",
     "sense-voice",
-    "dolphin-base-ctc",
 )
 
 /** Indic and nearby languages Dolphin actually covers well at first-run size. */

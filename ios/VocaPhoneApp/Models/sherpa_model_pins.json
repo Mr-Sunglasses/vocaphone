@@ -4,107 +4,184 @@
       "repository": "csukuangfj/sherpa-onnx-moonshine-tiny-en-int8",
       "revision": "bf2b762c076d8ea61e2af0b3851c9564fb77552e",
       "files": [
-        {"path": "preprocess.onnx", "size": 6800738, "sha256": "f33addce61a143460fe753b5ee5b7db255e5140b5b779c065b94f6c83ff0bf4e"},
-        {"path": "encode.int8.onnx", "size": 18249187, "sha256": "8774dfba578de027ec6595c2c654a0836434489bc963a0db124a7f181f571acb"},
-        {"path": "uncached_decode.int8.onnx", "size": 53216096, "sha256": "216737000dd5881a17aa043f6bbd286add33e4c3b0ae257153e2ec15438bdc41"},
-        {"path": "cached_decode.int8.onnx", "size": 45264830, "sha256": "2aff28bba6a03d8dcf5c9feac45462629bae37317442299f28115ad09da773f6"},
-        {"path": "tokens.txt", "size": 436688, "sha256": "1165c2aeb9f72f457a83be2d459a09054f27490acd9b41bd43794dfd25e296ea"}
-      ]
-    },
-    "moonshine-base-en": {
-      "repository": "csukuangfj/sherpa-onnx-moonshine-base-en-int8",
-      "revision": "052b0798ad1bf046a140fdd4efcd9426530fa3f5",
-      "files": [
-        {"path": "preprocess.onnx", "size": 14077290, "sha256": "ffa630d395c5ccf76f5d4954be5b882df76aaf6491519ec01fd82ea7a3819fb2"},
-        {"path": "encode.int8.onnx", "size": 50311494, "sha256": "7e38770f776f2e5583a53b052936005df2ba5c833d7e09c2a5fd796b94bf73e2"},
-        {"path": "uncached_decode.int8.onnx", "size": 122120451, "sha256": "c01f4b35093bcac20d352d23a75a539e772964579f9d024a90e5e6f09cae9987"},
-        {"path": "cached_decode.int8.onnx", "size": 99983837, "sha256": "2db74e51cedf64a8b1be3c8192e0bb5e4923af0e90bd9e87f8e8771873f8ea03"},
-        {"path": "tokens.txt", "size": 436688, "sha256": "1165c2aeb9f72f457a83be2d459a09054f27490acd9b41bd43794dfd25e296ea"}
+        {
+          "path": "preprocess.onnx",
+          "size": 6800738,
+          "sha256": "f33addce61a143460fe753b5ee5b7db255e5140b5b779c065b94f6c83ff0bf4e"
+        },
+        {
+          "path": "encode.int8.onnx",
+          "size": 18249187,
+          "sha256": "8774dfba578de027ec6595c2c654a0836434489bc963a0db124a7f181f571acb"
+        },
+        {
+          "path": "uncached_decode.int8.onnx",
+          "size": 53216096,
+          "sha256": "216737000dd5881a17aa043f6bbd286add33e4c3b0ae257153e2ec15438bdc41"
+        },
+        {
+          "path": "cached_decode.int8.onnx",
+          "size": 45264830,
+          "sha256": "2aff28bba6a03d8dcf5c9feac45462629bae37317442299f28115ad09da773f6"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 436688,
+          "sha256": "1165c2aeb9f72f457a83be2d459a09054f27490acd9b41bd43794dfd25e296ea"
+        }
       ]
     },
     "parakeet-tdt-0.6b-v2-en": {
       "repository": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
       "revision": "1ab9323565ddb038682214b292f588070a538ce2",
       "files": [
-        {"path": "encoder.int8.onnx", "size": 652184296, "sha256": "a32b12d17bbbc309d0686fbbcc2987b5e9b8333a7da83fa6b089f0a2acd651ab"},
-        {"path": "decoder.int8.onnx", "size": 7257753, "sha256": "b6bb64963457237b900e496ee9994b59294526439fbcc1fecf705b31a15c6b4e"},
-        {"path": "joiner.int8.onnx", "size": 1739080, "sha256": "7946164367946e7f9f29a122407c3252b680dbae9a51343eb2488d057c3c43d2"},
-        {"path": "tokens.txt", "size": 9384, "sha256": "ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d"}
+        {
+          "path": "encoder.int8.onnx",
+          "size": 652184296,
+          "sha256": "a32b12d17bbbc309d0686fbbcc2987b5e9b8333a7da83fa6b089f0a2acd651ab"
+        },
+        {
+          "path": "decoder.int8.onnx",
+          "size": 7257753,
+          "sha256": "b6bb64963457237b900e496ee9994b59294526439fbcc1fecf705b31a15c6b4e"
+        },
+        {
+          "path": "joiner.int8.onnx",
+          "size": 1739080,
+          "sha256": "7946164367946e7f9f29a122407c3252b680dbae9a51343eb2488d057c3c43d2"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 9384,
+          "sha256": "ec182b70dd42113aff6c5372c75cac58c952443eb22322f57bbd7f53977d497d"
+        }
       ]
     },
     "parakeet-tdt-0.6b-v3": {
       "repository": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
       "revision": "2bda32ec70b097a55adaa07d9a7173915b43cc78",
       "files": [
-        {"path": "encoder.int8.onnx", "size": 652184281, "sha256": "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247"},
-        {"path": "decoder.int8.onnx", "size": 11845275, "sha256": "179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e"},
-        {"path": "joiner.int8.onnx", "size": 6355277, "sha256": "3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3"},
-        {"path": "tokens.txt", "size": 93939, "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"}
+        {
+          "path": "encoder.int8.onnx",
+          "size": 652184281,
+          "sha256": "acfc2b4456377e15d04f0243af540b7fe7c992f8d898d751cf134c3a55fd2247"
+        },
+        {
+          "path": "decoder.int8.onnx",
+          "size": 11845275,
+          "sha256": "179e50c43d1a9de79c8a24149a2f9bac6eb5981823f2a2ed88d655b24248db4e"
+        },
+        {
+          "path": "joiner.int8.onnx",
+          "size": 6355277,
+          "sha256": "3164c13fc2821009440d20fcb5fdc78bff28b4db2f8d0f0b329101719c0948b3"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 93939,
+          "sha256": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+        }
       ]
     },
     "sense-voice": {
-      "repository": "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09",
-      "revision": "355f4d4884d8afd08aef04b9007a8556d7b463b2",
+      "repository": "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+      "revision": "2365baeacb507f821a0c8120fcee3d484dba7a07",
       "files": [
-        {"path": "model.int8.onnx", "size": 237115547, "sha256": "12ca1a2ae7ecf3e0019ef2822307ee0b5cadc9196569e379b4c4026f8205276d"},
-        {"path": "tokens.txt", "size": 315894, "sha256": "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc"}
-      ]
-    },
-    "dolphin-base-ctc": {
-      "repository": "csukuangfj/sherpa-onnx-dolphin-base-ctc-multi-lang-int8-2025-04-02",
-      "revision": "1f3a53d0ecf658f8b0974e2cfde368eee40732fa",
-      "files": [
-        {"path": "model.int8.onnx", "size": 103729802, "sha256": "a3aa46c97f3f60f135ff949793cb05fabe7a0b3c484dc2e3cc699d354ee11b76"},
-        {"path": "tokens.txt", "size": 504662, "sha256": "c3788261a51df1899ea4b210b552cd42139204de72c0ad60f6cebb199078872e"}
+        {
+          "path": "model.int8.onnx",
+          "size": 239233841,
+          "sha256": "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 315894,
+          "sha256": "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc"
+        }
       ]
     },
     "dolphin-small-ctc": {
       "repository": "csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02",
       "revision": "c8b6689509acfcd744c04e5e169164f9ac4cae32",
       "files": [
-        {"path": "model.int8.onnx", "size": 249658954, "sha256": "c1afcb9265de0ebd853eb8f570b371f399a6f9b2b9af9a3cb17c2e509171e697"},
-        {"path": "tokens.txt", "size": 504662, "sha256": "c3788261a51df1899ea4b210b552cd42139204de72c0ad60f6cebb199078872e"}
+        {
+          "path": "model.int8.onnx",
+          "size": 249658954,
+          "sha256": "c1afcb9265de0ebd853eb8f570b371f399a6f9b2b9af9a3cb17c2e509171e697"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 504662,
+          "sha256": "c3788261a51df1899ea4b210b552cd42139204de72c0ad60f6cebb199078872e"
+        }
       ]
     },
     "canary-180m-flash": {
       "repository": "csukuangfj/sherpa-onnx-nemo-canary-180m-flash-en-es-de-fr-int8",
       "revision": "9077164e0d3dd1d5353743e89ceaa1d3a770838c",
       "files": [
-        {"path": "encoder.int8.onnx", "size": 132678643, "sha256": "7a75b4e2a5857a6dcc0819503bbe3fad66943db4a3ccf21d3f27c633667d303f"},
-        {"path": "decoder.int8.onnx", "size": 74437848, "sha256": "e41a2ab9c0c2fe81a1e8ade5a45fb02a74bc4db7d1f91b89a54a25e2cf79cba2"},
-        {"path": "tokens.txt", "size": 53555, "sha256": "2dae6fc7815f9640645e0c765522b278ee0cef49b482d91f6913e334628d3e77"}
+        {
+          "path": "encoder.int8.onnx",
+          "size": 132678643,
+          "sha256": "7a75b4e2a5857a6dcc0819503bbe3fad66943db4a3ccf21d3f27c633667d303f"
+        },
+        {
+          "path": "decoder.int8.onnx",
+          "size": 74437848,
+          "sha256": "e41a2ab9c0c2fe81a1e8ade5a45fb02a74bc4db7d1f91b89a54a25e2cf79cba2"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 53555,
+          "sha256": "2dae6fc7815f9640645e0c765522b278ee0cef49b482d91f6913e334628d3e77"
+        }
       ]
     },
-    "fast-conformer-ctc-4-lang": {
-      "repository": "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-en-de-es-fr-14288",
-      "revision": "a472770bdbc5861d7e671dcdc349edaedf144cd0",
+    "giga-am-ctc-v3-ru": {
+      "repository": "csukuangfj/sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
+      "revision": "4fb5407ff028a69fec516cdf4c10fac9ddea7c16",
       "files": [
-        {"path": "model.onnx", "size": 461313377, "sha256": "d34d91c848a7fff5215fdd987bf3ef3df0e45a584bb3c74ec9c682f5742fab83"},
-        {"path": "tokens.txt", "size": 24057, "sha256": "29effa220ddd8fcae96d2d6c78c2e24de4cd9dfaa4ceb86d54dc3d22259c1f93"}
-      ]
-    },
-    "giga-am-ctc-ru": {
-      "repository": "csukuangfj/sherpa-onnx-nemo-ctc-giga-am-v2-russian-2025-04-19",
-      "revision": "f5555086f28ef11d600e30d76b61d75fd9685196",
-      "files": [
-        {"path": "model.int8.onnx", "size": 236457977, "sha256": "d0ce4aef25f58d495781ee8f05320d9e51b821f47804e07aa6549b53a72f67e8"},
-        {"path": "tokens.txt", "size": 196, "sha256": "17cc514451bcceac9c280068c71502f8448f99e9fb1456b8d0761651fd0392f2"}
+        {
+          "path": "model.int8.onnx",
+          "size": 224893661,
+          "sha256": "d5fea8df94263c285e54b21e5774b707c707192d3bdbeffd7b1eb07fb6743b35"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 2007,
+          "sha256": "142de7570b3de5b3035ce111a89c228e80e6085273731d944093ddf24fa539cd"
+        }
       ]
     },
     "parakeet-tdt-ctc-ja": {
       "repository": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8",
       "revision": "bef18eb066808c90bd0f5df5be685767b0732de8",
       "files": [
-        {"path": "model.int8.onnx", "size": 655542604, "sha256": "3addd00ef5bd1742078389e540b77394e4a508bdf2f4c9ad1b4a76d93e76598e"},
-        {"path": "tokens.txt", "size": 28557, "sha256": "732f64c53909f2620c713f4106b487d92e6f54a6915b3cd3d1dbd32f9f4f392a"}
+        {
+          "path": "model.int8.onnx",
+          "size": 655542604,
+          "sha256": "3addd00ef5bd1742078389e540b77394e4a508bdf2f4c9ad1b4a76d93e76598e"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 28557,
+          "sha256": "732f64c53909f2620c713f4106b487d92e6f54a6915b3cd3d1dbd32f9f4f392a"
+        }
       ]
     },
     "paraformer-zh-small": {
       "repository": "csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09",
       "revision": "63ddc3cd0f2810b68289a7b3876e62ef5d53d6df",
       "files": [
-        {"path": "model.int8.onnx", "size": 81828675, "sha256": "3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec"},
-        {"path": "tokens.txt", "size": 75352, "sha256": "4b2d964e18b9cf139b473003b6698fb2ed9a2a5ec55b93daa677b28f578897aa"}
+        {
+          "path": "model.int8.onnx",
+          "size": 81828675,
+          "sha256": "3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 75352,
+          "sha256": "4b2d964e18b9cf139b473003b6698fb2ed9a2a5ec55b93daa677b28f578897aa"
+        }
       ]
     }
   }

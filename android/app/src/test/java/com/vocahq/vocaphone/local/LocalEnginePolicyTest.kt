@@ -14,7 +14,7 @@ class LocalEnginePolicyTest {
             shouldReloadLocalEngine(
                 engine = LocalModelEngine.WHISPER,
                 loadedModelID = null,
-                requestedModelID = "small-q5_1",
+                requestedModelID = "small-q8_0",
                 loadedLanguage = null,
                 requestedLanguage = "en",
                 loadedQuality = null,
@@ -28,8 +28,8 @@ class LocalEnginePolicyTest {
         assertFalse(
             shouldReloadLocalEngine(
                 engine = LocalModelEngine.WHISPER,
-                loadedModelID = "small-q5_1",
-                requestedModelID = "small-q5_1",
+                loadedModelID = "small-q8_0",
+                requestedModelID = "small-q8_0",
                 loadedLanguage = "en",
                 requestedLanguage = "hi",
                 loadedQuality = TranscriptionQuality.BALANCED,
@@ -43,8 +43,8 @@ class LocalEnginePolicyTest {
         assertTrue(
             shouldReloadLocalEngine(
                 engine = LocalModelEngine.WHISPER,
-                loadedModelID = "small-q5_1",
-                requestedModelID = "base-q5_1",
+                loadedModelID = "small-q8_0",
+                requestedModelID = "base-q8_0",
                 loadedLanguage = "en",
                 requestedLanguage = "en",
                 loadedQuality = TranscriptionQuality.BALANCED,

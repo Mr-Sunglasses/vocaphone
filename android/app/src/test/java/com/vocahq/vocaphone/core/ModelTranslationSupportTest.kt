@@ -25,18 +25,17 @@ class ModelTranslationSupportTest {
         // Canary is a speech-translation model across the languages it lists.
         assertEquals(canary, targets("canary-180m-flash"))
         // Whisper's translate task has exactly one trained target.
-        assertEquals(whisper, targets("small-q5_1"))
-        assertEquals(whisper, targets("large-v3"))
-        // An English-only whisper build has nothing to translate from.
-        assertTrue(targets("small.en").isEmpty())
+        assertEquals(whisper, targets("small-q8_0"))
+        assertEquals(whisper, targets("large-v3-turbo-q8_0"))
         // The transducers and CTC models transcribe and nothing else. Parakeet
         // v3 is the one people expect to translate because it is multilingual.
         assertTrue(targets("parakeet-tdt-0.6b-v3").isEmpty())
         assertTrue(targets("parakeet-tdt-0.6b-v2-en").isEmpty())
         assertTrue(targets("dolphin-small-ctc").isEmpty())
         assertTrue(targets("sense-voice").isEmpty())
-        assertTrue(targets("moonshine-base-en").isEmpty())
-        assertTrue(targets("fast-conformer-ctc-4-lang").isEmpty())
+        // An English-only model has nothing to translate from either way.
+        assertTrue(targets("moonshine-tiny-en").isEmpty())
+        assertTrue(targets("paraformer-zh-small").isEmpty())
     }
 
     @Test
@@ -154,7 +153,7 @@ class ModelTranslationSupportTest {
         fun needsSource(id: String) =
             requireNotNull(LocalModelCatalog.find(id)).translationNeedsExplicitSource
         assertTrue(needsSource("canary-180m-flash"))
-        assertFalse(needsSource("small-q5_1"))
+        assertFalse(needsSource("small-q8_0"))
         assertFalse(needsSource("parakeet-tdt-0.6b-v3"))
     }
 

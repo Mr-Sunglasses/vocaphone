@@ -13,8 +13,8 @@ class ModelCatalogQueryTest {
 
     @Test
     fun queryMatchesDisplayNameAndHidesUnrelatedSizes() {
-        val hits = filterModelCatalog(models, "tiny q5")
-        assertTrue(hits.any { it.id == "tiny-q5_1" })
+        val hits = filterModelCatalog(models, "tiny")
+        assertTrue(hits.any { it.id == "tiny-q8_0" })
         assertTrue(hits.none { it.id.startsWith("large") })
     }
 
@@ -35,14 +35,16 @@ class ModelCatalogQueryTest {
     @Test
     fun sizeFilterKeepsOnlySmallerModels() {
         val hits = filterModelCatalog(models, "", size = ModelSizeFilter.UNDER_100MB)
-        assertTrue(hits.any { it.id == "tiny-q5_1" })
+        assertTrue(hits.any { it.id == "tiny-q8_0" })
         assertTrue(hits.all { it.sizeBytes < 100_000_000L })
     }
 
     @Test
     fun englishFilterKeepsEnglishOnlyBuilds() {
         val hits = filterModelCatalog(models, "", language = ModelLanguageFilter.ENGLISH)
-        assertTrue(hits.any { it.id.contains(".en") || it.englishOnly })
+        // No `.en` whisper builds remain, so the English-only rows are all
+        // sherpa models that declare it outright.
+        assertTrue(hits.any { it.englishOnly })
         assertTrue(hits.all { it.englishOnly })
     }
 
@@ -54,7 +56,7 @@ class ModelCatalogQueryTest {
 
     @Test
     fun catalogMetaNamesEngineAndSize() {
-        val model = LocalModelCatalog.find("tiny-q5_1")!!
+        val model = LocalModelCatalog.find("tiny-q8_0")!!
         val meta = model.catalogMeta(recommended = true)
         assertTrue(meta.contains("MB"))
         assertTrue(meta.contains("Whisper"))
@@ -72,14 +74,14 @@ class ModelCatalogQueryTest {
         assertTrue(!why.contains("—"))
         val canary = LocalModelCatalog.find("canary-180m-flash")!!
         assertTrue(canary.recommendationWhy().contains("language"))
-        val whisper = LocalModelCatalog.find("tiny-q5_1")!!
+        val whisper = LocalModelCatalog.find("tiny-q8_0")!!
         assertTrue(whisper.recommendationWhy().contains("Whisper"))
         assertTrue(!whisper.recommendationWhy().contains("SHA-256"))
     }
 
     @Test
     fun setupMetaIsOnlySizeAndLanguages() {
-        val model = LocalModelCatalog.find("tiny-q5_1")!!
+        val model = LocalModelCatalog.find("tiny-q8_0")!!
         val meta = model.setupMeta()
         assertTrue(meta.contains("MB"))
         assertTrue(meta.contains(model.languages))
@@ -112,7 +114,10 @@ class ModelCatalogQueryTest {
             catalogOpen = true,
         )
 
-        assertTrue(models.size >= 30)
+        // Long enough that hiding it behind "More models" is the point. The
+        // catalog is deliberately much shorter than it was; this guards the
+        // premise of the test, not the size of the catalog.
+        assertTrue(models.size >= 10)
         assertTrue(!closed.showCatalog)
         assertTrue(closed.catalog.isEmpty())
         assertTrue(closed.recommended?.id == recommended.id)
@@ -128,7 +133,7 @@ class ModelCatalogQueryTest {
         assertTrue(withInstalled.catalog.isEmpty())
         assertTrue(open.showCatalog)
         assertTrue(open.catalog.size == available.size)
-        assertTrue(open.catalog.size >= 30)
+        assertTrue(open.catalog.size >= 9)
     }
 
     @Test
@@ -163,7 +168,7 @@ class ModelCatalogQueryTest {
 
     @Test
     fun recommendedDownloadDoesNotAlsoShowTheBusyBanner() {
-        val recommended = LocalModelCatalog.find("tiny-q5_1")!!
+        val recommended = LocalModelCatalog.find("tiny-q8_0")!!
 
         assertFalse(
             showPickerBusyBanner(
@@ -181,7 +186,7 @@ class ModelCatalogQueryTest {
         )
         assertTrue(
             showPickerBusyBanner(
-                downloadingId = "large-v3-turbo-q5_0",
+                downloadingId = "large-v3-turbo-q8_0",
                 preparingName = null,
                 recommended = recommended,
             ),

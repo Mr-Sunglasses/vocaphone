@@ -17,17 +17,14 @@ struct ModelTranslationSupportTests {
         // Canary is a speech-translation model across the languages it lists.
         #expect(try targets("canary-180m-flash") == canary)
         // Whisper's translate task has exactly one trained target.
-        #expect(try targets("openai_whisper-small") == whisper)
+        #expect(try targets("openai_whisper-small_216MB") == whisper)
         // An English-only build has nothing to translate from.
-        #expect(try targets("openai_whisper-small.en").isEmpty)
+        #expect(try targets("moonshine-tiny-en").isEmpty)
         // The transducers and CTC models transcribe and nothing else. Parakeet
         // v3 is the one people expect to translate because it is multilingual.
         #expect(try targets("parakeet-tdt-0.6b-v3").isEmpty)
         #expect(try targets("sense-voice").isEmpty)
-        // Distil-whisper is an English-only distillation; the catalog still
-        // says "100 languages", but it has no translate task.
-        #expect(try targets("distil-whisper_distil-large-v3").isEmpty)
-        #expect(try targets("distil-whisper_distil-large-v3_turbo").isEmpty)
+        #expect(try targets("dolphin-small-ctc").isEmpty)
     }
 
     @Test func offIsAlwaysSelectableAndATargetOnlyWhereTrained() {
@@ -121,7 +118,7 @@ struct ModelTranslationSupportTests {
             try #require(LocalModelCatalog.descriptor(for: id)).translationNeedsExplicitSource
         }
         #expect(try needsSource("canary-180m-flash"))
-        #expect(try !needsSource("openai_whisper-small"))
+        #expect(try !needsSource("openai_whisper-small_216MB"))
         #expect(try !needsSource("parakeet-tdt-0.6b-v3"))
     }
 

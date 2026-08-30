@@ -90,6 +90,11 @@ internal object WhisperCpuConfig {
      * phone and throttles the following pass. A POCO F1 running the same
      * 6.6-second full-precision Small sample twice measured 20.8/45.9 seconds
      * with six workers and 16.4/18.7 seconds with four.
+     *
+     * The catalog no longer ships a full-precision build, so today only Large
+     * v3 Turbo reaches the lower ceiling. The `-q` test is kept rather than
+     * simplified away because it turns on how long the model runs, not on what
+     * it is called, and the measurement above is expensive to rediscover.
      */
     internal fun whisperThreadCount(availableProcessors: Int, modelID: String): Int {
         val modelClass = whisperClass(modelID)

@@ -3,15 +3,14 @@ import Testing
 struct LocalModelCatalogTests {
     @Test func sherpaModelsAreAvailableAlongsideWhisperKit() {
         let sherpa = LocalModelCatalog.all.filter { $0.engine == .sherpaOnnx }
-        #expect(sherpa.count == 12)
+        #expect(sherpa.count == 9)
         #expect(sherpa.allSatisfy { $0.repository != nil && $0.revision != nil })
         #expect(sherpa.allSatisfy { $0.sherpaFamily != nil })
     }
 
     @Test func sherpaLanguageContractsMatchTheirFamilies() {
         #expect(LocalModelCatalog.descriptor(for: "canary-180m-flash")?.languageCodes == ["en", "de", "es", "fr"])
-        #expect(LocalModelCatalog.descriptor(for: "fast-conformer-ctc-4-lang")?.languageCodes == ["en", "de", "es", "fr"])
-        #expect(LocalModelCatalog.descriptor(for: "giga-am-ctc-ru")?.languageCodes == ["ru"])
+        #expect(LocalModelCatalog.descriptor(for: "giga-am-ctc-v3-ru")?.languageCodes == ["ru"])
         // Detecting the language is not the same as covering every language:
         // Parakeet v3 decides for itself, and knows exactly 25.
         let parakeet = LocalModelCatalog.descriptor(for: "parakeet-tdt-0.6b-v3")
@@ -24,7 +23,7 @@ struct LocalModelCatalogTests {
         let senseVoice = LocalModelCatalog.descriptor(for: "sense-voice")
         #expect(senseVoice?.detectsLanguageAutomatically == false)
         #expect(senseVoice?.languageCodes == ["zh", "en", "ja", "ko", "yue"])
-        #expect(LocalModelCatalog.descriptor(for: "dolphin-base-ctc")?.languageCodes.contains("hi") == true)
+        #expect(LocalModelCatalog.descriptor(for: "dolphin-small-ctc")?.languageCodes.contains("hi") == true)
     }
 
     /// The point of declaring Parakeet's coverage: every one of its 25 languages
@@ -44,7 +43,7 @@ struct LocalModelCatalogTests {
     /// Cantonese is language 100. Offering it on a Whisper build that stops at
     /// 99 would not fail, it would silently decode against the wrong token.
     @Test func cantoneseIsOfferedOnlyWhereItDecodes() {
-        let small = LocalModelCatalog.descriptor(for: "openai_whisper-small")
+        let small = LocalModelCatalog.descriptor(for: "openai_whisper-small_216MB")
         #expect(small?.selectableLanguageCodes.contains("yue") == false)
         #expect(small?.selectableLanguageCodes.contains("hi") == true)
         let largeV3 = LocalModelCatalog.all.first { $0.id.contains("large-v3") }
@@ -62,13 +61,16 @@ struct LocalModelCatalogTests {
             LocalModelCatalog.recommended(deviceMemoryGB: 4, language: "en").id
                 == "parakeet-tdt-0.6b-v2-en"
         )
+        // Below Parakeet's budget, Canary rather than the Moonshine builds this
+        // used to reach: 207 MB at 7.12 average WER against Moonshine Base's
+        // 287 MB at 10.07, and it needs only 2 GB.
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 3, language: "en").id
-                == "moonshine-base-en"
+                == "canary-180m-flash"
         )
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 2, language: "en").id
-                == "moonshine-tiny-en"
+                == "canary-180m-flash"
         )
     }
 
@@ -179,7 +181,7 @@ struct LocalModelCatalogTests {
         // multilingual and English answers next to it.
         let russian = LocalModelCatalog.recommendations(deviceMemoryGB: 8, language: "ru")
         #expect(russian[0].role == .regional)
-        #expect(russian[0].model.id == "giga-am-ctc-ru")
+        #expect(russian[0].model.id == "giga-am-ctc-v3-ru")
         #expect(russian[1].model.id == "parakeet-tdt-0.6b-v3")
         #expect(russian.count >= 3)
     }

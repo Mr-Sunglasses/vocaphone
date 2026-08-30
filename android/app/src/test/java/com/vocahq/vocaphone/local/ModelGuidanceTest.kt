@@ -42,9 +42,9 @@ class ModelGuidanceTest {
             ModelGuidanceIntent("de", ModelGuidancePriority.LIGHTER),
         )
 
-        assertEquals("tiny-q5_1", result.model?.id)
+        assertEquals("tiny-q8_0", result.model?.id)
         assertEquals("German", result.languageName)
-        assertTrue(result.downloadDetail?.contains("32 MB") == true)
+        assertTrue(result.downloadDetail?.contains("43 MB") == true)
     }
 
 
@@ -121,7 +121,7 @@ class ModelGuidanceTest {
         )
 
         assertEquals("ru", result.intent.language)
-        assertEquals("giga-am-ctc-ru", result.model?.id)
+        assertEquals("giga-am-ctc-v3-ru", result.model?.id)
     }
 
     @Test

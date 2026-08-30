@@ -36,30 +36,6 @@ internal object SherpaModelCatalog {
             ),
         ),
         sherpa(
-            id = "moonshine-base-en",
-            languageCodes = setOf("en"),
-            displayName = "Moonshine Base English",
-            repository = "csukuangfj/sherpa-onnx-moonshine-base-en-int8",
-            revision = "052b0798ad1bf046a140fdd4efcd9426530fa3f5",
-            family = SherpaFamily.MOONSHINE,
-            sizeBytes = 286_929_760L,
-            minimumRamGB = 3,
-            languages = "English",
-            englishOnly = true,
-            files = listOf(
-                PinnedFile("preprocess.onnx", 14_077_290L,
-                    "ffa630d395c5ccf76f5d4954be5b882df76aaf6491519ec01fd82ea7a3819fb2"),
-                PinnedFile("encode.int8.onnx", 50_311_494L,
-                    "7e38770f776f2e5583a53b052936005df2ba5c833d7e09c2a5fd796b94bf73e2"),
-                PinnedFile("uncached_decode.int8.onnx", 122_120_451L,
-                    "c01f4b35093bcac20d352d23a75a539e772964579f9d024a90e5e6f09cae9987"),
-                PinnedFile("cached_decode.int8.onnx", 99_983_837L,
-                    "2db74e51cedf64a8b1be3c8192e0bb5e4923af0e90bd9e87f8e8771873f8ea03"),
-                PinnedFile("tokens.txt", 436_688L,
-                    "1165c2aeb9f72f457a83be2d459a09054f27490acd9b41bd43794dfd25e296ea"),
-            ),
-        ),
-        sherpa(
             id = "parakeet-tdt-0.6b-v2-en",
             languageCodes = setOf("en"),
             displayName = "Parakeet TDT 0.6B English",
@@ -110,35 +86,37 @@ internal object SherpaModelCatalog {
             // here really does pin the decoder rather than only the punctuation.
             detectsLanguage = false,
             displayName = "SenseVoice Small",
-            repository = "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09",
-            revision = "355f4d4884d8afd08aef04b9007a8556d7b463b2",
+            // Pinned to the 2024-07-17 export. The newer 2025-09-09 build
+            // decodes badly against both runtimes this repository ships, and it
+            // was the one in the catalog. Measured on macOS arm64 with the same
+            // sherpa-onnx versions -- v1.12.34 (iOS) and v1.13.6 (Android) --
+            // against the model's own `test_wavs`:
+            //
+            //   ja  2025-09-09  "家中学便当制持合五十円学校贩売交"
+            //       2024-07-17  "うちの中学は弁当制で持っていけない場合は..."
+            //   ko  2025-09-09  "如万性 하면서面 훨씬过呀"
+            //       2024-07-17  "조금만 생각을 하면서 살면 훨씬 편할 거야"
+            //   en  2025-09-09  "THE TRIVAL CHIEFTHIN CALLED FOR THE BOY..."
+            //       2024-07-17  "the tribal chieftain called for the boy..."
+            //   zh  2025-09-09  "开放时间早上九点至下午五点"
+            //       2024-07-17  "开饭时间早上九点至下午五点"
+            //
+            // Japanese and Korean come back as Chinese characters, English
+            // loses its casing and its words, and Chinese picks the wrong one.
+            // Cantonese is identical on both, so nothing is lost by the older
+            // export. Both runtimes fail the same way, so this is the export
+            // and not a version range: re-measure before moving the pin.
+            repository = "csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+            revision = "2365baeacb507f821a0c8120fcee3d484dba7a07",
             family = SherpaFamily.SENSE_VOICE,
-            sizeBytes = 237_431_441L,
+            sizeBytes = 239_549_735L,
             minimumRamGB = 2,
             languages = "Mandarin · Cantonese · English · Japanese · Korean",
             files = listOf(
-                PinnedFile("model.int8.onnx", 237_115_547L,
-                    "12ca1a2ae7ecf3e0019ef2822307ee0b5cadc9196569e379b4c4026f8205276d"),
+                PinnedFile("model.int8.onnx", 239_233_841L,
+                    "c71f0ce00bec95b07744e116345e33d8cbbe08cef896382cf907bf4b51a2cd51"),
                 PinnedFile("tokens.txt", 315_894L,
                     "f449eb28dc567533d7fa59be34e2abca8784f771850c78a47fb731a31429a1dc"),
-            ),
-        ),
-        sherpa(
-            id = "dolphin-base-ctc",
-            languageCodes = DOLPHIN_LANGUAGES,
-            detectsLanguage = true,
-            displayName = "Dolphin Base",
-            repository = "csukuangfj/sherpa-onnx-dolphin-base-ctc-multi-lang-int8-2025-04-02",
-            revision = "1f3a53d0ecf658f8b0974e2cfde368eee40732fa",
-            family = SherpaFamily.DOLPHIN_CTC,
-            sizeBytes = 104_234_464L,
-            minimumRamGB = 2,
-            languages = "40 East Asian languages",
-            files = listOf(
-                PinnedFile("model.int8.onnx", 103_729_802L,
-                    "a3aa46c97f3f60f135ff949793cb05fabe7a0b3c484dc2e3cc699d354ee11b76"),
-                PinnedFile("tokens.txt", 504_662L,
-                    "c3788261a51df1899ea4b210b552cd42139204de72c0ad60f6cebb199078872e"),
             ),
         ),
         sherpa(
@@ -179,37 +157,24 @@ internal object SherpaModelCatalog {
             ),
         ),
         sherpa(
-            id = "fast-conformer-ctc-4-lang",
-            languageCodes = setOf("en", "de", "es", "fr"),
-            displayName = "Fast Conformer CTC",
-            repository = "csukuangfj/sherpa-onnx-nemo-fast-conformer-ctc-en-de-es-fr-14288",
-            revision = "a472770bdbc5861d7e671dcdc349edaedf144cd0",
-            family = SherpaFamily.NEMO_CTC,
-            sizeBytes = 461_337_434L,
-            minimumRamGB = 3,
-            languages = "English · German · Spanish · French",
-            files = listOf(
-                PinnedFile("model.onnx", 461_313_377L,
-                    "d34d91c848a7fff5215fdd987bf3ef3df0e45a584bb3c74ec9c682f5742fab83"),
-                PinnedFile("tokens.txt", 24_057L,
-                    "29effa220ddd8fcae96d2d6c78c2e24de4cd9dfaa4ceb86d54dc3d22259c1f93"),
-            ),
-        ),
-        sherpa(
-            id = "giga-am-ctc-ru",
+            id = "giga-am-ctc-v3-ru",
             languageCodes = setOf("ru"),
             displayName = "GigaAM CTC Russian",
-            repository = "csukuangfj/sherpa-onnx-nemo-ctc-giga-am-v2-russian-2025-04-19",
-            revision = "f5555086f28ef11d600e30d76b61d75fd9685196",
+            // v3 rather than v2, and the `punct` export rather than the plain
+            // one: a bare CTC model emits an unpunctuated stream, which is the
+            // one thing dictation cannot paper over. The token table grows from
+            // 196 bytes to 2 KB because of it.
+            repository = "csukuangfj/sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
+            revision = "4fb5407ff028a69fec516cdf4c10fac9ddea7c16",
             family = SherpaFamily.NEMO_CTC,
-            sizeBytes = 236_458_173L,
+            sizeBytes = 224_895_668L,
             minimumRamGB = 2,
             languages = "Russian",
             files = listOf(
-                PinnedFile("model.int8.onnx", 236_457_977L,
-                    "d0ce4aef25f58d495781ee8f05320d9e51b821f47804e07aa6549b53a72f67e8"),
-                PinnedFile("tokens.txt", 196L,
-                    "17cc514451bcceac9c280068c71502f8448f99e9fb1456b8d0761651fd0392f2"),
+                PinnedFile("model.int8.onnx", 224_893_661L,
+                    "d5fea8df94263c285e54b21e5774b707c707192d3bdbeffd7b1eb07fb6743b35"),
+                PinnedFile("tokens.txt", 2_007L,
+                    "142de7570b3de5b3035ce111a89c228e80e6085273731d944093ddf24fa539cd"),
             ),
         ),
         sherpa(

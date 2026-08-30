@@ -9,11 +9,14 @@ class LocalPerformancePolicyTest {
 
     @Test
     fun `whisper worker count is capped for sustained phone inference`() {
-        assertEquals(2, WhisperCpuConfig.whisperThreadCount(4, "base-q5_1"))
-        assertEquals(6, WhisperCpuConfig.whisperThreadCount(8, "base-q5_1"))
-        assertEquals(6, WhisperCpuConfig.whisperThreadCount(8, "small-q5_1"))
+        assertEquals(2, WhisperCpuConfig.whisperThreadCount(4, "base-q8_0"))
+        assertEquals(6, WhisperCpuConfig.whisperThreadCount(8, "base-q8_0"))
+        assertEquals(6, WhisperCpuConfig.whisperThreadCount(8, "small-q8_0"))
+        assertEquals(4, WhisperCpuConfig.whisperThreadCount(16, "large-v3-turbo-q8_0"))
+        // No full-precision build is in the catalog any more, but the ceiling
+        // turns on how long a model runs rather than on its name, so a build
+        // without a `-q` still gets four workers if one is ever added back.
         assertEquals(4, WhisperCpuConfig.whisperThreadCount(8, "small"))
-        assertEquals(4, WhisperCpuConfig.whisperThreadCount(16, "large-v3-q5_0"))
     }
 
     @Test
@@ -37,10 +40,10 @@ class LocalPerformancePolicyTest {
 
     @Test
     fun `only small whisper families use a cropped encoder window`() {
-        assertTrue(LocalModelCatalog.find("tiny-q5_1")!!.cropsAudioContext)
-        assertTrue(LocalModelCatalog.find("small-q5_1")!!.cropsAudioContext)
-        assertFalse(LocalModelCatalog.find("medium-q5_0")!!.cropsAudioContext)
-        assertFalse(LocalModelCatalog.find("large-v3-turbo-q5_0")!!.cropsAudioContext)
+        assertTrue(LocalModelCatalog.find("tiny-q8_0")!!.cropsAudioContext)
+        assertTrue(LocalModelCatalog.find("base-q8_0")!!.cropsAudioContext)
+        assertTrue(LocalModelCatalog.find("small-q8_0")!!.cropsAudioContext)
+        assertFalse(LocalModelCatalog.find("large-v3-turbo-q8_0")!!.cropsAudioContext)
     }
 
     @Test
@@ -53,9 +56,9 @@ class LocalPerformancePolicyTest {
             sherpaAvailable = true,
         )
         val parakeet = LocalModelCatalog.find("parakeet-tdt-0.6b-v3")!!
-        val whisperBase = LocalModelCatalog.find("base-q5_1")!!
-        val whisperSmall = LocalModelCatalog.find("small-q5_1")!!
-        val whisperLarge = LocalModelCatalog.find("large-v3")!!
+        val whisperBase = LocalModelCatalog.find("base-q8_0")!!
+        val whisperSmall = LocalModelCatalog.find("small-q8_0")!!
+        val whisperLarge = LocalModelCatalog.find("large-v3-turbo-q8_0")!!
         assertTrue(parakeet.sizeBytes > whisperBase.sizeBytes)
         assertFalse(LocalModelCatalog.needsHeavierWarning(parakeet, poco))
         assertTrue(LocalModelCatalog.needsHeavierWarning(whisperLarge, poco))
@@ -64,15 +67,13 @@ class LocalPerformancePolicyTest {
     }
 
     @Test
-    fun `medium and large whisper models are marked slow on phones`() {
-        assertTrue(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("large-v3")!!))
-        assertTrue(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("large-v3-turbo")!!))
-        assertTrue(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("large-v3-turbo-q5_0")!!))
-        assertTrue(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("medium")!!))
-        assertTrue(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("medium-q5_0")!!))
-        assertTrue(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("medium-q8_0")!!))
-        assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("small-q5_1")!!))
-        assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("tiny-q5_1")!!))
+    fun `large whisper models are marked slow on phones`() {
+        // Medium is gone from the catalog; large-v3-turbo is the only rung left
+        // above the class this mark starts at.
+        assertTrue(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("large-v3-turbo-q8_0")!!))
+        assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("small-q8_0")!!))
+        assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("base-q8_0")!!))
+        assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("tiny-q8_0")!!))
         assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("moonshine-tiny-en")!!))
         assertFalse(LocalModelCatalog.isSlowOnMobile(LocalModelCatalog.find("parakeet-tdt-0.6b-v3")!!))
     }

@@ -35,7 +35,7 @@ class LocalEngineEndToEndTest {
             InstrumentationRegistry.getArguments().getString("localModelE2E") == "true",
         )
         val manager = LocalModelManager(context)
-        val model = requireNotNull(LocalModelCatalog.find("tiny-q5_1"))
+        val model = requireNotNull(LocalModelCatalog.find("tiny-q8_0"))
 
         manager.download(model)
         assertTrue("download did not report success", manager.isDownloaded(model.id))

@@ -95,13 +95,13 @@ class DiagnosticsReportTest {
     fun `local speech names the phone instead of a stale gateway engine`() {
         val settings = configured.copy(
             localTranscriptionEnabled = true,
-            localModelId = "tiny-q5_1",
+            localModelId = "tiny-q8_0",
         )
 
         val report = diagnosticsReport(info, settings, ready)
 
-        assertTrue(report.contains("Speech: On this phone · Whisper Tiny Q5"))
-        assertTrue(report.contains("Local model: tiny-q5_1"))
+        assertTrue(report.contains("Speech: On this phone · Whisper Tiny"))
+        assertTrue(report.contains("Local model: tiny-q8_0"))
         assertTrue(report.contains("Quality: Balanced"))
         assertFalse(report.contains("Engine: moonshine:en"))
         assertFalse(report.contains("homelabone"))
@@ -115,7 +115,7 @@ class DiagnosticsReportTest {
             totalStorageBytes = 128_000_000_000L,
             availStorageBytes = 12_000_000_000L,
             modelStorageBytes = 340_000_000L,
-            downloadedModelIds = listOf("base-q5_1", "tiny-q5_1"),
+            downloadedModelIds = listOf("base-q8_0", "tiny-q8_0"),
             cpuCores = 8,
             abi = "arm64-v8a",
             soc = "Google Tensor",
@@ -125,12 +125,12 @@ class DiagnosticsReportTest {
 
         val report = diagnosticsReport(
             info,
-            configured.copy(localTranscriptionEnabled = true, localModelId = "tiny-q5_1"),
+            configured.copy(localTranscriptionEnabled = true, localModelId = "tiny-q8_0"),
             ready,
             onDevice = onDevice,
         )
 
-        assertTrue(report.contains("Downloaded models: base-q5_1, tiny-q5_1 (2)"))
+        assertTrue(report.contains("Downloaded models: base-q8_0, tiny-q8_0 (2)"))
         assertTrue(report.contains("Model storage: 340 MB"))
         assertTrue(report.contains("RAM: 8.0 GB total, 1.2 GB available"))
         assertTrue(report.contains("Storage: 12.0 GB free of 128.0 GB"))

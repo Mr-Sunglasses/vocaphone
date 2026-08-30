@@ -123,8 +123,8 @@ fun DeviceProfile.fits(model: LocalModelDescriptor): Boolean {
  * Whisper entries are scored by distance from the class this tier wants.
  * RAM alone never promotes an old phone to a large encoder: devices without a
  * declared Android media performance class stay on base, including the
- * Snapdragon 845 generation. q5 is the phone default; adding a catalog row
- * does not need a new branch here.
+ * Snapdragon 845 generation. Adding a catalog row does not need a new branch
+ * here.
  */
 fun scoreModel(model: LocalModelDescriptor, profile: DeviceProfile): Int {
     if (!profile.fits(model)) return Int.MIN_VALUE
@@ -164,17 +164,18 @@ private fun whisperTarget(profile: DeviceProfile): Int = when (profile.tier) {
     }
 }
 
+/**
+ * Distance from the whisper class this tier wants, and nothing else.
+ *
+ * This used to carry a quantization term as well, preferring q5 on ordinary
+ * phones and penalising it on flagships. Both halves were wrong. ggml has no
+ * ARM repack kernel for q5 at all, so a q5 model runs the generic path on every
+ * arm64 device while q8 gets `MATMUL_INT8`/`DOTPROD` -- q5 was the slower build
+ * everywhere, not just on flagships, and slightly the less accurate one. The
+ * catalog now ships one quantization per size, so there is no quantization
+ * choice left to score; see the `whisper` list in `LocalModelCatalog`.
+ */
 private fun whisperClassScore(id: String, profile: DeviceProfile): Int {
     val distance = abs(whisperClass(id) - whisperTarget(profile))
-    var score = 50 - distance * 12
-    val declaredFlagship = profile.performanceClass >= 34
-    score += when {
-        "q5" in id && declaredFlagship -> -4
-        "q5" in id -> 10
-        "q8" in id && declaredFlagship -> -2
-        "q8" in id -> 2
-        declaredFlagship -> 8
-        else -> -6
-    }
-    return score
+    return 50 - distance * 12
 }

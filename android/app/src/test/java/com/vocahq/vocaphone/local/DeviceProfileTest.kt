@@ -69,7 +69,7 @@ class DeviceProfileTest {
     @Test
     fun `a regional language leads with its own specialist and still offers the rest`() {
         val picks = LocalModelCatalog.recommendations(profile(8, language = "ru"))
-        assertEquals("giga-am-ctc-ru", picks[0].model.id)
+        assertEquals("giga-am-ctc-v3-ru", picks[0].model.id)
         assertEquals(ModelPickRole.REGIONAL, picks[0].role)
         // The multilingual and English answers stay on offer next to it.
         assertEquals("parakeet-tdt-0.6b-v3", picks[1].model.id)
@@ -112,11 +112,14 @@ class DeviceProfileTest {
             "canary-180m-flash",
             LocalModelCatalog.recommended(profile(8, language = "fr")).id,
         )
+        // SenseVoice rather than the smaller Paraformer: first run leads with
+        // the more accurate model on Mandarin, and Paraformer cannot transcribe
+        // Cantonese at all. Paraformer keeps its place as the smallest download
+        // that covers Chinese.
         assertEquals(
-            "paraformer-zh-small",
+            "sense-voice",
             LocalModelCatalog.recommended(profile(8, language = "zh")).id,
         )
-        // Paraformer is Mandarin and English only, so Cantonese gets SenseVoice.
         assertEquals(
             "sense-voice",
             LocalModelCatalog.recommended(profile(8, language = "yue")).id,
@@ -130,11 +133,14 @@ class DeviceProfileTest {
             LocalModelCatalog.recommended(profile(8, language = "ko")).id,
         )
         assertEquals(
-            "giga-am-ctc-ru",
+            "giga-am-ctc-v3-ru",
             LocalModelCatalog.recommended(profile(8, language = "ru")).id,
         )
+        // Dolphin Small, not Base: the paper puts Base at 33.3% average WER
+        // against Small's 25.2%, and this is the first transcription a Hindi
+        // speaker ever sees.
         assertEquals(
-            "dolphin-base-ctc",
+            "dolphin-small-ctc",
             LocalModelCatalog.recommended(profile(8, language = "hi")).id,
         )
         // Italian has no specialist in the catalog, so the widest multilingual
@@ -153,31 +159,34 @@ class DeviceProfileTest {
 
     @Test
     fun `without sherpa the class picks a matching whisper, not the largest file`() {
-        // English leads, so these are the English builds of the same class.
+        // Every whisper build is multilingual now -- the English-only ones were
+        // dominated by Moonshine and Parakeet at a fraction of the size -- so
+        // English and Italian land on the same rung rather than on `.en` and
+        // its multilingual twin.
         assertEquals(
-            "tiny.en-q5_1",
+            "tiny-q8_0",
             LocalModelCatalog.recommended(profile(2, sherpa = false)).id,
         )
         assertEquals(
-            "base.en-q5_1",
+            "base-q8_0",
             LocalModelCatalog.recommended(profile(4, sherpa = false)).id,
         )
         assertEquals(
-            "base.en-q5_1",
+            "base-q8_0",
             LocalModelCatalog.recommended(profile(8, mpc = 0, sherpa = false)).id,
         )
-        // Large v3 / turbo stays in the catalog with a slow-on-phone mark.
-        // First-run must not start a 1.6 GB download even on a flagship.
+        // Large v3 Turbo stays in the catalog with a slow-on-phone mark.
+        // First-run must not open with an 874 MB download even on a flagship.
         val flagship = LocalModelCatalog.recommended(profile(12, mpc = 34, sherpa = false))
         assertEquals(LocalModelEngine.WHISPER, flagship.engine)
         assertTrue(flagship.sizeBytes < 600_000_000L)
         assertTrue(!flagship.id.contains("large"))
         assertEquals(
-            "small.en-q5_1",
+            "small-q8_0",
             LocalModelCatalog.recommended(profile(16, sherpa = false)).id,
         )
         assertEquals(
-            "small-q5_1",
+            "small-q8_0",
             LocalModelCatalog.recommended(profile(16, sherpa = false, language = "it")).id,
         )
     }
@@ -192,15 +201,18 @@ class DeviceProfileTest {
             sherpa = false,
         )
         assertEquals(DeviceTier.FAST, pocoF1.tier)
-        assertEquals("base-q5_1", LocalModelCatalog.recommendedWhisper(pocoF1).id)
-        assertEquals("base.en-q5_1", LocalModelCatalog.recommended(pocoF1).id)
+        assertEquals("base-q8_0", LocalModelCatalog.recommendedWhisper(pocoF1).id)
+        assertEquals("base-q8_0", LocalModelCatalog.recommended(pocoF1).id)
     }
 
     @Test
     fun `constrained sherpa stays on a small family that fits the budget`() {
+        // Canary rather than the Moonshine Base this used to reach: 207 MB at
+        // 7.12 average WER against 287 MB at 10.07, and three more languages.
         val pick = LocalModelCatalog.recommended(profile(3))
-        assertEquals(SherpaFamily.MOONSHINE, pick.sherpaFamily)
+        assertEquals(SherpaFamily.CANARY, pick.sherpaFamily)
         assertTrue(pick.minimumRamGB <= 3)
+        assertTrue(pick.sizeBytes < 250_000_000L)
     }
 
     @Test

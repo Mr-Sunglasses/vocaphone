@@ -12,6 +12,7 @@ import com.vocahq.vocaphone.data.recentProcessExits
 import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
 import com.vocahq.vocaphone.local.LocalModelManager
+import com.vocahq.vocaphone.local.RetiredModels
 import com.vocahq.vocaphone.settings.SettingsRepository
 import com.vocahq.vocaphone.telemetry.Telemetry
 import com.vocahq.vocaphone.telemetry.TelemetryFlushScheduler
@@ -20,6 +21,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -109,8 +111,39 @@ class AppContainer(context: Context) {
     )
 
     init {
-        applicationScope.launch { localModels.refresh() }
+        applicationScope.launch {
+            migrateRetiredModelSelection()
+            localModels.refresh()
+        }
         telemetryFlush.start()
+    }
+
+    /**
+     * Move a stored selection off a model that has left the catalog.
+     *
+     * `local_model_id` holds an id verbatim, so a catalog that stops shipping a
+     * row strands whoever had picked it: `LocalModelCatalog.find` returns null
+     * and the app silently re-derives a first-run recommendation. Someone who
+     * deliberately downloaded Whisper Medium would come back to Tiny, with
+     * nothing on screen to say why.
+     *
+     * Runs before the first [LocalModelManager.refresh] so the manager sees the
+     * migrated id, and writes the replacement back rather than translating on
+     * every read -- the stored value is shared with the keyboard process, which
+     * has no reason to know the catalog's history.
+     */
+    private suspend fun migrateRetiredModelSelection() {
+        val stored = settings.settings.first().localModelId
+        if (stored.isEmpty() || !RetiredModels.isRetired(stored)) return
+        // Empty when nothing in the replacement list fits this device, which
+        // clears the selection and lets first-run guidance answer instead --
+        // the one case where the ordinary recommendation is the right outcome.
+        settings.setLocalModel(
+            RetiredModels.replacementFor(
+                stored = stored,
+                totalRamGB = localModels.totalRamGB(),
+            ).orEmpty()
+        )
     }
 
     fun purgeExpiredAudio() {

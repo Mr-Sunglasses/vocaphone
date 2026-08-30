@@ -1,0 +1,121 @@
+import Foundation
+
+/// Where a stored selection goes when the model it names has left the catalog.
+///
+/// The chosen model id is persisted verbatim in the App Group so the keyboard
+/// and the app agree on it, which means shrinking the catalog strands everyone
+/// who had picked one of the removed rows: `LocalModelCatalog.descriptor(for:)`
+/// returns nil and the app quietly re-derives a first-run recommendation.
+/// Someone who deliberately downloaded Whisper Medium would come back to the
+/// smallest model in the catalog, with nothing on screen to say why.
+///
+/// Each entry is a preference *list* rather than a single id, because "nearest"
+/// has to survive the device: a 4 GB iPhone cannot hold the build that replaces
+/// Medium on quality, so the fallback steps down the surviving ladder instead of
+/// off it. `replacement(for:deviceMemoryGB:)` resolves the list against what the
+/// device can actually run.
+///
+/// Mirrors `RetiredModels.kt`. The two catalogs differ -- Core ML here,
+/// whisper.cpp GGML there -- so the tables differ; the rule does not.
+enum RetiredLocalModels {
+
+    /// Retired id to its replacements, best first.
+    ///
+    /// The WhisperKit rows collapse three axes that no longer exist in the
+    /// catalog: the `.en` builds, the several compressions of one set of
+    /// weights, and the sizes that were never viable on a phone. Anything that
+    /// still has a rung of its own lands on it; the rest move up to the 626 MB
+    /// Large v3 Turbo build and step down where that will not fit.
+    static let replacements: [String: [String]] = {
+        var table: [String: [String]] = [:]
+
+        // Whisper: same rung, surviving build.
+        for id in ["openai_whisper-tiny", "openai_whisper-tiny.en", "openai_whisper-base.en"] {
+            table[id] = ["openai_whisper-base"]
+        }
+        for id in [
+            "openai_whisper-small",
+            "openai_whisper-small.en",
+            "openai_whisper-small.en_217MB"
+        ] {
+            table[id] = ["openai_whisper-small_216MB", "openai_whisper-base"]
+        }
+
+        // Whisper: no surviving rung, so promote and let the device decide.
+        //
+        // The four Distil rows belong here rather than beside the other English
+        // models: Distil-Whisper is an English-only distillation that this
+        // catalog advertised as "100 languages", and it scores 9.7 against
+        // large-v3's 8.4 on Distil-Whisper's own short-form evaluation. There is
+        // nothing to preserve about the choice except its size class.
+        for id in [
+            "openai_whisper-medium", "openai_whisper-medium.en",
+            "openai_whisper-large-v3-v20240930", "openai_whisper-large-v3-v20240930_turbo",
+            "openai_whisper-large-v3-v20240930_547MB",
+            "openai_whisper-large-v3-v20240930_turbo_632MB",
+            "openai_whisper-large-v3_947MB", "openai_whisper-large-v3_turbo_954MB",
+            "openai_whisper-large-v2_949MB", "openai_whisper-large-v2_turbo_955MB",
+            "distil-whisper_distil-large-v3", "distil-whisper_distil-large-v3_turbo",
+            "distil-whisper_distil-large-v3_594MB",
+            "distil-whisper_distil-large-v3_turbo_600MB"
+        ] {
+            table[id] = [
+                "openai_whisper-large-v3-v20240930_626MB",
+                "openai_whisper-small_216MB",
+                "openai_whisper-base"
+            ]
+        }
+
+        // Sherpa. Canary is both smaller and more accurate than Moonshine Base
+        // (207 MB at 7.12 average WER against 287 MB at 10.07) and covers three
+        // more languages, so it takes both of the rows it replaced.
+        table["moonshine-base-en"] = ["canary-180m-flash", "moonshine-tiny-en"]
+        table["fast-conformer-ctc-4-lang"] = ["canary-180m-flash"]
+        table["dolphin-base-ctc"] = ["dolphin-small-ctc"]
+        // Same weights family, new export: v3 with punctuation. The id changed
+        // rather than the pins so an already-downloaded v2 directory is an
+        // unknown model to be swept, not a SHA-256 mismatch on a known one.
+        table["giga-am-ctc-ru"] = ["giga-am-ctc-v3-ru"]
+
+        return table
+    }()
+
+    /// Whether `id` names something the catalog used to ship and no longer does.
+    static func isRetired(_ id: String) -> Bool { replacements[id] != nil }
+
+    /// The id `stored` should become, or `stored` unchanged when it is still in
+    /// the catalog and nothing needs to happen.
+    ///
+    /// Returns nil only when the selection is retired and no replacement fits
+    /// this device, which is the one case where falling through to the ordinary
+    /// recommendation is the right answer.
+    static func replacement(
+        for stored: String,
+        deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB
+    ) -> String? {
+        if LocalModelCatalog.descriptor(for: stored) != nil { return stored }
+        guard let candidates = replacements[stored] else { return nil }
+        return candidates
+            .lazy
+            .compactMap(LocalModelCatalog.descriptor(for:))
+            .first { deviceMemoryGB >= $0.minimumRamGB }?
+            .id
+    }
+
+    /// Rewrite the stored selection once, at launch, before anything reads it.
+    ///
+    /// Writing back rather than translating on every read keeps the history of
+    /// the catalog out of the keyboard process, which shares this value and has
+    /// no reason to know it.
+    static func migrateStoredSelection(
+        deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB
+    ) {
+        guard let stored = LocalTranscriptionPreferences.modelIdentifier,
+              isRetired(stored)
+        else { return }
+        LocalTranscriptionPreferences.modelIdentifier = replacement(
+            for: stored,
+            deviceMemoryGB: deviceMemoryGB
+        )
+    }
+}
