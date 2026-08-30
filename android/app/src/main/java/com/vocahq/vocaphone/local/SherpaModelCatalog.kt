@@ -186,24 +186,40 @@ internal object SherpaModelCatalog {
             ),
         ),
         sherpa(
-            id = "giga-am-ctc-v3-ru",
+            id = "giga-am-v3-ru",
             languageCodes = setOf("ru"),
-            displayName = "GigaAM CTC Russian",
-            // v3 rather than v2, and the `punct` export rather than the plain
-            // one: a bare CTC model emits an unpunctuated stream, which is the
-            // one thing dictation cannot paper over. The token table grows from
-            // 196 bytes to 2 KB because of it.
-            repository = "csukuangfj/sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
-            revision = "4fb5407ff028a69fec516cdf4c10fac9ddea7c16",
-            family = SherpaFamily.NEMO_CTC,
-            sizeBytes = 224_895_668L,
+            displayName = "GigaAM v3 Russian",
+            // The RNN-T export, not the CTC one. GigaAM publishes both and its
+            // own evaluation puts the transducer ahead on every set it reports
+            // -- 8.4 average WER against the CTC's 9.2, and Whisper's 25.1 --
+            // for 7 MB more download and no measurable latency cost (362 ms
+            // against 367 ms on an 11 s clip, arm64, two threads). The
+            // difference shows up as punctuation on the sample: the CTC drops
+            // the comma in "может быть, украдкой" and invents one after
+            // "Ничьих".
+            //
+            // `punct` rather than the plain export for the same reason it was
+            // chosen for the CTC: a bare Russian model emits an unpunctuated
+            // stream, which is the one thing dictation cannot paper over.
+            //
+            // The decoder and joiner are full precision while the encoder is
+            // int8 -- that is how upstream ships it, and `quantizedOrPlain` in
+            // the recognizers resolves each graph independently because of it.
+            repository = "csukuangfj/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16",
+            revision = "a6039be7cee829a9044a69ac0ebaf1c191217c97",
+            family = SherpaFamily.NEMO_TRANSDUCER,
+            sizeBytes = 231_897_202L,
             minimumRamGB = 2,
             languages = "Russian",
             files = listOf(
-                PinnedFile("model.int8.onnx", 224_893_661L,
-                    "d5fea8df94263c285e54b21e5774b707c707192d3bdbeffd7b1eb07fb6743b35"),
-                PinnedFile("tokens.txt", 2_007L,
-                    "142de7570b3de5b3035ce111a89c228e80e6085273731d944093ddf24fa539cd"),
+                PinnedFile("encoder.int8.onnx", 224_570_820L,
+                    "369f35a71bf288d3b8e0391fabd8dba5f2314088d440bca474056b7b4b6e66bf"),
+                PinnedFile("decoder.onnx", 4_600_132L,
+                    "38fc7475443ea2a26f63211ca350f73ac50fff824ab7a3876ee2bd610c53bbc4"),
+                PinnedFile("joiner.onnx", 2_712_896L,
+                    "602ff7017a93311aad34df1437c8d7f49911353c13d6eae7a6ee7b041339465c"),
+                PinnedFile("tokens.txt", 13_354L,
+                    "39abae20e692998290c574e606f11a9edef2902a1995463fcff63d1490cf22b7"),
             ),
         ),
         sherpa(

@@ -507,7 +507,7 @@ object LocalModelCatalog {
             // picker, leading with a model that cannot transcribe it is worse
             // than having offered nothing.
             "zh", "yue", "ja", "ko" -> "sense-voice"
-            "ru" -> "giga-am-ctc-v3-ru"
+            "ru" -> "giga-am-v3-ru"
             in DOLPHIN_STARTER_LANGUAGES -> "dolphin-small-ctc"
             else -> null
         }

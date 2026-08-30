@@ -52,11 +52,26 @@ final class SherpaRecognizer: @unchecked Sendable {
             return url.path
         }
 
+        /// The quantized file where the model ships one, the plain file where
+        /// it does not. Upstream quantizes per graph rather than per model:
+        /// GigaAM's transducer ships an int8 encoder beside a full-precision
+        /// decoder and joiner, because those two are small enough that
+        /// quantizing them costs accuracy for nothing.
+        func quantizedOrPlain(_ stem: String) throws -> String {
+            let int8 = directory.appendingPathComponent("\(stem).int8.onnx")
+            return FileManager.default.fileExists(atPath: int8.path)
+                ? int8.path
+                : try path("\(stem).onnx")
+        }
+
         let tokens = try path("tokens.txt")
         let models: [String]
         switch family {
         case .nemoTransducer:
-            models = try [path("encoder.int8.onnx"), path("decoder.int8.onnx"), path("joiner.int8.onnx"), ""]
+            models = try [
+                quantizedOrPlain("encoder"), quantizedOrPlain("decoder"),
+                quantizedOrPlain("joiner"), ""
+            ]
         case .moonshine:
             models = try [
                 path("preprocess.onnx"), path("encode.int8.onnx"),

@@ -69,7 +69,7 @@ class DeviceProfileTest {
     @Test
     fun `a regional language leads with its own specialist and still offers the rest`() {
         val picks = LocalModelCatalog.recommendations(profile(8, language = "ru"))
-        assertEquals("giga-am-ctc-v3-ru", picks[0].model.id)
+        assertEquals("giga-am-v3-ru", picks[0].model.id)
         assertEquals(ModelPickRole.REGIONAL, picks[0].role)
         // The multilingual and English answers stay on offer next to it.
         assertEquals("parakeet-tdt-0.6b-v3", picks[1].model.id)
@@ -133,7 +133,7 @@ class DeviceProfileTest {
             LocalModelCatalog.recommended(profile(8, language = "ko")).id,
         )
         assertEquals(
-            "giga-am-ctc-v3-ru",
+            "giga-am-v3-ru",
             LocalModelCatalog.recommended(profile(8, language = "ru")).id,
         )
         // Dolphin Small, not Base: the paper puts Base at 33.3% average WER

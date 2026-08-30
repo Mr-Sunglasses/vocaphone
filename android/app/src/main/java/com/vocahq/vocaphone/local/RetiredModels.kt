@@ -63,7 +63,9 @@ object RetiredModels {
         // Same weights family, new export: v3 with punctuation. The id changed
         // rather than the pins so an already-downloaded v2 directory is an
         // unknown model to be swept, not a SHA-256 mismatch on a known one.
-        put("giga-am-ctc-ru", listOf("giga-am-ctc-v3-ru"))
+        put("giga-am-ctc-ru", listOf("giga-am-v3-ru"))
+        // Only ever on the unmerged branch, but testers have it downloaded.
+        put("giga-am-ctc-v3-ru", listOf("giga-am-v3-ru"))
     }
 
     /** Whether [id] names something the catalog used to ship and no longer does. */

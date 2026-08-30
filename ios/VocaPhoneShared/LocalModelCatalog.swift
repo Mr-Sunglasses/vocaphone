@@ -512,17 +512,29 @@ enum LocalModelCatalog {
             languageCodesOverride: ["en", "de", "es", "fr"]
         ),
         .init(
-            id: "giga-am-ctc-v3-ru",
-            displayName: "GigaAM CTC Russian",
+            id: "giga-am-v3-ru",
+            displayName: "GigaAM v3 Russian",
             engine: .sherpaOnnx,
-            // v3 rather than v2, and the `punct` export rather than the plain
-            // one: a bare CTC model emits an unpunctuated stream, which is the
-            // one thing dictation cannot paper over. The token table grows from
-            // 196 bytes to 2 KB because of it.
-            repository: "csukuangfj/sherpa-onnx-nemo-ctc-punct-giga-am-v3-russian-2025-12-16",
-            revision: "4fb5407ff028a69fec516cdf4c10fac9ddea7c16",
-            sherpaFamily: .nemoCtc,
-            sizeBytes: 224_895_668,
+            // The RNN-T export, not the CTC one. GigaAM publishes both and its
+            // own evaluation puts the transducer ahead on every set it reports
+            // -- 8.4 average WER against the CTC's 9.2, and Whisper's 25.1 --
+            // for 7 MB more download and no measurable latency cost (362 ms
+            // against 367 ms on an 11 s clip, arm64, two threads). The
+            // difference shows up as punctuation on the sample: the CTC drops
+            // the comma in "может быть, украдкой" and invents one after
+            // "Ничьих".
+            //
+            // `punct` rather than the plain export for the same reason it was
+            // chosen for the CTC: a bare Russian model emits an unpunctuated
+            // stream, which is the one thing dictation cannot paper over.
+            //
+            // The decoder and joiner are full precision while the encoder is
+            // int8 -- that is how upstream ships it, and `quantizedOrPlain` in
+            // the recognizers resolves each graph independently because of it.
+            repository: "csukuangfj/sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16",
+            revision: "a6039be7cee829a9044a69ac0ebaf1c191217c97",
+            sherpaFamily: .nemoTransducer,
+            sizeBytes: 231_897_202,
             minimumRamGB: 2,
             languages: "Russian",
             englishOnly: false,
@@ -745,7 +757,7 @@ enum LocalModelCatalog {
         // picker, leading with a model that cannot transcribe it is worse than
         // having offered nothing.
         "zh": "sense-voice", "yue": "sense-voice", "ja": "sense-voice", "ko": "sense-voice",
-        "ru": "giga-am-ctc-v3-ru"
+        "ru": "giga-am-v3-ru"
     ].merging(
         Dictionary(
             uniqueKeysWithValues: LocalModelLanguages.dolphinStarters.map { ($0, "dolphin-small-ctc") }

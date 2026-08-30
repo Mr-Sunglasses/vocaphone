@@ -78,7 +78,9 @@ enum RetiredLocalModels {
         // Same weights family, new export: v3 with punctuation. The id changed
         // rather than the pins so an already-downloaded v2 directory is an
         // unknown model to be swept, not a SHA-256 mismatch on a known one.
-        table["giga-am-ctc-ru"] = ["giga-am-ctc-v3-ru"]
+        table["giga-am-ctc-ru"] = ["giga-am-v3-ru"]
+        // Only ever on the unmerged branch, but testers have it downloaded.
+        table["giga-am-ctc-v3-ru"] = ["giga-am-v3-ru"]
 
         return table
     }()

@@ -10,7 +10,7 @@ struct LocalModelCatalogTests {
 
     @Test func sherpaLanguageContractsMatchTheirFamilies() {
         #expect(LocalModelCatalog.descriptor(for: "canary-180m-flash")?.languageCodes == ["en", "de", "es", "fr"])
-        #expect(LocalModelCatalog.descriptor(for: "giga-am-ctc-v3-ru")?.languageCodes == ["ru"])
+        #expect(LocalModelCatalog.descriptor(for: "giga-am-v3-ru")?.languageCodes == ["ru"])
         // Detecting the language is not the same as covering every language:
         // Parakeet v3 decides for itself, and knows exactly 25.
         let parakeet = LocalModelCatalog.descriptor(for: "parakeet-tdt-0.6b-v3")
@@ -181,7 +181,7 @@ struct LocalModelCatalogTests {
         // multilingual and English answers next to it.
         let russian = LocalModelCatalog.recommendations(deviceMemoryGB: 8, language: "ru")
         #expect(russian[0].role == .regional)
-        #expect(russian[0].model.id == "giga-am-ctc-v3-ru")
+        #expect(russian[0].model.id == "giga-am-v3-ru")
         #expect(russian[1].model.id == "parakeet-tdt-0.6b-v3")
         #expect(russian.count >= 3)
     }

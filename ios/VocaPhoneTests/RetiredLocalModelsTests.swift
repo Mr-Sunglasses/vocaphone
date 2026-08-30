@@ -93,7 +93,7 @@ struct RetiredLocalModelsTests {
         // already-downloaded v2 is swept rather than failing its SHA-256 check.
         #expect(
             RetiredLocalModels.replacement(for: "giga-am-ctc-ru", deviceMemoryGB: 8)
-                == "giga-am-ctc-v3-ru"
+                == "giga-am-v3-ru"
         )
     }
 

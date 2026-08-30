@@ -135,13 +135,22 @@ internal class SherpaRecognizer private constructor(
                 return file.absolutePath
             }
 
+            // The quantized file where the model ships one, the plain file
+            // where it does not. Upstream quantizes per graph rather than per
+            // model: GigaAM's transducer ships an int8 encoder beside a
+            // full-precision decoder and joiner, because those two are small
+            // enough that quantizing them costs accuracy for nothing.
+            fun quantizedOrPlain(stem: String): String =
+                if (File(directory, "$stem.int8.onnx").isFile) path("$stem.int8.onnx")
+                else path("$stem.onnx")
+
             val tokens = path("tokens.txt")
             val modelConfig = when (family) {
                 SherpaFamily.NEMO_TRANSDUCER -> OfflineModelConfig(
                     transducer = OfflineTransducerModelConfig(
-                        encoder = path("encoder.int8.onnx"),
-                        decoder = path("decoder.int8.onnx"),
-                        joiner = path("joiner.int8.onnx"),
+                        encoder = quantizedOrPlain("encoder"),
+                        decoder = quantizedOrPlain("decoder"),
+                        joiner = quantizedOrPlain("joiner"),
                     ),
                 )
 

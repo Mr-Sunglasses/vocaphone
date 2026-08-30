@@ -121,7 +121,7 @@ class ModelGuidanceTest {
         )
 
         assertEquals("ru", result.intent.language)
-        assertEquals("giga-am-ctc-v3-ru", result.model?.id)
+        assertEquals("giga-am-v3-ru", result.model?.id)
     }
 
     @Test

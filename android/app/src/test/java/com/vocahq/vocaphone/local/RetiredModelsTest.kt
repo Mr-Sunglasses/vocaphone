@@ -98,7 +98,7 @@ class RetiredModelsTest {
         assertEquals("dolphin-small-ctc", replacement("dolphin-base-ctc"))
         // The Russian model kept its weights family and changed id, so that an
         // already-downloaded v2 is swept rather than failing its SHA-256 check.
-        assertEquals("giga-am-ctc-v3-ru", replacement("giga-am-ctc-ru"))
+        assertEquals("giga-am-v3-ru", replacement("giga-am-ctc-ru"))
     }
 
     @Test
