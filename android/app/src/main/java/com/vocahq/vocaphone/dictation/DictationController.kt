@@ -718,6 +718,8 @@ class DictationController(
                 language = configuration.effectiveLanguage.wireValue,
                 styledUpstream = true,
                 repairSpeech = configuration.repairSpeech,
+                numbersAsDigits = configuration.numbersAsDigits,
+                snippets = configuration.snippets,
             )
             if (transcript != null && cleaned.isEmpty()) {
                 wavFile.delete()
@@ -809,6 +811,8 @@ class DictationController(
                 language = configuration.effectiveLanguage.wireValue,
                 styledUpstream = true,
                 repairSpeech = configuration.repairSpeech,
+                numbersAsDigits = configuration.numbersAsDigits,
+                snippets = configuration.snippets,
             )
             if (transcript.isEmpty()) {
                 throw GatewayException(
@@ -914,6 +918,8 @@ class DictationController(
             translateTo = configuration.translationTarget,
         ),
         repairSpeech = configuration.repairSpeech,
+        numbersAsDigits = configuration.numbersAsDigits,
+        snippets = configuration.snippets,
     )
 
     private suspend fun deliver(
@@ -922,10 +928,6 @@ class DictationController(
         configuration: VocaPhoneSettings,
         source: DictationSource,
     ) {
-        // After formatting, never before: the writing style's capitalization
-        // must not rewrite a snippet's literal expansion text, and trigger
-        // matching is case-insensitive so this order does not break it.
-        val transcript = SnippetExpander.expand(transcript, configuration.snippets)
         diagnostics.recordTiming("transcript_ready", source.name)
         // Reported here rather than after insertion: the transcript exists and
         // is correct at this point, and whether the keyboard managed to commit
