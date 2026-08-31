@@ -1,29 +1,92 @@
 import UIKit
 
+@MainActor
+protocol KeyboardFeedbackProviding: AnyObject {
+    func keyPressed()
+    func textCommitted()
+    func keyActionCommitted()
+    func deleteRepeated()
+    func selectionChanged()
+    func action()
+    func swipeBegan()
+    func swipeCommitted()
+}
+
+/// The semantic feedback a keyboard interaction may produce. Keeping this as
+/// data lets tests prove that a cancelled touch cannot buzz or click, without
+/// pretending the simulator has a Taptic Engine.
+enum KeyboardFeedbackEvent: Equatable {
+    case inputClick
+    case typingHaptic
+    case selectionHaptic
+    case actionHaptic
+    case swipeBeganHaptic
+    case swipeCommittedHaptic
+}
+
+enum KeyboardFeedbackInteraction {
+    case keyPressed
+    case committedText
+    case committedKeyAction
+    case deleteRepeated
+    case selectionChanged
+    case dictationAction
+    case swipeBegan
+    case swipeCommitted
+}
+
+enum KeyboardFeedbackPolicy {
+    static func events(
+        for interaction: KeyboardFeedbackInteraction,
+        typingHapticsEnabled: Bool,
+        hasFullAccess: Bool
+    ) -> [KeyboardFeedbackEvent] {
+        let allowsHaptics = typingHapticsEnabled && hasFullAccess
+        switch interaction {
+        case .keyPressed:
+            // The system keyboard clicks the instant a finger lands, not when
+            // it lifts. Feedback that waits for the commit arrives after the
+            // key has already animated, which is what reads as "not native".
+            return [.inputClick]
+        case .committedText:
+            // The click has already been played on touch-down. What waits for
+            // the commit is the tactile confirmation, so a cancelled or
+            // slid-away touch never buzzes for a character it did not insert.
+            return allowsHaptics ? [.typingHaptic] : []
+        case .committedKeyAction:
+            // Shift, Delete, plane switching and the globe resolve on
+            // touch-down, so their haptic lands with the same press that
+            // already clicked.
+            return allowsHaptics ? [.typingHaptic] : []
+        case .deleteRepeated:
+            // A held Delete is a stream of separate deletions, and the system
+            // keyboard sounds each one. Silence here makes a hold feel like it
+            // has stopped working.
+            return [.inputClick] + (allowsHaptics ? [.typingHaptic] : [])
+        case .selectionChanged:
+            return allowsHaptics ? [.selectionHaptic] : []
+        case .dictationAction:
+            return allowsHaptics ? [.actionHaptic] : []
+        case .swipeBegan:
+            return allowsHaptics ? [.swipeBeganHaptic] : []
+        case .swipeCommitted:
+            return allowsHaptics ? [.swipeCommittedHaptic] : []
+        }
+    }
+}
+
 /// Every buzz and click the keyboard makes, in one place.
 ///
-/// The keyboard used to ask for feedback at each call site, and got almost none
-/// of it:
-///
-/// * A key press called `UIDevice.playInputClick()`, which is the keyboard
-///   *click sound* and has never produced a haptic. Typing — the one gesture
-///   that happens hundreds of times a minute — was therefore the only
-///   interaction with no feedback at all.
-/// * Everywhere else built a `UIFeedbackGenerator` and fired it in the same
-///   statement. A generator that has not been prepared has to wake the Taptic
-///   Engine first, so the first tap produces nothing and the ones after it
-///   arrive late — which reads as "the haptics are broken", because from the
-///   user's side they are.
-///
-/// So the generators live as long as the keyboard does, are prepared before
-/// they are needed, and are re-prepared after each event while a burst of
-/// typing keeps them warm.
-///
-/// Haptics also need Full Access: an extension without it cannot reach the
-/// engine, and firing into that is how a preference ends up looking like a lie.
-/// The click *sound* does not, so it is gated on the preference alone.
+/// A standard keyboard click is audio feedback controlled by iOS Settings. It
+/// is not a haptic, must not be disabled by VocaPhone's optional tactile
+/// preference, and is played on touch-down because that is when the system
+/// keyboard plays it. Custom haptics are deliberately opt-in and wait for the
+/// interaction to commit. Typing is played at full strength on the crispest
+/// style, because a key is a hard, short click and anything softer reads as
+/// weaker than every other keyboard on the phone. The rarer events vary against
+/// that reference rather than sitting below it.
 @MainActor
-final class KeyboardHaptics {
+final class KeyboardHaptics: KeyboardFeedbackProviding {
     static let shared = KeyboardHaptics()
 
     /// Whether the extension can reach the Taptic Engine at all. Only the
@@ -49,7 +112,7 @@ final class KeyboardHaptics {
 
     private var allowsHaptics: Bool {
         Self.allowsHaptics(
-            preferenceEnabled: KeyboardPreferences.keyboardHapticsEnabled,
+            preferenceEnabled: KeyboardPreferences.typingHapticsEnabled,
             hasFullAccess: hasFullAccess
         )
     }
@@ -76,9 +139,15 @@ final class KeyboardHaptics {
 
     /// Wakes the engine so the *next* event lands immediately. Cheap, and a
     /// no-op when the keyboard cannot use haptics anyway.
+    ///
+    /// Every generator is warmed, not just the typing one: a dictation action
+    /// and a committed swipe are exactly the rare events that would otherwise
+    /// pay the wake-up cost on their first use, which is the late-first-haptic
+    /// problem this whole type exists to avoid.
     func warmUp() {
         guard allowsHaptics else { return }
-        impact(&keyTapGenerator, style: .light).prepare()
+        keyTapImpact().prepare()
+        actionImpact().prepare()
         selection().prepare()
     }
 
@@ -93,64 +162,117 @@ final class KeyboardHaptics {
 
     // MARK: - Events
 
-    /// A character, space or return. The click sound and the tap together, which
-    /// is what the system keyboard does.
-    ///
-    /// `intensity` is a little under full: a key is the most repeated event on
-    /// the keyboard, and one at full strength turns a sentence into a rattle.
-    func keyPress() {
-        guard KeyboardPreferences.keyboardHapticsEnabled else { return }
-        // Sound needs no Full Access, so it stays available to keyboards that
-        // have not granted it.
-        UIDevice.current.playInputClick()
-        guard allowsHaptics else { return }
-        let generator = impact(&keyTapGenerator, style: .light)
-        generator.impactOccurred(intensity: 0.7)
-        // Prepared again immediately: a typist's next key is milliseconds away,
-        // and this is what keeps the engine warm through a burst.
-        generator.prepare()
+    /// A finger has landed on a key. This is the click, and it is deliberately
+    /// not deferred: the system keyboard sounds a key as it goes down, and
+    /// feedback that waits for the lift arrives after the key has finished
+    /// animating.
+    func keyPressed() {
+        perform(.keyPressed)
+    }
+
+    /// A character, space, Return, or emoji that has actually inserted. Calling
+    /// this only after target resolution prevents a missed or cancelled touch
+    /// from confirming the wrong key in the person's hand.
+    func textCommitted() {
+        perform(.committedText)
+    }
+
+    /// An immediate keyboard control such as Shift, Delete, plane switching, or
+    /// the globe. Their press already clicked; this is the tactile half.
+    func keyActionCommitted() {
+        perform(.committedKeyAction)
+    }
+
+    /// One character removed by a held Delete, rather than by its first press.
+    func deleteRepeated() {
+        perform(.deleteRepeated)
     }
 
     /// Moving between accent options, entering cursor control, opening the emoji
     /// panel: the user is choosing rather than committing.
     func selectionChanged() {
-        guard allowsHaptics else { return }
-        let generator = selection()
-        generator.selectionChanged()
-        generator.prepare()
+        perform(.selectionChanged)
     }
 
     /// A bar button — start, insert, cancel. Weightier than a key because it is
     /// rare and consequential.
     func action() {
-        guard allowsHaptics else { return }
-        let generator = impact(&actionGenerator, style: .soft)
-        generator.impactOccurred()
-        generator.prepare()
+        perform(.dictationAction)
     }
 
-    /// The moment a slide becomes a swipe. Light, because the gesture is still
-    /// in flight — this says "I am tracing now", not "I typed something".
+    /// The moment a slide becomes a swipe. Lighter than a keystroke, because
+    /// the gesture is still in flight — this says "I am tracing now", not
+    /// "I typed something".
     func swipeBegan() {
-        guard allowsHaptics else { return }
-        let generator = impact(&keyTapGenerator, style: .light)
-        generator.impactOccurred(intensity: 0.45)
-        generator.prepare()
+        perform(.swipeBegan)
     }
 
     /// A traced word has been committed. Firmer than the start: a whole word
     /// just landed, and the user's eyes are on the strip rather than the keys.
     func swipeCommitted() {
-        guard allowsHaptics else { return }
-        let generator = impact(&actionGenerator, style: .soft)
-        generator.impactOccurred(intensity: 0.8)
-        generator.prepare()
+        perform(.swipeCommitted)
+    }
+
+    private func perform(_ interaction: KeyboardFeedbackInteraction) {
+        for event in KeyboardFeedbackPolicy.events(
+            for: interaction,
+            typingHapticsEnabled: KeyboardPreferences.typingHapticsEnabled,
+            hasFullAccess: hasFullAccess
+        ) {
+            switch event {
+            case .inputClick:
+                UIDevice.current.playInputClick()
+            case .typingHaptic:
+                // `.rigid` rather than `.light`: a key is a hard, short click,
+                // and `.light` is the softest and most diffuse of the styles —
+                // it reads as a nudge where the system keyboard reads as a
+                // press. Full intensity because a third of the engine's power
+                // is exactly what made this feel weaker than every other
+                // keyboard on the phone.
+                let generator = keyTapImpact()
+                generator.impactOccurred(intensity: 1)
+                generator.prepare()
+            case .selectionHaptic:
+                let generator = selection()
+                generator.selectionChanged()
+                generator.prepare()
+            case .actionHaptic:
+                let generator = actionImpact()
+                generator.impactOccurred()
+                generator.prepare()
+            case .swipeBeganHaptic:
+                // The same instrument as a keystroke, played softer: the
+                // gesture is still in flight, so it should register as related
+                // to typing but plainly not a committed character.
+                let generator = keyTapImpact()
+                generator.impactOccurred(intensity: 0.5)
+                generator.prepare()
+            case .swipeCommittedHaptic:
+                let generator = actionImpact()
+                generator.impactOccurred(intensity: 0.8)
+                generator.prepare()
+            }
+        }
     }
 
     // MARK: - Generators
 
-    /// The stored generator for a role, made on first use and kept afterwards.
-    private func impact(
+    /// The keystroke generator: crisp and short, like a key.
+    ///
+    /// A generator's style is fixed when it is built, so each role owns its
+    /// style rather than taking it as an argument. Passing one to a cached
+    /// generator would have been silently ignored, leaving the keyboard playing
+    /// whichever texture happened to be requested first.
+    private func keyTapImpact() -> UIImpactFeedbackGenerator {
+        cached(&keyTapGenerator, style: .rigid)
+    }
+
+    /// The generator for rare, weightier events: softer and more diffuse.
+    private func actionImpact() -> UIImpactFeedbackGenerator {
+        cached(&actionGenerator, style: .soft)
+    }
+
+    private func cached(
         _ generator: inout UIImpactFeedbackGenerator?,
         style: UIImpactFeedbackGenerator.FeedbackStyle
     ) -> UIImpactFeedbackGenerator {

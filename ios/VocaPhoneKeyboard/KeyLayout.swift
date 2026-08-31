@@ -169,10 +169,10 @@ enum KeyLayout {
         }
     }
 
-    /// The narrowest the return key may become. Below this "Continue" and
-    /// "Emergency" stop fitting, and the row's most-used non-space target starts
-    /// reading as an afterthought.
-    static let minimumReturnColumns: CGFloat = 1.75
+    /// Apple's iPhone bottom row gives Return two and a half letter columns.
+    /// Besides matching its visual weight, this keeps longer return labels such
+    /// as "Continue" from becoming a much smaller target than users expect.
+    static let minimumReturnColumns: CGFloat = 2.5
 
     /// Column widths that put the spacebar's visible centre on the keyboard's
     /// centre.
@@ -198,25 +198,21 @@ enum KeyLayout {
         var centreOffset: CGFloat { (leading - trailing) / 2 }
 
         static func resolved(includesGlobe: Bool, includesPunctuation: Bool) -> BottomRowColumns {
-            let punctuation: CGFloat? = includesPunctuation ? 1 : nil
-            var columns = BottomRowColumns(
-                planeSwitch: 1.25,
+            // Measured on Apple's iOS 26 keyboard at the same 402pt width:
+            //   plain:  2.5 |       5       | 2.5
+            //   globe:  1.25 | 1.25 | 5     | 2.5
+            //   email:  1.25 | 1.25 | 2.5 | 1.25 | 1.25 | 2.5
+            // iOS sometimes supplies the globe in its own row below the
+            // extension. In that case 123 occupies the two native leading
+            // slots instead of leaving Space unnaturally wide.
+            let punctuation: CGFloat? = includesPunctuation ? 1.25 : nil
+            return BottomRowColumns(
+                planeSwitch: includesGlobe ? 1.25 : 2.5,
                 globe: includesGlobe ? 1.25 : nil,
                 punctuation: punctuation,
                 period: punctuation,
-                newline: 0
+                newline: minimumReturnColumns
             )
-            // Return absorbs the difference, because it is the one key on this
-            // row with no fixed idea of how wide it should be.
-            columns.newline = columns.leading - columns.trailing
-            guard columns.newline < minimumReturnColumns else { return columns }
-            // Without a globe key the leading group is too light to balance a
-            // usable return, so the plane switch takes the slack instead. That
-            // is the rare case — iOS requires the globe on a third-party
-            // keyboard almost everywhere — and a wider "123" costs nothing.
-            columns.newline = minimumReturnColumns
-            columns.planeSwitch += columns.trailing - columns.leading
-            return columns
         }
     }
 
@@ -241,11 +237,21 @@ enum KeyLayout {
             keys.append(KeySpec(cap: .globe, width: .multiple(globe), style: .function))
         }
         if let punctuation {
-            keys.append(KeySpec(cap: .character(punctuation)))
+            keys.append(
+                KeySpec(
+                    cap: .character(punctuation),
+                    width: .multiple(columns.punctuation ?? 1)
+                )
+            )
         }
         keys.append(KeySpec(cap: .space, width: .fill))
         if punctuation != nil {
-            keys.append(KeySpec(cap: .character(".")))
+            keys.append(
+                KeySpec(
+                    cap: .character("."),
+                    width: .multiple(columns.period ?? 1)
+                )
+            )
         }
         keys.append(
             KeySpec(
@@ -323,9 +329,9 @@ struct KeyboardMetrics: Equatable {
         case .compact:
             return KeyboardMetrics(
                 keyHeight: 39,
-                rowGap: 8,
+                rowGap: 9,
                 columnGap: 6,
-                sideInset: 4,
+                sideInset: 2 / 3,
                 letterFontSize: 21,
                 functionFontSize: 15,
                 cornerRadius: 6
@@ -333,9 +339,9 @@ struct KeyboardMetrics: Equatable {
         case .standard:
             return KeyboardMetrics(
                 keyHeight: 43,
-                rowGap: 10,
+                rowGap: 11,
                 columnGap: 6,
-                sideInset: 4,
+                sideInset: 2 / 3,
                 letterFontSize: 22,
                 functionFontSize: 16,
                 cornerRadius: 6
@@ -343,9 +349,9 @@ struct KeyboardMetrics: Equatable {
         case .tall:
             return KeyboardMetrics(
                 keyHeight: 49,
-                rowGap: 11,
+                rowGap: 12,
                 columnGap: 6,
-                sideInset: 4,
+                sideInset: 2 / 3,
                 letterFontSize: 23,
                 functionFontSize: 16,
                 cornerRadius: 7
@@ -361,15 +367,25 @@ struct KeyboardMetrics: Equatable {
 /// The keys stay close to the system keyboard's luminance rather than adopting
 /// the app's warm paper canvas: a keyboard is a high-frequency input surface
 /// that has to read as part of iOS, not as the marketing site. What the brand
-/// contributes here is the *accent* — an engaged shift, an editor-prominent
-/// return — and nothing else.
+/// contributes here is the *accent* — an editor-prominent return and the swipe
+/// trail — and nothing else.
 struct KeyboardPalette: Equatable {
     let isDark: Bool
+
+    private var usesUnifiedSystemKeyFill: Bool {
+        if #available(iOS 26.0, *) { return true }
+        return false
+    }
 
     /// Neutral charcoal in dark, neutral grey in light. Both were previously
     /// tinted toward blue, which is the drift the design standard names.
     var background: UIColor {
-        isDark ? UIColor(white: 0.086, alpha: 1) : UIColor(white: 0.827, alpha: 1)
+        if usesUnifiedSystemKeyFill {
+            return isDark
+                ? UIColor(white: 23 / 255, alpha: 1)
+                : UIColor(red: 226 / 255, green: 228 / 255, blue: 232 / 255, alpha: 1)
+        }
+        return isDark ? UIColor(white: 0.086, alpha: 1) : UIColor(white: 0.827, alpha: 1)
     }
 
     var cardBorder: UIColor {
@@ -381,17 +397,23 @@ struct KeyboardPalette: Equatable {
     /// The brightest key in either appearance, because a character key is what
     /// the eye should land on first.
     var standardKey: UIColor {
-        isDark ? UIColor(white: 0.29, alpha: 1) : .white
+        if usesUnifiedSystemKeyFill {
+            return isDark ? UIColor(white: 61 / 255, alpha: 1) : .white
+        }
+        return isDark ? UIColor(white: 0.29, alpha: 1) : .white
     }
 
     /// Visibly a step down from ``standardKey``, and neutral — a muddy or blue
     /// function key is what made the old palette read as someone else's product.
     var functionKey: UIColor {
-        isDark ? UIColor(white: 0.184, alpha: 1) : UIColor(white: 0.686, alpha: 1)
+        if usesUnifiedSystemKeyFill { return standardKey }
+        return isDark
+            ? UIColor(white: 0.184, alpha: 1)
+            : UIColor(white: 0.686, alpha: 1)
     }
 
-    /// The product accent, used only where a key is genuinely *engaged* or
-    /// *prominent*: caps lock, an active shift, a Send/Search return.
+    /// The product accent, used only where a key is genuinely prominent, such
+    /// as a Send/Search return, or for the swipe trail.
     var accentKey: UIColor { BrandPalette.accent(isDark: isDark) }
 
     var keyForeground: UIColor { isDark ? .white : .black }
@@ -414,7 +436,7 @@ struct KeyboardPalette: Equatable {
     }
 
     func background(for style: KeyStyle) -> UIColor {
-        switch style {
+        return switch style {
         case .standard: standardKey
         case .function: functionKey
         case .accent: accentKey
@@ -427,11 +449,17 @@ struct KeyboardPalette: Equatable {
         style == .accent ? ContrastMath.legibleLabel(on: accentKey) : keyForeground
     }
 
-    /// Pressed function keys swap to the standard key colour and pressed
-    /// standard keys swap to the function colour, so a press always reads as a
-    /// change even when no preview is shown. No glow: the swap *is* the signal.
+    /// A press always reads as a change even when no preview is shown. Unified
+    /// iOS 26 keys darken or lighten; earlier palettes swap their two neutral
+    /// fills. No glow: the fill change is the signal.
     func pressedBackground(for style: KeyStyle) -> UIColor {
-        switch style {
+        if usesUnifiedSystemKeyFill, style != .accent {
+            return background(for: style).blended(
+                with: isDark ? .white : .black,
+                amount: 0.16
+            )
+        }
+        return switch style {
         case .standard: functionKey
         case .function: standardKey
         // Shifting toward the appearance's own extreme rather than fading, so a

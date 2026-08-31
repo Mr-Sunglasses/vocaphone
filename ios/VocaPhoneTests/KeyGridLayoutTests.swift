@@ -61,9 +61,9 @@ struct KeyGridLayoutTests {
         #expect(abs(indent - trailing) < 0.5)
     }
 
-    /// Shift and delete absorb whatever the seven letters leave, which is what
-    /// keeps the third row aligned with the ten-key row above it.
-    @Test func modifierKeysAbsorbTheRemainderOfTheirRow() {
+    /// Shift and Delete keep the native visual width while their invisible
+    /// target slots still absorb the remainder and tile the entire row.
+    @Test func letterModifiersUseNativeVisualWidthsAndFullHitTargets() {
         let grid = Self.makeGrid()
         let row = Self.rowsByPosition(in: grid)[2]
         let shift = row.first!
@@ -72,6 +72,8 @@ struct KeyGridLayoutTests {
         #expect(delete.spec.cap == .delete)
         #expect(abs(shift.frame.width - delete.frame.width) < 0.5)
         #expect(shift.frame.width > row[1].frame.width)
+        #expect(shift.hitRect.maxX >= row[1].hitRect.minX)
+        #expect(delete.hitRect.minX <= row[row.count - 2].hitRect.maxX)
     }
 
     @Test func hitTargetsCoverTheGuttersWithoutGaps() {

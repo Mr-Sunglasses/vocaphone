@@ -68,6 +68,7 @@ struct VocaPhoneApp: App {
                 .onOpenURL { coordinator.handleDeepLink($0) }
                 .onAppear {
                     KeyboardPreferences.containingAppIsForeground = true
+                    KeyboardPreferences.migrateTypingHapticsIfNeeded()
                     Telemetry.shared.appFirstOpen()
                     // Started once here rather than lazily from the setup card:
                     // the first path update has to have landed by the time that

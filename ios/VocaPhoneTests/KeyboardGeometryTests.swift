@@ -52,12 +52,46 @@ struct KeyboardGeometryTests {
         #expect(allShowPreviews)
     }
 
-    /// Standard is what every existing install already draws, so adopting the
-    /// preference must change nothing for someone who never opens the setting.
-    @Test func standardReproducesTheShippedGeometry() {
+    /// The default uses the same vertical rhythm measured from Apple's iOS 26
+    /// keyboard, including the full-height bottom row.
+    @Test func standardUsesTheNativeVerticalRhythm() {
         let standard = KeyboardMetrics.resolved(for: Self.portrait, preference: .standard)
         #expect(standard.keyHeight == 43)
-        #expect(standard.rowGap == 10)
+        #expect(standard.rowGap == 11)
+        #expect(standard.gridHeight == 205)
+    }
+
+    /// Reference measurements come from the Apple keyboard on the same 402pt
+    /// iPhone 17 simulator. The extension receives 390pt after its 6pt chrome
+    /// inset on each side, so screen coordinates below add that inset back.
+    @Test func defaultPortraitMatchesTheIPhone17SystemKeyboard() {
+        let chromeInset: CGFloat = 6
+        let grid = Self.makeGrid(width: 390, includesGlobe: false)
+        let rows = Self.rows(in: grid)
+        let q = rows[0][0]
+        let a = rows[1][0]
+        let shift = rows[2][0]
+        let delete = rows[2].last!
+        let plane = rows[3][0]
+        let space = rows[3][1]
+        let newline = rows[3][2]
+
+        // Apple: Q x 6.67, width 33.33; A x 26.33; Shift/Delete width 45.33.
+        #expect(abs(q.frame.minX + chromeInset - 6.67) < 0.75)
+        #expect(abs(q.frame.width - 33.33) < 0.75)
+        #expect(abs(a.frame.minX + chromeInset - 26.33) < 0.75)
+        #expect(abs(shift.frame.width - 45.33) < 0.75)
+        #expect(abs(delete.frame.width - 45.33) < 0.75)
+
+        // Apple: four 43pt rows separated by 11pt gaps.
+        #expect(rows.map { $0[0].frame.minY } == [0, 54, 108, 162])
+        #expect(rows.map { $0[0].frame.height } == [43, 43, 43, 43])
+
+        // With the globe in iOS's lower system row, Apple uses 2.5 / 5 / 2.5
+        // columns here instead of shrinking both modifiers around a huge Space.
+        #expect(abs(plane.frame.width - 92.67) < 0.75)
+        #expect(abs(space.frame.width - 191.33) < 0.75)
+        #expect(abs(newline.frame.width - 92.67) < 0.75)
     }
 
     /// Whatever the preference, the whole keyboard has to fit a phone. The
@@ -129,11 +163,11 @@ struct KeyboardGeometryTests {
         }
 
         // The pinned reference for the default: 6pt inset twice, a 54pt strip,
-        // 7pt of spacing and a 202pt grid.
+        // 7pt of spacing and the native-rhythm 205pt grid.
         let standardGrid = KeyboardMetrics.resolved(for: Self.portrait, preference: .standard)
         let standardBar = DictationBarMetrics.resolved(for: Self.portrait, preference: .standard)
         #expect(standardBar.stripHeight == 54)
-        #expect(chrome + standardBar.stripHeight + standardGrid.gridHeight == 275)
+        #expect(chrome + standardBar.stripHeight + standardGrid.gridHeight == 278)
     }
 
     /// The strip is the shortest of the three bar shapes, in every orientation

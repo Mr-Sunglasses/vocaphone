@@ -333,6 +333,17 @@ final class AudioRecorder: NSObject {
             mode: .default,
             options: categoryOptions
         )
+        // iOS mutes system sounds and haptics for the whole device while a
+        // session is using audio input, so the Taptic Engine cannot buzz into
+        // the microphone. It defaults to off, and Quick Dictation holds the
+        // input open for ten minutes at a time — which silently killed keyboard
+        // haptics everywhere, in Apple's keyboards as much as this one, for the
+        // whole standby window.
+        //
+        // A dictation app that keeps the microphone warm has to ask for them
+        // back. Failing is not worth abandoning the recording over: the cost is
+        // the feedback, not the audio.
+        try? audioSession.setAllowHapticsAndSystemSoundsDuringRecording(true)
         do {
             try audioSession.setActive(true)
             try selectPreferredInput(in: audioSession)

@@ -18,6 +18,7 @@ protocol EmojiPanelViewDelegate: AnyObject {
 /// never becomes a place you can get stuck.
 final class EmojiPanelView: UIView {
     weak var delegate: (any EmojiPanelViewDelegate)?
+    private let feedback: any KeyboardFeedbackProviding
 
     var palette: KeyboardPalette {
         didSet {
@@ -60,9 +61,14 @@ final class EmojiPanelView: UIView {
     }()
     private let bottomRow = UIStackView()
 
-    init(palette: KeyboardPalette, metrics: KeyboardMetrics) {
+    init(
+        palette: KeyboardPalette,
+        metrics: KeyboardMetrics,
+        feedback: any KeyboardFeedbackProviding = KeyboardHaptics.shared
+    ) {
         self.palette = palette
         self.metrics = metrics
+        self.feedback = feedback
         super.init(frame: .zero)
         configure()
         applyPalette()
@@ -175,6 +181,7 @@ final class EmojiPanelView: UIView {
             button.layer.cornerRadius = 8
             button.layer.cornerCurve = .continuous
             button.accessibilityLabel = category.label
+            button.addTarget(self, action: #selector(keyPressed), for: .touchDown)
             button.addTarget(self, action: #selector(categoryTapped), for: .touchUpInside)
             categoryRow.addArrangedSubview(button)
             button.widthAnchor.constraint(equalToConstant: 40).isActive = true
@@ -218,6 +225,7 @@ final class EmojiPanelView: UIView {
         button.titleLabel?.font = .systemFont(ofSize: metrics.functionFontSize, weight: .medium)
         button.layer.cornerRadius = metrics.cornerRadius
         button.layer.cornerCurve = .continuous
+        button.addTarget(self, action: #selector(keyPressed), for: .touchDown)
         button.addTarget(self, action: action, for: .touchUpInside)
         return button
     }
@@ -237,6 +245,14 @@ final class EmojiPanelView: UIView {
 
     // MARK: - Actions
 
+    /// The panel's controls are `UIButton`s and collection cells rather than the
+    /// grid's own hit-tested keys, so the click has to be hung off touch-down
+    /// explicitly. Without it the panel would sound a beat later than the
+    /// keyboard the user just came from.
+    @objc private func keyPressed() {
+        feedback.keyPressed()
+    }
+
     @objc private func searchChanged() {
         query = searchField.text ?? ""
         reload()
@@ -244,7 +260,7 @@ final class EmojiPanelView: UIView {
 
     @objc private func categoryTapped(_ sender: UIButton) {
         guard sender.tag < EmojiCategory.allCases.count else { return }
-        KeyboardHaptics.shared.selectionChanged()
+        feedback.selectionChanged()
         category = EmojiCategory.allCases[sender.tag]
         query = ""
         searchField.text = ""
@@ -257,22 +273,22 @@ final class EmojiPanelView: UIView {
     // they tap back the same way. A panel that goes silent the moment it opens
     // reads as a keyboard that has stopped responding.
     @objc private func lettersTapped() {
-        KeyboardHaptics.shared.selectionChanged()
+        feedback.selectionChanged()
         delegate?.emojiPanelDidRequestLetters(self)
     }
 
     @objc private func spaceTapped() {
-        KeyboardHaptics.shared.keyPress()
+        feedback.textCommitted()
         delegate?.emojiPanelDidRequestSpace(self)
     }
 
     @objc private func deleteTapped() {
-        KeyboardHaptics.shared.keyPress()
+        feedback.keyActionCommitted()
         delegate?.emojiPanelDidRequestDelete(self)
     }
 
     @objc private func returnTapped() {
-        KeyboardHaptics.shared.keyPress()
+        feedback.textCommitted()
         delegate?.emojiPanelDidRequestReturn(self)
     }
 }
@@ -302,10 +318,15 @@ extension EmojiPanelView: UICollectionViewDataSource, UICollectionViewDelegateFl
         itemSize
     }
 
+    func collectionView(_ collectionView: UICollectionView, didHighlightItemAt indexPath: IndexPath) {
+        // Highlight is the cell's touch-down, which is where a key clicks.
+        feedback.keyPressed()
+    }
+
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
         guard indexPath.item < glyphs.count else { return }
         let glyph = glyphs[indexPath.item]
-        KeyboardHaptics.shared.keyPress()
+        feedback.textCommitted()
         EmojiRecents.note(glyph)
         delegate?.emojiPanel(self, didChoose: glyph)
     }
