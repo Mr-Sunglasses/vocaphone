@@ -25,17 +25,44 @@ struct SwipeRecognizer {
     static let activationDistance: CGFloat = 26
 
     private let keys: [Key]
+    /// Centre by character. Sampling a word's ideal path looks up twelve points
+    /// per candidate, and doing that with a linear scan over `keys` made the
+    /// lookup itself the dominant cost of scoring.
+    private let centres: [Character: CGPoint]
     /// Derived from the keys themselves rather than assumed: a Compact keyboard
     /// on a 320pt phone has very different spacing from a Tall one on a Max.
     private let neighbourRadius: CGFloat
+    /// Neighbour sets for every key, resolved once. `candidates` asks for the
+    /// first and last key's neighbours, and `medianPitch` has already paid for
+    /// the distances.
+    private let neighbourCache: [Character: Set<Character>]
 
     init(keys: [Key]) {
         self.keys = keys
+        var centres: [Character: CGPoint] = [:]
+        centres.reserveCapacity(keys.count)
+        for key in keys where centres[key.character] == nil {
+            centres[key.character] = key.centre
+        }
+        self.centres = centres
         // 1.4 × the typical column pitch: far enough to include the keys either
         // side and the ones above and below, not so far as to include a third
         // of the alphabet.
         let pitch = Self.medianPitch(of: keys)
-        neighbourRadius = pitch * 1.4
+        let radius = pitch * 1.4
+        neighbourRadius = radius
+        var neighbourCache: [Character: Set<Character>] = [:]
+        for key in keys {
+            neighbourCache[key.character] = Set(
+                keys
+                    .filter {
+                        $0.character != key.character
+                            && Self.distance($0.centre, key.centre) < radius
+                    }
+                    .map(\.character)
+            )
+        }
+        self.neighbourCache = neighbourCache
     }
 
     var isUsable: Bool { keys.count > 10 }
@@ -56,22 +83,25 @@ struct SwipeRecognizer {
     }
 
     func nearestKey(to point: CGPoint) -> Key? {
-        keys.min { first, second in
-            Self.distance(first.centre, point) < Self.distance(second.centre, point)
+        var nearest: Key?
+        var shortest = CGFloat.greatestFiniteMagnitude
+        for key in keys {
+            // Squared distance: the ordering is the same and the square root
+            // was being taken once per key per sampled point of the trace.
+            let dx = key.centre.x - point.x
+            let dy = key.centre.y - point.y
+            let squared = dx * dx + dy * dy
+            if squared < shortest {
+                shortest = squared
+                nearest = key
+            }
         }
+        return nearest
     }
 
     /// Letters whose keys sit within a finger's slop of this one.
     func neighbours(of character: Character) -> Set<Character> {
-        guard let origin = keys.first(where: { $0.character == character }) else { return [] }
-        return Set(
-            keys
-                .filter {
-                    $0.character != character
-                        && Self.distance($0.centre, origin.centre) < neighbourRadius
-                }
-                .map(\.character)
-        )
+        neighbourCache[character] ?? []
     }
 
     // MARK: - Matching
@@ -90,9 +120,20 @@ struct SwipeRecognizer {
         let starts = neighbours(of: first).union([first])
         let ends = neighbours(of: last).union([last])
 
+        // The collapsed forms come from the list, which built them once when it
+        // loaded. The cheap tests — first key, last key, subsequence — run
+        // before any scoring, so the expensive shape comparison only ever sees
+        // the handful of words a trace could plausibly be.
+        let words = wordList.rankedWords
+        let collapsed = wordList.collapsedWords
+        // The traced path's own samples and length do not change from one
+        // candidate to the next, and `shapeDistance` was re-deriving both for
+        // every word it scored.
+        let tracedSamples = sample(path)
+        let tracedLength = pathLength(path)
         var scored: [(word: String, score: CGFloat)] = []
-        for (rank, word) in wordList.rankedWords.enumerated() {
-            let compact = Self.collapsed(word)
+        for rank in words.indices {
+            let compact = collapsed[rank]
             guard compact.count >= 2,
                   let wordFirst = compact.first,
                   let wordLast = compact.last,
@@ -103,7 +144,16 @@ struct SwipeRecognizer {
                   // word containing one.
                   Self.isSubsequence(compact, of: path)
             else { continue }
-            scored.append((word, score(path: path, word: compact, frequencyRank: rank)))
+            scored.append((
+                words[rank],
+                score(
+                    path: path,
+                    tracedSamples: tracedSamples,
+                    tracedLength: tracedLength,
+                    word: compact,
+                    frequencyRank: rank
+                )
+            ))
         }
         return scored
             .sorted { $0.score > $1.score }
@@ -115,8 +165,26 @@ struct SwipeRecognizer {
     /// whose ends do not match the trace's ends is penalised heavily — those
     /// are the two keys the user was most deliberate about.
     func score(path: String, word: String, frequencyRank: Int) -> CGFloat {
-        let shape = shapeDistance(path: path, word: word)
-        let lengthGap = abs(pathLength(path) - pathLength(word))
+        score(
+            path: path,
+            tracedSamples: sample(path),
+            tracedLength: pathLength(path),
+            word: word,
+            frequencyRank: frequencyRank
+        )
+    }
+
+    /// The same score with the traced path's samples and length supplied, so a
+    /// run over the word list derives them once rather than ten thousand times.
+    func score(
+        path: String,
+        tracedSamples: [CGPoint],
+        tracedLength: CGFloat,
+        word: String,
+        frequencyRank: Int
+    ) -> CGFloat {
+        let shape = shapeDistance(traced: tracedSamples, word: word)
+        let lengthGap = abs(tracedLength - pathLength(word))
         let endPenalty = (word.first == path.first ? 0 : 0.7)
             + (word.last == path.last ? 0 : 0.7)
         let frequency = 1 / (1 + CGFloat(frequencyRank) / 400)
@@ -132,7 +200,10 @@ struct SwipeRecognizer {
     /// Mean distance between the traced path and the ideal one through the
     /// word's keys, both resampled to the same number of points.
     func shapeDistance(path: String, word: String) -> CGFloat {
-        let traced = sample(path)
+        shapeDistance(traced: sample(path), word: word)
+    }
+
+    func shapeDistance(traced: [CGPoint], word: String) -> CGFloat {
         let ideal = sample(word)
         guard !traced.isEmpty, ideal.count == traced.count else { return .greatestFiniteMagnitude }
         let total = zip(traced, ideal).reduce(CGFloat.zero) { $0 + Self.distance($1.0, $1.1) }
@@ -144,9 +215,7 @@ struct SwipeRecognizer {
     /// Resamples the polyline through a string's key centres at even spacing,
     /// which is what makes two paths of different lengths comparable.
     func sample(_ letters: String) -> [CGPoint] {
-        let points = letters.compactMap { character in
-            keys.first { $0.character == character }?.centre
-        }
+        let points = letters.compactMap { centres[$0] }
         guard !points.isEmpty else { return [] }
         guard points.count > 1 else {
             return Array(repeating: points[0], count: Self.samplePoints)
@@ -170,9 +239,7 @@ struct SwipeRecognizer {
     }
 
     private func pathLength(_ letters: String) -> CGFloat {
-        let points = letters.compactMap { character in
-            keys.first { $0.character == character }?.centre
-        }
+        let points = letters.compactMap { centres[$0] }
         guard points.count > 1 else { return 0 }
         return (1..<points.count).reduce(CGFloat.zero) {
             $0 + Self.distance(points[$1 - 1], points[$1])

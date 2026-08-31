@@ -492,3 +492,78 @@ private extension KeyHitMap {
         retargetIndex(from: currentIndex, at: CGPoint(x: x, y: 20), characterOnly: false)
     }
 }
+
+/// The language half of the touch model: an expected letter claims a little
+/// more of the gutter than its neighbour, which is what the system keyboard
+/// does and what geometry alone could never supply.
+struct KeyHitMapBiasTests {
+    /// Two 40pt keys side by side with a 10pt gutter between them, tiled the
+    /// way the grid tiles them: each claims to the middle of the gap.
+    private static func pair(likelihood: [Character: Double] = [:]) -> KeyHitMap {
+        let left = KeyHitMap.Target(
+            index: 0,
+            frame: CGRect(x: 0, y: 0, width: 40, height: 40),
+            hitRect: CGRect(x: -5, y: -5, width: 50, height: 50),
+            isCharacter: true,
+            character: "a"
+        )
+        let right = KeyHitMap.Target(
+            index: 1,
+            frame: CGRect(x: 50, y: 0, width: 40, height: 40),
+            hitRect: CGRect(x: 45, y: -5, width: 50, height: 50),
+            isCharacter: true,
+            character: "b"
+        )
+        return KeyHitMap(targets: [left, right], hysteresis: 8, likelihood: likelihood)
+    }
+
+    /// With no opinion the boundary is where the geometry says it is.
+    @Test func withoutAPredictionTheGeometryDecides() {
+        let map = Self.pair()
+        #expect(map.targetIndex(at: CGPoint(x: 44, y: 20), characterOnly: true) == 0)
+        #expect(map.targetIndex(at: CGPoint(x: 46, y: 20), characterOnly: true) == 1)
+    }
+
+    /// A point just inside the left key's half of the gutter goes to the right
+    /// key once the language plainly expects it.
+    @Test func anExpectedLetterClaimsTheGutter() {
+        let map = Self.pair(likelihood: ["b": 1])
+        #expect(map.targetIndex(at: CGPoint(x: 44, y: 20), characterOnly: true) == 1)
+    }
+
+    /// And never more than the gutter. A touch plainly on the other key stays
+    /// there, whatever the model expects — typing a letter the user can see they
+    /// did not press is worse than being unforgiving.
+    @Test func aPredictionCannotTakeATouchThatPlainlyLanded() {
+        let map = Self.pair(likelihood: ["b": 1])
+        #expect(map.targetIndex(at: CGPoint(x: 20, y: 20), characterOnly: true) == 0)
+        #expect(map.targetIndex(at: CGPoint(x: 2, y: 20), characterOnly: true) == 0)
+    }
+
+    /// The bias is bounded by the hysteresis distance, so it scales with the
+    /// key size rather than being a fixed number of points.
+    @Test func theBiasIsBoundedByTheHysteresis() {
+        let map = Self.pair(likelihood: ["b": 1])
+        guard let left = map.targets.first else {
+            Issue.record("missing target")
+            return
+        }
+        let grown = map.effectiveRect(of: map.targets[1])
+        let expected = 8 * KeyHitMap.maximumBiasShare
+        #expect(abs(grown.minX - (map.targets[1].hitRect.minX - expected)) < 0.001)
+        // The unexpected key is not shrunk; it simply does not grow.
+        #expect(map.effectiveRect(of: left) == left.hitRect)
+    }
+
+    /// A half-expected letter gets half the nudge.
+    @Test func theNudgeScalesWithHowExpectedTheLetterIs() {
+        let strong = Self.pair(likelihood: ["b": 1])
+        let weak = Self.pair(likelihood: ["b": 0.25])
+        let strongGrowth = strong.targets[1].hitRect.minX
+            - strong.effectiveRect(of: strong.targets[1]).minX
+        let weakGrowth = weak.targets[1].hitRect.minX
+            - weak.effectiveRect(of: weak.targets[1]).minX
+        #expect(weakGrowth < strongGrowth)
+        #expect(weakGrowth > 0)
+    }
+}

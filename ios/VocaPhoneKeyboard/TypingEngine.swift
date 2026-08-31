@@ -29,6 +29,10 @@ final class TypingEngine {
     /// Handed the word list once it has parsed, so the swipe recogniser has
     /// something to rank against.
     var onWordListLoaded: ((TypingWordList) -> Void)?
+    /// How likely each letter is to be typed next, for the key grid's hit map.
+    /// Published on every composition change, including the empty one that
+    /// clears it.
+    var onNextCharacters: (([Character: Double]) -> Void)?
 
     private(set) var composer = WordComposer()
     private(set) var policy = TypingFieldPolicy.allowed
@@ -49,6 +53,24 @@ final class TypingEngine {
         /// that back too, or the sentence loses its spacing along with its
         /// correction.
         let boundary: String
+
+        /// Whether the correction is still the text immediately before the
+        /// cursor.
+        ///
+        /// A revert deletes a fixed number of characters and types the original
+        /// in their place, which is only meaningful where the replacement
+        /// actually is. Once the cursor has moved, those characters belong to
+        /// something else — and reverting there would delete four characters of
+        /// unrelated text and insert a word the user typed a paragraph ago.
+        ///
+        /// Checked against the document rather than remembered, for the same
+        /// reason ``SwipeAlternates/isArmed(word:documentBefore:)`` is: the
+        /// document is the thing that can be trusted, and a keyboard that
+        /// deletes on faith deletes the wrong thing.
+        func isArmed(documentBefore: String?) -> Bool {
+            guard let documentBefore else { return false }
+            return documentBefore.hasSuffix(replacement + boundary)
+        }
     }
 
     private let checker: any SpellChecking
@@ -145,42 +167,46 @@ final class TypingEngine {
     /// Reconciles the composition against what the document says, then
     /// recomputes. Called after a cursor move, a dictation insertion, or any
     /// edit this keyboard did not make itself.
-    func reconcile(documentBefore: String?) {
-        composer.reconcile(documentBefore: documentBefore)
+    func reconcile(document: DocumentSnapshot) {
+        isMidWord = document.isMidWord
+        composer.reconcile(documentBefore: document.before)
         // The swipe's own insertion is what triggers the first of these. The
         // word is still the tail of the document, so its alternates stand —
         // reconciling the composer to an empty composition must not take them
         // down with it.
         if let pendingSwipe,
-           SwipeAlternates.isArmed(word: pendingSwipe.word, documentBefore: documentBefore)
+           SwipeAlternates.isArmed(word: pendingSwipe.word, documentBefore: document.before)
         {
             publishSwipeAlternates()
             return
         }
         pendingSwipe = nil
-        refresh(documentBefore: documentBefore)
+        refresh(document: document)
     }
 
     // MARK: - Typing
 
-    func insert(_ text: String, origin: WordComposer.Origin = .typed, documentBefore: String?) {
+    func insert(_ text: String, origin: WordComposer.Origin = .typed, document: DocumentSnapshot) {
         pendingRevert = nil
         pendingSwipe = nil
+        isMidWord = document.isMidWord
         composer.insert(text, origin: origin)
-        refresh(documentBefore: documentBefore)
+        refresh(document: document)
     }
 
-    func deleteBackward(documentBefore: String?) {
+    func deleteBackward(document: DocumentSnapshot) {
         pendingRevert = nil
         pendingSwipe = nil
+        isMidWord = document.isMidWord
         composer.deleteBackward()
-        refresh(documentBefore: documentBefore)
+        refresh(document: document)
     }
 
-    func resetComposition(origin: WordComposer.Origin = .typed, documentBefore: String?) {
+    func resetComposition(origin: WordComposer.Origin = .typed, document: DocumentSnapshot) {
         pendingSwipe = nil
+        isMidWord = document.isMidWord
         composer.reset(origin: origin)
-        refresh(documentBefore: documentBefore)
+        refresh(document: document)
     }
 
     /// The word the user asserted by tapping their own spelling. It stops being
@@ -192,20 +218,36 @@ final class TypingEngine {
         learned.update { $0.learn(word) }
     }
 
-    /// Records that an autocorrect was applied, so the next Delete can undo it.
+    /// Records that an autocorrect was applied, so the next Delete can undo it
+    /// and the strip can offer the original back.
+    ///
+    /// Must be called *after* the boundary has been fed through ``insert(_:origin:document:)``,
+    /// not before: every insertion clears the pending revert, so a correction
+    /// noted first was wiped by the space that applied it — which left Delete
+    /// with nothing to restore and the feature switched off in practice.
     func noteCorrection(typed: String, replacement: String, boundary: String) {
         pendingRevert = AppliedCorrection(
             typed: typed,
             replacement: replacement,
             boundary: boundary
         )
+        guard policy.allowsTypingIntelligence else { return }
+        publish(TypingCandidates.revertStrip(typed: typed))
     }
 
     /// Consumes the pending revert. Asserting the restored word is the point:
     /// a user who put their word back once should not have to do it again.
-    func takeRevert() -> AppliedCorrection? {
-        guard let pendingRevert else { return nil }
+    func takeRevert(documentBefore: String?) -> AppliedCorrection? {
+        guard let pendingRevert,
+              pendingRevert.isArmed(documentBefore: documentBefore)
+        else {
+            // Either there was nothing to revert, or the cursor has left the
+            // correction behind. Both mean the offer is over.
+            self.pendingRevert = nil
+            return nil
+        }
         self.pendingRevert = nil
+        publish(.none)
         assertedWords.insert(pendingRevert.typed.lowercased())
         if KeyboardPreferences.learnAsITypeEnabled {
             learned.update { $0.learn(pendingRevert.typed) }
@@ -320,10 +362,30 @@ final class TypingEngine {
 
     // MARK: - Computation
 
-    private func refresh(documentBefore: String?) {
+    private func refresh(document: DocumentSnapshot) {
+        publishNextCharacters()
         guard KeyboardPreferences.typingSuggestionsEnabled, policy.allowsTypingIntelligence
         else {
             publish(.none)
+            return
+        }
+
+        // A correction that can still be taken back owns the strip, the same way
+        // a swiped word owns it while its alternates stand.
+        //
+        // This is also what retires the offer. `reconcile` runs on every
+        // keystroke in this field, so clearing the revert there would clear it
+        // on the very keystroke that applied the correction — the boundary key
+        // — and undo would be dead again. Asking the document instead means the
+        // offer survives exactly as long as the correction is still in front of
+        // the cursor, and disarms itself the moment the cursor moves away.
+        if let pendingRevert {
+            guard pendingRevert.isArmed(documentBefore: document.before) else {
+                self.pendingRevert = nil
+                publish(.none)
+                return
+            }
+            publish(TypingCandidates.revertStrip(typed: pendingRevert.typed))
             return
         }
 
@@ -332,7 +394,7 @@ final class TypingEngine {
         let composition = composer.text
         if !composition.isEmpty { ensureLoaded() }
         let origin = composer.origin
-        let preceding = PrecedingWord.lastWord(in: documentBefore)
+        let preceding = PrecedingWord.lastWord(in: document.before)
 
         // Nothing being composed: prediction needs no checker, so it renders on
         // this turn rather than costing a hop.
@@ -367,7 +429,10 @@ final class TypingEngine {
             let value = SuggestionCache.Value(
                 completions: self.checker.completions(for: composition, language: self.language),
                 guesses: self.checker.guesses(for: composition, language: self.language),
-                isKnown: self.checker.isKnown(composition, language: self.language)
+                isKnown: self.checker.isKnown(composition, language: self.language),
+                // Computed here, on the later turn, rather than inside
+                // `context` — which the cache-hit path also runs.
+                similar: self.wordList.similarWords(to: composition, limit: 2)
             )
             // Checked again: the user may have typed on while this task waited
             // its turn, and a strip two keystrokes behind is worse than none.
@@ -397,12 +462,18 @@ final class TypingEngine {
         context.composition = composition
         context.origin = origin
         context.precedingWord = preceding
+        let lowered = composition.lowercased()
         context.lexiconEntries = lexiconEntries
-            .filter {
-                !composition.isEmpty
-                    && $0.userInput.lowercased().hasPrefix(composition.lowercased())
-            }
+            .filter { !composition.isEmpty && $0.userInput.lowercased().hasPrefix(lowered) }
             .map(\.documentText)
+        // An *exact* match is an instruction rather than a suggestion: the user
+        // told Settings that "omw" means something, and iOS hands keyboards the
+        // lexicon precisely so it can be honoured. It used to reach the strip as
+        // a chip and stop there, so the expansion only ever happened if the user
+        // noticed it and tapped.
+        context.lexiconExpansion = lexiconEntries
+            .first { $0.userInput.lowercased() == lowered && !$0.documentText.isEmpty }?
+            .documentText
         context.customWords = customWords.filter {
             !composition.isEmpty && $0.lowercased().hasPrefix(composition.lowercased())
         }
@@ -412,10 +483,17 @@ final class TypingEngine {
         // together they still answer when either one draws a blank.
         context.systemGuesses = TypingCandidates.merged(
             Array((checked?.guesses ?? []).prefix(4)),
-            wordList.similarWords(to: composition, limit: 2)
+            checked?.similar ?? []
         )
         context.listCompletions = wordList.completions(for: composition, limit: 3)
         context.predictions = preceding.map { wordList.nextWords(after: $0, limit: 3) } ?? []
+        // The same bigrams, but as evidence about the word being typed rather
+        // than a guess about the next one. A wider window than the strip shows,
+        // because this only has to contain the right answer, not display it.
+        context.contextualFollowers = preceding.map {
+            wordList.nextWords(after: $0, limit: 12)
+        } ?? []
+        context.isMidWord = isMidWord
         context.isKnownToChecker = checked?.isKnown ?? false
         context.isInWordList = wordList.contains(composition)
         context.assertedWords = assertedWords
@@ -429,6 +507,40 @@ final class TypingEngine {
         context.allowsTypingIntelligence = policy.allowsTypingIntelligence
         return context
     }
+
+    /// The touch model's language half, recomputed whenever the composition
+    /// moves.
+    ///
+    /// Guarded by the same policy as everything else here: a password field gets
+    /// no prediction, which means its keys get no bias either. Bounded scan, so
+    /// this stays affordable on the keystroke path — see
+    /// ``TypingWordList/nextCharacterWeights(after:scanLimit:)``.
+    private func publishNextCharacters() {
+        guard let onNextCharacters else { return }
+        let composition = composer.text
+        guard policy.allowsTypingIntelligence, !composition.isEmpty, hasLoaded else {
+            if !lastNextCharacters.isEmpty {
+                lastNextCharacters = [:]
+                onNextCharacters([:])
+            }
+            return
+        }
+        let weights = wordList.nextCharacterWeights(after: composition)
+        guard weights != lastNextCharacters else { return }
+        lastNextCharacters = weights
+        onNextCharacters(weights)
+    }
+
+    private var lastNextCharacters: [Character: Double] = [:]
+
+    /// Whether the cursor sits inside a word rather than at the end of one.
+    ///
+    /// Set from the document's *trailing* context, which is the piece this
+    /// subsystem never read. Without it, tapping into the middle of
+    /// "helloworld" after "hello" left a composition of "hello" that the next
+    /// space would happily autocorrect — rewriting the first half of a word the
+    /// keyboard could only see half of.
+    private var isMidWord = false
 
     private func publish(_ newStrip: TypingStrip) {
         guard newStrip != strip else { return }

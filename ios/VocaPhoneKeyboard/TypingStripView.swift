@@ -182,9 +182,16 @@ final class TypingStripView: UIScrollView {
         // The literal is quoted, exactly as the system keyboard quotes the word
         // it is about to take away. The quotes are the affordance: they say
         // "this is what you typed", and iOS has trained everyone to read them.
-        configuration.title = candidate.kind == .literal
-            ? "“\(candidate.text)”"
-            : candidate.text
+        // The literal and the revert are both quoted, exactly as the system
+        // keyboard quotes a word it is about to take away or has just taken.
+        // The revert carries a leading undo arrow as well, because by the time
+        // it appears the replacement is already in the document and the chip has
+        // to say "put it back" rather than "keep this".
+        configuration.title = switch candidate.kind {
+        case .literal: "“\(candidate.text)”"
+        case .revert: "↩ “\(candidate.text)”"
+        default: candidate.text
+        }
         let isEmoji = candidate.kind == .emoji
         configuration.cornerStyle = .capsule
         configuration.contentInsets = NSDirectionalEdgeInsets(
@@ -240,6 +247,7 @@ final class TypingStripView: UIScrollView {
         case .prediction: "Inserts this word next."
         case .emoji: "Replaces the word with this emoji."
         case .swipeAlternate: "Replaces the swiped word."
+        case .revert: "Undoes the autocorrect and restores what you typed."
         }
     }
 

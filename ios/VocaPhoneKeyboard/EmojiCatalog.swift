@@ -132,6 +132,56 @@ struct EmojiCatalog: Sendable {
     }
 }
 
+/// The five skin tones an emoji can be asked for, and which emoji can be asked.
+///
+/// Long-pressing a hand or a face on the system keyboard offers these, and a
+/// panel without them quietly excludes most of its users from the emoji they
+/// actually send. The eligibility test is Unicode's own — `isEmojiModifierBase`
+/// is the property that exists to answer exactly this question — rather than a
+/// hand-kept list that would go stale with every emoji release.
+enum EmojiSkinTones {
+    /// Light to dark, the order every keyboard shows them in.
+    static let modifiers: [Unicode.Scalar] = [
+        "\u{1F3FB}", "\u{1F3FC}", "\u{1F3FD}", "\u{1F3FE}", "\u{1F3FF}",
+    ]
+
+    /// The glyph with its skin tone stripped, so a recent emoji already in a
+    /// tone still finds its own variants.
+    static func base(of glyph: String) -> String {
+        String(String.UnicodeScalarView(
+            glyph.unicodeScalars.filter { !modifiers.contains($0) }
+        ))
+    }
+
+    /// The tone variants of `glyph`, default first, or an empty array when the
+    /// emoji has no tones.
+    ///
+    /// Only single-base emoji are offered. A ZWJ sequence — a family, a couple,
+    /// a person with an occupation — takes a modifier on each of its people,
+    /// and a row that changed only the first one would produce a glyph the user
+    /// did not ask for and cannot easily undo.
+    static func variants(of glyph: String) -> [String] {
+        let stripped = base(of: glyph)
+        var scalars = Array(stripped.unicodeScalars)
+        // A trailing variation selector is presentation, not content.
+        if scalars.last == "\u{FE0F}" { scalars.removeLast() }
+        guard scalars.count == 1,
+              let scalar = scalars.first,
+              scalar.properties.isEmojiModifierBase
+        else { return [] }
+        return [stripped] + modifiers.map { modifier in
+            var toned = String.UnicodeScalarView()
+            toned.append(scalar)
+            toned.append(modifier)
+            return String(toned)
+        }
+    }
+
+    static func hasVariants(of glyph: String) -> Bool {
+        !variants(of: glyph).isEmpty
+    }
+}
+
 /// The emoji this user reaches for, most recent first.
 ///
 /// In the App Group so they survive the keyboard being torn down — which iOS

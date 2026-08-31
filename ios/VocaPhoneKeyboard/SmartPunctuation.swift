@@ -109,6 +109,56 @@ enum SmartPunctuation {
     }
 }
 
+/// Whether the shift key should turn itself on, given what the document says.
+///
+/// Pure, and separated from the controller for one reason: the decision has a
+/// third answer. As well as "on" and "off" there is **"do not touch it"**, and
+/// collapsing that into one of the other two is what produced capital letters in
+/// the middle of words.
+///
+/// `UITextDocumentProxy` returns `nil` for its context whenever the host has not
+/// answered — while the keyboard is loading, and transiently while the host is
+/// mid-update. This code used to read that as `""`, and an empty document is the
+/// start of a sentence, so Shift came on. The host answers on most keystrokes
+/// and not on others, so the capital landed on whichever letter happened to
+/// follow a read the host skipped: "how Are you", "I am The good". Nothing about
+/// it looked like a rule, which is exactly why it read as random.
+///
+/// The rest of this file already knew better — ``WordComposer/reconcile(documentBefore:)``
+/// guards on the same `nil` and says so in its own comment. This is the one
+/// place that did not.
+enum AutomaticShift {
+    /// The state to move to, or `nil` to leave the shift key exactly as it is.
+    static func state(
+        documentBefore: String?,
+        autocapitalization: UITextAutocapitalizationType,
+        current: ShiftState
+    ) -> ShiftState? {
+        // The field wants everything capitalised, which it can say without the
+        // keyboard knowing a thing about the document.
+        if autocapitalization == .allCharacters { return .locked }
+        // A user-engaged caps lock outranks any automatic decision.
+        guard current != .locked else { return nil }
+        // The host did not answer. Not an empty document — no information at
+        // all — so the last decision, which was made from a context the host
+        // *did* answer, stands.
+        guard let documentBefore else { return nil }
+
+        switch autocapitalization {
+        case .none:
+            return .off
+        case .words:
+            return documentBefore.isEmpty || documentBefore.last?.isWhitespace == true
+                ? .on
+                : .off
+        default:
+            // "e.g. ", "Mr. " and "3. " all end in a full stop and none of them
+            // ends a sentence. See `SentenceBoundary`.
+            return SentenceBoundary.endsSentence(documentBefore) ? .on : .off
+        }
+    }
+}
+
 /// Sentence capitalization that knows an abbreviation from a full stop.
 ///
 /// `updateAutomaticShift` treats ". " as the end of a sentence. So does "e.g. ",

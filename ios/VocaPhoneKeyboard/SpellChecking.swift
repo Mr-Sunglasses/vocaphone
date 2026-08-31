@@ -108,6 +108,15 @@ struct SuggestionCache {
         var completions: [String]
         var guesses: [String]
         var isKnown: Bool
+        /// Near-matches from the shipped word list.
+        ///
+        /// Cached here rather than recomputed per keystroke, which is what it
+        /// used to be: `similarWords` scans the list computing edit distances,
+        /// it runs on the main actor, and it ran on the *cache hit* path too —
+        /// so the cache that exists to keep the checker off the keystroke was
+        /// letting an equally expensive scan straight through it. Typing a name,
+        /// which is exactly when nothing is in the list, was the worst case.
+        var similar: [String] = []
     }
 
     private var storage: [Key: Value] = [:]

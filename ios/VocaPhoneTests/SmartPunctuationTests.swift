@@ -131,3 +131,119 @@ struct SymbolAlternativesTests {
         #expect(plain.contains("…"))
     }
 }
+
+/// The shift key's third answer.
+///
+/// `UITextDocumentProxy` returns `nil` for its context whenever the host has not
+/// answered. Reading that as an empty document meant "start of a sentence", so
+/// Shift came on — on whichever keystroke the host happened to skip, which is
+/// how a capital letter turned up in the middle of a word.
+struct AutomaticShiftTests {
+    /// The bug, stated directly: mid-sentence, an unanswered read must change
+    /// nothing.
+    @Test func anUnansweredContextLeavesTheShiftKeyAlone() {
+        #expect(
+            AutomaticShift.state(
+                documentBefore: nil,
+                autocapitalization: .sentences,
+                current: .off
+            ) == nil
+        )
+        #expect(
+            AutomaticShift.state(
+                documentBefore: nil,
+                autocapitalization: .words,
+                current: .off
+            ) == nil
+        )
+    }
+
+    /// A genuinely empty document really is the start of a sentence, and that
+    /// behaviour has to survive the fix.
+    @Test func anEmptyDocumentStillStartsASentence() {
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "",
+                autocapitalization: .sentences,
+                current: .off
+            ) == .on
+        )
+    }
+
+    /// The reported case: typing on through a sentence stays lowercase.
+    @Test func typingThroughASentenceStaysLowercase() {
+        for before in ["how ", "how are ", "I am the ", "hello wor"] {
+            #expect(
+                AutomaticShift.state(
+                    documentBefore: before,
+                    autocapitalization: .sentences,
+                    current: .off
+                ) == .off,
+                "\(before) should not capitalise the next letter"
+            )
+        }
+    }
+
+    @Test func aSentenceEndStillCapitalises() {
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "Done. ",
+                autocapitalization: .sentences,
+                current: .off
+            ) == .on
+        )
+        // Abbreviations are not sentence ends, which `SentenceBoundary` owns.
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "Mr. ",
+                autocapitalization: .sentences,
+                current: .off
+            ) == .off
+        )
+    }
+
+    /// A word-capitalising field still capitalises every word, and a field that
+    /// asked for none still gets none.
+    @Test func theFieldsOwnRequestIsHonoured() {
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "John ",
+                autocapitalization: .words,
+                current: .off
+            ) == .on
+        )
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "",
+                autocapitalization: .none,
+                current: .on
+            ) == .off
+        )
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "anything",
+                autocapitalization: .allCharacters,
+                current: .off
+            ) == .locked
+        )
+    }
+
+    /// A caps lock the user engaged outranks every automatic decision, and an
+    /// unanswered read must not quietly cancel it either.
+    @Test func anEngagedCapsLockIsNeverOverridden() {
+        #expect(
+            AutomaticShift.state(
+                documentBefore: "hello ",
+                autocapitalization: .sentences,
+                current: .locked
+            ) == nil
+        )
+        #expect(
+            AutomaticShift.state(
+                documentBefore: nil,
+                autocapitalization: .sentences,
+                current: .locked
+            ) == nil
+        )
+    }
+}

@@ -21,6 +21,14 @@ struct TypingWordList: Sendable {
     private let ranks: [String: Int]
     private let words: [String]
     private let bigrams: [String: [String]]
+    /// Each word with consecutive repeats removed, in `words` order.
+    ///
+    /// Built once with the list rather than per swipe. The recogniser needs the
+    /// collapsed form of every word to test it against a trace, and deriving
+    /// ten thousand of them inside the gesture meant ten thousand String
+    /// allocations on the main actor at the exact frame the finger lifted — the
+    /// one moment in this keyboard where a hitch is guaranteed to be seen.
+    let collapsedWords: [String]
 
     static let empty = TypingWordList(words: [], bigrams: [:])
 
@@ -33,6 +41,7 @@ struct TypingWordList: Sendable {
             ranks[word] = rank
         }
         self.ranks = ranks
+        collapsedWords = words.map(SwipeRecognizer.collapsed)
     }
 
     var isEmpty: Bool { words.isEmpty }
@@ -91,6 +100,38 @@ struct TypingWordList: Sendable {
             if withinOne.count >= limit { break }
         }
         return Array((withinOne + withinTwo).prefix(limit))
+    }
+
+    /// How likely each letter is to be the next one typed, given the prefix
+    /// already composed. Weights are relative, and the largest is always 1.
+    ///
+    /// This is the language half of the touch model. The system keyboard quietly
+    /// grows a key's *invisible* hit region when the language expects that
+    /// letter — after "th" the "e" claims more of the gutter than the "w" beside
+    /// it — which is a large part of why it forgives a finger that lands between
+    /// two keys and this keyboard did not.
+    ///
+    /// Bounded hard. It runs on the keystroke path, and the answer only has to
+    /// separate "expected" from "not expected": scanning the most common few
+    /// hundred matches gives the same ordering as scanning ten thousand, for a
+    /// fraction of the work.
+    func nextCharacterWeights(after prefix: String, scanLimit: Int = 400) -> [Character: Double] {
+        guard !prefix.isEmpty else { return [:] }
+        let lowered = prefix.lowercased()
+        var weights: [Character: Double] = [:]
+        var matches = 0
+        // `words` is frequency-ordered, so a match found early is a more likely
+        // continuation than one found late — which is exactly the weighting
+        // wanted, and it comes for free from the scan order.
+        for (rank, word) in words.enumerated() {
+            guard word.count > lowered.count, word.hasPrefix(lowered) else { continue }
+            let next = word[word.index(word.startIndex, offsetBy: lowered.count)]
+            weights[next, default: 0] += 1 / (1 + Double(rank) / 500)
+            matches += 1
+            if matches >= scanLimit { break }
+        }
+        guard let peak = weights.values.max(), peak > 0 else { return [:] }
+        return weights.mapValues { $0 / peak }
     }
 
     /// What usually follows `word`.

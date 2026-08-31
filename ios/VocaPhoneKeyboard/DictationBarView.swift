@@ -178,6 +178,26 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
         configureSecondaries(model.secondaries)
     }
 
+    /// Replaces the chips without touching anything else on the bar.
+    ///
+    /// The strip changes on every keystroke and the rest of the bar does not, so
+    /// going through ``apply(_:animated:)`` for it meant rebuilding a whole
+    /// model — session state, transcript, buttons, accent, layout — to change
+    /// three words. Only valid while the strip is what the bar is actually
+    /// showing, which is the caller's guard to make.
+    /// Reports whether it could: only a bar already showing chips can swap them
+    /// without a crossfade. Arriving *at* the strip from the controls is a
+    /// change of body, and that animation belongs to a full `apply`.
+    @discardableResult
+    func updateCandidates(_ candidates: [TypingCandidate]) -> Bool {
+        guard case .candidates = renderedModel?.body else { return false }
+        // The stored model has to follow, or the next real `apply` will compare
+        // against a body that is no longer on screen and skip the update.
+        renderedModel?.body = .candidates(candidates)
+        setBody(.candidates(candidates), animated: false)
+        return true
+    }
+
     /// The most recent microphone level. Kept separate from `apply` because it
     /// changes on every tick while the model does not.
     func push(meterLevel: Float) {

@@ -193,3 +193,69 @@ struct SetupStatusTests {
         #expect(denied.detail(for: .microphone).contains("Settings"))
     }
 }
+
+/// The keyboard's identifier is derived from the running bundle, not written
+/// down. A hardcoded one rots the moment anyone re-signs under their own
+/// identifier for device testing — and because guided setup will not advance
+/// past the keyboard step until it finds that identifier in the enabled list,
+/// the rot is a deadlock rather than a cosmetic wrong answer.
+struct KeyboardBundleIdentifierTests {
+    @Test func theKeyboardIsTheAppsIdentifierPlusItsSuffix() {
+        #expect(
+            AppConfiguration.keyboardBundleIdentifier(forHostBundle: "com.vocahq.vocaphone")
+                == "com.vocahq.vocaphone.keyboard"
+        )
+    }
+
+    /// A locally re-signed build. This is the case that was broken: everything
+    /// else was renamed and the identifier was not.
+    @Test func aLocallyResignedAppFindsItsOwnKeyboard() {
+        let host = "dev.kanishkpachauri.vocaphone"
+        let keyboard = AppConfiguration.keyboardBundleIdentifier(forHostBundle: host)
+        #expect(keyboard == "dev.kanishkpachauri.vocaphone.keyboard")
+        // The enabled-keyboard list carries trailing layout options, which is
+        // why the match is a substring.
+        #expect(
+            InstalledKeyboards.includesVocaPhone(
+                ["\(keyboard)@sw=QWERTY;hw=Automatic"],
+                keyboard: keyboard
+            ) == true
+        )
+        // And the identifier it used to look for is no longer in the list,
+        // which is exactly why guided setup could not find the keyboard.
+        #expect(
+            InstalledKeyboards.includesVocaPhone(
+                ["\(keyboard)@sw=QWERTY;hw=Automatic"],
+                keyboard: "com.vocahq.vocaphone.keyboard"
+            ) == false
+        )
+    }
+
+    /// Asked from inside the keyboard, the answer is already in hand.
+    @Test func theKeyboardDoesNotAppendItsSuffixTwice() {
+        #expect(
+            AppConfiguration.keyboardBundleIdentifier(
+                forHostBundle: "dev.kanishkpachauri.vocaphone.keyboard"
+            ) == "dev.kanishkpachauri.vocaphone.keyboard"
+        )
+    }
+
+    /// Asked from another extension, the sibling is derived from the app rather
+    /// than from the asker.
+    @Test func anotherExtensionDerivesTheSibling() {
+        #expect(
+            AppConfiguration.keyboardBundleIdentifier(
+                forHostBundle: "dev.kanishkpachauri.vocaphone.liveactivity"
+            ) == "dev.kanishkpachauri.vocaphone.keyboard"
+        )
+    }
+
+    /// A bundle that will not name itself falls back to the shipping identifier
+    /// rather than producing ".keyboard" on its own.
+    @Test func anUnnamedBundleFallsBackToTheShippingIdentifier() {
+        #expect(
+            AppConfiguration.keyboardBundleIdentifier(forHostBundle: nil)
+                == "com.vocahq.vocaphone.keyboard"
+        )
+    }
+}

@@ -7,6 +7,12 @@ enum KeyboardOutput {
     case deleteBackward
     case deleteWord
     case moveCursor(Int)
+    /// Move the cursor up or down whole lines, keeping its column.
+    ///
+    /// Separate from ``moveCursor(_:)`` because a keyboard extension can only
+    /// move by *characters*: how many characters a line is worth is a question
+    /// about the document, and only the controller can see it.
+    case moveCursorLine(Int)
     /// A traced word and the alternates that lost to it, for the strip.
     case swipeWord(String, alternates: [String])
     /// Hold the plane key to reach the emoji panel.
@@ -23,9 +29,20 @@ enum KeyboardOutput {
 
 enum CursorTrackpad {
     static let pointsPerCharacter: CGFloat = 10
+    /// How far the finger travels for one line.
+    ///
+    /// Deliberately more than twice the horizontal step. The gesture is mostly
+    /// used to nudge along a line, and a vertical threshold close to the
+    /// horizontal one turns every slightly sloped drag into a jump to another
+    /// line — which loses the user the place they were trying to reach.
+    static let pointsPerLine: CGFloat = 26
 
     static func step(forHorizontalTranslation translation: CGFloat) -> Int {
         Int(translation / pointsPerCharacter)
+    }
+
+    static func line(forVerticalTranslation translation: CGFloat) -> Int {
+        Int(translation / pointsPerLine)
     }
 }
 
@@ -72,8 +89,32 @@ final class KeyGridView: UIView {
 
     /// The punctuation pair on the letters plane, or `nil` for none — which is
     /// the plain QWERTY case, matching the system keyboard.
-    var leadingPunctuation: String? {
-        didSet { if leadingPunctuation != oldValue { rebuild() } }
+    var punctuation: KeyLayout.BottomRowPunctuation? {
+        didSet { if punctuation != oldValue { rebuild() } }
+    }
+
+    /// Whether Return does anything. Fields that set
+    /// `enablesReturnKeyAutomatically` expect it dimmed and inert until there is
+    /// something to send, and a Send button that fires on an empty message is a
+    /// message the user did not write.
+    var returnKeyIsEnabled = true {
+        didSet { if returnKeyIsEnabled != oldValue { updateKeys() } }
+    }
+
+    /// How likely each letter is to be typed next, from the language model.
+    ///
+    /// Handed straight to the hit map, which grows an expected key's invisible
+    /// target by a bounded fraction of the hysteresis distance. This is the
+    /// piece the geometry alone could not supply, and it is why the system
+    /// keyboard forgives a finger that lands in the gutter between two keys.
+    ///
+    /// Assigned rather than rebuilt: the targets belong to the layout and change
+    /// when the keyboard is re-laid out, while this changes on every keystroke.
+    var nextCharacterLikelihood: [Character: Double] = [:] {
+        didSet {
+            guard nextCharacterLikelihood != oldValue else { return }
+            hitMap.likelihood = nextCharacterLikelihood
+        }
     }
 
     /// The word list the swipe recogniser ranks against. Set by the controller
@@ -169,6 +210,7 @@ final class KeyGridView: UIView {
         var preview: KeyPreviewView?
         let initialPoint: CGPoint
         var lastCursorStep = 0
+        var lastCursorLine = 0
         var isCursorTracking = false
         /// Fires the accent popover if the finger is still on the key. Cancelled
         /// by movement, by lifting, and by anything that tears the grid down.
@@ -284,21 +326,32 @@ final class KeyGridView: UIView {
                 // shrunken visual centre would hand their share of the gutter
                 // to the neighbouring letter — losing the touch target the
                 // inset was written to preserve.
-                targets.append(
-                    KeyHitMap.Target(
-                        index: keyIndex,
-                        frame: slotFrame,
-                        hitRect: key.hitRect,
-                        isCharacter: key.spec.cap.isCharacter
+                // A blank claims no space at all. It is a hole in the keypad,
+                // and letting it own a hit rect would put a dead zone beside the
+                // zero where the neighbouring keys should reach.
+                if key.spec.cap.isInteractive {
+                    targets.append(
+                        KeyHitMap.Target(
+                            index: keyIndex,
+                            frame: slotFrame,
+                            hitRect: key.hitRect,
+                            isCharacter: key.spec.cap.isCharacter,
+                            character: key.spec.cap.resolvedText(shift: .off)
+                                .flatMap { $0.count == 1 ? $0.lowercased().first : nil }
+                        )
                     )
-                )
+                }
                 x += width + metrics.columnGap
                 keyIndex += 1
             }
             y += metrics.keyHeight + metrics.rowGap
         }
 
-        hitMap = KeyHitMap(targets: targets, hysteresis: hysteresis)
+        hitMap = KeyHitMap(
+            targets: targets,
+            hysteresis: hysteresis,
+            likelihood: nextCharacterLikelihood
+        )
     }
 
     /// The native letters plane leaves a larger visual moat around Shift and
@@ -411,7 +464,14 @@ final class KeyGridView: UIView {
             plane.views.forEach { $0.removeFromSuperview() }
         }
         planeCache.removeAll()
-        previewPool.forEach { $0.removeFromSuperview() }
+        // Every balloon, not just the pooled ones. `releaseTouches` above starts
+        // a *fade* rather than hiding outright, so a preview that is still
+        // fading is in neither the pool nor any tracked touch — it used to
+        // survive the rebuild and then hand itself back to the fresh pool,
+        // carrying the palette and metrics it was built with. The next
+        // keystroke after a theme or height change dequeued it and drew the
+        // previous appearance's colours.
+        subviews.compactMap { $0 as? KeyPreviewView }.forEach { $0.removeFromSuperview() }
         previewPool.removeAll()
         alternativesView?.removeFromSuperview()
         alternativesView = nil
@@ -436,7 +496,7 @@ final class KeyGridView: UIView {
                 for: plane,
                 includesGlobe: showsGlobeKey,
                 returnIsProminent: returnKeyIsProminent,
-                leadingPunctuation: leadingPunctuation
+                punctuation: punctuation
             )
             var views: [KeyView] = []
             views.reserveCapacity(built.reduce(0) { $0 + $1.keys.count })
@@ -536,6 +596,7 @@ final class KeyGridView: UIView {
                 shift: shiftState,
                 returnTitle: returnKeyTitle
             )
+            if key.spec.cap == .newline { key.isEnabled = returnKeyIsEnabled }
         }
     }
 
@@ -550,6 +611,9 @@ final class KeyGridView: UIView {
             guard let index = keyIndex(at: point, characterOnly: false)
             else { continue }
             let key = keyViews[index]
+            // A dimmed Return takes no touch at all — not the highlight and not
+            // the click, both of which would promise something it will not do.
+            if key.spec.cap == .newline, !returnKeyIsEnabled { continue }
             let item = TrackedTouch(touch: touch, key: key, keyIndex: index, initialPoint: point)
             tracked.append(item)
             key.isHighlighted = true
@@ -663,8 +727,16 @@ final class KeyGridView: UIView {
                     feedback.swipeBegan()
                 }
                 if item.isSwiping {
-                    item.swipePath.append(point)
-                    swipeTrail.extend(to: point)
+                    // Every sample the panel actually took, not just the one
+                    // that survived to this frame. At 120Hz UIKit delivers
+                    // several touches per display refresh and collapses them
+                    // into one `touchesMoved`; taking only the last threw away
+                    // most of the curve, which cost the recogniser the shape it
+                    // scores against and left the trail visibly polygonal.
+                    for sample in coalescedPoints(for: touch, in: event) {
+                        item.swipePath.append(sample)
+                        swipeTrail.extend(to: sample)
+                    }
                     // A trace is meant to run across keys, so it re-targets on
                     // the boundary with no hysteresis at all.
                     if let index = keyIndex(at: point, characterOnly: true),
@@ -704,6 +776,15 @@ final class KeyGridView: UIView {
             setHighlight(true, on: item.key)
             showPreview(for: item)
         }
+    }
+
+    /// Every position the panel reported for this touch since the last event,
+    /// oldest first — or just the current one if coalescing is unavailable.
+    private func coalescedPoints(for touch: UITouch, in event: UIEvent?) -> [CGPoint] {
+        guard let coalesced = event?.coalescedTouches(for: touch), !coalesced.isEmpty else {
+            return [touch.location(in: self)]
+        }
+        return coalesced.map { $0.location(in: self) }
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -804,6 +885,10 @@ final class KeyGridView: UIView {
             delegate?.keyGrid(self, didProduce: .space)
             return true
         case .newline:
+            // A field that asked for `enablesReturnKeyAutomatically` has said
+            // there is nothing to send yet. The key is drawn dimmed; it has to
+            // act dimmed too, or the dimming is decoration.
+            guard returnKeyIsEnabled else { return false }
             feedback.textCommitted()
             delegate?.keyGrid(self, didProduce: .newline)
             return true
@@ -832,19 +917,17 @@ final class KeyGridView: UIView {
     private func scheduleSpaceTrackpad(for item: TrackedTouch) {
         guard !UIAccessibility.isVoiceOverRunning else { return }
         spaceTrackpadTimer?.invalidate()
-        spaceTrackpadTimer = Timer.scheduledTimer(withTimeInterval: 0.32, repeats: false) {
-            [weak self, weak item] _ in
-            MainActor.assumeIsolated {
-                guard let self,
-                      let item,
-                      self.tracked.contains(where: { $0 === item }),
-                      item.isEngaged
-                else { return }
-                item.isCursorTracking = true
-                item.lastCursorStep = 0
-                self.feedback.selectionChanged()
-                UIAccessibility.post(notification: .announcement, argument: "Cursor control")
-            }
+        spaceTrackpadTimer = Self.scheduleTimer(after: 0.32) { [weak self, weak item] in
+            guard let self,
+                  let item,
+                  self.tracked.contains(where: { $0 === item }),
+                  item.isEngaged
+            else { return }
+            item.isCursorTracking = true
+            item.lastCursorStep = 0
+            item.lastCursorLine = 0
+            self.feedback.selectionChanged()
+            UIAccessibility.post(notification: .announcement, argument: "Cursor control")
         }
     }
 
@@ -862,6 +945,20 @@ final class KeyGridView: UIView {
 
         item.isEngaged = true
         setHighlight(true, on: item.key)
+
+        // Lines first. A drag that has crossed into another line is a drag about
+        // *which* line, and applying the horizontal component in the same turn
+        // would land the cursor a few characters away from the column the finger
+        // is actually over.
+        let line = CursorTrackpad.line(
+            forVerticalTranslation: point.y - item.initialPoint.y
+        )
+        let lineDelta = line - item.lastCursorLine
+        if lineDelta != 0 {
+            item.lastCursorLine = line
+            delegate?.keyGrid(self, didProduce: .moveCursorLine(lineDelta))
+        }
+
         let step = CursorTrackpad.step(
             forHorizontalTranslation: point.x - item.initialPoint.x
         )
@@ -910,6 +1007,10 @@ final class KeyGridView: UIView {
 
     private var swipeTypingIsAvailable: Bool {
         KeyboardPreferences.swipeTypingEnabled
+            // Only where there are letters to trace across. On the numbers and
+            // symbols planes, and on the numeric keypads, a long drag is a
+            // finger changing its mind about a key.
+            && plane == .letters
             && swipeWordList?.isEmpty == false
             && !UIAccessibility.isVoiceOverRunning
     }
@@ -969,9 +1070,8 @@ final class KeyGridView: UIView {
         cancelPlaneHold()
         planeHoldOrigin = plane
         planeHoldPoint = point
-        planeHoldTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) {
-            [weak self] _ in
-            MainActor.assumeIsolated { self?.completePlaneHold() }
+        planeHoldTimer = Self.scheduleTimer(after: 0.5) { [weak self] in
+            self?.completePlaneHold()
         }
     }
 
@@ -1001,16 +1101,13 @@ final class KeyGridView: UIView {
               KeyAlternatives.hasOptions(for: base, keyboardType: keyboardType)
         else { return }
         item.longPressTimer?.invalidate()
-        item.longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) {
-            [weak self, weak item] _ in
-            MainActor.assumeIsolated {
-                guard let self,
-                      let item,
-                      self.tracked.contains(where: { $0 === item }),
-                      item.isEngaged
-                else { return }
-                self.presentAlternatives(for: item)
-            }
+        item.longPressTimer = Self.scheduleTimer(after: 0.45) { [weak self, weak item] in
+            guard let self,
+                  let item,
+                  self.tracked.contains(where: { $0 === item }),
+                  item.isEngaged
+            else { return }
+            self.presentAlternatives(for: item)
         }
     }
 
@@ -1034,7 +1131,6 @@ final class KeyGridView: UIView {
             alternativesView = created
             return created
         }()
-        popover.isHidden = false
         popover.show(options, palette: palette, metrics: metrics)
 
         let size = popover.size(for: options)
@@ -1044,6 +1140,7 @@ final class KeyGridView: UIView {
         let x = min(max(frame.midX - size.width / 2, 2), max(bounds.width - size.width - 2, 2))
         popover.frame = CGRect(x: x, y: frame.minY - size.height - 6, width: size.width, height: size.height)
         bringSubviewToFront(popover)
+        popover.appear(animated: true)
 
         item.isChoosingAlternative = true
         item.longPressTimer = nil
@@ -1059,7 +1156,7 @@ final class KeyGridView: UIView {
     }
 
     private func dismissAlternatives() {
-        alternativesView?.isHidden = true
+        alternativesView?.disappear(animated: true)
         for item in tracked { item.isChoosingAlternative = false }
     }
 
@@ -1108,6 +1205,29 @@ final class KeyGridView: UIView {
         key.isHighlighted = false
     }
 
+    // MARK: - Timers
+
+    /// One-shot timer on the *common* run loop modes.
+    ///
+    /// `Timer.scheduledTimer` installs into `.default` only, which stops firing
+    /// the moment UIKit enters tracking mode — which it does whenever a scroll
+    /// view anywhere in this process is being dragged, the typing strip and the
+    /// emoji panel included. Every interaction timer in this view is armed by a
+    /// finger, so a held Delete that quietly stopped repeating, or an accent
+    /// popover that never opened, is a keyboard that has frozen as far as the
+    /// person holding it is concerned. The session poller was already given
+    /// `.common` for this exact reason; these are the timers that needed it more.
+    static func scheduleTimer(
+        after interval: TimeInterval,
+        _ body: @escaping @MainActor () -> Void
+    ) -> Timer {
+        let timer = Timer(timeInterval: interval, repeats: false) { _ in
+            MainActor.assumeIsolated { body() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
+    }
+
     // MARK: - Delete repeat
 
     /// The first repeat waits; the ones after it accelerate.
@@ -1131,11 +1251,8 @@ final class KeyGridView: UIView {
     private func startDeleteTimer() {
         deleteTimer?.invalidate()
         deleteRepeatCount = 0
-        deleteTimer = Timer.scheduledTimer(
-            withTimeInterval: Self.deleteInitialDelay,
-            repeats: false
-        ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.scheduleNextDelete() }
+        deleteTimer = Self.scheduleTimer(after: Self.deleteInitialDelay) { [weak self] in
+            self?.scheduleNextDelete()
         }
     }
 
@@ -1162,9 +1279,8 @@ final class KeyGridView: UIView {
         let progress = min(CGFloat(deleteRepeatCount) / 12, 1)
         let interval = Self.deleteSlowestInterval
             - (Self.deleteSlowestInterval - Self.deleteFastestInterval) * Double(progress)
-        deleteTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) {
-            [weak self] _ in
-            MainActor.assumeIsolated { self?.scheduleNextDelete() }
+        deleteTimer = Self.scheduleTimer(after: interval) { [weak self] in
+            self?.scheduleNextDelete()
         }
     }
 
@@ -1187,11 +1303,14 @@ final class KeyGridView: UIView {
         }
 
         let preview: KeyPreviewView
+        let isNew: Bool
         if let existing = item.preview {
             preview = existing
+            isNew = false
         } else {
             preview = dequeuePreview()
             item.preview = preview
+            isNew = true
         }
         let frame = item.key.frame
         let width = max(frame.width * 1.5, frame.width + 22)
@@ -1217,6 +1336,10 @@ final class KeyGridView: UIView {
             )
         )
         bringSubviewToFront(preview)
+        // Only the first appearance grows. Sliding from one key to the next
+        // moves the same balloon, and re-animating it there would be the glyph
+        // pulsing under a finger that is simply correcting its aim.
+        if isNew { preview.appear(animated: true) }
     }
 
 #if DEBUG
@@ -1248,15 +1371,24 @@ final class KeyGridView: UIView {
         return preview
     }
 
+    /// Fades the balloon back into its key and returns it to the pool.
+    ///
+    /// The view is pooled only once the fade has finished. A preview handed back
+    /// mid-animation would be dequeued by the next keystroke while still
+    /// shrinking, and the letter after it would appear half transparent —
+    /// `appear(animated:)` resets both, but the pool is the honest place to draw
+    /// the line.
     private func recycle(_ preview: KeyPreviewView?) {
         guard let preview else { return }
-        preview.isHidden = true
-        // Two covers two-thumb typing; holding more would just retain views.
-        guard previewPool.count < 2 else {
-            preview.removeFromSuperview()
-            return
+        preview.disappear(animated: metrics.showsPreview) { [weak self, weak preview] in
+            guard let self, let preview else { return }
+            // Two covers two-thumb typing; holding more would just retain views.
+            guard previewPool.count < 2, preview.superview === self else {
+                preview.removeFromSuperview()
+                return
+            }
+            previewPool.append(preview)
         }
-        previewPool.append(preview)
     }
 }
 
@@ -1277,7 +1409,10 @@ private extension KeyCap {
     var actsOnTouchDown: Bool {
         switch self {
         case .delete, .shift, .plane, .globe: true
-        case .character, .space, .newline: false
+        // A blank never reaches here — it owns no hit target — but saying so
+        // explicitly is what stops the next cap added to the enum from
+        // defaulting into firing on touch-down.
+        case .character, .space, .newline, .blank: false
         }
     }
 }

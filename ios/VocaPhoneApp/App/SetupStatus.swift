@@ -58,9 +58,16 @@ enum InstalledKeyboards {
 
     /// Entries carry trailing layout options, so the bundle identifier is
     /// matched as a substring rather than compared whole.
-    static func includesVocaPhone(_ identifiers: [String]?) -> Bool? {
+    ///
+    /// `keyboard` is injectable because the identifier is derived from the
+    /// running bundle, and a test bundle is not the app — without it a test can
+    /// only ever check the matching against whatever the *test host* is called.
+    static func includesVocaPhone(
+        _ identifiers: [String]?,
+        keyboard: String = AppConfiguration.keyboardBundleIdentifier
+    ) -> Bool? {
         identifiers.map { entries in
-            entries.contains { $0.contains(AppConfiguration.keyboardBundleIdentifier) }
+            entries.contains { $0.contains(keyboard) }
         }
     }
 }

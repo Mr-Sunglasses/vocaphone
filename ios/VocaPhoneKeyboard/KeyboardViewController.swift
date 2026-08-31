@@ -19,6 +19,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var hasRendered = false
     private var announcesStateChanges = false
     private var lastPublishedAt: Date?
+    private var lastPublishedFullAccess: Bool?
     private static let statusRepublishInterval: TimeInterval = 10
     private var isBarExpanded = false
     private var barLayout = DictationBarLayout.status
@@ -109,13 +110,18 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             controller.applyLayoutMetrics()
         }
         publishKeyboardStatus()
-        typing.onStrip = { [weak self] _ in
+        typing.onStrip = { [weak self] strip in
             guard let self else { return }
-            render(lastRecord)
+            renderStrip(strip)
             noteAvailableMemory(.firstCandidates)
         }
         typing.onWordListLoaded = { [weak self] list in
             self?.keyGrid.swipeWordList = list
+        }
+        // The language half of the touch model. Straight through to the grid,
+        // which hands it to the hit map — nothing here interprets it.
+        typing.onNextCharacters = { [weak self] weights in
+            self?.keyGrid.nextCharacterLikelihood = weights
         }
         // The user's own text replacements and contact names. Requested once per
         // instance; if Full Access is off it simply comes back empty.
@@ -199,6 +205,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        // UIKit can finalize a changed Full Access setting after the earlier
+        // appearance callbacks. This is the last lifecycle point before guided
+        // setup expects the extension to prove its state.
+        publishKeyboardStatus()
+        KeyboardHaptics.shared.attach(to: view, hasFullAccess: hasFullAccess)
         // A session found before the keyboard is on screen is work already in
         // flight being restored, not something that just happened to the user,
         // and it must not arrive as a buzz in their hand.
@@ -237,12 +248,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// that returning to the keyboard repeatedly is not a stream of file writes.
     private func publishKeyboardStatus() {
         let now = Date()
-        if let lastPublishedAt,
-           now.timeIntervalSince(lastPublishedAt) < Self.statusRepublishInterval
-        {
+        guard KeyboardStatusPublication.shouldPublish(
+            lastPublishedAt: lastPublishedAt,
+            lastPublishedFullAccess: lastPublishedFullAccess,
+            fullAccess: hasFullAccess,
+            now: now,
+            minimumInterval: Self.statusRepublishInterval
+        ) else {
             return
         }
         lastPublishedAt = now
+        lastPublishedFullAccess = hasFullAccess
         try? store.saveKeyboardStatus(
             KeyboardStatus(lastSeenAt: now, hasFullAccess: hasFullAccess)
         )
@@ -254,6 +270,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
         super.textDidChange(textInput)
+        documentEvent { handleTextChange() }
+    }
+
+    /// Runs after every insertion this keyboard makes, which makes it the single
+    /// hottest place in the extension for a redundant hop into the host process.
+    /// One snapshot, shared by everything below.
+    private func handleTextChange() {
+        let snapshot = document
         // Moving to a different field brings different traits with it, and the
         // plane should reset so a number pad never leaves the user on letters.
         let documentID = currentDocumentID
@@ -261,9 +285,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             lastDocumentID = documentID
             lastSpaceInsertedAt = nil
             applyDocumentTraits()
-            keyGrid.plane = Self.initialPlane(
-                for: textDocumentProxy.keyboardType ?? .default
-            )
             // A waiting transcript parks itself when the cursor leaves its field
             // and re-arms when it comes back. Both were left to the next poll,
             // so the bar could still offer Insert for a field the user had
@@ -273,9 +294,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         } else {
             // Same field, but something moved the cursor or edited the text
             // without going through this keyboard. The document wins.
-            typing.reconcile(documentBefore: textDocumentProxy.documentContextBeforeInput)
+            typing.reconcile(document: snapshot)
         }
-        updateAutomaticShift()
+        updateReturnKeyEnablement(for: snapshot)
+        updateAutomaticShift(for: snapshot)
     }
 
     // MARK: - Dictation actions
@@ -366,21 +388,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     // MARK: - Typing
 
     func keyGrid(_ grid: KeyGridView, didProduce output: KeyboardOutput) {
+        documentEvent { handle(output) }
+    }
+
+    private func handle(_ output: KeyboardOutput) {
         switch output {
         case let .text(text):
             if let substitution = SmartPunctuation.substitution(
                 for: text,
-                before: documentBefore ?? "",
+                before: document.before ?? "",
                 traits: smartPunctuation
             ) {
                 for _ in 0..<substitution.deletions { textDocumentProxy.deleteBackward() }
                 textDocumentProxy.insertText(substitution.insertion)
-                typing.insert(substitution.insertion, documentBefore: documentBefore)
+                typing.insert(substitution.insertion, document: refreshDocument())
             } else if Self.isBoundary(text) {
                 commitComposition(followedBy: text)
             } else {
                 textDocumentProxy.insertText(text)
-                typing.insert(text, documentBefore: documentBefore)
+                typing.insert(text, document: refreshDocument())
             }
             lastSpaceInsertedAt = nil
             releaseUndoIfDetached()
@@ -396,7 +422,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             releaseUndoIfDetached()
         case .deleteWord:
             deleteWordBackward()
-            typing.resetComposition(documentBefore: documentBefore)
+            typing.resetComposition(document: refreshDocument())
             releaseUndoIfDetached()
         case .emojiPanel:
             showEmojiPanel(true)
@@ -408,6 +434,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 ? word.prefix(1).uppercased() + word.dropFirst()
                 : word
             textDocumentProxy.insertText(cased + " ")
+            refreshDocument()
             typing.noteSwipeWord(cased, alternates: alternates)
             lastSpaceInsertedAt = nil
             releaseUndoIfDetached()
@@ -417,7 +444,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             lastSpaceInsertedAt = nil
             // The cursor is somewhere else now, so whatever was being composed
             // belongs to a different part of the document.
-            typing.reconcile(documentBefore: documentBefore)
+            typing.reconcile(document: refreshDocument())
+            releaseUndoIfDetached()
+        case let .moveCursorLine(lines):
+            moveCursorByLines(lines)
+            lastSpaceInsertedAt = nil
+            typing.reconcile(document: refreshDocument())
             releaseUndoIfDetached()
         case let .nextInputMode(anchor, event):
             // `handleInputModeList` also drives the long-press keyboard picker,
@@ -469,8 +501,67 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         return panel
     }
 
-    private var documentBefore: String? {
-        textDocumentProxy.documentContextBeforeInput
+    /// The text either side of the cursor, read once and reused for the rest of
+    /// the event.
+    ///
+    /// Every read of `documentContextBeforeInput` is a synchronous hop into the
+    /// host application. A single keystroke used to make six or seven of them:
+    /// smart punctuation, the composer, the undo check, then `textDidChange`
+    /// coming back for the document identifier, the composer again, and
+    /// autocapitalization. On a slow host that is most of a frame spent asking
+    /// the same question.
+    private func readDocument() -> DocumentSnapshot {
+        DocumentSnapshot(
+            before: textDocumentProxy.documentContextBeforeInput,
+            after: textDocumentProxy.documentContextAfterInput
+        )
+    }
+
+    /// The snapshot taken at the start of the event currently being handled.
+    ///
+    /// Held for the duration of one call into this controller and cleared after
+    /// it, so nothing can accidentally read a snapshot from the *previous*
+    /// keystroke: stale context here is a wrong autocorrect, not a slow one.
+    private var currentDocument: DocumentSnapshot?
+
+    /// The event's snapshot if one has been established, and a fresh read
+    /// otherwise.
+    ///
+    /// Deliberately does *not* cache. It used to, which meant any caller
+    /// anywhere could quietly establish an event snapshot — and
+    /// `applyDocumentTraits`, reached from `viewWillAppear`, is not inside an
+    /// event and has no `defer` to clear one. The snapshot it left behind was
+    /// then reused by the next keystroke as though it described the document
+    /// now. Only the entry points below may set it, and each of them clears it
+    /// on the way out.
+    private var document: DocumentSnapshot {
+        currentDocument ?? readDocument()
+    }
+
+    /// Runs `body` as one document event: one snapshot taken at the start,
+    /// released at the end.
+    ///
+    /// A helper rather than a `defer` written out at each entry point, because
+    /// writing it out is exactly what gets forgotten. `applyDocumentTraits` did,
+    /// and left a snapshot from `viewWillAppear` for the next keystroke to read
+    /// as though it described the document now; the emoji panel's handlers did
+    /// too, and left one from the emoji they had just inserted. Both are the
+    /// same mistake, and neither is possible through here.
+    @discardableResult
+    private func documentEvent<T>(_ body: () -> T) -> T {
+        currentDocument = readDocument()
+        defer { currentDocument = nil }
+        return body()
+    }
+
+    /// Re-reads the document after this keyboard has changed it. The insertion
+    /// has already happened, so the cached snapshot no longer describes what the
+    /// composer is looking at.
+    @discardableResult
+    private func refreshDocument() -> DocumentSnapshot {
+        let snapshot = readDocument()
+        currentDocument = snapshot
+        return snapshot
     }
 
     /// Re-read per keystroke rather than cached: the field can change its own
@@ -510,8 +601,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             let rewrite = typing.composer.rewrite(to: replacement)
             for _ in 0..<rewrite.deletions { textDocumentProxy.deleteBackward() }
             textDocumentProxy.insertText(rewrite.insertion + boundary)
+            // Order matters and used to be the other way round. Feeding the
+            // boundary through the engine clears any pending revert, so noting
+            // the correction first meant it was wiped by the very space that
+            // applied it — Delete had nothing to restore, and undo-autocorrect,
+            // the behaviour people rely on without knowing its name, silently
+            // did nothing at all.
+            typing.insert(boundary, document: refreshDocument())
             typing.noteCorrection(typed: typed, replacement: replacement, boundary: boundary)
-            typing.insert(boundary, documentBefore: documentBefore)
             // The correction is the one keyboard action a user may not have
             // noticed, so it announces itself — and only it.
             UIAccessibility.post(
@@ -522,7 +619,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         if !boundary.isEmpty { textDocumentProxy.insertText(boundary) }
         if !typed.isEmpty { typing.noteCompletedWord(typed) }
-        typing.insert(boundary.isEmpty ? " " : boundary, documentBefore: documentBefore)
+        typing.insert(boundary.isEmpty ? " " : boundary, document: refreshDocument())
     }
 
     /// Delete, which is also how an autocorrect is undone.
@@ -532,26 +629,38 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// document. This is the behaviour people rely on without knowing its name,
     /// and getting it wrong is how a keyboard becomes something to fight.
     private func deleteBackward() {
-        if let revert = typing.takeRevert() {
-            let removals = revert.replacement.count + revert.boundary.count
-            for _ in 0..<removals { textDocumentProxy.deleteBackward() }
-            textDocumentProxy.insertText(revert.typed + revert.boundary)
-            typing.reconcile(documentBefore: documentBefore)
-            UIAccessibility.post(
-                notification: .announcement,
-                argument: "Restored \(revert.typed)"
-            )
-            return
-        }
+        guard !revertPendingCorrection() else { return }
         textDocumentProxy.deleteBackward()
-        typing.deleteBackward(documentBefore: documentBefore)
+        typing.deleteBackward(document: refreshDocument())
+    }
+
+    /// Puts back exactly what the user typed, if an autocorrect is still
+    /// standing. Reports whether it did.
+    ///
+    /// Reached two ways, which is the point of it being one function: pressing
+    /// Delete as the very next action, and tapping the chip the strip offers
+    /// right afterwards. The system keyboard draws that offer as a bubble under
+    /// the word itself; an extension is never told where the word is on screen,
+    /// so the strip is the surface this keyboard can honestly put it on.
+    @discardableResult
+    private func revertPendingCorrection() -> Bool {
+        guard let revert = typing.takeRevert(documentBefore: document.before) else { return false }
+        let removals = revert.replacement.count + revert.boundary.count
+        for _ in 0..<removals { textDocumentProxy.deleteBackward() }
+        textDocumentProxy.insertText(revert.typed + revert.boundary)
+        typing.reconcile(document: refreshDocument())
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: "Restored \(revert.typed)"
+        )
+        return true
     }
 
     func keyGridDidChangeShift(_ grid: KeyGridView) {}
 
     private func insertSpace() {
         let proxy = textDocumentProxy
-        let before = proxy.documentContextBeforeInput ?? ""
+        let before = document.before ?? ""
         // A second space closes the sentence instead of doubling the gap, which
         // is the iOS behaviour people type by reflex. It can never coincide with
         // a pending correction: the previous space already ended that word.
@@ -565,7 +674,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             proxy.deleteBackward()
             proxy.insertText(". ")
             lastSpaceInsertedAt = nil
-            typing.insert(". ", documentBefore: documentBefore)
+            typing.insert(". ", document: refreshDocument())
         } else {
             commitComposition(followedBy: " ")
             lastSpaceInsertedAt = Date()
@@ -573,9 +682,65 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         releaseUndoIfDetached()
     }
 
+    /// Moves the cursor a whole line up or down, keeping its column.
+    ///
+    /// A keyboard extension can only `adjustTextPosition(byCharacterOffset:)`,
+    /// so "one line" has to be counted out in characters from the document
+    /// context — which is why this lives here rather than in the grid: the grid
+    /// knows the finger moved, and only the controller can see the text.
+    ///
+    /// Clamped to the ends. Off the top or bottom of the visible context the
+    /// cursor goes to the start or end of it rather than nowhere, which is what
+    /// the user is reaching for anyway.
+    private func moveCursorByLines(_ lines: Int) {
+        guard lines != 0 else { return }
+        let snapshot = document
+        let beforeLines = (snapshot.before ?? "").components(separatedBy: "\n")
+        let afterLines = (snapshot.after ?? "").components(separatedBy: "\n")
+        // How far into its own line the cursor sits. The last element of the
+        // leading context is the part of the current line behind the cursor.
+        let column = beforeLines.last?.count ?? 0
+        let proxy = textDocumentProxy
+
+        if lines < 0 {
+            // Nothing above in the visible context: the start of this line is
+            // the nearest thing to what was asked for, and it is where a finger
+            // dragged off the top is reaching anyway.
+            guard beforeLines.count > 1 else {
+                if column > 0 { proxy.adjustTextPosition(byCharacterOffset: -column) }
+                return
+            }
+            let steps = min(-lines, beforeLines.count - 1)
+            let target = beforeLines.count - 1 - steps
+            // Back to the start of the current line, then over each line
+            // skipped along with the break that ended it.
+            var offset = -column
+            for index in stride(from: beforeLines.count - 2, through: target, by: -1) {
+                offset -= 1 + beforeLines[index].count
+            }
+            // Forward into the target line, clamped to its end so a short line
+            // keeps the cursor on it rather than past it.
+            offset += min(column, beforeLines[target].count)
+            proxy.adjustTextPosition(byCharacterOffset: offset)
+        } else {
+            guard afterLines.count > 1 else {
+                let tail = afterLines.first?.count ?? 0
+                if tail > 0 { proxy.adjustTextPosition(byCharacterOffset: tail) }
+                return
+            }
+            let steps = min(lines, afterLines.count - 1)
+            var offset = afterLines[0].count
+            for index in 1..<steps {
+                offset += 1 + afterLines[index].count
+            }
+            offset += 1 + min(column, afterLines[steps].count)
+            proxy.adjustTextPosition(byCharacterOffset: offset)
+        }
+    }
+
     private func deleteWordBackward() {
         let proxy = textDocumentProxy
-        guard let before = proxy.documentContextBeforeInput, !before.isEmpty else {
+        guard let before = document.before, !before.isEmpty else {
             proxy.deleteBackward()
             return
         }
@@ -595,7 +760,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// that would delete the wrong characters.
     private func releaseUndoIfDetached() {
         guard let inserted = lastInsertedText,
-              textDocumentProxy.documentContextBeforeInput?.hasSuffix(inserted) != true
+              document.before?.hasSuffix(inserted) != true
         else { return }
         lastInsertedText = nil
         refresh()
@@ -707,7 +872,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             // A transcript arrives as finished text. It never becomes a
             // composition and is never autocorrected: the model that produced it
             // already had its say.
-            typing.resetComposition(origin: .dictated, documentBefore: nil)
+            typing.resetComposition(origin: .dictated, document: .unknown)
             try record.transition(to: .inserted)
             try store.save(record)
             try record.transition(to: .completed)
@@ -935,6 +1100,36 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         render(record)
     }
 
+    /// A strip update, and only a strip update.
+    ///
+    /// This runs on every keystroke, and it used to go through the full
+    /// ``render(_:)`` — rebuilding the entire dictation bar model from the
+    /// session record, the preference state and the transcript, re-deriving the
+    /// bar's layout and height, and re-running the preference controls — to
+    /// change three words in a row of chips. The bar's own `apply` bails on an
+    /// unchanged model, but everything upstream of that comparison had already
+    /// been paid for.
+    ///
+    /// The fast path is only taken when the bar is genuinely showing the strip.
+    /// A recording or a waiting transcript owns the bar, and its candidates are
+    /// empty by construction — those go through the full render, where they
+    /// belong.
+    private func renderStrip(_ strip: TypingStrip) {
+        // An empty strip means the bar goes back to its controls, which is a
+        // change of body rather than a change of chips — that belongs to the
+        // full render, which owns the crossfade between the two.
+        guard barLayout == .strip,
+              !strip.candidates.isEmpty,
+              lastRecord == nil || lastRecord?.state == .idle
+        else {
+            render(lastRecord)
+            return
+        }
+        // The bar may still be showing its controls, in which case arriving at
+        // the strip is a change of body and the full render owns the crossfade.
+        if !dictationBar.updateCandidates(strip.candidates) { render(lastRecord) }
+    }
+
     private func render(_ record: SessionRecord?) {
         lastRecord = record
         updatePolling(for: record)
@@ -1116,9 +1311,40 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let returnKeyType = proxy.returnKeyType ?? .default
         keyGrid.returnKeyTitle = Self.returnKeyTitle(for: returnKeyType)
         keyGrid.returnKeyIsProminent = returnKeyType != .default
-        keyGrid.leadingPunctuation = Self.leadingPunctuation(for: proxy.keyboardType ?? .default)
-        keyGrid.keyboardType = proxy.keyboardType ?? .default
+        let keyboardType = proxy.keyboardType ?? .default
+        keyGrid.punctuation = Self.punctuation(for: keyboardType)
+        keyGrid.keyboardType = keyboardType
+        // The plane belongs to the field, not to wherever the last one left it.
+        // A phone-number field has to arrive on its keypad, and it has nowhere
+        // else to go once it is there.
+        keyGrid.plane = Self.initialPlane(for: keyboardType)
+        updateReturnKeyEnablement()
         applyTheme()
+    }
+
+    /// Dims Return in the fields that asked for it.
+    ///
+    /// `enablesReturnKeyAutomatically` is a field saying "there is nothing to
+    /// send until something has been typed", and the system keyboard answers it
+    /// by greying the key out. Ignoring it meant a Send button that looked live
+    /// over an empty message and fired on an empty message.
+    private func updateReturnKeyEnablement(for snapshot: DocumentSnapshot? = nil) {
+        guard textDocumentProxy.enablesReturnKeyAutomatically == true else {
+            keyGrid.returnKeyIsEnabled = true
+            return
+        }
+        // Read fresh when no event snapshot was handed in: this is reached from
+        // `viewWillAppear`, which is not inside an event.
+        let resolved = snapshot ?? readDocument()
+        // The proxy answers with nothing while the keyboard is loading, which is
+        // not the same as an empty field. Dimming Return on that would grey out
+        // the Send button over a message the user has already written.
+        guard resolved.before != nil || resolved.after != nil else {
+            keyGrid.returnKeyIsEnabled = true
+            return
+        }
+        keyGrid.returnKeyIsEnabled = !(resolved.before ?? "").isEmpty
+            || !(resolved.after ?? "").isEmpty
     }
 
     private static func returnKeyTitle(for type: UIReturnKeyType) -> String {
@@ -1141,20 +1367,29 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// the way the system keyboard does. A plain iPhone QWERTY has `123`, the
     /// globe, space and return on that row and nothing else; the comma and full
     /// stop this used to add were two keys the spacebar could have been.
-    private static func leadingPunctuation(for type: UIKeyboardType) -> String? {
+    private static func punctuation(for type: UIKeyboardType) -> KeyLayout.BottomRowPunctuation? {
         switch type {
-        case .emailAddress: "@"
-        case .URL, .webSearch: "/"
+        case .emailAddress: KeyLayout.BottomRowPunctuation(leading: "@", trailing: ".")
+        case .URL, .webSearch: KeyLayout.BottomRowPunctuation(leading: "/", trailing: ".")
+        // The two characters a Twitter-style field is for. iOS puts both on the
+        // bottom row here, and the pair used to be unreachable because the
+        // trailing slot was hardcoded to a full stop.
+        case .twitter: KeyLayout.BottomRowPunctuation(leading: "@", trailing: "#")
         default: nil
         }
     }
 
     private static func initialPlane(for type: UIKeyboardType) -> KeyPlane {
         switch type {
-        case .numberPad, .phonePad, .decimalPad, .asciiCapableNumberPad, .numbersAndPunctuation:
-            .numbers
-        default:
-            .letters
+        // A real keypad, not the symbols plane wearing a hat. A verification
+        // code or a phone number typed against `-/:;()$&@"` is a keyboard that
+        // has not noticed where it is.
+        case .numberPad, .asciiCapableNumberPad: .numberPad
+        case .phonePad: .phonePad
+        case .decimalPad: .decimalPad
+        // Punctuation is the point of this one, so it keeps the full plane.
+        case .numbersAndPunctuation: .numbers
+        default: .letters
         }
     }
 
@@ -1179,51 +1414,46 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Autocapitalization follows the field's own request. A username or URL
     /// field asks for none, and forcing sentence case there produced input the
     /// user had to correct on every word.
-    private func updateAutomaticShift() {
-        let proxy = textDocumentProxy
-        let requested = proxy.autocapitalizationType ?? .sentences
-        guard requested != .allCharacters else {
-            keyGrid.shiftState = .locked
-            return
-        }
-        // A user-engaged caps lock outranks any automatic decision.
-        guard keyGrid.shiftState != .locked else { return }
-
-        let before = proxy.documentContextBeforeInput ?? ""
-        switch requested {
-        case .none:
-            keyGrid.shiftState = .off
-        case .words:
-            keyGrid.shiftState = before.isEmpty || before.last?.isWhitespace == true ? .on : .off
-        default:
-            // "e.g. ", "Mr. " and "3. " all end in a full stop and none of them
-            // ends a sentence. See `SentenceBoundary`.
-            keyGrid.shiftState = SentenceBoundary.endsSentence(before) ? .on : .off
-        }
+    private func updateAutomaticShift(for snapshot: DocumentSnapshot? = nil) {
+        // `nil` means leave the shift key alone, which is the answer whenever
+        // the host declined to say what the document contains. See
+        // ``AutomaticShift``.
+        guard let state = AutomaticShift.state(
+            documentBefore: (snapshot ?? document).before,
+            autocapitalization: textDocumentProxy.autocapitalizationType ?? .sentences,
+            current: keyGrid.shiftState
+        ) else { return }
+        keyGrid.shiftState = state
     }
 }
 
 extension KeyboardViewController: EmojiPanelViewDelegate {
     func emojiPanel(_ panel: EmojiPanelView, didChoose glyph: String) {
-        textDocumentProxy.insertText(glyph)
-        // An emoji ends a word as surely as a space does, and it is never
-        // something to autocorrect.
-        typing.resetComposition(origin: .suggestion, documentBefore: documentBefore)
-        releaseUndoIfDetached()
+        documentEvent {
+            textDocumentProxy.insertText(glyph)
+            // An emoji ends a word as surely as a space does, and it is never
+            // something to autocorrect.
+            typing.resetComposition(origin: .suggestion, document: refreshDocument())
+            releaseUndoIfDetached()
+        }
     }
 
     func emojiPanelDidRequestDelete(_ panel: EmojiPanelView) {
-        deleteBackward()
-        releaseUndoIfDetached()
+        documentEvent {
+            deleteBackward()
+            releaseUndoIfDetached()
+        }
     }
 
     func emojiPanelDidRequestReturn(_ panel: EmojiPanelView) {
-        commitComposition(followedBy: "\n")
-        releaseUndoIfDetached()
+        documentEvent {
+            commitComposition(followedBy: "\n")
+            releaseUndoIfDetached()
+        }
     }
 
     func emojiPanelDidRequestSpace(_ panel: EmojiPanelView) {
-        insertSpace()
+        documentEvent { insertSpace() }
     }
 
     func emojiPanelDidRequestLetters(_ panel: EmojiPanelView) {
@@ -1237,7 +1467,7 @@ extension KeyboardViewController: KeyGridViewDelegate {
     /// fresh press, which is what keeps one long hold from swallowing the
     /// paragraph above the one being edited.
     func keyGridShouldContinueDeleting(_ grid: KeyGridView) -> Bool {
-        guard let before = textDocumentProxy.documentContextBeforeInput else { return true }
+        guard let before = readDocument().before else { return true }
         return !before.isEmpty && !before.hasSuffix("\n")
     }
 }
@@ -1255,6 +1485,10 @@ extension KeyboardViewController: DictationBarViewDelegate {
     /// the literal means nothing to it at all.
     func dictationBar(_ bar: DictationBarView, didChoose candidate: TypingCandidate) {
         guard !isPerformingInsertion else { return }
+        documentEvent { apply(candidate) }
+    }
+
+    private func apply(_ candidate: TypingCandidate) {
         switch candidate.kind {
         case .literal:
             // The user's own spelling, asserted. Nothing is rewritten — the
@@ -1262,15 +1496,20 @@ extension KeyboardViewController: DictationBarViewDelegate {
             // stops being corrected, and the keyboard learns it.
             typing.assert(candidate.text)
             render(lastRecord)
+        case .revert:
+            // The correction has already gone into the document. Taking it back
+            // is the same operation Delete performs, and it asserts the word so
+            // the keyboard does not simply do it again on the next sentence.
+            revertPendingCorrection()
         case .completion, .correction:
             let typed = typing.composer.text
             for _ in 0..<typed.count { textDocumentProxy.deleteBackward() }
             textDocumentProxy.insertText(candidate.text + " ")
             typing.noteCompletedWord(candidate.text)
-            typing.resetComposition(origin: .suggestion, documentBefore: documentBefore)
+            typing.resetComposition(origin: .suggestion, document: refreshDocument())
         case .prediction:
             textDocumentProxy.insertText(candidate.text + " ")
-            typing.resetComposition(origin: .suggestion, documentBefore: documentBefore)
+            typing.resetComposition(origin: .suggestion, document: refreshDocument())
         case .swipeAlternate:
             // The swiped word is already in the document with the space that
             // followed it, so the replacement covers both and puts a space
@@ -1282,7 +1521,7 @@ extension KeyboardViewController: DictationBarViewDelegate {
             // subsystem, and a replacement that cannot see the word it is
             // replacing must not delete four characters on faith.
             guard let swiped = typing.pendingSwipeWord,
-                  SwipeAlternates.isArmed(word: swiped, documentBefore: documentBefore)
+                  SwipeAlternates.isArmed(word: swiped, documentBefore: document.before)
             else { break }
             let alternates = SwipeAlternates.alternates(
                 after: candidate.text,
@@ -1293,6 +1532,7 @@ extension KeyboardViewController: DictationBarViewDelegate {
                 textDocumentProxy.deleteBackward()
             }
             textDocumentProxy.insertText(candidate.text + " ")
+            refreshDocument()
             // Re-armed on the new word, so a second thought is another tap
             // rather than a retype.
             typing.noteSwipeWord(candidate.text, alternates: alternates)
@@ -1305,7 +1545,7 @@ extension KeyboardViewController: DictationBarViewDelegate {
             // Deliberately not learned. `noteCompletedWord` teaches the
             // keyboard vocabulary, and an emoji is not a word it should start
             // completing letters into.
-            typing.resetComposition(origin: .suggestion, documentBefore: documentBefore)
+            typing.resetComposition(origin: .suggestion, document: refreshDocument())
         }
         lastSpaceInsertedAt = nil
         releaseUndoIfDetached()

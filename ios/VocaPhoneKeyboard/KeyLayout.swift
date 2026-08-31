@@ -4,6 +4,25 @@ enum KeyPlane: Equatable {
     case letters
     case numbers
     case symbols
+    /// The three numeric layouts iOS gives a field that asks for one.
+    ///
+    /// These are not "the numbers plane with a different starting point", which
+    /// is what a `.numberPad` field used to get: a full QWERTY symbols row
+    /// reading `-/:;()$&@"` above a phone-number box does not read as a
+    /// variant, it reads as a keyboard that has not noticed where it is. They
+    /// have no plane switch, because there is nowhere else for them to go.
+    case numberPad
+    case phonePad
+    case decimalPad
+
+    /// Whether this plane is one of the numeric keypads, which share a shape
+    /// and share the rule that the user cannot leave them.
+    var isKeypad: Bool {
+        switch self {
+        case .numberPad, .phonePad, .decimalPad: true
+        case .letters, .numbers, .symbols: false
+        }
+    }
 }
 
 enum KeyCap: Equatable {
@@ -16,6 +35,10 @@ enum KeyCap: Equatable {
     case newline
     case plane(KeyPlane)
     case globe
+    /// A hole in the grid. The numeric keypads are a 3x4 block with one empty
+    /// corner, and iOS leaves that corner genuinely empty rather than
+    /// stretching its neighbours across it.
+    case blank
 
     /// Character keys are the only ones that show a preview and accept a finger
     /// sliding in from a neighbour, matching the system keyboard.
@@ -23,6 +46,10 @@ enum KeyCap: Equatable {
         if case .character = self { return true }
         return false
     }
+
+    /// Whether this key can be pressed at all. A blank is laid out and drawn as
+    /// nothing, and must never take a touch from the keys either side of it.
+    var isInteractive: Bool { self != .blank }
 
     func resolvedText(shift: ShiftState) -> String? {
         guard case let .character(value) = self else { return nil }
@@ -38,11 +65,13 @@ enum KeyCap: Equatable {
         case .space: return "Space"
         case .newline: return "Return"
         case .globe: return "Next keyboard"
+        case .blank: return ""
         case let .plane(plane):
             switch plane {
             case .letters: return "Letters"
             case .numbers: return "Numbers"
             case .symbols: return "Symbols"
+            case .numberPad, .phonePad, .decimalPad: return "Numbers"
             }
         }
     }
@@ -117,9 +146,11 @@ enum KeyLayout {
         for plane: KeyPlane,
         includesGlobe: Bool,
         returnIsProminent: Bool,
-        leadingPunctuation: String? = nil
+        punctuation: BottomRowPunctuation? = nil
     ) -> [KeyRow] {
         switch plane {
+        case .numberPad, .phonePad, .decimalPad:
+            return keypadRows(for: plane, includesGlobe: includesGlobe)
         case .letters:
             return [
                 KeyRow(keys: map("qwertyuiop")),
@@ -129,7 +160,7 @@ enum KeyLayout {
                     + [KeySpec(cap: .delete, width: .fill, style: .function)]),
                 bottomRow(
                     planeSwitch: .numbers,
-                    punctuation: leadingPunctuation,
+                    punctuation: punctuation,
                     includesGlobe: includesGlobe,
                     returnIsProminent: returnIsProminent
                 ),
@@ -184,6 +215,20 @@ enum KeyLayout {
     /// spacebar is centred exactly when **the column totals either side of it
     /// are equal**. That identity is the whole calculation; it holds at every
     /// width, which point-based nudging never did.
+    /// The two punctuation keys iOS adds to the bottom row in the handful of
+    /// field types that earn them.
+    ///
+    /// A pair rather than a single leading key, because the second slot is not
+    /// always a full stop: a `.twitter` field gets `@` and `#`, which are the
+    /// two characters that field is *for*, and hard-coding "." there was why it
+    /// could not be offered.
+    struct BottomRowPunctuation: Equatable {
+        let leading: String
+        let trailing: String
+
+        static let period = BottomRowPunctuation(leading: ",", trailing: ".")
+    }
+
     struct BottomRowColumns: Equatable {
         var planeSwitch: CGFloat
         var globe: CGFloat?
@@ -218,7 +263,7 @@ enum KeyLayout {
 
     private static func bottomRow(
         planeSwitch: KeyPlane,
-        punctuation: String?,
+        punctuation: BottomRowPunctuation?,
         includesGlobe: Bool,
         returnIsProminent: Bool
     ) -> KeyRow {
@@ -239,16 +284,16 @@ enum KeyLayout {
         if let punctuation {
             keys.append(
                 KeySpec(
-                    cap: .character(punctuation),
+                    cap: .character(punctuation.leading),
                     width: .multiple(columns.punctuation ?? 1)
                 )
             )
         }
         keys.append(KeySpec(cap: .space, width: .fill))
-        if punctuation != nil {
+        if let punctuation {
             keys.append(
                 KeySpec(
-                    cap: .character("."),
+                    cap: .character(punctuation.trailing),
                     width: .multiple(columns.period ?? 1)
                 )
             )
@@ -263,6 +308,73 @@ enum KeyLayout {
         return KeyRow(keys: keys)
     }
 
+    /// The three-column numeric block iOS shows for a `.numberPad`,
+    /// `.phonePad` or `.decimalPad` field.
+    ///
+    /// Four rows, so it occupies exactly the height the letters plane does and
+    /// the keyboard does not resize under the user when the cursor moves from a
+    /// name field to a phone-number one. The bottom-left slot carries the globe
+    /// where iOS asks for one and is genuinely empty otherwise, which is what
+    /// the system keypad does — a stretched `0` there would be a target people
+    /// hit by accident reaching for nothing.
+    static func keypadRows(for plane: KeyPlane, includesGlobe: Bool) -> [KeyRow] {
+        // Three columns in every row. The system keypad is a regular block and
+        // reads as one; a bottom row of four keys under three is a grid that has
+        // come apart.
+        //
+        // The bottom row is the exception, and only where it has to be. A
+        // decimal pad's "." and a phone pad's "+" are the *only* way to type
+        // those characters — these layouts have no second plane and no duplicate
+        // key — so when iOS also demands a globe there are four things that must
+        // be reachable and three slots. Giving the corner to the globe left a
+        // decimal pad that could not type a decimal point, which is not a
+        // narrower keyboard, it is a broken one. The row takes a fourth key
+        // instead; the digits above it stay on three.
+        var last: [KeySpec] = []
+        if includesGlobe {
+            last.append(KeySpec(cap: .globe, width: .multiple(keypadColumns), style: .function))
+        }
+        switch plane {
+        case .decimalPad:
+            last.append(KeySpec(cap: .character("."), width: .multiple(keypadColumns)))
+        case .phonePad:
+            last.append(KeySpec(cap: .character("+"), width: .multiple(keypadColumns)))
+        default:
+            break
+        }
+        // A plain number pad with no globe has nothing for the corner, and iOS
+        // leaves it genuinely empty rather than stretching the zero across it —
+        // a target people would hit reaching for nothing.
+        if last.isEmpty {
+            last.append(KeySpec(cap: .blank, width: .multiple(keypadColumns)))
+        }
+        last.append(KeySpec(cap: .character("0"), width: .multiple(keypadColumns)))
+        last.append(KeySpec(cap: .delete, width: .multiple(keypadColumns), style: .function))
+
+        return [
+            keypadRow("123"),
+            keypadRow("456"),
+            keypadRow("789"),
+            KeyRow(keys: last, alignment: .centered),
+        ]
+    }
+
+    /// How wide one keypad key is, in letter columns. Three of them plus their
+    /// gaps come to a little over two thirds of the keyboard, which is where the
+    /// system keypad sits: wide enough to be unmissable, narrow enough that the
+    /// block still reads as a keypad rather than as a stretched row.
+    static let keypadColumns: CGFloat = 2.4
+
+    private static func keypadRow(_ digits: String) -> KeyRow {
+        KeyRow(keys: keypadSpecs(digits), alignment: .centered)
+    }
+
+    private static func keypadSpecs(_ digits: String) -> [KeySpec] {
+        digits.map {
+            KeySpec(cap: .character(String($0)), width: .multiple(keypadColumns))
+        }
+    }
+
     private static func map(_ characters: String) -> [KeySpec] {
         characters.map { KeySpec.letter(String($0)) }
     }
@@ -273,6 +385,9 @@ enum KeyLayout {
         case .letters: "ABC"
         case .numbers: "123"
         case .symbols: "#+="
+        // The keypads have no plane key to put a title on; the case exists so
+        // adding a plane later cannot silently inherit the wrong label.
+        case .numberPad, .phonePad, .decimalPad: "123"
         }
     }
 }

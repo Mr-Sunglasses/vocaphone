@@ -34,6 +34,8 @@ targets:
       - path: VocaPhoneKeyboard/KeyView.swift
       - path: VocaPhoneKeyboard/KeyGridView.swift
       - path: VocaPhoneKeyboard/KeyAlternatives.swift
+      - path: VocaPhoneKeyboard/KeyProximity.swift
+      - path: VocaPhoneKeyboard/ShortWordCorrections.swift
       # The grid draws a swipe trail and asks for haptics, so the preview needs
       # both to link.
       - path: VocaPhoneKeyboard/SwipeTrailView.swift
@@ -146,6 +148,16 @@ targets:
       - path: VocaPhoneKeyboard/TypingCandidates.swift
       - path: VocaPhoneKeyboard/TypingFieldPolicy.swift
       - path: VocaPhoneKeyboard/TypingWordList.swift
+      # The keyboard's own spatial model: which letters neighbour which, and
+      # what a neighbouring-key typo costs a correction.
+      - path: VocaPhoneKeyboard/KeyProximity.swift
+      # The corrections a spell checker will never make, because nothing is
+      # misspelled. Small, curated, and exactly the sort of table that needs a
+      # test saying which words are deliberately absent.
+      - path: VocaPhoneKeyboard/ShortWordCorrections.swift
+      # The correction the next Delete can take back, and the rule that decides
+      # whether it still points at the text it replaced.
+      - path: VocaPhoneKeyboard/TypingEngine.swift
       - path: VocaPhoneKeyboard/SpellChecking.swift
       - path: VocaPhoneKeyboard/SmartPunctuation.swift
       # The word-to-emoji table is the feature worth pinning: which names

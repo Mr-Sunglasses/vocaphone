@@ -176,18 +176,37 @@ struct SemanticPaletteTests {
         #expect(Self.rgb(KeyboardPalette(isDark: true).standardKey) == (61, 61, 61))
     }
 
-    @Test func engagedShiftUsesTheNativeNeutralSurface() {
+    /// An engaged Shift lifts to the *standard* key surface, which is what the
+    /// system keyboard does and what makes the state readable at a glance: a
+    /// filled glyph alone is a small thing to spot mid-sentence, and the lighter
+    /// surface says "the next letter is a capital" without being read.
+    ///
+    /// The point the original test was defending still holds and is asserted
+    /// below: the brand accent stays out of it. A mint Shift made the resting
+    /// keyboard look like something was running.
+    @Test func engagedShiftLiftsToTheStandardSurface() {
         let palette = KeyboardPalette(isDark: false)
         let metrics = KeyboardMetrics.resolved(
             for: UITraitCollection { $0.verticalSizeClass = .regular }
         )
-        let shift = KeyView(
-            spec: KeySpec(cap: .shift, width: .fill, style: .function),
-            metrics: metrics,
-            palette: palette
-        )
-        shift.update(metrics: metrics, palette: palette, shift: .on, returnTitle: "return")
-        #expect(shift.backgroundColor == palette.functionKey)
+        func shiftKey() -> KeyView {
+            KeyView(
+                spec: KeySpec(cap: .shift, width: .fill, style: .function),
+                metrics: metrics,
+                palette: palette
+            )
+        }
+
+        let resting = shiftKey()
+        resting.update(metrics: metrics, palette: palette, shift: .off, returnTitle: "return")
+        #expect(resting.backgroundColor == palette.functionKey)
+
+        for engaged in [ShiftState.on, .locked] {
+            let shift = shiftKey()
+            shift.update(metrics: metrics, palette: palette, shift: engaged, returnTitle: "return")
+            #expect(shift.backgroundColor == palette.standardKey)
+            #expect(shift.backgroundColor != palette.accentKey)
+        }
     }
 
     private static func rgb(_ color: UIColor) -> (Int, Int, Int) {

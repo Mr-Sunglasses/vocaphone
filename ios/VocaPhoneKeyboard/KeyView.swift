@@ -31,7 +31,20 @@ final class KeyView: UIView {
     var isHighlighted = false {
         didSet {
             guard isHighlighted != oldValue else { return }
+            applyColors(animated: !isHighlighted)
+        }
+    }
+
+    /// Whether this key does anything when pressed. Only Return uses it, for
+    /// the fields that set `enablesReturnKeyAutomatically` and expect the key to
+    /// sit dimmed until there is something to send.
+    var isEnabled = true {
+        didSet {
+            guard isEnabled != oldValue else { return }
             applyColors()
+            accessibilityTraits = isEnabled
+                ? .keyboardKey
+                : [.keyboardKey, .notEnabled]
         }
     }
 
@@ -65,8 +78,13 @@ final class KeyView: UIView {
         addSubview(titleLabel)
         addSubview(symbolView)
 
-        isAccessibilityElement = true
+        // A blank is a hole in the grid, not a control: it takes no touch, so it
+        // must not be somewhere VoiceOver can land either.
+        isAccessibilityElement = spec.cap.isInteractive
         accessibilityTraits = .keyboardKey
+        if !spec.cap.isInteractive {
+            layer.shadowOpacity = 0
+        }
         refresh()
     }
 
@@ -169,6 +187,9 @@ final class KeyView: UIView {
             titleLabel.text = KeyLayout.planeTitle(plane)
             titleLabel.font = planeFont
             symbolView.image = nil
+        case .blank:
+            titleLabel.text = nil
+            symbolView.image = nil
         }
 
         accessibilityLabel = spec.cap.accessibilityLabel(shift: shift)
@@ -242,17 +263,49 @@ final class KeyView: UIView {
         }
     }
 
-    private func applyColors() {
-        // Apple's Shift stays on the neutral key surface; its filled Shift or
-        // Caps Lock glyph carries the state. A persistent mint key made the
-        // resting keyboard look active and unlike the keyboard users know.
-        let style = spec.style
-        backgroundColor = isHighlighted
+    /// The style this key is actually drawn in right now.
+    ///
+    /// An active Shift is drawn on the *standard* key surface rather than the
+    /// function one. That is the system keyboard's own behaviour and the reason
+    /// it is legible at a glance: the filled glyph alone is a small difference
+    /// to spot mid-sentence, and the lifted surface is what says "the next
+    /// letter is a capital" without being read.
+    ///
+    /// The brand accent stays out of it. A mint Shift made the resting keyboard
+    /// look like something was running.
+    private var renderedStyle: KeyStyle {
+        guard spec.cap == .shift, shift.isUppercase else { return spec.style }
+        return .standard
+    }
+
+    private func applyColors(animated: Bool = false) {
+        let style = renderedStyle
+        let background = isHighlighted
             ? palette.pressedBackground(for: style)
             : palette.background(for: style)
         let foreground = palette.foreground(for: style)
-        titleLabel.textColor = foreground
-        symbolView.tintColor = foreground
+        let apply = {
+            self.backgroundColor = self.spec.cap.isInteractive ? background : .clear
+            self.titleLabel.textColor = foreground
+            self.symbolView.tintColor = foreground
+            // Dimmed rather than hidden: a Return that vanishes when the field
+            // is empty is a keyboard that has lost a key.
+            self.alpha = self.isEnabled ? 1 : 0.4
+        }
+        // Pressing is instant — the finger is already there and any delay reads
+        // as lag. Releasing fades, because the system keyboard's key settles
+        // back rather than snapping, and an instant restore under a fast typist
+        // is a strobe.
+        guard animated, !UIAccessibility.isReduceMotionEnabled else {
+            apply()
+            return
+        }
+        UIView.animate(
+            withDuration: 0.11,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction],
+            animations: apply
+        )
     }
 }
 
@@ -326,6 +379,78 @@ final class KeyPreviewView: UIView {
         self.balloonHeight = balloonHeight
         self.neck = neck
         setNeedsLayout()
+    }
+
+    /// Grows the balloon out of the key it belongs to.
+    ///
+    /// The system keyboard's preview does not simply exist: it swells from the
+    /// key under the finger in about a frame and a half. Appearing fully formed
+    /// is the single clearest tell that a keyboard is not the system one — it
+    /// reads as a tooltip rather than as the key itself lifting — and it costs
+    /// one short animation to fix.
+    ///
+    /// The anchor is the bottom of the view, which is the bottom of the *key*,
+    /// so the growth runs upward out of what the finger is covering.
+    func appear(animated: Bool) {
+        layer.removeAllAnimations()
+        isHidden = false
+        guard animated, !UIAccessibility.isReduceMotionEnabled else {
+            alpha = 1
+            transform = .identity
+            return
+        }
+        alpha = 0
+        transform = Self.growth(from: 0.82, 0.62, in: bounds)
+        UIView.animate(
+            withDuration: 0.09,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            self.alpha = 1
+            self.transform = .identity
+        }
+    }
+
+    /// Settles the balloon back into the key and hands the view back.
+    ///
+    /// `completion` runs whether or not the fade finished, so a pooled preview
+    /// is never left half-transparent for the next keystroke to dequeue.
+    func disappear(animated: Bool, completion: @escaping () -> Void) {
+        layer.removeAllAnimations()
+        let finish = {
+            self.isHidden = true
+            self.alpha = 1
+            self.transform = .identity
+            completion()
+        }
+        guard animated, !UIAccessibility.isReduceMotionEnabled else {
+            finish()
+            return
+        }
+        UIView.animate(
+            withDuration: 0.08,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            self.alpha = 0
+            self.transform = Self.growth(from: 0.9, 0.75, in: self.bounds)
+        } completion: { _ in
+            finish()
+        }
+    }
+
+    /// A scale about the view's *bottom* edge, expressed as an ordinary
+    /// transform.
+    ///
+    /// The bottom of this view is the bottom of the key, so scaling there is
+    /// what makes the balloon look like it grew out of what the finger is
+    /// covering. Done with a translation rather than by moving `layer.anchorPoint`
+    /// — an anchor point that is not the centre silently changes what setting
+    /// `frame` means, and this view's frame is rewritten on every slide between
+    /// keys.
+    private static func growth(from scaleX: CGFloat, _ scaleY: CGFloat, in bounds: CGRect) -> CGAffineTransform {
+        CGAffineTransform(translationX: 0, y: bounds.height * (1 - scaleY) / 2)
+            .scaledBy(x: scaleX, y: scaleY)
     }
 
     /// The balloon, the tapered shoulders, and the neck over the key, as one

@@ -190,6 +190,57 @@ final class KeyAlternativesView: UIView {
         setNeedsLayout()
     }
 
+    /// Opens the row out of the key it was held on.
+    ///
+    /// Same reasoning as ``KeyPreviewView/appear(animated:)``: the system's
+    /// accent row unfolds, and one that is simply *there* on the next frame
+    /// reads as a menu rather than as the key opening up. Called after the
+    /// frame has been set, so the growth is measured against the real size.
+    func appear(animated: Bool) {
+        layer.removeAllAnimations()
+        isHidden = false
+        guard animated, !UIAccessibility.isReduceMotionEnabled else {
+            alpha = 1
+            transform = .identity
+            return
+        }
+        alpha = 0
+        transform = CGAffineTransform(translationX: 0, y: bounds.height * 0.18)
+            .scaledBy(x: 0.88, y: 0.64)
+        UIView.animate(
+            withDuration: 0.13,
+            delay: 0,
+            usingSpringWithDamping: 0.86,
+            initialSpringVelocity: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            self.alpha = 1
+            self.transform = .identity
+        }
+    }
+
+    func disappear(animated: Bool) {
+        layer.removeAllAnimations()
+        let finish = {
+            self.isHidden = true
+            self.alpha = 1
+            self.transform = .identity
+        }
+        guard animated, !UIAccessibility.isReduceMotionEnabled, !isHidden else {
+            finish()
+            return
+        }
+        UIView.animate(
+            withDuration: 0.1,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            self.alpha = 0
+        } completion: { _ in
+            finish()
+        }
+    }
+
     /// Moves the selection to whichever option the finger is over, clamped to
     /// the ends so a finger dragged past the edge keeps the nearest option
     /// rather than losing the selection entirely.

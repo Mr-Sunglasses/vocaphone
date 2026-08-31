@@ -138,6 +138,49 @@ struct WordComposer: Equatable {
     }
 }
 
+/// What the document says on either side of the cursor, read once per event.
+///
+/// Two reasons this is a type rather than two loose strings.
+///
+/// The first is cost. Every `documentContextBeforeInput` is a synchronous trip
+/// to the host application's process, and a single keystroke used to make six
+/// or seven of them — one for smart punctuation, one for the composer, one to
+/// check the undo offer, then three more once `textDidChange` came back. Reading
+/// the pair once and passing it down is the difference between a keystroke that
+/// costs one round trip and one that costs seven, on a path where the budget is
+/// a display frame.
+///
+/// The second is ``isMidWord``. The trailing context is the piece this keyboard
+/// never read, and it is the only way to tell "the cursor is at the end of the
+/// word I am composing" from "the cursor is halfway through a word I can see
+/// half of" — a distinction that decides whether an autocorrect is a correction
+/// or a corruption.
+struct DocumentSnapshot: Equatable {
+    var before: String?
+    var after: String?
+
+    /// iOS did not answer, which is not the same as an empty document: the proxy
+    /// returns nothing while the keyboard is loading, and treating that as "no
+    /// text" discards a half-typed word.
+    static let unknown = DocumentSnapshot(before: nil, after: nil)
+
+    init(before: String?, after: String? = nil) {
+        self.before = before
+        self.after = after
+    }
+
+    /// Whether a word continues past the cursor.
+    ///
+    /// `nil` trailing context is treated as "not mid-word": the permissive
+    /// answer is the one that keeps autocorrect working in every field that
+    /// declines to answer, and the strict one would silently switch the feature
+    /// off wherever iOS was slow to reply.
+    var isMidWord: Bool {
+        guard let first = after?.first else { return false }
+        return WordComposer.isWordCharacter(first)
+    }
+}
+
 /// The word immediately before the cursor, for next-word prediction.
 ///
 /// Deliberately separate from ``WordComposer``: this one *does* read the

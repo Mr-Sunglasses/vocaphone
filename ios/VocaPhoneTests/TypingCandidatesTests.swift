@@ -24,7 +24,10 @@ struct TypingCandidatesTests {
         suggestions: Bool = true,
         autocorrect: Bool = true,
         prediction: Bool = true,
-        allowed: Bool = true
+        allowed: Bool = true,
+        followers: [String] = [],
+        expansion: String? = nil,
+        isMidWord: Bool = false
     ) -> TypingCandidates.Context {
         var context = TypingCandidates.Context()
         context.composition = composition
@@ -44,7 +47,228 @@ struct TypingCandidatesTests {
         context.autocorrectEnabled = autocorrect
         context.predictionEnabled = prediction
         context.allowsTypingIntelligence = allowed
+        context.contextualFollowers = followers
+        context.lexiconExpansion = expansion
+        context.isMidWord = isMidWord
         return context
+    }
+
+    // MARK: - The touch model
+
+    /// The corrections a spell checker will never make, because nothing is
+    /// misspelled. Every one of these is blocked by a rule that is individually
+    /// right — too short, already a word, case-only — and every one of them is
+    /// something the system keyboard fixes.
+    @Test func theCuratedShortWordsAreCorrected() {
+        let expected = [
+            "i": "I",
+            "im": "I'm",
+            "ive": "I've",
+            "dont": "don't",
+            "cant": "can't",
+            "youre": "you're",
+            "thats": "that's",
+        ]
+        for (typed, replacement) in expected {
+            #expect(
+                TypingCandidates.autocorrection(
+                    Self.context(composition: typed, isKnownToChecker: true, isInWordList: true)
+                ) == replacement,
+                "\(typed) should become \(replacement)"
+            )
+        }
+    }
+
+    /// Someone shouting has still chosen their letters. The curated table must
+    /// not rewrite a contraction typed with caps lock on, for the same reason
+    /// "WIP" is not a misspelling of "wip".
+    @Test func aShoutedContractionIsNotRewritten() {
+        for token in ["DONT", "CANT", "IM", "YOURE"] {
+            #expect(
+                TypingCandidates.autocorrection(
+                    Self.context(composition: token, isKnownToChecker: true)
+                ) == nil,
+                "\(token) should stand"
+            )
+        }
+    }
+
+    /// A text replacement is an instruction the user configured, so it expands
+    /// whatever case it is typed in. This is the deliberate split from the rule
+    /// above.
+    @Test func aShoutedShortcutStillExpands() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "OMW",
+                    isKnownToChecker: true,
+                    expansion: "On my way!"
+                )
+            ) == "On my way!"
+        )
+    }
+
+    /// The words deliberately left out, because only grammar could tell them
+    /// apart and a keyboard has none.
+    @Test func ambiguousContractionsAreLeftAlone() {
+        for token in ["its", "were", "well", "hell", "shell", "wed"] {
+            #expect(
+                TypingCandidates.autocorrection(
+                    Self.context(composition: token, isKnownToChecker: true)
+                ) == nil,
+                "\(token) should stand"
+            )
+        }
+    }
+
+    /// The user's own assertion outranks the table. Someone who put "im" back
+    /// once has answered the question.
+    @Test func anAssertedShortWordIsNotCorrected() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "im", asserted: ["im"])
+            ) == nil
+        )
+    }
+
+    /// A text replacement is an instruction, not a guess: the user told Settings
+    /// what "omw" means. It used to reach the strip as a chip and stop there, so
+    /// the expansion only happened if they noticed and tapped it.
+    @Test func aTextReplacementExpandsOnItsOwn() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "omw",
+                    isKnownToChecker: true,
+                    expansion: "On my way!"
+                )
+            ) == "On my way!"
+        )
+    }
+
+    /// The bug from the recording: typing "world" produced "World".
+    ///
+    /// `UILexicon` is not only the shortcuts someone typed into Settings — it
+    /// also carries Contacts names and system proper nouns as a lowercase
+    /// `userInput` mapped to a properly-cased `documentText`. Applying those on
+    /// an exact match silently capitalised any ordinary word that happened to be
+    /// in the user's address book, mid-sentence, with no way to predict which.
+    @Test func aLexiconEntryNeverAppliesAMereCapitalization() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "world",
+                    isKnownToChecker: true,
+                    expansion: "World"
+                )
+            ) == nil
+        )
+        // The words from the original report, for the same reason.
+        for (typed, cased) in [("are", "Are"), ("the", "The"), ("hello", "Hello")] {
+            #expect(
+                TypingCandidates.autocorrection(
+                    Self.context(composition: typed, isKnownToChecker: true, expansion: cased)
+                ) == nil,
+                "\(typed) must not be capitalised into \(cased)"
+            )
+        }
+    }
+
+    /// A genuine expansion still applies on its own — that is what the lexicon
+    /// is handed to keyboards for.
+    @Test func aGenuineExpansionStillApplies() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "omw",
+                    isKnownToChecker: true,
+                    expansion: "On my way!"
+                )
+            ) == "On my way!"
+        )
+        // A case change *plus* a real edit is an expansion, not a capitalization.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "kp",
+                    isKnownToChecker: true,
+                    expansion: "Kanishk"
+                )
+            ) == "Kanishk"
+        )
+    }
+
+    /// The curated table keeps its case-only power, because every entry in it is
+    /// a word whose capital is unambiguous. This is the line between the two.
+    @Test func theCuratedTableStillCapitalisesI() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "i", isKnownToChecker: true, isInWordList: true)
+            ) == "I"
+        )
+    }
+
+    /// A replacement carrying its own capitalization is a substitution, not a
+    /// spelling of the typed word. Caps lock must not shout it.
+    @Test func anExpansionKeepsItsOwnCapitalization() {
+        #expect(
+            TypingCandidates.matchingCase(of: "OMW", applyingTo: "On my way!") == "On my way!"
+        )
+        #expect(TypingCandidates.matchingCase(of: "i", applyingTo: "I") == "I")
+        // An ordinary correction still follows the typed word's case.
+        #expect(TypingCandidates.matchingCase(of: "Teh", applyingTo: "the") == "The")
+    }
+
+    /// Nothing may be replaced when the cursor is inside a longer word: the
+    /// composition is a prefix of something the keyboard can only see half of,
+    /// and rewriting it corrupts a word the user never finished.
+    @Test func nothingIsCorrectedInTheMiddleOfAWord() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "teh", guesses: ["the"], isMidWord: true)
+            ) == nil
+        )
+    }
+
+    /// The preceding word is evidence the checker never had. Two guesses the
+    /// same distance away, and the bigram says which one the sentence wants.
+    @Test func contextBreaksATieTheCheckerCannot() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "hend",
+                    guesses: ["hand", "bend"],
+                    preceding: "please",
+                    followers: ["hand"]
+                )
+            ) == "hand"
+        )
+    }
+
+    /// Proximity settles a contest the dictionary rates equally; it never
+    /// manufactures a winner where there genuinely is not one.
+    @Test func proximityBreaksTiesWithoutCreatingThem() {
+        // Adjacent keys cost less than a letter from the other side of the
+        // keyboard: "w" is beside "e", "p" is not.
+        #expect(KeyProximity.areAdjacent("w", "e"))
+        #expect(!KeyProximity.areAdjacent("q", "p"))
+        #expect(
+            KeyProximity.substitutionCost(typed: "w", intended: "e")
+                < KeyProximity.substitutionCost(typed: "q", intended: "p")
+        )
+        // Still no correction when both readings are one plain edit away.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "hend", guesses: ["hand", "bend"])
+            ) == nil
+        )
+        // But a runner-up needing strictly more edits still loses, which is the
+        // rule proximity weighting must not have taken away.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "hend", guesses: ["hand", "blend"])
+            ) == "hand"
+        )
     }
 
     // MARK: - Autocorrect rules
@@ -433,5 +657,47 @@ struct TypingCandidatesTests {
         var ctx = context("lol", emoji: "😂")
         ctx.allowsTypingIntelligence = false
         #expect(TypingCandidates.strip(ctx).candidates.isEmpty)
+    }
+}
+
+/// A revert deletes a fixed number of characters and types the original in
+/// their place, which is only meaningful where the replacement actually is.
+struct AppliedCorrectionArmingTests {
+    private static let correction = TypingEngine.AppliedCorrection(
+        typed: "teh",
+        replacement: "the",
+        boundary: " "
+    )
+
+    /// Immediately after the correction, with it still in front of the cursor.
+    @Test func aCorrectionInFrontOfTheCursorIsArmed() {
+        #expect(Self.correction.isArmed(documentBefore: "the "))
+        #expect(Self.correction.isArmed(documentBefore: "I saw the "))
+    }
+
+    /// The cursor has moved on. Reverting here would delete four characters of
+    /// unrelated text and insert a word from a paragraph ago.
+    @Test func aCorrectionTheCursorHasLeftIsNotArmed() {
+        #expect(!Self.correction.isArmed(documentBefore: "the quick brown fox"))
+        #expect(!Self.correction.isArmed(documentBefore: "somewhere else entirely"))
+        #expect(!Self.correction.isArmed(documentBefore: ""))
+    }
+
+    /// The host declining to answer is not permission to delete on faith.
+    @Test func anUnansweredContextIsNotArmed() {
+        #expect(!Self.correction.isArmed(documentBefore: nil))
+    }
+
+    /// The boundary counts. "the" alone is a word the user typed, not the
+    /// correction plus the space that applied it.
+    @Test func theBoundaryIsPartOfWhatMustStillBeThere() {
+        #expect(!Self.correction.isArmed(documentBefore: "the"))
+        let punctuated = TypingEngine.AppliedCorrection(
+            typed: "teh",
+            replacement: "the",
+            boundary: "."
+        )
+        #expect(punctuated.isArmed(documentBefore: "the."))
+        #expect(!punctuated.isArmed(documentBefore: "the "))
     }
 }

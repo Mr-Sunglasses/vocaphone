@@ -19,6 +19,16 @@ struct TypingCandidate: Equatable {
         /// Distinct from ``correction`` because replacing it has to take the
         /// space the swipe inserted with it — see ``SwipeAlternates``.
         case swipeAlternate
+        /// The word the user actually typed, offered back immediately after an
+        /// autocorrect replaced it.
+        ///
+        /// The system keyboard draws a small bubble under the corrected word
+        /// carrying the original. An extension cannot: the word is in the host
+        /// app's text view, in another process, at coordinates this keyboard is
+        /// never told. The strip is the surface this keyboard does own, so the
+        /// offer goes there — visible for exactly as long as the correction is
+        /// still the last thing that happened.
+        case revert
     }
 
     let text: String
@@ -69,6 +79,22 @@ enum TypingCandidates {
         var systemGuesses: [String] = []
         var listCompletions: [String] = []
         var predictions: [String] = []
+        /// What usually follows ``precedingWord``. Distinct from ``predictions``
+        /// — which is the same data used to fill an *empty* strip — because here
+        /// it is evidence about the word being typed rather than a guess about
+        /// the next one. "I'll be there son" and "sooner" are the same distance
+        /// from "son"; only "be there" says which.
+        var contextualFollowers: [String] = []
+
+        /// The user's own text replacement for exactly this input, if they have
+        /// one. iOS hands keyboards the lexicon specifically so that "omw" can
+        /// mean what its owner told Settings it means.
+        var lexiconExpansion: String?
+
+        /// Whether the cursor sits inside a longer word rather than at the end
+        /// of one. Nothing may be replaced there: the composition is a prefix of
+        /// a word the keyboard can only see half of.
+        var isMidWord = false
 
         /// Whether the system checker recognises the composition.
         var isKnownToChecker = false
@@ -132,6 +158,17 @@ enum TypingCandidates {
         return TypingStrip(
             candidates: appendingEmoji(to: candidates, context: context),
             autocorrection: correction
+        )
+    }
+
+    /// The strip shown for as long as a just-applied autocorrect can still be
+    /// taken back — the extension's stand-in for the system keyboard's revert
+    /// bubble, which needs coordinates in the host app that no extension is
+    /// given. One chip, carrying what the user actually typed.
+    static func revertStrip(typed: String) -> TypingStrip {
+        TypingStrip(
+            candidates: [TypingCandidate(text: typed, kind: .revert)],
+            autocorrection: nil
         )
     }
 
@@ -199,17 +236,82 @@ enum TypingCandidates {
         // suggestion were all chosen by something the user saw.
         guard context.origin == .typed else { return nil }
 
+        // The cursor is inside a longer word. The keyboard is holding a prefix
+        // of something it cannot see the end of, and rewriting that prefix
+        // corrupts a word the user never finished typing in the first place.
+        guard !context.isMidWord else { return nil }
+
         let typed = context.composition
+        guard !typed.isEmpty else { return nil }
+
+        // The user's own assertion outranks every source below, including the
+        // curated table: someone who put their spelling back once has answered
+        // this question already.
+        guard !contains(context.customWords, typed),
+              !contains(context.learnedWords, typed),
+              !context.assertedWords.contains(typed.lowercased())
+        else { return nil }
+
+        // A text replacement the user configured in Settings. Not a guess — an
+        // instruction — which is why it outranks everything below it.
+        //
+        // But it has to be a real *expansion*. `UILexicon` is not just the
+        // shortcuts someone typed into Settings: it also carries names from
+        // Contacts and the system's own proper nouns, as a lowercase
+        // `userInput` mapped to a properly-cased `documentText` — "world" to
+        // "World", "iphone" to "iPhone". Applying those on an exact match meant
+        // any ordinary word that happened to be in the user's address book was
+        // silently capitalised mid-sentence, with no way to tell which words
+        // would do it. That is the same thing the case-only guard further down
+        // exists to prevent, and this path was walking straight past it.
+        //
+        // A case-only lexicon entry is still *offered*: it reaches the strip
+        // through `lexiconEntries`, at the top of `rankedSuggestions`. Offering
+        // it is right. Imposing it is not.
+        if let expansion = context.lexiconExpansion,
+           expansion.lowercased() != typed.lowercased()
+        {
+            return expansion
+        }
+
+        // The curated short-word table, ahead of every guard below it. Each of
+        // those guards would refuse these words — "i" is too short, "dont" is
+        // only a case and apostrophe away from nothing the checker will guess —
+        // and refusing them is what made this keyboard visibly worse than the
+        // system one at the corrections people notice first.
+        // Acronyms stand. "WIP" is not a misspelling of "wip", and "DONT"
+        // typed with caps lock on is not asking to become "don't" — someone
+        // shouting has still chosen their letters.
+        //
+        // Above the curated table rather than below it, which is where this
+        // check used to sit: the table would otherwise rewrite a shouted
+        // contraction before the acronym rule ever ran. Deliberately *below*
+        // the lexicon, because a text replacement is an instruction the user
+        // configured, and "OMW" should expand whatever case it is typed in.
+        guard !isAllCaps(typed) else { return nil }
+
+        // Exact comparison here, and here it *is* the whole point: "i" → "I" is
+        // a case-only change, which is precisely what the general path below
+        // refuses and precisely what this table exists to allow.
+        //
+        // Safe here and not for the lexicon above because this table is
+        // curated: thirty-odd entries, each one a word whose capital is
+        // unambiguous in English. The lexicon is whatever happens to be in
+        // someone's contacts.
+        if let replacement = ShortWordCorrections.replacement(for: typed),
+           replacement != typed
+        {
+            return replacement
+        }
+
         // Two-letter words are mostly deliberate, and the shorter the word the
-        // more words sit within one edit of it.
+        // more words sit within one edit of it. Anything genuinely worth fixing
+        // at that length is in the table above.
         guard typed.count >= 3 else { return nil }
 
         // Anything the user or the language already recognises stands.
         guard !context.isKnownToChecker,
-              !context.isInWordList,
-              !contains(context.customWords, typed),
-              !contains(context.learnedWords, typed),
-              !context.assertedWords.contains(typed.lowercased())
+              !context.isInWordList
         else { return nil }
 
         // A word this keyboard has a curated emoji for is a word people type on
@@ -231,40 +333,101 @@ enum TypingCandidates {
             return nil
         }
 
-        // Acronyms stand. "WIP" is not a misspelling of "wip".
-        guard !isAllCaps(typed) else { return nil }
-
         let guesses = context.systemGuesses.filter {
             $0.caseInsensitiveCompare(typed) != .orderedSame
         }
-        guard let best = guesses.first else { return nil }
+        guard !guesses.isEmpty else { return nil }
 
-        // Close enough to be a typo rather than a different word.
-        let bestDistance = editDistance(typed.lowercased(), best.lowercased(), maximum: 2)
-        guard bestDistance <= 2 else { return nil }
-
-        // A comfortable margin over the runner-up. Two equally close guesses
-        // means the checker does not know which either, and picking one is a
-        // coin toss played with the user's sentence — "hend" is as near to
-        // "hand" as it is to "bend", and only the user knows which.
+        // Re-ranked rather than taken in the order the checker offered them.
         //
-        // A transposition is the exception, because it is the one typo class
-        // with no ambiguity: "teh" is "the" with two keys swapped, and no
-        // competing guess explains the letters as well. Without this exception
-        // the most famous typo in English would go uncorrected.
-        if guesses.count > 1 {
-            let second = editDistance(typed.lowercased(), guesses[1].lowercased(), maximum: 3)
-            let hasMargin = bestDistance < second
-            guard hasMargin || isTransposition(typed.lowercased(), best.lowercased()) else {
-                return nil
-            }
+        // `UITextChecker` ranks by spelling alone, which is the one thing a
+        // keyboard can improve on: it knows where the fingers were, and it knows
+        // what word came before. Both are folded into a single cost here, so the
+        // margin rule below compares like with like.
+        let scored = guesses
+            .map { (word: $0, cost: correctionCost(typed: typed, candidate: $0, context: context)) }
+            .sorted { $0.cost < $1.cost }
+        guard let best = scored.first else { return nil }
+
+        // Close enough to be a typo rather than a different word. Measured
+        // unweighted, because "is this a typo at all" is a question about how
+        // many characters moved, not about which keys they were near.
+        let bestEdits = editDistance(typed.lowercased(), best.word.lowercased(), maximum: 2)
+        guard bestEdits <= 2 else { return nil }
+
+        // A comfortable margin over the runner-up. Two equally good guesses
+        // means nothing here knows which either, and picking one is a coin toss
+        // played with the user's sentence — "hend" is as near to "hand" as it is
+        // to "bend", and only the user knows which.
+        //
+        // Two exceptions, both cases where the ambiguity is only apparent:
+        //
+        // - A transposition. "teh" is "the" with two keys swapped, and no
+        //   competing guess explains the letters as well. Without this the most
+        //   famous typo in English would go uncorrected.
+        // - A word the preceding word actually predicts. "be there son" and
+        //   "be there soon" are the same edit from "son"; the bigram is the
+        //   evidence that breaks the tie, and it is evidence the checker never
+        //   had.
+        if scored.count > 1 {
+            // Two margins, and either one is enough.
+            //
+            // Spelling first: a runner-up that needs strictly more edits is
+            // plainly the worse reading, whatever the fingers were doing. This
+            // is the rule that was here before proximity weighting, and it has
+            // to stay — weighted costs compress the range, so "hand" (one
+            // substitution) and "blend" (an insertion *and* a substitution) came
+            // out only 0.4 apart and the obvious correction stopped firing.
+            //
+            // Proximity second, and only by a wide gap. Being near the key the
+            // finger actually hit is evidence, not proof: it should settle a
+            // contest between two readings the dictionary rates the same, and
+            // never manufacture a winner where there genuinely is not one.
+            // "hend" is one edit from "hand" and one from "bend", and no amount
+            // of knowing that "b" is under "h" makes that a question the
+            // keyboard is entitled to answer.
+            let secondEdits = editDistance(
+                typed.lowercased(),
+                scored[1].word.lowercased(),
+                maximum: 3
+            )
+            let hasSpellingMargin = secondEdits > bestEdits
+            let hasProximityMargin = scored[1].cost - best.cost >= 0.7
+            let isContextual = contains(context.contextualFollowers, best.word)
+            guard hasSpellingMargin
+                || hasProximityMargin
+                || isContextual
+                || isTransposition(typed.lowercased(), best.word.lowercased())
+            else { return nil }
         }
 
         // Capitalization is `updateAutomaticShift`'s job. An autocorrect that
         // only changes case is the keyboard fighting the shift key.
-        guard best.lowercased() != typed.lowercased() else { return nil }
+        guard best.word.lowercased() != typed.lowercased() else { return nil }
 
-        return best
+        return best.word
+    }
+
+    /// How reluctant the keyboard should be to replace `typed` with `candidate`.
+    /// Lower is better; the units are edits, so the margin threshold above means
+    /// something concrete.
+    static func correctionCost(typed: String, candidate: String, context: Context) -> Double {
+        var cost = KeyProximity.weightedDistance(
+            typed.lowercased(),
+            candidate.lowercased(),
+            maximum: 3
+        )
+        // The preceding word predicts this one. Worth about half an edit: enough
+        // to settle a tie, never enough to beat a plainly closer spelling.
+        // Worth more than a neighbouring-key substitution discount, and
+        // deliberately so: which word the sentence wants is better evidence than
+        // which key the finger was near. Not enough to beat a plainly closer
+        // spelling, which the margin rule above still requires.
+        if contains(context.contextualFollowers, candidate) { cost -= 0.7 }
+        // The shipped list is frequency-ordered and the checker is not, so a
+        // guess the list knows is the more likely reading of the two.
+        if contains(context.listCompletions, candidate) { cost -= 0.1 }
+        return cost
     }
 
     // MARK: - Helpers
@@ -296,9 +459,21 @@ enum TypingCandidates {
     /// "Teh" gives "The" rather than "the".
     static func matchingCase(of typed: String, applyingTo replacement: String) -> String {
         guard let first = typed.first else { return replacement }
+        // A replacement that carries its own capitalization is not a spelling of
+        // the typed word — it is a substitution the keyboard was told to make.
+        // "omw" must not become "ON MY WAY!" because the user happened to have
+        // caps lock on, and "i" must stay "I" rather than being lowercased back.
+        guard !carriesOwnCase(replacement) else { return replacement }
         if isAllCaps(typed), typed.count > 1 { return replacement.uppercased() }
         if first.isUppercase { return replacement.prefix(1).uppercased() + replacement.dropFirst() }
         return replacement
+    }
+
+    /// Whether a replacement's capitalization is deliberate: a text replacement,
+    /// a phrase, or anything already carrying an uppercase letter.
+    static func carriesOwnCase(_ replacement: String) -> Bool {
+        replacement.contains(where: \.isWhitespace)
+            || replacement.contains(where: \.isUppercase)
     }
 
     /// Concatenates without duplicates, keeping the first occurrence's order.

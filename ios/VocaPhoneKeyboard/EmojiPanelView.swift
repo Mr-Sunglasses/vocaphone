@@ -60,6 +60,11 @@ final class EmojiPanelView: UIView {
         return view
     }()
     private let bottomRow = UIStackView()
+    /// The skin-tone row, built on first use. Shares the key grid's popover so a
+    /// long press here looks like a long press on a letter — same corners, same
+    /// shadow, same highlight — rather than like a second design.
+    private var tonesView: KeyAlternativesView?
+    private var toneOptions: [String] = []
 
     init(
         palette: KeyboardPalette,
@@ -189,6 +194,15 @@ final class EmojiPanelView: UIView {
         }
 
         addSubview(collection)
+        // Skin tones. A long press rather than a separate control, because that
+        // is the gesture the system keyboard taught everyone and there is no
+        // room on this panel for a tone picker that is always visible.
+        let hold = UILongPressGestureRecognizer(target: self, action: #selector(toneHold))
+        hold.minimumPressDuration = 0.45
+        // The collection has to keep scrolling normally; the hold only wins once
+        // it has actually been held.
+        hold.delaysTouchesBegan = false
+        collection.addGestureRecognizer(hold)
 
         bottomRow.axis = .horizontal
         bottomRow.spacing = metrics.columnGap
@@ -251,6 +265,68 @@ final class EmojiPanelView: UIView {
     /// keyboard the user just came from.
     @objc private func keyPressed() {
         feedback.keyPressed()
+    }
+
+    /// Long press on an emoji that has skin tones: open the row, track the
+    /// finger along it, commit whatever it is over when it lifts.
+    @objc private func toneHold(_ recognizer: UILongPressGestureRecognizer) {
+        let point = recognizer.location(in: collection)
+        switch recognizer.state {
+        case .began:
+            guard let indexPath = collection.indexPathForItem(at: point),
+                  indexPath.item < glyphs.count
+            else { return }
+            let options = EmojiSkinTones.variants(of: glyphs[indexPath.item])
+            guard options.count > 1 else { return }
+            presentTones(options, over: indexPath)
+        case .changed:
+            guard let tones = tonesView, !tones.isHidden else { return }
+            let local = convert(point, from: collection)
+            if tones.highlightOption(atX: convert(local, to: tones).x) {
+                feedback.selectionChanged()
+            }
+        case .ended:
+            guard let tones = tonesView, !tones.isHidden else { return }
+            let choice = tones.highlightedOption
+            dismissTones()
+            guard let choice else { return }
+            feedback.textCommitted()
+            EmojiRecents.note(choice)
+            delegate?.emojiPanel(self, didChoose: choice)
+        default:
+            dismissTones()
+        }
+    }
+
+    private func presentTones(_ options: [String], over indexPath: IndexPath) {
+        guard let attributes = collection.layoutAttributesForItem(at: indexPath) else { return }
+        let tones = tonesView ?? {
+            let created = KeyAlternativesView(palette: palette, metrics: metrics)
+            addSubview(created)
+            tonesView = created
+            return created
+        }()
+        toneOptions = options
+        tones.show(options, palette: palette, metrics: metrics)
+        let size = tones.size(for: options)
+        let cell = convert(attributes.frame, from: collection)
+        // Nudged inside the panel, so a tone row opened on the first or last
+        // column of the grid does not hang off the edge.
+        let x = min(max(cell.midX - size.width / 2, 2), max(bounds.width - size.width - 2, 2))
+        tones.frame = CGRect(
+            x: x,
+            y: max(cell.minY - size.height - 6, 0),
+            width: size.width,
+            height: size.height
+        )
+        bringSubviewToFront(tones)
+        tones.appear(animated: true)
+        feedback.selectionChanged()
+    }
+
+    private func dismissTones() {
+        tonesView?.disappear(animated: true)
+        toneOptions = []
     }
 
     @objc private func searchChanged() {
@@ -324,6 +400,9 @@ extension EmojiPanelView: UICollectionViewDataSource, UICollectionViewDelegateFl
     }
 
     func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        // The tone row owns this touch. Without this the lift that chooses a
+        // tone would also insert the untoned emoji the row was opened from.
+        guard tonesView?.isHidden != false else { return }
         guard indexPath.item < glyphs.count else { return }
         let glyph = glyphs[indexPath.item]
         feedback.textCommitted()
