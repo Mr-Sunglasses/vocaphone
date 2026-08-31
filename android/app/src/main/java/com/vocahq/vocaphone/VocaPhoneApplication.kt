@@ -108,12 +108,17 @@ class AppContainer(context: Context) {
      * with on-device transcription still switched on, record, and fail.
      */
     private val settingsMigration: Job = applicationScope.launch {
-        // Bounded, because the first dictation now waits on this and a settings
+        // Bounded, because the first dictation waits on this and a settings
         // read that never returns would otherwise be a keyboard that never
-        // records. Two DataStore reads and at most two writes take milliseconds;
-        // anything beyond this is broken rather than slow, and letting dictation
-        // proceed on the pre-migration settings is a far better failure than
-        // hanging. `refresh()` then sweeps and re-reads on the next launch.
+        // records. Two DataStore reads and one write take milliseconds; anything
+        // beyond this is broken rather than slow.
+        //
+        // Timing out is survivable rather than merely tolerable: a dictation
+        // that proceeds on un-migrated settings finds a model id the catalog
+        // does not have, and `missingPermissions` turns that into setup before
+        // the microphone opens rather than a failed recording. The wait is an
+        // optimisation -- it keeps the common case off the repair screen -- not
+        // the thing that makes the state correct.
         withTimeoutOrNull(SETTINGS_MIGRATION_TIMEOUT_MILLIS) {
             migrateRetiredModelSelection()
         }
@@ -171,10 +176,7 @@ class AppContainer(context: Context) {
             // on with nothing behind it, and every dictation would record and
             // then fail. The switch goes off with it, so setup says so before
             // recording rather than after.
-            is RetiredModels.Outcome.Cleared -> {
-                settings.setLocalModel("")
-                settings.setLocalTranscriptionEnabled(false)
-            }
+            is RetiredModels.Outcome.Cleared -> settings.clearLocalModelSelection()
         }
     }
 

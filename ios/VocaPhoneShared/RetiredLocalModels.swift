@@ -160,8 +160,13 @@ enum RetiredLocalModels {
         case let .replaced(id):
             LocalTranscriptionPreferences.modelIdentifier = id
         case .cleared:
-            LocalTranscriptionPreferences.modelIdentifier = nil
+            // The switch goes off first. `UserDefaults` has no transaction, so
+            // these two writes can in principle be separated -- and only one
+            // order is safe to be interrupted in. Off with a stale id left
+            // behind is a route nobody takes; a cleared id with the switch still
+            // on is the state that records a dictation and then fails.
             LocalTranscriptionPreferences.enabled = false
+            LocalTranscriptionPreferences.modelIdentifier = nil
         }
     }
 }

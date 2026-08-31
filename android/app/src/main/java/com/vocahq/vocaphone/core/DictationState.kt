@@ -40,6 +40,14 @@ enum class MissingPermission {
     MICROPHONE,
     NOTIFICATIONS,
     GATEWAY_NOT_CONFIGURED,
+
+    /**
+     * On-device transcription is on but the stored model is not in the catalog:
+     * a selection this build no longer ships, or one the launch migration has
+     * not reached yet. Either way the local route cannot run, and saying so
+     * before the microphone opens is the whole point of this state.
+     */
+    LOCAL_MODEL_UNAVAILABLE,
     ;
 
     val title: String
@@ -47,6 +55,7 @@ enum class MissingPermission {
             MICROPHONE -> "Microphone access"
             NOTIFICATIONS -> "Notifications"
             GATEWAY_NOT_CONFIGURED -> "Gateway address and token"
+            LOCAL_MODEL_UNAVAILABLE -> "On-device model"
         }
 }
 

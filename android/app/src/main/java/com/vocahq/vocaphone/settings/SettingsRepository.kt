@@ -320,6 +320,20 @@ data class VocaPhoneSettings(
     val hasLocalModelSelection: Boolean get() = localModelId.isNotEmpty()
 
     /**
+     * On-device transcription is switched on but the stored model is not in the
+     * catalog.
+     *
+     * Either a selection this build no longer ships, or one the launch
+     * migration has not reached yet -- it runs in a coroutine, and a dictation
+     * can start first. The local route cannot run in that state, and the
+     * failure it produces without this is the expensive kind: the microphone
+     * opens, a full dictation is recorded, and delivery fails at the end on a
+     * model that was never going to load.
+     */
+    val localModelMissing: Boolean
+        get() = localTranscriptionEnabled && LocalModelCatalog.find(localModelId) == null
+
+    /**
      * Words actually handed to Whisper. The personal dictionary is the default
      * source so names taught on the strip also bias dictation.
      */
@@ -403,6 +417,23 @@ class SettingsRepository(private val context: Context) {
         put(Keys.LOCAL_TRANSCRIPTION_ENABLED, enabled)
 
     suspend fun setLocalModel(modelId: String) = put(Keys.LOCAL_MODEL_ID, modelId)
+
+    /**
+     * Forget the on-device selection and switch the route off with it, in one
+     * transaction.
+     *
+     * Two separate writes can be interrupted between them -- by a cancelled
+     * migration, or by the process dying -- and the half-applied state is the
+     * broken one: no model selected with on-device transcription still enabled,
+     * which records a dictation and then fails at delivery. Neither key means
+     * anything without the other, so neither is written without the other.
+     */
+    suspend fun clearLocalModelSelection() {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.LOCAL_MODEL_ID] = ""
+            preferences[Keys.LOCAL_TRANSCRIPTION_ENABLED] = false
+        }
+    }
 
     suspend fun setTranscriptionQuality(quality: TranscriptionQuality) =
         put(Keys.TRANSCRIPTION_QUALITY, quality.storedValue)
