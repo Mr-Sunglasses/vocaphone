@@ -112,7 +112,7 @@ final class KeyGridView: UIView {
     private var alternativesView: KeyAlternativesView?
     /// Rebuilt by layout from the same frames that are rendered. Touches never
     /// scan UIKit subviews directly, so a gutter boundary has one stable owner.
-    private var hitMap = KeyHitMap(targets: [])
+    private(set) var hitMap = KeyHitMap(targets: [])
     private var tracked: [TrackedTouch] = []
     /// The plane key's hold-for-emoji gesture. Owned by the grid rather than by
     /// a `TrackedTouch`, because the plane switch it rides on releases those.
@@ -124,10 +124,31 @@ final class KeyGridView: UIView {
     private var spaceTrackpadTimer: Timer?
     private var deleteRepeatCount = 0
     private var lastShiftTapAt: Date?
+    /// When the run of fast typing this keyboard is in last produced a letter,
+    /// or `nil` if it is not in one. See ``isInFastTyping``.
+    private var lastLetterCommitAt: Date?
 
     private final class TrackedTouch: @unchecked Sendable {
         let touch: UITouch
-        var key: KeyView
+        private(set) var key: KeyView
+        /// The key's position in `keyViews`, which is also its index in the hit
+        /// map. Kept beside the view so a move event can ask the map to
+        /// re-target without first searching the subviews for the current key.
+        private(set) var keyIndex: Int
+        /// Whether this finger would still commit if it lifted now.
+        ///
+        /// Distinct from `key.isHighlighted`, which belongs to the *view*: two
+        /// fingers can be on one key when a fast typist re-presses a letter
+        /// before the first press has lifted, and the second one lifting used to
+        /// clear the highlight the first was still relying on — a dropped
+        /// keystroke that only ever showed up at speed.
+        var isEngaged = true
+        /// Set when a plane switch under another finger took this touch's
+        /// keyboard away. It keeps the key it pressed and still commits it on
+        /// lift, but `keyIndex` now points into a `keyViews` that has been
+        /// replaced, so nothing may re-target it — which is why `touchesMoved`
+        /// leaves a pinned touch alone entirely.
+        var isPinned = false
         /// Whether the finger may leave this key and type the one it lands on.
         /// Characters always may. So do Shift and the plane key, because iOS
         /// lets a press on either slide onto a letter or symbol, type it, and
@@ -161,16 +182,23 @@ final class KeyGridView: UIView {
         init(
             touch: UITouch,
             key: KeyView,
+            keyIndex: Int,
             initialPoint: CGPoint,
             planeToRestore: KeyPlane? = nil
         ) {
             self.touch = touch
             self.key = key
+            self.keyIndex = keyIndex
             self.initialPoint = initialPoint
             self.planeToRestore = planeToRestore
             startedOnShift = key.spec.cap == .shift
             allowsSwipe = key.spec.cap.isCharacter
             allowsSlide = key.spec.cap.isCharacter || startedOnShift || planeToRestore != nil
+        }
+
+        func retarget(to index: Int, view: KeyView) {
+            keyIndex = index
+            key = view
         }
     }
 
@@ -212,6 +240,11 @@ final class KeyGridView: UIView {
             hitMap = KeyHitMap(targets: [])
             return
         }
+        // Android's 8dp is measured against its ~40dp key; expressing it as a
+        // share of this keyboard's own column keeps the same feel at every
+        // height preference and on iPad, where a fixed 8pt would be a much
+        // smaller part of a 56pt key.
+        let hysteresis = max(unit * 0.2, metrics.columnGap)
 
         var keyIndex = 0
         var targets: [KeyHitMap.Target] = []
@@ -265,7 +298,7 @@ final class KeyGridView: UIView {
             y += metrics.keyHeight + metrics.rowGap
         }
 
-        hitMap = KeyHitMap(targets: targets)
+        hitMap = KeyHitMap(targets: targets, hysteresis: hysteresis)
     }
 
     /// The native letters plane leaves a larger visual moat around Shift and
@@ -392,7 +425,7 @@ final class KeyGridView: UIView {
         // touch resolve old target indices against the new plane's views.
         hitMap = KeyHitMap(targets: [])
         endDeleteRepeat()
-        releaseTouches()
+        pinTouchesToTheirKeys()
         keyViews.forEach { $0.isHidden = true }
 
         let entry: (rows: [KeyRow], views: [KeyView])
@@ -448,6 +481,38 @@ final class KeyGridView: UIView {
         releaseTouches()
     }
 
+    /// Freezes every touch in flight on the key it is already holding.
+    ///
+    /// A plane switch replaces `keyViews` and the hit map, so a finger that was
+    /// down when another thumb tapped `123` has nothing left to slide across.
+    /// It used to be dropped outright, which is a keystroke the user typed and
+    /// never saw: two-thumb typists hit `123` with one thumb while the other is
+    /// still on a letter all the time. `KeyView` carries its own spec, so the
+    /// pinned touch can still commit that letter when it lifts even though the
+    /// view behind it now belongs to a plane that is no longer on screen.
+    private func pinTouchesToTheirKeys() {
+        spaceTrackpadTimer?.invalidate()
+        spaceTrackpadTimer = nil
+        swipeTrail.cancel()
+        for item in tracked {
+            // The popover and the balloon are both anchored to a plane that is
+            // going away.
+            item.longPressTimer?.invalidate()
+            item.longPressTimer = nil
+            // A trace in flight commits nothing at all: its path crossed a
+            // plane that has gone, and the one letter the finger happens to
+            // have stopped over is not the word it was drawing.
+            if item.isSwiping { item.isEngaged = false }
+            item.isSwiping = false
+            item.swipePath = []
+            item.isPinned = true
+            item.key.isHighlighted = false
+            recycle(item.preview)
+            item.preview = nil
+        }
+        dismissAlternatives()
+    }
+
     private func releaseTouches() {
         spaceTrackpadTimer?.invalidate()
         spaceTrackpadTimer = nil
@@ -477,11 +542,15 @@ final class KeyGridView: UIView {
     // MARK: - Touch tracking
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-        for touch in touches {
+        // Sorted, because `Set` has no order and two thumbs landing inside one
+        // event would otherwise type in whichever order the set happened to
+        // hash — the letters of a fast word arriving transposed.
+        for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
             let point = touch.location(in: self)
-            guard let key = key(at: point, characterOnly: false)
+            guard let index = keyIndex(at: point, characterOnly: false)
             else { continue }
-            let item = TrackedTouch(touch: touch, key: key, initialPoint: point)
+            let key = keyViews[index]
+            let item = TrackedTouch(touch: touch, key: key, keyIndex: index, initialPoint: point)
             tracked.append(item)
             key.isHighlighted = true
             // The click belongs to the press, not to the commit: the system
@@ -498,21 +567,26 @@ final class KeyGridView: UIView {
             if key.spec.cap.actsOnTouchDown {
                 let planeBefore = plane
                 performTouchDownAction(for: key, event: event)
-                // Switching planes rebuilds the grid and releases every touch,
-                // this one included. Re-register it against the plane the
-                // finger is now looking at, so it can slide onto a symbol and
-                // type it on lift the way the system keyboard does.
-                if case .plane = key.spec.cap, plane != planeBefore,
-                   let landed = self.key(at: point, characterOnly: false)
-                {
-                    let slide = TrackedTouch(
-                        touch: touch,
-                        key: landed,
-                        initialPoint: point,
-                        planeToRestore: planeBefore
-                    )
-                    tracked.append(slide)
-                    landed.isHighlighted = true
+                // Switching planes rebuilds the grid and pins every touch,
+                // this one included. Unlike the other fingers it has nothing
+                // worth committing — a plane key types nothing — so drop its
+                // entry and re-register it against the plane the finger is now
+                // looking at, letting it slide onto a symbol and type that on
+                // lift the way the system keyboard does.
+                if case .plane = key.spec.cap, plane != planeBefore {
+                    tracked.removeAll { $0 === item }
+                    if let landedIndex = self.keyIndex(at: point, characterOnly: false) {
+                        let landed = keyViews[landedIndex]
+                        let slide = TrackedTouch(
+                            touch: touch,
+                            key: landed,
+                            keyIndex: landedIndex,
+                            initialPoint: point,
+                            planeToRestore: planeBefore
+                        )
+                        tracked.append(slide)
+                        landed.isHighlighted = true
+                    }
                 }
             }
         }
@@ -527,6 +601,9 @@ final class KeyGridView: UIView {
                 if hypot(point.x - origin.x, point.y - origin.y) > 12 { cancelPlaneHold() }
             }
             guard let item = tracked.first(where: { $0.touch === touch }) else { continue }
+            // Pinned by a plane switch: the keys it was moving over are gone, so
+            // it waits for the lift that commits what it pressed.
+            guard !item.isPinned else { continue }
             let point = touch.location(in: self)
 
             if item.isChoosingAlternative {
@@ -553,8 +630,9 @@ final class KeyGridView: UIView {
                 // the finger wanders off, so a drag away cancels instead of
                 // firing something the user no longer intends.
                 let isInside = item.key.hitRect.contains(point)
-                guard item.key.isHighlighted != isInside else { continue }
-                item.key.isHighlighted = isInside
+                guard item.isEngaged != isInside else { continue }
+                item.isEngaged = isInside
+                setHighlight(isInside, on: item.key)
                 if item.key.spec.cap == .delete {
                     isInside ? startDeleteTimer() : endDeleteRepeat()
                 }
@@ -566,7 +644,9 @@ final class KeyGridView: UIView {
                     point.x - item.initialPoint.x,
                     point.y - item.initialPoint.y
                 )
-                if !item.isSwiping, travelled > SwipeRecognizer.activationDistance {
+                if !item.isSwiping, activeTouchCount == 1,
+                   travelled > swipeActivationDistance
+                {
                     // Only now is this a swipe. Below the threshold it is the
                     // slide-to-correct-a-target gesture the keyboard already
                     // had, and stealing that would break ordinary typing.
@@ -585,19 +665,43 @@ final class KeyGridView: UIView {
                 if item.isSwiping {
                     item.swipePath.append(point)
                     swipeTrail.extend(to: point)
-                    if let key = key(at: point, characterOnly: true), key !== item.key {
-                        item.key.isHighlighted = false
-                        item.key = key
-                        key.isHighlighted = true
+                    // A trace is meant to run across keys, so it re-targets on
+                    // the boundary with no hysteresis at all.
+                    if let index = keyIndex(at: point, characterOnly: true),
+                       index != item.keyIndex
+                    {
+                        let previous = item.key
+                        item.retarget(to: index, view: keyViews[index])
+                        setHighlight(false, on: previous)
+                        setHighlight(true, on: item.key)
                     }
                     continue
                 }
             }
 
-            guard let key = key(at: point, characterOnly: true), key !== item.key else { continue }
-            item.key.isHighlighted = false
-            item.key = key
-            key.isHighlighted = true
+            // Past here the finger is correcting its target rather than tracing,
+            // and both reasons a *fast* keystroke lands on the wrong letter are
+            // decided in this step.
+            //
+            // The first is that another finger is already down. Typing at speed
+            // overlaps the strokes, and panels report two close contacts noisily
+            // — the finger that is lifting reads as a slide. Android pins the key
+            // in exactly this case ("if there are currently multiple touches,
+            // register the key even if the finger slides off the key"), with the
+            // same carve-out for a modifier being chorded into a letter.
+            guard activeTouchCount == 1 || item.isModifierSlide else { continue }
+
+            // The second is the boundary, which the hit map now holds the finger
+            // back from until it has genuinely left the key it pressed.
+            guard let index = hitMap.retargetIndex(
+                from: item.keyIndex,
+                at: point,
+                characterOnly: true
+            ), keyViews.indices.contains(index) else { continue }
+            let previous = item.key
+            item.retarget(to: index, view: keyViews[index])
+            setHighlight(false, on: previous)
+            setHighlight(true, on: item.key)
             showPreview(for: item)
         }
     }
@@ -612,10 +716,11 @@ final class KeyGridView: UIView {
 
     private func finish(_ touches: Set<UITouch>, commit: Bool) {
         // Applied after the loop: restoring the plane rebuilds the grid and
-        // releases every tracked touch, which would strand the other fingers
-        // of a multi-touch batch before they have been read.
+        // pins every tracked touch, which would freeze the other fingers of a
+        // multi-touch batch — clearing their previews and stopping them
+        // tracking — before they have been read.
         var planeToRestore: KeyPlane?
-        for touch in touches {
+        for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
             if planeHoldTouch === touch { cancelPlaneHold() }
             guard let index = tracked.firstIndex(where: { $0.touch === touch }) else { continue }
             let item = tracked.remove(at: index)
@@ -625,7 +730,7 @@ final class KeyGridView: UIView {
             }
             item.longPressTimer?.invalidate()
             item.longPressTimer = nil
-            var shouldCommit = commit && item.key.isHighlighted && !item.isCursorTracking
+            var shouldCommit = commit && item.isEngaged && !item.isCursorTracking
             // A slide that began on Shift or the plane key tracks characters
             // only, so sliding back onto the modifier leaves `item.key` on the
             // letter it passed over. Lifting there must type nothing.
@@ -634,18 +739,22 @@ final class KeyGridView: UIView {
             {
                 shouldCommit = false
             }
-            item.key.isHighlighted = false
+            item.isEngaged = false
+            setHighlight(false, on: item.key)
             recycle(item.preview)
             item.preview = nil
             if item.key.spec.cap == .delete { endDeleteRepeat() }
             if item.isSwiping {
-                item.key.isHighlighted = false
                 let path = item.swipePath
                 item.swipePath = []
                 item.isSwiping = false
                 // A committed swipe lets its trail fade out under the word that
                 // just appeared; a cancelled one takes the trail with it.
                 if commit {
+                    // A traced word is not typing, so it closes the window
+                    // rather than extending it — the same reason Android's
+                    // recorder treats a batch input as ending the run.
+                    lastLetterCommitAt = nil
                     swipeTrail.end()
                     commitSwipe(path)
                 } else {
@@ -680,8 +789,9 @@ final class KeyGridView: UIView {
     func completeKeyInteraction(_ key: KeyView, shouldCommit: Bool) -> Bool {
         guard shouldCommit else { return false }
         switch key.spec.cap {
-        case .character:
+        case let .character(base):
             guard let text = key.previewText else { return false }
+            recordTyping(isLetter: base.first?.isLetter == true)
             feedback.textCommitted()
             delegate?.keyGrid(self, didProduce: .text(text))
             // Also what ends a slide off Shift: one capital, then back to
@@ -689,6 +799,7 @@ final class KeyGridView: UIView {
             if shiftState == .on { shiftState = .off }
             return true
         case .space:
+            recordTyping(isLetter: false)
             feedback.textCommitted()
             delegate?.keyGrid(self, didProduce: .space)
             return true
@@ -727,7 +838,7 @@ final class KeyGridView: UIView {
                 guard let self,
                       let item,
                       self.tracked.contains(where: { $0 === item }),
-                      item.key.isHighlighted
+                      item.isEngaged
                 else { return }
                 item.isCursorTracking = true
                 item.lastCursorStep = 0
@@ -744,11 +855,13 @@ final class KeyGridView: UIView {
                 spaceTrackpadTimer?.invalidate()
                 spaceTrackpadTimer = nil
             }
-            item.key.isHighlighted = item.key.hitRect.contains(point)
+            item.isEngaged = item.key.hitRect.contains(point)
+            setHighlight(item.isEngaged, on: item.key)
             return
         }
 
-        item.key.isHighlighted = true
+        item.isEngaged = true
+        setHighlight(true, on: item.key)
         let step = CursorTrackpad.step(
             forHorizontalTranslation: point.x - item.initialPoint.x
         )
@@ -758,7 +871,42 @@ final class KeyGridView: UIView {
         delegate?.keyGrid(self, didProduce: .moveCursor(delta))
     }
 
+    // MARK: - Fast typing
+
+    /// How long after a letter the keyboard still counts as being typed at
+    /// speed. Android's `config_gesture_static_time_threshold_after_fast_typing`
+    /// to the millisecond.
+    private static let fastTypingWindow: TimeInterval = 0.5
+
+    /// Whether the last letter is recent enough that this touch is part of a
+    /// run rather than a considered single press.
+    private var isInFastTyping: Bool {
+        guard let lastLetterCommitAt else { return false }
+        return Date().timeIntervalSince(lastLetterCommitAt) < Self.fastTypingWindow
+    }
+
+    /// Mirrors Android's `TypingTimeRecorder`: a letter always opens or extends
+    /// the window, and a non-letter only extends one that is already open — so a
+    /// full stop at the end of a sentence does not reopen it a second later.
+    private func recordTyping(isLetter: Bool) {
+        if isLetter || isInFastTyping { lastLetterCommitAt = Date() }
+    }
+
     // MARK: - Swipe
+
+    /// How far a finger must leave its key before this becomes a trace.
+    ///
+    /// Doubled inside the fast typing window, because a keystroke at speed
+    /// skids far enough to look like the start of one and a swipe fired by
+    /// accident replaces a whole word. Android answers the same problem by
+    /// raising its gesture threshold for half a second after the last letter;
+    /// raising the distance rather than refusing outright keeps a deliberate
+    /// swipe mid-sentence available.
+    private var swipeActivationDistance: CGFloat {
+        isInFastTyping
+            ? SwipeRecognizer.activationDistance * 2
+            : SwipeRecognizer.activationDistance
+    }
 
     private var swipeTypingIsAvailable: Bool {
         KeyboardPreferences.swipeTypingEnabled
@@ -859,7 +1007,7 @@ final class KeyGridView: UIView {
                 guard let self,
                       let item,
                       self.tracked.contains(where: { $0 === item }),
-                      item.key.isHighlighted
+                      item.isEngaged
                 else { return }
                 self.presentAlternatives(for: item)
             }
@@ -923,10 +1071,41 @@ final class KeyGridView: UIView {
     }
 
     func key(at point: CGPoint, characterOnly: Bool) -> KeyView? {
+        guard let index = keyIndex(at: point, characterOnly: characterOnly) else { return nil }
+        return keyViews[index]
+    }
+
+    private func keyIndex(at point: CGPoint, characterOnly: Bool) -> Int? {
         guard let index = hitMap.targetIndex(at: point, characterOnly: characterOnly),
               keyViews.indices.contains(index)
         else { return nil }
-        return keyViews[index]
+        return index
+    }
+
+    /// Distinct fingers on the grid.
+    ///
+    /// A slide off the plane key re-registers the same `UITouch` under a second
+    /// `TrackedTouch`, and it is only the explicit removal of the first in
+    /// `touchesBegan` that stops the two coexisting. Counting distinct touches
+    /// rather than entries means this stays right if that ever slips.
+    private var activeTouchCount: Int {
+        var count = 0
+        for (position, item) in tracked.enumerated()
+        where !tracked[..<position].contains(where: { $0.touch === item.touch }) {
+            count += 1
+        }
+        return count
+    }
+
+    /// Highlighting belongs to the key view, which two tracked touches can
+    /// share. Only the last of them to let go may turn it off.
+    private func setHighlight(_ isHighlighted: Bool, on key: KeyView) {
+        if isHighlighted {
+            key.isHighlighted = true
+            return
+        }
+        guard !tracked.contains(where: { $0.isEngaged && $0.key === key }) else { return }
+        key.isHighlighted = false
     }
 
     // MARK: - Delete repeat
@@ -1047,9 +1226,13 @@ final class KeyGridView: UIView {
     /// The throwaway `TrackedTouch` is deliberately not added to `tracked`: it
     /// carries no real `UITouch`, and live touch tracking must never see one.
     /// `showPreview` only reads the item, and the balloon it dequeues is a
-    /// subview of the grid, so it survives for the render either way.
+    /// subview of the grid, so it survives for the render either way. Its
+    /// `keyIndex` is deliberately out of range for the same reason: nothing
+    /// will ever ask the hit map to re-target it.
     func previewKeyForRendering(_ key: KeyView) {
-        showPreview(for: TrackedTouch(touch: UITouch(), key: key, initialPoint: .zero))
+        showPreview(
+            for: TrackedTouch(touch: UITouch(), key: key, keyIndex: -1, initialPoint: .zero)
+        )
     }
 #endif
 
