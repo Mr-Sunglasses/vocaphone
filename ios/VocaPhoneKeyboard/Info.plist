@@ -2,6 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+  <!-- ProMotion is opt-in per bundle, and this is a keyboard: every animation
+       it has is a direct response to a finger. Without this key iOS clamps
+       Core Animation and every CADisplayLink in the process to 60Hz on an
+       iPhone, which silently ignored the trail's own request for the panel's
+       full rate. -->
+  <key>CADisableMinimumFrameDurationOnPhone</key>
+  <true/>
   <key>CFBundleDisplayName</key>
   <string>vocaphone</string>
   <key>CFBundleExecutable</key>
