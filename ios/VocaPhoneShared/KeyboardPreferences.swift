@@ -264,7 +264,18 @@ enum KeyboardPreferences {
     static let learnAsITypeKey = "learnAsITypeEnabled"
     static let smartPunctuationKey = "smartPunctuationEnabled"
     static let emojiSuggestionsKey = "emojiSuggestionsEnabled"
-    static let keyboardHapticsKey = "keyboardHapticsEnabled"
+    /// Custom tactile feedback for committed typing. Input clicks are governed
+    /// by iOS's Keyboard Clicks setting and deliberately do not share this
+    /// preference.
+    static let typingHapticsKey = "typingHapticsEnabled"
+    /// The default-on switch this preference replaced. Kept only so the
+    /// migration below has a name to clear; nothing reads its value.
+    static let legacyKeyboardHapticsKey = "keyboardHapticsEnabled"
+    /// Marks the release that stopped treating the old, default-on keyboard
+    /// haptic setting as a user's affirmative choice. We cannot distinguish an
+    /// inherited default from an explicit toggle, so the one-time migration
+    /// picks the quieter default and leaves the new control opt-in.
+    static let typingHapticsMigrationKey = "typingHapticsMigrationV1"
     static let swipeTypingKey = "swipeTypingEnabled"
     static let numberRowKey = "numberRowEnabled"
     static let quickDictationKey = "quickDictationEnabled"
@@ -384,12 +395,27 @@ enum KeyboardPreferences {
         set { defaults?.set(newValue, forKey: emojiSuggestionsKey) }
     }
 
-    /// A no-op without Full Access, because a keyboard extension cannot reach
-    /// the haptic engine without it. The Keyboard settings screen says so
-    /// rather than leaving people to wonder why their keyboard is silent.
-    static var keyboardHapticsEnabled: Bool {
-        get { boolean(keyboardHapticsKey, default: true) }
-        set { defaults?.set(newValue, forKey: keyboardHapticsKey) }
+    /// Custom per-key haptics are opt-in. The standard keyboard input click is
+    /// still available whenever iOS Keyboard Clicks are enabled, with or
+    /// without Full Access.
+    static var typingHapticsEnabled: Bool {
+        get { boolean(typingHapticsKey, default: false) }
+        set { defaults?.set(newValue, forKey: typingHapticsKey) }
+    }
+
+    /// Existing releases stored a default-on `keyboardHapticsEnabled` value,
+    /// but that key did not tell us whether a person had ever chosen it. A buzz
+    /// on every character is disruptive enough that preserving the old default
+    /// would be worse than asking an interested person to opt in again, so the
+    /// stale value is discarded rather than carried over — `typingHapticsKey`
+    /// already defaults to off, and writing that default explicitly would say
+    /// nothing the getter does not. Calling this repeatedly is safe.
+    static func migrateTypingHapticsIfNeeded() {
+        guard let defaults,
+              defaults.object(forKey: typingHapticsMigrationKey) == nil
+        else { return }
+        defaults.removeObject(forKey: legacyKeyboardHapticsKey)
+        defaults.set(true, forKey: typingHapticsMigrationKey)
     }
 
     /// Off until device QA says the recogniser has earned it. A swipe engine

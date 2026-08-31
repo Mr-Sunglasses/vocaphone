@@ -30,6 +30,7 @@ targets:
       # The controller stays out: it is a `UIInputViewController` and has no
       # meaning outside the extension.
       - path: VocaPhoneKeyboard/KeyLayout.swift
+      - path: VocaPhoneKeyboard/KeyHitMap.swift
       - path: VocaPhoneKeyboard/KeyView.swift
       - path: VocaPhoneKeyboard/KeyGridView.swift
       - path: VocaPhoneKeyboard/KeyAlternatives.swift
@@ -128,6 +129,7 @@ targets:
       # Key geometry is worth regression tests; the controller itself needs a
       # host extension and stays out of the test target.
       - path: VocaPhoneKeyboard/KeyLayout.swift
+      - path: VocaPhoneKeyboard/KeyHitMap.swift
       - path: VocaPhoneKeyboard/KeyView.swift
       - path: VocaPhoneKeyboard/KeyGridView.swift
       # The trail's ageing and taper is pure arithmetic over sampled points, and

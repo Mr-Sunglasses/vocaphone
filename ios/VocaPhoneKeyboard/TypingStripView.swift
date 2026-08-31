@@ -20,6 +20,7 @@ protocol TypingStripViewDelegate: AnyObject {
 /// pushed up against the left edge.
 final class TypingStripView: UIScrollView {
     weak var chipDelegate: (any TypingStripViewDelegate)?
+    private let feedback: any KeyboardFeedbackProviding
 
     var palette: KeyboardPalette {
         didSet {
@@ -58,9 +59,14 @@ final class TypingStripView: UIScrollView {
     private static let minimumGlyphChipWidth: CGFloat = 48
     private static let chipTextInset: CGFloat = 14
 
-    init(palette: KeyboardPalette, metrics: DictationBarMetrics) {
+    init(
+        palette: KeyboardPalette,
+        metrics: DictationBarMetrics,
+        feedback: any KeyboardFeedbackProviding = KeyboardHaptics.shared
+    ) {
         self.palette = palette
         self.metrics = metrics
+        self.feedback = feedback
         super.init(frame: .zero)
         showsHorizontalScrollIndicator = false
         showsVerticalScrollIndicator = false
@@ -242,7 +248,7 @@ final class TypingStripView: UIScrollView {
         // A chip replaces a whole word, which is a bigger edit than any key
         // makes. Silence here, next to keys that tap back, reads as a chip that
         // did not register.
-        KeyboardHaptics.shared.selectionChanged()
+        feedback.selectionChanged()
         chipDelegate?.typingStrip(self, didChoose: candidates[sender.tag])
     }
 }

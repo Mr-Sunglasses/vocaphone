@@ -4,6 +4,7 @@ import UIKit
 /// The palette carries product claims, not just taste: an amber that has drifted
 /// into the recording red says a wait is a capture, and a brand green that has
 /// moved says this is a different product.
+@MainActor
 struct SemanticPaletteTests {
     private func contrast(_ first: UIColor, _ second: UIColor) -> CGFloat {
         ContrastMath.ratio(first, second)
@@ -149,17 +150,57 @@ struct SemanticPaletteTests {
 
     // MARK: - Keyboard
 
-    /// A character key is what the eye should land on first, so it stays the
-    /// brightest key in the light palette and the lightest in the dark one.
-    @Test func standardKeysAreTheBrightestKeysInBothAppearances() {
+    /// iOS 26 unifies character and function fills. Earlier systems retain the
+    /// stepped palette their native keyboard used.
+    @Test func keyFillHierarchyMatchesTheRunningSystem() {
         for isDark in [true, false] {
             let palette = KeyboardPalette(isDark: isDark)
             let standard = ContrastMath.relativeLuminance(palette.standardKey)
             let function = ContrastMath.relativeLuminance(palette.functionKey)
             let background = ContrastMath.relativeLuminance(palette.background)
-            #expect(standard > function)
-            #expect(isDark ? function > background : function < background)
+            if #available(iOS 26.0, *) {
+                #expect(standard == function)
+                #expect(standard > background)
+            } else {
+                #expect(standard > function)
+                #expect(isDark ? function > background : function < background)
+            }
         }
+    }
+
+    @Test func ios26KeyboardSurfacesMatchMeasuredSystemPixels() {
+        guard #available(iOS 26.0, *) else { return }
+        #expect(Self.rgb(KeyboardPalette(isDark: false).background) == (226, 228, 232))
+        #expect(Self.rgb(KeyboardPalette(isDark: false).standardKey) == (255, 255, 255))
+        #expect(Self.rgb(KeyboardPalette(isDark: true).background) == (23, 23, 23))
+        #expect(Self.rgb(KeyboardPalette(isDark: true).standardKey) == (61, 61, 61))
+    }
+
+    @Test func engagedShiftUsesTheNativeNeutralSurface() {
+        let palette = KeyboardPalette(isDark: false)
+        let metrics = KeyboardMetrics.resolved(
+            for: UITraitCollection { $0.verticalSizeClass = .regular }
+        )
+        let shift = KeyView(
+            spec: KeySpec(cap: .shift, width: .fill, style: .function),
+            metrics: metrics,
+            palette: palette
+        )
+        shift.update(metrics: metrics, palette: palette, shift: .on, returnTitle: "return")
+        #expect(shift.backgroundColor == palette.functionKey)
+    }
+
+    private static func rgb(_ color: UIColor) -> (Int, Int, Int) {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        _ = color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        return (
+            Int((red * 255).rounded()),
+            Int((green * 255).rounded()),
+            Int((blue * 255).rounded())
+        )
     }
 
     /// Every key label, on every fill it can be drawn on, including the pressed
