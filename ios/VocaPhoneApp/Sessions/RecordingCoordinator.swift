@@ -8,6 +8,10 @@ final class RecordingCoordinator {
     private(set) var activeRecord: SessionRecord?
     private(set) var message: String?
     private(set) var quickDictationExpiresAt: Date?
+    /// The window the armed standby is running under, so the home card can say
+    /// "until 4:20 PM" or "until you close vocaphone" without re-reading the
+    /// preference behind the arming.
+    private(set) var quickDictationDuration: QuickDictationDuration?
     private(set) var currentMicrophoneName: String?
     /// Kept separate from `activeRecord` so a level update several times a
     /// second invalidates only the views that draw the meter.
@@ -330,6 +334,7 @@ final class RecordingCoordinator {
         meterLevel: Float = 0,
         isRecording: Bool = false,
         quickDictationExpiresAt: Date? = nil,
+        quickDictationDuration: QuickDictationDuration? = nil,
         microphoneName: String? = nil,
         transcripts: [SessionRecord]? = nil,
         models: LocalModelManager = LocalModelManager(preview: [])
@@ -343,6 +348,8 @@ final class RecordingCoordinator {
         self.message = message
         self.meterLevel = meterLevel
         self.quickDictationExpiresAt = quickDictationExpiresAt
+        self.quickDictationDuration = quickDictationDuration
+            ?? (quickDictationExpiresAt == nil ? nil : .tenMinutes)
         currentMicrophoneName = microphoneName
     }
 #endif
@@ -403,7 +410,7 @@ final class RecordingCoordinator {
             guard let self else { return }
             if granted {
                 self.message = "Microphone permission granted."
-                if KeyboardPreferences.quickDictationEnabled {
+                if KeyboardPreferences.quickDictationArmable {
                     self.armQuickDictation()
                 }
             } else {
@@ -417,10 +424,11 @@ final class RecordingCoordinator {
         guard !isInert else { return }
         debugQuickDictation(
             "prepare enabled=\(KeyboardPreferences.quickDictationEnabled) "
+                + "paused=\(KeyboardPreferences.quickDictationPausedUntilRelaunch) "
                 + "permission=\(recorder.recordPermission.rawValue) "
                 + "recording=\(recorder.isRecording)"
         )
-        guard KeyboardPreferences.quickDictationEnabled,
+        guard KeyboardPreferences.quickDictationArmable,
               audioSessionAvailable,
               recorder.recordPermission == .granted,
               !recorder.isRecording,
@@ -429,9 +437,26 @@ final class RecordingCoordinator {
         armQuickDictation()
     }
 
+    /// Called every time vocaphone reaches the foreground. A pause taken from
+    /// the Live Activity lasts exactly until the user comes back — which is the
+    /// whole point of it being a pause — so this runs before the arming check
+    /// rather than being folded into it.
+    func endQuickDictationPause() {
+        guard !isInert else { return }
+        guard KeyboardPreferences.quickDictationPausedUntilRelaunch else { return }
+        KeyboardPreferences.quickDictationPausedUntilRelaunch = false
+        debugQuickDictation("pause cleared on foreground")
+    }
+
     func setQuickDictationEnabled(_ enabled: Bool) {
         guard !isInert else { return }
         KeyboardPreferences.quickDictationEnabled = enabled
+        // Either way the pause has been overtaken by a deliberate choice: on,
+        // and the user wants it armed now; off, and the durable switch is the
+        // stronger statement. The same goes for the recovery offer: the user has
+        // just answered the question it exists to ask.
+        KeyboardPreferences.quickDictationPausedUntilRelaunch = false
+        KeyboardPreferences.quickDictationRecoveryOfferPending = false
         if enabled {
             if recorder.recordPermission == .granted {
                 armQuickDictation()
@@ -439,11 +464,32 @@ final class RecordingCoordinator {
                 requestMicrophonePermission()
             }
         } else {
-            stopQuickDictation()
+            disableQuickDictation()
         }
     }
 
-    func stopQuickDictation() {
+    /// The standby window the user asked for. Changing it re-arms so the new
+    /// window starts now, instead of waiting out the old one.
+    ///
+    /// The preference is assigned rather than compared: Settings binds the
+    /// picker straight to the same App Group key, so by the time this runs the
+    /// stored value is already the new one and an equality check would never
+    /// fire.
+    func setQuickDictationDuration(_ duration: QuickDictationDuration) {
+        guard !isInert else { return }
+        KeyboardPreferences.quickDictationDuration = duration
+        guard quickDictationDuration != duration,
+              KeyboardPreferences.quickDictationArmable,
+              recorder.recordPermission == .granted,
+              !recorder.isRecording,
+              startingSessionID == nil
+        else { return }
+        armQuickDictation()
+    }
+
+    /// The Settings switch turned off: durable, and it stays off until the user
+    /// turns it back on.
+    func disableQuickDictation() {
         guard !isInert else { return }
         KeyboardPreferences.quickDictationEnabled = false
         clearQuickDictationReadiness(deactivateAudioSession: true)
@@ -451,6 +497,19 @@ final class RecordingCoordinator {
         DiagnosticLog.record(
             .quickDictationStopped,
             metadata: .reason(.userRequested)
+        )
+    }
+
+    /// The Live Activity's stop button: this window only. The preference is left
+    /// alone, and the next foreground clears the pause flag the intent set.
+    func pauseQuickDictation() {
+        guard !isInert else { return }
+        KeyboardPreferences.quickDictationPausedUntilRelaunch = true
+        clearQuickDictationReadiness(deactivateAudioSession: true)
+        message = "Quick Dictation is paused. Opening vocaphone starts a new window."
+        DiagnosticLog.record(
+            .quickDictationStopped,
+            metadata: .reason(.pausedUntilRelaunch)
         )
     }
 
@@ -721,7 +780,7 @@ final class RecordingCoordinator {
             guard let latestRecord = try store.load(id),
                   [.launchingApp, .awaitingReturn].contains(latestRecord.state)
             else {
-                if KeyboardPreferences.quickDictationEnabled, audioSessionAvailable {
+                if KeyboardPreferences.quickDictationArmable, audioSessionAvailable {
                     armQuickDictation()
                 } else {
                     recorder.stopStandby(deactivateAudioSession: true)
@@ -1232,30 +1291,30 @@ final class RecordingCoordinator {
     }
 
     private func shouldKeepQuickDictationReady(after record: SessionRecord) -> Bool {
-        KeyboardPreferences.quickDictationEnabled
+        KeyboardPreferences.quickDictationArmable
             && audioSessionAvailable
             && record.sourceDocumentID != "in-app-test"
     }
 
     private func armQuickDictation() {
-        guard KeyboardPreferences.quickDictationEnabled,
+        guard KeyboardPreferences.quickDictationArmable,
               audioSessionAvailable,
               !recorder.isRecording
         else { return }
 
         clearQuickDictationMarker()
+        let duration = KeyboardPreferences.quickDictationDuration
         do {
             try recorder.startStandby()
             let activatedAt = Date()
             let availability = QuickDictationAvailability(
                 activatedAt: activatedAt,
-                expiresAt: activatedAt.addingTimeInterval(
-                    AppConfiguration.quickDictationWindowSeconds
-                )
+                expiresAt: duration.expiry(from: activatedAt)
             )
             try store.saveQuickDictationAvailability(availability)
+            quickDictationDuration = duration
             quickDictationExpiresAt = availability.expiresAt
-            beginQuickDictationWatcher(availability)
+            beginQuickDictationWatcher(availability, duration: duration)
             liveActivity.startStandby(expiresAt: availability.expiresAt)
             DiagnosticLog.record(.quickDictationArmed)
             debugQuickDictation("armed until \(availability.expiresAt)")
@@ -1270,7 +1329,15 @@ final class RecordingCoordinator {
         }
     }
 
-    private func beginQuickDictationWatcher(_ availability: QuickDictationAvailability) {
+    /// How far a renewing window's deadline has to move before the observable
+    /// copy is updated. Well under the lease, so the published value is always
+    /// minutes ahead of now.
+    private static let standbyDeadlinePublishInterval: TimeInterval = 60
+
+    private func beginQuickDictationWatcher(
+        _ availability: QuickDictationAvailability,
+        duration: QuickDictationDuration
+    ) {
         quickDictationWatcherTask?.cancel()
         quickDictationWatcherTask = Task { [weak self] in
             var refreshedAvailability = availability
@@ -1284,7 +1351,23 @@ final class RecordingCoordinator {
                     self.clearQuickDictationReadiness(deactivateAudioSession: true)
                     return
                 }
-                refreshedAvailability = refreshedAvailability.refreshingHeartbeat()
+                refreshedAvailability = refreshedAvailability.renewingLease(duration)
+                // Only a renewing window has a deadline that moves, and it moves
+                // every two seconds. Publishing each one would re-render the
+                // home card at that rate for the whole life of an all-day
+                // standby — for a card that shows this window no clock time at
+                // all. Publish rarely enough to keep the deadline comfortably
+                // in the future, which is all `isQuickDictationReady` asks, and
+                // no more. `renewStandby` throttles itself the same way.
+                if duration.renewsLease {
+                    let published = self.quickDictationExpiresAt ?? .distantPast
+                    if refreshedAvailability.expiresAt.timeIntervalSince(published)
+                        >= Self.standbyDeadlinePublishInterval
+                    {
+                        self.quickDictationExpiresAt = refreshedAvailability.expiresAt
+                    }
+                    self.liveActivity.renewStandby(expiresAt: refreshedAvailability.expiresAt)
+                }
                 do {
                     try self.store.saveQuickDictationAvailability(
                         refreshedAvailability,
@@ -1311,6 +1394,7 @@ final class RecordingCoordinator {
         quickDictationWatcherTask?.cancel()
         quickDictationWatcherTask = nil
         quickDictationExpiresAt = nil
+        quickDictationDuration = nil
         try? store.clearQuickDictationAvailability()
     }
 
@@ -1350,7 +1434,7 @@ final class RecordingCoordinator {
             VocaPhoneDarwinCenter.observe(.stopQuickDictationRequested) { [weak self] in
                 Task { @MainActor [weak self] in
                     DiagnosticLog.record(.stopQuickDictationRequested)
-                    self?.stopQuickDictation()
+                    self?.pauseQuickDictation()
                 }
             }
         )

@@ -26,6 +26,14 @@ struct ContentView: View {
         KeyboardPreferences.keyboardPracticeKey,
         store: KeyboardPreferences.defaults
     ) private var hasCompletedKeyboardPractice = false
+    @AppStorage(
+        KeyboardPreferences.quickDictationKey,
+        store: KeyboardPreferences.defaults
+    ) private var quickDictationEnabled = true
+    @AppStorage(
+        KeyboardPreferences.quickDictationRecoveryOfferKey,
+        store: KeyboardPreferences.defaults
+    ) private var quickDictationOfferPending = false
     @State private var testText = ""
     @State private var isShowingSourceDetail = false
     @FocusState private var diagFocused: Bool
@@ -35,6 +43,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: VocaMetrics.grouping) {
                     attentionCard
+                    quickDictationOfferCard
                     sessionCard
                     practiceCard
                     sourceRow
@@ -68,6 +77,9 @@ struct ContentView: View {
                     isShowingSetup = true
                 }
                 coordinator.refreshSetupStatus()
+                // `scenePhase` does not change on a cold launch, so the pause a
+                // previous run left behind is cleared here too.
+                coordinator.endQuickDictationPause()
                 await coordinator.recoverRecentSession()
                 coordinator.prepareQuickDictationIfEnabled()
                 await coordinator.refreshGatewayHealth()
@@ -122,6 +134,40 @@ struct ContentView: View {
         }
     }
 
+    /// Sits below the setup card, which still owns the top slot: an unfinished
+    /// setup blocks dictation outright, while this only costs an app switch.
+    @ViewBuilder private var quickDictationOfferCard: some View {
+        if let offer = QuickDictationRecoveryOffer.make(
+            isPending: quickDictationOfferPending,
+            isEnabled: quickDictationEnabled
+        ) {
+            VocaCard {
+                VStack(alignment: .leading, spacing: VocaMetrics.padding - 2) {
+                    VocaStatusLine(
+                        status: .inactive,
+                        title: offer.title,
+                        detail: offer.detail
+                    )
+                    // The coordinator owns both keys this card reads, and
+                    // `@AppStorage` is watching the same suite, so one call
+                    // turns the feature on, answers the offer, and takes the
+                    // card off screen.
+                    VocaPrimaryButton(title: offer.confirm, symbol: "mic.fill") {
+                        coordinator.setQuickDictationEnabled(true)
+                    }
+                    // Taken as final. The card exists to undo a decision the
+                    // user may never have made knowingly; asking twice would
+                    // make it the nag it is trying not to be.
+                    Button(offer.dismiss) {
+                        quickDictationOfferPending = false
+                    }
+                    .frame(maxWidth: .infinity)
+                    .font(.subheadline)
+                }
+            }
+        }
+    }
+
     // MARK: - Session
 
     private var card: HomeSessionCard {
@@ -131,6 +177,7 @@ struct ContentView: View {
                 isRecording: coordinator.isRecording,
                 isQuickDictationReady: coordinator.isQuickDictationReady,
                 quickDictationExpiresAt: coordinator.quickDictationExpiresAt,
+                quickDictationDuration: coordinator.quickDictationDuration,
                 processingLocation: coordinator.activeRecord?.processingLocation,
                 transcript: coordinator.transcript,
                 errorMessage: coordinator.hasError ? coordinator.message : nil,

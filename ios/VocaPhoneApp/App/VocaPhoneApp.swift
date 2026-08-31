@@ -69,6 +69,7 @@ struct VocaPhoneApp: App {
                 .onAppear {
                     KeyboardPreferences.containingAppIsForeground = true
                     KeyboardPreferences.migrateTypingHapticsIfNeeded()
+                    KeyboardPreferences.markQuickDictationRecoveryOfferIfNeeded()
                     Telemetry.shared.appFirstOpen()
                     // Started once here rather than lazily from the setup card:
                     // the first path update has to have landed by the time that
@@ -91,6 +92,11 @@ struct VocaPhoneApp: App {
                         }
                         return
                     }
+                    // A pause taken from the Live Activity ends here: coming
+                    // back to vocaphone is the "turn it back on" gesture, and
+                    // the alternative is a user hunting through Settings for a
+                    // switch they never knowingly flipped.
+                    coordinator.endQuickDictationPause()
                     Task {
                         await coordinator.recoverRecentSession()
                         coordinator.prepareQuickDictationIfEnabled()

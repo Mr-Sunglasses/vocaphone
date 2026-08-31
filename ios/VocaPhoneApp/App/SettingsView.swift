@@ -378,6 +378,10 @@ struct DictationSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var quickDictationEnabled = true
     @AppStorage(
+        KeyboardPreferences.quickDictationDurationKey,
+        store: KeyboardPreferences.defaults
+    ) private var quickDictationDurationRawValue = QuickDictationDuration.tenMinutes.rawValue
+    @AppStorage(
         KeyboardPreferences.writingStyleKey,
         store: KeyboardPreferences.defaults
     ) private var writingStyleRawValue = WritingStyle.casual.rawValue
@@ -442,19 +446,35 @@ struct DictationSettingsView: View {
         }
     }
 
+    private var selectedQuickDictationDuration: QuickDictationDuration {
+        QuickDictationDuration(rawValue: quickDictationDurationRawValue) ?? .tenMinutes
+    }
+
     private var quickDictationSection: some View {
         Section {
-            Toggle("Keep Quick Dictation ready for 10 minutes", isOn: $quickDictationEnabled)
+            Toggle("Keep Quick Dictation ready", isOn: $quickDictationEnabled)
                 .onChange(of: quickDictationEnabled) { _, enabled in
                     coordinator.setQuickDictationEnabled(enabled)
                 }
+            // Hidden rather than disabled when the feature is off: a greyed-out
+            // duration for a window that will never open is noise.
+            if quickDictationEnabled {
+                Picker("Stay ready for", selection: $quickDictationDurationRawValue) {
+                    ForEach(QuickDictationDuration.allCases) { duration in
+                        Text(duration.displayName).tag(duration.rawValue)
+                    }
+                }
+                .onChange(of: quickDictationDurationRawValue) { _, rawValue in
+                    guard let duration = QuickDictationDuration(rawValue: rawValue) else { return }
+                    coordinator.setQuickDictationDuration(duration)
+                }
+            }
         } footer: {
             Text(
-                "After vocaphone gets microphone access, it keeps an active background "
-                    + "input for up to 10 minutes so Dictate can start without leaving "
-                    + "the app you are in. Standby audio is discarded and never saved or "
-                    + "uploaded. The orange microphone indicator stays visible while it "
-                    + "is on."
+                quickDictationEnabled
+                    ? selectedQuickDictationDuration.settingsFooter
+                    : "The keyboard's first Dictate tap opens vocaphone to record, then "
+                        + "you swipe back. Turn this on to skip that trip."
             )
         }
     }

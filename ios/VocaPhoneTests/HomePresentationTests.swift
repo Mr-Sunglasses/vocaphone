@@ -10,6 +10,7 @@ struct HomePresentationTests {
         canRetry: Bool = false,
         startedInApp: Bool = true,
         quickDictationReady: Bool = false,
+        quickDictationDuration: QuickDictationDuration = .tenMinutes,
         sourceReady: Bool = true
     ) -> HomeSessionCard {
         HomeSessionCard.make(
@@ -20,6 +21,7 @@ struct HomePresentationTests {
                 quickDictationExpiresAt: quickDictationReady
                     ? Date(timeIntervalSince1970: 1_700_000_000)
                     : nil,
+                quickDictationDuration: quickDictationReady ? quickDictationDuration : nil,
                 processingLocation: location,
                 transcript: transcript,
                 errorMessage: errorMessage,
@@ -70,6 +72,24 @@ struct HomePresentationTests {
         #expect(standby.detail?.contains("standby") == true)
         #expect(standby.detail?.contains("Nothing is being recorded") == true)
         #expect(!standby.showsMeter)
+    }
+
+    /// A window that renews itself every couple of seconds has no clock time
+    /// worth printing, so the card names the exit instead of a deadline that
+    /// keeps moving.
+    @Test func anUnlimitedStandbyNamesTheExitRatherThanAClockTime() {
+        let rolling = Self.card(
+            .idle,
+            quickDictationReady: true,
+            quickDictationDuration: .untilAppCloses
+        )
+
+        #expect(rolling.detail?.contains("until you close vocaphone") == true)
+        #expect(rolling.detail?.contains("Nothing is being recorded") == true)
+
+        let bounded = Self.card(.idle, quickDictationReady: true)
+        #expect(bounded.detail?.contains("until you close vocaphone") == false)
+        #expect(bounded.detail?.contains("standby until") == true)
     }
 
     /// The processing card names the place, or says nothing rather than

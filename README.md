@@ -60,8 +60,8 @@ the active cursor. A gateway is never required for on-device mode.
 > iOS keyboard extensions cannot access the microphone. VocaPhone records in
 > the containing app, shares only versioned session state with the keyboard, and
 > then inserts through `UITextDocumentProxy`. Quick Dictation can keep that app
-> ready for up to 10 minutes so most later dictations do not require another app
-> switch. The speech-to-text model still runs on the iPhone in on-device mode.
+> ready — for 10 or 20 minutes, or until you close the app — so most later
+> dictations do not require another app switch. The speech-to-text model still runs on the iPhone in on-device mode.
 
 ## Highlights
 

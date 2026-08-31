@@ -55,6 +55,9 @@ enum DiagnosticEvent: String, Codable, Sendable {
 
 enum DiagnosticReason: String, Codable, Sendable {
     case userRequested
+    /// Quick Dictation was stopped from the Live Activity, which pauses the
+    /// current window instead of changing the durable preference.
+    case pausedUntilRelaunch
     case quickDictationOff
     case sessionFinished
     case processExit

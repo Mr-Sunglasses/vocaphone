@@ -71,6 +71,45 @@ final class LiveActivityManager: @unchecked Sendable {
         )
     }
 
+    /// How far the stale date has to have moved before it is worth telling the
+    /// system. The standby lease is renewed every couple of seconds, and an
+    /// ActivityKit update per heartbeat would burn the whole day redrawing a
+    /// card whose text never changes. Two minutes still leaves the stale date
+    /// minutes ahead of now, so a live window never renders as stale.
+    private static let standbyRenewalInterval: TimeInterval = 120
+
+    /// Pushes the standby activity's stale date forward for a window the user
+    /// asked to last as long as the app does.
+    ///
+    /// Deliberately not `present`: that requests a new activity when none
+    /// exist, which would resurrect a card the user swiped away and keep
+    /// resurrecting it for as long as standby ran. A renewal updates what is on
+    /// screen or does nothing.
+    func renewStandby(expiresAt: Date) {
+        guard standbyRequested, activeSessionID == nil else { return }
+        if let standbyExpiresAt,
+           expiresAt.timeIntervalSince(standbyExpiresAt) < Self.standbyRenewalInterval
+        {
+            return
+        }
+        standbyExpiresAt = expiresAt
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+
+        let content = ActivityContent(
+            state: VocaPhoneActivityAttributes.ContentState(
+                status: "Quick Dictation on standby",
+                canFinish: false,
+                phase: .standby
+            ),
+            staleDate: expiresAt
+        )
+        enqueueActivityMutation {
+            for activity in Activity<VocaPhoneActivityAttributes>.activities {
+                await activity.update(content)
+            }
+        }
+    }
+
     /// Removes the standby Live Activity when Quick Dictation releases the
     /// microphone. An active recording keeps its own activity until completion.
     func stopStandby() {

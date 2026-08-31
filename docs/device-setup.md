@@ -32,8 +32,10 @@ and on-device installation have been exercised with the current checkout.
 ## On-device setup
 
 1. Open vocaphone and grant microphone permission.
-2. Leave “Keep Quick Dictation ready for 10 minutes” enabled. Confirm the app
-   shows Quick Dictation as Ready and iOS displays its microphone indicator.
+2. Leave “Keep Quick Dictation ready” enabled. Confirm the app shows Quick
+   Dictation as Ready and iOS displays its microphone indicator. **Stay ready
+   for** picks the window: 10 minutes (default), 20 minutes, or until vocaphone
+   is closed.
 3. Choose a transcription source. Either path completes the step on its own:
    - **On this iPhone** — under **Settings → Transcription**, pick **On this
      iPhone** and download a speech-to-text model. Wait for it to report
@@ -137,9 +139,17 @@ Run these checks on a physical iPhone after changing audio or App Group code:
 
 - Start and finish from the keyboard several times. Recording and transcript
   states should update immediately; the slower polling path is only a fallback.
-- Expand the standby Dynamic Island and tap **Turn off Quick Dictation**. The
+- Expand the standby Dynamic Island and tap **Pause Quick Dictation**. The
   Live Activity and orange microphone indicator must disappear without opening
-  vocaphone, and the next keyboard dictation must open the app.
+  vocaphone, and the next keyboard dictation must open the app. Then reopen
+  vocaphone: standby must arm again on its own, and the Settings toggle must
+  still read as on — a pause is not a preference change.
+- Set **Stay ready for** to *Until I close vocaphone*, background the app, and
+  confirm standby is still Ready well past 10 minutes. Force-quit vocaphone and
+  confirm the keyboard falls back to opening the app.
+- Upgrading with Quick Dictation already off must show the one-time card on
+  Home offering to turn it back on, and must not arm the microphone until that
+  card is answered. **Not now** has to keep it off and never ask again.
 - Force-quit vocaphone while Quick Dictation is ready, wait at least 7 seconds,
   and tap Dictate. The keyboard must treat the heartbeat as stale and open the
   app instead of claiming that standby is ready.

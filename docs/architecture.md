@@ -57,12 +57,16 @@ the gateway wire format changed.
 9. The keyboard verifies its session context, persists `inserting`, calls
    `insertText`, then persists `inserted` and `completed`.
 
-After Finish, the app can rearm a 10-minute Quick Dictation window without
-tearing down its `AVAudioEngine`. The same input tap writes buffers only while a
-dictation is active and deliberately discards every standby buffer. The shared
-availability file contains only activation and expiry timestamps. It is cleared
-before active recording, on expiry, on audio failure, or when the user turns the
-feature off.
+After Finish, the app can rearm a Quick Dictation window without
+tearing down its `AVAudioEngine`. The window length is a preference — 10
+minutes, 20 minutes, or "until I close vocaphone", which takes a short lease the
+standby heartbeat keeps renewing so a killed process cannot leave a marker that
+never expires. The same input tap writes buffers only while a dictation is
+active and deliberately discards every standby buffer. The shared availability
+file contains only activation and expiry timestamps. It is cleared before active
+recording, on expiry, on audio failure, when the user turns the feature off, and
+when the Live Activity's Pause button ends the current window. Pausing sets a
+flag that the next foreground clears; only the Settings toggle is durable.
 
 Persisting `inserting` before touching the document intentionally favors
 avoiding duplicate text if the extension terminates at the worst moment.

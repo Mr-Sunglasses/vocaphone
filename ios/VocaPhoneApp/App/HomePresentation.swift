@@ -41,6 +41,7 @@ struct HomeSessionCard: Equatable {
         var isRecording = false
         var isQuickDictationReady = false
         var quickDictationExpiresAt: Date?
+        var quickDictationDuration: QuickDictationDuration?
         var processingLocation: SessionProcessingLocation?
         var transcript: String?
         var errorMessage: String?
@@ -78,8 +79,9 @@ struct HomeSessionCard: Equatable {
             // Standby, not recording — and the wording has to make that
             // unmistakable, because the iOS microphone indicator is lit either
             // way. See `QuickDictationAvailability`.
-            detail = "Quick Dictation is on standby until "
-                + expiresAt.formatted(date: .omitted, time: .shortened)
+            let duration = context.quickDictationDuration ?? .tenMinutes
+            detail = "Quick Dictation is on standby "
+                + duration.standbyDescription(expiringAt: expiresAt)
                 + ". Nothing is being recorded."
         } else if !context.isSourceReady {
             detail = "Choose where speech becomes text before dictating."

@@ -181,6 +181,9 @@ targets:
       # reads can be undone from iOS Settings. The model behind it is pure.
       - path: VocaPhoneApp/App/SetupStatus.swift
       - path: VocaPhoneApp/App/OnboardingPresentation.swift
+      # Who gets asked to turn Quick Dictation back on after an older build
+      # switched it off for them, and who is deliberately left alone.
+      - path: VocaPhoneApp/App/QuickDictationRecoveryOffer.swift
       # The external-dictation screen stays truthful through recording,
       # processing, a ready transcript, and recoverable failures.
       - path: VocaPhoneApp/App/KeyboardHandoffPresentation.swift

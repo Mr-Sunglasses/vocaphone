@@ -9,11 +9,14 @@ after a transcript is safely stored. HTTPS or an encrypted private network is
 recommended so the recording and token are protected in transit.
 
 When Quick Dictation is enabled, the containing app may keep microphone input
-active for up to 10 minutes so later keyboard actions do not need another app
-handoff. The system's orange microphone indicator remains visible. Audio buffers
+active so later keyboard actions do not need another app handoff. The window is
+the user's choice — 10 minutes by default, 20 minutes, or until vocaphone is
+closed. The system's orange microphone indicator remains visible. Audio buffers
 captured while waiting are discarded in memory: they are not written to disk,
 placed in shared state, or uploaded. Only audio after an explicit Dictate action
-is saved for transcription. The user can turn Quick Dictation off in the app.
+is saved for transcription. The user can turn Quick Dictation off in the app,
+or pause the current window from the Live Activity without changing the
+setting.
 
 The gateway host stores randomized audio names under its private data directory.
 On success, original and normalized audio are deleted by default. Failed and
