@@ -1,7 +1,14 @@
 import Foundation
 
 enum AppConfiguration {
-    static let appGroupIdentifier = "group.dev.kanishkpachauri.vocaphone"
+    /// Must match the `com.apple.security.application-groups` entitlement of
+    /// all three targets, which is what the App Store profile is minted
+    /// against. A value that only exists in this file is not a smaller mistake
+    /// than a missing entitlement: the container this names is the only channel
+    /// the keyboard and the app have, so drift takes dictation out entirely
+    /// rather than degrading it. See ``appGroupMatchesEntitlements`` — the test
+    /// that reads the entitlement files rather than trusting this line.
+    static let appGroupIdentifier = "group.com.vocahq"
     /// The identifier the app ships under. Only a fallback for when the running
     /// bundle declines to name itself, which is what a unit-test host does.
     static let shippingAppBundleIdentifier = "com.vocahq.vocaphone"
