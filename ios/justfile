@@ -30,9 +30,14 @@ app := derived / "Build/Products/Debug-iphonesimulator/VocaPhoneApp.app"
 default:
     @{{ just_executable() }} --list --unsorted
 
+# Download Sherpa ONNX / ONNX Runtime xcframeworks (not stored in git).
+[group('build')]
+fetch:
+    bash ThirdParty/SherpaOnnx/fetch.sh
+
 # Regenerate VocaPhone.xcodeproj from project.yml.
 [group('build')]
-gen:
+gen: fetch
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v xcodegen >/dev/null 2>&1; then

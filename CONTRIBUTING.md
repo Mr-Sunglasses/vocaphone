@@ -28,11 +28,9 @@ live in [AGENTS.md](AGENTS.md) and [android/AGENTS.md](android/AGENTS.md).
   `git submodule update --init --recursive` on an existing clone). The gateway
   is the [vocagateway](https://github.com/VocaHQ/vocagateway) submodule at
   `gateway/`.
-- Install [Git LFS](https://git-lfs.com/) before cloning and run `git lfs
-  install`. After cloning an existing checkout, run `git lfs pull`; this
-  downloads the iOS Sherpa ONNX and ONNX Runtime archives that are too large
-  for regular Git blobs. `git lfs ls-files` should list the five native
-  archives under `ios/ThirdParty/SherpaOnnx/`.
+- For iOS, run `just ios fetch` (or `bash ios/ThirdParty/SherpaOnnx/fetch.sh`)
+  after cloning. That downloads the pinned sherpa-onnx iOS no-TTS xcframeworks
+  from GitHub Releases. They are not stored in git.
 - Install [`just`](https://just.systems), Xcode, XcodeGen, `uv`, and FFmpeg.
 - For Android work, install a recent Android Studio / SDK and JDK 21 (the exact
   major version matters: F-Droid rebuilds the APK on JDK 21, so reproducible

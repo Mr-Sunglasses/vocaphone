@@ -348,8 +348,10 @@ jobs:
         with:
           repository: ${{ needs.prepare.outputs.head_repo }}
           ref: ${{ needs.prepare.outputs.sha }}
-          lfs: true
           persist-credentials: false
+      - name: Fetch iOS Sherpa ONNX runtime
+        if: steps.secrets.outputs.configured == 'true'
+        run: bash ios/ThirdParty/SherpaOnnx/fetch.sh
 
       - name: Install xcodegen
         if: steps.secrets.outputs.configured == 'true'

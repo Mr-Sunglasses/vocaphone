@@ -72,10 +72,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          lfs: true
           # git describe walks tags for the GitHub Release notes range.
           fetch-depth: 0
           persist-credentials: false
+      - name: Fetch iOS Sherpa ONNX runtime
+        run: bash ios/ThirdParty/SherpaOnnx/fetch.sh
 
       - name: Select Xcode 26
         run: |

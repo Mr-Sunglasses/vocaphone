@@ -98,11 +98,10 @@
             <span>01</span>
             <div>
               <h3>Get the source</h3>
-              <p>Clone the repository with Git LFS so the native model runtimes are present.</p>
-              <pre><code>git lfs install
-git clone https://github.com/VocaHQ/vocaphone.git
+              <p>Clone the repository and fetch the native Sherpa ONNX runtimes.</p>
+              <pre><code>git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
 cd vocaphone
-git lfs pull</code></pre>
+just ios fetch</code></pre>
             </div>
           </li>
 

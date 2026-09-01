@@ -12,6 +12,13 @@ The archive includes device and simulator slices. VocaPhone uses the CPU
 provider first; the iOS Core ML provider is intentionally not enabled until it
 has a separate accuracy and memory validation pass.
 
-The native archives are stored with Git LFS. Install Git LFS before cloning or
-building the iOS project so the framework files are downloaded instead of
-remaining as pointer files.
+The native archives are not in git. From the repo root:
+
+```sh
+bash ios/ThirdParty/SherpaOnnx/fetch.sh
+# or: just ios fetch
+```
+
+That downloads the pinned tarball, checks the SHA-256 above, and installs the
+xcframeworks next to this file. Re-running is a no-op when they are already
+present.

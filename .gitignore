@@ -55,5 +55,11 @@ android/.idea/
 android/captures/
 android/*.hprof
 
+# Sherpa/ONNX Runtime xcframeworks are downloaded at iOS build time.
+# See ios/ThirdParty/SherpaOnnx/fetch.sh
+ios/ThirdParty/SherpaOnnx/sherpa-onnx.xcframework/
+ios/ThirdParty/SherpaOnnx/onnxruntime.xcframework/
+ios/ThirdParty/SherpaOnnx/.fetched-sha256
+
 # Local Netlify folder
 .netlify

@@ -38,21 +38,19 @@ Rules:
 ## Clone and toolchain
 
 ```bash
-# macOS: brew install git-lfs just xcodegen
-git lfs install
+# macOS: brew install just xcodegen
 git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
 cd vocaphone
-git lfs pull
-git submodule update --init --recursive
+just ios fetch
 just doctor
 ```
 
-On an existing clone: `git lfs install && git lfs pull && git submodule update --init --recursive`.
+On an existing clone: `git submodule update --init --recursive` and `just ios fetch`.
 
 | Need | Why |
 | --- | --- |
 | `--recurse-submodules` | `gateway/` (vocagateway) and `android/third_party/whisper.cpp` |
-| Git LFS | iOS Sherpa/ONNX static archives under `ios/ThirdParty/SherpaOnnx/` (`*.a`). Pointer files will not link |
+| `just ios fetch` | iOS Sherpa/ONNX xcframeworks under `ios/ThirdParty/SherpaOnnx/` (not in git). Missing `.a` files will not link |
 | JDK **21** exactly | F-Droid rebuilds on 21; reproducible APKs need the same javac. `android/gradle/gradle-daemon-jvm.properties` auto-provisions 21 for Gradle; `just android doctor` checks the JDK on `PATH` |
 | Xcode + XcodeGen | iOS. `ios/project.yml` is the project source |
 | `uv` + FFmpeg (+ Docker for Compose) | Gateway recipes in the submodule |
@@ -172,7 +170,7 @@ when the checked-in project is stale.
 | Toolchain | Xcode (project asks for 26), XcodeGen, iOS 17+, Swift 6. Simulator default `iPhone 17` (`VOCAPHONE_SIM` / `just sim="iPhone 16" run`) |
 | Packages | Commit `ios/VocaPhone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` when Swift deps change |
 | User data | Never commit `xcuserdata/` or `*.xcuserstate` |
-| LFS | `git lfs pull` before building; missing `.a` files fail the Sherpa link |
+| Sherpa runtime | `just ios fetch` before building; missing `.a` files fail the Sherpa link |
 | Device | `just ios device` (signing must already work in Xcode). `VOCAPHONE_DEVICE` if several phones |
 | Previews | `just ios lint-previews` (`ios/tools/check-preview-isolation.py`). Preview-only code stays behind `#if DEBUG` |
 | Signing | Ship identifiers: `com.vocahq.vocaphone` (+ `.keyboard`, `.liveactivity`), App Group `group.com.vocahq`, team `92962VK378`. Personal bundle-id / team edits for a free Apple ID stay local — do not commit them |
@@ -234,7 +232,7 @@ why (docs-only, Linux host, no submodule, …).
 | Change | Local | Workflow (path-filtered; drafts skipped until ready) |
 | --- | --- | --- |
 | `android/**`, `assets/keyboard/**` | `just android ci` | Quality (Android) — JDK 21, recursive submodules, Room schema, 16 KB alignment |
-| `ios/**`, `assets/keyboard/**` | `just ios ci` | Quality (iOS) — macOS, Git LFS, stale `xcodeproj`, preview isolation, unit tests |
+| `ios/**`, `assets/keyboard/**` | `just ios ci` | Quality (iOS) — macOS, fetch Sherpa runtime, stale `xcodeproj`, preview isolation, unit tests |
 | `web/**` | `cd web && npm run check` | Quality (web); CodeQL (web) |
 | `assets/keyboard/**`, `tools/**` | `python3 tools/generate-emoji-catalog.py --check` | Quality (shared assets) |
 | `.github/workflows/**` | — | Lint workflows (`actionlint`) |
