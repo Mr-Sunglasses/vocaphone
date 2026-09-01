@@ -1,0 +1,1 @@
+Dictate a short trigger and it expands to the longer text you saved. Spoken English numbers can land as digits: twenty three becomes 23, six pm becomes 6 pm. A lone one stays a word. Download progress stays on the model card you tapped.
