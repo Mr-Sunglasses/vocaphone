@@ -137,7 +137,7 @@ jobs:
           cache-read-only: ${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
-      - uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+      - uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           languages: java-kotlin
           source-root: android
@@ -151,7 +151,7 @@ jobs:
         working-directory: android
         run: ./gradlew assembleFullDebug --no-build-cache --rerun-tasks
 
-      - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+      - uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           category: /language:java-kotlin
 
@@ -181,7 +181,7 @@ jobs:
         working-directory: ios
         run: xcodegen generate --spec project.yml
 
-      - uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+      - uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           languages: swift
           source-root: ios
@@ -200,6 +200,6 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             build
 
-      - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
+      - uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
         with:
           category: /language:swift
