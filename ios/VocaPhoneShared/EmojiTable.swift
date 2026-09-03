@@ -34,8 +34,10 @@ enum EmojiTable {
     /// candidate key and stops when it passes this, which is a bound the table
     /// itself supplies rather than a guessed word count. A key cannot record
     /// how many words it was built from — the spaces are gone — so the length
-    /// is the only honest limit available, and it is the tighter one anyway:
-    /// the widest entries here are four words (`globeshowingeuropeafrica`).
+    /// is the only honest limit available, and it is the tighter one anyway.
+    /// The widest entry is currently `rollingonthefloorlaughing`, at five
+    /// words — which is exactly why this is read off the table rather than
+    /// written down: adding that phrase moved the bound on its own.
     static let widestKeyLength: Int = triggers.keys.reduce(0) { max($0, $1.count) }
 
     /// Parses the table now, so the first keystroke or transcript does not.

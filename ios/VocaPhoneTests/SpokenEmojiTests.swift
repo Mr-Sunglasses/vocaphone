@@ -67,6 +67,18 @@ struct SpokenEmojiTests {
         #expect(SpokenEmoji.glyphs(in: "crying emoji and fire emoji") == "😭 and 🔥")
     }
 
+    /// A partial match must never leave the rest of what was said in front of
+    /// the glyph. "face with tears of joy emoji" resolving only its "joy"
+    /// suffix would type "face with 😂", which is worse than not converting at
+    /// all — so the whole phrase is a key and the longest-match rule takes it.
+    @Test func longerPhrasesDoNotStrandTheirLeadingWords() {
+        #expect(SpokenEmoji.glyphs(in: "one hundred emoji") == "💯")
+        #expect(SpokenEmoji.glyphs(in: "face with tears of joy emoji") == "😂")
+        #expect(SpokenEmoji.glyphs(in: "rolling on the floor laughing emoji") == "🤣")
+        #expect(SpokenEmoji.glyphs(in: "crying face emoji") == "😢")
+        #expect(SpokenEmoji.glyphs(in: "thumbs up sign emoji") == "👍")
+    }
+
     /// A trigger with nothing it recognizes in front of it is left exactly as
     /// spoken. This is the case the feature is judged on: it must never guess.
     @Test func anUnmatchedTriggerIsLeftAlone() {

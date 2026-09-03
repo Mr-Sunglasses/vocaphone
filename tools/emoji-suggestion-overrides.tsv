@@ -303,3 +303,21 @@ sobbing	😭
 smirk	😏
 rage	😡
 grimace	😬
+
+# Phrases where the walk would otherwise resolve a shorter suffix and leave the
+# rest of what was said stranded in front of the glyph — "face with tears of
+# joy emoji" became "face with 😂", which is worse than not converting at all.
+# Adding the whole phrase lets the longest-match rule do its job. The last few
+# are the plain "<feeling> face" forms people say but Unicode does not name.
+onehundred	💯
+facewithtearsofjoy	😂
+rollingonthefloorlaughing	🤣
+cryingface	😢
+sadface	😢
+happyface	😊
+angryface	😠
+grinningface	😀
+winkingface	😉
+thumbsupsign	👍
+thumbsdownsign	👎
+openhands	👐

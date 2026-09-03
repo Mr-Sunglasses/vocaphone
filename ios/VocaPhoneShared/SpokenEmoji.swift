@@ -119,8 +119,10 @@ enum SpokenEmoji {
         let punctuation = SentencePunctuation.resolve(language: language, text: source)
         // Thai and Lao end a sentence with nothing at all, so there is no mark
         // to drop and an empty terminator would match every tail.
+        // Newlines count as whitespace here, because Kotlin's `trim` counts
+        // them and these two are expected to agree character for character.
         guard !punctuation.terminator.isEmpty,
-              tail.trimmingCharacters(in: .whitespaces) == punctuation.terminator
+              tail.trimmingCharacters(in: .whitespacesAndNewlines) == punctuation.terminator
         else { return tail }
         return ""
     }

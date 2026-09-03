@@ -97,6 +97,21 @@ class SpokenEmojiTest {
     }
 
     /**
+     * A partial match must never leave the rest of what was said in front of
+     * the glyph. "face with tears of joy emoji" resolving only its "joy" suffix
+     * would type "face with 😂", which is worse than not converting at all — so
+     * the whole phrase is a key and the longest-match rule takes it.
+     */
+    @Test
+    fun `longer phrases do not strand their leading words`() {
+        assertEquals("💯", SpokenEmoji.glyphsIn("one hundred emoji"))
+        assertEquals("😂", SpokenEmoji.glyphsIn("face with tears of joy emoji"))
+        assertEquals("🤣", SpokenEmoji.glyphsIn("rolling on the floor laughing emoji"))
+        assertEquals("😢", SpokenEmoji.glyphsIn("crying face emoji"))
+        assertEquals("👍", SpokenEmoji.glyphsIn("thumbs up sign emoji"))
+    }
+
+    /**
      * A trigger with nothing it recognizes in front of it is left exactly as
      * spoken. This is the case the feature is judged on: it must never guess.
      */
