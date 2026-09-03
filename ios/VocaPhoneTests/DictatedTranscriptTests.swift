@@ -200,7 +200,7 @@ struct DictatedTranscriptTests {
                 repairSpeech: false,
                 numbersAsDigits: false,
                 spokenEmoji: true
-            ) == "I'm so sad 😭."
+            ) == "I'm so sad 😭"
         )
     }
 

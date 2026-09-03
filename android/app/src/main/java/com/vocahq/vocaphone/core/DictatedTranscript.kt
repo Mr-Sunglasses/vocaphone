@@ -49,7 +49,7 @@ object DictatedTranscript {
         // Never for RAW, on the same grounds as repair: raw promises the
         // model's own output, and a glyph is not something the model said.
         val emojified = if (spokenEmoji && style != WritingStyle.RAW) {
-            SpokenEmoji.glyphsIn(styled)
+            SpokenEmoji.glyphsIn(styled, language)
         } else {
             styled
         }

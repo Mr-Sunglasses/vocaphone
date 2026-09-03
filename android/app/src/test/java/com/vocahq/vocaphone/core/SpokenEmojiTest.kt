@@ -71,12 +71,12 @@ class SpokenEmojiTest {
     @Test
     fun `punctuation between two glyphs collapses`() {
         assertEquals(
-            "😭 😭 😭.",
+            "😭 😭 😭",
             SpokenEmoji.glyphsIn("Crying emoji, crying emoji, crying emoji."),
         )
         // A longer pause is written down as a full stop, and "😭. 😭." is no
         // more something a person types than "😭, 😭".
-        assertEquals("😭 🔥.", SpokenEmoji.glyphsIn("Crying emoji. Fire emoji."))
+        assertEquals("😭 🔥", SpokenEmoji.glyphsIn("Crying emoji. Fire emoji."))
         // Already a plain space: nothing to collapse, nothing changed.
         assertEquals("😭 😭", SpokenEmoji.glyphsIn("crying emoji crying emoji"))
     }
@@ -120,9 +120,32 @@ class SpokenEmojiTest {
      */
     @Test
     fun `punctuation the styler attached survives`() {
-        assertEquals("I'm so sad 😭.", SpokenEmoji.glyphsIn("I'm so sad crying emoji."))
         assertEquals("That was fun 🎉!", SpokenEmoji.glyphsIn("That was fun party emoji!"))
         assertEquals("🔥, then home", SpokenEmoji.glyphsIn("fire emoji, then home"))
+        assertEquals("😭. That was rough.", SpokenEmoji.glyphsIn("Crying emoji. That was rough."))
+    }
+
+    /**
+     * The styler ended the sentence while the last word was still "emoji". An
+     * emoji is the end: nobody writes "I'm so sad 😭." or "💯."
+     */
+    @Test
+    fun `a trailing terminator after a glyph goes`() {
+        assertEquals("I'm so sad 😭", SpokenEmoji.glyphsIn("I'm so sad crying emoji."))
+        assertEquals("💯", SpokenEmoji.glyphsIn("Hundred emoji."))
+        // Only when the terminator is the whole tail — this one is ending a
+        // sentence the glyph merely started.
+        assertEquals("😭 is how I feel.", SpokenEmoji.glyphsIn("Crying emoji is how I feel."))
+    }
+
+    /**
+     * A full stop is structure and goes; "!" and "?" carry meaning that was in
+     * what the user said, exactly as the casual writing style already argues.
+     */
+    @Test
+    fun `meaningful terminators after a glyph stay`() {
+        assertEquals("😭!", SpokenEmoji.glyphsIn("Crying emoji!"))
+        assertEquals("😭?", SpokenEmoji.glyphsIn("Crying emoji?"))
     }
 
     /**

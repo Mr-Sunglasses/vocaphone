@@ -46,11 +46,11 @@ struct SpokenEmojiTests {
     @Test func punctuationBetweenTwoGlyphsCollapses() {
         #expect(
             SpokenEmoji.glyphs(in: "Crying emoji, crying emoji, crying emoji.")
-                == "😭 😭 😭."
+                == "😭 😭 😭"
         )
         // A longer pause is written down as a full stop, and "😭. 😭." is no
         // more something a person types than "😭, 😭".
-        #expect(SpokenEmoji.glyphs(in: "Crying emoji. Fire emoji.") == "😭 🔥.")
+        #expect(SpokenEmoji.glyphs(in: "Crying emoji. Fire emoji.") == "😭 🔥")
         // Already a plain space: nothing to collapse, nothing changed.
         #expect(SpokenEmoji.glyphs(in: "crying emoji crying emoji") == "😭 😭")
     }
@@ -84,9 +84,29 @@ struct SpokenEmojiTests {
     /// the style put on it. Only the words are replaced, which leaves the mark
     /// and the spacing exactly where the styler left them.
     @Test func punctuationTheStylerAttachedSurvives() {
-        #expect(SpokenEmoji.glyphs(in: "I'm so sad crying emoji.") == "I'm so sad 😭.")
         #expect(SpokenEmoji.glyphs(in: "That was fun party emoji!") == "That was fun 🎉!")
         #expect(SpokenEmoji.glyphs(in: "fire emoji, then home") == "🔥, then home")
+        #expect(SpokenEmoji.glyphs(in: "Crying emoji. That was rough.") == "😭. That was rough.")
+    }
+
+    /// The styler ended the sentence while the last word was still "emoji". An
+    /// emoji is the end: nobody writes "I'm so sad 😭." or "💯."
+    @Test func aTrailingTerminatorAfterAGlyphGoes() {
+        #expect(SpokenEmoji.glyphs(in: "I'm so sad crying emoji.") == "I'm so sad 😭")
+        #expect(SpokenEmoji.glyphs(in: "Hundred emoji.") == "💯")
+        // Only when the terminator is the whole tail — this one is ending a
+        // sentence the glyph merely started.
+        #expect(
+            SpokenEmoji.glyphs(in: "Crying emoji is how I feel.")
+                == "😭 is how I feel."
+        )
+    }
+
+    /// A full stop is structure and goes; "!" and "?" carry meaning that was in
+    /// what the user said, exactly as the casual writing style already argues.
+    @Test func meaningfulTerminatorsAfterAGlyphStay() {
+        #expect(SpokenEmoji.glyphs(in: "Crying emoji!") == "😭!")
+        #expect(SpokenEmoji.glyphs(in: "Crying emoji?") == "😭?")
     }
 
     /// Formal capitalizes a sentence start, so a descriptor can arrive

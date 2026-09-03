@@ -54,7 +54,7 @@ object SpokenEmoji {
      * makes the stage correct in scripts that do not put a space between
      * sentences, without needing to know which script it is in.
      */
-    fun glyphsIn(text: String): String {
+    fun glyphsIn(text: String, language: String = "auto"): String {
         // Almost every transcript has no trigger in it at all, and this stage
         // runs on every one of them, so the "nothing to do" case is the one
         // worth being cheap. Everything below — masking, tokenizing, the walk —
@@ -89,8 +89,35 @@ object SpokenEmoji {
             previousWasGlyph = true
         }
         if (copied == 0) return text
-        result.append(masked, copied, masked.length)
+        result.append(closing(masked.substring(copied), language, text))
         return spans.restore(result.toString())
+    }
+
+    /**
+     * The text after the final glyph, with a sentence terminator that is all it
+     * consists of dropped.
+     *
+     * The styler ends a sentence because a sentence needs an end, and it did
+     * that while the last word was still "emoji". An emoji *is* the end: people
+     * write "I'm so sad 😭" and "💯", not "I'm so sad 😭." — the glyph does the
+     * job the full stop was there to do.
+     *
+     * Only the terminator goes, never an exclamation or a question mark, for
+     * exactly the reason [TranscriptStyler]'s casual style already gives for
+     * dropping one and keeping the others: a full stop is structure, while "!"
+     * and "?" carry meaning that was in what the user said. So EXCITED still
+     * ends "😭!" and a dictated question still ends "😭?".
+     *
+     * Only when the terminator is the *whole* tail. "crying emoji is how I
+     * feel." keeps its full stop, because that one is ending a sentence the
+     * glyph merely started.
+     */
+    private fun closing(tail: String, language: String, source: String): String {
+        val punctuation = SentencePunctuation.resolve(language, source)
+        // Thai and Lao end a sentence with nothing at all, so there is no mark
+        // to drop and an empty terminator would match every tail.
+        if (punctuation.terminator.isEmpty()) return tail
+        return if (tail.trim() == punctuation.terminator) "" else tail
     }
 
     private class Descriptor(val glyph: String, val start: Int)

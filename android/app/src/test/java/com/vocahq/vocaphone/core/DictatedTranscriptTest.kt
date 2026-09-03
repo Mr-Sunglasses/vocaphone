@@ -182,7 +182,7 @@ class DictatedTranscriptTest {
     @Test
     fun `styling runs before emoji`() {
         assertEquals(
-            "I'm so sad 😭.",
+            "I'm so sad 😭",
             DictatedTranscript.finished(
                 "i'm so sad crying emoji",
                 style = WritingStyle.FORMAL,

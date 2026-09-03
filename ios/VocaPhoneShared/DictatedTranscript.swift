@@ -53,7 +53,7 @@ enum DictatedTranscript {
         // Never for `raw`, on the same grounds as repair: raw promises the
         // model's own output, and a glyph is not something the model said.
         let emojified = spokenEmoji && style != .raw
-            ? SpokenEmoji.glyphs(in: styled)
+            ? SpokenEmoji.glyphs(in: styled, language: language)
             : styled
         let digited = numbersAsDigits ? SpokenNumbers.digits(in: emojified) : emojified
         return snippetExpander.expand(in: digited, using: snippets)
