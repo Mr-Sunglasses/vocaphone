@@ -390,6 +390,10 @@ struct DictationSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var numbersAsDigits = false
     @AppStorage(
+        KeyboardPreferences.spokenEmojiKey,
+        store: KeyboardPreferences.defaults
+    ) private var spokenEmoji = true
+    @AppStorage(
         KeyboardPreferences.repairSpeechKey,
         store: KeyboardPreferences.defaults
     ) private var repairSpeech = true
@@ -426,6 +430,7 @@ struct DictationSettingsView: View {
             writingStyleSection
             cleanUpSection
             numbersSection
+            spokenEmojiSection
             microphoneSection
             recordingFeedbackSection
             customWordsSection
@@ -533,8 +538,8 @@ struct DictationSettingsView: View {
                 Text(
                     "Styles only change formatting. Your words, times, links and "
                         + "contractions are never altered by a style; words change "
-                        + "only through Clean up speech, and numbers only through "
-                        + "Write numbers as digits, both below."
+                        + "only through Clean up speech, Write numbers as digits "
+                        + "and Spoken emoji, all below."
                 )
             }
         }
@@ -586,6 +591,33 @@ struct DictationSettingsView: View {
                         + "and spoken times such as “seven thirty” are never rewritten."
                 )
                 Text("English only. Transcripts in other languages are untouched.")
+            }
+        }
+    }
+
+    /// Saying "crying emoji" and getting 😭. The third switch that changes
+    /// words rather than formatting, and the only one of the three that is on
+    /// by default — the others apply to ordinary dictation, while this one
+    /// cannot fire unless the user says "emoji" out loud.
+    private var spokenEmojiSection: some View {
+        Section {
+            Toggle("Spoken emoji", isOn: $spokenEmoji)
+        } header: {
+            Text("Emoji")
+        } footer: {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                Text(
+                    "Say the emoji and then the word “emoji”: “I’m so sad crying "
+                        + "emoji” becomes “I’m so sad 😭”. The same names the "
+                        + "keyboard suggests while you type work here."
+                )
+                // The exception is the point: without it the feature would eat
+                // the word "emoji" out of ordinary sentences.
+                Text(
+                    "“Emoji” on its own is left alone, so “send me the emoji” is "
+                        + "still typed as you said it."
+                )
+                Text("English only, and never applied to the Raw writing style.")
             }
         }
     }

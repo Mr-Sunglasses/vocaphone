@@ -703,6 +703,7 @@ class DictationController(
                 styledUpstream = true,
                 repairSpeech = configuration.repairSpeech,
                 numbersAsDigits = configuration.numbersAsDigits,
+                spokenEmoji = configuration.spokenEmoji,
                 snippets = configuration.snippets,
             )
             if (transcript != null && cleaned.isEmpty()) {
@@ -796,6 +797,7 @@ class DictationController(
                 styledUpstream = true,
                 repairSpeech = configuration.repairSpeech,
                 numbersAsDigits = configuration.numbersAsDigits,
+                spokenEmoji = configuration.spokenEmoji,
                 snippets = configuration.snippets,
             )
             if (transcript.isEmpty()) {
@@ -903,6 +905,7 @@ class DictationController(
         ),
         repairSpeech = configuration.repairSpeech,
         numbersAsDigits = configuration.numbersAsDigits,
+        spokenEmoji = configuration.spokenEmoji,
         snippets = configuration.snippets,
     )
 

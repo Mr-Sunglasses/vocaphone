@@ -93,6 +93,7 @@ fun SettingsScreen(
     onStyle: (WritingStyle) -> Unit,
     onRepairSpeech: (Boolean) -> Unit,
     onNumbersAsDigits: (Boolean) -> Unit,
+    onSpokenEmoji: (Boolean) -> Unit,
     onDictationTone: (DictationTone) -> Unit,
     onPreviewDictationTone: (DictationTone) -> Unit,
     tonePreviewListening: Boolean,
@@ -436,6 +437,26 @@ fun SettingsScreen(
                             "A lone “one” stays a word unless a unit follows it.",
                         checked = settings.numbersAsDigits,
                         onCheckedChange = onNumbersAsDigits,
+                    )
+                }
+                Section(
+                    title = "Emoji",
+                    // The third switch that changes words rather than
+                    // formatting, and the only one of the three on by default:
+                    // the others apply to ordinary dictation, while this one
+                    // cannot fire unless the user says "emoji" out loud.
+                    supporting = "English only. Never applied to the Raw writing style.",
+                ) {
+                    SettingToggle(
+                        title = "Spoken emoji",
+                        detail = "Say the emoji and then the word \u201Cemoji\u201D: " +
+                            "\u201CI\u2019m so sad crying emoji\u201D becomes " +
+                            "\u201CI\u2019m so sad \uD83D\uDE2D\u201D. The same names the " +
+                            "keyboard suggests while you type work here. " +
+                            "\u201CEmoji\u201D on its own is left alone, so " +
+                            "\u201Csend me the emoji\u201D is still typed as you said it.",
+                        checked = settings.spokenEmoji,
+                        onCheckedChange = onSpokenEmoji,
                     )
                 }
                 Section(

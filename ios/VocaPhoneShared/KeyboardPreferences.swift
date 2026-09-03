@@ -294,6 +294,7 @@ enum KeyboardPreferences {
     static let quickDictationRecoveryMigrationKey = "quickDictationRecoveryMigrationV1"
     static let writingStyleKey = "writingStyle"
     static let numbersAsDigitsKey = "numbersAsDigitsEnabled"
+    static let spokenEmojiKey = "spokenEmojiEnabled"
     static let repairSpeechKey = "speechRepairEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let translateToKey = "translateTo"
@@ -517,10 +518,21 @@ enum KeyboardPreferences {
         set { defaults?.set(newValue, forKey: numbersAsDigitsKey) }
     }
 
+    /// Whether "crying emoji" becomes 😭.
+    ///
+    /// On by default, unlike the two settings above it that also change words.
+    /// They apply to text the user dictated for its own sake, so turning them
+    /// on has to be a choice; this one is unreachable unless the user says the
+    /// word "emoji" out loud, which nobody does by accident.
+    static var spokenEmoji: Bool {
+        get { boolean(spokenEmojiKey, default: true) }
+        set { defaults?.set(newValue, forKey: spokenEmojiKey) }
+    }
+
     /// Whether hesitation sounds, false starts, and missing sentence
     /// punctuation are repaired before the writing style is applied.
     ///
-    /// On by default, and the only setting in this file that changes the words
+    /// On by default. One of three settings in this file that change the words
     /// in a transcript rather than its formatting. It earns that because the
     /// words it removes are not words: "um" is a sound someone makes while
     /// deciding what to say, and nobody dictating meant to type it.

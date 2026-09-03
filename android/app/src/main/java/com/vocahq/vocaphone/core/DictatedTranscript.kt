@@ -18,7 +18,13 @@ package com.vocahq.vocaphone.core
  * 3. Style — but only for transcripts produced on this device. A gateway has
  *    already applied the writing style the session asked for, and applying it
  *    twice is how "Hello." becomes "Hello.." on one route and not the other.
- * 4. Digits — after styling, so sentence capitalization can still see the
+ * 4. Spoken emoji — after styling, because the styler has to see "emoji" as an
+ *    ordinary word to capitalize and terminate around it; before digits,
+ *    because the table's keys are words — "hundred emoji" is 💯, and once
+ *    digit conversion has made it "100 emoji" there is no key left to find.
+ *    Applies whichever route produced the transcript: unlike styling, no
+ *    gateway has done it already.
+ * 5. Digits — after styling, so sentence capitalization can still see the
  *    first word. Matching snippets are protected so a number-word trigger
  *    still expands literally after digit conversion finishes.
  */
@@ -30,6 +36,7 @@ object DictatedTranscript {
         styledUpstream: Boolean = false,
         repairSpeech: Boolean,
         numbersAsDigits: Boolean = false,
+        spokenEmoji: Boolean = true,
         snippets: List<Snippet> = emptyList(),
     ): String {
         val cleaned = TranscriptSanitizer.clean(raw)
@@ -39,9 +46,16 @@ object DictatedTranscript {
             cleaned
         }
         val styled = if (styledUpstream) repaired else TranscriptStyler.apply(repaired, style, language)
-        if (!numbersAsDigits) return SnippetExpander.expand(styled, snippets)
+        // Never for RAW, on the same grounds as repair: raw promises the
+        // model's own output, and a glyph is not something the model said.
+        val emojified = if (spokenEmoji && style != WritingStyle.RAW) {
+            SpokenEmoji.glyphsIn(styled)
+        } else {
+            styled
+        }
+        if (!numbersAsDigits) return SnippetExpander.expand(emojified, snippets)
 
-        val protected = SnippetExpander.protect(styled, snippets)
+        val protected = SnippetExpander.protect(emojified, snippets)
         return protected.restore(SpokenNumbers.digitsIn(protected.text))
     }
 }

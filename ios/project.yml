@@ -53,6 +53,12 @@ targets:
       # `#if DEBUG`; it is here because the app target compiles the strip
       # and the bar, and a preview in either file needs it in scope.
       - path: VocaPhoneKeyboard/KeyboardViewPreview.swift
+      # `SpokenEmoji` runs in the transcript funnel, which the app target runs
+      # for its own recordings, so the app needs the same word-to-glyph table
+      # the keyboard ships. One copy in the repository, two bundles.
+      - path: ../assets/keyboard
+        name: SharedKeyboardData
+        buildPhase: resources
     resources:
       - VocaPhoneApp/Models/local_model_pins.json
       - VocaPhoneApp/Models/sherpa_model_pins.json

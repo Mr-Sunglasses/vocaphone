@@ -5,7 +5,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * The order of the four steps is the whole point of the funnel, and each wrong
+ * The order of the five steps is the whole point of the funnel, and each wrong
  * order produces text that looks like a different bug.
  */
 class DictatedTranscriptTest {
@@ -152,6 +152,74 @@ class DictatedTranscriptTest {
                 style = WritingStyle.FORMAL,
                 repairSpeech = true,
             ).isEmpty(),
+        )
+    }
+
+    /**
+     * Emoji before digits. The table's keys are words: once "hundred" has
+     * become "100" there is no key left to look up, and the trigger word would
+     * be typed out.
+     */
+    @Test
+    fun `emoji runs before digits`() {
+        assertEquals(
+            "That was 💯",
+            DictatedTranscript.finished(
+                "that was hundred emoji",
+                style = WritingStyle.CASUAL,
+                repairSpeech = false,
+                numbersAsDigits = true,
+                spokenEmoji = true,
+            ),
+        )
+    }
+
+    /**
+     * Emoji after styling, so the styler still sees "emoji" as an ordinary word
+     * and closes the sentence around it. The mark it added survives the
+     * substitution because only the words are replaced.
+     */
+    @Test
+    fun `styling runs before emoji`() {
+        assertEquals(
+            "I'm so sad 😭.",
+            DictatedTranscript.finished(
+                "i'm so sad crying emoji",
+                style = WritingStyle.FORMAL,
+                repairSpeech = false,
+                spokenEmoji = true,
+            ),
+        )
+    }
+
+    /**
+     * Raw promises the model's own output, and a glyph is not a word the model
+     * returned — so this stage is skipped for it exactly as repair is.
+     */
+    @Test
+    fun `raw never gets spoken emoji`() {
+        assertEquals(
+            "i'm so sad crying emoji",
+            DictatedTranscript.finished(
+                "i'm so sad crying emoji",
+                style = WritingStyle.RAW,
+                repairSpeech = true,
+                spokenEmoji = true,
+            ),
+        )
+    }
+
+    /** The switch is what makes the stage honest: off, the words are typed out. */
+    @Test
+    fun `spoken emoji can be turned off`() {
+        assertEquals(
+            "I'm so sad crying emoji",
+            DictatedTranscript.finished(
+                "i'm so sad crying emoji",
+                style = WritingStyle.CASUAL,
+                repairSpeech = false,
+                spokenEmoji = false,
+            ),
         )
     }
 }

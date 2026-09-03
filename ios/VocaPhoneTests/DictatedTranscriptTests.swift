@@ -1,7 +1,10 @@
 import Testing
 
-/// The order of the four steps is the whole point of the funnel, and each wrong
+/// The order of the five steps is the whole point of the funnel, and each wrong
 /// order produces text that looks like a different bug.
+///
+/// Every test that is not about spoken emoji switches it off, so a phrase that
+/// happens to end in the trigger word cannot change an unrelated assertion.
 struct DictatedTranscriptTests {
     /// Digits after styling. The styler capitalizes the first *letter* of a
     /// sentence, so a sentence that already began with "20" would have it skip
@@ -12,7 +15,8 @@ struct DictatedTranscriptTests {
                 "twenty people came",
                 style: .formal,
                 repairSpeech: false,
-                numbersAsDigits: true
+                numbersAsDigits: true,
+                spokenEmoji: false
             ) == "20 people came."
         )
     }
@@ -25,7 +29,8 @@ struct DictatedTranscriptTests {
                 "[BLANK_AUDIO] five copies please",
                 style: .formal,
                 repairSpeech: false,
-                numbersAsDigits: true
+                numbersAsDigits: true,
+                spokenEmoji: false
             ) == "5 copies please."
         )
     }
@@ -39,7 +44,8 @@ struct DictatedTranscriptTests {
                 "um what time is it",
                 style: .formal,
                 repairSpeech: true,
-                numbersAsDigits: false
+                numbersAsDigits: false,
+                spokenEmoji: false
             ) == "What time is it?"
         )
         // Without repair the styler sees no question and closes the sentence
@@ -49,7 +55,8 @@ struct DictatedTranscriptTests {
                 "um what time is it",
                 style: .formal,
                 repairSpeech: false,
-                numbersAsDigits: false
+                numbersAsDigits: false,
+                spokenEmoji: false
             ) == "Um what time is it."
         )
     }
@@ -62,7 +69,8 @@ struct DictatedTranscriptTests {
                 "um so we we should ship it",
                 style: .raw,
                 repairSpeech: true,
-                numbersAsDigits: false
+                numbersAsDigits: false,
+                spokenEmoji: false
             ) == "um so we we should ship it"
         )
     }
@@ -77,7 +85,8 @@ struct DictatedTranscriptTests {
                 style: .casual,
                 styledUpstream: true,
                 repairSpeech: false,
-                numbersAsDigits: false
+                numbersAsDigits: false,
+                spokenEmoji: false
             ) == styled
         )
         // The same text through the local route would lose its full stop to the
@@ -87,7 +96,8 @@ struct DictatedTranscriptTests {
                 styled,
                 style: .casual,
                 repairSpeech: false,
-                numbersAsDigits: false
+                numbersAsDigits: false,
+                spokenEmoji: false
             ) == "Hello there"
         )
     }
@@ -101,7 +111,8 @@ struct DictatedTranscriptTests {
                 style: .casual,
                 styledUpstream: true,
                 repairSpeech: true,
-                numbersAsDigits: false
+                numbersAsDigits: false,
+                spokenEmoji: false
             ) == "We shipped it on Friday. Anyway, the tests are green"
         )
     }
@@ -114,7 +125,8 @@ struct DictatedTranscriptTests {
                 style: .casual,
                 styledUpstream: true,
                 repairSpeech: false,
-                numbersAsDigits: false
+                numbersAsDigits: false,
+                spokenEmoji: false
             ) == "six pm at office"
         )
         #expect(
@@ -123,7 +135,8 @@ struct DictatedTranscriptTests {
                 style: .casual,
                 styledUpstream: true,
                 repairSpeech: false,
-                numbersAsDigits: true
+                numbersAsDigits: true,
+                spokenEmoji: false
             ) == "6 pm at office"
         )
     }
@@ -139,6 +152,7 @@ struct DictatedTranscriptTests {
                 style: .formal,
                 repairSpeech: false,
                 numbersAsDigits: false,
+                spokenEmoji: false,
                 snippets: snippets
             ) == "Reach me at kanishk@example.com."
         )
@@ -154,8 +168,66 @@ struct DictatedTranscriptTests {
                 style: .formal,
                 repairSpeech: false,
                 numbersAsDigits: false,
+                spokenEmoji: false,
                 snippets: snippets
             ) == "be right back everyone."
+        )
+    }
+
+    /// Emoji before digits. The table's keys are words: once "hundred" has
+    /// become "100" there is no key left to look up, and the trigger word would
+    /// be typed out.
+    @Test func emojiHappensBeforeDigits() {
+        #expect(
+            DictatedTranscript.finished(
+                "that was hundred emoji",
+                style: .casual,
+                repairSpeech: false,
+                numbersAsDigits: true,
+                spokenEmoji: true
+            ) == "That was 💯"
+        )
+    }
+
+    /// Emoji after styling, so the styler still sees "emoji" as an ordinary
+    /// word and closes the sentence around it. The mark it added survives the
+    /// substitution because only the words are replaced.
+    @Test func stylingHappensBeforeEmoji() {
+        #expect(
+            DictatedTranscript.finished(
+                "i'm so sad crying emoji",
+                style: .formal,
+                repairSpeech: false,
+                numbersAsDigits: false,
+                spokenEmoji: true
+            ) == "I'm so sad 😭."
+        )
+    }
+
+    /// Raw promises the model's own output, and a glyph is not a word the model
+    /// returned — so this stage is skipped for it exactly as repair is.
+    @Test func rawNeverGetsSpokenEmoji() {
+        #expect(
+            DictatedTranscript.finished(
+                "i'm so sad crying emoji",
+                style: .raw,
+                repairSpeech: true,
+                numbersAsDigits: false,
+                spokenEmoji: true
+            ) == "i'm so sad crying emoji"
+        )
+    }
+
+    /// The switch is what makes the stage honest: off, the words are typed out.
+    @Test func spokenEmojiCanBeTurnedOff() {
+        #expect(
+            DictatedTranscript.finished(
+                "i'm so sad crying emoji",
+                style: .casual,
+                repairSpeech: false,
+                numbersAsDigits: false,
+                spokenEmoji: false
+            ) == "I'm so sad crying emoji"
         )
     }
 
@@ -166,7 +238,8 @@ struct DictatedTranscriptTests {
                 style: .casual,
                 styledUpstream: true,
                 repairSpeech: true,
-                numbersAsDigits: true
+                numbersAsDigits: true,
+                spokenEmoji: false
             ).isEmpty
         )
         #expect(
@@ -174,7 +247,8 @@ struct DictatedTranscriptTests {
                 "   ",
                 style: .formal,
                 repairSpeech: true,
-                numbersAsDigits: true
+                numbersAsDigits: true,
+                spokenEmoji: false
             ).isEmpty
         )
     }

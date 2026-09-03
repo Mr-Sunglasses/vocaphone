@@ -1,0 +1,95 @@
+import Testing
+
+/// The rules that stop "emoji" being eaten out of ordinary sentences. Each one
+/// exists because the obvious implementation gets it wrong.
+struct SpokenEmojiTests {
+    @Test func aDescriptorAndTheTriggerBecomeTheGlyph() {
+        #expect(SpokenEmoji.glyphs(in: "I'm so sad crying emoji") == "I'm so sad 😭")
+    }
+
+    /// The worked example from the plan, and the case that proves repeats need
+    /// no special handling: two triggers are two independent matches.
+    @Test func repeatedTriggersEachConvert() {
+        #expect(
+            SpokenEmoji.glyphs(in: "I'm so sad crying emoji crying emoji")
+                == "I'm so sad 😭 😭"
+        )
+    }
+
+    /// Keys are the descriptor with its spaces removed, so a multi-word
+    /// descriptor resolves without the table having to store the spacing.
+    @Test func multiWordDescriptorsResolve() {
+        #expect(SpokenEmoji.glyphs(in: "nice work thumbs up emoji") == "nice work 👍")
+        #expect(SpokenEmoji.glyphs(in: "shrug emoji") == "🤷")
+    }
+
+    /// The longest phrase wins. "loudly crying" and "crying" are both keys, and
+    /// stopping at the first match would leave the word "loudly" behind.
+    @Test func theLongestPhraseWins() {
+        #expect(SpokenEmoji.glyphs(in: "loudly crying emoji") == "😭")
+    }
+
+    /// A trigger with nothing it recognizes in front of it is left exactly as
+    /// spoken. This is the case the feature is judged on: it must never guess.
+    @Test func anUnmatchedTriggerIsLeftAlone() {
+        #expect(SpokenEmoji.glyphs(in: "Send me the emoji.") == "Send me the emoji.")
+        #expect(SpokenEmoji.glyphs(in: "emoji") == "emoji")
+        // "emoji" is not itself a key, so a trigger cannot match its neighbour.
+        #expect(SpokenEmoji.glyphs(in: "emoji emoji") == "emoji emoji")
+    }
+
+    @Test func theTriggerMayBePluralized() {
+        #expect(SpokenEmoji.glyphs(in: "add fire emojis") == "add 🔥")
+    }
+
+    /// Styling has already run, so the trigger arrives carrying whatever mark
+    /// the style put on it. Only the words are replaced, which leaves the mark
+    /// and the spacing exactly where the styler left them.
+    @Test func punctuationTheStylerAttachedSurvives() {
+        #expect(SpokenEmoji.glyphs(in: "I'm so sad crying emoji.") == "I'm so sad 😭.")
+        #expect(SpokenEmoji.glyphs(in: "That was fun party emoji!") == "That was fun 🎉!")
+        #expect(SpokenEmoji.glyphs(in: "fire emoji, then home") == "🔥, then home")
+    }
+
+    /// Formal capitalizes a sentence start, so a descriptor can arrive
+    /// capitalized. Matching is case-insensitive.
+    @Test func aCapitalizedDescriptorStillMatches() {
+        #expect(SpokenEmoji.glyphs(in: "Crying emoji. That was rough.") == "😭. That was rough.")
+    }
+
+    /// Only a space or a hyphen joins a descriptor to its trigger. A comma is a
+    /// clause boundary, and reading through it would take a word out of the
+    /// sentence before.
+    @Test func punctuationInsideThePhraseEndsIt() {
+        #expect(SpokenEmoji.glyphs(in: "I was crying, emoji") == "I was crying, emoji")
+    }
+
+    /// Masked before the walk, so a descriptor cannot be taken out of an
+    /// address. The dot makes this a hostname, not a trigger.
+    @Test func addressesAreNotEaten() {
+        #expect(SpokenEmoji.glyphs(in: "see crying emoji.com") == "see crying emoji.com")
+        #expect(
+            SpokenEmoji.glyphs(in: "mail fire emoji@example.com")
+                == "mail fire emoji@example.com"
+        )
+    }
+
+    /// Nothing about a transcript in another script matches an English table,
+    /// which is the whole language policy: untouched beats partially mangled.
+    @Test func otherLanguagesPassThrough() {
+        #expect(SpokenEmoji.glyphs(in: "मैं बहुत खुश हूँ।") == "मैं बहुत खुश हूँ।")
+    }
+
+    @Test func textWithNoTriggerIsReturnedUnchanged() {
+        #expect(SpokenEmoji.glyphs(in: "just an ordinary sentence") == "just an ordinary sentence")
+        #expect(SpokenEmoji.glyphs(in: "") == "")
+    }
+
+    /// The lookback is bounded by the table's own widest key rather than a
+    /// guessed word count, so the bound cannot drift from the data.
+    @Test func theTableSuppliesItsOwnLookbackBound() {
+        #expect(EmojiTable.widestKeyLength > 0)
+        #expect(EmojiTable.triggers["loudlycrying"] == "😭")
+        #expect(EmojiTable.triggers["emoji"] == nil)
+    }
+}

@@ -1015,7 +1015,8 @@ final class RecordingCoordinator {
                     language: record.language,
                     styledUpstream: true,
                     repairSpeech: KeyboardPreferences.repairSpeech,
-                    numbersAsDigits: KeyboardPreferences.numbersAsDigits
+                    numbersAsDigits: KeyboardPreferences.numbersAsDigits,
+                    spokenEmoji: KeyboardPreferences.spokenEmoji
                 )
                 record.error = nil
                 try record.transition(to: .readyToInsert)
@@ -1061,7 +1062,8 @@ final class RecordingCoordinator {
                 language: record.language,
                 styledUpstream: true,
                 repairSpeech: KeyboardPreferences.repairSpeech,
-                numbersAsDigits: KeyboardPreferences.numbersAsDigits
+                numbersAsDigits: KeyboardPreferences.numbersAsDigits,
+                spokenEmoji: KeyboardPreferences.spokenEmoji
             )
             record.error = nil
             try record.transition(to: .readyToInsert)
@@ -1190,7 +1192,8 @@ final class RecordingCoordinator {
                     translateTo: KeyboardPreferences.translationTarget
                 ),
                 repairSpeech: KeyboardPreferences.repairSpeech,
-                numbersAsDigits: KeyboardPreferences.numbersAsDigits
+                numbersAsDigits: KeyboardPreferences.numbersAsDigits,
+                spokenEmoji: KeyboardPreferences.spokenEmoji
             )
             record.error = nil
             try record.transition(to: .readyToInsert)
