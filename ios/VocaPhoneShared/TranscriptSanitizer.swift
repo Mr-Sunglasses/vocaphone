@@ -98,6 +98,10 @@ enum TranscriptSanitizer {
     /// so one copy is kept. A single word genuinely is — "no no no no" is a
     /// sentence — so it takes more repeats to look like a loop, and two copies
     /// survive to record that the emphasis was there.
+    ///
+    /// ``SpokenEmoji`` is the one exception to that first claim, and it has to
+    /// be made here rather than in the stage that reads it: by the time the
+    /// substitution runs this has already thrown the copies away.
     private static func collapseRepetition(_ line: String) -> String {
         guard !line.isEmpty else { return line }
         let words = line.components(separatedBy: " ").filter { !$0.isEmpty }
@@ -120,6 +124,22 @@ enum TranscriptSanitizer {
                         repeats = count
                     }
                 }
+            }
+            // "crying emoji crying emoji crying emoji" is three emoji, not a
+            // model stuck in a loop. Nobody says "emoji" three times running by
+            // accident — it is the one word this app treats as a command, so a
+            // unit ending on it was chosen deliberately and all the copies are
+            // meant. Exempted whether or not the setting is on: the user still
+            // said it three times, and a model looping on this exact phrase is
+            // not a failure anyone has seen.
+            if phrase >= 2, SpokenEmoji.triggerWords.contains(wordKey(words[index + phrase - 1])) {
+                // Skip the whole run, not one word. Resuming inside it would
+                // find the same repetition rotated by a word — "fire emoji"
+                // four times over reads as "emoji fire" three times from index
+                // one, and that unit does not end on the trigger.
+                result.append(contentsOf: words[index..<(index + phrase * repeats)])
+                index += phrase * repeats
+                continue
             }
             guard phrase > 0 else {
                 result.append(words[index])

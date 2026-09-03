@@ -222,4 +222,53 @@ class DictatedTranscriptTest {
             ),
         )
     }
+
+    /**
+     * Three of the same emoji dictated in a row survive the two stages that
+     * collapse repetition before this one gets to see it.
+     *
+     * The sanitizer treats a phrase said three times as a model stuck in a
+     * loop, and repair treats it as a false start. Both are right about
+     * ordinary speech and both were wrong here — and because they run at stages
+     * 1 and 2, the emoji stage never saw the copies to convert them. Tested
+     * through the funnel because that is the only place it goes wrong.
+     */
+    @Test
+    fun `repeated emoji survive the stages that collapse repetition`() {
+        for (repair in listOf(true, false)) {
+            assertEquals(
+                "😭 😭 😭",
+                DictatedTranscript.finished(
+                    "crying emoji crying emoji crying emoji",
+                    style = WritingStyle.FORMAL,
+                    repairSpeech = repair,
+                    spokenEmoji = true,
+                ),
+            )
+            // Four, and with the commas a speech model writes the pauses down as.
+            assertEquals(
+                "🔥 🔥 🔥 🔥",
+                DictatedTranscript.finished(
+                    "fire emoji, fire emoji, fire emoji, fire emoji",
+                    style = WritingStyle.FORMAL,
+                    repairSpeech = repair,
+                    spokenEmoji = true,
+                ),
+            )
+        }
+    }
+
+    /** The exemption above must not disarm the loop protection it sits inside. */
+    @Test
+    fun `ordinary repetition still collapses`() {
+        assertEquals(
+            "Thank you.",
+            DictatedTranscript.finished(
+                "thank you thank you thank you thank you",
+                style = WritingStyle.FORMAL,
+                repairSpeech = false,
+                spokenEmoji = true,
+            ),
+        )
+    }
 }
