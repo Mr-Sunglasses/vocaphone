@@ -280,3 +280,26 @@ skiing	⛷️
 snowboarding	🏂
 breastfeeding	🤱
 trex	🦖
+
+# Spoken forms, for SpokenEmoji ("crying emoji" → 😭). Keys here have their
+# spaces removed, exactly like the generated ones, so "heart eyes emoji" looks
+# up `hearteyes`. Most of these are unreachable by typing — nobody types
+# "hearteyes" — so they cost the strip nothing and are the phrasings people
+# actually say out loud. Measured against the shipped table, these were the
+# common ones it answered with the words instead of the glyph.
+hearteyes	😍
+tearsofjoy	😂
+laughingcrying	😂
+eyeroll	🙄
+smileyface	🙂
+smilingface	🙂
+prayinghands	🙏
+raisedhands	🙌
+checkmark	✅
+crossmark	❌
+mindblown	🤯
+blowingakiss	😘
+sobbing	😭
+smirk	😏
+rage	😡
+grimace	😬

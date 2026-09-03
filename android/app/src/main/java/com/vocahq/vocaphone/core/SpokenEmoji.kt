@@ -55,7 +55,18 @@ object SpokenEmoji {
      * sentences, without needing to know which script it is in.
      */
     fun glyphsIn(text: String): String {
-        if (text.isEmpty() || EmojiTable.triggers.isEmpty()) return text
+        // Almost every transcript has no trigger in it at all, and this stage
+        // runs on every one of them, so the "nothing to do" case is the one
+        // worth being cheap. Everything below — masking, tokenizing, the walk —
+        // is skipped for a transcript that cannot contain the trigger.
+        //
+        // The test is one character: "emoji" contains a "j", so text with no
+        // "j" in it cannot contain "emoji". That is strictly weaker than the
+        // word-boundary rule further down, so it can only skip work that was
+        // going to find nothing, and it costs a fraction of the
+        // case-insensitive substring search it replaces.
+        if (text.isEmpty() || text.none { it == 'j' || it == 'J' }) return text
+        if (EmojiTable.triggers.isEmpty()) return text
 
         // Masked so a descriptor cannot be eaten out of an address:
         // "crying emoji.com" is a hostname, not a trigger.

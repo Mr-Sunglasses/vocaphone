@@ -38,6 +38,19 @@ enum EmojiTable {
     /// the widest entries here are four words (`globeshowingeuropeafrica`).
     static let widestKeyLength: Int = triggers.keys.reduce(0) { max($0, $1.count) }
 
+    /// Parses the table now, so the first keystroke or transcript does not.
+    ///
+    /// Both stored properties above are lazy `static let`s, so somebody has to
+    /// pay for the parse and for the pass that measures the widest key. This is
+    /// the one place that says which, because touching only ``triggers`` leaves
+    /// ``widestKeyLength`` still to be computed on whoever gets there first.
+    ///
+    /// Callers decide the thread; both entry points warm it off the main one.
+    static func warmUp() {
+        _ = triggers
+        _ = widestKeyLength
+    }
+
     static func glyph(forKey key: String) -> String? {
         guard key.count >= minimumLength else { return nil }
         return triggers[key]

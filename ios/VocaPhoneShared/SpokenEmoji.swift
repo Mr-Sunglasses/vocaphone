@@ -47,7 +47,24 @@ enum SpokenEmoji {
     /// makes the stage correct in scripts that do not put a space between
     /// sentences, without needing to know which script it is in.
     static func glyphs(in text: String) -> String {
-        guard !text.isEmpty, !EmojiTable.triggers.isEmpty else { return text }
+        // Almost every transcript has no trigger in it at all, and this stage
+        // runs on every one of them, so the "nothing to do" case is the one
+        // worth being cheap. Everything below — masking, tokenizing, the walk —
+        // is skipped for a transcript that cannot contain the trigger.
+        //
+        // The test is one byte: "emoji" contains a "j", so text with no "j" in
+        // it cannot contain "emoji". That is strictly weaker than the
+        // word-boundary rule further down, so it can only skip work that was
+        // going to find nothing. `| 0x20` folds the ASCII case, and matches
+        // exactly "J" and "j" — no UTF-8 continuation byte is below 0x80, so a
+        // multi-byte character cannot collide with it. Foundation's
+        // `range(of:options:.caseInsensitive)` does the same job correctly but
+        // full Unicode case folding measured ~100x the cost of this, enough to
+        // make the check dearer than the work it was avoiding.
+        guard !text.isEmpty,
+              text.utf8.contains(where: { $0 | 0x20 == 0x6A }),
+              !EmojiTable.triggers.isEmpty
+        else { return text }
 
         // Masked so a descriptor cannot be eaten out of an address:
         // "crying emoji.com" is a hostname, not a trigger.

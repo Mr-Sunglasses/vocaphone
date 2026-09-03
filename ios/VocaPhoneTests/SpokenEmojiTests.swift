@@ -23,6 +23,17 @@ struct SpokenEmojiTests {
         #expect(SpokenEmoji.glyphs(in: "shrug emoji") == "🤷")
     }
 
+    /// The spoken forms added to `tools/emoji-suggestion-overrides.tsv` when
+    /// this shipped. The generated names cover most of the catalog, but these
+    /// are how people say them out loud, and without them the table answered
+    /// with the words instead of the glyph.
+    @Test func spokenPhrasingsResolve() {
+        #expect(SpokenEmoji.glyphs(in: "heart eyes emoji") == "😍")
+        #expect(SpokenEmoji.glyphs(in: "praying hands emoji") == "🙏")
+        #expect(SpokenEmoji.glyphs(in: "tears of joy emoji") == "😂")
+        #expect(SpokenEmoji.glyphs(in: "check mark emoji") == "✅")
+    }
+
     /// The longest phrase wins. "loudly crying" and "crying" are both keys, and
     /// stopping at the first match would leave the word "loudly" behind.
     @Test func theLongestPhraseWins() {
@@ -91,5 +102,22 @@ struct SpokenEmojiTests {
         #expect(EmojiTable.widestKeyLength > 0)
         #expect(EmojiTable.triggers["loudlycrying"] == "😭")
         #expect(EmojiTable.triggers["emoji"] == nil)
+    }
+
+    /// The single-byte pre-check must be invisible. It skips text with no "j"
+    /// in it, so the cases that matter are the ones that still have to work
+    /// after passing it — and the ones it correctly lets through.
+    @Test func theFastPathChangesNothing() {
+        // No "j" anywhere: skipped, and identical either way.
+        let untouched = "no trigger anywhere in this sentence at all"
+        #expect(SpokenEmoji.glyphs(in: untouched) == untouched)
+        // A "j" from an ordinary word, no trigger: falls through to the full
+        // walk, which declines it.
+        #expect(SpokenEmoji.glyphs(in: "just a jar of jam") == "just a jar of jam")
+        // "emojify" carries the "j" and the substring, so the pre-check passes
+        // it; the word-boundary rule is what correctly declines it.
+        #expect(SpokenEmoji.glyphs(in: "fire emojify") == "fire emojify")
+        // Upper case has to survive the byte fold, or a shouted trigger is lost.
+        #expect(SpokenEmoji.glyphs(in: "Fire EMOJI now") == "🔥 now")
     }
 }

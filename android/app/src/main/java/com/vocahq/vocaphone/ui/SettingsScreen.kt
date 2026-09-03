@@ -451,10 +451,10 @@ fun SettingsScreen(
                         title = "Spoken emoji",
                         detail = "Say the emoji and then the word \u201Cemoji\u201D: " +
                             "\u201CI\u2019m so sad crying emoji\u201D becomes " +
-                            "\u201CI\u2019m so sad \uD83D\uDE2D\u201D. The same names the " +
-                            "keyboard suggests while you type work here. " +
-                            "\u201CEmoji\u201D on its own is left alone, so " +
-                            "\u201Csend me the emoji\u201D is still typed as you said it.",
+                            "\u201CI\u2019m so sad 😭\u201D. The same names the keyboard " +
+                            "suggests while you type work here. \u201CEmoji\u201D on its " +
+                            "own is left alone, so \u201Csend me the emoji\u201D is still " +
+                            "typed as you said it.",
                         checked = settings.spokenEmoji,
                         onCheckedChange = onSpokenEmoji,
                     )

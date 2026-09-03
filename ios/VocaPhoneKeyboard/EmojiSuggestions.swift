@@ -30,7 +30,7 @@ enum EmojiSuggestions {
         EmojiTable.glyph(forKey: word.lowercased())
     }
 
-    static let triggers: [String: String] = EmojiTable.triggers
+    static var triggers: [String: String] { EmojiTable.triggers }
 
     static func parse(_ text: String) -> [String: String] { EmojiTable.parse(text) }
 }

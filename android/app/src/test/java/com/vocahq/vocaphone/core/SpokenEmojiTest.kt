@@ -41,6 +41,20 @@ class SpokenEmojiTest {
     }
 
     /**
+     * The spoken forms added to `tools/emoji-suggestion-overrides.tsv` when
+     * this shipped. The generated names cover most of the catalog, but these
+     * are how people say them out loud, and without them the table answered
+     * with the words instead of the glyph.
+     */
+    @Test
+    fun `spoken phrasings resolve`() {
+        assertEquals("😍", SpokenEmoji.glyphsIn("heart eyes emoji"))
+        assertEquals("🙏", SpokenEmoji.glyphsIn("praying hands emoji"))
+        assertEquals("😂", SpokenEmoji.glyphsIn("tears of joy emoji"))
+        assertEquals("✅", SpokenEmoji.glyphsIn("check mark emoji"))
+    }
+
+    /**
      * The longest phrase wins. "loudly crying" and "crying" are both keys, and
      * stopping at the first match would leave the word "loudly" behind.
      */
@@ -134,5 +148,25 @@ class SpokenEmojiTest {
         assertTrue(EmojiTable.widestKeyLength > 0)
         assertEquals("😭", EmojiTable.triggers["loudlycrying"])
         assertNull(EmojiTable.triggers["emoji"])
+    }
+
+    /**
+     * The single-character pre-check must be invisible. It skips text with no
+     * "j" in it, so the cases that matter are the ones that still have to work
+     * after passing it — and the ones it correctly lets through.
+     */
+    @Test
+    fun `the fast path changes nothing`() {
+        // No "j" anywhere: skipped, and identical either way.
+        val untouched = "no trigger anywhere in this sentence at all"
+        assertEquals(untouched, SpokenEmoji.glyphsIn(untouched))
+        // A "j" from an ordinary word, no trigger: falls through to the full
+        // walk, which declines it.
+        assertEquals("just a jar of jam", SpokenEmoji.glyphsIn("just a jar of jam"))
+        // "emojify" carries the "j" and the substring, so the pre-check passes
+        // it; the word-boundary rule is what correctly declines it.
+        assertEquals("fire emojify", SpokenEmoji.glyphsIn("fire emojify"))
+        // Upper case has to survive the fold, or a shouted trigger is lost.
+        assertEquals("🔥 now", SpokenEmoji.glyphsIn("Fire EMOJI now"))
     }
 }
