@@ -40,6 +40,33 @@ struct SpokenEmojiTests {
         #expect(SpokenEmoji.glyphs(in: "loudly crying emoji") == "😭")
     }
 
+    /// Three emoji dictated in a row: the pauses arrive as commas, and
+    /// substituting each phrase in place would leave them stranded between the
+    /// glyphs. A run of emoji is a run, not a list.
+    @Test func punctuationBetweenTwoGlyphsCollapses() {
+        #expect(
+            SpokenEmoji.glyphs(in: "Crying emoji, crying emoji, crying emoji.")
+                == "😭 😭 😭."
+        )
+        // A longer pause is written down as a full stop, and "😭. 😭." is no
+        // more something a person types than "😭, 😭".
+        #expect(SpokenEmoji.glyphs(in: "Crying emoji. Fire emoji.") == "😭 🔥.")
+        // Already a plain space: nothing to collapse, nothing changed.
+        #expect(SpokenEmoji.glyphs(in: "crying emoji crying emoji") == "😭 😭")
+    }
+
+    /// The collapse must not reach past the run. Punctuation that belongs to
+    /// the sentence around the emoji stays exactly where the styler put it.
+    @Test func punctuationOutsideTheRunIsUntouched() {
+        #expect(SpokenEmoji.glyphs(in: "fire emoji, then home") == "🔥, then home")
+        #expect(
+            SpokenEmoji.glyphs(in: "I'm sad crying emoji, but fire emoji, then home")
+                == "I'm sad 😭, but 🔥, then home"
+        )
+        // Words between two glyphs are not punctuation, so nothing collapses.
+        #expect(SpokenEmoji.glyphs(in: "crying emoji and fire emoji") == "😭 and 🔥")
+    }
+
     /// A trigger with nothing it recognizes in front of it is left exactly as
     /// spoken. This is the case the feature is judged on: it must never guess.
     @Test func anUnmatchedTriggerIsLeftAlone() {

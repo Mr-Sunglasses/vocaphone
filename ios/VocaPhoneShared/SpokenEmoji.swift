@@ -78,21 +78,47 @@ enum SpokenEmoji {
 
         var result = ""
         var copied = 0
+        var previousWasGlyph = false
         for index in words.indices {
             guard triggerWords.contains(string.substring(with: words[index].range).lowercased())
             else { continue }
             guard let match = descriptor(before: index, in: words, text: string),
                   match.start.location >= copied
             else { continue }
-            result += string.substring(with: NSRange(
+            let between = string.substring(with: NSRange(
                 location: copied, length: match.start.location - copied
             ))
+            result += previousWasGlyph ? separating(between) : between
             result += match.glyph
             copied = words[index].range.upperBound
+            previousWasGlyph = true
         }
         guard copied > 0 else { return text }
         result += string.substring(from: copied)
         return spans.restore(result)
+    }
+
+    /// What to put between two glyphs this stage produced, given the text that
+    /// was between their phrases.
+    ///
+    /// Somebody dictating three emoji in a row pauses between them, and a
+    /// speech model writes a pause down as a comma: "crying emoji, crying
+    /// emoji, crying emoji" is what the transcript says, and substituting each
+    /// phrase in place leaves "😭, 😭, 😭". Nobody punctuates a run of emoji —
+    /// they are written "😭 😭 😭" — so when nothing but marks and space
+    /// separates two of them, that collapses to a single space.
+    ///
+    /// Deliberately narrow. It applies only between two glyphs this call just
+    /// inserted, never to punctuation anywhere else in the transcript: a comma
+    /// after the last emoji still belongs to the sentence that continues past
+    /// it, and "fire emoji, then home" keeps its comma. A terminator counts as
+    /// well as a separator, because a longer pause is written down as a full
+    /// stop and "😭. 😭." is no more something a person types than "😭, 😭".
+    private static func separating(_ between: String) -> String {
+        guard !between.isEmpty,
+              between.allSatisfy({ $0.isWhitespace || SentencePunctuation.universalMarks.contains($0) })
+        else { return between }
+        return " "
     }
 
     /// Walks backwards from the trigger, growing a candidate key one word at a

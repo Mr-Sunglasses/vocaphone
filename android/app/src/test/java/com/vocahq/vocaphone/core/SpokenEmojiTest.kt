@@ -64,6 +64,39 @@ class SpokenEmojiTest {
     }
 
     /**
+     * Three emoji dictated in a row: the pauses arrive as commas, and
+     * substituting each phrase in place would leave them stranded between the
+     * glyphs. A run of emoji is a run, not a list.
+     */
+    @Test
+    fun `punctuation between two glyphs collapses`() {
+        assertEquals(
+            "😭 😭 😭.",
+            SpokenEmoji.glyphsIn("Crying emoji, crying emoji, crying emoji."),
+        )
+        // A longer pause is written down as a full stop, and "😭. 😭." is no
+        // more something a person types than "😭, 😭".
+        assertEquals("😭 🔥.", SpokenEmoji.glyphsIn("Crying emoji. Fire emoji."))
+        // Already a plain space: nothing to collapse, nothing changed.
+        assertEquals("😭 😭", SpokenEmoji.glyphsIn("crying emoji crying emoji"))
+    }
+
+    /**
+     * The collapse must not reach past the run. Punctuation that belongs to the
+     * sentence around the emoji stays exactly where the styler put it.
+     */
+    @Test
+    fun `punctuation outside the run is untouched`() {
+        assertEquals("🔥, then home", SpokenEmoji.glyphsIn("fire emoji, then home"))
+        assertEquals(
+            "I'm sad 😭, but 🔥, then home",
+            SpokenEmoji.glyphsIn("I'm sad crying emoji, but fire emoji, then home"),
+        )
+        // Words between two glyphs are not punctuation, so nothing collapses.
+        assertEquals("😭 and 🔥", SpokenEmoji.glyphsIn("crying emoji and fire emoji"))
+    }
+
+    /**
      * A trigger with nothing it recognizes in front of it is left exactly as
      * spoken. This is the case the feature is judged on: it must never guess.
      */

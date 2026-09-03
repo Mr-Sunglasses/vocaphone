@@ -77,13 +77,16 @@ object SpokenEmoji {
 
         val result = StringBuilder()
         var copied = 0
+        var previousWasGlyph = false
         for (index in words.indices) {
             if (words[index].value.lowercase() !in TRIGGER_WORDS) continue
             val match = descriptorBefore(index, words, masked) ?: continue
             if (match.start < copied) continue
-            result.append(masked, copied, match.start)
+            val between = masked.substring(copied, match.start)
+            result.append(if (previousWasGlyph) separating(between) else between)
             result.append(match.glyph)
             copied = words[index].range.last + 1
+            previousWasGlyph = true
         }
         if (copied == 0) return text
         result.append(masked, copied, masked.length)
@@ -91,6 +94,32 @@ object SpokenEmoji {
     }
 
     private class Descriptor(val glyph: String, val start: Int)
+
+    /**
+     * What to put between two glyphs this stage produced, given the text that
+     * was between their phrases.
+     *
+     * Somebody dictating three emoji in a row pauses between them, and a speech
+     * model writes a pause down as a comma: "crying emoji, crying emoji, crying
+     * emoji" is what the transcript says, and substituting each phrase in place
+     * leaves "😭, 😭, 😭". Nobody punctuates a run of emoji — they are written
+     * "😭 😭 😭" — so when nothing but marks and space separates two of them,
+     * that collapses to a single space.
+     *
+     * Deliberately narrow. It applies only between two glyphs this call just
+     * inserted, never to punctuation anywhere else in the transcript: a comma
+     * after the last emoji still belongs to the sentence that continues past
+     * it, and "fire emoji, then home" keeps its comma. A terminator counts as
+     * well as a separator, because a longer pause is written down as a full
+     * stop and "😭. 😭." is no more something a person types than "😭, 😭".
+     */
+    private fun separating(between: String): String {
+        if (between.isEmpty()) return between
+        val onlyMarks = between.all {
+            it.isWhitespace() || it in SentencePunctuation.UNIVERSAL_MARKS
+        }
+        return if (onlyMarks) " " else between
+    }
 
     /**
      * Walks backwards from the trigger, growing a candidate key one word at a
