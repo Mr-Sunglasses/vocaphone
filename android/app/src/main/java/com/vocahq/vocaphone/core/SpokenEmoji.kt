@@ -185,8 +185,19 @@ object SpokenEmoji {
     }
 
     /**
-     * Letters only, so a placeholder left by [ProtectedSpans] — which is digits
-     * between two private-use characters — is invisible to the walk.
+     * Letters and digits: "100 emoji" is 💯, and a speech model writes someone
+     * saying "hundred" as "100" about as often as it writes the word.
+     *
+     * Digits are why the lookbehind is here. A placeholder left by
+     * [ProtectedSpans] is its index between two private-use characters, so
+     * allowing digits makes the index itself look like a word — and a masked
+     * price or URL would start offering its own index as a descriptor. The
+     * lookbehind stops a word beginning immediately after the opening
+     * character.
+     *
+     * A multi-digit index can still be entered one character in, and that is
+     * harmless: the closing character sits between it and whatever follows, so
+     * the joiner test above ends the phrase before the walk can use it.
      */
-    private val wordPattern = Regex("[A-Za-z]+(?:['’][A-Za-z]+)*")
+    private val wordPattern = Regex("(?<!\uE000)[A-Za-z0-9]+(?:['’][A-Za-z0-9]+)*")
 }

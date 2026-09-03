@@ -617,7 +617,12 @@ struct DictationSettingsView: View {
                     "“Emoji” on its own is left alone, so “send me the emoji” is "
                         + "still typed as you said it."
                 )
-                Text("English only, and never applied to the Raw writing style.")
+                Text(
+                    "The emoji names are English. They still work in a transcript "
+                        + "in any other language — say the English name and the rest "
+                        + "of your sentence is untouched — but only by that name. "
+                        + "Never applied to the Raw writing style."
+                )
             }
         }
     }

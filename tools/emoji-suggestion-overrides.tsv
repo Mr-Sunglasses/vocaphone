@@ -321,3 +321,10 @@ winkingface	😉
 thumbsupsign	👍
 thumbsdownsign	👎
 openhands	👐
+
+# Numbers. The only two digits in this file, and the reason the loader accepts
+# them: a speech model writes someone saying "hundred" as "100" about as often
+# as it writes the word, and "a hundred" strands its article on the walk the
+# way "one hundred" did.
+100	💯
+ahundred	💯

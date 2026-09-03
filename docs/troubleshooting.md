@@ -324,8 +324,12 @@ a missing one are both fixed by hand:
   "loudly" followed by one.
 - Every flag is in the list, so a country name immediately before the trigger
   converts — "africa emoji" is 🇿🇦.
-- It is English only. Transcripts in other languages pass through untouched, and
-  it never runs for the Raw writing style.
+- The names are English, and only the names. A transcript in another language is
+  otherwise untouched, so "मैं बहुत उदास हूँ crying emoji" becomes "मैं बहुत उदास
+  हूँ 😭" — but "रोता हुआ emoji" stays as words, because that descriptor is not in
+  the list. It never runs for the Raw writing style.
+- Numbers count as names where Unicode gives one: "100 emoji" and "a hundred
+  emoji" are both 💯.
 
 The setting applies to dictated text on this device, whichever transcription
 source produced it, including a gateway. It does not change text typed on the

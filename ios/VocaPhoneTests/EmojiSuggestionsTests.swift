@@ -57,9 +57,13 @@ struct EmojiSuggestionsTests {
         for (word, glyph) in EmojiSuggestions.triggers {
             #expect(word == word.lowercased(), "\(word) is not lowercased")
             #expect(word.count >= EmojiSuggestions.minimumLength)
+            // Letters, or digits for the handful of curated keys that are a
+            // number — "100" is 💯, and `SpokenEmoji` needs it because a model
+            // writes a spoken "hundred" that way. The generator still refuses
+            // anything else, and its auto path is alphabetic regardless.
             // `allSatisfy` is rethrowing too, so it is answered here rather
             // than inside the macro.
-            let isPlainWord = word.allSatisfy(\.isLetter)
+            let isPlainWord = word.allSatisfy { $0.isLetter || $0.isNumber }
             #expect(isPlainWord, "\(word) is not a plain word")
             #expect(!glyph.isEmpty)
             // One grapheme, so the chip is a glyph rather than a phrase. Flags

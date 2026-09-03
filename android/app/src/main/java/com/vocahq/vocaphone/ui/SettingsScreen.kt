@@ -445,7 +445,9 @@ fun SettingsScreen(
                     // formatting, and the only one of the three on by default:
                     // the others apply to ordinary dictation, while this one
                     // cannot fire unless the user says "emoji" out loud.
-                    supporting = "English only. Never applied to the Raw writing style.",
+                    supporting = "The emoji names are English, and work by that name " +
+                        "in a transcript in any language. Never applied to the Raw " +
+                        "writing style.",
                 ) {
                     SettingToggle(
                         title = "Spoken emoji",

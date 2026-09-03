@@ -79,6 +79,53 @@ struct SpokenEmojiTests {
         #expect(SpokenEmoji.glyphs(in: "thumbs up sign emoji") == "👍")
     }
 
+    /// Digits are descriptors too. A speech model writes someone saying
+    /// "hundred" as "100" about as often as it writes the word, and 💯 is the
+    /// emoji people reach for most by number.
+    @Test func digitsCanBeDescriptors() {
+        #expect(SpokenEmoji.glyphs(in: "100 emoji") == "💯")
+        #expect(SpokenEmoji.glyphs(in: "a hundred emoji") == "💯")
+        #expect(SpokenEmoji.glyphs(in: "one hundred emoji") == "💯")
+        // A number that names no emoji is still just a number.
+        #expect(SpokenEmoji.glyphs(in: "I need 20 emoji") == "I need 20 emoji")
+        #expect(SpokenEmoji.glyphs(in: "3 crying emoji") == "3 😭")
+    }
+
+    /// Allowing digits made a masked span's own index look like a word, so a
+    /// price or a URL could have offered its placeholder as a descriptor. These
+    /// are the shapes ``ProtectedSpans`` masks; every one keeps its span and
+    /// still converts the descriptor that follows it.
+    @Test func maskedSpansAreNotDescriptors() {
+        #expect(SpokenEmoji.glyphs(in: "it cost 3.50 crying emoji") == "it cost 3.50 😭")
+        #expect(SpokenEmoji.glyphs(in: "meet at 10:30 crying emoji") == "meet at 10:30 😭")
+        #expect(SpokenEmoji.glyphs(in: "the 1st crying emoji") == "the 1st 😭")
+        #expect(
+            SpokenEmoji.glyphs(in: "read https://example.com/a fire emoji")
+                == "read https://example.com/a 🔥"
+        )
+    }
+
+    /// The descriptors are English, but nothing else has to be. A transcript in
+    /// another language keeps every word of its own and still converts an
+    /// English phrase the speaker chose to say — which is what code-switching
+    /// dictation actually sounds like.
+    @Test func onlyTheDescriptorHasToBeEnglish() {
+        #expect(
+            SpokenEmoji.glyphs(in: "मैं बहुत उदास हूँ crying emoji", language: "hi")
+                == "मैं बहुत उदास हूँ 😭"
+        )
+        #expect(
+            SpokenEmoji.glyphs(in: "とても悲しい crying emoji", language: "ja")
+                == "とても悲しい 😭"
+        )
+        // A descriptor in another language is not in the table, so the words
+        // stay exactly as spoken rather than being half-converted.
+        #expect(
+            SpokenEmoji.glyphs(in: "estoy muy triste llorando emoji", language: "es")
+                == "estoy muy triste llorando emoji"
+        )
+    }
+
     /// A trigger with nothing it recognizes in front of it is left exactly as
     /// spoken. This is the case the feature is judged on: it must never guess.
     @Test func anUnmatchedTriggerIsLeftAlone() {

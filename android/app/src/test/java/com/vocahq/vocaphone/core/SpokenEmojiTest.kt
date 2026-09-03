@@ -112,6 +112,59 @@ class SpokenEmojiTest {
     }
 
     /**
+     * Digits are descriptors too. A speech model writes someone saying
+     * "hundred" as "100" about as often as it writes the word, and 💯 is the
+     * emoji people reach for most by number.
+     */
+    @Test
+    fun `digits can be descriptors`() {
+        assertEquals("💯", SpokenEmoji.glyphsIn("100 emoji"))
+        assertEquals("💯", SpokenEmoji.glyphsIn("a hundred emoji"))
+        assertEquals("💯", SpokenEmoji.glyphsIn("one hundred emoji"))
+        // A number that names no emoji is still just a number.
+        assertEquals("I need 20 emoji", SpokenEmoji.glyphsIn("I need 20 emoji"))
+        assertEquals("3 😭", SpokenEmoji.glyphsIn("3 crying emoji"))
+    }
+
+    /**
+     * Allowing digits made a masked span's own index look like a word, so a
+     * price or a URL could have offered its placeholder as a descriptor. These
+     * are the shapes [ProtectedSpans] masks; every one keeps its span and still
+     * converts the descriptor that follows it.
+     */
+    @Test
+    fun `masked spans are not descriptors`() {
+        assertEquals("it cost 3.50 😭", SpokenEmoji.glyphsIn("it cost 3.50 crying emoji"))
+        assertEquals("meet at 10:30 😭", SpokenEmoji.glyphsIn("meet at 10:30 crying emoji"))
+        assertEquals("the 1st 😭", SpokenEmoji.glyphsIn("the 1st crying emoji"))
+        assertEquals(
+            "read https://example.com/a 🔥",
+            SpokenEmoji.glyphsIn("read https://example.com/a fire emoji"),
+        )
+    }
+
+    /**
+     * The descriptors are English, but nothing else has to be. A transcript in
+     * another language keeps every word of its own and still converts an
+     * English phrase the speaker chose to say — which is what code-switching
+     * dictation actually sounds like.
+     */
+    @Test
+    fun `only the descriptor has to be english`() {
+        assertEquals(
+            "मैं बहुत उदास हूँ 😭",
+            SpokenEmoji.glyphsIn("मैं बहुत उदास हूँ crying emoji", "hi"),
+        )
+        assertEquals("とても悲しい 😭", SpokenEmoji.glyphsIn("とても悲しい crying emoji", "ja"))
+        // A descriptor in another language is not in the table, so the words
+        // stay exactly as spoken rather than being half-converted.
+        assertEquals(
+            "estoy muy triste llorando emoji",
+            SpokenEmoji.glyphsIn("estoy muy triste llorando emoji", "es"),
+        )
+    }
+
+    /**
      * A trigger with nothing it recognizes in front of it is left exactly as
      * spoken. This is the case the feature is judged on: it must never guess.
      */
