@@ -280,3 +280,51 @@ skiing	⛷️
 snowboarding	🏂
 breastfeeding	🤱
 trex	🦖
+
+# Spoken forms, for SpokenEmoji ("crying emoji" → 😭). Keys here have their
+# spaces removed, exactly like the generated ones, so "heart eyes emoji" looks
+# up `hearteyes`. Most of these are unreachable by typing — nobody types
+# "hearteyes" — so they cost the strip nothing and are the phrasings people
+# actually say out loud. Measured against the shipped table, these were the
+# common ones it answered with the words instead of the glyph.
+hearteyes	😍
+tearsofjoy	😂
+laughingcrying	😂
+eyeroll	🙄
+smileyface	🙂
+smilingface	🙂
+prayinghands	🙏
+raisedhands	🙌
+checkmark	✅
+crossmark	❌
+mindblown	🤯
+blowingakiss	😘
+sobbing	😭
+smirk	😏
+rage	😡
+grimace	😬
+
+# Phrases where the walk would otherwise resolve a shorter suffix and leave the
+# rest of what was said stranded in front of the glyph — "face with tears of
+# joy emoji" became "face with 😂", which is worse than not converting at all.
+# Adding the whole phrase lets the longest-match rule do its job. The last few
+# are the plain "<feeling> face" forms people say but Unicode does not name.
+onehundred	💯
+facewithtearsofjoy	😂
+rollingonthefloorlaughing	🤣
+cryingface	😢
+sadface	😢
+happyface	😊
+angryface	😠
+grinningface	😀
+winkingface	😉
+thumbsupsign	👍
+thumbsdownsign	👎
+openhands	👐
+
+# Numbers. The only two digits in this file, and the reason the loader accepts
+# them: a speech model writes someone saying "hundred" as "100" about as often
+# as it writes the word, and "a hundred" strands its article on the walk the
+# way "one hundred" did.
+100	💯
+ahundred	💯

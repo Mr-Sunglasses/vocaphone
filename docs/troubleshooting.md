@@ -305,6 +305,37 @@ cautious, because a wrong conversion has to be found and undone by hand:
 The setting applies to dictated text on this device, whichever transcription
 source produced it, and does not change text typed on the keyboard.
 
+## I said "emoji" and got the word, or an emoji I did not ask for
+
+**Spoken emoji** (Settings → Dictation) replaces a descriptor followed by the
+word "emoji" with the glyph: "I'm so sad crying emoji" becomes "I'm so sad 😭".
+It is deliberately cautious in both directions, because a wrong substitution and
+a missing one are both fixed by hand:
+
+- The descriptor has to be a name the keyboard already knows, which is the same
+  list its typing strip suggests from. "crying", "fire", "thumbs up" and
+  "loudly crying" all work; an invented description does not.
+- Nothing but a space or a hyphen may sit between the descriptor and the word
+  "emoji". "I was crying, emoji" keeps both words, because the comma means they
+  are in different clauses.
+- "Emoji" with nothing recognized in front of it is never touched, so "send me
+  the emoji" is typed as you said it.
+- The longest name wins: "loudly crying emoji" is one 😭 rather than the word
+  "loudly" followed by one.
+- Every flag is in the list, so a country name immediately before the trigger
+  converts — "africa emoji" is 🇿🇦.
+- The names are English, and only the names. A transcript in another language is
+  otherwise untouched, so "मैं बहुत उदास हूँ crying emoji" becomes "मैं बहुत उदास
+  हूँ 😭" — but "रोता हुआ emoji" stays as words, because that descriptor is not in
+  the list. It never runs for the Raw writing style.
+- Numbers count as names where Unicode gives one: "100 emoji" and "a hundred
+  emoji" are both 💯.
+
+The setting applies to dictated text on this device, whichever transcription
+source produced it, including a gateway. It does not change text typed on the
+keyboard. Turn it off in Settings → Dictation → Emoji if you dictate the word
+often enough that the substitution is a nuisance.
+
 ## Transcript did not insert
 
 Return to the same target field and tap Insert. If the keyboard context changed,

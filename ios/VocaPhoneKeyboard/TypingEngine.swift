@@ -137,8 +137,10 @@ final class TypingEngine {
         Task.detached(priority: .utility) {
             let loaded = TypingWordList.load(from: Bundle(for: TypingEngine.self))
             // Parse the suggestion table off the main actor too. It is small,
-            // but the first keystroke is the wrong moment to notice.
-            _ = EmojiSuggestions.triggers
+            // but the first keystroke is the wrong moment to notice — and the
+            // strip is no longer its only reader, so this warms what dictation
+            // needs from it as well.
+            EmojiTable.warmUp()
             await MainActor.run { [weak self] in
                 self?.wordList = loaded
                 self?.onWordListLoaded?(loaded)

@@ -17,68 +17,20 @@ import Foundation
 ///
 /// Exact whole words only. A prefix match would put an emoji on the strip
 /// while the user is still two letters into a different word.
+///
+/// The table itself is ``EmojiTable``, in `VocaPhoneShared`, because
+/// ``SpokenEmoji`` reads it too and runs in the app target. Only the loading
+/// moved; what stays here is the strip's own policy about the table.
 enum EmojiSuggestions {
     /// The shortest word worth matching. Two letters are mostly initials,
     /// particles and typos.
-    static let minimumLength = 2
+    static let minimumLength = EmojiTable.minimumLength
 
     static func glyph(for word: String) -> String? {
-        let key = word.lowercased()
-        guard key.count >= minimumLength else { return nil }
-        return triggers[key]
+        EmojiTable.glyph(forKey: word.lowercased())
     }
 
-    static let triggers: [String: String] = load()
+    static var triggers: [String: String] { EmojiTable.triggers }
 
-    static func parse(_ text: String) -> [String: String] {
-        var table: [String: String] = [:]
-        table.reserveCapacity(4_000)
-        for line in text.split(whereSeparator: \.isNewline) {
-            if line.isEmpty || line.first == "#" { continue }
-            let parts = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
-            guard parts.count == 2 else { continue }
-            let word = parts[0].lowercased()
-            let glyph = String(parts[1])
-            guard !word.isEmpty, !glyph.isEmpty, table[word] == nil else { continue }
-            table[word] = glyph
-        }
-        return table
-    }
-
-    private static func load() -> [String: String] {
-        for url in candidateURLs() {
-            if let text = try? String(contentsOf: url, encoding: .utf8) {
-                let parsed = parse(text)
-                if !parsed.isEmpty { return parsed }
-            }
-        }
-        return [:]
-    }
-
-    private static func candidateURLs() -> [URL] {
-        var urls: [URL] = []
-        let bundles = [Bundle(for: EmojiSuggestionsAnchor.self), .main]
-        for bundle in bundles {
-            if let url = bundle.url(forResource: "suggestions", withExtension: "tsv") {
-                urls.append(url)
-            }
-            if let url = bundle.url(forResource: "emoji/suggestions", withExtension: "tsv") {
-                urls.append(url)
-            }
-        }
-        // Unit tests compile this file into a bundle that does not embed the
-        // shared keyboard assets. The repository copy is the same file the
-        // keyboard ships, and `#filePath` is how `EmojiCatalogTests` finds it.
-        urls.append(
-            URL(fileURLWithPath: #filePath)
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .deletingLastPathComponent()
-                .appendingPathComponent("assets/keyboard/emoji/suggestions.tsv")
-        )
-        return urls
-    }
+    static func parse(_ text: String) -> [String: String] { EmojiTable.parse(text) }
 }
-
-/// `Bundle(for:)` needs a class. The enum above is not one.
-private final class EmojiSuggestionsAnchor: NSObject {}

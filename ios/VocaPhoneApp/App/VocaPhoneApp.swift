@@ -75,6 +75,12 @@ struct VocaPhoneApp: App {
                     // the first path update has to have landed by the time that
                     // card decides whether to warn about a 670 MB download.
                     NetworkConditions.shared.start()
+                    // Off the main thread, because parsing 3,477 rows is not
+                    // worth a frame at launch — and off the first transcript,
+                    // which is where the cost sat otherwise. The keyboard needs
+                    // no equivalent: its typing strip reads the same table
+                    // long before anyone dictates.
+                    Task.detached(priority: .utility) { EmojiTable.warmUp() }
                 }
                 .onChange(of: scenePhase) { _, phase in
                     KeyboardPreferences.containingAppIsForeground = phase == .active

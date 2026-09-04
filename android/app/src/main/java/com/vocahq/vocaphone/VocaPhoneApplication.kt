@@ -5,6 +5,7 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import androidx.room.Room
 import com.vocahq.vocaphone.audio.DictationTonePlayer
+import com.vocahq.vocaphone.core.EmojiTable
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.data.ProcessExitReporter
@@ -136,6 +137,11 @@ class VocaPhoneApplication : Application() {
         // is explained in the log the user pastes, not only after they manage
         // to reproduce it with a cable attached.
         container.reportProcessExits()
+        // Read here rather than in the input method service: the typing strip
+        // is not the only reader any more. `SpokenEmoji` needs the same table
+        // wherever a transcript is finished, which includes the app's own
+        // recordings, in a process the keyboard may never have started in.
+        runCatching { EmojiTable.load(assets) }
     }
 
     override fun onTrimMemory(level: Int) {

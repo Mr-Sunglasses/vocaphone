@@ -323,6 +323,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setNumbersAsDigits(enabled: Boolean) =
         viewModelScope.launch { container.settings.setNumbersAsDigits(enabled) }
 
+    fun setSpokenEmoji(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setSpokenEmoji(enabled) }
+
     fun setDictationTone(tone: DictationTone) {
         _tonePreviewListening.value = false
         viewModelScope.launch { container.settings.setDictationTone(tone) }
