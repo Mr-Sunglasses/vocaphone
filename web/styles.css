@@ -2911,6 +2911,11 @@ svg {
   background: #24523f;
 }
 
+.guide-callout .gateway-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
 .guide-callout + .guide-intro {
   margin-top: 90px;
   margin-bottom: 0;

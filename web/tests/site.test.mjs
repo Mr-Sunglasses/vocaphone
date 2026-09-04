@@ -68,6 +68,15 @@ test("VocaGateway is presented as an explicit optional path", () => {
   assert.match(html, /trusted LAN, an encrypted private\s+network, or HTTPS/i);
   assert.match(html, /href="https:\/\/vocagateway\.vocahq\.com"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocagateway"/);
+  assert.match(
+    html,
+    /self-host\s+<a href="https:\/\/vocagateway\.vocahq\.com">VocaGateway<\/a>/,
+  );
+  assert.match(html, /<a href="https:\/\/vocagateway\.vocahq\.com">VocaGateway<\/a>/);
+  assert.doesNotMatch(
+    html,
+    /<a href="https:\/\/github\.com\/VocaHQ\/vocagateway">VocaGateway<\/a>/,
+  );
   assert.doesNotMatch(html, /no gateway\. no catch/i);
   assert.doesNotMatch(html, />no gateway needed</i);
 });
@@ -119,10 +128,11 @@ test("production metadata is complete", () => {
     /property="og:image:type" content="image\/png"/,
     /property="og:image:width" content="1200"/,
     /property="og:image:height" content="630"/,
+    /name="description"\s+content="Join the public TestFlight, or build from source, then install the keyboard and run speech-to-text on your iPhone\."/,
     /property="og:image:alt"\s+content="VocaPhone on Android and iPhone, on-device first with an optional self-hosted gateway"/,
     /property="og:description"\s+content="Join the public TestFlight, or build from source, then install the keyboard and run speech-to-text on your iPhone\."/,
     /name="twitter:title" content="Install VocaPhone on iPhone"/,
-    /name="twitter:description"\s+content="Join the public TestFlight, or build from source, then install the private keyboard and run speech-to-text on your iPhone\."/,
+    /name="twitter:description"\s+content="Join the public TestFlight, or build from source, then install the keyboard and run speech-to-text on your iPhone\."/,
     /name="twitter:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
     /name="twitter:image:alt"\s+content="VocaPhone on Android and iPhone, on-device first with an optional self-hosted gateway"/,
   ]) {
@@ -343,6 +353,21 @@ test("the iPhone gateway callout uses a dark-surface button", () => {
     css,
     /\.guide-callout \.button-secondary\s*\{[\s\S]*?background:\s*#17392d;/,
   );
+});
+
+test("iPhone and privacy Gateway CTAs point at the product site", () => {
+  for (const page of [iphoneHtml, privacyHtml]) {
+    assert.match(page, /href="https:\/\/vocagateway\.vocahq\.com"/);
+    assert.match(page, /href="https:\/\/github\.com\/VocaHQ\/vocagateway"/);
+    assert.match(
+      page,
+      /href="https:\/\/vocagateway\.vocahq\.com"[\s\S]*?explore VocaGateway/,
+    );
+    assert.match(
+      page,
+      /href="https:\/\/github\.com\/VocaHQ\/vocagateway"[\s\S]*?view on GitHub/,
+    );
+  }
 });
 
 test("visual treatment stays flat", () => {
