@@ -81,13 +81,10 @@ test("VocaGateway is presented as an explicit optional path", () => {
   assert.doesNotMatch(html, />no gateway needed</i);
 });
 
-test("hero presents a global supported-language mix", () => {
-  assert.match(html, /54 languages \+ automatic/i);
+test("language availability stays tied to the selected model", () => {
+  assert.match(html, /54 language choices/i);
   assert.match(html, /support depends on model/i);
   assert.match(html, /filtered to what your selected model can\s+actually transcribe/i);
-  for (const language of ["English", "Español", "Français", "日本語", "हिन्दी", "العربية"]) {
-    assert.match(html, new RegExp(`<b>${language}</b>`));
-  }
 });
 
 test("all local image assets exist", () => {
@@ -199,7 +196,7 @@ test("real Android product screenshots are present", () => {
     assert.ok(existsSync(join(siteRoot, screenshot)), `Missing ${screenshot}`);
   }
   assert.match(html, /real app, real phone/i);
-  assert.match(html, /These are unedited VocaPhone screens from Android/i);
+  assert.match(html, /real iPhone and Android screenshots/i);
 });
 
 test("availability and install paths are honest", () => {
@@ -408,4 +405,51 @@ test("hosted privacy page covers the Play listing facts", () => {
   assert.match(privacyHtml, /F-Droid[\s\S]{0,80}compil/i);
   assert.match(privacyHtml, /AGPL-3\.0/);
   assert.match(privacyHtml, /hello@vocahq\.com/);
+});
+
+test("iPhone screenshot assets preserve full capture dimensions", () => {
+  for (const name of ["keyboard", "dictate", "models", "handoff", "inserted"]) {
+    const bytes = readFileSync(join(siteRoot, `assets/screenshots/iphone-${name}.png`));
+    assert.deepEqual(pngDimensions(bytes), { width: 1179, height: 2556 });
+  }
+  assert.match(html, /real iPhone and Android screenshots/i);
+  assert.match(html, /iPhone beta captures · August 2026/);
+});
+
+test("walkthrough is labeled and does not autoplay or preload video", () => {
+  const video = html.match(/<video\b[\s\S]*?<\/video>/)?.[0];
+  assert.ok(video);
+  assert.match(video, /controls playsinline preload="none"/);
+  assert.doesNotMatch(video, /autoplay/);
+  assert.match(video, /kind="captions"/);
+  assert.match(html, /not live transcription speed/);
+  for (const asset of ["iphone-walkthrough.mp4", "iphone-walkthrough-poster.png", "iphone-walkthrough.vtt"]) {
+    assert.ok(existsSync(join(siteRoot, "assets/demo", asset)));
+  }
+  const movie = readFileSync(join(siteRoot, "assets/demo/iphone-walkthrough.mp4"));
+  assert.equal(movie.toString("ascii", 4, 8), "ftyp");
+  assert.ok(movie.length < 1024 * 1024, "15-second walkthrough should stay below 1 MiB");
+  assert.match(readFileSync(join(siteRoot, "assets/demo/iphone-walkthrough.vtt"), "utf8"), /^WEBVTT/);
+});
+
+test("iPhone guide leads with TestFlight and keeps source builds secondary", () => {
+  assert.ok(iphoneHtml.indexOf('id="iphone-quick-start"') < iphoneHtml.indexOf('id="steps-title"'));
+  assert.match(iphoneHtml, /No Mac or gateway is needed for the TestFlight route/);
+  assert.match(iphoneHtml, /Prefer to build from source/);
+});
+
+test("public pages resolve local links and media", () => {
+  for (const [route, content] of [["/", html], ["/iphone/", iphoneHtml], ["/iphone/device-setup/", deviceSetupHtml], ["/privacy/", privacyHtml]]) {
+    for (const [, value] of content.matchAll(/(?:src|href|poster)="([^"]+)"/g)) {
+      const url = new URL(value, `https://vocaphone.vocahq.com${route}`);
+      if (url.origin !== "https://vocaphone.vocahq.com") continue;
+      const pathname = decodeURIComponent(url.pathname);
+      const localPath = join(siteRoot, pathname, pathname.endsWith("/") ? "index.html" : "");
+      assert.ok(existsSync(localPath), `${route} references missing ${value}`);
+      if (url.hash && localPath.endsWith(".html")) {
+        const target = readFileSync(localPath, "utf8");
+        assert.ok(target.includes(`id="${url.hash.slice(1)}"`), `${route} references missing anchor ${value}`);
+      }
+    }
+  }
 });

@@ -88,25 +88,6 @@ if (reduceMotion.matches || !("IntersectionObserver" in window)) {
   }, 900);
 }
 
-const demoCopy = document.querySelector("[data-demo-copy]");
-const phrases = [
-  "yes — I’ll be there around six.",
-  "send the notes when you’re ready.",
-  "let’s move it to friday morning.",
-];
-
-if (demoCopy && !reduceMotion.matches) {
-  let phraseIndex = 0;
-  window.setInterval(() => {
-    phraseIndex = (phraseIndex + 1) % phrases.length;
-    demoCopy.classList.add("is-changing");
-    window.setTimeout(() => {
-      demoCopy.textContent = phrases[phraseIndex];
-      demoCopy.classList.remove("is-changing");
-    }, 180);
-  }, 4_600);
-}
-
 document.querySelectorAll(".faq-list details").forEach((detail) => {
   detail.addEventListener("toggle", () => {
     if (!detail.open) return;
@@ -115,3 +96,56 @@ document.querySelectorAll(".faq-list details").forEach((detail) => {
     });
   });
 });
+
+const demoControls = document.querySelector(".demo-controls");
+const platformControls = document.querySelector(".demo-platforms");
+if (demoControls && platformControls) {
+  let selectedPlatform = "iphone";
+  let selectedScreen = "keyboard";
+  const updateDemo = () => {
+    document.querySelectorAll("[data-demo-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.demoPanel !== selectedScreen
+        || panel.dataset.platform !== selectedPlatform;
+    });
+    demoControls.querySelectorAll("[data-demo-select]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.demoSelect === selectedScreen));
+    });
+    platformControls.querySelectorAll("[data-demo-platform]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.demoPlatform === selectedPlatform));
+    });
+  };
+  demoControls.hidden = false;
+  platformControls.hidden = false;
+  updateDemo();
+  demoControls.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-demo-select]");
+    if (button) {
+      selectedScreen = button.dataset.demoSelect;
+      updateDemo();
+    }
+  });
+  platformControls.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-demo-platform]");
+    if (button) {
+      selectedPlatform = button.dataset.demoPlatform;
+      updateDemo();
+    }
+  });
+}
+
+const screenshotDialog = document.querySelector(".screenshot-dialog");
+if (screenshotDialog && typeof screenshotDialog.showModal === "function") {
+  document.querySelectorAll("[data-enlarge]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const preview = screenshotDialog.querySelector("img");
+      preview.src = link.href;
+      preview.alt = link.querySelector("img").alt;
+      screenshotDialog.showModal();
+    });
+  });
+  screenshotDialog.addEventListener("click", (event) => {
+    if (event.target === screenshotDialog) screenshotDialog.close();
+  });
+}

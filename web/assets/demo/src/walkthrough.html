@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=1280" />
+  <title>VocaPhone screenshot walkthrough source</title>
+  <style>
+ *{box-sizing:border-box}body{margin:0;width:1280px;height:720px;background:#f4f1e8;color:#13261e;font-family:Arial,sans-serif}.brand{position:absolute;left:76px;top:58px;display:flex;align-items:center;gap:14px;font-size:23px;font-weight:bold}.brand img{width:38px;height:38px}.label{position:absolute;left:76px;top:187px;color:#0f6b57;letter-spacing:2px;font-size:16px;font-weight:bold}h1{position:absolute;left:72px;top:220px;margin:0;width:700px;font-size:66px;line-height:1.05;letter-spacing:-3px}p{position:absolute;left:76px;top:322px;font-size:24px;line-height:1.6;white-space:pre-line}.foot{position:absolute;left:76px;bottom:65px;color:#526158;font-size:16px;line-height:1.8}.screen{position:absolute;right:85px;top:36px;height:648px;width:auto;border:7px solid #25382d;border-radius:30px}.progress{position:absolute;left:76px;bottom:155px;display:flex;gap:10px}.progress span{width:110px;height:5px;background:#ced8cc}.progress .active{background:#0f6b57}
+ </style>
+</head>
+<body>
+  <div class="brand"><img src="../../vocaphone-logo.svg" alt="" />vocaphone</div>
+  <div class="label" id="step">01 / START IN VOCAPHONE</div>
+  <h1>Your app records.</h1>
+  <p id="description">Start dictation from the keyboard.
+VocaPhone opens to record your voice.</p>
+  <div class="progress" aria-hidden="true"><span class="active"></span><span></span><span></span></div>
+  <div class="foot">iPhone · Screenshot walkthrough<br />Real beta captures · August 2026 · Not live timing</div>
+  <img class="screen" src="../../screenshots/iphone-handoff.png" alt="iPhone recording screen" />
+  <script>
+    const slides = [
+      ["handoff", "01 / START IN VOCAPHONE", "Your app records.", "Start dictation from the keyboard.\nVocaPhone opens to record your voice.", "iPhone recording screen"],
+      ["keyboard", "02 / RETURN TO YOUR TEXT", "Keep speaking.", "Return to the app where you were typing.\nTap Finish on the VocaPhone keyboard.", "iPhone keyboard listening in Notes"],
+      ["inserted", "03 / CONTINUE WRITING", "Your words arrive.", "The finished transcript is inserted\nat your cursor. Keep typing from there.", "iPhone keyboard and inserted text in Notes"],
+    ];
+    const requested = Number(new URLSearchParams(location.search).get("step") || 1);
+    const index = [1, 2, 3].includes(requested) ? requested - 1 : 0;
+    const [asset, step, title, description, alt] = slides[index];
+    document.querySelector("#step").textContent = step;
+    document.querySelector("h1").textContent = title;
+    document.querySelector("#description").textContent = description;
+    document.querySelector(".screen").src = `../../screenshots/iphone-${asset}.png`;
+    document.querySelector(".screen").alt = alt;
+    document.querySelectorAll(".progress span").forEach((node, position) => node.classList.toggle("active", position === index));
+  </script>
+</body>
+</html>

@@ -65,29 +65,41 @@
         <div>
           <span class="section-tag">iPhone · public TestFlight</span>
           <h1>private voice typing,<br />on your iPhone.</h1>
-          <p>
-            VocaPhone needs iOS 17 or newer. The quickest way on is the public
-            <a href="https://testflight.apple.com/join/wd85wQ3W">TestFlight beta</a>,
-            which needs nothing but an iPhone. A TestFlight build expires after
-            90 days and the beta has a tester limit, so this guide covers the
-            other way in: a Mac with Xcode, an Apple signing team, and a
-            physical iPhone. There is no App Store release yet.
-          </p>
+          <p>Install the public TestFlight beta on an iPhone with iOS 17 or newer, download an on-device model, and enable the keyboard. No Mac or gateway is needed for the TestFlight route.</p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="https://testflight.apple.com/join/wd85wQ3W">Join the iPhone beta ↗</a>
+            <a class="button button-secondary" href="#iphone-quick-start">Set up your keyboard ↓</a>
+          </div>
+          <p class="guide-beta-note">There is no App Store release yet. A TestFlight build expires after 90 days; install newer beta builds through TestFlight.</p>
         </div>
-        <aside class="guide-summary" aria-label="Before you begin">
-          <span>before you begin</span>
-          <strong>iOS 17+</strong>
-          <strong>macOS + Xcode</strong>
-          <strong>Apple signing</strong>
-          <strong>physical iPhone</strong>
-        </aside>
+        <figure class="guide-product">
+          <a class="product-screen" href="../assets/screenshots/iphone-keyboard.png">
+            <img src="../assets/screenshots/iphone-keyboard.png" width="1179" height="2556" fetchpriority="high" alt="Real VocaPhone iPhone screenshot showing dictation controls in Notes" />
+            <span class="screen-zoom">View full screenshot ↗</span>
+          </a>
+          <figcaption>Real iPhone beta screenshot · August 2026</figcaption>
+        </figure>
+      </section>
+
+      <section class="guide-content iphone-quick-start" id="iphone-quick-start" aria-labelledby="quick-start-title">
+        <div class="guide-intro">
+          <span class="section-tag">start with TestFlight</span>
+          <h2 id="quick-start-title">Three steps to your first dictation.</h2>
+        </div>
+        <ol class="guide-steps">
+          <li class="guide-step"><span>01</span><div><h3>Install and open VocaPhone</h3><p>Join the public TestFlight beta above, install VocaPhone, and follow its setup. Choose and download an on-device speech-to-text model.</p></div></li>
+          <li class="guide-step"><span>02</span><div><h3>Enable your keyboard</h3><p>Allow microphone access in VocaPhone. In iOS Settings → General → Keyboard → Keyboards, add VocaPhone and enable Full Access so the app and keyboard can coordinate.</p></div></li>
+          <li class="guide-step"><span>03</span><div><h3>Speak in a text field</h3><p>Open Notes and select VocaPhone with the globe key. Start dictation, return to Notes while the app records, and tap Finish on the keyboard. Your transcript appears at the cursor.</p><a class="text-link" href="/#walkthrough">Watch the iPhone screenshot walkthrough →</a></div></li>
+        </ol>
+        <p>Full Access coordinates with the containing app. The keyboard itself cannot use the microphone. The gateway is optional.</p>
       </section>
 
       <section class="guide-content" aria-labelledby="steps-title">
         <div class="guide-intro">
-          <span class="section-tag">the short path</span>
-          <h2 id="steps-title">install, choose a model, dictate.</h2>
+          <span class="section-tag">for developers</span>
+          <h2 id="steps-title">Prefer to build from source?</h2>
           <p>
+            This route needs a Mac, Xcode, Apple signing, and a physical iPhone.
             The gateway is optional. Choose and download an on-device model during
             setup if you want speech-to-text to stay entirely on the iPhone.
           </p>
@@ -99,7 +111,7 @@
             <div>
               <h3>Get the source</h3>
               <p>Clone the repository and fetch the native Sherpa ONNX runtimes.</p>
-              <pre><code>git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
+              <pre tabindex="0"><code>git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
 cd vocaphone
 just ios fetch</code></pre>
             </div>

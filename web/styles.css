@@ -4394,3 +4394,438 @@ svg {
     transform: none;
   }
 }
+
+/* Real product photography leads the landing page. */
+.product-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.8fr);
+  align-items: center;
+  gap: 70px;
+  min-height: 880px;
+  padding: 130px max(30px, calc((100vw - 1160px) / 2)) 90px;
+}
+
+.product-hero .hero-decor {
+  display: none;
+}
+.product-hero .hero-copy {
+  align-items: flex-start;
+  padding: 0;
+  text-align: left;
+}
+.product-hero h1 {
+  font-size: clamp(4rem, 7.8vw, 7.8rem);
+}
+.product-hero .hero-lede {
+  max-width: 550px;
+  margin-top: 30px;
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  line-height: 1.15;
+}
+.product-hero .hero-actions {
+  justify-content: flex-start;
+}
+.product-hero .hero-note {
+  line-height: 1.8;
+}
+.hero-product {
+  position: relative;
+  z-index: 2;
+  width: min(100%, 290px);
+  margin: 0 auto;
+}
+.product-screen {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  padding: 7px;
+  background: #1d2925;
+  border: 1px solid #52665c;
+  border-radius: 30px;
+  box-shadow: 0 22px 45px rgb(24 48 37 / 14%);
+}
+.product-screen img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 23px;
+}
+.screen-zoom {
+  position: absolute;
+  right: 17px;
+  bottom: 19px;
+  padding: 8px 12px;
+  color: white;
+  background: #163e31;
+  border-radius: 20px;
+  font-size: 11px;
+}
+.hero-product figcaption {
+  margin-top: 20px;
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+.hero-product .status-dot {
+  display: inline-block;
+  margin-right: 5px;
+}
+.app-demo {
+  display: grid;
+  grid-template-columns: 0.85fr 1.4fr;
+  align-items: center;
+  gap: 65px;
+  max-width: 1220px;
+  padding: 110px 30px;
+  margin: auto;
+  scroll-margin-top: 70px;
+}
+.demo-intro h2 {
+  margin: 22px 0;
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 4.7vw, 4.5rem);
+  line-height: 1.04;
+  letter-spacing: -0.06em;
+}
+.demo-intro > p {
+  color: var(--muted);
+  line-height: 1.8;
+}
+.demo-intro .demo-platform-note {
+  margin-top: 26px;
+  font-size: 13px;
+}
+.demo-platform-note a {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.demo-explorer {
+  padding: 26px;
+  background: #e3e9df;
+  border: 1px solid #c5d0c3;
+  border-radius: 24px;
+}
+.demo-controls {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 28px;
+}
+.demo-controls button {
+  flex: 1;
+  min-height: 46px;
+  padding: 8px;
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.demo-controls button[aria-pressed="true"] {
+  color: white;
+  background: var(--brand);
+}
+.demo-controls button span {
+  margin-right: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.demo-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.8fr);
+  align-items: center;
+  gap: 26px;
+  margin: 0;
+}
+.demo-panel + .demo-panel {
+  margin-top: 24px;
+}
+.js .demo-panel {
+  margin-top: 0;
+}
+.demo-panel h3 {
+  margin: 15px 0;
+  font-family: var(--font-display);
+  font-size: 27px;
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+}
+.demo-panel p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.75;
+}
+.demo-panel[hidden],
+.demo-controls[hidden] {
+  display: none;
+}
+.screenshot-dialog {
+  max-width: min(95vw, 650px);
+  max-height: 94dvh;
+  padding: 16px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+.screenshot-dialog::backdrop {
+  background: rgb(12 28 21 / 80%);
+}
+.screenshot-dialog form {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.screenshot-dialog button {
+  min-height: 44px;
+  padding: 8px 18px;
+  color: white;
+  background: var(--brand);
+  border: 0;
+  border-radius: 24px;
+  cursor: pointer;
+  font: inherit;
+}
+.screenshot-dialog img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 78dvh;
+  margin: auto;
+}
+body:has(.screenshot-dialog[open]) {
+  overflow: hidden;
+}
+@media (max-width: 1000px) {
+  .product-hero {
+    gap: 35px;
+  }
+  .app-demo {
+    gap: 30px;
+    grid-template-columns: 0.8fr 1.2fr;
+  }
+  .demo-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .demo-panel .product-screen {
+    width: 220px;
+    max-width: 100%;
+    margin: auto;
+  }
+}
+@media (max-width: 640px) {
+  .product-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 38px;
+    min-height: 0;
+    padding: 110px 22px 70px;
+  }
+  .product-hero .hero-copy {
+    align-items: center;
+    text-align: center;
+  }
+  .product-hero h1 {
+    font-size: clamp(3.4rem, 17vw, 6rem);
+  }
+  .product-hero .hero-actions {
+    justify-content: center;
+  }
+  .product-hero .hero-lede {
+    margin-top: 24px;
+  }
+  .hero-product {
+    width: 250px;
+    max-width: 100%;
+  }
+  .app-demo {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 70px 20px;
+  }
+  .demo-explorer {
+    padding: 18px;
+  }
+  .demo-controls button {
+    font-size: 12px;
+  }
+  .demo-panel figcaption {
+    padding: 6px;
+  }
+}
+
+.demo-platforms {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #c5d0c3;
+}
+
+.demo-platforms[hidden] {
+  display: none;
+}
+
+.demo-platforms button {
+  flex: 1;
+  min-height: 44px;
+  color: var(--brand);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.demo-platforms button[aria-pressed="true"] {
+  background: var(--paper);
+  border-color: #c5d0c3;
+}
+
+/* Platform screenshots share a frame, with the captured UI left intact. */
+.product-hero {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 48px;
+  min-height: 820px;
+}
+.hero-product-pair {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 18px;
+}
+.hero-product-pair .hero-product {
+  width: 100%;
+}
+.hero-product-pair .hero-product:last-child {
+  margin-top: 55px;
+}
+.hero-product-pair .product-screen {
+  padding: 5px;
+  border-radius: 24px;
+}
+.hero-product-pair img {
+  border-radius: 18px;
+}
+.real-iphone-frame {
+  overflow: hidden;
+  padding: 7px;
+  background: #212121;
+}
+.real-iphone-frame > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 28px;
+}
+.walkthrough-section {
+  max-width: 1160px;
+  margin: 0 auto 90px;
+  padding: 55px 30px;
+}
+.walkthrough-heading {
+  max-width: 720px;
+  margin-bottom: 30px;
+}
+.walkthrough-heading h2 {
+  margin: 22px 0;
+  font-family: var(--font-display);
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  line-height: 1.04;
+  letter-spacing: -0.06em;
+}
+.walkthrough-heading p {
+  color: var(--muted);
+  line-height: 1.8;
+}
+.walkthrough-section video {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: #14231c;
+}
+.walkthrough-description {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+.walkthrough-description summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-weight: 700;
+}
+.walkthrough-description li {
+  margin: 12px 0;
+}
+.walkthrough-description p {
+  color: var(--muted);
+  font-size: 14px;
+}
+.guide-product {
+  width: min(100%, 280px);
+  margin: 0 auto;
+}
+.guide-product figcaption {
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.guide-hero .guide-beta-note {
+  font-size: 13px;
+  margin-top: 22px;
+}
+.iphone-quick-start {
+  padding-top: 50px;
+  padding-bottom: 30px;
+}
+@media (max-width: 920px) {
+  .product-hero {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .product-hero .hero-copy {
+    align-items: center;
+    text-align: center;
+  }
+  .product-hero .hero-actions {
+    justify-content: center;
+  }
+  .hero-product-pair {
+    max-width: 480px;
+    width: 100%;
+    margin: 0 auto;
+  }
+}
+@media (max-width: 640px) {
+  .hero-product-pair {
+    gap: 12px;
+  }
+  .hero-product-pair .hero-product:last-child {
+    margin-top: 30px;
+  }
+  .hero-product-pair figcaption {
+    font-size: 10px;
+  }
+  .hero-product-pair .product-screen {
+    padding: 4px;
+    border-radius: 20px;
+  }
+  .hero-product-pair img {
+    border-radius: 15px;
+  }
+  .walkthrough-section {
+    padding: 25px 20px;
+    margin-bottom: 30px;
+  }
+}
+
+.iphone-quick-start .text-link {
+  color: var(--brand);
+}
