@@ -92,7 +92,9 @@ is never letterboxed or cropped. Any new screenshot needs the matching
 
 Motion — scroll reveals and their stagger, the reading-progress rail, the nav
 scrollspy, the hero counters, the pointer tilt on the hero devices, the device
-float, the explorer cross-fade, and the drifting props in the closing panel —
+float, the explorer cross-fade, the looping mic/waveform/route card that
+fills the right half of the "why" heading, and the drifting props in the
+closing panel —
 is decorative and is switched off by the `prefers-reduced-motion` block. The
 page must read the same with JavaScript off: every explorer figure shows, the
 counters already carry their final values in the markup, and the "view full

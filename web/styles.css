@@ -5585,3 +5585,242 @@ body:has(.screenshot-dialog[open]) {
   width: min(100%, 300px);
   margin-top: 30px;
 }
+
+/* --- "your phone. or your own hardware." ---------------------------------
+   The heading is capped at 760px inside a 1220px shell, so the right half of
+   this section was bare paper. It now carries the thing the heading is about:
+   a voice going in, words coming out, and the two places the model can run.
+   Every part of it loops, and none of it carries information the copy does
+   not already state, so the reduced-motion stop leaves a readable still. */
+#why .section-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 760px) minmax(0, 1fr);
+  column-gap: 60px;
+  align-items: center;
+  max-width: 100%;
+  margin-bottom: 60px;
+}
+
+#why .section-heading .section-tag,
+#why .section-heading h2,
+#why .section-heading > p {
+  grid-column: 1;
+}
+
+#why .section-heading .section-tag {
+  justify-self: start;
+}
+
+.story-shell {
+  padding-top: 96px;
+}
+
+.why-visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 26px;
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  justify-self: end;
+  width: min(100%, 400px);
+  padding: 38px 28px 32px;
+  background: var(--paper-bright);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-soft);
+}
+
+.why-orb {
+  position: relative;
+  display: grid;
+  width: 74px;
+  height: 74px;
+  place-items: center;
+  color: white;
+  background: var(--brand);
+  border-radius: 50%;
+}
+
+.why-orb svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.why-ring {
+  position: absolute;
+  inset: 0;
+  border: 1px solid #8fb5a3;
+  border-radius: 50%;
+  opacity: 0.5;
+  animation: why-ripple 3s ease-out infinite;
+}
+
+.why-ring:nth-child(2) {
+  animation-delay: 1s;
+}
+
+.why-ring:nth-child(3) {
+  animation-delay: 2s;
+}
+
+.why-scope {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 52px;
+}
+
+.why-scope i {
+  display: block;
+  width: 4px;
+  height: 52px;
+  background: var(--brand);
+  border-radius: 99px;
+  opacity: 0.72;
+  transform: scaleY(var(--h, 1));
+  animation: why-scope-bar 1.35s ease-in-out infinite alternate;
+  animation-delay: calc(var(--i, 0) * -75ms);
+}
+
+.why-transcript {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 22px;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* No fill mode: when reduced motion collapses the duration, the element
+   falls back to its own width and the sentence simply reads in full. */
+.why-transcript span {
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  animation: why-type 6s steps(29) infinite;
+}
+
+.why-transcript b {
+  display: block;
+  width: 2px;
+  height: 15px;
+  background: var(--brand);
+  animation: blink 1s steps(1) infinite;
+}
+
+.why-route {
+  display: grid;
+  grid-template-columns: auto minmax(38px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+
+.why-route-step {
+  padding: 8px 13px;
+  color: var(--brand-dark);
+  background: var(--mint-soft);
+  border: 1px solid #a8cbba;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: why-route-on 6s steps(1) infinite;
+}
+
+/* On-device is the resting state, so it is the one that is lit before any
+   animation runs and the one the second chip is offset half a cycle from. */
+.why-route-step:first-child {
+  color: white;
+  background: var(--brand);
+  border-color: var(--brand-dark);
+}
+
+.why-route-step:last-child {
+  animation-delay: -3s;
+}
+
+.why-route-link {
+  position: relative;
+  height: 1px;
+  background: var(--line-dark);
+}
+
+.why-route-link i {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  display: block;
+  width: 7px;
+  height: 7px;
+  background: var(--brand);
+  border-radius: 50%;
+  animation: why-route-dot 6s ease-in-out infinite;
+}
+
+@keyframes why-ripple {
+  0% { opacity: 0.5; transform: scale(1); }
+  100% { opacity: 0; transform: scale(2.5); }
+}
+
+@keyframes why-scope-bar {
+  from { transform: scaleY(0.1); }
+  to { transform: scaleY(var(--h, 1)); }
+}
+
+@keyframes why-type {
+  0% { width: 0; }
+  38%, 84% { width: 100%; }
+  100% { width: 0; }
+}
+
+@keyframes why-route-on {
+  0% { color: white; background: var(--brand); border-color: var(--brand-dark); }
+  50% { color: var(--brand-dark); background: var(--mint-soft); border-color: #a8cbba; }
+}
+
+@keyframes why-route-dot {
+  0%, 6% { left: 0; opacity: 0; }
+  14% { opacity: 1; }
+  44% { left: calc(100% - 7px); opacity: 1; }
+  50%, 56% { left: calc(100% - 7px); opacity: 0; }
+  64% { opacity: 1; }
+  94% { left: 0; opacity: 1; }
+  100% { left: 0; opacity: 0; }
+}
+
+@media (max-width: 1000px) {
+  #why .section-heading {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 10px;
+  }
+
+  #why .section-heading .why-visual {
+    margin-top: 34px;
+  }
+
+  .why-visual {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+    width: min(100%, 420px);
+  }
+}
