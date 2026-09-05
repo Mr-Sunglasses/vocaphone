@@ -442,9 +442,9 @@ fun SettingsScreen(
                 Section(
                     title = "Emoji",
                     // The third switch that changes words rather than
-                    // formatting, and the only one of the three on by default:
-                    // the others apply to ordinary dictation, while this one
-                    // cannot fire unless the user says "emoji" out loud.
+                    // formatting. Off by default, matching Write numbers as
+                    // digits: talking *about* an emoji should not rewrite the
+                    // sentence until the user opts in.
                     supporting = "The emoji names are English, and work by that name " +
                         "in a transcript in any language. Never applied to the Raw " +
                         "writing style.",
@@ -452,11 +452,11 @@ fun SettingsScreen(
                     SettingToggle(
                         title = "Spoken emoji",
                         detail = "Say the emoji and then the word \u201Cemoji\u201D: " +
-                            "\u201CI\u2019m so sad crying emoji\u201D becomes " +
-                            "\u201CI\u2019m so sad 😭\u201D. The same names the keyboard " +
-                            "suggests while you type work here. \u201CEmoji\u201D on its " +
-                            "own is left alone, so \u201Csend me the emoji\u201D is still " +
-                            "typed as you said it.",
+                            "\u201Ccrying emoji\u201D becomes 😭. The whole name has to " +
+                            "match — a partial suffix is left alone. The same names " +
+                            "the keyboard suggests while you type work here. " +
+                            "\u201CEmoji\u201D on its own is left alone, so " +
+                            "\u201Csend me the emoji\u201D is still typed as you said it.",
                         checked = settings.spokenEmoji,
                         onCheckedChange = onSpokenEmoji,
                     )

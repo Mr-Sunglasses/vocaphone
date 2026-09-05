@@ -23,8 +23,11 @@ import Foundation
 /// * Only a space or a hyphen joins a descriptor to its trigger. "I'm sad,
 ///   crying emoji" converts "crying"; "I'm sad, emoji" converts nothing,
 ///   because a comma ends the phrase rather than being read through.
-/// * The longest phrase wins, so "loudly crying emoji" is 😭 and not
-///   "loudly 😭".
+/// * The whole descriptor or nothing. A proper suffix of what was said is
+///   not enough: "smiling face with heart eyes emoji" must not become
+///   "smiling face with 😍". Either the contiguous span before the trigger
+///   is an exact table key (after the same with/and/of dropping the catalog
+///   generator uses), or the words stay as spoken.
 ///
 /// English only, which is what the settings copy says. `suggestions.tsv` is
 /// generated from the English CLDR annotations, so a Hindi or Japanese
@@ -35,6 +38,22 @@ enum SpokenEmoji {
     /// pluralize it; "emoji" is not itself a key in the table, so a trigger can
     /// never match itself.
     static let triggerWords: Set<String> = ["emoji", "emojis"]
+
+    /// Words the catalog generator drops when it concatenates a multi-word
+    /// Unicode or CLDR name into a strip key. Mirrored here so a spoken form
+    /// that still contains them ("smiling face with heart eyes") hits the same
+    /// key (`smilingfacehearteyes`) the table actually stores.
+    private static let nameStop: Set<String> = [
+        "with", "and", "of", "the", "a", "in", "on", "at", "to", "for", "or",
+    ]
+
+    /// Keys the typing strip may keep but this stage must not write.
+    ///
+    /// `korea` in suggestions.tsv is 🇰🇵 (DPRK). Someone saying "korea emoji"
+    /// almost never means that flag — they mean the peninsula, or South Korea.
+    /// Refuse the bare word on the spoken path only; `southkorea` and
+    /// `northkorea` still convert, and the strip is unchanged.
+    private static let spokenBlocklist: Set<String> = ["korea"]
 
     /// Replaces every `<descriptor> emoji` span with its glyph.
     ///
@@ -150,30 +169,57 @@ enum SpokenEmoji {
         return " "
     }
 
-    /// Walks backwards from the trigger, growing a candidate key one word at a
-    /// time and remembering the longest one the table knows.
+    /// The contiguous joiner-connected words immediately before the trigger,
+    /// converted only when that whole span is an exact table key.
     ///
-    /// The walk is bounded by the table's own widest key rather than by a word
-    /// count, because a key has had its spaces removed and cannot say how many
-    /// words built it. Growing past that length can only produce keys the table
-    /// does not contain.
+    /// Walks backwards while a space or hyphen joins, stopping at another
+    /// trigger word so "crying emoji fire emoji" still finds each descriptor
+    /// on its own. No suffix fallback: if only a proper suffix of the span is
+    /// a key, the whole phrase is left unchanged — that is what used to type
+    /// "smiling face with 😍" for "smiling face with heart eyes emoji".
+    ///
+    /// The catalog generator drops a small set of name-stop words (with, and,
+    /// of, …) when it builds keys, so "smiling face with heart eyes" is stored
+    /// as `smilingfacehearteyes`. Looking the span up both raw and with those
+    /// stops removed keeps spoken forms aligned with that table without going
+    /// back to longest-suffix matching. Leading stops stay in the transcript
+    /// ("and fire emoji" keeps "and").
     private static func descriptor(
         before trigger: Int,
         in words: [NSTextCheckingResult],
         text: NSString
     ) -> (glyph: String, start: NSRange)? {
-        var best: (glyph: String, start: NSRange)?
-        var key = ""
+        var parts: [(word: String, range: NSRange)] = []
+        var fullLength = 0
         var index = trigger - 1
         while index >= 0, isJoiner(gapAfter: index, in: words, text: text) {
-            key = text.substring(with: words[index].range).lowercased() + key
-            if key.count > EmojiTable.widestKeyLength { break }
-            if let glyph = EmojiTable.glyph(forKey: key) {
-                best = (glyph, words[index].range)
-            }
+            let raw = text.substring(with: words[index].range).lowercased()
+            if triggerWords.contains(raw) { break }
+            if fullLength + raw.count > EmojiTable.widestKeyLength { break }
+            parts.insert((raw, words[index].range), at: 0)
+            fullLength += raw.count
             index -= 1
         }
-        return best
+        guard !parts.isEmpty else { return nil }
+
+        let fullKey = parts.map(\.word).joined()
+        if let glyph = glyphForSpoken(fullKey) {
+            return (glyph, parts[0].range)
+        }
+
+        let significant = parts.filter { !nameStop.contains($0.word) }
+        guard !significant.isEmpty else { return nil }
+        let strippedKey = significant.map(\.word).joined()
+        guard strippedKey != fullKey else { return nil }
+        guard let glyph = glyphForSpoken(strippedKey) else { return nil }
+        return (glyph, significant[0].range)
+    }
+
+    /// Table lookup for the spoken path, with the few keys this stage must not
+    /// write even though the typing strip still offers them.
+    private static func glyphForSpoken(_ key: String) -> String? {
+        if spokenBlocklist.contains(key) { return nil }
+        return EmojiTable.glyph(forKey: key)
     }
 
     /// Whether the gap between this word and the next one is nothing but a

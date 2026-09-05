@@ -180,12 +180,12 @@ struct DictatedTranscriptTests {
     @Test func emojiHappensBeforeDigits() {
         #expect(
             DictatedTranscript.finished(
-                "that was hundred emoji",
+                "hundred emoji",
                 style: .casual,
                 repairSpeech: false,
                 numbersAsDigits: true,
                 spokenEmoji: true
-            ) == "That was 💯"
+            ) == "💯"
         )
     }
 
@@ -195,12 +195,12 @@ struct DictatedTranscriptTests {
     @Test func stylingHappensBeforeEmoji() {
         #expect(
             DictatedTranscript.finished(
-                "i'm so sad crying emoji",
+                "crying emoji",
                 style: .formal,
                 repairSpeech: false,
                 numbersAsDigits: false,
                 spokenEmoji: true
-            ) == "I'm so sad 😭"
+            ) == "😭"
         )
     }
 

@@ -520,12 +520,11 @@ enum KeyboardPreferences {
 
     /// Whether "crying emoji" becomes 😭.
     ///
-    /// On by default, unlike the two settings above it that also change words.
-    /// They apply to text the user dictated for its own sake, so turning them
-    /// on has to be a choice; this one is unreachable unless the user says the
-    /// word "emoji" out loud, which nobody does by accident.
+    /// Off by default, matching Write numbers as digits. Saying "emoji" out
+    /// loud is deliberate, but a default-on converter still rewrites the times
+    /// someone is talking *about* an emoji rather than asking for one. Opt in.
     static var spokenEmoji: Bool {
-        get { boolean(spokenEmojiKey, default: true) }
+        get { boolean(spokenEmojiKey, default: false) }
         set { defaults?.set(newValue, forKey: spokenEmojiKey) }
     }
 

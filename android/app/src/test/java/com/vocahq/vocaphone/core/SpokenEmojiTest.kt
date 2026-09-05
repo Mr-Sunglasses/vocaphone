@@ -15,7 +15,7 @@ import org.junit.Test
 class SpokenEmojiTest {
     @Test
     fun `a descriptor and the trigger become the glyph`() {
-        assertEquals("I'm so sad 😭", SpokenEmoji.glyphsIn("I'm so sad crying emoji"))
+        assertEquals("😭", SpokenEmoji.glyphsIn("crying emoji"))
     }
 
     /**
@@ -25,8 +25,8 @@ class SpokenEmojiTest {
     @Test
     fun `repeated triggers each convert`() {
         assertEquals(
-            "I'm so sad 😭 😭",
-            SpokenEmoji.glyphsIn("I'm so sad crying emoji crying emoji"),
+            "😭 😭",
+            SpokenEmoji.glyphsIn("crying emoji crying emoji"),
         )
     }
 
@@ -36,8 +36,26 @@ class SpokenEmojiTest {
      */
     @Test
     fun `multi-word descriptors resolve`() {
-        assertEquals("nice work 👍", SpokenEmoji.glyphsIn("nice work thumbs up emoji"))
+        assertEquals("👍", SpokenEmoji.glyphsIn("thumbs up emoji"))
         assertEquals("🤷", SpokenEmoji.glyphsIn("shrug emoji"))
+    }
+
+    /**
+     * Prose glued to the descriptor is not part of the name. The whole span
+     * before the trigger has to be the key; a leftover prefix means decline.
+     */
+    @Test
+    fun `prose before a descriptor is not consumed`() {
+        assertEquals(
+            "I'm so sad crying emoji",
+            SpokenEmoji.glyphsIn("I'm so sad crying emoji"),
+        )
+        assertEquals(
+            "nice work thumbs up emoji",
+            SpokenEmoji.glyphsIn("nice work thumbs up emoji"),
+        )
+        // A comma ends the phrase, so the descriptor stands alone.
+        assertEquals("I'm so sad, 😭", SpokenEmoji.glyphsIn("I'm so sad, crying emoji"))
     }
 
     /**
@@ -55,11 +73,12 @@ class SpokenEmojiTest {
     }
 
     /**
-     * The longest phrase wins. "loudly crying" and "crying" are both keys, and
-     * stopping at the first match would leave the word "loudly" behind.
+     * The whole multi-word name converts, not a short suffix of it.
+     * "loudly crying" and "crying" are both keys; taking only "crying" would
+     * leave "loudly" stranded in front of the glyph.
      */
     @Test
-    fun `the longest phrase wins`() {
+    fun `the full multi-word name converts`() {
         assertEquals("😭", SpokenEmoji.glyphsIn("loudly crying emoji"))
     }
 
@@ -74,10 +93,7 @@ class SpokenEmojiTest {
             "😭 😭 😭",
             SpokenEmoji.glyphsIn("Crying emoji, crying emoji, crying emoji."),
         )
-        // A longer pause is written down as a full stop, and "😭. 😭." is no
-        // more something a person types than "😭, 😭".
         assertEquals("😭 🔥", SpokenEmoji.glyphsIn("Crying emoji. Fire emoji."))
-        // Already a plain space: nothing to collapse, nothing changed.
         assertEquals("😭 😭", SpokenEmoji.glyphsIn("crying emoji crying emoji"))
     }
 
@@ -88,19 +104,25 @@ class SpokenEmojiTest {
     @Test
     fun `punctuation outside the run is untouched`() {
         assertEquals("🔥, then home", SpokenEmoji.glyphsIn("fire emoji, then home"))
+        // "but fire" is not a key, so the second phrase declines rather than
+        // taking the "fire" suffix and leaving "but" stranded.
         assertEquals(
-            "I'm sad 😭, but 🔥, then home",
-            SpokenEmoji.glyphsIn("I'm sad crying emoji, but fire emoji, then home"),
+            "I'm sad, 😭, but fire emoji, then home",
+            SpokenEmoji.glyphsIn("I'm sad, crying emoji, but fire emoji, then home"),
         )
-        // Words between two glyphs are not punctuation, so nothing collapses.
+        // A sentence break gives the second descriptor its own span.
+        assertEquals(
+            "I'm sad, 😭 🔥, then home",
+            SpokenEmoji.glyphsIn("I'm sad, crying emoji. Fire emoji, then home"),
+        )
+        // Leading name-stop words stay; "and" is not eaten into the second glyph.
         assertEquals("😭 and 🔥", SpokenEmoji.glyphsIn("crying emoji and fire emoji"))
     }
 
     /**
      * A partial match must never leave the rest of what was said in front of
-     * the glyph. "face with tears of joy emoji" resolving only its "joy" suffix
-     * would type "face with 😂", which is worse than not converting at all — so
-     * the whole phrase is a key and the longest-match rule takes it.
+     * the glyph. Exact multi-word keys convert fully; phrases that are not
+     * keys must not fall back to a proper suffix.
      */
     @Test
     fun `longer phrases do not strand their leading words`() {
@@ -109,6 +131,76 @@ class SpokenEmojiTest {
         assertEquals("🤣", SpokenEmoji.glyphsIn("rolling on the floor laughing emoji"))
         assertEquals("😢", SpokenEmoji.glyphsIn("crying face emoji"))
         assertEquals("👍", SpokenEmoji.glyphsIn("thumbs up sign emoji"))
+    }
+
+    /**
+     * Full-descriptor-or-decline: CLDR-style names that hit a key once
+     * name-stop words are dropped convert as a whole; near-miss phrases that
+     * only share a suffix with a key are left unchanged.
+     */
+    @Test
+    fun `cldr names convert fully or not at all`() {
+        assertEquals("😍", SpokenEmoji.glyphsIn("smiling face with heart eyes emoji"))
+        assertEquals("💩", SpokenEmoji.glyphsIn("pile of poo emoji"))
+        assertEquals("🙄", SpokenEmoji.glyphsIn("face with rolling eyes emoji"))
+        assertEquals("😎", SpokenEmoji.glyphsIn("smiling face with sunglasses emoji"))
+        assertEquals("❤️‍🔥", SpokenEmoji.glyphsIn("heart on fire emoji"))
+        assertEquals("💑", SpokenEmoji.glyphsIn("couple with heart emoji"))
+
+        val stranded = listOf(
+            "I love you emoji",
+            "see no evil emoji",
+            "person running emoji",
+        )
+        for (phrase in stranded) {
+            assertEquals(phrase, SpokenEmoji.glyphsIn(phrase))
+        }
+    }
+
+    /**
+     * Property-style: every multi-word key in the table, spoken with spaces
+     * between its letters-only runs and followed by "emoji", must convert to
+     * its glyph with nothing left in front. Single-token keys still convert.
+     */
+    @Test
+    fun `table keys convert with no leftover prefix`() {
+        var checked = 0
+        for ((key, glyph) in EmojiTable.triggers) {
+            if (key.length < EmojiTable.MINIMUM_LENGTH) continue
+            if (key == "korea") continue // spoken blocklist; covered below
+            // Re-space unknown concatenations by leaving the key as one word:
+            // that is still an exact span and must convert.
+            assertEquals(glyph, SpokenEmoji.glyphsIn("$key emoji"))
+            checked += 1
+            if (checked >= 200) break
+        }
+        assertTrue(checked >= 200)
+
+        // Known multi-word spoken forms from the overrides and CLDR joins.
+        val spaced = listOf(
+            "heart eyes" to "😍",
+            "loudly crying" to "😭",
+            "one hundred" to "💯",
+            "thumbs up" to "👍",
+            "face with tears of joy" to "😂",
+            "rolling on the floor laughing" to "🤣",
+        )
+        for ((phrase, glyph) in spaced) {
+            assertEquals(glyph, SpokenEmoji.glyphsIn("$phrase emoji"))
+        }
+    }
+
+    /**
+     * `korea` in the strip table is 🇰🇵. Spoken path refuses the bare word;
+     * southkorea / northkorea still convert.
+     */
+    @Test
+    fun `korea alone does not become the DPRK flag`() {
+        assertEquals("korea emoji", SpokenEmoji.glyphsIn("korea emoji"))
+        assertEquals("🇰🇷", SpokenEmoji.glyphsIn("southkorea emoji"))
+        assertEquals("🇰🇵", SpokenEmoji.glyphsIn("northkorea emoji"))
+        // Strip table is unchanged: the blocklist is spoken-only.
+        assertEquals("🇰🇵", EmojiTable.triggers["korea"])
     }
 
     /**
@@ -123,7 +215,9 @@ class SpokenEmojiTest {
         assertEquals("💯", SpokenEmoji.glyphsIn("one hundred emoji"))
         // A number that names no emoji is still just a number.
         assertEquals("I need 20 emoji", SpokenEmoji.glyphsIn("I need 20 emoji"))
-        assertEquals("3 😭", SpokenEmoji.glyphsIn("3 crying emoji"))
+        // A digit glued to the descriptor is leftover prefix: decline.
+        assertEquals("3 crying emoji", SpokenEmoji.glyphsIn("3 crying emoji"))
+        assertEquals("3, 😭", SpokenEmoji.glyphsIn("3, crying emoji"))
     }
 
     /**
@@ -156,8 +250,6 @@ class SpokenEmojiTest {
             SpokenEmoji.glyphsIn("मैं बहुत उदास हूँ crying emoji", "hi"),
         )
         assertEquals("とても悲しい 😭", SpokenEmoji.glyphsIn("とても悲しい crying emoji", "ja"))
-        // A descriptor in another language is not in the table, so the words
-        // stay exactly as spoken rather than being half-converted.
         assertEquals(
             "estoy muy triste llorando emoji",
             SpokenEmoji.glyphsIn("estoy muy triste llorando emoji", "es"),
@@ -172,13 +264,12 @@ class SpokenEmojiTest {
     fun `an unmatched trigger is left alone`() {
         assertEquals("Send me the emoji.", SpokenEmoji.glyphsIn("Send me the emoji."))
         assertEquals("emoji", SpokenEmoji.glyphsIn("emoji"))
-        // "emoji" is not itself a key, so a trigger cannot match its neighbour.
         assertEquals("emoji emoji", SpokenEmoji.glyphsIn("emoji emoji"))
     }
 
     @Test
     fun `the trigger may be pluralized`() {
-        assertEquals("add 🔥", SpokenEmoji.glyphsIn("add fire emojis"))
+        assertEquals("🔥", SpokenEmoji.glyphsIn("fire emojis"))
     }
 
     /**
@@ -188,7 +279,7 @@ class SpokenEmojiTest {
      */
     @Test
     fun `punctuation the styler attached survives`() {
-        assertEquals("That was fun 🎉!", SpokenEmoji.glyphsIn("That was fun party emoji!"))
+        assertEquals("🎉!", SpokenEmoji.glyphsIn("party emoji!"))
         assertEquals("🔥, then home", SpokenEmoji.glyphsIn("fire emoji, then home"))
         assertEquals("😭. That was rough.", SpokenEmoji.glyphsIn("Crying emoji. That was rough."))
     }
@@ -199,10 +290,8 @@ class SpokenEmojiTest {
      */
     @Test
     fun `a trailing terminator after a glyph goes`() {
-        assertEquals("I'm so sad 😭", SpokenEmoji.glyphsIn("I'm so sad crying emoji."))
+        assertEquals("I'm so sad, 😭", SpokenEmoji.glyphsIn("I'm so sad, crying emoji."))
         assertEquals("💯", SpokenEmoji.glyphsIn("Hundred emoji."))
-        // Only when the terminator is the whole tail — this one is ending a
-        // sentence the glyph merely started.
         assertEquals("😭 is how I feel.", SpokenEmoji.glyphsIn("Crying emoji is how I feel."))
     }
 
@@ -281,16 +370,10 @@ class SpokenEmojiTest {
      */
     @Test
     fun `the fast path changes nothing`() {
-        // No "j" anywhere: skipped, and identical either way.
         val untouched = "no trigger anywhere in this sentence at all"
         assertEquals(untouched, SpokenEmoji.glyphsIn(untouched))
-        // A "j" from an ordinary word, no trigger: falls through to the full
-        // walk, which declines it.
         assertEquals("just a jar of jam", SpokenEmoji.glyphsIn("just a jar of jam"))
-        // "emojify" carries the "j" and the substring, so the pre-check passes
-        // it; the word-boundary rule is what correctly declines it.
         assertEquals("fire emojify", SpokenEmoji.glyphsIn("fire emojify"))
-        // Upper case has to survive the fold, or a shouted trigger is lost.
         assertEquals("🔥 now", SpokenEmoji.glyphsIn("Fire EMOJI now"))
     }
 }

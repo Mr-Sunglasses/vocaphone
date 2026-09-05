@@ -207,12 +207,11 @@ data class VocaPhoneSettings(
     /**
      * Whether "crying emoji" becomes 😭.
      *
-     * On by default, unlike the two settings above that also change words.
-     * They apply to text the user dictated for its own sake, so turning them
-     * on has to be a choice; this one is unreachable unless the user says the
-     * word "emoji" out loud, which nobody does by accident.
+     * Off by default, matching Write numbers as digits. Saying "emoji" out
+     * loud is deliberate, but a default-on converter still rewrites the times
+     * someone is talking *about* an emoji rather than asking for one. Opt in.
      */
-    val spokenEmoji: Boolean = true,
+    val spokenEmoji: Boolean = false,
     val dictationTone: DictationTone = DictationTone.DEFAULT,
     val microphone: MicrophonePreference = MicrophonePreference.DEFAULT,
     val audioRetention: AudioRetention = AudioRetention.DEFAULT,
@@ -630,7 +629,7 @@ class SettingsRepository(private val context: Context) {
         syncWhisperDictionary = this[Keys.SYNC_WHISPER_DICTIONARY] ?: true,
         repairSpeech = this[Keys.REPAIR_SPEECH] ?: true,
         numbersAsDigits = this[Keys.NUMBERS_AS_DIGITS] ?: false,
-        spokenEmoji = this[Keys.SPOKEN_EMOJI] ?: true,
+        spokenEmoji = this[Keys.SPOKEN_EMOJI] ?: false,
         numberRowEnabled = this[Keys.NUMBER_ROW] ?: true,
         keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
         splitKeyboard = SplitKeyboard.fromStored(this[Keys.SPLIT_KEYBOARD]),

@@ -32,10 +32,13 @@ object EmojiTable {
     const val MINIMUM_LENGTH = 2
 
     /**
-     * Word → glyph. Production fills this from assets in [load], called once
-     * per process from `VocaPhoneApplication`; JVM tests that never call it
-     * pick up the same file by walking up to the repository root on first
-     * read, so the object's init does no I/O.
+     * Word → glyph. Production binds [AssetManager] from
+     * `VocaPhoneApplication` and warms the table off the main thread; the
+     * first read still loads synchronously from those assets if warm has not
+     * finished, so a transcript that finishes during startup never sees a
+     * permanently empty table. JVM tests that never bind assets pick up the
+     * same file by walking up to the repository root on first read, so the
+     * object's init does no I/O.
      */
     @Volatile
     private var table: Map<String, String> = emptyMap()
@@ -51,14 +54,30 @@ object EmojiTable {
     @Volatile
     private var discovered = false
 
+    /**
+     * Assets held so the first [triggers] read can finish the load if the
+     * async warm from `VocaPhoneApplication` is still in flight.
+     */
+    @Volatile
+    private var boundAssets: AssetManager? = null
+
     val triggers: Map<String, String>
         get() {
             val current = table
-            if (current.isNotEmpty() || discovered) return current
-            discovered = true
-            val found = discoverFromRepository()
-            if (found.isNotEmpty()) install(found)
-            return table
+            if (current.isNotEmpty()) return current
+            synchronized(this) {
+                if (table.isNotEmpty()) return table
+                val assets = boundAssets
+                if (assets != null) {
+                    runCatching { loadFromAssets(assets) }
+                    return table
+                }
+                if (discovered) return table
+                discovered = true
+                val found = discoverFromRepository()
+                if (found.isNotEmpty()) install(found)
+                return table
+            }
         }
 
     /**
@@ -104,6 +123,14 @@ object EmojiTable {
     }
 
     /**
+     * Remember the process [AssetManager] before the async warm starts, so a
+     * first read that races the warm can still open the shipped file.
+     */
+    fun bind(assets: AssetManager) {
+        boundAssets = assets
+    }
+
+    /**
      * The one place the shipped file is read.
      *
      * Called from `VocaPhoneApplication.onCreate`, which runs for every process
@@ -112,8 +139,19 @@ object EmojiTable {
      * wherever a transcript is finished, the app's own recordings included.
      * Loading it from the service alone left spoken emoji silently doing
      * nothing for anyone who dictated from the app.
+     *
+     * Idempotent under [synchronized]: the async warm and a synchronous first
+     * use of [triggers] can both arrive here; only the first parse installs.
      */
     fun load(assets: AssetManager) {
+        bind(assets)
+        synchronized(this) {
+            if (table.isNotEmpty()) return
+            loadFromAssets(assets)
+        }
+    }
+
+    private fun loadFromAssets(assets: AssetManager) {
         install(
             assets.open("emoji/suggestions.tsv").bufferedReader().use { reader ->
                 parse(reader.readText())

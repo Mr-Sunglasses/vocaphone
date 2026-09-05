@@ -392,7 +392,7 @@ struct DictationSettingsView: View {
     @AppStorage(
         KeyboardPreferences.spokenEmojiKey,
         store: KeyboardPreferences.defaults
-    ) private var spokenEmoji = true
+    ) private var spokenEmoji = false
     @AppStorage(
         KeyboardPreferences.repairSpeechKey,
         store: KeyboardPreferences.defaults
@@ -595,10 +595,10 @@ struct DictationSettingsView: View {
         }
     }
 
-    /// Saying "crying emoji" and getting 😭. The third switch that changes
-    /// words rather than formatting, and the only one of the three that is on
-    /// by default — the others apply to ordinary dictation, while this one
-    /// cannot fire unless the user says "emoji" out loud.
+    /// Saying "crying emoji" and getting 😭. Off by default: the third switch
+    /// that changes words rather than formatting, and like Write numbers as
+    /// digits it has to be turned on — talking *about* an emoji should not
+    /// rewrite the sentence until the user asks for that.
     private var spokenEmojiSection: some View {
         Section {
             Toggle("Spoken emoji", isOn: $spokenEmoji)
@@ -607,9 +607,10 @@ struct DictationSettingsView: View {
         } footer: {
             VStack(alignment: .leading, spacing: VocaMetrics.related) {
                 Text(
-                    "Say the emoji and then the word “emoji”: “I’m so sad crying "
-                        + "emoji” becomes “I’m so sad 😭”. The same names the "
-                        + "keyboard suggests while you type work here."
+                    "Say the emoji and then the word “emoji”: “crying emoji” "
+                        + "becomes 😭. The whole name has to match — a partial "
+                        + "suffix is left alone. The same names the keyboard "
+                        + "suggests while you type work here."
                 )
                 // The exception is the point: without it the feature would eat
                 // the word "emoji" out of ordinary sentences.

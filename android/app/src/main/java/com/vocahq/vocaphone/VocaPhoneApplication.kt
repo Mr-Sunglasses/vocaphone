@@ -141,7 +141,14 @@ class VocaPhoneApplication : Application() {
         // is not the only reader any more. `SpokenEmoji` needs the same table
         // wherever a transcript is finished, which includes the app's own
         // recordings, in a process the keyboard may never have started in.
-        runCatching { EmojiTable.load(assets) }
+        // Bind assets first so a transcript that finishes while the warm is
+        // still in flight can load synchronously from the same file rather
+        // than seeing a permanently empty table. Warm itself stays off the
+        // main thread via workScope (Dispatchers.Default).
+        EmojiTable.bind(assets)
+        container.workScope.launch {
+            runCatching { EmojiTable.load(assets) }
+        }
     }
 
     override fun onTrimMemory(level: Int) {

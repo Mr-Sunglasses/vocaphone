@@ -36,7 +36,7 @@ object DictatedTranscript {
         styledUpstream: Boolean = false,
         repairSpeech: Boolean,
         numbersAsDigits: Boolean = false,
-        spokenEmoji: Boolean = true,
+        spokenEmoji: Boolean = false,
         snippets: List<Snippet> = emptyList(),
     ): String {
         val cleaned = TranscriptSanitizer.clean(raw)

@@ -23,8 +23,11 @@ package com.vocahq.vocaphone.core
  * * Only a space or a hyphen joins a descriptor to its trigger. "I'm sad,
  *   crying emoji" converts "crying"; a comma ends the phrase rather than being
  *   read through.
- * * The longest phrase wins, so "loudly crying emoji" is 😭 and not
- *   "loudly 😭".
+ * * The whole descriptor or nothing. A proper suffix of what was said is
+ *   not enough: "smiling face with heart eyes emoji" must not become
+ *   "smiling face with 😍". Either the contiguous span before the trigger
+ *   is an exact table key (after the same with/and/of dropping the catalog
+ *   generator uses), or the words stay as spoken.
  *
  * English only, which is what the settings copy says. `suggestions.tsv` is
  * generated from the English CLDR annotations, so a Hindi or Japanese
@@ -41,6 +44,26 @@ object SpokenEmoji {
      * never match itself.
      */
     val TRIGGER_WORDS = setOf("emoji", "emojis")
+
+    /**
+     * Words the catalog generator drops when it concatenates a multi-word
+     * Unicode or CLDR name into a strip key. Mirrored here so a spoken form
+     * that still contains them ("smiling face with heart eyes") hits the same
+     * key (`smilingfacehearteyes`) the table actually stores.
+     */
+    private val NAME_STOP = setOf(
+        "with", "and", "of", "the", "a", "in", "on", "at", "to", "for", "or",
+    )
+
+    /**
+     * Keys the typing strip may keep but this stage must not write.
+     *
+     * `korea` in suggestions.tsv is 🇰🇵 (DPRK). Someone saying "korea emoji"
+     * almost never means that flag — they mean the peninsula, or South Korea.
+     * Refuse the bare word on the spoken path only; `southkorea` and
+     * `northkorea` still convert, and the strip is unchanged.
+     */
+    private val SPOKEN_BLOCKLIST = setOf("korea")
 
     /**
      * Replaces every `<descriptor> emoji` span with its glyph.
@@ -149,29 +172,60 @@ object SpokenEmoji {
     }
 
     /**
-     * Walks backwards from the trigger, growing a candidate key one word at a
-     * time and remembering the longest one the table knows.
+     * The contiguous joiner-connected words immediately before the trigger,
+     * converted only when that whole span is an exact table key.
      *
-     * The walk is bounded by the table's own widest key rather than by a word
-     * count, because a key has had its spaces removed and cannot say how many
-     * words built it. Growing past that length can only produce keys the table
-     * does not contain.
+     * Walks backwards while a space or hyphen joins, stopping at another
+     * trigger word so "crying emoji fire emoji" still finds each descriptor
+     * on its own. No suffix fallback: if only a proper suffix of the span is
+     * a key, the whole phrase is left unchanged — that is what used to type
+     * "smiling face with 😍" for "smiling face with heart eyes emoji".
+     *
+     * The catalog generator drops a small set of name-stop words (with, and,
+     * of, …) when it builds keys, so "smiling face with heart eyes" is stored
+     * as `smilingfacehearteyes`. Looking the span up both raw and with those
+     * stops removed keeps spoken forms aligned with that table without going
+     * back to longest-suffix matching. Leading stops stay in the transcript
+     * ("and fire emoji" keeps "and").
      */
     private fun descriptorBefore(
         trigger: Int,
         words: List<MatchResult>,
         text: String,
     ): Descriptor? {
-        var best: Descriptor? = null
-        var key = ""
+        val parts = ArrayList<Pair<String, Int>>()
+        var fullLength = 0
         var index = trigger - 1
         while (index >= 0 && isJoiner(index, words, text)) {
-            key = words[index].value.lowercase() + key
-            if (key.length > EmojiTable.widestKeyLength) break
-            EmojiTable.glyphForKey(key)?.let { best = Descriptor(it, words[index].range.first) }
+            val raw = words[index].value.lowercase()
+            if (raw in TRIGGER_WORDS) break
+            if (fullLength + raw.length > EmojiTable.widestKeyLength) break
+            parts.add(0, raw to words[index].range.first)
+            fullLength += raw.length
             index -= 1
         }
-        return best
+        if (parts.isEmpty()) return null
+
+        val fullKey = parts.joinToString("") { it.first }
+        glyphForSpoken(fullKey)?.let { return Descriptor(it, parts.first().second) }
+
+        val significant = parts.filter { it.first !in NAME_STOP }
+        if (significant.isEmpty()) return null
+        val strippedKey = significant.joinToString("") { it.first }
+        if (strippedKey == fullKey) return null
+        glyphForSpoken(strippedKey)?.let {
+            return Descriptor(it, significant.first().second)
+        }
+        return null
+    }
+
+    /**
+     * Table lookup for the spoken path, with the few keys this stage must not
+     * write even though the typing strip still offers them.
+     */
+    private fun glyphForSpoken(key: String): String? {
+        if (key in SPOKEN_BLOCKLIST) return null
+        return EmojiTable.glyphForKey(key)
     }
 
     /**

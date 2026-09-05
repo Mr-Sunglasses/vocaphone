@@ -4,23 +4,35 @@ import Testing
 /// exists because the obvious implementation gets it wrong.
 struct SpokenEmojiTests {
     @Test func aDescriptorAndTheTriggerBecomeTheGlyph() {
-        #expect(SpokenEmoji.glyphs(in: "I'm so sad crying emoji") == "I'm so sad 😭")
+        #expect(SpokenEmoji.glyphs(in: "crying emoji") == "😭")
     }
 
     /// The worked example from the plan, and the case that proves repeats need
     /// no special handling: two triggers are two independent matches.
     @Test func repeatedTriggersEachConvert() {
-        #expect(
-            SpokenEmoji.glyphs(in: "I'm so sad crying emoji crying emoji")
-                == "I'm so sad 😭 😭"
-        )
+        #expect(SpokenEmoji.glyphs(in: "crying emoji crying emoji") == "😭 😭")
     }
 
     /// Keys are the descriptor with its spaces removed, so a multi-word
     /// descriptor resolves without the table having to store the spacing.
     @Test func multiWordDescriptorsResolve() {
-        #expect(SpokenEmoji.glyphs(in: "nice work thumbs up emoji") == "nice work 👍")
+        #expect(SpokenEmoji.glyphs(in: "thumbs up emoji") == "👍")
         #expect(SpokenEmoji.glyphs(in: "shrug emoji") == "🤷")
+    }
+
+    /// Prose glued to the descriptor is not part of the name. The whole span
+    /// before the trigger has to be the key; a leftover prefix means decline.
+    @Test func proseBeforeADescriptorIsNotConsumed() {
+        #expect(
+            SpokenEmoji.glyphs(in: "I'm so sad crying emoji")
+                == "I'm so sad crying emoji"
+        )
+        #expect(
+            SpokenEmoji.glyphs(in: "nice work thumbs up emoji")
+                == "nice work thumbs up emoji"
+        )
+        // A comma ends the phrase, so the descriptor stands alone.
+        #expect(SpokenEmoji.glyphs(in: "I'm so sad, crying emoji") == "I'm so sad, 😭")
     }
 
     /// The spoken forms added to `tools/emoji-suggestion-overrides.tsv` when
@@ -34,9 +46,10 @@ struct SpokenEmojiTests {
         #expect(SpokenEmoji.glyphs(in: "check mark emoji") == "✅")
     }
 
-    /// The longest phrase wins. "loudly crying" and "crying" are both keys, and
-    /// stopping at the first match would leave the word "loudly" behind.
-    @Test func theLongestPhraseWins() {
+    /// The whole multi-word name converts, not a short suffix of it.
+    /// "loudly crying" and "crying" are both keys; taking only "crying" would
+    /// leave "loudly" stranded in front of the glyph.
+    @Test func theFullMultiWordNameConverts() {
         #expect(SpokenEmoji.glyphs(in: "loudly crying emoji") == "😭")
     }
 
@@ -48,10 +61,7 @@ struct SpokenEmojiTests {
             SpokenEmoji.glyphs(in: "Crying emoji, crying emoji, crying emoji.")
                 == "😭 😭 😭"
         )
-        // A longer pause is written down as a full stop, and "😭. 😭." is no
-        // more something a person types than "😭, 😭".
         #expect(SpokenEmoji.glyphs(in: "Crying emoji. Fire emoji.") == "😭 🔥")
-        // Already a plain space: nothing to collapse, nothing changed.
         #expect(SpokenEmoji.glyphs(in: "crying emoji crying emoji") == "😭 😭")
     }
 
@@ -59,24 +69,87 @@ struct SpokenEmojiTests {
     /// the sentence around the emoji stays exactly where the styler put it.
     @Test func punctuationOutsideTheRunIsUntouched() {
         #expect(SpokenEmoji.glyphs(in: "fire emoji, then home") == "🔥, then home")
+        // "but fire" is not a key, so the second phrase declines rather than
+        // taking the "fire" suffix and leaving "but" stranded.
         #expect(
-            SpokenEmoji.glyphs(in: "I'm sad crying emoji, but fire emoji, then home")
-                == "I'm sad 😭, but 🔥, then home"
+            SpokenEmoji.glyphs(in: "I'm sad, crying emoji, but fire emoji, then home")
+                == "I'm sad, 😭, but fire emoji, then home"
         )
-        // Words between two glyphs are not punctuation, so nothing collapses.
+        // A sentence break gives the second descriptor its own span.
+        #expect(
+            SpokenEmoji.glyphs(in: "I'm sad, crying emoji. Fire emoji, then home")
+                == "I'm sad, 😭 🔥, then home"
+        )
+        // Leading name-stop words stay; "and" is not eaten into the second glyph.
         #expect(SpokenEmoji.glyphs(in: "crying emoji and fire emoji") == "😭 and 🔥")
     }
 
     /// A partial match must never leave the rest of what was said in front of
-    /// the glyph. "face with tears of joy emoji" resolving only its "joy"
-    /// suffix would type "face with 😂", which is worse than not converting at
-    /// all — so the whole phrase is a key and the longest-match rule takes it.
+    /// the glyph. Exact multi-word keys convert fully; phrases that are not
+    /// keys must not fall back to a proper suffix.
     @Test func longerPhrasesDoNotStrandTheirLeadingWords() {
         #expect(SpokenEmoji.glyphs(in: "one hundred emoji") == "💯")
         #expect(SpokenEmoji.glyphs(in: "face with tears of joy emoji") == "😂")
         #expect(SpokenEmoji.glyphs(in: "rolling on the floor laughing emoji") == "🤣")
         #expect(SpokenEmoji.glyphs(in: "crying face emoji") == "😢")
         #expect(SpokenEmoji.glyphs(in: "thumbs up sign emoji") == "👍")
+    }
+
+    /// Full-descriptor-or-decline: CLDR-style names that hit a key once
+    /// name-stop words are dropped convert as a whole; near-miss phrases that
+    /// only share a suffix with a key are left unchanged.
+    @Test func cldrNamesConvertFullyOrNotAtAll() {
+        #expect(SpokenEmoji.glyphs(in: "smiling face with heart eyes emoji") == "😍")
+        #expect(SpokenEmoji.glyphs(in: "pile of poo emoji") == "💩")
+        #expect(SpokenEmoji.glyphs(in: "face with rolling eyes emoji") == "🙄")
+        #expect(SpokenEmoji.glyphs(in: "smiling face with sunglasses emoji") == "😎")
+        #expect(SpokenEmoji.glyphs(in: "heart on fire emoji") == "❤️‍🔥")
+        #expect(SpokenEmoji.glyphs(in: "couple with heart emoji") == "💑")
+
+        for phrase in [
+            "I love you emoji",
+            "see no evil emoji",
+            "person running emoji",
+        ] {
+            #expect(SpokenEmoji.glyphs(in: phrase) == phrase)
+        }
+    }
+
+    /// Property-style: table keys spoken as themselves before "emoji" convert
+    /// with no leftover prefix. Spaced multi-word forms from overrides and
+    /// CLDR joins do the same.
+    @Test func tableKeysConvertWithNoLeftoverPrefix() {
+        var checked = 0
+        for (key, glyph) in EmojiTable.triggers {
+            if key.count < EmojiTable.minimumLength { continue }
+            if key == "korea" { continue } // spoken blocklist; covered below
+            #expect(SpokenEmoji.glyphs(in: "\(key) emoji") == glyph)
+            checked += 1
+            if checked >= 200 { break }
+        }
+        #expect(checked >= 200)
+
+        let spaced: [(String, String)] = [
+            ("heart eyes", "😍"),
+            ("loudly crying", "😭"),
+            ("one hundred", "💯"),
+            ("thumbs up", "👍"),
+            ("face with tears of joy", "😂"),
+            ("rolling on the floor laughing", "🤣"),
+        ]
+        for (phrase, glyph) in spaced {
+            #expect(SpokenEmoji.glyphs(in: "\(phrase) emoji") == glyph)
+        }
+    }
+
+    /// `korea` in the strip table is 🇰🇵. Spoken path refuses the bare word;
+    /// southkorea / northkorea still convert.
+    @Test func koreaAloneDoesNotBecomeTheDPRKFlag() {
+        #expect(SpokenEmoji.glyphs(in: "korea emoji") == "korea emoji")
+        #expect(SpokenEmoji.glyphs(in: "southkorea emoji") == "🇰🇷")
+        #expect(SpokenEmoji.glyphs(in: "northkorea emoji") == "🇰🇵")
+        // Strip table is unchanged: the blocklist is spoken-only.
+        #expect(EmojiTable.triggers["korea"] == "🇰🇵")
     }
 
     /// Digits are descriptors too. A speech model writes someone saying
@@ -86,9 +159,9 @@ struct SpokenEmojiTests {
         #expect(SpokenEmoji.glyphs(in: "100 emoji") == "💯")
         #expect(SpokenEmoji.glyphs(in: "a hundred emoji") == "💯")
         #expect(SpokenEmoji.glyphs(in: "one hundred emoji") == "💯")
-        // A number that names no emoji is still just a number.
         #expect(SpokenEmoji.glyphs(in: "I need 20 emoji") == "I need 20 emoji")
-        #expect(SpokenEmoji.glyphs(in: "3 crying emoji") == "3 😭")
+        #expect(SpokenEmoji.glyphs(in: "3 crying emoji") == "3 crying emoji")
+        #expect(SpokenEmoji.glyphs(in: "3, crying emoji") == "3, 😭")
     }
 
     /// Allowing digits made a masked span's own index look like a word, so a
@@ -118,8 +191,6 @@ struct SpokenEmojiTests {
             SpokenEmoji.glyphs(in: "とても悲しい crying emoji", language: "ja")
                 == "とても悲しい 😭"
         )
-        // A descriptor in another language is not in the table, so the words
-        // stay exactly as spoken rather than being half-converted.
         #expect(
             SpokenEmoji.glyphs(in: "estoy muy triste llorando emoji", language: "es")
                 == "estoy muy triste llorando emoji"
@@ -131,19 +202,18 @@ struct SpokenEmojiTests {
     @Test func anUnmatchedTriggerIsLeftAlone() {
         #expect(SpokenEmoji.glyphs(in: "Send me the emoji.") == "Send me the emoji.")
         #expect(SpokenEmoji.glyphs(in: "emoji") == "emoji")
-        // "emoji" is not itself a key, so a trigger cannot match its neighbour.
         #expect(SpokenEmoji.glyphs(in: "emoji emoji") == "emoji emoji")
     }
 
     @Test func theTriggerMayBePluralized() {
-        #expect(SpokenEmoji.glyphs(in: "add fire emojis") == "add 🔥")
+        #expect(SpokenEmoji.glyphs(in: "fire emojis") == "🔥")
     }
 
     /// Styling has already run, so the trigger arrives carrying whatever mark
     /// the style put on it. Only the words are replaced, which leaves the mark
     /// and the spacing exactly where the styler left them.
     @Test func punctuationTheStylerAttachedSurvives() {
-        #expect(SpokenEmoji.glyphs(in: "That was fun party emoji!") == "That was fun 🎉!")
+        #expect(SpokenEmoji.glyphs(in: "party emoji!") == "🎉!")
         #expect(SpokenEmoji.glyphs(in: "fire emoji, then home") == "🔥, then home")
         #expect(SpokenEmoji.glyphs(in: "Crying emoji. That was rough.") == "😭. That was rough.")
     }
@@ -151,10 +221,8 @@ struct SpokenEmojiTests {
     /// The styler ended the sentence while the last word was still "emoji". An
     /// emoji is the end: nobody writes "I'm so sad 😭." or "💯."
     @Test func aTrailingTerminatorAfterAGlyphGoes() {
-        #expect(SpokenEmoji.glyphs(in: "I'm so sad crying emoji.") == "I'm so sad 😭")
+        #expect(SpokenEmoji.glyphs(in: "I'm so sad, crying emoji.") == "I'm so sad, 😭")
         #expect(SpokenEmoji.glyphs(in: "Hundred emoji.") == "💯")
-        // Only when the terminator is the whole tail — this one is ending a
-        // sentence the glyph merely started.
         #expect(
             SpokenEmoji.glyphs(in: "Crying emoji is how I feel.")
                 == "😭 is how I feel."
@@ -214,16 +282,10 @@ struct SpokenEmojiTests {
     /// in it, so the cases that matter are the ones that still have to work
     /// after passing it — and the ones it correctly lets through.
     @Test func theFastPathChangesNothing() {
-        // No "j" anywhere: skipped, and identical either way.
         let untouched = "no trigger anywhere in this sentence at all"
         #expect(SpokenEmoji.glyphs(in: untouched) == untouched)
-        // A "j" from an ordinary word, no trigger: falls through to the full
-        // walk, which declines it.
         #expect(SpokenEmoji.glyphs(in: "just a jar of jam") == "just a jar of jam")
-        // "emojify" carries the "j" and the substring, so the pre-check passes
-        // it; the word-boundary rule is what correctly declines it.
         #expect(SpokenEmoji.glyphs(in: "fire emojify") == "fire emojify")
-        // Upper case has to survive the byte fold, or a shouted trigger is lost.
         #expect(SpokenEmoji.glyphs(in: "Fire EMOJI now") == "🔥 now")
     }
 }

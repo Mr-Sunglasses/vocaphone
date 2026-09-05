@@ -163,9 +163,9 @@ class DictatedTranscriptTest {
     @Test
     fun `emoji runs before digits`() {
         assertEquals(
-            "That was 💯",
+            "💯",
             DictatedTranscript.finished(
-                "that was hundred emoji",
+                "hundred emoji",
                 style = WritingStyle.CASUAL,
                 repairSpeech = false,
                 numbersAsDigits = true,
@@ -182,9 +182,9 @@ class DictatedTranscriptTest {
     @Test
     fun `styling runs before emoji`() {
         assertEquals(
-            "I'm so sad 😭",
+            "😭",
             DictatedTranscript.finished(
-                "i'm so sad crying emoji",
+                "crying emoji",
                 style = WritingStyle.FORMAL,
                 repairSpeech = false,
                 spokenEmoji = true,
