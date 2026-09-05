@@ -75,6 +75,29 @@ native image dialog (Escape closes it and restores focus).
 | `iphone-handoff.png` | `IMG_9410.PNG` | App recording and return instructions |
 | `iphone-inserted.png` | `IMG_9362.PNG` | Notes with inserted sample text |
 
+## Device frames and motion
+
+The captures are unmodified, so the CSS supplies the hardware around them.
+`.product-screen` (and the platform cards' `.phone-frame`) draws the rail as
+layered flat inset rings — the stylesheet has no gradients and a test enforces
+that — and takes its silhouette from a `device-ios` or `device-android` class:
+iOS is rounder, with a volume rocker on the left and a side button on the
+right; Android is squarer and stacks power over volume on the right. Radii are
+percentages so one rule covers the hero, the explorer, and the platform cards.
+An iOS capture already contains the Dynamic Island, because the system draws
+around the cutout; an Android capture does not contain its punch-hole, so the
+frame draws one (`.device-hole`). Frame heights follow the image, so a capture
+is never letterboxed or cropped. Any new screenshot needs the matching
+`device-*` class.
+
+Motion — scroll reveals and their stagger, the reading-progress rail, the nav
+scrollspy, the hero counters, the pointer tilt on the hero devices, the device
+float, the explorer cross-fade, and the drifting props in the closing panel —
+is decorative and is switched off by the `prefers-reduced-motion` block. The
+page must read the same with JavaScript off: every explorer figure shows, the
+counters already carry their final values in the markup, and the "view full
+screen" chip only hides behind hover where hovering exists.
+
 `assets/demo/iphone-walkthrough.mp4` is a **screenshot walkthrough**, not a live
 screen recording or a latency benchmark. It is 15 seconds, H.264/yuv420p,
 1280×720, silent, and encoded with fast start. Playback is user initiated with

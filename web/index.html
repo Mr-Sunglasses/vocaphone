@@ -66,6 +66,7 @@
     <a class="skip-link" href="#main-content">Skip to content</a>
 
     <header class="menu-bar" data-menu-bar>
+      <span class="scroll-progress" aria-hidden="true"><i data-scroll-progress></i></span>
       <a class="brand-link" href="#top" aria-label="VocaPhone home">
         <img src="assets/vocaphone-logo.svg" alt="" width="32" height="32" />
         <span>vocaphone</span>
@@ -132,19 +133,39 @@
             </a>
           </div>
           <p class="hero-note">54 language choices · support depends on model · gateway optional</p>
+          <ul class="hero-proof" aria-label="VocaPhone at a glance">
+            <li class="reveal" style="--reveal-step: 1">
+              <b><span data-count-to="54">54</span></b>
+              <span>language choices, plus automatic</span>
+            </li>
+            <li class="reveal" style="--reveal-step: 2">
+              <b><span data-count-to="0">0</span></b>
+              <span>accounts, subscriptions, or trackers</span>
+            </li>
+            <li class="reveal" style="--reveal-step: 3">
+              <b><span data-count-to="100">100</span>%</b>
+              <span>open source, AGPL-3.0 licensed</span>
+            </li>
+          </ul>
         </div>
 
-        <div class="hero-product-pair">
+        <div class="hero-product-pair" data-tilt>
+          <p class="hero-live" aria-hidden="true">
+            <i class="hero-live-dot"></i>
+            <span>on-device · listening</span>
+            <span class="live-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          </p>
           <figure class="hero-product reveal">
-            <a class="product-screen" href="assets/screenshots/iphone-keyboard.png" data-enlarge>
+            <a class="product-screen device-ios" href="assets/screenshots/iphone-keyboard.png" data-enlarge>
               <img src="assets/screenshots/iphone-keyboard.png" width="1179" height="2556" fetchpriority="high" alt="VocaPhone iPhone keyboard screenshot during dictation" />
               <span class="screen-zoom">Enlarge ↗</span>
             </a>
             <figcaption>iPhone · real app screenshot</figcaption>
           </figure>
           <figure class="hero-product reveal">
-            <a class="product-screen" href="assets/screenshots/android-keyboard.jpg" data-enlarge>
+            <a class="product-screen device-android" href="assets/screenshots/android-keyboard.jpg" data-enlarge>
               <img src="assets/screenshots/android-keyboard.jpg" width="576" height="1280" fetchpriority="high" alt="VocaPhone Android keyboard screenshot during dictation" />
+              <i class="device-hole" aria-hidden="true"></i>
               <span class="screen-zoom">Enlarge ↗</span>
             </a>
             <figcaption>Android · real app screenshot</figcaption>
@@ -167,6 +188,20 @@
           <p class="demo-platform-note">iPhone beta captures · August 2026. Screens may vary by version.</p>
           <p class="demo-platform-note"><a href="#walkthrough">Watch the screenshot walkthrough ↓</a></p>
           <p class="demo-platform-note">Getting started? <a href="iphone/">See the iPhone setup and workflow ↗</a></p>
+          <ul class="demo-facts">
+            <li class="reveal" style="--reveal-step: 1">
+              <b aria-hidden="true">◍</b>
+              <div><strong>runs on the phone</strong><span>The model is downloaded once and transcribes without a network.</span></div>
+            </li>
+            <li class="reveal" style="--reveal-step: 2">
+              <b aria-hidden="true">⌶</b>
+              <div><strong>lands at the cursor</strong><span>Finished text is inserted where you were already typing.</span></div>
+            </li>
+            <li class="reveal" style="--reveal-step: 3">
+              <b aria-hidden="true">✦</b>
+              <div><strong>speaks your language</strong><span>54 choices, filtered to what the selected model supports.</span></div>
+            </li>
+          </ul>
         </div>
         <div class="demo-explorer">
           <div class="demo-platforms" role="group" aria-label="Choose a phone platform" hidden>
@@ -179,43 +214,46 @@
             <button type="button" data-demo-select="models" aria-pressed="false" aria-controls="demo-iphone-models demo-models"><span>03</span> Models</button>
           </div>
           <figure class="demo-panel" id="demo-iphone-keyboard" data-demo-panel="keyboard" data-platform="iphone">
-            <a class="product-screen" href="assets/screenshots/iphone-keyboard.png" data-enlarge>
+            <a class="product-screen device-ios" href="assets/screenshots/iphone-keyboard.png" data-enlarge>
               <img src="assets/screenshots/iphone-keyboard.png" width="1179" height="2556" loading="lazy" decoding="async" alt="VocaPhone iPhone keyboard in Notes with its Listening state and Finish button" />
               <span class="screen-zoom">View full screen ↗</span>
             </a>
             <figcaption><span class="tiny-label">iPhone · 01 / keyboard</span><h3>Speak. Finish. Keep typing.</h3><p>The VocaPhone app records while you return to Notes. Finish from the keyboard to transcribe and insert at your cursor.</p></figcaption>
           </figure>
           <figure class="demo-panel" id="demo-iphone-dictate" data-demo-panel="dictate" data-platform="iphone">
-            <a class="product-screen" href="assets/screenshots/iphone-dictate.png" data-enlarge>
+            <a class="product-screen device-ios" href="assets/screenshots/iphone-dictate.png" data-enlarge>
               <img src="assets/screenshots/iphone-dictate.png" width="1179" height="2556" loading="lazy" decoding="async" alt="VocaPhone iPhone app showing a ready transcript and On this iPhone selected" />
               <span class="screen-zoom">View full screen ↗</span>
             </a>
             <figcaption><span class="tiny-label">iPhone · 02 / dictate</span><h3>Your transcript, ready.</h3><p>Review the finished transcript in VocaPhone. This capture shows on-device speech-to-text selected.</p></figcaption>
           </figure>
           <figure class="demo-panel" id="demo-iphone-models" data-demo-panel="models" data-platform="iphone">
-            <a class="product-screen" href="assets/screenshots/iphone-models.png" data-enlarge>
+            <a class="product-screen device-ios" href="assets/screenshots/iphone-models.png" data-enlarge>
               <img src="assets/screenshots/iphone-models.png" width="1179" height="2556" loading="lazy" decoding="async" alt="VocaPhone iPhone transcription settings with On this iPhone selected and a downloaded model" />
               <span class="screen-zoom">View full screen ↗</span>
             </a>
             <figcaption><span class="tiny-label">iPhone · 03 / models</span><h3>Keep speech-to-text on your iPhone.</h3><p>Download a supported model to dictate offline. The optional gateway remains a separate choice.</p></figcaption>
           </figure>
           <figure class="demo-panel" id="demo-keyboard" data-demo-panel="keyboard" data-platform="android">
-            <a class="product-screen" href="assets/screenshots/android-keyboard.jpg" data-enlarge>
+            <a class="product-screen device-android" href="assets/screenshots/android-keyboard.jpg" data-enlarge>
               <img src="assets/screenshots/android-keyboard.jpg" width="576" height="1280" loading="lazy" decoding="async" alt="VocaPhone Android keyboard listening in a browser notepad" />
+              <i class="device-hole" aria-hidden="true"></i>
               <span class="screen-zoom">View full screen ↗</span>
             </a>
             <figcaption><span class="tiny-label">Android · 01 / keyboard</span><h3>Type where you are.</h3><p>Speak from the keyboard and insert text at your cursor. This capture shows VocaPhone in a browser notepad.</p></figcaption>
           </figure>
           <figure class="demo-panel" id="demo-dictate" data-demo-panel="dictate" data-platform="android">
-            <a class="product-screen" href="assets/screenshots/android-dictate.jpg" data-enlarge>
+            <a class="product-screen device-android" href="assets/screenshots/android-dictate.jpg" data-enlarge>
               <img src="assets/screenshots/android-dictate.jpg" width="576" height="1280" loading="lazy" decoding="async" alt="VocaPhone Android Dictate screen with its scratchpad and model controls" />
+              <i class="device-hole" aria-hidden="true"></i>
               <span class="screen-zoom">View full screen ↗</span>
             </a>
             <figcaption><span class="tiny-label">Android · 02 / dictate</span><h3>A little space for your thoughts.</h3><p>Use the app’s scratchpad to dictate a note. Language, writing style, and model choices stay close at hand.</p></figcaption>
           </figure>
           <figure class="demo-panel" id="demo-models" data-demo-panel="models" data-platform="android">
-            <a class="product-screen" href="assets/screenshots/android-models.jpg" data-enlarge>
+            <a class="product-screen device-android" href="assets/screenshots/android-models.jpg" data-enlarge>
               <img src="assets/screenshots/android-models.jpg" width="576" height="1280" loading="lazy" decoding="async" alt="VocaPhone Android model picker with installed on-device models" />
+              <i class="device-hole" aria-hidden="true"></i>
               <span class="screen-zoom">View full screen ↗</span>
             </a>
             <figcaption><span class="tiny-label">Android · 03 / models</span><h3>Choose what runs on your phone.</h3><p>Download a speech-to-text model, then dictate offline. Choose a model that fits your language and available storage.</p></figcaption>
@@ -502,6 +540,10 @@
               <div><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
               <span>pair by QR<br />token protected</span>
             </div>
+            <div class="gateway-engines">
+              <span>engines it can run</span>
+              <b>whisper.cpp</b><b>Parakeet</b><b>SenseVoice</b><b>Dolphin</b>
+            </div>
             <p class="gateway-privacy-note">
               Gateway mode is self-hosted, but it is not on-device: audio travels
               to the gateway you chose. Use a trusted LAN, an encrypted private
@@ -518,6 +560,11 @@
           <p>
             One privacy stance, built around the way each phone actually works.
           </p>
+          <ul class="platform-compare">
+            <li><b>iPhone</b><span>The app records, the keyboard inserts</span></li>
+            <li><b>Android</b><span>The keyboard records and inserts</span></li>
+            <li><b>Both</b><span>On-device model, optional gateway</span></li>
+          </ul>
         </div>
 
         <div class="platform-grid">
@@ -599,6 +646,12 @@
               <strong>you do.</strong>
               <i>█</i>
             </div>
+            <ul class="manifesto-files">
+              <li><span>android/</span><b>Kotlin keyboard and app</b></li>
+              <li><span>ios/</span><b>Swift app and keyboard</b></li>
+              <li><span>gateway/</span><b>the optional self-hosted server</b></li>
+              <li><span>docs/</span><b>privacy, releases, troubleshooting</b></li>
+            </ul>
           </div>
         </div>
       </section>
@@ -608,6 +661,12 @@
           <span class="section-tag">questions, answered</span>
           <h2 id="questions-title">the useful bits.</h2>
           <div class="faq-doodle" aria-hidden="true">( ?_? )</div>
+          <div class="faq-aside">
+            <p class="tiny-label">still stuck?</p>
+            <p>VocaPhone is built in the open, so the fastest answer is usually a message or an issue.</p>
+            <a class="text-link" href="https://discord.gg/t6muquAJbm">ask in Discord <span aria-hidden="true">↗</span></a>
+            <a class="text-link" href="https://github.com/VocaHQ/vocaphone/issues">open an issue <span aria-hidden="true">↗</span></a>
+          </div>
         </div>
         <div class="faq-list reveal">
           <details open>
@@ -742,6 +801,8 @@
           <div class="download-note">works with<br />54 languages<br /><small>+ automatic</small></div>
           <div class="download-wave audio-signature"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
           <div class="download-face">(˶ᵔ ᵕ ᵔ˶)</div>
+          <div class="download-chip download-chip-offline">offline ✓</div>
+          <div class="download-chip download-chip-open">no account</div>
         </div>
         <div class="download-copy reveal">
           <img src="assets/vocaphone-logo.svg" alt="" width="88" height="88" />

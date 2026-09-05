@@ -4829,3 +4829,759 @@ body:has(.screenshot-dialog[open]) {
 .iphone-quick-start .text-link {
   color: var(--brand);
 }
+
+/* ==========================================================================
+   Device hardware, empty-space fills, and motion
+   ========================================================================== */
+
+/* --- Device frames -------------------------------------------------------
+   The screenshots are real captures, so the page has to supply the hardware
+   around them. What makes a mock read as "iPhone" rather than "a phone" is
+   the silhouette: corner radius relative to width, an even hairline bezel,
+   and which side the buttons are on. iOS gets a volume rocker on the left
+   and a side button on the right; Android stacks power over volume on the
+   right, the way a Pixel does. Radii are percentages so one rule covers the
+   hero, the explorer, and the platform cards at three different widths.
+   The rail is layered flat inset rings rather than a gradient, which is what
+   the rest of this stylesheet does too.                                    */
+.product-screen,
+.platform-card .phone-frame {
+  --rail-lit: #767e7a;
+  --rail-body: #313835;
+  --rail-shadow: #050706;
+  position: relative;
+  display: block;
+  padding: 2.9%;
+  overflow: visible;
+  background: #0a0c0b;
+  border: 0;
+  box-shadow:
+    inset 0 0 0 1px var(--rail-lit),
+    inset 0 0 0 3px var(--rail-body),
+    inset 0 0 0 4px var(--rail-shadow),
+    0 1px 0 rgb(255 255 255 / 22%),
+    0 30px 55px -20px rgb(13 32 24 / 42%),
+    0 10px 22px -14px rgb(13 32 24 / 38%);
+}
+
+.product-screen > img,
+.platform-card .phone-frame > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: fill;
+}
+
+/* iPhone: 14% of the width, matched on the vertical axis by the 0.461
+   width-to-height ratio of the capture, gives the continuous corner iOS
+   hardware actually has. */
+.product-screen.device-ios,
+.real-iphone-frame {
+  border-radius: 13.6% / 6.3%;
+}
+
+.product-screen.device-ios > img,
+.real-iphone-frame > img {
+  border-radius: 11.6% / 5.4%;
+}
+
+/* Android sits squarer, and its capture is a slightly wider 0.45 ratio. */
+.product-screen.device-android,
+.real-android-frame {
+  border-radius: 9.4% / 4.3%;
+}
+
+.product-screen.device-android > img,
+.real-android-frame > img {
+  border-radius: 7.4% / 3.4%;
+}
+
+.product-screen::before,
+.product-screen::after,
+.real-iphone-frame::before,
+.real-iphone-frame::after,
+.real-android-frame::before,
+.real-android-frame::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  width: 3px;
+  background: var(--rail-body);
+  border-radius: 0 3px 3px 0;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 20%), 1px 0 2px rgb(9 18 14 / 35%);
+}
+
+/* iPhone: volume rocker left, side button right. */
+.product-screen.device-ios::before,
+.real-iphone-frame::before {
+  top: 20.5%;
+  left: -2px;
+  height: 12.5%;
+  border-radius: 3px 0 0 3px;
+}
+
+.product-screen.device-ios::after,
+.real-iphone-frame::after {
+  top: 24.5%;
+  right: -2px;
+  height: 9.5%;
+}
+
+/* Android: power above the volume rocker, both on the right. */
+.product-screen.device-android::before,
+.real-android-frame::before {
+  top: 16.5%;
+  right: -2px;
+  height: 5.5%;
+}
+
+.product-screen.device-android::after,
+.real-android-frame::after {
+  top: 24%;
+  right: -2px;
+  height: 10.5%;
+}
+
+/* An iOS capture already contains the Dynamic Island, because the system
+   draws into the framebuffer around the cutout. An Android capture does
+   not contain its punch-hole, so the frame draws one. */
+.device-hole,
+.real-android-frame .phone-camera {
+  position: absolute;
+  top: 5.4%;
+  left: 50%;
+  z-index: 2;
+  width: 3.4%;
+  height: auto;
+  aspect-ratio: 1;
+  background: #070908;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 9%);
+  transform: translateX(-50%);
+}
+
+.device-hole {
+  top: 4.6%;
+}
+
+.screen-zoom {
+  z-index: 3;
+}
+
+/* The chip fades in on hover only where hovering exists. On touch it is the
+   only sign the screenshot opens, so it stays visible there. */
+@media (hover: hover) and (pointer: fine) {
+  .screen-zoom {
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 240ms ease, transform 240ms ease;
+  }
+
+  .product-screen:hover .screen-zoom,
+  .product-screen:focus-visible .screen-zoom {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* The platform cards used a fixed 292x560 box and object-fit, which letter-
+   boxed a 1179x2556 capture and cut the keyboard off. Height now follows
+   the image. */
+.platform-card .phone-frame {
+  width: min(100%, 268px);
+  height: auto;
+  margin: 16px auto 26px;
+}
+
+.platform-card .real-android-frame {
+  height: auto;
+}
+
+.platform-card .real-iphone-frame > img,
+.platform-card .real-android-frame > img {
+  height: auto;
+  object-fit: fill;
+}
+
+.iphone-frame,
+.android-frame {
+  transition: transform 500ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.platform-card:hover .iphone-frame,
+.platform-card:hover .android-frame {
+  transform: rotate(0deg) translateY(-8px);
+}
+
+.platform-card {
+  min-height: 0;
+  transition: transform 320ms cubic-bezier(0.2, 0.75, 0.25, 1), box-shadow 320ms ease;
+}
+
+.platform-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 26px 55px rgb(21 37 29 / 18%);
+}
+
+/* --- Hero: numbers and a live badge fill the column ---------------------- */
+.hero-proof {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  width: 100%;
+  max-width: 560px;
+  padding: 26px 0 0;
+  margin: 34px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.hero-proof li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.hero-proof b {
+  color: var(--brand);
+  font-family: var(--font-display);
+  font-size: 40px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-proof span:not([data-count-to]) {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hero-live {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  z-index: 5;
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 15px;
+  margin: 0;
+  color: var(--brand-dark);
+  background: var(--paper-bright);
+  border: 1px solid #8fb5a3;
+  border-radius: 999px;
+  box-shadow: 0 12px 26px rgb(16 44 33 / 14%);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.hero-live-dot {
+  display: block;
+  width: 7px;
+  height: 7px;
+  background: var(--red);
+  border-radius: 50%;
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+.hero-live .live-wave {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  height: 14px;
+}
+
+.hero-product-pair {
+  padding-top: 26px;
+  transform: perspective(1500px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+  transform-style: preserve-3d;
+  transition: transform 400ms ease-out;
+}
+
+/* --- Explorer: the intro column stops short of an 1100px panel ----------- */
+.demo-facts {
+  display: grid;
+  gap: 14px;
+  padding: 24px 0 0;
+  margin: 30px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.demo-facts li {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.demo-facts b {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  color: var(--brand);
+  background: var(--mint-soft);
+  border: 1px solid #a8cbba;
+  border-radius: 9px;
+  font-size: 13px;
+}
+
+.demo-facts strong {
+  display: block;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.demo-facts span {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* --- Gateway panel: the lower half was background --------------------- */
+.gateway-engines {
+  position: absolute;
+  right: 34%;
+  bottom: 150px;
+  left: 8%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+}
+
+.gateway-engines span {
+  width: 100%;
+  color: #5d7268;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.gateway-engines b {
+  padding: 6px 11px;
+  color: var(--brand-dark);
+  background: #f7f4e9;
+  border: 1px solid #89978f;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+
+/* --- Platform intro: the right half was empty above the paragraph ------- */
+.platform-compare {
+  grid-column: 2;
+  display: grid;
+  gap: 8px;
+  padding: 18px 0 0;
+  margin: 20px 0 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+
+.platform-compare li {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 14px;
+  align-items: baseline;
+}
+
+.platform-compare b {
+  color: var(--brand-dark);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.platform-compare span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* --- FAQ: the sticky column ended at the doodle ------------------------- */
+.faq-aside {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 300px;
+  padding: 22px;
+  margin-top: 55px;
+  background: var(--mint-soft);
+  border: 1px solid #a8cbba;
+  border-radius: var(--radius-md);
+}
+
+.faq-aside p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.faq-aside .tiny-label {
+  color: var(--brand-dark);
+}
+
+.faq-aside .text-link {
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* --- Closing panel: two more props, and less dead height ---------------- */
+.download-section {
+  min-height: 0;
+  padding-block: 110px 90px;
+}
+
+.download-chip {
+  position: absolute;
+  padding: 9px 14px;
+  color: var(--brand-dark);
+  background: var(--paper-bright);
+  border: 1px solid #8fb5a3;
+  border-radius: 999px;
+  box-shadow: var(--shadow-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.download-chip-offline {
+  top: 330px;
+  left: 14%;
+  transform: rotate(-5deg);
+}
+
+.download-chip-open {
+  top: 372px;
+  right: 12%;
+  transform: rotate(4deg);
+}
+
+/* --- Section rhythm ------------------------------------------------------
+   These sections were laid out for taller content than they carry. */
+.platform-section {
+  padding-block: 60px 110px;
+}
+
+.platform-intro {
+  margin-bottom: 54px;
+}
+
+.faq-section {
+  padding-bottom: 120px;
+}
+
+.app-demo {
+  padding-block: 80px;
+}
+
+.walkthrough-section {
+  padding-top: 20px;
+}
+
+/* --- Motion --------------------------------------------------------------
+   Everything below is decorative and is switched off wholesale by the
+   prefers-reduced-motion block further up the file. */
+.scroll-progress {
+  position: absolute;
+  inset: auto 0 -1px;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.scroll-progress i {
+  display: block;
+  width: var(--scroll-progress, 0%);
+  height: 100%;
+  background: var(--brand);
+}
+
+.js .reveal {
+  transition-delay: calc(var(--reveal-step, 0) * 90ms);
+}
+
+.site-nav a {
+  position: relative;
+  padding-block: 4px;
+}
+
+.site-nav a::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0;
+  height: 2px;
+  background: var(--brand);
+  border-radius: 2px;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 260ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.site-nav a:hover::after,
+.site-nav a[aria-current="true"]::after {
+  transform: scaleX(1);
+}
+
+.site-nav a[aria-current="true"] {
+  color: var(--brand);
+  font-weight: 700;
+}
+
+.section-tag::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  margin-right: 8px;
+  background: var(--brand);
+  border-radius: 50%;
+  animation: tag-pulse 2.6s ease-in-out infinite;
+}
+
+.button span[aria-hidden="true"] {
+  transition: transform 200ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.button:hover span[aria-hidden="true"] {
+  transform: translateX(3px);
+}
+
+.hero-mark {
+  transition: transform 700ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.hero-copy:hover .hero-mark {
+  transform: rotate(-9deg) scale(1.05);
+}
+
+/* The float only starts once the reveal has landed, so the two do not fight
+   over the same transform. */
+.js .hero-product-pair .hero-product.is-visible {
+  animation: device-float 7.5s ease-in-out infinite;
+}
+
+.js .hero-product-pair .hero-product:last-child.is-visible {
+  animation-delay: -3.75s;
+}
+
+.product-screen {
+  transition: transform 420ms cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+.product-screen:hover {
+  transform: translateY(-6px) scale(1.012);
+}
+
+/* Switching platform or screen toggles [hidden], which restarts the
+   animation because the panel goes display:none and back. */
+.js .demo-panel:not([hidden]) {
+  animation: panel-in 460ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+
+.demo-controls button,
+.demo-platforms button {
+  transition: background-color 200ms ease, color 200ms ease, transform 200ms ease;
+}
+
+.demo-controls button:hover,
+.demo-platforms button:hover {
+  transform: translateY(-1px);
+}
+
+.faq-list details[open] p {
+  animation: faq-in 340ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+
+.step-card,
+.install-card {
+  transition: transform 320ms cubic-bezier(0.2, 0.75, 0.25, 1), box-shadow 320ms ease;
+}
+
+.step-card:hover,
+.install-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 24px 46px rgb(21 37 29 / 15%);
+}
+
+.download-folder,
+.download-note,
+.download-face,
+.download-chip {
+  animation: prop-drift 9s ease-in-out infinite;
+}
+
+.download-note {
+  animation-delay: -2.2s;
+}
+
+.download-face {
+  animation-delay: -4.5s;
+}
+
+.download-chip-offline {
+  animation-delay: -1.3s;
+}
+
+.download-chip-open {
+  animation-delay: -6.1s;
+}
+
+.word-ribbon:hover > div {
+  animation-play-state: paused;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgb(222 106 87 / 45%); }
+  70% { opacity: 0.75; box-shadow: 0 0 0 7px rgb(222 106 87 / 0%); }
+}
+
+@keyframes tag-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.72); }
+}
+
+@keyframes device-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-13px); }
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes faq-in {
+  from { opacity: 0; transform: translateY(-7px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes prop-drift {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-product-pair {
+    transform: none;
+  }
+}
+
+@media (max-width: 920px) {
+  .hero-proof {
+    max-width: 100%;
+    margin-inline: auto;
+    text-align: center;
+  }
+
+  .hero-proof li {
+    align-items: center;
+  }
+
+  .gateway-engines {
+    position: static;
+    padding: 0 26px 24px;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero-proof {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .hero-proof b {
+    font-size: 28px;
+  }
+
+  .hero-proof span:not([data-count-to]) {
+    font-size: 10px;
+  }
+
+  .hero-live {
+    font-size: 8px;
+  }
+
+  .faq-aside {
+    max-width: 100%;
+    margin-top: 34px;
+  }
+
+  .download-chip {
+    display: none;
+  }
+}
+
+/* The manifesto aside ran out after the stamp and the terminal. Naming what
+   is actually in the repository is the closest thing to proof on a page that
+   claims the code is readable. */
+.manifesto-files {
+  display: grid;
+  gap: 9px;
+  width: min(100%, 300px);
+  padding: 20px 0 0;
+  margin: 34px 0 0;
+  list-style: none;
+  border-top: 1px solid #385045;
+}
+
+.manifesto-files li {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+}
+
+.manifesto-files span {
+  color: #7fd0af;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.manifesto-files b {
+  color: #a9c2b6;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* Both sections were padded for taller content than they carry. */
+.how-section {
+  padding-bottom: 90px;
+}
+
+.open-source-section {
+  padding-bottom: 60px;
+}
+
+/* The aside was a single centered row; it now stacks the terminal above the
+   repository list instead of putting them side by side. */
+.manifesto-aside {
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px 34px 48px;
+}
+
+.manifesto-aside .ascii-terminal {
+  width: min(100%, 300px);
+  margin-top: 110px;
+}
+
+.manifesto-files {
+  width: min(100%, 300px);
+  margin-top: 30px;
+}
