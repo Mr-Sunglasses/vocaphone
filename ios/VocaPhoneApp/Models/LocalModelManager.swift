@@ -85,6 +85,7 @@ final class LocalModelManager {
     private var whisperKit: WhisperKit?
     private var sherpaRecognizer: SherpaRecognizer?
     private var loadedModelID: String?
+
     private var loadedLanguage: String?
     /// Canary bakes source and target into the recognizer exactly as it bakes
     /// the language, so a change of translation target has to rebuild it too.

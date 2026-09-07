@@ -63,6 +63,19 @@ jobs:
           persist-credentials: false
       - name: Fetch iOS Sherpa ONNX runtime
         run: bash ios/ThirdParty/SherpaOnnx/fetch.sh
+      - name: Select Xcode 26
+        run: |
+          set -euo pipefail
+          # `macos-15` still defaults to Xcode 16.4 / iOS 18.5, and this job
+          # otherwise builds the keyboard against an SDK the project does not
+          # target: `project.yml` asks for Xcode 26 and the release workflow
+          # already selects it here. Anything guarded by `#available(iOS 26, *)`
+          # still fails to *compile* on the older SDK, because a runtime check
+          # cannot conjure a symbol the SDK has never heard of.
+          app="$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+
       - run: brew install xcodegen
       - name: Fail if the checked-in Xcode project is stale
         working-directory: ios

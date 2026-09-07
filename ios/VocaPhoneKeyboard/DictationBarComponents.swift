@@ -22,14 +22,17 @@ final class WaveformView: UIView {
         didSet { setNeedsDisplay() }
     }
 
-    private static let barWidth: CGFloat = 3
-    private static let barGap: CGFloat = 2.5
-    /// New bars per second. Slow enough to read as speech, fast enough that a
-    /// short utterance still fills the view.
-    private static let barsPerSecond: CGFloat = 14
+    private static let barWidth: CGFloat = 4
+    private static let barGap: CGFloat = 3
+    /// Bars per second, which is also the rate at which real levels arrive:
+    /// five per quarter-second tick from ``AudioCapturePipeline``. The two
+    /// numbers have to agree — the meter used to draw fourteen a second from
+    /// four, and every bar the microphone had not supplied was made up.
+    private static let barsPerSecond: CGFloat = 20
 
     private var levels: [CGFloat] = []
-    private var smoothedLevel: CGFloat = 0
+    /// Levels the microphone has produced and the meter has not drawn yet.
+    private var pending: [CGFloat] = []
     private var targetLevel: CGFloat = 0
     private var advanceProgress: CGFloat = 0
     private var phase: CGFloat = -0.25
@@ -53,17 +56,26 @@ final class WaveformView: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    /// The newest microphone level, published by the app roughly four times a
-    /// second. Rendering interpolates between these so the meter does not step.
-    func push(level: Float) {
-        targetLevel = min(max(CGFloat(level), 0), 1)
+    /// Microphone levels the meter has not shown yet, oldest first.
+    ///
+    /// Each one becomes exactly one bar. What the view is showing is then the
+    /// audio itself, at the rate it was measured, which is the whole difference
+    /// between a level meter and an animation of a level meter.
+    func push(levels newLevels: [Float]) {
+        guard !newLevels.isEmpty else { return }
+        pending.append(contentsOf: newLevels.map { min(max(CGFloat($0), 0), 1) })
+        // A backlog this long means the meter is not being drawn — an offscreen
+        // keyboard, a stalled run loop. Showing seconds-old audio afterwards is
+        // worse than dropping it.
+        if pending.count > 40 { pending.removeFirst(pending.count - 40) }
+        targetLevel = pending.last ?? targetLevel
         updateAccessibilityValue()
         // Reduce Motion, an offscreen keyboard, anything that stops the display
-        // link: with nothing else advancing the meter, each published level has
-        // to become a bar itself rather than leaving a frozen line.
+        // link: with nothing else advancing the meter, the levels have to become
+        // bars here rather than leaving a frozen line.
         guard displayLink == nil, mode == .live else { return }
-        smoothedLevel = targetLevel
-        appendBar(smoothedLevel)
+        for level in pending { appendBar(level) }
+        pending.removeAll(keepingCapacity: true)
         setNeedsDisplay()
     }
 
@@ -99,12 +111,13 @@ final class WaveformView: UIView {
 
     // MARK: - Rendering values
 
-    /// Older bars fade out, which gives the meter a direction of travel without
-    /// adding another visual layer.
+    /// One weight for every bar.
+    ///
+    /// Older bars used to fade along a gradient, which reads as decoration
+    /// because it is: it says nothing about the audio, and it made the meter
+    /// look like it was doing more than measuring.
     private func alpha(at index: Int) -> CGFloat {
-        guard mode != .indeterminate else { return 0.85 }
-        let position = CGFloat(index) / CGFloat(max(levels.count - 1, 1))
-        return 0.24 + 0.76 * position
+        mode == .indeterminate ? 0.85 : 1
     }
 
     /// A soft bump travelling from the leading edge to the trailing one. Shaped
@@ -149,7 +162,7 @@ final class WaveformView: UIView {
             displayLink = nil
             if mode == nil {
                 levels = levels.map { _ in 0 }
-                smoothedLevel = 0
+                pending.removeAll(keepingCapacity: true)
                 advanceProgress = 0
             }
             return
@@ -167,12 +180,14 @@ final class WaveformView: UIView {
         let elapsed = max(link.targetTimestamp - link.timestamp, 1.0 / 120)
         switch mode {
         case .live:
-            smoothedLevel += (targetLevel - smoothedLevel) * 0.3
             advanceProgress += Self.barsPerSecond * CGFloat(elapsed)
-            while advanceProgress >= 1 {
+            while advanceProgress >= 1, !pending.isEmpty {
                 advanceProgress -= 1
-                appendBar(smoothedLevel)
+                appendBar(pending.removeFirst())
             }
+            // Nothing left to draw: hold, rather than scrolling emptiness past
+            // the reader as though the microphone were still saying something.
+            if pending.isEmpty { advanceProgress = min(advanceProgress, 1) }
         case .indeterminate:
             phase += CGFloat(elapsed) * 0.75
             if phase > 1.25 { phase = -0.25 }
@@ -305,10 +320,13 @@ final class FlatButton: UIButton {
         didSet {
             guard isHighlighted != oldValue else { return }
             let collapse = isHighlighted
+            // Damping was 0.7 over 0.22s, which overshoots visibly: the button
+            // came back past its own size and settled — a bounce on every tap
+            // of the one control people press most.
             UIView.animate(
-                withDuration: collapse ? 0.09 : 0.22,
+                withDuration: collapse ? 0.09 : 0.16,
                 delay: 0,
-                usingSpringWithDamping: 0.7,
+                usingSpringWithDamping: 0.9,
                 initialSpringVelocity: 0,
                 options: [.allowUserInteraction, .beginFromCurrentState]
             ) {

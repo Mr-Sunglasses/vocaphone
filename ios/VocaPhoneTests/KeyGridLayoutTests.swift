@@ -7,7 +7,8 @@ struct KeyGridLayoutTests {
 
     private static func makeGrid(
         traits: UITraitCollection = UITraitCollection { $0.verticalSizeClass = .regular },
-        plane: KeyPlane = .letters
+        plane: KeyPlane = .letters,
+        width: CGFloat = referenceWidth
     ) -> KeyGridView {
         let metrics = KeyboardMetrics.resolved(for: traits)
         let grid = KeyGridView(metrics: metrics, palette: KeyboardPalette(isDark: false))
@@ -15,7 +16,7 @@ struct KeyGridLayoutTests {
         grid.frame = CGRect(
             x: 0,
             y: 0,
-            width: referenceWidth,
+            width: width,
             height: metrics.gridHeight
         )
         grid.layoutIfNeeded()
@@ -189,6 +190,53 @@ struct KeyGridLayoutTests {
             .sorted { $0.key < $1.key }
             .map { $0.value.sorted { $0.frame.minX < $1.frame.minX } }
     }
+
+    /// The spacebar reaches as far as the system's does.
+    ///
+    /// Measured on device: every touch that typed a space landed between x=269
+    /// and x=286, and the first one that typed a *newline* landed at x=288 —
+    /// with the finger nowhere near the Return key, which starts a hundred
+    /// points further right. Somebody aiming at the right-hand end of the
+    /// spacebar was getting a line break instead, three times in one sentence.
+    ///
+    /// The proportions come from Apple's own bottom row, quoted in
+    /// `BottomRowColumns.resolved`: `1.25 | 1.25 | 5 | 2.5`. What this checks is
+    /// that the space the user can *hit* matches the space they can see, all the
+    /// way to where Return's own target begins.
+    @Test func theSpacebarsTargetReachesTheReturnKey() {
+        // Laid out the width the keyboard actually gives it: the screen less the
+        // chrome margin on each side. That margin is the whole point of this
+        // test — it decides where every boundary in the row falls, and at six
+        // points a side the spacebar ended six points short of the system's.
+        let chromeInset: CGFloat = 3
+        let grid = Self.makeGrid(width: Self.referenceWidth - 2 * chromeInset)
+        let row = Self.rowsByPosition(in: grid)[3]
+        guard let space = row.first(where: { $0.spec.cap == .space }),
+              let newline = row.first(where: { $0.spec.cap == .newline })
+        else {
+            Issue.record("bottom row has no space or no return: \(row.map(\.spec.cap))")
+            return
+        }
+        // No gap between them that belongs to neither.
+        #expect(
+            space.hitRect.maxX >= newline.hitRect.minX,
+            "space ends at \(space.hitRect.maxX), return starts at \(newline.hitRect.minX)"
+        )
+        // And the boundary is where the drawing says it is, not short of it.
+        #expect(
+            space.hitRect.maxX > space.frame.maxX,
+            "space is drawn to \(space.frame.maxX) but only claims \(space.hitRect.maxX)"
+        )
+        // And the boundary lands where the system's does, because that is where
+        // a thumb has learned it is. The grid is inset from the screen by the
+        // keyboard's chrome, so this is checked in screen terms: at 393 points
+        // wide, iOS ends its spacebar at about 293.
+        let boundaryOnScreen = space.hitRect.maxX + chromeInset
+        #expect(
+            abs(boundaryOnScreen - 293) < 4,
+            "spacebar ends at \(boundaryOnScreen) on screen, the system's at ~293"
+        )
+    }
 }
 
 /// The numeric keypads, which a `.numberPad` or `.phonePad` field used to be
@@ -274,4 +322,5 @@ struct KeypadLayoutTests {
         #expect(!KeyCap.blank.isCharacter)
         #expect(KeyCap.character("0").isInteractive)
     }
+
 }

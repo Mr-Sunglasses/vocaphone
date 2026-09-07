@@ -185,6 +185,34 @@ device: gen
 devices:
     xcrun devicectl list devices
 
+# Pull the keyboard's touch trace off the phone and print it.
+#
+# The keyboard writes one line per finger — where it was hit-tested, which key
+# it resolved to, and whether it committed — into the App Group. A dropped
+# keystroke looks different in each of those three places, which is the only
+# way to tell them apart without a simulator.
+[group('device')]
+trace:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    udid="${VOCAPHONE_DEVICE:-$({{ just_executable() }} _device_udid)}"
+    # Read from the source rather than written twice: local signing swaps the
+    # App Group for one this developer's team actually owns.
+    group=$(
+        sed -n 's/.*appGroupIdentifier = "\(.*\)"/\1/p' \
+            VocaPhoneShared/AppConfiguration.swift
+    )
+    out="{{ justfile_directory() }}/build/touch-trace.txt"
+    mkdir -p "$(dirname "${out}")"
+    rm -f "${out}"
+    xcrun devicectl device copy from --device "${udid}" \
+        --domain-type appGroupDataContainer \
+        --domain-identifier "${group}" \
+        --source touch-trace.txt \
+        --destination "${out}" >/dev/null
+    echo "${out}"
+    cat "${out}"
+
 # Delete build output and derived data.
 [group('build')]
 clean:

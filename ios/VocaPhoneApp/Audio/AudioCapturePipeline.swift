@@ -104,6 +104,8 @@ final class AudioCapturePipeline: @unchecked Sendable {
     private var file: AVAudioFile?
     private var carry: [Float] = []
     private let meter = OSAllocatedUnfairLock(initialState: Float(0))
+    /// Sub-levels waiting to be collected, oldest first. See ``meterSlices``.
+    private let meterHistory = OSAllocatedUnfairLock(initialState: [Float]())
     private let peak = OSAllocatedUnfairLock(initialState: Float(0))
     private let dropped = OSAllocatedUnfairLock(initialState: 0)
     private var emit: ((Data) -> Bool)?
@@ -112,6 +114,25 @@ final class AudioCapturePipeline: @unchecked Sendable {
     /// untrustworthy, so the caller falls back to uploading the intact file.
     var droppedChunkCount: Int { dropped.withLock { $0 } }
     var meterLevel: Float { meter.withLock { $0 } }
+
+    /// How many levels one drain tick is split into.
+    ///
+    /// A tick is a quarter second of audio, and folding all of it into a single
+    /// number threw away everything but the average: four levels a second, from
+    /// which the meter then invented the fourteen bars a second it drew. The
+    /// samples for the finer levels were already in the buffer — nobody had
+    /// asked for them. Five slices is 50 ms each, or twenty real levels a
+    /// second, which is roughly the rate at which speech changes loudness.
+    static let meterSlices = 5
+
+    /// Takes the levels produced since the last call and clears them, so a
+    /// reader appends each slice of audio exactly once.
+    func drainMeterLevels() -> [Float] {
+        meterHistory.withLock { history in
+            defer { history.removeAll(keepingCapacity: true) }
+            return history
+        }
+    }
     /// The loudest sample of the whole recording, which is what separates a
     /// microphone another app silenced from one that simply heard a quiet room.
     var peakLevel: Float { peak.withLock { $0 } }
@@ -231,7 +252,7 @@ final class AudioCapturePipeline: @unchecked Sendable {
         channel.update(from: scratch, count: sampleCount)
         inputBuffer.frameLength = AVAudioFrameCount(sampleCount)
 
-        meter.withLock { $0 = Self.normalizedLevel(scratch, count: sampleCount) }
+        recordMeterLevels(sampleCount: sampleCount)
         var loudest: Float = 0
         vDSP_maxmgv(scratch, 1, &loudest, vDSP_Length(sampleCount))
         peak.withLock { [loudest] in $0 = max($0, loudest) }
@@ -272,6 +293,38 @@ final class AudioCapturePipeline: @unchecked Sendable {
             carry.removeFirst(size)
             if !emit(data) {
                 dropped.withLock { $0 += 1 }
+            }
+        }
+    }
+
+    /// Splits this tick into ``meterSlices`` levels rather than one.
+    private func recordMeterLevels(sampleCount: Int) {
+        let sliceLength = sampleCount / Self.meterSlices
+        guard sliceLength > 0 else {
+            let level = Self.normalizedLevel(scratch, count: sampleCount)
+            meter.withLock { $0 = level }
+            appendMeterLevels([level])
+            return
+        }
+        var levels: [Float] = []
+        levels.reserveCapacity(Self.meterSlices)
+        for slice in 0..<Self.meterSlices {
+            // The last slice takes the remainder, so no sample is dropped.
+            let start = slice * sliceLength
+            let length = slice == Self.meterSlices - 1 ? sampleCount - start : sliceLength
+            levels.append(Self.normalizedLevel(scratch + start, count: length))
+        }
+        if let last = levels.last { meter.withLock { $0 = last } }
+        appendMeterLevels(levels)
+    }
+
+    /// The reader collects several times a second; the cap is only there so a
+    /// reader that stopped collecting cannot grow this without bound.
+    private func appendMeterLevels(_ levels: [Float]) {
+        meterHistory.withLock { history in
+            history.append(contentsOf: levels)
+            if history.count > 60 {
+                history.removeFirst(history.count - 60)
             }
         }
     }

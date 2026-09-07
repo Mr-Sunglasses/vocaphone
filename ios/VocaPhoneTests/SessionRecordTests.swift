@@ -50,7 +50,7 @@ struct SessionRecordTests {
         try record.transition(to: .launchingApp)
         try record.transition(to: .recording)
         try store.save(record)
-        try store.saveMeter(0.8, for: record.sessionID)
+        try store.saveMeter(MeterSample(sequence: 5, levels: [0.2, 0.8]), for: record.sessionID)
 
         let recording = try #require(try store.load(record.sessionID))
         #expect(recording.state == .recording)
@@ -59,7 +59,7 @@ struct SessionRecordTests {
         try record.transition(to: .finalizing)
         try store.save(record)
         // Simulate one late microphone callback racing with the keyboard tap.
-        try store.saveMeter(0.4, for: record.sessionID)
+        try store.saveMeter(MeterSample(sequence: 7, levels: [0.4]), for: record.sessionID)
 
         let finalizing = try #require(try store.load(record.sessionID))
         #expect(finalizing.state == .finalizing)

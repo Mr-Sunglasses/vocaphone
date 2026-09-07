@@ -40,7 +40,7 @@ private struct KeyboardPreviewRepresentable: UIViewRepresentable {
     /// The same arithmetic the extension does, so the preview is the height the
     /// keyboard will actually be.
     static let chromeInset: CGFloat = 6
-    static let chromeSpacing: CGFloat = 7
+    static let chromeSpacing: CGFloat = 12
 
     static func height(for preference: KeyboardHeightPreference) -> CGFloat {
         let traits = UITraitCollection { $0.verticalSizeClass = .regular }

@@ -74,6 +74,21 @@ final class TypingEngine {
     }
 
     private let checker: any SpellChecking
+    /// How long the hand has to be still before the checker is asked anything.
+    ///
+    /// `UITextChecker` is the most expensive thing this keyboard does — 50 to
+    /// 135 ms for a prefix it has not seen — and it is main-actor isolated, so
+    /// there is nowhere else to do it. What there is instead is *when*: a
+    /// keystroke is 120 ms from the next one at a brisk pace, and asking after
+    /// every one of them put that block in every gap between two letters, which
+    /// is exactly where the next finger lands.
+    ///
+    /// Waiting 90 ms means a burst of typing asks nothing at all — the strip is
+    /// carried by the shipped word list, which answers in a quarter of a
+    /// millisecond — and one question is asked when the hand stops, which is
+    /// also when somebody starts reading the strip.
+    private static let checkerQuietPeriod: Duration = .milliseconds(90)
+    private var pendingCheck: Task<Void, Never>?
     private let learned: LearnedWordStore
     private var cache = SuggestionCache()
     private var generation = 0
@@ -85,6 +100,21 @@ final class TypingEngine {
     struct LexiconEntry: Sendable, Equatable {
         let userInput: String
         let documentText: String
+        /// `userInput` folded once, when the entry arrives.
+        ///
+        /// This list is not the handful of replacements someone typed into
+        /// Settings — `UILexicon` also carries every name in their address
+        /// book. Lowercasing each of them to compare against the word being
+        /// typed allocated a string per entry per keystroke, twice over, and
+        /// measured on device that was most of the 4.2 ms a keystroke spent
+        /// assembling its context.
+        let lowered: String
+
+        init(userInput: String, documentText: String) {
+            self.userInput = userInput
+            self.documentText = documentText
+            lowered = userInput.lowercased()
+        }
     }
 
     /// Carries a main-actor-isolated object from a background callback back to
@@ -100,6 +130,8 @@ final class TypingEngine {
     }
     private var language = TypingLanguage.fallback
     private var customWords: [String] = []
+    /// `customWords` folded once. See ``LexiconEntry/lowered``.
+    private var loweredCustomWords: [String] = []
 
     init(
         checker: any SpellChecking = SystemSpellChecker(),
@@ -116,6 +148,7 @@ final class TypingEngine {
             hasLoaded = true
         }
         customWords = CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
+        loweredCustomWords = customWords.map { $0.lowercased() }
     }
 
     private var hasLoaded = false
@@ -157,7 +190,16 @@ final class TypingEngine {
     /// Adopts the current field. Resets everything document-scoped: a new field
     /// is a new document, and carrying an assertion or a half-typed word across
     /// is how a keyboard corrects a password field's contents into a message.
+    ///
+    /// Also retires any deferred checker task. The quiet-period wait is 90 ms,
+    /// and without a cancel plus a generation bump a task born in the previous
+    /// field wakes, sees a matching generation, and publishes that field's
+    /// completions into this one.
     func documentChanged(policy newPolicy: TypingFieldPolicy) {
+        pendingCheck?.cancel()
+        pendingCheck = nil
+        generation += 1
+        pendingSwipe = nil
         policy = newPolicy
         composer.reset()
         assertedWords.removeAll()
@@ -192,7 +234,7 @@ final class TypingEngine {
         pendingRevert = nil
         pendingSwipe = nil
         isMidWord = document.isMidWord
-        composer.insert(text, origin: origin)
+        measured("composer.insert") { composer.insert(text, origin: origin) }
         refresh(document: document)
     }
 
@@ -262,6 +304,9 @@ final class TypingEngine {
     /// is therefore never autocorrected: the recogniser already picked from the
     /// dictionary, and correcting its answer would be two guesses stacked.
     func noteSwipeWord(_ word: String, alternates: [String]) {
+        pendingCheck?.cancel()
+        pendingCheck = nil
+        generation += 1
         composer.adopt(word, origin: .swipe)
         // Kept beside the composer rather than inside it. The document reads
         // "word " and the composer describes the word the cursor is inside, so
@@ -365,7 +410,11 @@ final class TypingEngine {
     // MARK: - Computation
 
     private func refresh(document: DocumentSnapshot) {
-        publishNextCharacters()
+        // Retire the previous composition even when this refresh exits early.
+        pendingCheck?.cancel()
+        pendingCheck = nil
+        generation += 1
+        measured("nextCharacters") { publishNextCharacters() }
         guard KeyboardPreferences.typingSuggestionsEnabled, policy.allowsTypingIntelligence
         else {
             publish(.none)
@@ -391,63 +440,71 @@ final class TypingEngine {
             return
         }
 
-        generation += 1
         let generation = generation
         let composition = composer.text
-        if !composition.isEmpty { ensureLoaded() }
+        if !composition.isEmpty { measured("ensureLoaded") { ensureLoaded() } }
         let origin = composer.origin
-        let preceding = PrecedingWord.lastWord(in: document.before)
+        let preceding = measured("precedingWord") {
+            PrecedingWord.lastWord(in: document.before)
+        }
 
         // Nothing being composed: prediction needs no checker, so it renders on
         // this turn rather than costing a hop.
         guard !composition.isEmpty else {
-            publish(
-                TypingCandidates.strip(
-                    context(composition: "", origin: origin, preceding: preceding, checked: nil)
-                )
+            publishStrip(
+                for: context(composition: "", origin: origin, preceding: preceding, checked: nil)
             )
             return
         }
 
         let key = SuggestionCache.Key(prefix: composition.lowercased(), language: language)
         if let cached = cache.value(for: key) {
-            publish(
-                TypingCandidates.strip(
-                    context(
-                        composition: composition,
-                        origin: origin,
-                        preceding: preceding,
-                        checked: cached
-                    )
+            publishStrip(
+                for: context(
+                    composition: composition,
+                    origin: origin,
+                    preceding: preceding,
+                    checked: cached
                 )
             )
             return
         }
 
-        // Enqueued rather than called: this returns immediately, the keystroke
-        // that triggered it finishes, and the checker runs on a later turn.
-        Task { @MainActor [weak self] in
-            guard let self, generation == self.generation else { return }
+        // Nothing is asked while the hand is moving.
+        //
+        // The strip still updates on this keystroke, from the shipped word list
+        // — that is the `publishStrip` below, and it costs a quarter of a
+        // millisecond. What waits is the checker, and every further keystroke
+        // cancels the wait and starts it again, so a burst of typing asks it
+        // nothing at all and a pause asks it once.
+        publishStrip(
+            for: context(
+                composition: composition,
+                origin: origin,
+                preceding: preceding,
+                checked: nil
+            )
+        )
+        pendingCheck?.cancel()
+        pendingCheck = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.checkerQuietPeriod)
+            guard !Task.isCancelled, let self, generation == self.generation else { return }
             let value = SuggestionCache.Value(
                 completions: self.checker.completions(for: composition, language: self.language),
                 guesses: self.checker.guesses(for: composition, language: self.language),
                 isKnown: self.checker.isKnown(composition, language: self.language),
-                // Computed here, on the later turn, rather than inside
-                // `context` — which the cache-hit path also runs.
+                // Computed here rather than inside `context`, which the
+                // cache-hit path also runs.
                 similar: self.wordList.similarWords(to: composition, limit: 2)
             )
-            // Checked again: the user may have typed on while this task waited
-            // its turn, and a strip two keystrokes behind is worse than none.
             guard generation == self.generation else { return }
             self.cache.insert(value, for: key)
-            self.publish(
-                TypingCandidates.strip(
-                    self.context(
-                        composition: composition,
-                        origin: origin,
-                        preceding: preceding,
-                        checked: value
-                    )
+            self.publishStrip(
+                for: self.context(
+                    composition: composition,
+                    origin: origin,
+                    preceding: preceding,
+                    checked: value
                 )
             )
         }
@@ -459,26 +516,56 @@ final class TypingEngine {
         preceding: String?,
         checked: SuggestionCache.Value?
     ) -> TypingCandidates.Context {
+        measured("build context") {
+            buildContext(
+                composition: composition,
+                origin: origin,
+                preceding: preceding,
+                checked: checked
+            )
+        }
+    }
+
+    private func buildContext(
+        composition: String,
+        origin: WordComposer.Origin,
+        preceding: String?,
+        checked: SuggestionCache.Value?
+    ) -> TypingCandidates.Context {
         let snapshot = learned.snapshot()
         var context = TypingCandidates.Context()
         context.composition = composition
         context.origin = origin
         context.precedingWord = preceding
         let lowered = composition.lowercased()
-        context.lexiconEntries = lexiconEntries
-            .filter { !composition.isEmpty && $0.userInput.lowercased().hasPrefix(lowered) }
-            .map(\.documentText)
+        // One pass for both, over the folded copies: the prefix matches that
+        // reach the strip, and the exact match that outranks it.
+        var lexiconCompletions: [String] = []
+        var lexiconExpansion: String?
+        if !composition.isEmpty {
+            for entry in lexiconEntries where entry.lowered.hasPrefix(lowered) {
+                lexiconCompletions.append(entry.documentText)
+                if lexiconExpansion == nil,
+                   entry.lowered == lowered,
+                   !entry.documentText.isEmpty
+                {
+                    lexiconExpansion = entry.documentText
+                }
+            }
+        }
+        context.lexiconEntries = lexiconCompletions
         // An *exact* match is an instruction rather than a suggestion: the user
         // told Settings that "omw" means something, and iOS hands keyboards the
         // lexicon precisely so it can be honoured. It used to reach the strip as
         // a chip and stop there, so the expansion only ever happened if the user
         // noticed it and tapped.
-        context.lexiconExpansion = lexiconEntries
-            .first { $0.userInput.lowercased() == lowered && !$0.documentText.isEmpty }?
-            .documentText
-        context.customWords = customWords.filter {
-            !composition.isEmpty && $0.lowercased().hasPrefix(composition.lowercased())
-        }
+        context.lexiconExpansion = lexiconExpansion
+        // Folded once with the vocabulary, for the same reason.
+        context.customWords = composition.isEmpty
+            ? []
+            : zip(customWords, loweredCustomWords)
+                .filter { $0.1.hasPrefix(lowered) }
+                .map(\.0)
         context.learnedWords = snapshot.completions(for: composition, limit: 3)
         context.systemCompletions = Array((checked?.completions ?? []).prefix(8))
         // The checker's guesses first, the list's own near-matches behind them:
@@ -488,6 +575,25 @@ final class TypingEngine {
             checked?.similar ?? []
         )
         context.listCompletions = wordList.completions(for: composition, limit: 3)
+        // One dictionary lookup per guess, half a dozen of them. What it buys is
+        // the difference between "both" and "coth" — see `correctionCost`.
+        var listRanks: [String: Int] = [:]
+        for guess in context.systemGuesses {
+            let guessed = guess.lowercased()
+            if let rank = wordList.rank(of: guessed) { listRanks[guessed] = rank }
+        }
+        // And every way the word could be cut in two, for the split that puts a
+        // missed space back. Dictionary lookups, one per cut, on a word.
+        if lowered.count >= 4, lowered.allSatisfy({ $0.isLetter }) {
+            let characters = Array(lowered)
+            for cut in 2...(characters.count - 2) {
+                for half in [String(characters[..<cut]), String(characters[cut...])]
+                where listRanks[half] == nil {
+                    if let rank = wordList.rank(of: half) { listRanks[half] = rank }
+                }
+            }
+        }
+        context.listRanks = listRanks
         context.predictions = preceding.map { wordList.nextWords(after: $0, limit: 3) } ?? []
         // The same bigrams, but as evidence about the word being typed rather
         // than a guess about the next one. A wider window than the strip shows,
@@ -496,6 +602,7 @@ final class TypingEngine {
             wordList.nextWords(after: $0, limit: 12)
         } ?? []
         context.isMidWord = isMidWord
+        context.hasCheckerAnswer = checked != nil
         context.isKnownToChecker = checked?.isKnown ?? false
         context.isInWordList = wordList.contains(composition)
         context.assertedWords = assertedWords
@@ -543,6 +650,35 @@ final class TypingEngine {
     /// space would happily autocorrect — rewriting the first half of a word the
     /// keyboard could only see half of.
     private var isMidWord = false
+
+    /// Times one phase of a keystroke into the trace. See the twin of this in
+    /// the controller: the phases are measured because guessing at them cost a
+    /// round of work that moved the median by 0.2 ms.
+    private func measured<T>(_ name: String, _ body: () -> T) -> T {
+        guard TouchTrace.isEnabled else { return body() }
+        let startedAt = CACurrentMediaTime()
+        defer {
+            TouchTrace.note(
+                String(format: "    %@ %.1fms", name, (CACurrentMediaTime() - startedAt) * 1000)
+            )
+        }
+        return body()
+    }
+
+    /// Publishes the strip for `context`, and — while a touch trace is armed —
+    /// records what the next boundary would do with the word, and why.
+    ///
+    /// The refusal is the part worth recording. A word that stands looks the
+    /// same whether the rule found it already correct, found two equally good
+    /// readings, or was switched off, and those are three different bugs.
+    private func publishStrip(for context: TypingCandidates.Context) {
+        TouchTrace.note(
+            "compose \"\(context.composition)\" "
+                + TypingCandidates.autocorrectDecision(context).outcomeDescription
+        )
+        let strip = measured("candidates.strip") { TypingCandidates.strip(context) }
+        measured("publish") { publish(strip) }
+    }
 
     private func publish(_ newStrip: TypingStrip) {
         guard newStrip != strip else { return }

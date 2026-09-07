@@ -192,6 +192,12 @@ struct KeyboardSettingsView: View {
             learningSection
             typingDetailSection
             appearanceSection
+            // Last: it is a tool for whoever is building the keyboard, and it
+            // has no business sitting between two settings somebody came here
+            // to change.
+            #if DEBUG
+            keyboardLabSection
+            #endif
         }
         .navigationTitle("Keyboard")
         .navigationBarTitleDisplayMode(.inline)
@@ -213,6 +219,18 @@ struct KeyboardSettingsView: View {
             )
         }
     }
+
+    #if DEBUG
+    /// Every dictation state, on demand, without a device build. See
+    /// ``KeyboardLabView``.
+    private var keyboardLabSection: some View {
+        Section {
+            NavigationLink("Keyboard lab") { KeyboardLabView() }
+        } footer: {
+            Text("Debug builds only. The keyboard's own views in every session state.")
+        }
+    }
+    #endif
 
     /// The real keyboard, at the chosen height, redrawing as the switches move.
     private var previewSection: some View {

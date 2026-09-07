@@ -3,6 +3,64 @@ import UIKit
 
 @MainActor
 struct DictationPresentationTests {
+    @Test func failuresKeepTheirDetailsAndRecoveryInstructions() {
+        for state in [SessionState.serverUnavailable, .uploadFailedRecoverable,
+                      .transcriptionFailedRecoverable, .transcriptionFailedPermanent] {
+            let model = Self.model(
+                state,
+                errorMessage: "Select and load a speech-to-text model in the gateway.",
+                canRetry: true
+            )
+            let message = model.surfaceMessage(for: state)
+            #expect(message?.contains("Select and load a speech-to-text model") == true)
+            #expect(message?.contains(model.title) == true)
+            #expect(message?.contains(model.primary.title) == true)
+            #expect(model.primary.isEnabled)
+        }
+        let permission = Self.model(.permissionDenied)
+        #expect(permission.surfaceMessage(for: .permissionDenied)?.contains("allow the microphone") == true)
+    }
+
+    @Test func preparationDoesNotClaimTranscriptionHasStarted() {
+        for location in [SessionProcessingLocation.gateway, .onDevice] {
+            let uploading = Self.model(.uploading, location: location)
+            #expect(uploading.surfaceMessage(for: .uploading) == uploading.title)
+            #expect(uploading.surfaceMessage(for: .uploading)?.contains("Transcribing") == false)
+        }
+        #expect(Self.model(.finalizing).surfaceMessage(for: .finalizing) == "Finishing recording")
+    }
+
+    @Test func readySurfaceRetainsTranscriptAndCancel() {
+        let ready = Self.model(.readyToInsert, transcript: "A preview to check.")
+        let message = ready.surfaceMessage(for: .readyToInsert)
+        #expect(message?.contains("A preview to check.") == true)
+        #expect(ready.secondaries.contains(.cancel))
+        #expect(ready.primary.action == .insert)
+        #expect(ready.primary.isEnabled)
+        let empty = Self.model(.readyToInsert)
+        #expect(empty.surfaceMessage(for: .readyToInsert) != nil)
+    }
+
+    @Test func changedFieldSurfaceRetainsTranscriptAndGuidance() {
+        let ready = Self.model(.targetContextChanged, transcript: "Waiting text.")
+        let message = ready.surfaceMessage(for: .targetContextChanged)
+        #expect(message?.contains("Waiting text.") == true)
+        #expect(message?.contains("different text field") == true)
+        #expect(ready.primary.action == .insertHere)
+    }
+
+    @Test func handoffRecoveryRemainsEnabledWhileProcessingIsDisabled() {
+        for state in [SessionState.launchingApp, .awaitingReturn] {
+            let presentation = Self.model(state)
+            #expect(presentation.primary.isEnabled)
+            #expect(presentation.primary.action == .openApp)
+            #expect(presentation.primary.title == "Open app")
+        }
+        for state in [SessionState.finalizing, .uploading, .transcribing] {
+            #expect(!Self.model(state).primary.isEnabled)
+        }
+    }
+
     private static func model(
         _ state: SessionState,
         transcript: String? = nil,

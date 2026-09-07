@@ -73,6 +73,8 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
     private var primaryHeightConstraint: NSLayoutConstraint?
     private var waveformHeightConstraint: NSLayoutConstraint?
     private var controlHeights: [NSLayoutConstraint] = []
+    /// Active only in the look that has no card: an icon-only chip is a circle.
+    private var chipCircleWidths: [NSLayoutConstraint] = []
     private var secondarySizes: [NSLayoutConstraint] = []
 
     private static let flashDuration: TimeInterval = 2.6
@@ -200,8 +202,8 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
 
     /// The most recent microphone level. Kept separate from `apply` because it
     /// changes on every tick while the model does not.
-    func push(meterLevel: Float) {
-        waveform.push(level: meterLevel)
+    func push(meterLevels: [Float]) {
+        waveform.push(levels: meterLevels)
     }
 
     func setElapsed(_ interval: TimeInterval?) {
@@ -528,8 +530,45 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
         styleButton.accessibilityValue = style.displayName
     }
 
+    /// A round glass control, the shape the system uses for chrome that floats
+    /// on a surface rather than sitting in a panel.
+    ///
+    /// Glass here and nowhere near the keys: two buttons of real material is
+    /// chrome, thirty sampling keys is a keyboard extension being killed at
+    /// 45–60 MB. The selected language and style are no longer written on the
+    /// control — the glyph and the menu carry them, and VoiceOver still reads
+    /// the value from `accessibilityValue`, which the callers set.
+    private func applyGlassChipConfiguration(to button: UIButton, symbol: String) {
+        var configuration = UIButton.Configuration.plain()
+        configuration.image = UIImage(
+            systemName: symbol,
+            withConfiguration: UIImage.SymbolConfiguration(
+                pointSize: metrics.bodyFontSize + 4,
+                weight: .semibold
+            )
+        )
+        configuration.contentInsets = .zero
+        configuration.cornerStyle = .capsule
+        configuration.baseForegroundColor = palette.tint(for: .brand)
+        if #available(iOS 26.0, *) {
+            let glass = UIGlassEffect()
+            // The material reacts to the press by itself, which is the whole
+            // reason to use the system's glass rather than a tinted circle.
+            glass.isInteractive = true
+            configuration.background.visualEffect = glass
+            configuration.background.backgroundColor = .clear
+        } else {
+            configuration.background.backgroundColor = palette.chipBackground
+        }
+        button.configuration = configuration
+    }
+
     private func applyChipConfiguration(to button: UIButton, title: String, symbol: String) {
         var configuration = UIButton.Configuration.plain()
+        if palette.usesSystemKeyboardBackdrop {
+            applyGlassChipConfiguration(to: button, symbol: symbol)
+            return
+        }
         configuration.title = title
         configuration.image = UIImage(
             systemName: symbol,
@@ -572,7 +611,10 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
         // backing layer does not, so its border is animated by hand.
         primaryButton.fillColor = tint
         indicator.color = tint
-        waveform.color = tint
+        // The meter keeps the product's own colour through every state. Red is
+        // the recording signal and it stays on the dot and the timer, where it
+        // means one thing; a red meter made the whole bar read as an alarm.
+        waveform.color = palette.color(for: .brand)
         crossfade(timerLabel, animated: animated) { self.timerLabel.textColor = tint }
 
         // A live session tints the outline; at rest the bar keeps the neutral
@@ -593,7 +635,15 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
     }
 
     private func applyPalette() {
-        backgroundColor = palette.barBackground
+        // No card. The bar's own fill, hairline and shadow drew a white panel
+        // sitting on the keyboard, which is one surface too many now that the
+        // keyboard itself is the system's: the controls belong directly on it,
+        // the way the system's own keyboard chrome sits on it.
+        let onSystemSurface = palette.usesSystemKeyboardBackdrop
+        backgroundColor = onSystemSurface ? .clear : palette.barBackground
+        layer.borderWidth = onSystemSurface ? 0 : 0.5
+        layer.shadowOpacity = onSystemSurface ? 0 : 0.07
+        chipCircleWidths.forEach { $0.isActive = onSystemSurface }
         layer.borderColor = palette.cardBorder.cgColor
         titleLabel.textColor = palette.label
         messageLabel.textColor = palette.secondaryLabel
@@ -627,7 +677,16 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
             : metrics.primaryHeight
         bodyTopToBarConstraint?.constant = metrics.verticalInset
         waveformHeightConstraint?.constant = metrics.waveformHeight
-        controlHeights.forEach { $0.constant = metrics.controlHeight }
+        // A round control on the keyboard surface is sized like the microphone
+        // button beside it, not like a label with a fill behind it: same
+        // diameter, same row, one family. `controlHeight` is 30pt — the height
+        // of a pill with a word in it — and a 30pt circle next to a 38pt one
+        // reads as a mistake, which is what it was.
+        controlHeights.forEach {
+            $0.constant = palette.usesSystemKeyboardBackdrop
+                ? metrics.chipHeight
+                : metrics.controlHeight
+        }
         secondarySizes.forEach { $0.constant = metrics.secondaryDiameter }
 
         layer.cornerRadius = metrics.cornerRadius
@@ -805,6 +864,9 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
             let constraint = $0.heightAnchor.constraint(equalToConstant: metrics.controlHeight)
             constraint.priority = .defaultHigh
             return constraint
+        }
+        chipCircleWidths = [languageButton, styleButton].map {
+            $0.widthAnchor.constraint(equalTo: $0.heightAnchor)
         }
         secondarySizes = secondaryButtons.flatMap { button in
             [

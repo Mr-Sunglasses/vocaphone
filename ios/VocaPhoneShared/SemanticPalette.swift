@@ -175,15 +175,35 @@ enum ContrastMath {
 
     /// WCAG relative luminance, which is defined on *linear* channels.
     static func relativeLuminance(_ color: UIColor) -> CGFloat {
+        guard let channels = rgba(color) else { return 0 }
+        func linear(_ channel: CGFloat) -> CGFloat {
+            channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(channels.red)
+            + 0.7152 * linear(channels.green)
+            + 0.0722 * linear(channels.blue)
+    }
+
+    /// Channels for any colour these palettes can produce.
+    ///
+    /// `getRed` answers nothing for a *monochrome* `UIColor` — everything built
+    /// with `UIColor(white:alpha:)`, which is most of the neutral greys here —
+    /// and both callers used to read that failure as pure black. A grey scored
+    /// as black is a contrast test that passes when it should fail, and a
+    /// translucent fill that flattens to nothing.
+    static func rgba(
+        _ color: UIColor
+    ) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat)? {
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
         var alpha: CGFloat = 0
-        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return 0 }
-        func linear(_ channel: CGFloat) -> CGFloat {
-            channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        if color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return (red, green, blue, alpha)
         }
-        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        var white: CGFloat = 0
+        guard color.getWhite(&white, alpha: &alpha) else { return nil }
+        return (white, white, white, alpha)
     }
 }
 
@@ -191,21 +211,13 @@ extension UIColor {
     /// Flattens a translucent colour onto an opaque one, so a disabled fill can
     /// be judged as the user sees it rather than as it was declared.
     func compositedOver(_ background: UIColor) -> UIColor {
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-        var backRed: CGFloat = 0
-        var backGreen: CGFloat = 0
-        var backBlue: CGFloat = 0
-        var backAlpha: CGFloat = 0
-        guard getRed(&red, green: &green, blue: &blue, alpha: &alpha),
-              background.getRed(&backRed, green: &backGreen, blue: &backBlue, alpha: &backAlpha)
+        guard let front = ContrastMath.rgba(self),
+              let back = ContrastMath.rgba(background)
         else { return self }
         return UIColor(
-            red: alpha * red + (1 - alpha) * backRed,
-            green: alpha * green + (1 - alpha) * backGreen,
-            blue: alpha * blue + (1 - alpha) * backBlue,
+            red: front.alpha * front.red + (1 - front.alpha) * back.red,
+            green: front.alpha * front.green + (1 - front.alpha) * back.green,
+            blue: front.alpha * front.blue + (1 - front.alpha) * back.blue,
             alpha: 1
         )
     }

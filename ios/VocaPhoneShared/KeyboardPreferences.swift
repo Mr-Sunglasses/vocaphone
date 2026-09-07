@@ -1,5 +1,39 @@
 import Foundation
 
+/// The five taps `UIImpactFeedbackGenerator` can play, named for the hand
+/// rather than for the API: they differ in how hard and how sharp they are.
+enum TypingHapticStyle: String, CaseIterable, Identifiable, Sendable {
+    case light
+    case soft
+    case medium
+    case heavy
+    case rigid
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .light: "Light"
+        case .soft: "Soft"
+        case .medium: "Medium"
+        case .heavy: "Heavy"
+        case .rigid: "Rigid"
+        }
+    }
+
+    /// What each one feels like, so the picker is not five words in a row.
+    var detail: String {
+        switch self {
+        case .light: "A nudge. The softest and most diffuse."
+        case .soft: "Rounded and slow — a cushion rather than a click."
+        case .medium: "The middle of the range."
+        case .heavy: "The hardest hit the engine has."
+        case .rigid: "Short and sharp. What the system keyboard uses."
+        }
+    }
+
+}
+
 /// Presentation only. No style adds, removes or substitutes a word, and
 /// numbers, times, addresses and contractions are always left as the model
 /// transcribed them.
@@ -50,14 +84,27 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
         TranscriptStyler.apply(Self.exampleSource, style: self)
     }
 
+    /// Everyday objects rather than typographic notation.
+    ///
+    /// The set this replaces described the *genre* of the text — a document, a
+    /// wand, two speech bubbles — while what actually separates these styles is
+    /// punctuation and capitalisation. Nobody tells `textformat` from
+    /// `textformat.abc` at 17 pt, and nobody should have to: an eraser, a
+    /// briefcase and sunglasses are read without being decoded.
     var symbolName: String {
         switch self {
-        case .raw: "doc.plaintext"
-        case .clean: "wand.and.stars"
-        case .formal: "textformat"
-        case .casual: "text.bubble"
-        case .veryCasual: "textformat.abc"
-        case .excited: "sparkles"
+        // What was said, unedited.
+        case .raw: "waveform"
+        // Tidied: spacing, a closing full stop, stray capitals rubbed out.
+        case .clean: "eraser"
+        // Sentence case and a full stop — the way work writing looks.
+        case .formal: "briefcase"
+        // A line in a conversation, which does not end in a full stop.
+        case .casual: "bubble.left"
+        // Lowercase throughout, clauses run together.
+        case .veryCasual: "sunglasses"
+        // Everything ends in an exclamation mark.
+        case .excited: "party.popper"
         }
     }
 }
@@ -538,6 +585,104 @@ enum KeyboardPreferences {
     static var repairSpeech: Bool {
         get { boolean(repairSpeechKey, default: true) }
         set { defaults?.set(newValue, forKey: repairSpeechKey) }
+    }
+
+    static let surfaceAnimationResponseKey = "surfaceAnimationResponse2"
+    static let surfaceAnimationDampingKey = "surfaceAnimationDamping2"
+
+    /// The spring the dictation surface changes phase with.
+    ///
+    /// Stored rather than hardcoded so the keyboard lab can tune it against a
+    /// thumb: the lab writes here, the extension reads here, and the value
+    /// survives leaving the screen. Nothing in a shipping build writes these —
+    /// the lab is the only writer and it is debug-only — so the defaults below
+    /// are what every user gets.
+    static var surfaceAnimationResponse: Double {
+        get {
+            let stored = defaults?.double(forKey: surfaceAnimationResponseKey) ?? 0
+            return stored > 0 ? stored : 0.15
+        }
+        set { defaults?.set(newValue, forKey: surfaceAnimationResponseKey) }
+    }
+
+    static var surfaceAnimationDamping: Double {
+        get {
+            let stored = defaults?.double(forKey: surfaceAnimationDampingKey) ?? 0
+            return stored > 0 ? stored : 1.0
+        }
+        set { defaults?.set(newValue, forKey: surfaceAnimationDampingKey) }
+    }
+
+    static let lastShownWritingStyleKey = "lastShownWritingStyle"
+
+    /// The style the dictation surface was showing when it last appeared.
+    ///
+    /// The one signal that iOS's cached picture of the keyboard is out of date:
+    /// the style changed while the keyboard was up, so the snapshot taken
+    /// before that change still carries the previous icon.
+    static var lastShownWritingStyle: WritingStyle? {
+        get {
+            guard let raw = defaults?.string(forKey: lastShownWritingStyleKey) else { return nil }
+            return WritingStyle(rawValue: raw)
+        }
+        set { defaults?.set(newValue?.rawValue, forKey: lastShownWritingStyleKey) }
+    }
+
+    static let keyPreviewAnimatesKey = "keyPreviewAnimates"
+
+    /// Whether the magnified key above a press grows into place, or is simply
+    /// there.
+    ///
+    /// The balloon scales up over about a tenth of a second and back down on
+    /// release. That is the animation a fast typist has several of in flight at
+    /// once, and it is the one thing on the press path that is not instant:
+    /// the touch handler itself measures under a millisecond.
+    static var keyPreviewAnimates: Bool {
+        get { defaults?.object(forKey: keyPreviewAnimatesKey) as? Bool ?? false }
+        set { defaults?.set(newValue, forKey: keyPreviewAnimatesKey) }
+    }
+
+    static let keyReleaseFadeKey = "keyReleaseFade"
+
+    /// Whether a character key fades back to its resting colour when the finger
+    /// leaves, or snaps.
+    ///
+    /// A switch rather than a constant because it is a suspect: every release
+    /// starts a tenth-of-a-second animation, and a fast typist has several of
+    /// them in flight at once. Whether that is what makes speed feel heavy is a
+    /// question for a thumb, not for an argument.
+    static var keyReleaseFade: Bool {
+        get { defaults?.object(forKey: keyReleaseFadeKey) as? Bool ?? false }
+        set { defaults?.set(newValue, forKey: keyReleaseFadeKey) }
+    }
+
+    static let typingHapticStyleKey = "typingHapticStyle"
+    static let typingHapticIntensityKey = "typingHapticIntensity"
+
+    /// How hard a key hits back.
+    ///
+    /// Stored because "strong enough" is a matter of hands and cases, not of
+    /// argument: the same generator that reads as a crisp press through a bare
+    /// phone is a rumour through a thick case.
+    static var typingHapticStyle: TypingHapticStyle {
+        get {
+            guard let raw = defaults?.string(forKey: typingHapticStyleKey),
+                  let style = TypingHapticStyle(rawValue: raw)
+            else { return .rigid }
+            return style
+        }
+        set { defaults?.set(newValue.rawValue, forKey: typingHapticStyleKey) }
+    }
+
+    /// 0 to 1, where 1 is the whole engine.
+    static var typingHapticIntensity: Double {
+        get {
+            guard let stored = defaults?.object(forKey: typingHapticIntensityKey) as? Double,
+                  stored.isFinite
+            else { return 1 }
+            return min(max(stored, 0), 1)
+        }
+        set { defaults?.set(min(max(newValue, 0), 1), forKey: typingHapticIntensityKey) }
     }
 
     static var writingStyle: WritingStyle {

@@ -377,7 +377,11 @@ struct KeyHitMapTests {
 
     /// A locked Shift is a deliberate state, so a slide off it does not undo it.
     @Test func slidingOffALockedShiftKeepsCapsLock() throws {
-        let grid = Self.makeGrid(feedback: KeyboardFeedbackSpy(), delegate: KeyGridDelegateSpy())
+        // Held by name. The grid's `delegate` is weak, so a spy created inside the
+        // call is deallocated on the same line and every assertion about what it
+        // received is an assertion about nil.
+        let delegate = KeyGridDelegateSpy()
+        let grid = Self.makeGrid(feedback: KeyboardFeedbackSpy(), delegate: delegate)
         grid.shiftState = .locked
 
         let landed = try #require(grid.keyViews.first { $0.spec.cap == KeyCap.character("q") })

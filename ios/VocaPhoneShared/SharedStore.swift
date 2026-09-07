@@ -5,6 +5,21 @@ enum SharedStoreError: Error {
     case unsupportedSchema(Int)
 }
 
+/// A run of microphone levels, written by the app and read by the keyboard.
+///
+/// `sequence` counts every level produced in this session, so a reader that
+/// polls can tell how many of them it has not drawn yet. Without it a reader
+/// that ticks faster than the writer draws the same audio twice, and one that
+/// ticks slower silently skips it.
+struct MeterSample: Codable, Equatable, Sendable {
+    var sequence: Int
+    var levels: [Float]
+
+    func clamped() -> MeterSample {
+        MeterSample(sequence: sequence, levels: levels.map { min(max($0, 0), 1) })
+    }
+}
+
 final class SharedStore: @unchecked Sendable {
     static let shared = SharedStore()
 
@@ -44,10 +59,9 @@ final class SharedStore: @unchecked Sendable {
     /// temporary file plus a rename on every tick, and re-creating the directory
     /// each time adds another syscall — both wasteful for four bytes whose next
     /// value arrives 150 ms later. A torn read simply shows a stale level.
-    func saveMeter(_ level: Float, for id: UUID) throws {
+    func saveMeter(_ sample: MeterSample, for id: UUID) throws {
         let directory = try sessionsDirectory()
-        let clamped = min(max(level, 0), 1)
-        let data = try encoder.encode(clamped)
+        let data = try encoder.encode(sample.clamped())
         let fileURL = meterURL(for: id, directory: directory)
         do {
             try data.write(to: fileURL)
@@ -316,10 +330,26 @@ final class SharedStore: @unchecked Sendable {
             return
         }
         let fileURL = meterURL(for: record.sessionID, directory: directory)
-        guard let data = try? Data(contentsOf: fileURL),
-              let level = try? decoder.decode(Float.self, from: data)
-        else { return }
+        guard let sample = meterSample(at: fileURL), let level = sample.levels.last else { return }
         record.meterLevel = min(max(level, 0), 1)
+    }
+
+    /// The levels the recorder has produced for this session, for a reader that
+    /// draws them rather than just showing the current loudness.
+    func meterSample(for id: UUID) -> MeterSample? {
+        guard let directory = try? sessionsDirectory() else { return nil }
+        return meterSample(at: meterURL(for: id, directory: directory))
+    }
+
+    private func meterSample(at fileURL: URL) -> MeterSample? {
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        if let sample = try? decoder.decode(MeterSample.self, from: data) {
+            return sample
+        }
+        // A file written by a build that stored one number. Worth reading rather
+        // than dropping: it is the level of an in-flight recording.
+        guard let level = try? decoder.decode(Float.self, from: data) else { return nil }
+        return MeterSample(sequence: 0, levels: [level])
     }
 
     private func notify(_ notification: VocaPhoneDarwinNotification) {

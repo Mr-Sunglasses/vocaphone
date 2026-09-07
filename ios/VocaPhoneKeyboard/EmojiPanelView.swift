@@ -245,7 +245,10 @@ final class EmojiPanelView: UIView {
     }
 
     private func applyPalette() {
-        backgroundColor = palette.background
+        // The panel sits inside the keyboard, so it inherits the same surface:
+        // painting the fallback grey here would show as a patch against the
+        // system backdrop the keys stand on.
+        backgroundColor = palette.usesSystemKeyboardBackdrop ? .clear : palette.background
         searchField.backgroundColor = palette.functionKey
         searchField.textColor = palette.keyForeground
         for button in bottomRow.arrangedSubviews.compactMap({ $0 as? UIButton }) {

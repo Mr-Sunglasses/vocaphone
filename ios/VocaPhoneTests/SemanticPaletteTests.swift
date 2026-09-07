@@ -173,7 +173,13 @@ struct SemanticPaletteTests {
         #expect(Self.rgb(KeyboardPalette(isDark: false).background) == (226, 228, 232))
         #expect(Self.rgb(KeyboardPalette(isDark: false).standardKey) == (255, 255, 255))
         #expect(Self.rgb(KeyboardPalette(isDark: true).background) == (23, 23, 23))
-        #expect(Self.rgb(KeyboardPalette(isDark: true).standardKey) == (61, 61, 61))
+        // The dark key is a film, not a fill: what was measured off the system
+        // keyboard is the film *over that backdrop*, and that is what this
+        // pins. Asserting the colour itself would have frozen the composite
+        // and taken the translucency — the reason the keys stay legible on a
+        // bright home screen — back out again.
+        let dark = KeyboardPalette(isDark: true)
+        #expect(Self.rgb(dark.standardKey.compositedOver(dark.background)) == (61, 61, 61))
     }
 
     /// An engaged Shift lifts to the *standard* key surface, which is what the
@@ -232,7 +238,20 @@ struct SemanticPaletteTests {
                 for fill in [
                     palette.background(for: style), palette.pressedBackground(for: style),
                 ] {
-                    let measured = contrast(fill, palette.foreground(for: style))
+                    // Composited first: the dark key fill is a translucent film
+                    // and has no colour of its own to measure. What the eye
+                    // reads is the film over the keyboard surface, and that is
+                    // what has to clear 4.5:1.
+                    //
+                    // This measures against the keyboard's own surface. Over a
+                    // bright wallpaper the system backdrop lightens and so does
+                    // the key, which is the trade the system keyboard itself
+                    // makes with the same white labels; its dark-mode backdrop
+                    // keeps a scrim rather than going clear.
+                    let measured = contrast(
+                        fill.compositedOver(palette.background),
+                        palette.foreground(for: style)
+                    )
                     #expect(
                         measured >= 4.5,
                         "\(isDark ? "dark" : "light") \(style) key label is \(measured):1"

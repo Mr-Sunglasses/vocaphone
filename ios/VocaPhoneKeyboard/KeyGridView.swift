@@ -153,6 +153,20 @@ final class KeyGridView: UIView {
     private var alternativesView: KeyAlternativesView?
     /// Rebuilt by layout from the same frames that are rendered. Touches never
     /// scan UIKit subviews directly, so a gutter boundary has one stable owner.
+    /// Whether the touch trace may write down which key was pressed.
+    ///
+    /// It may not, in a field that has switched typing intelligence off — a
+    /// password, a passcode, a one-time code. The composition is already kept
+    /// out of those by ``TypingFieldPolicy``, but the trace records individual
+    /// keys, and a character key's name in the trace is the character. A debug
+    /// build would have written somebody's password into the App Group one
+    /// glyph at a time, and `just ios trace` copies that file to a Mac.
+    var traceNamesKeys = true
+
+    private func traceName(for key: KeyView) -> String {
+        traceNamesKeys ? key.spec.cap.traceName : "redacted"
+    }
+
     private(set) var hitMap = KeyHitMap(targets: [])
     private var tracked: [TrackedTouch] = []
     /// The plane key's hold-for-emoji gesture. Owned by the grid rather than by
@@ -280,6 +294,7 @@ final class KeyGridView: UIView {
         let unit = (available - 9 * metrics.columnGap) / 10
         guard unit > 0 else {
             hitMap = KeyHitMap(targets: [])
+            TouchTrace.note("layout ABANDONED, no width")
             return
         }
         // Android's 8dp is measured against its ~40dp key; expressing it as a
@@ -352,6 +367,7 @@ final class KeyGridView: UIView {
             hysteresis: hysteresis,
             likelihood: nextCharacterLikelihood
         )
+        TouchTrace.note("layout targets=\(targets.count)")
     }
 
     /// The native letters plane leaves a larger visual moat around Shift and
@@ -416,6 +432,65 @@ final class KeyGridView: UIView {
         return widths
     }
 
+    /// How far above its own bounds the top row claims, so a finger reaching
+    /// high for `q` through `p` still types. The touch arrives with its real
+    /// location, which is outside the grid, and the hit map is what has to
+    /// forgive it.
+    static let claimedTopMargin: CGFloat = 28
+
+    /// Does nothing, and must exist.
+    ///
+    /// UIKit declines to recognise a touch that lands on a fully transparent
+    /// pixel — not merely declines to route it, but never reports it at all: no
+    /// hit test, no event, no gesture. This grid is transparent by design, since
+    /// it draws over the system's own keyboard backdrop, and the keys are
+    /// painted while the gutters between them are not. A finger landing in a
+    /// gutter therefore vanished, which is what "typing fast, the key doesn't
+    /// press and there's no balloon" was: not a touch this keyboard lost, but a
+    /// touch iOS never admitted to having.
+    ///
+    /// Implementing `draw(_:)` — even emptily — opts the view out of that
+    /// optimisation. The trick is not mine: it is in `ForwardingView.swift` of
+    /// Archagon's open reimplementation of the system keyboard, with the same
+    /// explanation attached, and it has been there for a decade.
+    override func draw(_ rect: CGRect) {}
+
+    /// Every touch inside the grid belongs to the grid.
+    ///
+    /// The keys are drawing, not targets. Hit-testing to them handed each touch
+    /// to a `KeyView` — 516 of 520 in one measured session — and UIKit gives a
+    /// view without `isMultipleTouchEnabled` only the first touch of a
+    /// multi-touch sequence, withholding the rest entirely. The same open
+    /// keyboard above answers this the same way: one view claims every touch,
+    /// and the keys underneath it never see one.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard !isHidden, alpha > 0, isUserInteractionEnabled else { return nil }
+        return self.point(inside: point, with: event) ? self : nil
+    }
+
+    /// How far above itself the grid will answer for a touch: the gap the stack
+    /// leaves between the dictation bar and the keys, and not one point more.
+    ///
+    /// The gap belongs to nobody, so the keys may have it. What is above the gap
+    /// is the bar, and the bar has buttons in it. This used to claim the full
+    /// `claimedTopMargin`, which reaches 28 points up — past the gap and into
+    /// the bar's own row — and because the grid is the later of the two in the
+    /// stack, it was hit-tested first and won. Pressing the globe typed `q`.
+    ///
+    /// `hitRect` still forgives 28 points, and that is a different question: it
+    /// decides which key a touch the grid has *already been given* belongs to,
+    /// not whether the grid should have been given it.
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        let expanded = bounds.inset(by: UIEdgeInsets(
+            top: -KeyboardChrome.gapAboveKeys,
+            left: -KeyboardChrome.sideMargin,
+            bottom: 0,
+            right: -KeyboardChrome.sideMargin
+        ))
+        return expanded.contains(point)
+    }
+
     /// Keys claim the surrounding gutter, and edge keys claim everything out to
     /// the boundary. A near miss should still type the intended character.
     private func hitRect(
@@ -425,30 +500,23 @@ final class KeyGridView: UIView {
         isTopRow: Bool,
         isBottomRow: Bool
     ) -> CGRect {
-        var rect = frame.insetBy(dx: -metrics.columnGap / 2, dy: -metrics.rowGap / 2)
-        if isLeading {
-            rect = CGRect(x: 0, y: rect.minY, width: rect.maxX, height: rect.height)
-        }
-        if isTrailing {
-            rect = CGRect(
-                x: rect.minX,
-                y: rect.minY,
-                width: bounds.width - rect.minX,
-                height: rect.height
-            )
-        }
-        if isTopRow {
-            rect = CGRect(x: rect.minX, y: 0, width: rect.width, height: rect.maxY)
-        }
-        if isBottomRow {
-            rect = CGRect(
-                x: rect.minX,
-                y: rect.minY,
-                width: rect.width,
-                height: bounds.height - rect.minY
-            )
-        }
-        return rect
+        let slot = frame.insetBy(dx: -metrics.columnGap / 2, dy: -metrics.rowGap / 2)
+        // Built from edges rather than by adding to a width: an edge key's own
+        // boundary has to stay bit-for-bit where the neighbour's begins, or the
+        // gutter between them acquires a hairline nothing owns.
+        var minX = slot.minX
+        var maxX = slot.maxX
+        var minY = slot.minY
+        var maxY = slot.maxY
+        // Only out to the grid's own edge. The stack claims the chrome beyond
+        // it and forwards those touches with the x clamped inside, so widening
+        // these rects buys nothing and costs the exact adjacency that keeps the
+        // gutter between an edge key and its neighbour owned by one of them.
+        if isLeading { minX = 0 }
+        if isTrailing { maxX = bounds.width }
+        if isTopRow { minY = -Self.claimedTopMargin }
+        if isBottomRow { maxY = bounds.height }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
     // MARK: - Building
@@ -456,6 +524,10 @@ final class KeyGridView: UIView {
     /// Discards every cached plane. Only geometry or colour changes need this;
     /// a plane switch goes through `activatePlane`.
     private func rebuild() {
+        measured("rebuild") { rebuildBody() }
+    }
+
+    private func rebuildBody() {
         hitMap = KeyHitMap(targets: [])
         endDeleteRepeat()
         cancelPlaneHold()
@@ -481,6 +553,10 @@ final class KeyGridView: UIView {
     }
 
     private func activatePlane() {
+        measured("activatePlane") { activatePlaneBody() }
+    }
+
+    private func activatePlaneBody() {
         // Cleared here and rebuilt before this method returns: never let a
         // touch resolve old target indices against the new plane's views.
         hitMap = KeyHitMap(targets: [])
@@ -521,6 +597,7 @@ final class KeyGridView: UIView {
         // still come out on top, because both bring themselves to the front.
         swipeTrail.color = palette.swipeTrail
         addSubview(swipeTrail)
+        fillPreviewPool()
         updateKeys()
         invalidateIntrinsicContentSize()
         setNeedsLayout()
@@ -551,6 +628,7 @@ final class KeyGridView: UIView {
     /// pinned touch can still commit that letter when it lifts even though the
     /// view behind it now belongs to a plane that is no longer on screen.
     private func pinTouchesToTheirKeys() {
+        if !tracked.isEmpty { TouchTrace.note("pin \(tracked.count) in flight") }
         spaceTrackpadTimer?.invalidate()
         spaceTrackpadTimer = nil
         swipeTrail.cancel()
@@ -574,6 +652,7 @@ final class KeyGridView: UIView {
     }
 
     private func releaseTouches() {
+        if !tracked.isEmpty { TouchTrace.note("RELEASE \(tracked.count) in flight, uncommitted") }
         spaceTrackpadTimer?.invalidate()
         spaceTrackpadTimer = nil
         swipeTrail.cancel()
@@ -603,14 +682,30 @@ final class KeyGridView: UIView {
     // MARK: - Touch tracking
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        measured("touchesBegan") { beginTouches(touches, with: event) }
+    }
+
+    private func beginTouches(_ touches: Set<UITouch>, with event: UIEvent?) {
         // Sorted, because `Set` has no order and two thumbs landing inside one
         // event would otherwise type in whichever order the set happened to
         // hash — the letters of a fast word arriving transposed.
         for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
             let point = touch.location(in: self)
             guard let index = keyIndex(at: point, characterOnly: false)
-            else { continue }
+            else {
+                TouchTrace.note(
+                    "began \(TouchTrace.name(touch)) "
+                        + "(\(Int(point.x)),\(Int(point.y))) NO KEY "
+                        + "targets=\(hitMap.targets.count) tracked=\(tracked.count)"
+                )
+                continue
+            }
             let key = keyViews[index]
+            TouchTrace.note(
+                "began \(TouchTrace.name(touch)) "
+                    + "(\(Int(point.x)),\(Int(point.y))) "
+                    + "\(traceName(for: key)) tracked=\(tracked.count)"
+            )
             // A dimmed Return takes no touch at all — not the highlight and not
             // the click, both of which would promise something it will not do.
             if key.spec.cap == .newline, !returnKeyIsEnabled { continue }
@@ -620,10 +715,10 @@ final class KeyGridView: UIView {
             // The click belongs to the press, not to the commit: the system
             // keyboard sounds a key as the finger lands, and every key here
             // does the same so the rhythm never depends on which key it was.
-            feedback.keyPressed()
-            showPreview(for: item)
+            measured("feedback") { feedback.keyPressed() }
+            measured("showPreview") { showPreview(for: item) }
             if key.spec.cap == .space { scheduleSpaceTrackpad(for: item) }
-            scheduleAlternatives(for: item)
+            measured("scheduleAlternatives") { scheduleAlternatives(for: item) }
             if case .plane = key.spec.cap {
                 beginPlaneHold(at: point)
                 planeHoldTouch = touch
@@ -693,7 +788,7 @@ final class KeyGridView: UIView {
                 // Function keys stay bound to their own touch but disengage when
                 // the finger wanders off, so a drag away cancels instead of
                 // firing something the user no longer intends.
-                let isInside = item.key.hitRect.contains(point)
+                let isInside = stillHolds(item.key, at: point)
                 guard item.isEngaged != isInside else { continue }
                 item.isEngaged = isInside
                 setHighlight(isInside, on: item.key)
@@ -803,8 +898,28 @@ final class KeyGridView: UIView {
         var planeToRestore: KeyPlane?
         for touch in touches.sorted(by: { $0.timestamp < $1.timestamp }) {
             if planeHoldTouch === touch { cancelPlaneHold() }
-            guard let index = tracked.firstIndex(where: { $0.touch === touch }) else { continue }
+            guard let index = tracked.firstIndex(where: { $0.touch === touch }) else {
+                TouchTrace.note(
+                    "\(commit ? "end" : "cancel") \(TouchTrace.name(touch)) UNTRACKED"
+                )
+                continue
+            }
             let item = tracked.remove(at: index)
+            // How far the finger went between landing and lifting. A letter
+            // that never appeared and left no touch at all has one remaining
+            // explanation this keyboard could act on: the finger never left the
+            // glass, so the second key was a continuation of the first press
+            // rather than a press of its own. A long travel here is what that
+            // looks like from inside.
+            let lift = touch.location(in: self)
+            let travel = hypot(lift.x - item.initialPoint.x, lift.y - item.initialPoint.y)
+            TouchTrace.note(
+                "\(commit ? "end" : "cancel") \(TouchTrace.name(touch)) "
+                    + "\(traceName(for: item.key)) engaged=\(item.isEngaged) "
+                    + "pinned=\(item.isPinned) swipe=\(item.isSwiping) "
+                    + "cursor=\(item.isCursorTracking) "
+                    + "travel=\(Int(travel)) at (\(Int(lift.x)),\(Int(lift.y)))"
+            )
             if item.key.spec.cap == .space {
                 spaceTrackpadTimer?.invalidate()
                 spaceTrackpadTimer = nil
@@ -816,7 +931,7 @@ final class KeyGridView: UIView {
             // only, so sliding back onto the modifier leaves `item.key` on the
             // letter it passed over. Lifting there must type nothing.
             if item.isModifierSlide,
-               !item.key.hitRect.contains(touch.location(in: self))
+               !stillHolds(item.key, at: touch.location(in: self))
             {
                 shouldCommit = false
             }
@@ -938,7 +1053,7 @@ final class KeyGridView: UIView {
                 spaceTrackpadTimer?.invalidate()
                 spaceTrackpadTimer = nil
             }
-            item.isEngaged = item.key.hitRect.contains(point)
+            item.isEngaged = stillHolds(item.key, at: point)
             setHighlight(item.isEngaged, on: item.key)
             return
         }
@@ -1172,9 +1287,56 @@ final class KeyGridView: UIView {
         return keyViews[index]
     }
 
+    /// Times one phase of a touch into the trace.
+    ///
+    /// Everything measured so far happened on the *lift* — the letter, the
+    /// suggestions, the strip. What a person means by a keyboard feeling heavy
+    /// is the other end: the gap between the finger landing and the key looking
+    /// pressed. That is this method's half.
+    private func measured<T>(_ name: String, _ body: () -> T) -> T {
+        guard TouchTrace.isEnabled else { return body() }
+        let startedAt = CACurrentMediaTime()
+        defer {
+            TouchTrace.note(
+                String(format: "    %@ %.1fms", name, (CACurrentMediaTime() - startedAt) * 1000)
+            )
+        }
+        return body()
+    }
+
+    /// Whether a finger that pressed `key` is still holding it.
+    ///
+    /// The same slack the hit map already allows before it hands a *sliding*
+    /// finger to a neighbour, applied to the question of whether a *held* key
+    /// is still held. Without it that boundary is a knife edge, and every press
+    /// moves: a thumb landing just inside the space bar's top edge and rolling
+    /// upward as it presses leaves the rect it is standing on, disengages, and
+    /// lifts having typed nothing.
+    ///
+    /// Measured on device: two spaces in 442 keystrokes were pressed, tracked
+    /// and silently dropped, both within 2 pt of the bottom row's top edge —
+    /// which is what "this is" arriving as "thisis" was. Worse than the missing
+    /// space, the composition then ran two words together and autocorrect
+    /// started offering to fix the result.
+    private func stillHolds(_ key: KeyView, at point: CGPoint) -> Bool {
+        let slack = hitMap.hysteresis
+        return key.hitRect.insetBy(dx: -slack, dy: -slack).contains(point)
+    }
+
     private func keyIndex(at point: CGPoint, characterOnly: Bool) -> Int? {
-        guard let index = hitMap.targetIndex(at: point, characterOnly: characterOnly),
-              keyViews.indices.contains(index)
+        let clamped = CGPoint(
+            x: min(max(point.x, 0.5), max(bounds.width - 0.5, 0.5)),
+            y: min(max(point.y, 0.5), max(bounds.height - 0.5, 0.5))
+        )
+        // The clamped point is the second question, not a different answer: a
+        // touch that landed in the chrome beside the grid is asked about at the
+        // nearest point inside it. What is deliberately absent is a fall back to
+        // the *nearest* key — the hit map tiles the whole grid including its
+        // gutters, so a point it does not claim is a point outside the keys, and
+        // typing the closest letter to it would be inventing a keystroke.
+        guard let index = hitMap.targetIndex(at: point, characterOnly: characterOnly)
+            ?? hitMap.targetIndex(at: clamped, characterOnly: characterOnly),
+            keyViews.indices.contains(index)
         else { return nil }
         return index
     }
@@ -1204,6 +1366,23 @@ final class KeyGridView: UIView {
         guard !tracked.contains(where: { $0.isEngaged && $0.key === key }) else { return }
         key.isHighlighted = false
     }
+
+#if DEBUG
+    /// Shows a key's preview with no touch behind it, so the balloon can be
+    /// rendered and looked at without installing the keyboard on a device.
+    ///
+    /// The throwaway `TrackedTouch` is deliberately not added to `tracked`: it
+    /// carries no real `UITouch`, and live touch tracking must never see one.
+    /// `showPreview` only reads the item, and the balloon it dequeues is a
+    /// subview of the grid, so it survives for the render either way. Its
+    /// `keyIndex` is deliberately out of range for the same reason: nothing
+    /// will ever ask the hit map to re-target it.
+    func previewKeyForRendering(_ key: KeyView) {
+        showPreview(
+            for: TrackedTouch(touch: UITouch(), key: key, keyIndex: -1, initialPoint: .zero)
+        )
+    }
+#endif
 
     // MARK: - Timers
 
@@ -1339,33 +1518,40 @@ final class KeyGridView: UIView {
         // Only the first appearance grows. Sliding from one key to the next
         // moves the same balloon, and re-animating it there would be the glyph
         // pulsing under a finger that is simply correcting its aim.
-        if isNew { preview.appear(animated: true) }
+        if isNew { preview.appear(animated: KeyboardPreferences.keyPreviewAnimates) }
     }
-
-#if DEBUG
-    /// Shows a key's preview with no touch behind it, so the balloon can be
-    /// rendered and looked at without installing the keyboard on a device.
-    ///
-    /// The throwaway `TrackedTouch` is deliberately not added to `tracked`: it
-    /// carries no real `UITouch`, and live touch tracking must never see one.
-    /// `showPreview` only reads the item, and the balloon it dequeues is a
-    /// subview of the grid, so it survives for the render either way. Its
-    /// `keyIndex` is deliberately out of range for the same reason: nothing
-    /// will ever ask the hit map to re-target it.
-    func previewKeyForRendering(_ key: KeyView) {
-        showPreview(
-            for: TrackedTouch(touch: UITouch(), key: key, keyIndex: -1, initialPoint: .zero)
-        )
-    }
-#endif
 
     /// Reused rather than allocated per touch; a fast typist would otherwise
     /// create and discard a view for every keystroke.
+    /// How many balloons the grid keeps standing by.
+    ///
+    /// Six, and all of them exist before the first keystroke. A pool that runs
+    /// out is a pool that builds a `KeyPreviewView` and calls `addSubview` from
+    /// inside `touchesBegan` — mutating the view hierarchy in the middle of
+    /// UIKit delivering touches through it, and tearing it down again a moment
+    /// later. At typing speed that happened on every letter, which is exactly
+    /// when the fingers are arriving fastest and a lost press is least
+    /// forgivable. Six covers two thumbs with four balloons still fading.
+    private static let previewPoolSize = 6
+
+    private func fillPreviewPool() {
+        guard metrics.showsPreview else { return }
+        while previewPool.count < Self.previewPoolSize {
+            let preview = KeyPreviewView(palette: palette, metrics: metrics)
+            preview.isHidden = true
+            addSubview(preview)
+            previewPool.append(preview)
+        }
+    }
+
     private func dequeuePreview() -> KeyPreviewView {
         if let reused = previewPool.popLast() {
             reused.isHidden = false
             return reused
         }
+        // Only reachable if six balloons are in flight at once, which two hands
+        // cannot manage. It still must not fail, so it builds one — and the
+        // pool below keeps it rather than tearing it down again.
         let preview = KeyPreviewView(palette: palette, metrics: metrics)
         addSubview(preview)
         return preview
@@ -1380,10 +1566,14 @@ final class KeyGridView: UIView {
     /// the line.
     private func recycle(_ preview: KeyPreviewView?) {
         guard let preview else { return }
-        preview.disappear(animated: metrics.showsPreview) { [weak self, weak preview] in
+        preview.disappear(
+            animated: metrics.showsPreview && KeyboardPreferences.keyPreviewAnimates
+        ) { [weak self, weak preview] in
             guard let self, let preview else { return }
-            // Two covers two-thumb typing; holding more would just retain views.
-            guard previewPool.count < 2, preview.superview === self else {
+            // Kept, not torn down. Removing a view from the hierarchy while
+            // touches are being delivered through it is the same disruption as
+            // adding one, and a balloon costs nothing to leave hidden.
+            guard previewPool.count < Self.previewPoolSize, preview.superview === self else {
                 preview.removeFromSuperview()
                 return
             }

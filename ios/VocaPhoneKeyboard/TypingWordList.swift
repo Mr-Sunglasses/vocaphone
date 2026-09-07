@@ -21,6 +21,22 @@ struct TypingWordList: Sendable {
     private let ranks: [String: Int]
     private let words: [String]
     private let bigrams: [String: [String]]
+    /// Where in `words` to start looking for a prefix, keyed by its first one
+    /// and two characters, each bucket in frequency order.
+    ///
+    /// Every prefix query used to walk the whole list — ten thousand words, and
+    /// a grapheme-counting `word.count` on each — because a frequency-ordered
+    /// list cannot be searched. `scanLimit` bounded the number of *matches*, not
+    /// the scan, so a rare prefix paid for all ten thousand. Measured on device
+    /// that was 5.5 ms of a 9.5 ms keystroke, on a frame budget of 8.3.
+    ///
+    /// Positions rather than words: the weight below is a function of a word's
+    /// rank in the whole list, so a bucket has to remember where its words came
+    /// from.
+    private let prefixIndex: [String: [Int32]]
+    /// Each word's length, so a query that only wants to know whether a word is
+    /// the right size never walks its graphemes to find out.
+    private let lengths: [Int]
     /// Each word with consecutive repeats removed, in `words` order.
     ///
     /// Built once with the list rather than per swipe. The recogniser needs the
@@ -42,6 +58,26 @@ struct TypingWordList: Sendable {
         }
         self.ranks = ranks
         collapsedWords = words.map(SwipeRecognizer.collapsed)
+        lengths = words.map(\.count)
+        var index: [String: [Int32]] = [:]
+        index.reserveCapacity(words.count / 8)
+        for (position, word) in words.enumerated() {
+            let one = String(word.prefix(1))
+            index[one, default: []].append(Int32(position))
+            guard word.count > 1 else { continue }
+            index[String(word.prefix(2)), default: []].append(Int32(position))
+        }
+        prefixIndex = index
+    }
+
+    /// The positions worth looking at for `lowered`, in frequency order, or
+    /// `nil` when the list has nothing that starts that way.
+    ///
+    /// Keyed on at most the first two characters, which is all it takes: after
+    /// two the buckets are already small enough that the difference is not
+    /// worth the memory of a third.
+    private func positions(startingWith lowered: String) -> [Int32]? {
+        prefixIndex[String(lowered.prefix(2))]
     }
 
     var isEmpty: Bool { words.isEmpty }
@@ -63,11 +99,14 @@ struct TypingWordList: Sendable {
     func completions(for prefix: String, limit: Int) -> [String] {
         guard !prefix.isEmpty, limit > 0 else { return [] }
         let lowered = prefix.lowercased()
+        guard let positions = positions(startingWith: lowered) else { return [] }
         var found: [String] = []
         found.reserveCapacity(limit)
-        // `words` is already frequency-ordered, so the first matches found are
-        // the best ones and the scan can stop early.
-        for word in words where word.count > lowered.count && word.hasPrefix(lowered) {
+        // The bucket is in frequency order, so the first matches found are the
+        // best ones and the scan can stop early.
+        for position in positions {
+            let word = words[Int(position)]
+            guard word != lowered, word.hasPrefix(lowered) else { continue }
             found.append(word)
             if found.count == limit { break }
         }
@@ -88,8 +127,9 @@ struct TypingWordList: Sendable {
         let longest = lowered.count + 2
         var withinOne: [String] = []
         var withinTwo: [String] = []
-        for word in words {
-            guard word.count >= shortest, word.count <= longest else { continue }
+        for (position, word) in words.enumerated() {
+            let length = lengths[position]
+            guard length >= shortest, length <= longest else { continue }
             switch TypingCandidates.editDistance(lowered, word, maximum: 2) {
             case 1: withinOne.append(word)
             case 2: if withinTwo.count < limit { withinTwo.append(word) }
@@ -118,15 +158,18 @@ struct TypingWordList: Sendable {
     func nextCharacterWeights(after prefix: String, scanLimit: Int = 400) -> [Character: Double] {
         guard !prefix.isEmpty else { return [:] }
         let lowered = prefix.lowercased()
+        guard let positions = positions(startingWith: lowered) else { return [:] }
         var weights: [Character: Double] = [:]
         var matches = 0
-        // `words` is frequency-ordered, so a match found early is a more likely
-        // continuation than one found late — which is exactly the weighting
-        // wanted, and it comes for free from the scan order.
-        for (rank, word) in words.enumerated() {
-            guard word.count > lowered.count, word.hasPrefix(lowered) else { continue }
+        // The bucket carries each word's rank in the whole list, so a match
+        // found early is still a more likely continuation than one found late —
+        // which is exactly the weighting wanted, and it still comes for free
+        // from the order.
+        for position in positions {
+            let word = words[Int(position)]
+            guard word != lowered, word.hasPrefix(lowered) else { continue }
             let next = word[word.index(word.startIndex, offsetBy: lowered.count)]
-            weights[next, default: 0] += 1 / (1 + Double(rank) / 500)
+            weights[next, default: 0] += 1 / (1 + Double(position) / 500)
             matches += 1
             if matches >= scanLimit { break }
         }

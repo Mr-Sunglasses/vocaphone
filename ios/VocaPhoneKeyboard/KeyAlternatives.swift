@@ -132,7 +132,7 @@ final class KeyAlternativesView: UIView {
         // The row is announced by the key's custom actions, not by the popover:
         // VoiceOver never drives this gesture. See `KeyView.accessibility…`.
         isAccessibilityElement = false
-        backgroundColor = palette.standardKey
+        backgroundColor = palette.raisedKey
         layer.cornerRadius = metrics.cornerRadius + 5
         layer.cornerCurve = .continuous
         layer.shadowColor = UIColor.black.cgColor
@@ -163,7 +163,7 @@ final class KeyAlternativesView: UIView {
         self.metrics = metrics
         self.options = options
         highlightedIndex = 0
-        backgroundColor = palette.standardKey
+        backgroundColor = palette.raisedKey
         layer.cornerRadius = metrics.cornerRadius + 5
 
         while labels.count < options.count {

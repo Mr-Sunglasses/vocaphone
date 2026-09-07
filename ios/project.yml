@@ -33,6 +33,11 @@ targets:
       - path: VocaPhoneKeyboard/KeyHitMap.swift
       - path: VocaPhoneKeyboard/KeyView.swift
       - path: VocaPhoneKeyboard/KeyGridView.swift
+      # The grid traces what it does with every touch, so any target that
+      # compiles the grid needs the trace in scope with it.
+      - path: VocaPhoneKeyboard/TouchTrace.swift
+      - path: VocaPhoneKeyboard/TouchWitness.swift
+      - path: VocaPhoneKeyboard/FrameMonitor.swift
       - path: VocaPhoneKeyboard/KeyAlternatives.swift
       - path: VocaPhoneKeyboard/KeyProximity.swift
       - path: VocaPhoneKeyboard/ShortWordCorrections.swift
@@ -43,6 +48,9 @@ targets:
       - path: VocaPhoneKeyboard/DictationPresentation.swift
       - path: VocaPhoneKeyboard/DictationBarStyle.swift
       - path: VocaPhoneKeyboard/DictationBarView.swift
+      # The dictation surface itself, so the settings preview and the keyboard
+      # lab show the thing the extension actually draws.
+      - path: VocaPhoneKeyboard/DictationSurfaceView.swift
       - path: VocaPhoneKeyboard/DictationBarComponents.swift
       - path: VocaPhoneKeyboard/TypingStripView.swift
       - path: VocaPhoneKeyboard/TypingCandidates.swift
@@ -140,6 +148,11 @@ targets:
       - path: VocaPhoneKeyboard/KeyHitMap.swift
       - path: VocaPhoneKeyboard/KeyView.swift
       - path: VocaPhoneKeyboard/KeyGridView.swift
+      # The grid traces what it does with every touch, so any target that
+      # compiles the grid needs the trace in scope with it.
+      - path: VocaPhoneKeyboard/TouchTrace.swift
+      - path: VocaPhoneKeyboard/TouchWitness.swift
+      - path: VocaPhoneKeyboard/FrameMonitor.swift
       # The trail's ageing and taper is pure arithmetic over sampled points, and
       # the view around it is what the grid links against.
       - path: VocaPhoneKeyboard/SwipeTrailView.swift
@@ -179,6 +192,9 @@ targets:
       - path: VocaPhoneKeyboard/DictationPresentation.swift
       - path: VocaPhoneKeyboard/DictationBarStyle.swift
       - path: VocaPhoneKeyboard/DictationBarView.swift
+      # The dictation surface itself, so the settings preview and the keyboard
+      # lab show the thing the extension actually draws.
+      - path: VocaPhoneKeyboard/DictationSurfaceView.swift
       - path: VocaPhoneKeyboard/DictationBarComponents.swift
       - path: VocaPhoneKeyboard/TypingStripView.swift
       # The realtime capture path is the highest-risk code in the app.

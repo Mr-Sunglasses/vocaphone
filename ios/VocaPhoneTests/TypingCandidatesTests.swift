@@ -27,7 +27,9 @@ struct TypingCandidatesTests {
         allowed: Bool = true,
         followers: [String] = [],
         expansion: String? = nil,
-        isMidWord: Bool = false
+        isMidWord: Bool = false,
+        ranks: [String: Int] = [:],
+        hasCheckerAnswer: Bool = true
     ) -> TypingCandidates.Context {
         var context = TypingCandidates.Context()
         context.composition = composition
@@ -40,6 +42,8 @@ struct TypingCandidatesTests {
         context.learnedWords = learned
         context.predictions = predictions
         context.precedingWord = preceding
+        context.listRanks = ranks
+        context.hasCheckerAnswer = hasCheckerAnswer
         context.isKnownToChecker = isKnownToChecker
         context.isInWordList = isInWordList
         context.assertedWords = asserted
@@ -566,6 +570,132 @@ struct TypingCandidatesTests {
         #expect(TypingCandidates.matchingCase(of: "TEH", applyingTo: "the") == "THE")
         #expect(TypingCandidates.matchingCase(of: "teh", applyingTo: "the") == "the")
     }
+
+    // MARK: - A word that is two words
+
+    /// The space that never registered is put back.
+    ///
+    /// This is the correction the typing in front of me actually needed —
+    /// "howit", "sothis", "worksn" — and the one a spell checker cannot make,
+    /// because its job is to spell one word rather than to notice there are
+    /// two. It answers them with a hyphen instead.
+    @Test func aMissedSpaceIsPutBack() {
+        let context = Self.context(
+            composition: "howit",
+            ranks: ["how": 40, "it": 20]
+        )
+        #expect(TypingCandidates.autocorrection(context) == "how it")
+    }
+
+    /// Both halves have to be words, and common ones.
+    ///
+    /// A rare word beside a rare word is how "themes" becomes "the mes": the
+    /// cut exists, the dictionary allows it, and nobody meant it.
+    @Test func aSplitNeedsTwoCommonWords() {
+        // The list has never heard of the second half.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "howzt", ranks: ["how": 40])
+            ) == nil
+        )
+        // It has, but only barely — far outside the words people write.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "howit", ranks: ["how": 40, "it": 9000])
+            ) == nil
+        )
+    }
+
+    /// Two ways to cut it means the keyboard does not know which.
+    ///
+    /// The same rule the margin below lives by: an ambiguity is refused rather
+    /// than settled by a coin toss in somebody's sentence.
+    @Test func anAmbiguousSplitIsRefused() {
+        let context = Self.context(
+            composition: "tobeat",
+            ranks: ["to": 5, "beat": 300, "tobe": 900, "at": 30]
+        )
+        #expect(TypingCandidates.autocorrection(context) == nil)
+    }
+
+    /// And only once the checker has answered.
+    ///
+    /// It is asked when the hand pauses, so for the length of a brisk keystroke
+    /// there is no answer and every word looks unknown. The shipped ten
+    /// thousand contains neither "sometime" nor "backend" nor "logout", so a
+    /// split fired in that window is not a correction, it is damage.
+    @Test func noSplitBeforeTheCheckerHasSpoken() {
+        let waiting = Self.context(
+            composition: "sometime",
+            ranks: ["some": 60, "time": 90],
+            hasCheckerAnswer: false
+        )
+        #expect(TypingCandidates.autocorrection(waiting) == nil)
+        // The same word, once the checker has been heard from and does not
+        // know it either, is a genuine candidate.
+        let answered = Self.context(
+            composition: "sometime",
+            ranks: ["some": 60, "time": 90]
+        )
+        #expect(TypingCandidates.autocorrection(answered) == "some time")
+    }
+
+    // MARK: - Which guesses count
+
+    /// The list says what the checker cannot: which of two is a word people
+    /// write.
+    ///
+    /// `UITextChecker` ranks nothing, so it offers "coth" beside "both" as
+    /// equal readings and the margin rule — rightly unwilling to toss a coin —
+    /// declined both. Measured on a session of real typing, that refusal fired
+    /// seventy-five times.
+    @Test func aGuessTheListHasNeverHeardOfStopsCountingAsAnEqual() {
+        let context = Self.context(
+            composition: "coth",
+            guesses: ["both", "coth-", "cloth"],
+            ranks: ["both": 120]
+        )
+        #expect(TypingCandidates.autocorrection(context) == "both")
+    }
+
+    /// One word typed becomes one word corrected.
+    ///
+    /// The checker answers "howit" with "how-it" and "sothis" with "so-this" —
+    /// it splits at a hyphen because that is a spelling, and a keyboard that
+    /// turns "howit" into "how-it" is not helping.
+    @Test func aHyphenatedGuessIsNotACorrectionOfOneWord() {
+        let context = Self.context(
+            composition: "hwit",
+            guesses: ["how-it"],
+            ranks: ["how-it": 50]
+        )
+        #expect(TypingCandidates.autocorrection(context) == nil)
+    }
+
+    /// A word typed in lowercase does not become a proper noun.
+    ///
+    /// The checker's dictionary carries place names and abbreviations — "Sotho"
+    /// for "sothi", "IoW" for "sow" — and a sentence being typed in lowercase
+    /// did not ask for one. Capitalisation that *is* wanted comes from the
+    /// curated table and the lexicon, which have already had their say.
+    @Test func aLowercaseWordDoesNotBecomeAProperNoun() {
+        let context = Self.context(
+            composition: "sothi",
+            guesses: ["Sotho"],
+            ranks: ["sotho": 4000]
+        )
+        #expect(TypingCandidates.autocorrection(context) == nil)
+    }
+
+    /// A capital typed deliberately still gets the checker's proper nouns.
+    @Test func aCapitalisedWordMayStillBecomeAProperNoun() {
+        let context = Self.context(
+            composition: "Sothi",
+            guesses: ["Sotho"],
+            ranks: ["sotho": 400]
+        )
+        #expect(TypingCandidates.autocorrection(context) == "Sotho")
+    }
 }
 // MARK: - Emoji
 
@@ -699,5 +829,102 @@ struct AppliedCorrectionArmingTests {
         )
         #expect(punctuated.isArmed(documentBefore: "the."))
         #expect(!punctuated.isArmed(documentBefore: "the "))
+    }
+
+}
+
+/// A field switch must drop work that still belongs to the previous document.
+@MainActor
+@Suite(.serialized)
+struct TypingEngineDocumentChangeTests {
+    @Test func swipingRetiresThePreviousTypedWordsCheck() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        engine.noteSwipeWord("world", alternates: ["world", "word"])
+        let alternates = engine.strip
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(checker.prefixesAsked.isEmpty)
+        #expect(engine.strip == alternates)
+    }
+    @Test func disablingSuggestionsRetiresThePendingChecker() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        KeyboardPreferences.typingSuggestionsEnabled = false
+        engine.reconcile(document: DocumentSnapshot(before: "hel"))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(checker.prefixesAsked.isEmpty)
+        #expect(engine.strip.isEmpty)
+    }
+    /// Distinctive so a leaked publication cannot be mistaken for a word-list hit.
+    private static let staleCompletion = "hellofromoldfield"
+
+    @MainActor
+    private final class RecordingSpellChecker: SpellChecking {
+        var completionsByPrefix: [String: [String]] = [:]
+        private(set) var prefixesAsked: [String] = []
+
+        func completions(for prefix: String, language: String) -> [String] {
+            prefixesAsked.append(prefix)
+            return completionsByPrefix[prefix] ?? []
+        }
+
+        func guesses(for word: String, language: String) -> [String] { [] }
+        func isKnown(_ word: String, language: String) -> Bool { false }
+    }
+
+    /// The checker is asked only after the hand pauses. Switching fields in that
+    /// window used to let the previous composition's completions arrive in the
+    /// next field, because `documentChanged` reset the strip but left the
+    /// deferred task and its generation standing.
+    @Test func aFieldSwitchDropsAPendingCheck() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+
+        let checker = RecordingSpellChecker()
+        checker.completionsByPrefix = ["hel": [Self.staleCompletion]]
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        var published: [TypingStrip] = []
+        engine.onStrip = { published.append($0) }
+
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        #expect(engine.composer.text == "hel")
+
+        engine.documentChanged(policy: .allowed)
+        #expect(engine.composer.isEmpty)
+        #expect(engine.strip.isEmpty)
+        #expect(engine.pendingSwipeWord == nil)
+        let publishedThroughChange = published.count
+
+        // Longer than `checkerQuietPeriod` (~90 ms), so a task that was not
+        // cancelled would have asked the checker and published by now.
+        try await Task.sleep(for: .milliseconds(200))
+
+        #expect(checker.prefixesAsked.isEmpty)
+        #expect(engine.strip.isEmpty)
+        #expect(published.dropFirst(publishedThroughChange).isEmpty)
+        #expect(!published.contains { strip in
+            strip.candidates.contains { $0.text == Self.staleCompletion }
+        })
     }
 }
