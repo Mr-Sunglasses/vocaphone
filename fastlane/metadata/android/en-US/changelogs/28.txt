@@ -1,0 +1,1 @@
+Long-press period for a comma. One Stop button: tap to finish, hold to discard. Swipe alternatives stay on the suggestion strip. Language rows are 48dp. Optional Material You, teal still default. Other keyboards can hand their mic to VocaPhone.
