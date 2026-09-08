@@ -26,6 +26,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var lastRenderedState: SessionState?
     private var hasRendered = false
     private var announcesStateChanges = false
+    private var isKeyboardVisible = false
     private var lastPublishedAt: Date?
     private var lastPublishedFullAccess: Bool?
     private static let statusRepublishInterval: TimeInterval = 10
@@ -139,7 +140,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         typing.loadLexicon(from: self)
         KeyboardHaptics.shared.attach(to: view, hasFullAccess: hasFullAccess)
         render(nil)
-        refresh()
         noteAvailableMemory(.launched)
     }
 
@@ -201,6 +201,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         TouchTrace.beginSession("keyboard appeared")
 #endif
         super.viewWillAppear(animated)
+        isKeyboardVisible = true
+        lastSpaceInsertedAt = nil
         // Extension controllers can be reused across host fields and apps.
         hasDictationKey = true
         // A recreated extension instance can inherit a session the previous one
@@ -250,6 +252,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        typing.prepareResources()
         // UIKit can finalize a changed Full Access setting after the earlier
         // appearance callbacks. This is the last lifecycle point before guided
         // setup expects the extension to prove its state.
@@ -274,6 +277,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     override func viewWillDisappear(_ animated: Bool) {
+        isKeyboardVisible = false
+        announcesStateChanges = false
+        typing.suspend()
         super.viewWillDisappear(animated)
         pollingTimer?.invalidate()
         pollingTimer = nil
@@ -331,6 +337,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
         super.textDidChange(textInput)
+        guard isKeyboardVisible else { return }
         documentEvent { handleTextChange() }
     }
 
@@ -1040,7 +1047,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         ) else { return }
         openURLFromKeyboard(url) { [weak self] opened in
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, self.isKeyboardVisible else { return }
                 guard !opened, self.activeSessionID == sessionID,
                       let current = try? self.store.load(sessionID),
                       current.state == .launchingApp || current.state == .awaitingReturn
@@ -1134,7 +1141,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// which keeps ordinary typing free of a four-times-a-second directory scan
     /// inside a memory-constrained extension.
     private func updatePolling(for record: SessionRecord?) {
-        let needsUpdates = record.map { !$0.state.isTerminal } ?? false
+        let needsUpdates = isKeyboardVisible && (record.map { !$0.state.isTerminal } ?? false)
         guard needsUpdates else {
             pollingTimer?.invalidate()
             pollingTimer = nil
@@ -1163,6 +1170,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     private func refresh() {
+        // Removing observers cannot recall callbacks already queued on the main
+        // actor. They must not insert text or restart polling after dismissal.
+        guard isKeyboardVisible else { return }
         if let id = activeSessionID, let record = try? store.load(id) {
             if ![.launchingApp, .awaitingReturn].contains(record.state) {
                 appLaunchFallbackTask?.cancel()
@@ -1780,6 +1790,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         keyGrid.plane = Self.initialPlane(for: keyboardType)
         updateReturnKeyEnablement()
         applyTheme()
+        // A returning keyboard may already be at the end of "happy". Restore
+        // its suggestions immediately instead of waiting for another key.
+        if isKeyboardVisible { typing.reconcile(document: document) }
     }
 
     /// Dims Return in the fields that asked for it.

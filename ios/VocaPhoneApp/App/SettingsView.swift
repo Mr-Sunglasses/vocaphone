@@ -335,10 +335,10 @@ struct KeyboardSettingsView: View {
                 )
                 Text(
                     "Emoji suggestions offer one emoji beside the word candidates "
-                        + "when a word has an obvious one — typing “lol” offers 😂. "
-                        + "Tapping it replaces the word. It never takes a word "
-                        + "suggestion's place, and words without an obvious emoji "
-                        + "get none."
+                        + "when a word has an obvious one — “happy” offers 😊 "
+                        + "and “sad” offers 😢. Tap the emoji before adding a "
+                        + "space to replace the word. Words without an obvious "
+                        + "emoji get none."
                 )
                 Text(
                     "Typing haptics are off by default. Keyboard clicks follow "

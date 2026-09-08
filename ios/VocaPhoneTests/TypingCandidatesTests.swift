@@ -837,6 +837,55 @@ struct AppliedCorrectionArmingTests {
 @MainActor
 @Suite(.serialized)
 struct TypingEngineDocumentChangeTests {
+    @Test func firstKeyDefersSystemDictionariesUntilTheQuietPeriod() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        var languageQueries = 0
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            availableLanguages: {
+                languageQueries += 1
+                return ["en_US"]
+            }
+        )
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        #expect(languageQueries == 0)
+        #expect(checker.prefixesAsked.isEmpty)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(languageQueries == 1)
+        #expect(checker.prefixesAsked == ["hel"])
+    }
+
+    @Test func hidingKeyboardCancelsCheckerAndClearsTouchPrediction() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: TypingWordList(words: ["hello", "help"], bigrams: [:])
+        )
+        var weights: [Character: Double] = [:]
+        engine.onNextCharacters = { weights = $0 }
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        #expect(!weights.isEmpty)
+        engine.suspend()
+        #expect(weights.isEmpty)
+        #expect(engine.composer.isEmpty)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(checker.prefixesAsked.isEmpty)
+        #expect(engine.strip.isEmpty)
+        // The reused engine must still work when another field appears.
+        engine.documentChanged(policy: .allowed)
+        engine.insert("wo", document: DocumentSnapshot(before: "wo"))
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(checker.prefixesAsked == ["wo"])
+    }
+
     @Test func swipingRetiresThePreviousTypedWordsCheck() async throws {
         let suggestions = KeyboardPreferences.typingSuggestionsEnabled
         defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }

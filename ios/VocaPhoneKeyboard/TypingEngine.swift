@@ -129,6 +129,11 @@ final class TypingEngine {
         init(_ value: Value) { self.value = value }
     }
     private var language = TypingLanguage.fallback
+    private var hasResolvedLanguage = false
+    private let availableLanguages: @MainActor () -> [String]
+    private var emojiTriggers: [String: String] = [:]
+    private var precedingWord: String?
+    private var hasDocumentContext = false
     private var customWords: [String] = []
     /// `customWords` folded once. See ``LexiconEntry/lowered``.
     private var loweredCustomWords: [String] = []
@@ -136,13 +141,14 @@ final class TypingEngine {
     init(
         checker: any SpellChecking = SystemSpellChecker(),
         learned: LearnedWordStore = LearnedWordStore(),
-        wordList: TypingWordList? = nil
+        wordList: TypingWordList? = nil,
+        availableLanguages: @escaping @MainActor () -> [String] = SystemSpellChecker.availableLanguages
     ) {
         self.checker = checker
         self.learned = learned
-        // Nothing expensive here. Everything this subsystem needs is built the
-        // first time the user types, because a keyboard extension's whole memory
-        // budget has to survive *launch* first — see `ensureLoaded`.
+        self.availableLanguages = availableLanguages
+        // Bundled resources wait until the view appears; system dictionaries
+        // wait until a typing pause. Neither belongs in view construction.
         if let wordList {
             self.wordList = wordList
             hasLoaded = true
@@ -153,19 +159,11 @@ final class TypingEngine {
 
     private var hasLoaded = false
 
-    /// Pays for the dictionaries, once, on the first keystroke.
-    ///
-    /// Deliberately not in `init`: the engine is created while the keyboard is
-    /// still assembling its views, and loading ten thousand words plus the
-    /// system dictionaries there put the extension over the jetsam threshold
-    /// before it had drawn a key.
-    private func ensureLoaded() {
+    /// Starts only the bundled resources off-thread after the keyboard appears.
+    /// System dictionaries stay deferred until the checker quiet period.
+    func prepareResources() {
         guard !hasLoaded else { return }
         hasLoaded = true
-        language = TypingLanguage.resolve(
-            preferred: Locale.preferredLanguages,
-            available: SystemSpellChecker.availableLanguages()
-        )
         // Pure Swift, so unlike the checker this may leave the main actor.
         Task.detached(priority: .utility) {
             let loaded = TypingWordList.load(from: Bundle(for: TypingEngine.self))
@@ -174,11 +172,33 @@ final class TypingEngine {
             // strip is no longer its only reader, so this warms what dictation
             // needs from it as well.
             EmojiTable.warmUp()
+            let emojiTriggers = EmojiTable.triggers
             await MainActor.run { [weak self] in
-                self?.wordList = loaded
-                self?.onWordListLoaded?(loaded)
+                self?.installResources(wordList: loaded, emojiTriggers: emojiTriggers)
             }
         }
+    }
+
+    /// Resource delivery is another reason to update the row, even if the user
+    /// has stopped typing. Rebuild from the current field, never from the word
+    /// that happened to start the background load.
+    func installResources(wordList: TypingWordList, emojiTriggers: [String: String]) {
+        self.wordList = wordList
+        self.emojiTriggers = emojiTriggers
+        onWordListLoaded?(wordList)
+        publishNextCharacters()
+        guard hasDocumentContext,
+              policy.allowsTypingIntelligence,
+              KeyboardPreferences.typingSuggestionsEnabled,
+              pendingSwipe == nil, pendingRevert == nil
+        else { return }
+        let key = SuggestionCache.Key(prefix: composer.text.lowercased(), language: language)
+        publishStrip(for: context(
+            composition: composer.text,
+            origin: composer.origin,
+            preceding: precedingWord,
+            checked: cache.value(for: key)
+        ))
     }
 
     var isPersistentLearningAvailable: Bool { learned.isPersistent }
@@ -202,10 +222,18 @@ final class TypingEngine {
         pendingSwipe = nil
         policy = newPolicy
         composer.reset()
+        precedingWord = nil
+        hasDocumentContext = false
         assertedWords.removeAll()
         pendingRevert = nil
         cache.removeAll()
         publish(.none)
+        publishNextCharacters()
+    }
+
+    /// Retire field work before UIKit starts switching apps or keyboards.
+    func suspend() {
+        documentChanged(policy: policy)
     }
 
     /// Reconciles the composition against what the document says, then
@@ -442,11 +470,13 @@ final class TypingEngine {
 
         let generation = generation
         let composition = composer.text
-        if !composition.isEmpty { measured("ensureLoaded") { ensureLoaded() } }
+        if !composition.isEmpty { prepareResources() }
         let origin = composer.origin
         let preceding = measured("precedingWord") {
             PrecedingWord.lastWord(in: document.before)
         }
+        precedingWord = preceding
+        hasDocumentContext = true
 
         // Nothing being composed: prediction needs no checker, so it renders on
         // this turn rather than costing a hop.
@@ -489,6 +519,14 @@ final class TypingEngine {
         pendingCheck = Task { @MainActor [weak self] in
             try? await Task.sleep(for: Self.checkerQuietPeriod)
             guard !Task.isCancelled, let self, generation == self.generation else { return }
+            if !self.hasResolvedLanguage {
+                self.language = TypingLanguage.resolve(
+                    preferred: Locale.preferredLanguages,
+                    available: self.availableLanguages()
+                )
+                self.hasResolvedLanguage = true
+            }
+            let key = SuggestionCache.Key(prefix: composition.lowercased(), language: self.language)
             let value = SuggestionCache.Value(
                 completions: self.checker.completions(for: composition, language: self.language),
                 guesses: self.checker.guesses(for: composition, language: self.language),
@@ -608,7 +646,9 @@ final class TypingEngine {
         context.assertedWords = assertedWords
         // Exact word only, so nothing appears while the user is partway into a
         // different one.
-        context.emojiSuggestion = EmojiSuggestions.glyph(for: composition)
+        // This snapshot arrives from the background loader, so the keystroke
+        // never waits on a lazy static initializer.
+        context.emojiSuggestion = emojiTriggers[composition.lowercased()]
         context.emojiEnabled = KeyboardPreferences.emojiSuggestionsEnabled
         context.suggestionsEnabled = KeyboardPreferences.typingSuggestionsEnabled
         context.autocorrectEnabled = KeyboardPreferences.autocorrectIsActive
