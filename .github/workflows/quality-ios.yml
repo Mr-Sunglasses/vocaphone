@@ -61,8 +61,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Fetch iOS Sherpa ONNX runtime
-        run: bash ios/ThirdParty/SherpaOnnx/fetch.sh
       - name: Select Xcode 26
         run: |
           set -euo pipefail
@@ -140,9 +138,8 @@ jobs:
           xcrun simctl bootstatus "${UDID}" -b &
           boot=$!
 
-          # Shared flags. Index-while-building only feeds Xcode's editor, and
-          # there are no Swift packages to resolve, so both are pure overhead
-          # here.
+          # Shared flags. Index-while-building only feeds Xcode's editor.
+          # Package versions are pinned in Package.resolved.
           common=(
             -project VocaPhone.xcodeproj
             -scheme VocaPhone

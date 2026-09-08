@@ -179,17 +179,17 @@ Grant microphone access on first launch, add the keyboard as above, and turn
 on Full Access. Complete the physical-device checklist in [device
 setup](docs/device-setup.md).
 
-The gateway checkout is a submodule. iOS also needs the Sherpa ONNX
-xcframeworks, which are fetched at build time (not Git LFS):
+The gateway checkout is a submodule. iOS pulls Sherpa ONNX through Swift
+Package Manager (not Git LFS, not a local tarball):
 
 ```sh
 git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
 cd vocaphone
-just ios fetch   # or: bash ios/ThirdParty/SherpaOnnx/fetch.sh
 ```
 
-On an existing clone: `git submodule update --init --recursive` and the same
-fetch. Without that step the iOS project cannot link the on-device engine.
+On an existing clone: `git submodule update --init --recursive`. The first
+iOS build downloads the pinned `sherpa-onnx` package; `just ios fetch` only
+prefetches it.
 Pin bumps live in
 [CONTRIBUTING.md](CONTRIBUTING.md#gateway-submodule-pin-dev-vs-ship).
 

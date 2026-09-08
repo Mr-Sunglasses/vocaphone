@@ -62,11 +62,8 @@ android/*.hprof
 /ios/Local.xcconfig
 /ios/Local/
 
-# Sherpa/ONNX Runtime xcframeworks are downloaded at iOS build time.
-# See ios/ThirdParty/SherpaOnnx/fetch.sh
-ios/ThirdParty/SherpaOnnx/sherpa-onnx.xcframework/
-ios/ThirdParty/SherpaOnnx/onnxruntime.xcframework/
-ios/ThirdParty/SherpaOnnx/.fetched-sha256
+# Leftover from the pre-SPM tarball fetch. Safe to delete locally.
+ios/ThirdParty/SherpaOnnx/
 
 # Local Netlify folder
 .netlify

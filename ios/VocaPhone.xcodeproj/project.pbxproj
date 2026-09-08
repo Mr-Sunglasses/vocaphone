@@ -213,12 +213,10 @@
 		867671B90E038F77BE36A4E6 /* DarwinNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3498C523755A678225152570 /* DarwinNotifications.swift */; };
 		86B74F487C94F9DBD1E691C4 /* SpokenEmoji.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF1DAD70952939C37DE50F0B /* SpokenEmoji.swift */; };
 		883C67CC3B4BBDA22771637A /* KeyProximity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B90ACCDCBABF9F7412EE906 /* KeyProximity.swift */; };
-		89A73E55E01C0814D465824C /* sherpa-onnx.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1582F900473255CD64DC8C2A /* sherpa-onnx.xcframework */; };
 		89E3D47D85EBD6AD5A093813 /* TextInsertion.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEBB0D1B0CD48BA2F8F22986 /* TextInsertion.swift */; };
 		8A69E16ABEF642C3D68FADD5 /* TranscriptHistoryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A89F2BEC08F07614372D84D /* TranscriptHistoryModel.swift */; };
 		8A90D2390C756F9101AB251A /* SpeechAudioConditioning.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5508D34514C05BA0075667D5 /* SpeechAudioConditioning.swift */; };
 		8A9E2E39C1371D1C12913813 /* EmojiTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA1B6FDE1A86C551FFCD094 /* EmojiTable.swift */; };
-		8D3596587AE7568FDB37C147 /* onnxruntime.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 796D6FA2FF5B98026FAA85AD /* onnxruntime.xcframework */; };
 		8DD5E5E2B734765883552523 /* DictationBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE3489C985467C23EB6A90AD /* DictationBarView.swift */; };
 		8F8E3C14AAC6A4F1DF144AD3 /* OnboardingPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D34E7E54437AFA69FDC2848 /* OnboardingPresentation.swift */; };
 		8FADF6C970427AFDEDCB45C4 /* KeyboardStatusPublication.swift in Sources */ = {isa = PBXBuildFile; fileRef = 549656C750D0C8EF3F25E17C /* KeyboardStatusPublication.swift */; };
@@ -350,6 +348,7 @@
 		DCAAD00B7ED79568106DAD0C /* DictatedTranscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 575BDB070A428051B623F095 /* DictatedTranscript.swift */; };
 		DCF552B58B7A7A12C517C17B /* PairingPayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E9E5CE913B4FA5EF8EECD4E /* PairingPayloadTests.swift */; };
 		DDA6AC6CD7EC0A3EFE58DE84 /* suggestions.tsv in Resources */ = {isa = PBXBuildFile; fileRef = 9532218075A83B4122807217 /* suggestions.tsv */; };
+		DDB25FD110EC1747AE36E71E /* sherpa-onnx in Frameworks */ = {isa = PBXBuildFile; productRef = EB9A429AF61F90C66B9293CF /* sherpa-onnx */; };
 		DEB245BAC4DEE643F2EB38B0 /* DictationPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56047A6705008B5F17F003CE /* DictationPresentationTests.swift */; };
 		E03E7A333C00AA2821D622C0 /* TelemetryConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA4CAEF7B3212512BACDE655 /* TelemetryConfig.swift */; };
 		E0450895D68708027C1BC77E /* TypingWordList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B6743BB4173E2F719E3D8CB /* TypingWordList.swift */; };
@@ -461,7 +460,6 @@
 		1247ACC1CA43648BE4449042 /* SnippetExpander.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetExpander.swift; sourceTree = "<group>"; };
 		136E505E4C5668F9ACCD30C5 /* EmojiSuggestions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiSuggestions.swift; sourceTree = "<group>"; };
 		13FF1A5ABC4220C886291309 /* LocalTranscriptionPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalTranscriptionPreferences.swift; sourceTree = "<group>"; };
-		1582F900473255CD64DC8C2A /* sherpa-onnx.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = "sherpa-onnx.xcframework"; path = "ThirdParty/SherpaOnnx/sherpa-onnx.xcframework"; sourceTree = "<group>"; };
 		17B4671FC8BBA4DD4FD5AA8C /* GatewaySetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewaySetupView.swift; sourceTree = "<group>"; };
 		1CF82ECCA1F28AB94B4142DE /* SwipeAlternatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeAlternatesTests.swift; sourceTree = "<group>"; };
 		20F3E310970DBFA3822A4D19 /* SherpaDecodingMethodTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SherpaDecodingMethodTests.swift; sourceTree = "<group>"; };
@@ -534,7 +532,6 @@
 		786DEF44BDB4C70935762971 /* VocaPhoneLiveActivity.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VocaPhoneLiveActivity.entitlements; sourceTree = "<group>"; };
 		78AF826E0D2C7820CBB4B78C /* SentencePunctuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentencePunctuation.swift; sourceTree = "<group>"; };
 		7948F8C6C72A8D7A16C18562 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
-		796D6FA2FF5B98026FAA85AD /* onnxruntime.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = onnxruntime.xcframework; path = ThirdParty/SherpaOnnx/onnxruntime.xcframework; sourceTree = "<group>"; };
 		7A53786C8D2346452C69A748 /* InsertionTargetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InsertionTargetTests.swift; sourceTree = "<group>"; };
 		7B5877B4AB653982A0433A37 /* ReliabilityFeatureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReliabilityFeatureTests.swift; sourceTree = "<group>"; };
 		7E9E5CE913B4FA5EF8EECD4E /* PairingPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingPayloadTests.swift; sourceTree = "<group>"; };
@@ -659,8 +656,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				06242790B69C03FE11F749D8 /* WhisperKit in Frameworks */,
-				89A73E55E01C0814D465824C /* sherpa-onnx.xcframework in Frameworks */,
-				8D3596587AE7568FDB37C147 /* onnxruntime.xcframework in Frameworks */,
+				DDB25FD110EC1747AE36E71E /* sherpa-onnx in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -875,7 +871,6 @@
 				6E5439F0105EB13C54C7549C /* VocaPhoneLiveActivity */,
 				368A980E8DB61513F70F620F /* VocaPhoneShared */,
 				933CC6C800F854E14554ACCA /* VocaPhoneTests */,
-				EC6399BEEF02853293EC9397 /* Frameworks */,
 				696861DC826546C83ED32B29 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -1020,15 +1015,6 @@
 			path = VocaPhoneActivityShared;
 			sourceTree = "<group>";
 		};
-		EC6399BEEF02853293EC9397 /* Frameworks */ = {
-			isa = PBXGroup;
-			children = (
-				796D6FA2FF5B98026FAA85AD /* onnxruntime.xcframework */,
-				1582F900473255CD64DC8C2A /* sherpa-onnx.xcframework */,
-			);
-			name = Frameworks;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -1103,6 +1089,7 @@
 			name = VocaPhoneApp;
 			packageProductDependencies = (
 				0942243BD8CB1F3937AD795E /* WhisperKit */,
+				EB9A429AF61F90C66B9293CF /* sherpa-onnx */,
 			);
 			productName = VocaPhoneApp;
 			productReference = 5FC91810C8F97443ECEF7FD1 /* VocaPhoneApp.app */;
@@ -1146,6 +1133,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				07CC791BFA65162FFA62DB9F /* XCRemoteSwiftPackageReference "WhisperKit" */,
+				8B307651E10B031F70743C0E /* XCRemoteSwiftPackageReference "sherpa-onnx" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 696861DC826546C83ED32B29 /* Products */;
@@ -1684,12 +1672,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_APP_ENTITLEMENTS:default=VocaPhoneApp/VocaPhoneApp.entitlements)";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"\"ThirdParty/SherpaOnnx\"",
-				);
 				GENERATE_INFOPLIST_FILE = NO;
-				HEADER_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models $(PROJECT_DIR)/ThirdParty/SherpaOnnx/sherpa-onnx.xcframework/Headers";
+				HEADER_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models";
 				INFOPLIST_FILE = VocaPhoneApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1709,12 +1693,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_APP_ENTITLEMENTS:default=VocaPhoneApp/VocaPhoneApp.entitlements)";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				FRAMEWORK_SEARCH_PATHS = (
-					"$(inherited)",
-					"\"ThirdParty/SherpaOnnx\"",
-				);
 				GENERATE_INFOPLIST_FILE = NO;
-				HEADER_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models $(PROJECT_DIR)/ThirdParty/SherpaOnnx/sherpa-onnx.xcframework/Headers";
+				HEADER_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models";
 				INFOPLIST_FILE = VocaPhoneApp/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1979,6 +1959,14 @@
 				minimumVersion = 0.16.0;
 			};
 		};
+		8B307651E10B031F70743C0E /* XCRemoteSwiftPackageReference "sherpa-onnx" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/k2-fsa/sherpa-onnx.git";
+			requirement = {
+				kind = exactVersion;
+				version = 1.13.7;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1986,6 +1974,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 07CC791BFA65162FFA62DB9F /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = WhisperKit;
+		};
+		EB9A429AF61F90C66B9293CF /* sherpa-onnx */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8B307651E10B031F70743C0E /* XCRemoteSwiftPackageReference "sherpa-onnx" */;
+			productName = "sherpa-onnx";
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

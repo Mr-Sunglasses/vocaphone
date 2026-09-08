@@ -17,8 +17,8 @@ sim := env("VOCAPHONE_SIM", "iPhone 17")
 derived := justfile_directory() / "build/DerivedData"
 device_derived := justfile_directory() / "build/DerivedDataDevice"
 
-# Index-while-building only feeds Xcode's editor and there are no Swift
-# packages to resolve, so both are pure overhead from the command line.
+# Index-while-building only feeds Xcode's editor. Package versions are pinned
+# in Package.resolved, so skip automatic resolution from the command line.
 sim_flags := "-project " + project + " -scheme " + scheme + " -sdk iphonesimulator" \
     + " -configuration Debug -derivedDataPath '" + derived + "'" \
     + " -disableAutomaticPackageResolution" \
@@ -30,14 +30,17 @@ app := derived / "Build/Products/Debug-iphonesimulator/VocaPhoneApp.app"
 default:
     @{{ just_executable() }} --list --unsorted
 
-# Download Sherpa ONNX / ONNX Runtime xcframeworks (not stored in git).
+# Prefetch Swift package binaries (Sherpa ONNX, WhisperKit). Optional; the
+# first xcodebuild also downloads them from Package.resolved.
 [group('build')]
-fetch:
-    bash ThirdParty/SherpaOnnx/fetch.sh
+fetch: gen
+    xcodebuild -project {{ project }} -scheme {{ scheme }} \
+        -resolvePackageDependencies \
+        -derivedDataPath '{{ derived }}'
 
 # Regenerate VocaPhone.xcodeproj from project.yml.
 [group('build')]
-gen: fetch
+gen:
     #!/usr/bin/env bash
     set -euo pipefail
     if ! command -v xcodegen >/dev/null 2>&1; then

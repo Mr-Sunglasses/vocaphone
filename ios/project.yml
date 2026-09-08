@@ -38,6 +38,9 @@ packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit.git
     from: 0.16.0
+  sherpa-onnx:
+    url: https://github.com/k2-fsa/sherpa-onnx.git
+    exactVersion: 1.13.7
 targets:
   VocaPhoneApp:
     type: application
@@ -101,15 +104,13 @@ targets:
         INFOPLIST_FILE: VocaPhoneApp/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_OBJC_BRIDGING_HEADER: VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h
-        HEADER_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models $(PROJECT_DIR)/ThirdParty/SherpaOnnx/sherpa-onnx.xcframework/Headers"
+        HEADER_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models"
         OTHER_LDFLAGS: "$(inherited) -lc++"
     dependencies:
       - package: WhisperKit
         product: WhisperKit
-      - framework: ThirdParty/SherpaOnnx/sherpa-onnx.xcframework
-        embed: false
-      - framework: ThirdParty/SherpaOnnx/onnxruntime.xcframework
-        embed: false
+      - package: sherpa-onnx
+        product: sherpa-onnx
       - target: VocaPhoneKeyboard
         embed: true
       - target: VocaPhoneLiveActivity

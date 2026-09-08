@@ -40,9 +40,10 @@ enum SherpaFamily: String, Codable, Sendable {
     /// setting (sherpa-onnx #2258), and matches the Android client exactly.
     ///
     /// Android passes this into `FeatureConfig.dither`. The pinned iOS runtime
-    /// (v1.12.34) has no `dither` field on `SherpaOnnxFeatureConfig` at all, so
-    /// `SherpaFeatureDither` reproduces its effect on the waveform instead. Move
-    /// this to `config.feat_config.dither` once the runtime upgrade lands.
+    /// (sherpa-onnx 1.13.7) has no `dither` field on `SherpaOnnxFeatureConfig`
+    /// at all, so `SherpaFeatureDither` reproduces its effect on the waveform
+    /// instead. Move this to `config.feat_config.dither` if a later runtime
+    /// grows that field.
     var featureDither: Float { self == .nemoTransducer ? 0.00003 : 0 }
 
     /// Whether the recognizer config for this family has a language field at all.

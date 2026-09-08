@@ -28,9 +28,9 @@ live in [AGENTS.md](AGENTS.md) and [android/AGENTS.md](android/AGENTS.md).
   `git submodule update --init --recursive` on an existing clone). The gateway
   is the [vocagateway](https://github.com/VocaHQ/vocagateway) submodule at
   `gateway/`.
-- For iOS, run `just ios fetch` (or `bash ios/ThirdParty/SherpaOnnx/fetch.sh`)
-  after cloning. That downloads the pinned sherpa-onnx iOS no-TTS xcframeworks
-  from GitHub Releases. They are not stored in git.
+- iOS Sherpa ONNX is a Swift package (`sherpa-onnx` 1.13.7, static product).
+  The first `xcodebuild` / `just ios run` downloads it from the pin in
+  `Package.resolved`. `just ios fetch` only prefetches.
 - Install [`just`](https://just.systems), Xcode, XcodeGen, `uv`, and FFmpeg.
 - For Android work, install a recent Android Studio / SDK and JDK 21 (the exact
   major version matters: F-Droid rebuilds the APK on JDK 21, so reproducible
@@ -44,9 +44,9 @@ live in [AGENTS.md](AGENTS.md) and [android/AGENTS.md](android/AGENTS.md).
   hostnames, local database files, or Apple provisioning profiles.
 
 The shared `ios/VocaPhone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`
-file pins WhisperKit and its transitive Swift packages for reproducible iOS
-builds. Keep it committed when Swift package dependencies change. Do not
-commit Xcode user data under `xcuserdata/`.
+file pins WhisperKit, sherpa-onnx, and their transitive Swift packages for
+reproducible iOS builds. Keep it committed when Swift package dependencies
+change. Do not commit Xcode user data under `xcuserdata/`.
 
 Each application owns a justfile, and the repository root aggregates them, so
 recipes work from either place:

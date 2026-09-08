@@ -75,8 +75,6 @@ jobs:
           # git describe walks tags for the GitHub Release notes range.
           fetch-depth: 0
           persist-credentials: false
-      - name: Fetch iOS Sherpa ONNX runtime
-        run: bash ios/ThirdParty/SherpaOnnx/fetch.sh
 
       - name: Select Xcode 26
         run: |
