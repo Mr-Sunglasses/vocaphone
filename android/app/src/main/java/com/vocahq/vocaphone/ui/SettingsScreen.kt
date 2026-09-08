@@ -349,7 +349,7 @@ fun SettingsScreen(
                         onCheckedChange = onNumberKeyHints,
                     )
                     SettingToggle(
-                        title = "Long-press for symbols",
+                        title = "Hold for digits and symbols",
                         detail = "Show a punctuation or digit on each letter key. " +
                             "Hold the key to type it; slide for accents. Off by default " +
                             "so a hold on E still types è.",
