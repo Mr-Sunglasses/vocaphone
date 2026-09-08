@@ -34,6 +34,18 @@ class KeyAccentsTest {
     }
 
     @Test
+    fun periodLongPressOffersGboardPunctuation() {
+        val key = KeyboardKey(id = "character-.", label = ".", output = ".")
+        val variants = KeyAccents.forKey(key, ShiftState.OFF)
+        assertEquals(
+            listOf(",", "?", "!", ":", ";", "'", "\"", "…", "@", "&"),
+            variants,
+        )
+        assertEquals(",", variants.first())
+        assertTrue("." !in variants)
+    }
+
+    @Test
     fun numberKeysShowTheLongPressHint() {
         assertEquals("!", KeyAccents.hint(KeyboardKey(id = "1", label = "1", output = "1")))
         assertEquals(")", KeyAccents.hint(KeyboardKey(id = "0", label = "0", output = "0")))

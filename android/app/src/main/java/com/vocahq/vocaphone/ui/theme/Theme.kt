@@ -1,11 +1,15 @@
 package com.vocahq.vocaphone.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
 /**
  * The light containers are deliberately a full step darker than a Material
@@ -99,16 +103,24 @@ internal val VocaPhoneDarkColors = darkColorScheme(
     onTertiaryContainer = Color(0xFFFFE2B0),
 )
 
-/** A stable, quiet palette that does not inherit a device wallpaper's colours. */
+/**
+ * Brand teal by default. [dynamicColor] opts into Material You wallpaper colors
+ * on API 31+; otherwise the fixed palette is kept so the IME and companion
+ * stay on Voca teal.
+ */
 @Composable
 fun VocaPhoneTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val colors = if (darkTheme) {
-        VocaPhoneDarkColors
-    } else {
-        VocaPhoneLightColors
+    val colors = when {
+        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            val context = LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> VocaPhoneDarkColors
+        else -> VocaPhoneLightColors
     }
     MaterialTheme(colorScheme = colors, content = content)
 }

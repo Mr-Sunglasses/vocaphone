@@ -396,6 +396,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setSplitKeyboard(mode: SplitKeyboard) =
         viewModelScope.launch { container.settings.setSplitKeyboard(mode) }
 
+    fun setDynamicColorEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setDynamicColorEnabled(enabled) }
+
     fun setSuggestionsEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setSuggestionsEnabled(enabled) }
 

@@ -1,3 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <input-method xmlns:android="http://schemas.android.com/apk/res/android"
-    android:supportsSwitchingToNextInputMethod="true" />
+    android:supportsSwitchingToNextInputMethod="true">
+    <!-- Non-auxiliary keyboard subtype keeps VocaPhone selectable as a normal IME.
+         An auxiliary-only method.xml would mark the whole IME as aux and hide it
+         from the default keyboard picker. -->
+    <subtype
+        android:label="@string/ime_name"
+        android:imeSubtypeMode="keyboard"
+        android:isAsciiCapable="true"
+        android:overridesImplicitlyEnabledSubtype="true" />
+    <!-- Auxiliary so it is a one-shot voice shortcut, not a picker language.
+         overridesImplicitlyEnabledSubtype so the system includes it in
+         getShortcutInputMethodsAndSubtypes() without a subtype-enabler tap.
+         Google Voice Typing uses the same two flags; without the override,
+         HeliBoard sees an empty shortcut list and greys out its mic. -->
+    <subtype
+        android:label="@string/voice_input_label"
+        android:imeSubtypeMode="voice"
+        android:isAuxiliary="true"
+        android:overridesImplicitlyEnabledSubtype="true" />
+</input-method>

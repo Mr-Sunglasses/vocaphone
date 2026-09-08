@@ -61,8 +61,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val launchIntent by launchIntents.collectAsStateWithLifecycle()
-            VocaPhoneTheme {
-                VocaPhoneApp(launchIntent = launchIntent)
+            val appViewModel: VocaPhoneViewModel = viewModel()
+            val settings by appViewModel.settings.collectAsStateWithLifecycle()
+            VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled) {
+                VocaPhoneApp(viewModel = appViewModel, launchIntent = launchIntent)
             }
         }
     }
@@ -418,6 +420,7 @@ fun VocaPhoneApp(
                 onNumberRow = { viewModel.setNumberRowEnabled(it) },
                 onKeyboardHeight = { viewModel.setKeyboardHeight(it) },
                 onSplitKeyboard = { viewModel.setSplitKeyboard(it) },
+                onDynamicColor = { viewModel.setDynamicColorEnabled(it) },
                 onSuggestions = { viewModel.setSuggestionsEnabled(it) },
                 onCorrections = { viewModel.setCorrectionsEnabled(it) },
                 onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },

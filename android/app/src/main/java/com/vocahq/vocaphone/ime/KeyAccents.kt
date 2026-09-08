@@ -45,7 +45,8 @@ internal object KeyAccents {
         "'" to listOf("'", "‘", "’", "‚"),
         "\"" to listOf("\"", "“", "”", "„"),
         "-" to listOf("-", "–", "—", "•"),
-        "." to listOf(".", "…"),
+        // Tap types `.`; hold-and-release types comma. Base omitted like letter accents.
+        "." to listOf(",", "?", "!", ":", ";", "'", "\"", "…", "@", "&"),
         "?" to listOf("?", "¿"),
         "!" to listOf("!", "¡"),
         "$" to listOf("$", "€", "£", "¥", "₹", "₩"),

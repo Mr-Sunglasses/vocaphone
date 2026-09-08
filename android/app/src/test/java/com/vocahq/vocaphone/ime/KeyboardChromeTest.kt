@@ -72,24 +72,26 @@ class KeyboardChromeTest {
     fun `the clip chip and the suggestions never both claim the row`() {
         val words = listOf(SuggestionItem("you"), SuggestionItem("the"))
         listOf(false, true).forEach { typing ->
-            val chip = KeyboardChrome.clipboardForStrip(clip, startedTyping = typing)
-            val strip = KeyboardChrome.suggestionsForStrip(words, startedTyping = typing)
-            assertFalse(
-                "the clip chip and ${strip.size} suggestions both claimed the row " +
-                    "with startedTyping=$typing",
-                chip != null && strip.isNotEmpty(),
-            )
+            listOf(false, true).forEach { swipe ->
+                val chip = KeyboardChrome.clipboardForStrip(
+                    clip,
+                    startedTyping = typing,
+                    swipeChoicesActive = swipe,
+                )
+                val strip = if (swipe) {
+                    words
+                } else {
+                    KeyboardChrome.suggestionsForStrip(words, startedTyping = typing)
+                }
+                assertFalse(
+                    "the clip chip and ${strip.size} suggestions both claimed the row " +
+                        "with startedTyping=$typing swipeChoicesActive=$swipe",
+                    chip != null && strip.isNotEmpty(),
+                )
+            }
         }
     }
 
-    /**
-     * Swipe alternatives reach the strip without passing through
-     * [KeyboardChrome.suggestionsForStrip], so the exclusion above cannot see
-     * that path. It holds anyway, but for a different reason: arming a swiped
-     * word requires a replaceable word behind the cursor, which is text, which
-     * is already typing. Asserted rather than argued, because the two helpers
-     * are free to drift apart.
-     */
     @Test
     fun `json clips are named instead of dumping the first keys`() {
         assertEquals(
@@ -112,6 +114,78 @@ class KeyboardChromeTest {
             KeyboardChrome.clipboardForStrip(
                 clip,
                 startedTyping = KeyboardChrome.startedTyping("", before),
+            ),
+        )
+    }
+
+    /**
+     * Right after a swipe on an empty field, composing is cleared and
+     * `editorText` is still the pre-commit snapshot for up to 50ms. The
+     * alternatives are already filled; `startedTyping` and `swipeWordArmed`
+     * are not. The chip has to yield on the choices themselves.
+     */
+    @Test
+    fun `clipboard yields when swipe choices are active even if startedTyping is false`() {
+        val startedTyping = KeyboardChrome.startedTyping(composing = "", textBeforeCursor = "")
+        assertFalse(startedTyping)
+        assertFalse(KeyboardChrome.swipeWordArmed("hello", "", ""))
+        assertTrue(
+            KeyboardChrome.swipeChoicesActive(
+                hasChoices = true,
+                swipeArmed = false,
+                startedTyping = false,
+                composing = "",
+            ),
+        )
+        assertNull(
+            KeyboardChrome.clipboardForStrip(
+                clip,
+                startedTyping = false,
+                swipeChoicesActive = true,
+            ),
+        )
+        assertEquals(
+            clip,
+            KeyboardChrome.clipboardForStrip(
+                clip,
+                startedTyping = false,
+                swipeChoicesActive = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `swipe choices stay inactive on an idle empty field`() {
+        assertFalse(
+            KeyboardChrome.swipeChoicesActive(
+                hasChoices = false,
+                swipeArmed = false,
+                startedTyping = false,
+                composing = "",
+            ),
+        )
+        assertFalse(
+            KeyboardChrome.swipeChoicesActive(
+                hasChoices = true,
+                swipeArmed = false,
+                startedTyping = true,
+                composing = "",
+            ),
+        )
+        assertTrue(
+            KeyboardChrome.swipeChoicesActive(
+                hasChoices = true,
+                swipeArmed = true,
+                startedTyping = true,
+                composing = "",
+            ),
+        )
+        assertFalse(
+            KeyboardChrome.swipeChoicesActive(
+                hasChoices = true,
+                swipeArmed = false,
+                startedTyping = false,
+                composing = "h",
             ),
         )
     }

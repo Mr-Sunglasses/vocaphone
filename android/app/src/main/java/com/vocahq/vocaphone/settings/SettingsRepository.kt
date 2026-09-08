@@ -246,6 +246,8 @@ data class VocaPhoneSettings(
     val numberRowEnabled: Boolean = true,
     val keyboardHeight: KeyboardHeight = KeyboardHeight.DEFAULT,
     val splitKeyboard: SplitKeyboard = SplitKeyboard.DEFAULT,
+    /** Material You wallpaper colors. Off keeps the brand teal. */
+    val dynamicColorEnabled: Boolean = false,
     val suggestionsEnabled: Boolean = true,
     val correctionsEnabled: Boolean = true,
     val numberKeyHintsEnabled: Boolean = true,
@@ -432,6 +434,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setKeyboardHeight(height: KeyboardHeight) = put(Keys.KEYBOARD_HEIGHT, height.storedValue)
 
     suspend fun setSplitKeyboard(mode: SplitKeyboard) = put(Keys.SPLIT_KEYBOARD, mode.storedValue)
+
+    suspend fun setDynamicColorEnabled(enabled: Boolean) = put(Keys.DYNAMIC_COLOR, enabled)
 
     suspend fun setSuggestionsEnabled(enabled: Boolean) = put(Keys.SUGGESTIONS, enabled)
 
@@ -633,6 +637,7 @@ class SettingsRepository(private val context: Context) {
         numberRowEnabled = this[Keys.NUMBER_ROW] ?: true,
         keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
         splitKeyboard = SplitKeyboard.fromStored(this[Keys.SPLIT_KEYBOARD]),
+        dynamicColorEnabled = this[Keys.DYNAMIC_COLOR] ?: false,
         suggestionsEnabled = this[Keys.SUGGESTIONS] ?: true,
         correctionsEnabled = this[Keys.CORRECTIONS] ?: true,
         numberKeyHintsEnabled = this[Keys.NUMBER_KEY_HINTS] ?: true,
@@ -680,6 +685,7 @@ class SettingsRepository(private val context: Context) {
         val NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
         val KEYBOARD_HEIGHT = stringPreferencesKey("keyboard_height")
         val SPLIT_KEYBOARD = stringPreferencesKey("keyboard_split")
+        val DYNAMIC_COLOR = booleanPreferencesKey("keyboard_dynamic_color")
         val SUGGESTIONS = booleanPreferencesKey("keyboard_suggestions")
         val CORRECTIONS = booleanPreferencesKey("keyboard_corrections")
         val NUMBER_KEY_HINTS = booleanPreferencesKey("keyboard_number_key_hints")

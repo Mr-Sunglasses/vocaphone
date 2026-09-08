@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -316,14 +317,27 @@ internal fun VocaPhoneKeyboard(
     }
     val clipboardChip = clipboard.takeIf { settings.clipboardChipEnabled && !editor.sensitive }
     val startedTyping = KeyboardChrome.startedTyping(keyboardState.composing, editorText.before)
-    val stripClipboard = KeyboardChrome.clipboardForStrip(clipboardChip, startedTyping)
     val swipeArmed = KeyboardChrome.swipeWordArmed(swipeWord, editorText.before, editorText.after)
-    val stripSuggestions = if (swipeArmed && swipeChoices.isNotEmpty()) {
-        swipeChoices.map { SuggestionItem(it) }
+    val swipeChoicesActive = KeyboardChrome.swipeChoicesActive(
+        hasChoices = swipeChoices.isNotEmpty(),
+        swipeArmed = swipeArmed,
+        startedTyping = startedTyping,
+        composing = keyboardState.composing,
+    )
+    val stripClipboard = KeyboardChrome.clipboardForStrip(
+        clipboardChip,
+        startedTyping,
+        swipeChoicesActive = swipeChoicesActive,
+    )
+    val stripSuggestions = if (swipeChoicesActive) {
+        buildList(swipeChoices.size + 1) {
+            swipeWord?.let { add(SuggestionItem(it)) }
+            addAll(swipeChoices.map { SuggestionItem(it) })
+        }
     } else {
         KeyboardChrome.suggestionsForStrip(suggestionStrip.items, startedTyping)
     }
-    val swipeReplacesWord = swipeArmed && swipeChoices.isNotEmpty()
+    val swipeReplacesWord = swipeChoicesActive
 
     fun clearSwipe() {
         swipeChoices = emptyList()
@@ -530,7 +544,7 @@ internal fun VocaPhoneKeyboard(
         }
     }
 
-    VocaPhoneTheme {
+    VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled) {
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerLowest,
             contentColor = MaterialTheme.colorScheme.onSurface,
@@ -1032,6 +1046,10 @@ private fun DictationBar(
                     onSelect = onEmojiCategory,
                     modifier = Modifier.weight(1f),
                 )
+                suggestions.isNotEmpty() -> SuggestionStripRow(
+                    suggestions = suggestions,
+                    onSuggestion = onSuggestion,
+                )
                 clipboard != null -> {
                     Box(
                         modifier = Modifier
@@ -1047,10 +1065,6 @@ private fun DictationBar(
                         )
                     }
                 }
-                suggestions.isNotEmpty() -> SuggestionStripRow(
-                    suggestions = suggestions,
-                    onSuggestion = onSuggestion,
-                )
                 else -> Spacer(Modifier.weight(1f))
             }
         }
@@ -1081,13 +1095,137 @@ private fun DictationBar(
         if (panelTitle != null) {
             ToolbarCloseButton(onClick = onClosePanel)
         }
-        if (state.phase.isBusy) {
+        if (MicDictationControl.showsSeparateCancel(state.phase)) {
             DictationCancelButton(onClick = onMicLongPress)
         }
         MicButton(
             state = state,
             enabled = editor.dictationAllowed && !isPreferenceWritePending,
             onClick = onMicTap,
+            onLongPress = onMicLongPress,
+        )
+    }
+}
+
+@Composable
+internal fun VoiceShortcutListeningChrome(
+    dictationState: DictationState,
+    editor: KeyboardEditorConfig,
+    settings: VocaPhoneSettings,
+    isPreferenceWritePending: Boolean,
+    onMicTap: () -> Unit,
+    onMicLongPress: () -> Unit,
+    onReadyToListen: () -> Unit = {},
+) {
+    LaunchedEffect(Unit) { onReadyToListen() }
+    VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerLowest,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ) {
+            VoiceShortcutListeningBar(
+                state = dictationState,
+                editor = editor,
+                barHeight = settings.keyboardHeight.dictationBarDp.dp,
+                isPreferenceWritePending = isPreferenceWritePending,
+                onMicTap = onMicTap,
+                onMicLongPress = onMicLongPress,
+            )
+        }
+    }
+}
+
+@Composable
+private fun VoiceShortcutListeningBar(
+    state: DictationState,
+    editor: KeyboardEditorConfig,
+    barHeight: Dp,
+    isPreferenceWritePending: Boolean,
+    onMicTap: () -> Unit,
+    onMicLongPress: () -> Unit,
+) {
+    val idle = state.phase == DictationPhase.IDLE
+    val status = when {
+        editor.sensitive -> "Private field"
+        !editor.dictationAllowed -> "Typing only"
+        idle -> "VocaPhone"
+        state.phase == DictationPhase.LISTENING -> "Listening · ${formatDuration(state.recordedMillis)}"
+        else -> state.statusText
+    }
+    val detail = when {
+        editor.sensitive -> "Dictation is off here"
+        !editor.dictationAllowed -> "Dictation is available in text fields"
+        idle -> "Voice input"
+        state.phase == DictationPhase.LISTENING && state.partialTranscript.isNotBlank() ->
+            state.partialTranscript.replace('\n', ' ').take(64)
+        state.phase == DictationPhase.LISTENING ->
+            state.inputRouteLabel ?: "Tap the red button to finish"
+        state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone to finish setup"
+        state.phase == DictationPhase.FAILED -> "Tap the mic to try again"
+        state.phase.isBusy -> ""
+        else -> "Ready"
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 6.dp)
+            .height(barHeight)
+            .padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .semantics { liveRegion = LiveRegionMode.Polite },
+            contentAlignment = Alignment.Center,
+        ) {
+            if (state.isRecording) {
+                Waveform(
+                    level = state.level,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(34.dp),
+                    alpha = 0.34f,
+                    bars = 13,
+                )
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = status,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+                if (detail.isNotEmpty()) {
+                    Text(
+                        text = detail,
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+        if (MicDictationControl.showsSeparateCancel(state.phase)) {
+            DictationCancelButton(onClick = onMicLongPress)
+        }
+        MicButton(
+            state = state,
+            enabled = editor.dictationAllowed && !isPreferenceWritePending,
+            onClick = onMicTap,
+            onLongPress = onMicLongPress,
         )
     }
 }
@@ -1415,7 +1553,7 @@ private fun LanguageOptionRow(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(40.dp)
+            .heightIn(min = 48.dp)
             .semantics { this.selected = selected },
         shape = RoundedCornerShape(8.dp),
         color = if (selected) {
@@ -1446,7 +1584,7 @@ private fun LanguageOptionRow(
                 !enabled -> Text(
                     text = "Unavailable",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 10.sp,
+                    style = MaterialTheme.typography.labelMedium,
                 )
             }
         }
@@ -1501,6 +1639,7 @@ private fun RowScope.StyleOptionCard(
         modifier = Modifier
             .weight(1f)
             .fillMaxHeight()
+            .heightIn(min = 48.dp)
             .semantics { this.selected = selected },
         shape = RoundedCornerShape(8.dp),
         color = if (selected) {
@@ -1523,7 +1662,7 @@ private fun RowScope.StyleOptionCard(
             Column(Modifier.weight(1f)) {
                 Text(
                     text = style.displayName,
-                    fontSize = 11.sp,
+                    style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -1531,9 +1670,8 @@ private fun RowScope.StyleOptionCard(
                 Text(
                     text = style.keyboardDetail,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 9.sp,
-                    lineHeight = 10.sp,
-                    maxLines = 2,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -1594,12 +1732,12 @@ private fun ToolbarCloseButton(onClick: () -> Unit) {
 
 private val WritingStyle.keyboardDetail: String
     get() = when (this) {
-        WritingStyle.RAW -> "Unchanged model output"
-        WritingStyle.CLEAN -> "Tidy spacing + final period"
-        WritingStyle.FORMAL -> "Capitalization + final period"
-        WritingStyle.CASUAL -> "Natural, no final period"
+        WritingStyle.RAW -> "Unchanged output"
+        WritingStyle.CLEAN -> "Tidy spacing + period"
+        WritingStyle.FORMAL -> "Caps + final period"
+        WritingStyle.CASUAL -> "No final period"
         WritingStyle.VERY_CASUAL -> "Lowercase + commas"
-        WritingStyle.EXCITED -> "Statements end with !"
+        WritingStyle.EXCITED -> "Ends with !"
     }
 
 @Composable
@@ -1635,6 +1773,7 @@ private fun MicButton(
     state: DictationState,
     enabled: Boolean,
     onClick: () -> Unit,
+    onLongPress: () -> Unit,
 ) {
     val view = LocalView.current
     val processing = state.phase in setOf(
@@ -1646,7 +1785,7 @@ private fun MicButton(
     val recording = state.phase == DictationPhase.LISTENING
     val description = when {
         !enabled -> "Dictation unavailable"
-        recording -> "Finish dictation"
+        recording -> "Finish dictation. Long-press to discard without inserting"
         processing -> "Dictation in progress"
         state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone"
         else -> "Start dictation"
@@ -1678,6 +1817,10 @@ private fun MicButton(
                     onTap = {
                         view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
                         onClick()
+                    },
+                    onLongPress = { _ ->
+                        view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        onLongPress()
                     },
                 )
             },

@@ -106,6 +106,7 @@ fun SettingsScreen(
     onNumberRow: (Boolean) -> Unit,
     onKeyboardHeight: (KeyboardHeight) -> Unit,
     onSplitKeyboard: (SplitKeyboard) -> Unit,
+    onDynamicColor: (Boolean) -> Unit,
     onSuggestions: (Boolean) -> Unit,
     onCorrections: (Boolean) -> Unit,
     onNumberKeyHints: (Boolean) -> Unit,
@@ -289,6 +290,14 @@ fun SettingsScreen(
 
             SettingsPage.KEYBOARD -> {
                 ImeSetupCard(setup.ime)
+                Section("Appearance") {
+                    SettingToggle(
+                        title = "Dynamic color",
+                        detail = "Follow the system wallpaper colors. Off keeps the Voca teal.",
+                        checked = settings.dynamicColorEnabled,
+                        onCheckedChange = onDynamicColor,
+                    )
+                }
                 Section("Layout") {
                     SettingToggle(
                         title = "Number row",

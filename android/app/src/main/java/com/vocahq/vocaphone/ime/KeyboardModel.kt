@@ -188,8 +188,12 @@ internal object KeyboardChrome {
      *
      * [startedTyping] is what makes that true. Without it the chip outlived the
      * empty field and sat where the word suggestions should be for the whole
-     * sentence, because the render order in `DictationBar` reaches the clipboard
-     * branch first and never falls through to the suggestions one.
+     * sentence.
+     *
+     * A swipe on an empty field is the other producer. `applySwipe` fills
+     * alternatives and clears composing before the coalesced editor read, so
+     * [startedTyping] can still be false while those choices are already on
+     * the strip. [swipeChoicesActive] hides the chip for that window.
      *
      * Deliberately hidden for the rest of the sentence rather than reappearing
      * whenever suggestions happen to run dry: a paste target that pops back
@@ -200,8 +204,22 @@ internal object KeyboardChrome {
     fun clipboardForStrip(
         clipboard: ClipboardChip?,
         startedTyping: Boolean,
+        swipeChoicesActive: Boolean = false,
         alreadyPasted: Boolean = false,
-    ): ClipboardChip? = clipboard.takeIf { !alreadyPasted && !startedTyping }
+    ): ClipboardChip? =
+        clipboard.takeIf { !alreadyPasted && !startedTyping && !swipeChoicesActive }
+
+    /**
+     * Swipe alternatives are filled in `applySwipe` before the coalesced
+     * editor read. [swipeWordArmed] still needs that read, so an empty field
+     * can have choices that are neither armed nor "typing" yet.
+     */
+    fun swipeChoicesActive(
+        hasChoices: Boolean,
+        swipeArmed: Boolean,
+        startedTyping: Boolean,
+        composing: String,
+    ): Boolean = hasChoices && (swipeArmed || (!startedTyping && composing.isEmpty()))
 
     /**
      * Dismissing the chip hides that clip until a different one is copied.
