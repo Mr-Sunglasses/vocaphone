@@ -522,6 +522,7 @@
 		6B6743BB4173E2F719E3D8CB /* TypingWordList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingWordList.swift; sourceTree = "<group>"; };
 		6CC10480CFBC7D25599BAD55 /* DictationSurfaceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationSurfaceView.swift; sourceTree = "<group>"; };
 		6CF871FC84B4C6B2627A43C2 /* RecordingCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingCoordinator.swift; sourceTree = "<group>"; };
+		6D194D7D1AF785F5942FFF64 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		7083ED482761906EE2589E97 /* SherpaFeatureDither.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SherpaFeatureDither.swift; sourceTree = "<group>"; };
 		70B3F1DBA8332A13B095E4BA /* PairingScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScannerView.swift; sourceTree = "<group>"; };
 		70CAE08F934281250A314597 /* PreviewMatrix.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewMatrix.swift; sourceTree = "<group>"; };
@@ -694,6 +695,15 @@
 			path = ../assets/keyboard;
 			sourceTree = "<group>";
 		};
+		22ED77E56D3964E8FACAB66A /* ios */ = {
+			isa = PBXGroup;
+			children = (
+				6D194D7D1AF785F5942FFF64 /* Signing.xcconfig */,
+			);
+			name = ios;
+			path = .;
+			sourceTree = "<group>";
+		};
 		3100468ACA52C373010E777D /* VocaPhoneKeyboard */ = {
 			isa = PBXGroup;
 			children = (
@@ -857,6 +867,7 @@
 		7E46AABFA3E90F0F519DEF02 = {
 			isa = PBXGroup;
 			children = (
+				22ED77E56D3964E8FACAB66A /* ios */,
 				18D27BAEBD899778B140408F /* SharedKeyboardData */,
 				BA056971FB6830230CA657BE /* VocaPhoneActivityShared */,
 				1839F58A312F2D4BB1A97941 /* VocaPhoneApp */,
@@ -1107,19 +1118,19 @@
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					2439C57D534B9770D35D98EE = {
-						DevelopmentTeam = 92962VK378;
+						DevelopmentTeam = "$(LOCAL_DEVELOPMENT_TEAM:default=92962VK378)";
 						ProvisioningStyle = Automatic;
 					};
 					25EE7CD122403ED0C22EE2DE = {
-						DevelopmentTeam = 92962VK378;
+						DevelopmentTeam = "$(LOCAL_DEVELOPMENT_TEAM:default=92962VK378)";
 						ProvisioningStyle = Automatic;
 					};
 					8064393ED94ED8E4DF68D37C = {
-						DevelopmentTeam = 92962VK378;
+						DevelopmentTeam = "$(LOCAL_DEVELOPMENT_TEAM:default=92962VK378)";
 						ProvisioningStyle = Automatic;
 					};
 					B1FFCB59AB3A9C83423539EC = {
-						DevelopmentTeam = 92962VK378;
+						DevelopmentTeam = "$(LOCAL_DEVELOPMENT_TEAM:default=92962VK378)";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -1632,7 +1643,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_LIVEACTIVITY_ENTITLEMENTS:default=VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VocaPhoneLiveActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1640,7 +1651,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.liveactivity;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID).liveactivity";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1651,7 +1662,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_KEYBOARD_ENTITLEMENTS:default=VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VocaPhoneKeyboard/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1659,7 +1670,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.keyboard;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID).keyboard";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneKeyboard/VocaPhoneKeyboard-Bridging-Header.h";
@@ -1671,7 +1682,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = VocaPhoneApp/VocaPhoneApp.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_APP_ENTITLEMENTS:default=VocaPhoneApp/VocaPhoneApp.entitlements)";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1685,7 +1696,7 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID)";
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1696,7 +1707,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = VocaPhoneApp/VocaPhoneApp.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_APP_ENTITLEMENTS:default=VocaPhoneApp/VocaPhoneApp.entitlements)";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1710,7 +1721,7 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID)";
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1735,6 +1746,7 @@
 		};
 		9F9FD427F7996B4E6E8003D0 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6D194D7D1AF785F5942FFF64 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1770,7 +1782,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 26;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 92962VK378;
+				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM:default=92962VK378)";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -1799,11 +1811,14 @@
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
+				VOCAPHONE_APP_BUNDLE_ID = "$(LOCAL_APP_BUNDLE_ID:default=com.vocahq.vocaphone)";
+				VOCAPHONE_APP_GROUP = "$(LOCAL_APP_GROUP:default=group.com.vocahq)";
 			};
 			name = Debug;
 		};
 		9FE063DBE2D20860DF3F3875 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = 6D194D7D1AF785F5942FFF64 /* Signing.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1839,7 +1854,7 @@
 				COPY_PHASE_STRIP = NO;
 				CURRENT_PROJECT_VERSION = 26;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 92962VK378;
+				DEVELOPMENT_TEAM = "$(LOCAL_DEVELOPMENT_TEAM:default=92962VK378)";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
@@ -1861,6 +1876,8 @@
 				SWIFT_STRICT_CONCURRENCY = minimal;
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
+				VOCAPHONE_APP_BUNDLE_ID = "$(LOCAL_APP_BUNDLE_ID:default=com.vocahq.vocaphone)";
+				VOCAPHONE_APP_GROUP = "$(LOCAL_APP_GROUP:default=group.com.vocahq)";
 			};
 			name = Release;
 		};
@@ -1868,7 +1885,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_LIVEACTIVITY_ENTITLEMENTS:default=VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VocaPhoneLiveActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1876,7 +1893,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.liveactivity;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID).liveactivity";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1887,7 +1904,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements;
+				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_KEYBOARD_ENTITLEMENTS:default=VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VocaPhoneKeyboard/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1895,7 +1912,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.vocaphone.keyboard;
+				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID).keyboard";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneKeyboard/VocaPhoneKeyboard-Bridging-Header.h";

@@ -123,13 +123,24 @@ final class RecordingCoordinator {
     /// permission can be revoked from Settings while the app is suspended.
     func refreshSetupStatus() {
         guard !isInert else { return }
+        let keyboardStatus = try? store.loadKeyboardStatus()
+        let lackedFullAccessAt = KeyboardPreferences.keyboardLackedFullAccessAt
+        // Either report means the extension has run, which is better evidence
+        // of installation than the undocumented preference key — that one can
+        // simply decline to answer, and `nil` there must never read as "no".
+        let hasRun = KeyboardSetupState.hasRun(
+            status: keyboardStatus,
+            lackedFullAccessAt: lackedFullAccessAt
+        )
         let isKeyboardInstalled = InstalledKeyboards.includesVocaPhone()
+            ?? (hasRun ? true : nil)
         let refreshed = SetupStatus(
             source: transcriptionSource,
             microphone: microphoneAccess,
             keyboard: KeyboardSetupState.resolve(
-                try? store.loadKeyboardStatus(),
-                isInstalled: isKeyboardInstalled
+                keyboardStatus,
+                isInstalled: isKeyboardInstalled,
+                lackedFullAccessAt: lackedFullAccessAt
             ),
             isKeyboardInstalled: isKeyboardInstalled,
             hasDictatedOnce: KeyboardPreferences.hasCompletedFirstDictation
@@ -1473,6 +1484,13 @@ final class RecordingCoordinator {
             }
         )
         darwinObservations.append(
+            VocaPhoneDarwinCenter.observe(.keyboardLacksFullAccess) { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.noteKeyboardRanWithoutFullAccess()
+                }
+            }
+        )
+        darwinObservations.append(
             VocaPhoneDarwinCenter.observe(.stopQuickDictationRequested) { [weak self] in
                 Task { @MainActor [weak self] in
                     DiagnosticLog.record(.stopQuickDictationRequested)
@@ -1480,6 +1498,15 @@ final class RecordingCoordinator {
                 }
             }
         )
+    }
+
+    /// The keyboard cannot record this itself — no container, no write — so the
+    /// containing app is the only process that can remember it happened.
+    private func noteKeyboardRanWithoutFullAccess() {
+        guard !isInert else { return }
+        DiagnosticLog.record(.keyboardShown, metadata: .fullAccess(false))
+        KeyboardPreferences.keyboardLackedFullAccessAt = Date()
+        refreshSetupStatus()
     }
 
     /// Fast path for keyboard and Live Activity writes. Adaptive polling remains

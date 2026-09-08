@@ -1,0 +1,13 @@
+// The project's base configuration, tracked so a fresh checkout can generate.
+//
+// Local signing identity is not written here. `just ios local-signing` writes
+// the `LOCAL_*` settings into `Local.xcconfig`, which is gitignored; the
+// optional include below picks it up when it exists and is silently skipped
+// when it does not. Every `LOCAL_*` setting in project.yml carries the
+// shipping value as its `$(VAR:default=…)`, so a checkout with no local
+// signing builds exactly as a release does.
+//
+// This indirection is the point: pointing `configFiles` straight at the
+// gitignored file made every clone — CI included — fail xcodegen's spec
+// validation with "Invalid config file", because the file is not there.
+#include? "Local.xcconfig"

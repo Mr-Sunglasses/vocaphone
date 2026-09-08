@@ -4,6 +4,22 @@ options:
   deploymentTarget:
     iOS: "17.0"
   xcodeVersion: "26.0"
+# Signing identity lives in one gitignored file, not in edits to this one.
+#
+# Everything a device build has to rename — the three bundle identifiers, the
+# App Group, the team, and the entitlement files that name the group — is read
+# from a `LOCAL_*` setting with the shipping value as its default. `just ios
+# local-signing` writes those settings into `Local.xcconfig`, which is
+# gitignored and is pulled in by the tracked `Signing.xcconfig` below through
+# an optional include, so a checkout without one still generates.
+#
+# The alternative, which this replaces, was editing the identifiers here and in
+# three `.entitlements` files and remembering never to commit them. That is not
+# a workflow, it is a trap: one `git add -A` put a personal App Group on main,
+# where it would have shipped an app that could not open its own container.
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -12,7 +28,12 @@ settings:
     MARKETING_VERSION: 1.0
     TARGETED_DEVICE_FAMILY: "1"
     CODE_SIGN_STYLE: Automatic
-    DEVELOPMENT_TEAM: 92962VK378
+    # `$(VAR:default=…)` resolves to the shipping value whenever
+    # Local.xcconfig is absent, so a checkout with no local signing generates
+    # and builds exactly as before.
+    DEVELOPMENT_TEAM: "$(LOCAL_DEVELOPMENT_TEAM:default=92962VK378)"
+    VOCAPHONE_APP_BUNDLE_ID: "$(LOCAL_APP_BUNDLE_ID:default=com.vocahq.vocaphone)"
+    VOCAPHONE_APP_GROUP: "$(LOCAL_APP_GROUP:default=group.com.vocahq)"
 packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit.git
@@ -73,9 +94,9 @@ targets:
       - VocaPhoneApp/PrivacyInfo.xcprivacy
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone
+        PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAPHONE_APP_BUNDLE_ID)"
         TARGETED_DEVICE_FAMILY: "1"
-        CODE_SIGN_ENTITLEMENTS: VocaPhoneApp/VocaPhoneApp.entitlements
+        CODE_SIGN_ENTITLEMENTS: "$(LOCAL_APP_ENTITLEMENTS:default=VocaPhoneApp/VocaPhoneApp.entitlements)"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: VocaPhoneApp/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -110,9 +131,9 @@ targets:
       - VocaPhoneKeyboard/PrivacyInfo.xcprivacy
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone.keyboard
+        PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAPHONE_APP_BUNDLE_ID).keyboard"
         TARGETED_DEVICE_FAMILY: "1"
-        CODE_SIGN_ENTITLEMENTS: VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements
+        CODE_SIGN_ENTITLEMENTS: "$(LOCAL_KEYBOARD_ENTITLEMENTS:default=VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements)"
         SWIFT_OBJC_BRIDGING_HEADER: VocaPhoneKeyboard/VocaPhoneKeyboard-Bridging-Header.h
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: VocaPhoneKeyboard/Info.plist
@@ -129,9 +150,9 @@ targets:
       - VocaPhoneLiveActivity/PrivacyInfo.xcprivacy
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.vocahq.vocaphone.liveactivity
+        PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAPHONE_APP_BUNDLE_ID).liveactivity"
         TARGETED_DEVICE_FAMILY: "1"
-        CODE_SIGN_ENTITLEMENTS: VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements
+        CODE_SIGN_ENTITLEMENTS: "$(LOCAL_LIVEACTIVITY_ENTITLEMENTS:default=VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements)"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: VocaPhoneLiveActivity/Info.plist
         APPLICATION_EXTENSION_API_ONLY: YES

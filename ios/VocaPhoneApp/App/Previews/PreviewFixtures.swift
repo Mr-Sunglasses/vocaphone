@@ -183,6 +183,20 @@ enum PreviewFixtures {
         source: onDeviceReady,
         microphone: .granted,
         keyboard: .addedButNeverRun,
+        // `.addedButNeverRun` means iOS listed it, so leaving this unset made
+        // the fixture describe a state that cannot occur — and rendered the
+        // "could not read your keyboard list" note in every preview of it.
+        isKeyboardInstalled: true,
+        hasDictatedOnce: false
+    )
+
+    /// The keyboard ran and reported Full Access off — the state guided setup
+    /// could not see at all before it had a channel that works without it.
+    static let setupKeyboardFullAccessOff = SetupStatus(
+        source: onDeviceReady,
+        microphone: .granted,
+        keyboard: .seenWithoutFullAccess(lastSeenAt: Date()),
+        isKeyboardInstalled: true,
         hasDictatedOnce: false
     )
 

@@ -160,10 +160,20 @@ VocaPhoneLiveActivity) under **Signing & Capabilities**; automatic signing
 does the rest. If you don't (most outside contributors), either ask a
 maintainer to comment `/build ios` on your pull request for a signed ad-hoc
 IPA (see [CONTRIBUTING.md](CONTRIBUTING.md#on-demand-pr-builds-build)), or run
-it under your own free Apple ID by changing `bundleIdPrefix` and the three
-`PRODUCT_BUNDLE_IDENTIFIER`s in `ios/project.yml`, the App Group string in all
-three `.entitlements` files, and `AppConfiguration.swift`'s
-`appGroupIdentifier`/`keyboardBundleIdentifier`. Don't commit that change.
+it under your own Apple ID and your own identifiers:
+
+```sh
+just ios local-signing <team-id> <your.reverse.dns>   # e.g. ABCDE12345 dev.janedoe
+just ios device
+```
+
+That writes `ios/Local.xcconfig` and entitlement copies under `ios/Local/`,
+both gitignored, and the app installs as `<your.reverse.dns>.vocaphone` with
+its own App Group. Nothing tracked changes — the identifiers are read at build
+time — so there is no local edit to keep out of a commit. `just ios
+local-signing-off` puts it back. The team ID is the **OU** of your signing
+certificate's subject, not the ID inside the certificate's own name; [device
+setup](docs/device-setup.md) has the one-liner that prints it.
 
 Grant microphone access on first launch, add the keyboard as above, and turn
 on Full Access. Complete the physical-device checklist in [device

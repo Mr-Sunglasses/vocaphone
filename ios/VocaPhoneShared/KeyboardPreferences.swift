@@ -357,6 +357,13 @@ enum KeyboardPreferences {
     /// state, this survives iOS reclaiming the app while Settings is in front,
     /// so the first return can reveal the confirmation action immediately.
     static let keyboardSettingsRoundTripKey = "keyboardSettingsRoundTripStarted"
+    /// When the keyboard last reported that it ran without Full Access.
+    ///
+    /// Written by the containing app on the keyboard's Darwin signal, because
+    /// the keyboard itself cannot write anything in that state. Kept durable so
+    /// that iOS reclaiming the app mid-setup does not turn a diagnosed problem
+    /// back into an unexplained wait.
+    static let keyboardLackedFullAccessKey = "keyboardLackedFullAccessAt"
     static let firstDictationKey = "hasCompletedFirstDictation"
     /// Separate from the first transcript milestone: this proves the user has
     /// seen a transcript make the complete trip through the keyboard and into a
@@ -836,6 +843,13 @@ enum KeyboardPreferences {
     static var hasCompletedFirstDictation: Bool {
         get { defaults?.bool(forKey: firstDictationKey) ?? false }
         set { defaults?.set(newValue, forKey: firstDictationKey) }
+    }
+
+    /// See ``keyboardLackedFullAccessKey``. `nil` means the keyboard has never
+    /// reported running without Full Access on this install.
+    static var keyboardLackedFullAccessAt: Date? {
+        get { defaults?.object(forKey: keyboardLackedFullAccessKey) as? Date }
+        set { defaults?.set(newValue, forKey: keyboardLackedFullAccessKey) }
     }
 
     /// A successful keyboard insertion into vocaphone's own practice field.

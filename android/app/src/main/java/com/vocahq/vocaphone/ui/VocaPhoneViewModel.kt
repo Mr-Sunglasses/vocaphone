@@ -93,7 +93,7 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     val dictation = container.dictation.state
     val localModels: StateFlow<LocalModelState> = container.localModels.state
 
-    private val _setup = MutableStateFlow(SetupStatus())
+    private val _setup = MutableStateFlow(SetupStatus(isLoaded = false))
     val setup: StateFlow<SetupStatus> = _setup.asStateFlow()
 
     private val _connection = MutableStateFlow<ConnectionReport?>(null)

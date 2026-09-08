@@ -191,6 +191,76 @@ struct OnboardingPresentationTests {
         )
     }
 
+    // MARK: - The verification page
+
+    /// Time alone must never promote the page. This is the property that keeps
+    /// a slow keyboard from being mistaken for a granted one, which is the
+    /// whole reason the page exists.
+    @Test func waitingLongerNeverCountsAsVerified() {
+        var waiting = readyToDictate
+        waiting.keyboard = .addedButNeverRun
+
+        #expect(
+            OnboardingPresentation.keyboardVerification(status: waiting, waitedFor: 0)
+                == .waiting
+        )
+        #expect(
+            OnboardingPresentation.keyboardVerification(
+                status: waiting,
+                waitedFor: KeyboardVerification.grace
+            ) == .stalled
+        )
+        #expect(
+            OnboardingPresentation.keyboardVerification(
+                status: waiting,
+                waitedFor: 60 * 60
+            ) == .stalled
+        )
+    }
+
+    /// The keyboard's own report outranks the clock in both directions: it is
+    /// named immediately, and it is not downgraded to a guess later.
+    @Test func aReportedFullAccessProblemIsNamedAtOnce() {
+        var reported = readyToDictate
+        reported.keyboard = .seenWithoutFullAccess(lastSeenAt: Date())
+
+        #expect(
+            OnboardingPresentation.keyboardVerification(status: reported, waitedFor: 0)
+                == .fullAccessOff
+        )
+        #expect(
+            OnboardingPresentation.keyboardVerification(
+                status: reported,
+                waitedFor: 60 * 60
+            ) == .fullAccessOff
+        )
+        #expect(KeyboardVerification.fullAccessOff.needsSettings)
+        #expect(!KeyboardVerification.stalled.needsSettings)
+    }
+
+    @Test func aVerifiedKeyboardIsVerifiedImmediately() {
+        #expect(
+            OnboardingPresentation.keyboardVerification(
+                status: readyToDictate,
+                waitedFor: 0
+            ) == .verified
+        )
+        #expect(KeyboardVerification.verified.detail == nil)
+    }
+
+    /// A state that has gone wrong has to say why, or the page is back to being
+    /// a spinner with better wording. A state that has not gone wrong says
+    /// nothing extra, which is what keeps the page short.
+    @Test func onlyTheUnhappyVerificationStatesAddALine() {
+        for state: KeyboardVerification in [.stalled, .fullAccessOff] {
+            #expect(state.detail?.isEmpty == false)
+        }
+        #expect(KeyboardVerification.waiting.detail == nil)
+        for state: KeyboardVerification in [.waiting, .stalled, .fullAccessOff, .verified] {
+            #expect(!state.title.isEmpty)
+        }
+    }
+
     @Test func educationalPagesDoNotPretendToBeSystemProofs() {
         #expect(!OnboardingStage.welcome.showsProofProgress)
         #expect(!OnboardingStage.handoff.showsProofProgress)

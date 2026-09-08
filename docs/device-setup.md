@@ -12,22 +12,62 @@ your iPhone and want to run the full acceptance pass.
 
 ## Signing prerequisites
 
-The bundle IDs, keyboard bundle ID, and App Group are already final — see
-[decisions.md](decisions.md) — so there's nothing to rename before signing.
+The shipping bundle IDs, keyboard bundle ID, and App Group are final — see
+[decisions.md](decisions.md).
+
+### On the VocaHQ team
+
+Nothing to rename.
 
 1. Open `ios/VocaPhone.xcodeproj` (`just ios gen` first if you haven't
-   generated it yet) and choose your Apple team on all three targets — App,
+   generated it yet) and confirm team `92962VK378` on all three targets — App,
    Keyboard, and Live Activity — in **Signing & Capabilities**.
 2. Confirm the same App Group capability (`group.com.vocahq`) is enabled on
-   all three. Automatic signing registers it under your team the first time,
-   as long as your team has access to `com.vocahq.vocaphone` and friends —
-   see [the README's iPhone setup
-   section](../README.md#1-configure-and-install-the-iphone-app) if it
-   doesn't.
-3. Connect the iPhone, select it as the run destination, and run VocaPhoneApp.
+   all three. Automatic signing registers it under the team the first time.
+3. Connect the iPhone, select it as the run destination, and run VocaPhoneApp,
+   or just `just ios device`.
 
-The connected iPhone, automatic development signing, App Group provisioning,
-and on-device installation have been exercised with the current checkout.
+### Under your own Apple ID
+
+Device builds under another team need their own bundle IDs and App Group,
+because the shipping ones are registered to VocaHQ. One command sets all of
+them:
+
+```sh
+just ios local-signing <team-id> <your.reverse.dns>
+just ios device
+```
+
+It writes `ios/Local.xcconfig` and entitlement copies under `ios/Local/`, both
+gitignored, and `project.yml` reads every identifier from that file with the
+shipping value as its default. So the generated `VocaPhone.xcodeproj` is
+byte-identical either way and no tracked file changes — which is the point:
+the previous version of this page asked you to edit the identifiers in
+`project.yml`, three `.entitlements` files and `AppConfiguration.swift` and
+remember never to commit them, and one `git add -A` duly put a personal App
+Group on main.
+
+`just ios local-signing-off` removes both and returns to the shipping identity.
+
+Two things that will waste an afternoon otherwise:
+
+- **The team ID is the OU of your certificate's subject**, not the ten
+  characters inside the certificate's own name — that one is the personal
+  certificate's, has no Xcode account behind it, and fails with "No Account
+  for Team". Print the right one with:
+
+  ```sh
+  security find-certificate -c "Apple Development" -p \
+    | openssl x509 -noout -subject
+  ```
+
+- The **first launch is refused** with "profile has not been explicitly
+  trusted" until **Settings → General → VPN & Device Management → Developer
+  App → Trust**. The install itself has already succeeded at that point.
+
+The connected iPhone, automatic development signing under a personal team, App
+Group provisioning, and on-device installation have been exercised with the
+current checkout.
 
 ## On-device setup
 

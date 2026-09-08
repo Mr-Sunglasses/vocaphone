@@ -9,6 +9,12 @@
        full rate. -->
   <key>CADisableMinimumFrameDurationOnPhone</key>
   <true/>
+  <!-- The App Group this bundle's entitlement grants, carried into the bundle
+       so the code can ask rather than hardcode it. A device build signed under
+       a personal team renames the group; a constant in Swift does not follow,
+       and the app then opens a container nobody wrote to. -->
+  <key>VocaPhoneAppGroup</key>
+  <string>$(VOCAPHONE_APP_GROUP)</string>
   <key>CFBundleDisplayName</key>
   <string>vocaphone</string>
   <key>CFBundleExecutable</key>

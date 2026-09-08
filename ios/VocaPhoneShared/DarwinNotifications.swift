@@ -9,6 +9,16 @@ enum VocaPhoneDarwinNotification: String, Sendable {
     case keyboardStatusChanged = "com.vocahq.vocaphone.keyboard-status-changed"
     case quickDictationChanged = "com.vocahq.vocaphone.quick-dictation-changed"
     case stopQuickDictationRequested = "com.vocahq.vocaphone.stop-quick-dictation"
+    /// The keyboard ran, and could not reach the shared container.
+    ///
+    /// The exception to the rule above: this one carries no durable record to
+    /// reread, because a keyboard without Full Access cannot write one. That is
+    /// precisely what it reports. Darwin notifications are name-only IPC and
+    /// are not gated by the App Group, so they are the single channel a
+    /// keyboard in that state still has — without it, "Full Access is off" and
+    /// "you have not opened the keyboard yet" are the same silence, and guided
+    /// setup can only show a spinner and hope.
+    case keyboardLacksFullAccess = "com.vocahq.vocaphone.keyboard-no-full-access"
 
     fileprivate var name: CFNotificationName {
         CFNotificationName(rawValue as CFString)

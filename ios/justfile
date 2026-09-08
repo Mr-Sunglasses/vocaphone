@@ -176,7 +176,11 @@ device: gen
         -quiet build
     bundle="{{ device_derived }}/Build/Products/Debug-iphoneos/VocaPhoneApp.app"
     xcrun devicectl device install app --device "${udid}" "${bundle}"
-    xcrun devicectl device process launch --device "${udid}" {{ app_id }}
+    # Read the identifier off what was just built. Under local signing the app
+    # installs under a renamed bundle ID, and launching {{ app_id }} then fails
+    # on a device that has the app open in front of you.
+    installed="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${bundle}/Info.plist")"
+    xcrun devicectl device process launch --device "${udid}" "${installed}"
     echo "Keyboard, microphone, background audio and insertion changes still"
     echo "need the manual pass in docs/device-setup.md."
 
@@ -184,6 +188,74 @@ device: gen
 [group('device')]
 devices:
     xcrun devicectl list devices
+
+# Sign device builds under your own Apple team, under your own identifiers.
+#
+#   just ios local-signing ABCDE12345 dev.janedoe
+#
+# `team` is the ten-character Team ID, which is the OU of your signing
+# certificate's subject — not the ID inside the certificate's own name, which
+# is the personal certificate's and has no Xcode account behind it:
+#
+#   security find-certificate -c "Apple Development" -p \
+#     | openssl x509 -noout -subject
+#
+# `prefix` is a reverse-DNS prefix you control; the app becomes
+# `<prefix>.vocaphone`, the extensions its `.keyboard` and `.liveactivity`
+# children, and the App Group `group.<prefix>.vocaphone`.
+#
+# Everything this writes is gitignored: Local.xcconfig and the entitlement
+# copies under Local/. The tracked entitlements keep the shipping group,
+# because the release workflow copies those files into the archive verbatim.
+# Undo with `just ios local-signing-off`.
+[group('device')]
+local-signing team prefix:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{ team }}" in
+        ??????????) ;;
+        *) echo "Team ID is ten characters, e.g. ABCDE12345 — got '{{ team }}'." >&2; exit 1 ;;
+    esac
+    group="group.{{ prefix }}.vocaphone"
+    mkdir -p Local
+    for target in App Keyboard LiveActivity; do
+        cat > "Local/VocaPhone${target}.entitlements" <<EOF
+    <?xml version="1.0" encoding="UTF-8"?>
+    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+    <plist version="1.0">
+    <dict>
+      <key>com.apple.security.application-groups</key>
+      <array>
+        <string>${group}</string>
+      </array>
+    </dict>
+    </plist>
+    EOF
+    done
+    cat > Local.xcconfig <<EOF
+    // Signing identity for builds on this machine. Gitignored.
+    // Written by \`just ios local-signing {{ team }} {{ prefix }}\`; remove it
+    // with \`just ios local-signing-off\` to go back to the shipping identity.
+    LOCAL_DEVELOPMENT_TEAM = {{ team }}
+    LOCAL_APP_BUNDLE_ID = {{ prefix }}.vocaphone
+    LOCAL_APP_GROUP = ${group}
+    LOCAL_APP_ENTITLEMENTS = Local/VocaPhoneApp.entitlements
+    LOCAL_KEYBOARD_ENTITLEMENTS = Local/VocaPhoneKeyboard.entitlements
+    LOCAL_LIVEACTIVITY_ENTITLEMENTS = Local/VocaPhoneLiveActivity.entitlements
+    EOF
+    {{ just_executable() }} gen
+    echo "Local signing on: {{ prefix }}.vocaphone, ${group}, team {{ team }}."
+    echo "Nothing tracked changed — the project reads these at build time."
+    echo "Install with: just ios device"
+
+# Go back to the shipping identity: drop the local signing overrides.
+[group('device')]
+local-signing-off:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rm -rf Local Local.xcconfig
+    {{ just_executable() }} gen
+    echo "Local signing off; builds use the shipping identity again."
 
 # Pull the keyboard's touch trace off the phone and print it.
 #
@@ -196,12 +268,18 @@ trace:
     #!/usr/bin/env bash
     set -euo pipefail
     udid="${VOCAPHONE_DEVICE:-$({{ just_executable() }} _device_udid)}"
-    # Read from the source rather than written twice: local signing swaps the
-    # App Group for one this developer's team actually owns.
-    group=$(
-        sed -n 's/.*appGroupIdentifier = "\(.*\)"/\1/p' \
-            VocaPhoneShared/AppConfiguration.swift
-    )
+    # Read from the source rather than written twice: local signing swaps
+    # the App Group for one this developer's team actually owns. That
+    # override lives in Local.xcconfig, which is where the build reads it
+    # from too; without one the device is running the shipping group, which
+    # AppConfiguration names as its fallback.
+    group=$(sed -n 's/^LOCAL_APP_GROUP *= *//p' Local.xcconfig 2>/dev/null)
+    if [ -z "${group}" ]; then
+        group=$(
+            sed -n 's/.*shippingAppGroupIdentifier = "\(.*\)"/\1/p' \
+                VocaPhoneShared/AppConfiguration.swift
+        )
+    fi
     out="{{ justfile_directory() }}/build/touch-trace.txt"
     mkdir -p "$(dirname "${out}")"
     rm -f "${out}"

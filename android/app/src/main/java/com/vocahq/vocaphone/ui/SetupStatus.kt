@@ -24,6 +24,8 @@ data class SetupStatus(
     val keyboard: Boolean = false,
     val gatewayConfigured: Boolean = false,
     val ime: ImeSetupStatus = ImeSetupStatus(),
+    /** False only until the first settings and permission read completes. */
+    val isLoaded: Boolean = true,
 ) {
     fun isSatisfied(step: SetupStep): Boolean = when (step) {
         SetupStep.MICROPHONE -> microphone
@@ -41,7 +43,7 @@ data class SetupStatus(
     val completedStepCount: Int get() = stepCount - remainingSteps.size
 
     val isReadyToDictate: Boolean
-        get() = remainingSteps.isEmpty()
+        get() = isLoaded && remainingSteps.isEmpty()
 
     /** Short labels for chips under the header progress. */
     val remainingLabels: List<String>

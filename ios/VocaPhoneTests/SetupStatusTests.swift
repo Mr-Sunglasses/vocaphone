@@ -143,6 +143,72 @@ struct SetupStatusTests {
         )
     }
 
+    // MARK: - The report a keyboard without Full Access can still make
+
+    /// Without this signal the state is indistinguishable from a keyboard that
+    /// was never switched to, and guided setup can only spin.
+    @Test func theKeyboardsOwnReportOfNoFullAccessIsBelieved() {
+        let state = KeyboardSetupState.resolve(
+            nil,
+            isInstalled: true,
+            lackedFullAccessAt: Self.seenAt,
+            now: Self.seenAt
+        )
+
+        #expect(state == .seenWithoutFullAccess(lastSeenAt: Self.seenAt))
+        #expect(!state.isReady)
+
+        var setup = complete
+        setup.keyboard = state
+        #expect(!setup.isReadyToDictate)
+        #expect(setup.attentionHeadline == "The keyboard needs Full Access")
+    }
+
+    /// Turning the switch off after a good run must not be described by the
+    /// older, better news.
+    @Test func theNewerOfTheTwoReportsWins() {
+        let ranWell = KeyboardStatus(lastSeenAt: Self.seenAt, hasFullAccess: true)
+        let switchedOffLater = Self.seenAt.addingTimeInterval(60)
+
+        #expect(
+            KeyboardSetupState.resolve(
+                ranWell,
+                isInstalled: true,
+                lackedFullAccessAt: switchedOffLater,
+                now: switchedOffLater
+            ) == .seenWithoutFullAccess(lastSeenAt: switchedOffLater)
+        )
+    }
+
+    /// And granting it afterwards must clear the complaint, or the checklist
+    /// would never let the user out of a problem they have already fixed.
+    @Test func aLaterGoodRunClearsAnEarlierComplaint() {
+        let switchedOffEarlier = Self.seenAt.addingTimeInterval(-60)
+        let ranWell = KeyboardStatus(lastSeenAt: Self.seenAt, hasFullAccess: true)
+
+        let state = KeyboardSetupState.resolve(
+            ranWell,
+            isInstalled: true,
+            lackedFullAccessAt: switchedOffEarlier,
+            now: Self.seenAt
+        )
+
+        #expect(state == .ready(lastSeenAt: Self.seenAt))
+    }
+
+    /// Either report proves the extension exists, which is stronger evidence
+    /// than the undocumented preference key that may not answer at all.
+    @Test func eitherReportProvesTheKeyboardIsInstalled() {
+        #expect(!KeyboardSetupState.hasRun(status: nil, lackedFullAccessAt: nil))
+        #expect(KeyboardSetupState.hasRun(status: nil, lackedFullAccessAt: Self.seenAt))
+        #expect(
+            KeyboardSetupState.hasRun(
+                status: KeyboardStatus(lastSeenAt: Self.seenAt, hasFullAccess: true),
+                lackedFullAccessAt: nil
+            )
+        )
+    }
+
     /// The previous checklist reported "Keyboard last active …" from any stored
     /// status, which read as done beside an unchecked box.
     @Test func anIncompleteKeyboardNeverDescribesItselfAsActive() {

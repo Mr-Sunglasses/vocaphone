@@ -312,9 +312,17 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         lastPublishedAt = now
         lastPublishedFullAccess = hasFullAccess
-        try? store.saveKeyboardStatus(
-            KeyboardStatus(lastSeenAt: now, hasFullAccess: hasFullAccess)
-        )
+        if hasFullAccess {
+            try? store.saveKeyboardStatus(
+                KeyboardStatus(lastSeenAt: now, hasFullAccess: hasFullAccess)
+            )
+        } else {
+            // The write above would fail silently: the App Group container is
+            // exactly what Full Access grants. Say so out of band instead, so
+            // guided setup can name the problem rather than waiting forever on
+            // a record that can never arrive.
+            VocaPhoneDarwinCenter.post(.keyboardLacksFullAccess)
+        }
         DiagnosticLog.record(
             .keyboardShown,
             metadata: .fullAccess(hasFullAccess)

@@ -85,8 +85,11 @@ enum KeyboardSetupState: Equatable, Sendable {
     /// switched to yet. The two are indistinguishable from here, and both are
     /// answered by the same instruction.
     case addedButNeverRun
-    /// Defensive: the extension reports the state it sees, and a write that
-    /// lands while it believes Full Access is off is worth saying plainly.
+    /// The keyboard ran and Full Access was off. Proven, not inferred: the
+    /// extension says so over the one channel it still has in that state (see
+    /// ``VocaPhoneDarwinNotification/keyboardLacksFullAccess``), because the
+    /// shared container it would otherwise write to is the very thing Full
+    /// Access grants.
     case seenWithoutFullAccess(lastSeenAt: Date)
     case ready(lastSeenAt: Date)
     /// Full Access was granted once, but the keyboard has not run since. It may
@@ -114,11 +117,20 @@ enum KeyboardSetupState: Equatable, Sendable {
     /// undocumented keyboard list ever changes shape, the worst that happens is
     /// the checklist stops advancing early — not that a working setup is
     /// declared broken.
+    ///
+    /// `lackedFullAccessAt` is the opposite evidence, and the two are resolved
+    /// by recency alone. Both are things the keyboard reported about itself at
+    /// a known moment, and a user who turns the switch off after a good run —
+    /// or on after a bad one — must not be described by the older of the two.
     static func resolve(
         _ status: KeyboardStatus?,
         isInstalled: Bool? = nil,
+        lackedFullAccessAt: Date? = nil,
         now: Date = Date()
     ) -> KeyboardSetupState {
+        if let lackedFullAccessAt, lackedFullAccessAt >= (status?.lastSeenAt ?? .distantPast) {
+            return .seenWithoutFullAccess(lastSeenAt: lackedFullAccessAt)
+        }
         guard let status else {
             return isInstalled == true ? .addedButNeverRun : .notAdded
         }
@@ -128,6 +140,14 @@ enum KeyboardSetupState: Equatable, Sendable {
         return now.timeIntervalSince(status.lastSeenAt) > silenceThreshold
             ? .silent(lastSeenAt: status.lastSeenAt)
             : .ready(lastSeenAt: status.lastSeenAt)
+    }
+
+    /// Whether the extension has demonstrably run on this device, whatever it
+    /// found when it did. Either report is proof that the keyboard is installed
+    /// — stronger proof than the undocumented preference key, which may simply
+    /// not answer.
+    static func hasRun(status: KeyboardStatus?, lackedFullAccessAt: Date?) -> Bool {
+        status != nil || lackedFullAccessAt != nil
     }
 }
 
@@ -252,8 +272,9 @@ struct SetupStatus: Equatable, Sendable {
                     + "Access for it, then switch to it in the field below — "
                     + "this ticks itself the moment it runs."
             case .seenWithoutFullAccess:
-                return "vocaphone is added, but Full Access is off. Tap vocaphone "
-                    + "Flow under Keyboards and turn on Allow Full Access."
+                return "The keyboard opened, but Full Access is off, so it "
+                    + "cannot reach vocaphone. Turn it on under "
+                    + "\(AppConfiguration.fullAccessSettingsPath)"
             case let .ready(lastSeenAt):
                 return "Ready. The keyboard last ran \(Self.format(lastSeenAt))."
             case let .silent(lastSeenAt):
