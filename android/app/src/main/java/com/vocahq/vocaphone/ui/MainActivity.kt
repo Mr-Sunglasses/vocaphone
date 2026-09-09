@@ -119,6 +119,7 @@ fun VocaPhoneApp(
     val testing by viewModel.testing.collectAsStateWithLifecycle()
     val microphone by viewModel.microphone.collectAsStateWithLifecycle()
     val localModels by viewModel.localModels.collectAsStateWithLifecycle()
+    val usageStats by viewModel.usageStats.collectAsStateWithLifecycle()
     val tonePreviewListening by viewModel.tonePreviewListening.collectAsStateWithLifecycle()
 
     // The selected keyboard is a system setting, so its state can change while
@@ -453,6 +454,8 @@ fun VocaPhoneApp(
                 telemetryInspect = viewModel::telemetryInspect,
                 telemetryPendingCount = viewModel::telemetryPendingCount,
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
+                usageStats = usageStats,
+                onResetUsageStats = { viewModel.resetUsageStats() },
                 page = settingsPage,
                 onPageChange = { settingsPage = it },
                 openLanguagePicker = openLanguagePicker,
@@ -476,7 +479,16 @@ fun VocaPhoneApp(
                     },
                 )
             },
-            text = { Text("This removes them from this phone.") },
+            text = {
+                Text(
+                    if (deletingAll) {
+                        "This removes them from this phone. Usage totals are " +
+                            "kept — reset them in Settings → Stats."
+                    } else {
+                        "This removes them from this phone."
+                    },
+                )
+            },
             confirmButton = {
                 DestructiveTextButton(
                     text = if (deletingAll) "Delete all" else "Delete",

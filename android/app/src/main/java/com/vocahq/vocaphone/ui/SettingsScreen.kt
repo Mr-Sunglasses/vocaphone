@@ -51,6 +51,7 @@ import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelEngine
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
+import com.vocahq.vocaphone.core.UsageStats
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
@@ -67,6 +68,7 @@ enum class SettingsPage(val title: String) {
     DICTATION("Dictation"),
     SNIPPETS("Snippets"),
     CONNECTION("Speech"),
+    STATS("Stats"),
     ABOUT("About"),
     ;
 
@@ -77,6 +79,7 @@ enum class SettingsPage(val title: String) {
             "dictation" -> DICTATION
             "snippets" -> SNIPPETS
             "connection" -> CONNECTION
+            "stats" -> STATS
             "about" -> ABOUT
             else -> HOME
         }
@@ -133,6 +136,8 @@ fun SettingsScreen(
     telemetryInspect: () -> TelemetryInspectPayload,
     telemetryPendingCount: () -> Int,
     telemetryDeliveryStatus: () -> String,
+    usageStats: UsageStats,
+    onResetUsageStats: () -> Unit,
     page: SettingsPage,
     onPageChange: (SettingsPage) -> Unit,
     openLanguagePicker: Boolean = false,
@@ -246,6 +251,13 @@ fun SettingsScreen(
                         },
                         icon = R.drawable.ic_snippets,
                         onClick = { onPageChange(SettingsPage.SNIPPETS) },
+                    )
+                    SettingsMenuDivider()
+                    SettingsMenuRow(
+                        title = "Stats",
+                        supporting = StatsCopy.menuSupporting(usageStats),
+                        icon = R.drawable.ic_stats,
+                        onClick = { onPageChange(SettingsPage.STATS) },
                     )
                     SettingsMenuDivider()
                     SettingsMenuRow(
@@ -589,6 +601,14 @@ fun SettingsScreen(
                         onClick = onOpenGateway,
                     )
                 }
+            }
+
+            SettingsPage.STATS -> {
+                StatsPage(
+                    stats = usageStats,
+                    nowMillis = remember(usageStats) { System.currentTimeMillis() },
+                    onReset = onResetUsageStats,
+                )
             }
 
             SettingsPage.ABOUT -> {
