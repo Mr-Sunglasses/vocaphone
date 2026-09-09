@@ -26,8 +26,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,6 +39,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.ime.PersonalDictionary
@@ -151,7 +156,16 @@ fun SettingsScreen(
     var pickingTranslation by remember { mutableStateOf(false) }
     val localModel = LocalModelCatalog.find(settings.localModelId)
 
-    val statsNow = remember(usageStats) { System.currentTimeMillis() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var resumeTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) resumeTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val statsNow = remember(usageStats, resumeTick) { System.currentTimeMillis() }
 
     LaunchedEffect(openLanguagePicker) {
         if (openLanguagePicker) {

@@ -189,6 +189,29 @@ class UsageStatsTest {
         assertEquals(8, stats.totalWords)
     }
 
+    /**
+     * DIAGNOSTIC (expected to fail): pruning sorts keys lexicographically, and an
+     * unreadable label sorts above every real date. With the window full, the bad
+     * key survives and the oldest genuine day is evicted — so a damaged label
+     * costs a real day's word count, which is the outcome leaving the day map
+     * unvalidated was meant to avoid.
+     */
+    @Test
+    fun anUnreadableDayLabelDoesNotEvictARealDay() {
+        val poisoned = buildMap {
+            repeat(UsageStats.DAILY_LIMIT) { day ->
+                put(UsageStats.dayKey(at(2026, 9, 1 + day), utc), 10)
+            }
+            put("zzz-bad-key", 99)
+        }
+
+        val pruned = UsageStats.pruneDaily(poisoned)
+
+        assertEquals(UsageStats.DAILY_LIMIT, pruned.size)
+        assertEquals("a real day outranks an unreadable one", false, pruned.containsKey("zzz-bad-key"))
+        assertTrue("the oldest real day survives", pruned.containsKey("2026-09-01"))
+    }
+
     @Test
     fun pruningKeepsTheNewestByDateNotByInsertionOrder() {
         var stats = UsageStats()
@@ -281,7 +304,51 @@ class UsageStatsTest {
     fun anUnreadableStoredDayReadsAsNoStreakRatherThanCrashing() {
         val corrupt = UsageStats(currentStreak = 9, lastDayKey = "yesterday-ish")
         assertEquals(0, corrupt.currentStreakAt(at(2026, 9, 8)))
-        assertEquals(1, corrupt.record("word", 1_000, at(2026, 9, 8)).currentStreak)
+
+        val repaired = corrupt.record("word", 1_000, at(2026, 9, 8))
+        assertEquals(1, repaired.currentStreak)
+        assertEquals("the bad key is replaced, not kept", "2026-09-08", repaired.lastDayKey)
+    }
+
+    @Test
+    fun aCorruptDayDoesNotWedgeTheStreakForever() {
+        val corrupt = UsageStats(currentStreak = 9, lastDayKey = "not-a-date")
+
+        val firstDay = corrupt.record("word", 1_000, at(2026, 9, 8))
+        assertEquals(1, firstDay.currentStreak)
+
+        val secondDay = firstDay.record("word", 1_000, at(2026, 9, 9))
+        assertEquals("the run recovers instead of sticking at 1", 2, secondDay.currentStreak)
+        assertEquals("2026-09-09", secondDay.lastDayKey)
+    }
+
+    /**
+     * DIAGNOSTIC (expected to fail): isDayKey only asks whether a label parses,
+     * and a date years ahead parses perfectly well. A device with a wrong clock —
+     * a dead RTC, a manual test, bad time sync — can record one dictation dated
+     * in the future. After the clock is corrected every comparison against it is
+     * negative, which reads as "same day": the run never expires and never
+     * advances. Same permanent freeze as a corrupt key, through a valid one.
+     */
+    @Test
+    fun aFutureDatedDayDoesNotFreezeTheStreakForever() {
+        val skewed = UsageStats(currentStreak = 4, bestStreak = 4, lastDayKey = "2099-01-01")
+
+        assertEquals("that run is long over", 0, skewed.currentStreakAt(at(2026, 9, 9)))
+
+        val recorded = skewed.record("word", 1_000, at(2026, 9, 9))
+        assertEquals("a fresh dictation starts a new run", 1, recorded.currentStreak)
+        assertEquals("2026-09-09", recorded.lastDayKey)
+    }
+
+    @Test
+    fun dayKeysAreRecognisedOnlyWhenTheyCanStillBeRead() {
+        assertTrue(UsageStats.isDayKey(UsageStats.dayKey(at(2026, 9, 8), utc)))
+        assertTrue(UsageStats.isDayKey("2026-09-08"))
+        assertEquals(false, UsageStats.isDayKey(""))
+        assertEquals(false, UsageStats.isDayKey("not-a-date"))
+        assertEquals(false, UsageStats.isDayKey("2026-13-40"))
+        assertEquals("unpadded is not the format we write", false, UsageStats.isDayKey("2026-9-8"))
     }
 
     /**
@@ -351,6 +418,41 @@ class UsageStatsTest {
         val stats = UsageStats.decode(legacy)
         assertEquals("2026-09-08", stats.lastDayKey)
         assertEquals(3, stats.currentStreakAt(at(2026, 9, 8)))
+    }
+
+    @Test
+    fun anUnreadableStoredDayKeyDecodesToNeverRatherThanBeingTrusted() {
+        val stats = UsageStats.decode(
+            """{"totalWords":40,"currentStreak":9,"bestStreak":9,"lastDayKey":"not-a-date"}""",
+        )
+        assertEquals("", stats.lastDayKey)
+        assertEquals(0, stats.currentStreakAt(at(2026, 9, 8)))
+        assertEquals("the totals are not collateral", 40, stats.totalWords)
+    }
+
+    @Test
+    fun anUnreadableDayKeyFallsBackToTheNewestRealDay() {
+        val stats = UsageStats.decode(
+            """{"currentStreak":3,"lastDayKey":"???","daily":{"2026-09-07":10,"2026-09-08":20}}""",
+        )
+        assertEquals("2026-09-08", stats.lastDayKey)
+        assertEquals(3, stats.currentStreakAt(at(2026, 9, 8)))
+    }
+
+    @Test
+    fun aPoisonedDayMapCannotSupplyTheLastDay() {
+        val stats = UsageStats.decode(
+            """{"totalWords":40,"currentStreak":3,"daily":{"2026-09-07":10,"zzz-bad-key":20}}""",
+        )
+        assertEquals("the newest day it can vouch for", "2026-09-07", stats.lastDayKey)
+        assertEquals("the counts themselves are kept", 40, stats.totalWords)
+    }
+
+    @Test
+    fun aDayMapWithNothingReadableLeavesNoLastDay() {
+        val stats = UsageStats.decode("""{"totalWords":40,"daily":{"zzz-bad-key":20}}""")
+        assertEquals("", stats.lastDayKey)
+        assertEquals(0, stats.currentStreakAt(at(2026, 9, 8)))
     }
 
     @Test

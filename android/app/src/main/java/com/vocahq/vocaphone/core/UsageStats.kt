@@ -29,11 +29,6 @@ data class UsageStats(
     val dailyWords: Map<String, Int> = emptyMap(),
 ) {
 
-    /**
-     * Words per minute of *recorded audio*, pauses included, which is why the
-     * screen calls it speaking speed rather than anything implying effort.
-     * VocaMac computes it the same way; the three Voca apps must agree.
-     */
     val averageWordsPerMinute: Double
         get() = if (totalAudioMillis <= 0) 0.0 else totalWords / (totalAudioMillis / 60_000.0)
 
@@ -42,7 +37,11 @@ data class UsageStats(
     fun currentStreakAt(now: Long): Int {
         if (lastDayKey.isEmpty()) return 0
         val elapsed = daysBetween(lastDayKey, dayKey(now)) ?: return 0
-        return if (elapsed <= 1) currentStreak else 0
+        return when {
+            isUnreconcilableFuture(elapsed) -> 0
+            elapsed <= 1 -> currentStreak
+            else -> 0
+        }
     }
 
     fun record(transcript: String, durationMillis: Long?, now: Long): UsageStats {
@@ -58,7 +57,7 @@ data class UsageStats(
             totalWords = totalWords + words,
             totalTranscriptions = totalTranscriptions + 1,
             totalAudioMillis = totalAudioMillis + (durationMillis?.coerceAtLeast(0) ?: 0),
-            lastDayKey = maxOf(lastDayKey, key),
+            lastDayKey = nextDayKey(lastDayKey, key),
             currentStreak = streak,
             bestStreak = maxOf(bestStreak, streak),
             dailyWords = pruneDaily(daily),
@@ -101,21 +100,62 @@ data class UsageStats(
             (LocalDate.parse(toKey).toEpochDay() - LocalDate.parse(fromKey).toEpochDay()).toInt()
         }.getOrNull()
 
-        
+        fun isDayKey(value: String): Boolean =
+            value.isNotEmpty() && runCatching { LocalDate.parse(value) }.isSuccess
+
         fun advanceStreak(current: Int, lastDayKey: String, todayKey: String): Int {
             if (lastDayKey.isEmpty()) return 1
-            return when (daysBetween(lastDayKey, todayKey)) {
-                null -> 1
-                in Int.MIN_VALUE..0 -> current.coerceAtLeast(1)
-                1 -> current.coerceAtLeast(0) + 1
+            val elapsed = daysBetween(lastDayKey, todayKey) ?: return 1
+            return when {
+                isUnreconcilableFuture(elapsed) -> 1
+                elapsed <= 0 -> current.coerceAtLeast(1)
+                elapsed == 1 -> current.coerceAtLeast(0) + 1
                 else -> 1
             }
         }
 
+        /** The stored day after recording on [todayKey], repaired if it cannot be trusted. */
+        fun nextDayKey(stored: String, todayKey: String): String {
+            if (!isDayKey(stored)) return todayKey
+            val elapsed = daysBetween(stored, todayKey)
+            if (elapsed != null && isUnreconcilableFuture(elapsed)) return todayKey
+            return maxOf(stored, todayKey)
+        }
+
+        /**
+         * Whether a stored day sits so far ahead of today that it is a wrong
+         * clock rather than a streak.
+         *
+         * A stored day can legitimately be ahead: correcting a clock backwards
+         * leaves one there, and a run should survive that — which is why a small
+         * negative gap holds the streak rather than breaking it. But a day
+         * further ahead than the entire retained window cannot be reconciled with
+         * anything the reader can see, and left alone it never expires and never
+         * advances, because every later comparison stays negative. A device that
+         * once recorded a dictation dated 2099 would otherwise be stuck for good.
+         *
+         * The boundary is [DAILY_LIMIT] because that is the history the screen
+         * can actually show; past it there is nothing to reconcile against.
+         */
+        private fun isUnreconcilableFuture(elapsed: Int): Boolean = elapsed < -DAILY_LIMIT
+
+        /**
+         * The [DAILY_LIMIT] most recent days by date, not by insertion order.
+         *
+         * Readable labels are ranked first. Sorting on the string alone would
+         * put an unreadable key above every real date — "zzz" beats "2026-09-09"
+         * — so with the window full a damaged label would survive and evict a
+         * genuine day's word count. The map is deliberately not validated when it
+         * is decoded, precisely so that a bad label costs nothing; it must not
+         * cost a day here instead.
+         */
         fun pruneDaily(daily: Map<String, Int>): Map<String, Int> {
             if (daily.size <= DAILY_LIMIT) return daily.toMap()
             return daily.entries
-                .sortedByDescending { it.key }
+                .sortedWith(
+                    compareByDescending<Map.Entry<String, Int>> { isDayKey(it.key) }
+                        .thenByDescending { it.key },
+                )
                 .take(DAILY_LIMIT)
                 .associate { it.key to it.value }
         }
@@ -153,8 +193,18 @@ data class UsageStats(
                     totalWords = json.optLong("totalWords", 0).coerceAtLeast(0),
                     totalTranscriptions = json.optLong("totalTranscriptions", 0).coerceAtLeast(0),
                     totalAudioMillis = json.optLong("totalAudioMillis", 0).coerceAtLeast(0),
-                    lastDayKey = json.optString("lastDayKey")
-                        .ifEmpty { daily.keys.maxOrNull().orEmpty() },
+                    // The stored day if it is still readable, else the newest day
+                    // the retained map can vouch for — which also covers a
+                    // payload written before this field existed.
+                    //
+                    // Both sources are checked, not just the first. The day map
+                    // is deliberately not validated when it is decoded, so its
+                    // largest key can itself be unreadable; taking `maxOrNull`
+                    // blindly would let the recovery hand back the very kind of
+                    // value it is recovering from. Filtering also means one bad
+                    // key does not cost the good days beside it.
+                    lastDayKey = json.optString("lastDayKey").takeIf(::isDayKey)
+                        ?: daily.keys.filter(::isDayKey).maxOrNull().orEmpty(),
                     currentStreak = json.optInt("currentStreak", 0).coerceAtLeast(0),
                     bestStreak = json.optInt("bestStreak", 0).coerceAtLeast(0),
                     dailyWords = daily,
