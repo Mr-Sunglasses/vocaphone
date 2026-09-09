@@ -325,6 +325,9 @@ enum KeyboardPreferences {
     static let typingHapticsMigrationKey = "typingHapticsMigrationV1"
     static let swipeTypingKey = "swipeTypingEnabled"
     static let numberRowKey = "numberRowEnabled"
+    /// Debug-only touch and frame instrumentation. Kept off unless a developer
+    /// explicitly arms it in the keyboard lab.
+    static let touchTraceKey = "touchTraceEnabled"
     static let quickDictationKey = "quickDictationEnabled"
     static let quickDictationDurationKey = "quickDictationDuration"
     /// A stop from the Live Activity is a pause, not a preference change: the
@@ -549,6 +552,11 @@ enum KeyboardPreferences {
     static var numberRowEnabled: Bool {
         get { boolean(numberRowKey, default: false) }
         set { defaults?.set(newValue, forKey: numberRowKey) }
+    }
+
+    static var touchTraceEnabled: Bool {
+        get { boolean(touchTraceKey, default: false) }
+        set { defaults?.set(newValue, forKey: touchTraceKey) }
     }
 
     /// An absent key means "never set", which is the default — not `false`,

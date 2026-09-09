@@ -194,10 +194,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Coming back is the moment it can have changed under us.
         cachedSmartPunctuation = nil
 #if DEBUG
-        // Armed for the whole of a debug build: the fault it is here to catch
-        // only happens at full typing speed, which is not a thing anyone can
-        // reach for a switch in the middle of.
-        TouchTrace.isEnabled = true
+        // Diagnostics have measurable cost: the frame monitor ticks for every
+        // display refresh and the trace formats several lines per keystroke.
+        // Keep normal device QA representative and arm them only from the lab.
+        TouchTrace.isEnabled = KeyboardPreferences.touchTraceEnabled
         TouchTrace.beginSession("keyboard appeared")
 #endif
         super.viewWillAppear(animated)
@@ -207,6 +207,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         hasDictationKey = true
         // A recreated extension instance can inherit a session the previous one
         // started, so scan once on appear and let `render` decide about polling.
+        typing.installCustomVocabulary(LocalTranscriptionPreferences.customVocabulary)
         applyDocumentTraits()
         // The app's settings screen writes the same two keys, and it may have
         // done so while another keyboard was on screen.

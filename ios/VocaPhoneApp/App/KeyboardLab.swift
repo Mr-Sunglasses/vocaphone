@@ -19,6 +19,7 @@ struct KeyboardLabView: View {
     @State private var isSpeaking = true
     @State private var showsCandidates = false
     @State private var usesSurface = true
+    @State private var touchTrace = KeyboardPreferences.touchTraceEnabled
     @State private var hapticStyle = KeyboardPreferences.typingHapticStyle
     @State private var hapticIntensity = KeyboardPreferences.typingHapticIntensity
     @State private var keyReleaseFade = KeyboardPreferences.keyReleaseFade
@@ -92,8 +93,13 @@ struct KeyboardLabView: View {
                 Toggle("Dark keyboard", isOn: $isDark)
                 Toggle("Speaking", isOn: $isSpeaking)
                 Toggle("Suggestions", isOn: $showsCandidates)
+                Toggle("Touch trace", isOn: $touchTrace)
             } footer: {
-                Text("Tap the microphone in the preview to play the transition.")
+                Text(
+                    "Tap the microphone in the preview to play the transition. "
+                        + "Touch trace records finger and frame timing for `just ios trace`; "
+                        + "enable it only while measuring."
+                )
             }
             transitionSection
             hapticsSection
@@ -108,6 +114,7 @@ struct KeyboardLabView: View {
         .onChange(of: state) { syncSurface() }
         .onChange(of: isDark) { syncSurface() }
         .onChange(of: showsCandidates) { syncSurface() }
+        .onChange(of: touchTrace) { KeyboardPreferences.touchTraceEnabled = touchTrace }
         .onReceive(meterTick) { _ in
             guard usesSurface, state == .recording, isSpeaking else { return }
             surface.appendMeterLevels(Self.nextLevels())

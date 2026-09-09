@@ -837,6 +837,33 @@ struct AppliedCorrectionArmingTests {
 @MainActor
 @Suite(.serialized)
 struct TypingEngineDocumentChangeTests {
+    /// The checker blocks the main actor for 50-135 ms on a cold prefix. A
+    /// debounce shorter than the interval between ordinary keystrokes starts
+    /// that block just before the next finger lands, which is exactly the lag
+    /// the debounce is meant to prevent.
+    @Test func briskTypingNeverRunsTheCheckerBetweenLetters() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+
+        var document = ""
+        for character in "hell" {
+            document.append(character)
+            engine.insert(String(character), document: DocumentSnapshot(before: document))
+            try await Task.sleep(for: .milliseconds(120))
+        }
+
+        #expect(checker.prefixesAsked.isEmpty)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(checker.prefixesAsked == ["hell"])
+    }
+
     @Test func firstKeyDefersSystemDictionariesUntilTheQuietPeriod() async throws {
         let suggestions = KeyboardPreferences.typingSuggestionsEnabled
         defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
@@ -854,7 +881,7 @@ struct TypingEngineDocumentChangeTests {
         engine.insert("hel", document: DocumentSnapshot(before: "hel"))
         #expect(languageQueries == 0)
         #expect(checker.prefixesAsked.isEmpty)
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(for: .milliseconds(350))
         #expect(languageQueries == 1)
         #expect(checker.prefixesAsked == ["hel"])
     }
@@ -876,13 +903,13 @@ struct TypingEngineDocumentChangeTests {
         engine.suspend()
         #expect(weights.isEmpty)
         #expect(engine.composer.isEmpty)
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(for: .milliseconds(350))
         #expect(checker.prefixesAsked.isEmpty)
         #expect(engine.strip.isEmpty)
         // The reused engine must still work when another field appears.
         engine.documentChanged(policy: .allowed)
         engine.insert("wo", document: DocumentSnapshot(before: "wo"))
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(for: .milliseconds(350))
         #expect(checker.prefixesAsked == ["wo"])
     }
 
@@ -899,7 +926,7 @@ struct TypingEngineDocumentChangeTests {
         engine.insert("hel", document: DocumentSnapshot(before: "hel"))
         engine.noteSwipeWord("world", alternates: ["world", "word"])
         let alternates = engine.strip
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(for: .milliseconds(350))
         #expect(checker.prefixesAsked.isEmpty)
         #expect(engine.strip == alternates)
     }
@@ -916,7 +943,7 @@ struct TypingEngineDocumentChangeTests {
         engine.insert("hel", document: DocumentSnapshot(before: "hel"))
         KeyboardPreferences.typingSuggestionsEnabled = false
         engine.reconcile(document: DocumentSnapshot(before: "hel"))
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(for: .milliseconds(350))
         #expect(checker.prefixesAsked.isEmpty)
         #expect(engine.strip.isEmpty)
     }
@@ -965,9 +992,9 @@ struct TypingEngineDocumentChangeTests {
         #expect(engine.pendingSwipeWord == nil)
         let publishedThroughChange = published.count
 
-        // Longer than `checkerQuietPeriod` (~90 ms), so a task that was not
+        // Longer than `checkerQuietPeriod` (~250 ms), so a task that was not
         // cancelled would have asked the checker and published by now.
-        try await Task.sleep(for: .milliseconds(200))
+        try await Task.sleep(for: .milliseconds(350))
 
         #expect(checker.prefixesAsked.isEmpty)
         #expect(engine.strip.isEmpty)
@@ -975,5 +1002,44 @@ struct TypingEngineDocumentChangeTests {
         #expect(!published.contains { strip in
             strip.candidates.contains { $0.text == Self.staleCompletion }
         })
+    }
+
+    @Test func lateLexiconDeliveryRefreshesTheWordAlreadyOnScreen() {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let engine = TypingEngine(
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        defer { engine.suspend() }
+
+        engine.insert("omw", document: DocumentSnapshot(before: "omw"))
+        #expect(engine.strip.autocorrection == nil)
+
+        engine.installLexicon([
+            TypingEngine.LexiconEntry(userInput: "omw", documentText: "On my way!"),
+        ])
+
+        #expect(engine.strip.autocorrection == "On my way!")
+    }
+
+    @Test func refreshedCustomVocabularyUpdatesTheWordAlreadyOnScreen() {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let engine = TypingEngine(
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        defer { engine.suspend() }
+        engine.installCustomVocabulary("")
+
+        engine.insert("kani", document: DocumentSnapshot(before: "kani"))
+        #expect(!engine.strip.candidates.contains { $0.text == "Kanishk" })
+
+        engine.installCustomVocabulary("Kanishk")
+
+        #expect(engine.strip.candidates.contains { $0.text == "Kanishk" })
     }
 }

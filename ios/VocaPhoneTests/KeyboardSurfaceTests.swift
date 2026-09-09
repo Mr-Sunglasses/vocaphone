@@ -275,3 +275,26 @@ struct KeyboardSurfaceTests {
         #expect(list.completions(for: "q", limit: 2) == ["quixotic"])
     }
 }
+
+@MainActor
+@Suite(.serialized)
+struct KeyboardDiagnosticsPreferenceTests {
+    @Test func touchTracingIsOptIn() {
+        let defaults = KeyboardPreferences.defaults
+        let key = KeyboardPreferences.touchTraceKey
+        let saved = defaults?.object(forKey: key)
+        defer {
+            if let saved {
+                defaults?.set(saved, forKey: key)
+            } else {
+                defaults?.removeObject(forKey: key)
+            }
+        }
+
+        defaults?.removeObject(forKey: key)
+        #expect(!KeyboardPreferences.touchTraceEnabled)
+
+        KeyboardPreferences.touchTraceEnabled = true
+        #expect(KeyboardPreferences.touchTraceEnabled)
+    }
+}

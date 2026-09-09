@@ -83,11 +83,13 @@ final class TypingEngine {
     /// every one of them put that block in every gap between two letters, which
     /// is exactly where the next finger lands.
     ///
-    /// Waiting 90 ms means a burst of typing asks nothing at all — the strip is
-    /// carried by the shipped word list, which answers in a quarter of a
-    /// millisecond — and one question is asked when the hand stops, which is
-    /// also when somebody starts reading the strip.
-    private static let checkerQuietPeriod: Duration = .milliseconds(90)
+    /// The pause has to be longer than the roughly 120 ms between brisk
+    /// keystrokes. At 90 ms the checker began its 50-135 ms main-actor block
+    /// just before the next finger landed, turning the debounce into a source of
+    /// dropped frames. The shipped word list keeps the strip responsive during
+    /// this pause; the system checker joins only after the hand has really
+    /// stopped.
+    private static let checkerQuietPeriod: Duration = .milliseconds(250)
     private var pendingCheck: Task<Void, Never>?
     private let learned: LearnedWordStore
     private var cache = SuggestionCache()
@@ -187,6 +189,29 @@ final class TypingEngine {
         self.emojiTriggers = emojiTriggers
         onWordListLoaded?(wordList)
         publishNextCharacters()
+        refreshCurrentCandidates()
+    }
+
+    /// Installs the user's replacements and contacts when UIKit delivers them.
+    /// Delivery is asynchronous and often arrives after a word has already been
+    /// typed, so it is itself a reason to rebuild the visible candidates.
+    func installLexicon(_ entries: [LexiconEntry]) {
+        guard entries != lexiconEntries else { return }
+        lexiconEntries = entries
+        refreshCurrentCandidates()
+    }
+
+    /// Picks up vocabulary edited in the containing app while this extension
+    /// instance was suspended. iOS commonly reuses the instance on return.
+    func installCustomVocabulary(_ rawValue: String) {
+        let words = CustomVocabulary.terms(rawValue)
+        guard words != customWords else { return }
+        customWords = words
+        loweredCustomWords = words.map { $0.lowercased() }
+        refreshCurrentCandidates()
+    }
+
+    private func refreshCurrentCandidates() {
         guard hasDocumentContext,
               policy.allowsTypingIntelligence,
               KeyboardPreferences.typingSuggestionsEnabled,
@@ -427,9 +452,10 @@ final class TypingEngine {
             // the main actor.
             let delivery = UncheckedBox(lexicon)
             Task { @MainActor [weak self] in
-                self?.lexiconEntries = delivery.value.entries.map {
+                let entries = delivery.value.entries.map {
                     LexiconEntry(userInput: $0.userInput, documentText: $0.documentText)
                 }
+                self?.installLexicon(entries)
             }
         }
         controller.requestSupplementaryLexicon(completion: handler)
