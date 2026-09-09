@@ -492,4 +492,88 @@ class UsageStatsTest {
         assertEquals(false, UsageStats().hasAny)
         assertNotEquals(false, UsageStats().record("word", 1_000, at(2026, 9, 8)).hasAny)
     }
+
+    // --- millisUntilNextDay ---------------------------------------------
+
+    private fun zoned(zone: String, y: Int, mo: Int, d: Int, h: Int = 0, mi: Int = 0): Long {
+        val calendar = Calendar.getInstance(TimeZone.getTimeZone(zone), Locale.ROOT)
+        calendar.clear()
+        calendar.set(y, mo - 1, d, h, mi, 0)
+        return calendar.timeInMillis
+    }
+
+    private val hour = 3_600_000L
+
+    @Test
+    fun theWaitToMidnightIsWhateverIsLeftOfTheDay() {
+        assertEquals(12 * hour, UsageStats.millisUntilNextDay(at(2026, 9, 9, hour = 12), utc))
+    }
+
+    /**
+     * Not zero. The caller reschedules itself on this value, so a zero here
+     * would be a spin rather than a wait.
+     */
+    @Test
+    fun standingExactlyOnMidnightWaitsAWholeDayRatherThanNoTime() {
+        assertEquals(24 * hour, UsageStats.millisUntilNextDay(at(2026, 9, 9, hour = 0), utc))
+    }
+
+    @Test
+    fun aWaitShorterThanASecondIsRoundedUpToOne() {
+        val justBefore = at(2026, 9, 10, hour = 0) - 1
+        assertEquals(1_000L, UsageStats.millisUntilNextDay(justBefore, utc))
+    }
+
+    /** A local day is not always 24 hours, and the wait has to match the day. */
+    @Test
+    fun theDayTheClocksGoForwardIsShorterAndTheDayTheyGoBackIsLonger() {
+        val la = TimeZone.getTimeZone("America/Los_Angeles")
+        assertEquals(23 * hour, UsageStats.millisUntilNextDay(zoned("America/Los_Angeles", 2026, 3, 8), la))
+        assertEquals(25 * hour, UsageStats.millisUntilNextDay(zoned("America/Los_Angeles", 2026, 11, 1), la))
+    }
+
+    /**
+     * Havana turns its clocks back *at* midnight, so local 00:00 happens twice
+     * that night. A `Calendar` rolled back to midnight picks the second one and
+     * waits an hour too long; the day has already turned by then.
+     */
+    @Test
+    fun anAmbiguousMidnightIsTheFirstOneNotTheSecond() {
+        val havana = TimeZone.getTimeZone("America/Havana")
+        val noon = zoned("America/Havana", 2026, 10, 31, h = 12)
+        assertEquals(12 * hour, UsageStats.millisUntilNextDay(noon, havana))
+    }
+
+    /**
+     * The contract, checked against the function that decides what a day is
+     * rather than against arithmetic done by hand.
+     *
+     * The middle assertion alone is not enough: waiting too long also lands on
+     * a different day, which is exactly how the ambiguous-midnight bug above
+     * survived being reasoned about. The last line is the one that catches it.
+     */
+    @Test
+    fun waitingThatLongLandsOnTheNextDayAndNotPastIt() {
+        val zones = listOf(
+            "UTC",
+            "America/Los_Angeles",
+            "Asia/Kolkata",
+            "America/Havana",
+            "Atlantic/Azores",
+            "Australia/Lord_Howe",
+        )
+        val start = at(2026, 1, 1, hour = 0)
+        for (id in zones) {
+            val zone = TimeZone.getTimeZone(id)
+            var moment = start
+            while (moment < start + 365L * 24 * hour) {
+                val wait = UsageStats.millisUntilNextDay(moment, zone)
+                val today = UsageStats.dayKey(moment, zone)
+                assertTrue("$id waited no time at $today", wait > 0)
+                assertNotEquals("$id did not reach the next day at $today", today, UsageStats.dayKey(moment + wait, zone))
+                assertEquals("$id overshot the boundary at $today", today, UsageStats.dayKey(moment + wait - 1, zone))
+                moment += hour + 37_000L
+            }
+        }
+    }
 }

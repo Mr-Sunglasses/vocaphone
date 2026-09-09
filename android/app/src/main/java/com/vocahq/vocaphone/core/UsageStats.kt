@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.core
 
 import java.text.BreakIterator
+import java.time.Instant
 import java.time.LocalDate
 import java.util.Calendar
 import java.util.Locale
@@ -94,6 +95,40 @@ data class UsageStats(
                 calendar.get(Calendar.MONTH) + 1,
                 calendar.get(Calendar.DAY_OF_MONTH),
             )
+        }
+
+        /**
+         * Milliseconds from [fromMillis] until the start of the next local day.
+         *
+         * The mirror of [dayKey]: that says which day an instant falls in, this
+         * says when that day ends, so a caller that sleeps for this long wakes
+         * on the first instant [dayKey] labels differently.
+         *
+         * Uses `atStartOfDay` rather than a [Calendar] rolled back to midnight,
+         * because midnight is not always a single instant. Havana and the
+         * Azores change their clocks *at* midnight, so local 00:00 happens
+         * twice that night and [Calendar] resolves the ambiguity to the later
+         * one — an hour after the day has already turned. `atStartOfDay` is
+         * specified to take the earlier offset in an overlap, and the instant
+         * after the gap on a night where 00:00 never happens at all.
+         *
+         * Floored at one second: a device whose clock moves while this is being
+         * read could otherwise return zero, and a caller that reschedules
+         * itself on the result would spin.
+         */
+        fun millisUntilNextDay(
+            fromMillis: Long,
+            zone: TimeZone = TimeZone.getDefault(),
+        ): Long {
+            val id = zone.toZoneId()
+            val nextMidnight = Instant.ofEpochMilli(fromMillis)
+                .atZone(id)
+                .toLocalDate()
+                .plusDays(1)
+                .atStartOfDay(id)
+                .toInstant()
+                .toEpochMilli()
+            return (nextMidnight - fromMillis).coerceAtLeast(1_000L)
         }
 
         fun daysBetween(fromKey: String, toKey: String): Int? = runCatching {
