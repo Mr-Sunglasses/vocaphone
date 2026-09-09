@@ -136,6 +136,32 @@ optional clipboard history read
 clips only while the input view is showing; history stays on the phone. Neither
 path is used to insert a transcript.
 
+## Usage statistics (Android)
+
+Settings → Stats counts how much you have dictated. It is counts only: six
+numbers — total words, transcriptions, recorded audio, the current and best day
+streak, and the day of the most recent dictation — plus a word total for each of
+the **seven most recent days** that have one. No transcript text and no audio.
+
+They are written to an app-private DataStore file of their own, separate from the
+file holding settings and the gateway token, so a damaged statistics file costs
+counters rather than a working setup. `allowBackup="false"` applies to the whole
+app, so they are not carried off the phone by Android backup or device transfer.
+Nothing here is transmitted: no usage-reporting event carries any of it, and it
+is absent from the diagnostics export, which stays a closed vocabulary of state
+and lifecycle events.
+
+**They deliberately outlive transcripts.** Deleting your history — one dictation
+or all of it — does not reduce these counters, because they are the record of how
+much you dictated rather than of what you said. The delete-all confirmation says
+so. **Settings → Stats → Reset statistics** erases them, permanently and without
+touching your transcripts, and uninstalling the app removes them with everything
+else.
+
+Only the seven displayed days are retained, so there is no longer-term history of
+which days you dictated on. The streak counters are the exception, and they are
+two integers rather than a diary.
+
 ## Per-device tokens
 
 `VOCAGATEWAY_TOKEN` (or its token file) remains a permanent bootstrap credential

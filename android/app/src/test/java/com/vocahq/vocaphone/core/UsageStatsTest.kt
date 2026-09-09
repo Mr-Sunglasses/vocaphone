@@ -161,15 +161,18 @@ class UsageStatsTest {
         val backwards = stats.record("word", 1_000, at(2026, 9, 3))
         assertEquals(5, backwards.currentStreak)
         assertEquals(
-            "the last-used stamp never moves backwards",
-            stats.lastUsedAtMillis,
-            backwards.lastUsedAtMillis,
+            "the last day never moves backwards",
+            stats.lastDayKey,
+            backwards.lastDayKey,
         )
     }
 
     @Test
     fun theFirstDictationEverStartsAStreakOfOne() {
-        assertEquals(1, UsageStats.advanceStreak(current = 0, lastUsedAtMillis = 0, now = at(2026, 9, 8)))
+        assertEquals(
+            1,
+            UsageStats.advanceStreak(current = 0, lastDayKey = "", todayKey = "2026-09-08"),
+        )
     }
 
     // --- pruning -----------------------------------------------------------
@@ -190,7 +193,6 @@ class UsageStatsTest {
     fun pruningKeepsTheNewestByDateNotByInsertionOrder() {
         var stats = UsageStats()
         repeat(7) { day -> stats = stats.record("word", 1_000, at(2026, 9, 10 + day)) }
-        // A backdated dictation arriving last must not evict a newer day.
         stats = stats.record("word", 1_000, at(2026, 9, 1))
 
         assertEquals(UsageStats.DAILY_LIMIT, stats.dailyWords.size)
@@ -226,10 +228,90 @@ class UsageStatsTest {
     }
 
     @Test
-    fun dayDeltaCountsCalendarDaysNotElapsedHours() {
-        val lateMonday = at(2026, 9, 7, hour = 23)
-        val earlyTuesday = at(2026, 9, 8, hour = 1)
-        assertEquals(1, UsageStats.dayDelta(lateMonday, earlyTuesday, utc))
+    fun daysBetweenCountsCalendarDaysNotElapsedHours() {
+        assertEquals(1, UsageStats.daysBetween("2026-09-07", "2026-09-08"))
+        assertEquals(0, UsageStats.daysBetween("2026-09-08", "2026-09-08"))
+        assertEquals(-1, UsageStats.daysBetween("2026-09-08", "2026-09-07"))
+        assertEquals("across a month end", 1, UsageStats.daysBetween("2026-09-30", "2026-10-01"))
+    }
+
+    @Test
+    fun daysBetweenReportsAnUnreadableKeyRatherThanThrowing() {
+        assertEquals(null, UsageStats.daysBetween("not-a-date", "2026-09-08"))
+        assertEquals(null, UsageStats.daysBetween("2026-09-08", ""))
+        assertEquals(null, UsageStats.daysBetween("2026-13-40", "2026-09-08"))
+    }
+
+    // --- streak expiry -----------------------------------------------------
+
+    /**
+     * The stored streak is only ever written when a dictation is recorded, so
+     * the read path has to expire it. Nothing runs in between to do it.
+     */
+    @Test
+    fun aStreakStaysAliveWhileItIsStillExtendable() {
+        var stats = UsageStats()
+        repeat(5) { day -> stats = stats.record("word", 1_000, at(2026, 9, 1 + day)) }
+        assertEquals("same day", 5, stats.currentStreakAt(at(2026, 9, 5, hour = 23)))
+        assertEquals("the next day, still extendable", 5, stats.currentStreakAt(at(2026, 9, 6)))
+    }
+
+    @Test
+    fun aStreakExpiresOnceADayHasBeenMissed() {
+        var stats = UsageStats()
+        repeat(5) { day -> stats = stats.record("word", 1_000, at(2026, 9, 1 + day)) }
+        assertEquals("a day was missed", 0, stats.currentStreakAt(at(2026, 9, 7)))
+        assertEquals(0, stats.currentStreakAt(at(2026, 10, 20)))
+    }
+
+    @Test
+    fun anExpiredStreakLeavesTheBestOneAlone() {
+        var stats = UsageStats()
+        repeat(5) { day -> stats = stats.record("word", 1_000, at(2026, 9, 1 + day)) }
+        assertEquals(0, stats.currentStreakAt(at(2026, 9, 20)))
+        assertEquals("best is a high-water mark, not a current state", 5, stats.bestStreak)
+    }
+
+    @Test
+    fun neverUsedReadsAsNoStreak() {
+        assertEquals(0, UsageStats().currentStreakAt(at(2026, 9, 8)))
+    }
+
+    @Test
+    fun anUnreadableStoredDayReadsAsNoStreakRatherThanCrashing() {
+        val corrupt = UsageStats(currentStreak = 9, lastDayKey = "yesterday-ish")
+        assertEquals(0, corrupt.currentStreakAt(at(2026, 9, 8)))
+        assertEquals(1, corrupt.record("word", 1_000, at(2026, 9, 8)).currentStreak)
+    }
+
+    /**
+     * The defect this key-based comparison exists to prevent: the streak and the
+     * list underneath it must describe the same days, even when the phone moves
+     * between timezones between dictations.
+     */
+    @Test
+    fun aTimezoneChangeCannotDesynchroniseTheStreakFromRecentActivity() {
+        val kolkata = TimeZone.getTimeZone("Asia/Kolkata")
+        val pacific = TimeZone.getTimeZone("America/Los_Angeles")
+
+        TimeZone.setDefault(kolkata)
+        val kolkataCalendar = Calendar.getInstance(kolkata, Locale.ROOT)
+        kolkataCalendar.clear()
+        kolkataCalendar.set(2026, Calendar.SEPTEMBER, 9, 2, 0, 0)
+        var stats = UsageStats().record("one two three", 1_000, kolkataCalendar.timeInMillis)
+        assertEquals(1, stats.currentStreak)
+
+        TimeZone.setDefault(pacific)
+        val pacificCalendar = Calendar.getInstance(pacific, Locale.ROOT)
+        pacificCalendar.clear()
+        pacificCalendar.set(2026, Calendar.SEPTEMBER, 9, 12, 0, 0)
+        stats = stats.record("four five", 1_000, pacificCalendar.timeInMillis)
+
+        assertEquals(
+            "one day recorded, so one row and one streak day",
+            stats.dailyWords.size,
+            stats.currentStreak,
+        )
     }
 
     // --- encoding ----------------------------------------------------------
@@ -257,6 +339,25 @@ class UsageStatsTest {
         assertEquals(42, stats.totalWords)
         assertEquals(0, stats.totalTranscriptions)
         assertEquals(emptyMap<String, Int>(), stats.dailyWords)
+    }
+
+    @Test
+    fun aPayloadWithoutTheDayKeyRecoversItFromTheRetainedDays() {
+        val legacy = """
+            {"totalWords":40,"totalTranscriptions":4,"currentStreak":3,"bestStreak":3,
+             "lastUsedAtMillis":1757376000000,
+             "daily":{"2026-09-06":10,"2026-09-07":10,"2026-09-08":20}}
+        """.trimIndent()
+        val stats = UsageStats.decode(legacy)
+        assertEquals("2026-09-08", stats.lastDayKey)
+        assertEquals(3, stats.currentStreakAt(at(2026, 9, 8)))
+    }
+
+    @Test
+    fun aPayloadWithNeitherDayKeyNorDaysHasNoStreakToRestore() {
+        val stats = UsageStats.decode("""{"totalWords":40,"currentStreak":3}""")
+        assertEquals("", stats.lastDayKey)
+        assertEquals(0, stats.currentStreakAt(at(2026, 9, 8)))
     }
 
     @Test

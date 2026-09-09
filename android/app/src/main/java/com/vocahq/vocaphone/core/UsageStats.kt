@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.core
 
 import java.text.BreakIterator
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
@@ -22,7 +23,7 @@ data class UsageStats(
     val totalWords: Long = 0,
     val totalTranscriptions: Long = 0,
     val totalAudioMillis: Long = 0,
-    val lastUsedAtMillis: Long = 0,
+    val lastDayKey: String = "",
     val currentStreak: Int = 0,
     val bestStreak: Int = 0,
     val dailyWords: Map<String, Int> = emptyMap(),
@@ -38,14 +39,12 @@ data class UsageStats(
 
     val hasAny: Boolean get() = totalTranscriptions > 0
 
-    /**
-     * One successful dictation.
-     *
-     * [durationMillis] is nullable because the controller's recording length is:
-     * a dictation whose duration was never observed still transcribed real
-     * words, so it is counted with zero added to the audio total rather than
-     * dropped. An empty or whitespace-only transcript is not counted at all.
-     */
+    fun currentStreakAt(now: Long): Int {
+        if (lastDayKey.isEmpty()) return 0
+        val elapsed = daysBetween(lastDayKey, dayKey(now)) ?: return 0
+        return if (elapsed <= 1) currentStreak else 0
+    }
+
     fun record(transcript: String, durationMillis: Long?, now: Long): UsageStats {
         val words = wordCount(transcript)
         if (words == 0) return this
@@ -54,12 +53,12 @@ data class UsageStats(
         val daily = dailyWords.toMutableMap()
         daily[key] = (daily[key] ?: 0) + words
 
-        val streak = advanceStreak(currentStreak, lastUsedAtMillis, now)
+        val streak = advanceStreak(currentStreak, lastDayKey, key)
         return copy(
             totalWords = totalWords + words,
             totalTranscriptions = totalTranscriptions + 1,
             totalAudioMillis = totalAudioMillis + (durationMillis?.coerceAtLeast(0) ?: 0),
-            lastUsedAtMillis = maxOf(lastUsedAtMillis, now),
+            lastDayKey = maxOf(lastDayKey, key),
             currentStreak = streak,
             bestStreak = maxOf(bestStreak, streak),
             dailyWords = pruneDaily(daily),
@@ -69,24 +68,6 @@ data class UsageStats(
     companion object {
         const val DAILY_LIMIT = 7
 
-        /**
-         * Words as a reader would count them, using the text tokenizer rather
-         * than splitting on spaces.
-         *
-         * VocaPhone transcribes 54 languages. Space-splitting counts a Chinese,
-         * Japanese or Thai utterance as a single word, so the one number on the
-         * screen would be wrong for a large share of users. Segments without a
-         * letter or digit — stray punctuation, the spaces themselves — are not
-         * words.
-         *
-         * How well a space-less script is segmented is the platform's business,
-         * not ours. On a device this class is backed by ICU and uses its
-         * dictionaries; the desktop JVM that runs the unit tests has no Chinese
-         * dictionary and returns one word for a whole Han sentence. That is why
-         * the tests assert counts only for scripts both agree on, and why this
-         * uses [Locale.ROOT]: the segmentation should follow the text, not the
-         * language the interface happens to be in.
-         */
         fun wordCount(text: String): Int {
             val trimmed = text.trim()
             if (trimmed.isEmpty()) return 0
@@ -116,21 +97,15 @@ data class UsageStats(
             )
         }
 
-        /**
-         * Whole local days from one instant to another, measured between day
-         * starts so that two dictations twenty minutes apart across midnight are
-         * one day apart rather than zero.
-         */
-        fun dayDelta(fromMillis: Long, toMillis: Long, zone: TimeZone = TimeZone.getDefault()): Int {
-            val from = startOfDay(fromMillis, zone)
-            val to = startOfDay(toMillis, zone)
-            val days = (to - from).toDouble() / MILLIS_PER_DAY
-            return Math.round(days).toInt()
-        }
+        fun daysBetween(fromKey: String, toKey: String): Int? = runCatching {
+            (LocalDate.parse(toKey).toEpochDay() - LocalDate.parse(fromKey).toEpochDay()).toInt()
+        }.getOrNull()
 
-        fun advanceStreak(current: Int, lastUsedAtMillis: Long, now: Long): Int {
-            if (lastUsedAtMillis <= 0L) return 1
-            return when (dayDelta(lastUsedAtMillis, now)) {
+        
+        fun advanceStreak(current: Int, lastDayKey: String, todayKey: String): Int {
+            if (lastDayKey.isEmpty()) return 1
+            return when (daysBetween(lastDayKey, todayKey)) {
+                null -> 1
                 in Int.MIN_VALUE..0 -> current.coerceAtLeast(1)
                 1 -> current.coerceAtLeast(0) + 1
                 else -> 1
@@ -149,7 +124,7 @@ data class UsageStats(
             put("totalWords", stats.totalWords)
             put("totalTranscriptions", stats.totalTranscriptions)
             put("totalAudioMillis", stats.totalAudioMillis)
-            put("lastUsedAtMillis", stats.lastUsedAtMillis)
+            put("lastDayKey", stats.lastDayKey)
             put("currentStreak", stats.currentStreak)
             put("bestStreak", stats.bestStreak)
             put(
@@ -173,14 +148,16 @@ data class UsageStats(
             if (stored.isNullOrBlank()) return UsageStats()
             return runCatching {
                 val json = JSONObject(stored)
+                val daily = decodeDaily(json.optJSONObject("daily"))
                 UsageStats(
                     totalWords = json.optLong("totalWords", 0).coerceAtLeast(0),
                     totalTranscriptions = json.optLong("totalTranscriptions", 0).coerceAtLeast(0),
                     totalAudioMillis = json.optLong("totalAudioMillis", 0).coerceAtLeast(0),
-                    lastUsedAtMillis = json.optLong("lastUsedAtMillis", 0).coerceAtLeast(0),
+                    lastDayKey = json.optString("lastDayKey")
+                        .ifEmpty { daily.keys.maxOrNull().orEmpty() },
                     currentStreak = json.optInt("currentStreak", 0).coerceAtLeast(0),
                     bestStreak = json.optInt("bestStreak", 0).coerceAtLeast(0),
-                    dailyWords = decodeDaily(json.optJSONObject("daily")),
+                    dailyWords = daily,
                 )
             }.getOrDefault(UsageStats())
         }
@@ -197,16 +174,5 @@ data class UsageStats(
             }.getOrDefault(emptyMap())
         }
 
-        private const val MILLIS_PER_DAY = 24.0 * 60.0 * 60.0 * 1_000.0
-
-        private fun startOfDay(millis: Long, zone: TimeZone): Long {
-            val calendar = Calendar.getInstance(zone, Locale.ROOT)
-            calendar.timeInMillis = millis
-            calendar.set(Calendar.HOUR_OF_DAY, 0)
-            calendar.set(Calendar.MINUTE, 0)
-            calendar.set(Calendar.SECOND, 0)
-            calendar.set(Calendar.MILLISECOND, 0)
-            return calendar.timeInMillis
-        }
     }
 }

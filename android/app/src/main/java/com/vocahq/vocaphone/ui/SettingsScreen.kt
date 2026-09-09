@@ -151,6 +151,8 @@ fun SettingsScreen(
     var pickingTranslation by remember { mutableStateOf(false) }
     val localModel = LocalModelCatalog.find(settings.localModelId)
 
+    val statsNow = remember(usageStats) { System.currentTimeMillis() }
+
     LaunchedEffect(openLanguagePicker) {
         if (openLanguagePicker) {
             pickingLanguage = true
@@ -255,7 +257,7 @@ fun SettingsScreen(
                     SettingsMenuDivider()
                     SettingsMenuRow(
                         title = "Stats",
-                        supporting = StatsCopy.menuSupporting(usageStats),
+                        supporting = StatsCopy.menuSupporting(usageStats, statsNow),
                         icon = R.drawable.ic_stats,
                         onClick = { onPageChange(SettingsPage.STATS) },
                     )
@@ -606,7 +608,7 @@ fun SettingsScreen(
             SettingsPage.STATS -> {
                 StatsPage(
                     stats = usageStats,
-                    nowMillis = remember(usageStats) { System.currentTimeMillis() },
+                    nowMillis = statsNow,
                     onReset = onResetUsageStats,
                 )
             }

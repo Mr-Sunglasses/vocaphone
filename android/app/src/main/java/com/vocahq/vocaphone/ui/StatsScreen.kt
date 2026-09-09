@@ -43,12 +43,12 @@ internal object StatsCopy {
     const val TOTALS_TITLE = "Lifetime totals"
     const val ACTIVITY_TITLE = "Recent activity"
 
-    fun menuSupporting(stats: UsageStats): String =
+    fun menuSupporting(stats: UsageStats, nowMillis: Long): String =
         if (!stats.hasAny) {
             "Words, speaking speed and streaks"
         } else {
             "${StatsFormat.count(stats.totalWords)} words · " +
-                StatsFormat.streak(stats.currentStreak) + " streak"
+                StatsFormat.streak(stats.currentStreakAt(nowMillis)) + " streak"
         }
 }
 
@@ -91,10 +91,11 @@ fun StatsPage(
                 )
             },
             second = {
+                val streak = stats.currentStreakAt(nowMillis)
                 CardTitle("Streak")
                 BigNumber(
-                    value = StatsFormat.count(stats.currentStreak.toLong()),
-                    unit = if (stats.currentStreak == 1) "day" else "days",
+                    value = StatsFormat.count(streak.toLong()),
+                    unit = if (streak == 1) "day" else "days",
                     caption = "Best: ${StatsFormat.streak(stats.bestStreak)}",
                 )
             },

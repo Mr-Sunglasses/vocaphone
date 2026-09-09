@@ -26,9 +26,11 @@ class StatsCopyTest {
         assertTrue(StatsCopy.EMPTY.contains("after your first dictation"))
     }
 
+    private val now = 1_757_376_000_000L
+
     @Test
     fun theSettingsRowDescribesTheFeatureBeforeThereAreAnyNumbers() {
-        val supporting = StatsCopy.menuSupporting(UsageStats())
+        val supporting = StatsCopy.menuSupporting(UsageStats(), now)
         assertTrue(supporting.contains("speaking speed"))
         assertTrue("no zeroes before first use", !supporting.contains("0"))
     }
@@ -39,9 +41,21 @@ class StatsCopyTest {
             totalWords = 7_968,
             totalTranscriptions = 541,
             currentStreak = 11,
+            lastDayKey = UsageStats.dayKey(now),
         )
-        val supporting = StatsCopy.menuSupporting(stats)
+        val supporting = StatsCopy.menuSupporting(stats, now)
         assertTrue(supporting.contains("7,968") || supporting.contains("7968"))
         assertTrue(supporting.contains("11 days"))
+    }
+
+    @Test
+    fun theSettingsRowExpiresAStreakJustAsThePageDoes() {
+        val stale = UsageStats(
+            totalWords = 7_968,
+            totalTranscriptions = 541,
+            currentStreak = 11,
+            lastDayKey = "2020-01-01",
+        )
+        assertTrue(StatsCopy.menuSupporting(stale, now).contains("0 days"))
     }
 }
