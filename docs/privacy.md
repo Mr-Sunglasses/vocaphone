@@ -188,6 +188,15 @@ so treat it as opt-in, not routine maintenance. Revoking a device token
 immediately rejects further requests carrying it without affecting the
 bootstrap token or any other paired device.
 
+## Stats sharing
+
+Usage statistics remain on the phone unless the user explicitly taps a sharing
+action on the Stats page. VocaPhone then creates a share card from the aggregate
+counters, places that image on the device clipboard, and opens the selected X or
+LinkedIn composer with a prefilled post. This is a user-directed share to the
+selected social service; it is not telemetry and does not include recordings,
+transcripts, gateway credentials, or audio.
+
 ## Usage reporting
 
 **Off until the user turns it on.** Guided setup asks once, at the end, after a

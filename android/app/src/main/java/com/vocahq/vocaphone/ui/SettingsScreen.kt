@@ -196,6 +196,12 @@ fun SettingsScreen(
     }
 
     val statsNow = remember(usageStats, clockTick) { System.currentTimeMillis() }
+    val pageScrollState = rememberScrollState()
+
+    // Each destination is its own page even though they share this container.
+    // Carrying the Settings list position into Stats can open halfway through
+    // the hero card, which makes the page look broken on first entry.
+    LaunchedEffect(page) { pageScrollState.scrollTo(0) }
 
     // Bumping the tick recomputes statsNow, which is this effect's own key, so
     // each firing schedules the next one.
@@ -223,7 +229,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .wrapContentWidth(Alignment.CenterHorizontally)
             .widthIn(max = AppContentMaxWidth)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(pageScrollState)
             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(SectionSpacing),
     ) {
