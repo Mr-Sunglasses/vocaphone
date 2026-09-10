@@ -241,6 +241,9 @@ targets:
       # Search, filter and day-grouping for the transcript library. The grouping
       # arithmetic is the part that goes wrong at midnight and across zones.
       - path: VocaPhoneApp/App/TranscriptHistoryModel.swift
+      # Pure formatting and social composer contracts for the Stats screen.
+      # The rendered card and clipboard exporter remain app-only UIKit code.
+      - path: VocaPhoneApp/App/StatsPresentation.swift
       # Same reason as the app target: the strip and the bar carry their
       # own previews, and this is what those previews are built from.
       - path: VocaPhoneKeyboard/KeyboardViewPreview.swift

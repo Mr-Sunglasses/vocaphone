@@ -300,7 +300,7 @@ final class SharedStore: @unchecked Sendable {
         try rootDirectory().appendingPathComponent("sessions", isDirectory: true)
     }
 
-    private func rootDirectory() throws -> URL {
+    func rootDirectory() throws -> URL {
         if let rootOverride { return rootOverride }
         guard let groupURL = fileManager.containerURL(
             forSecurityApplicationGroupIdentifier: AppConfiguration.appGroupIdentifier

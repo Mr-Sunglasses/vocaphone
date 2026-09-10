@@ -66,6 +66,27 @@ struct SessionRecordTests {
         #expect(finalizing.meterLevel == 0)
     }
 
+    @Test func retryWithoutANewCaptureKeepsTheOriginalDuration() {
+        var record = SessionRecord()
+        record.recordedSeconds = 12.5
+
+        record.recordCaptureDuration(startedAt: nil)
+
+        #expect(record.recordedSeconds == 12.5)
+    }
+
+    @Test func aNewCaptureReplacesThePreviousDuration() {
+        var record = SessionRecord()
+        record.recordedSeconds = 12.5
+
+        record.recordCaptureDuration(
+            startedAt: Date(timeIntervalSince1970: 100),
+            endedAt: Date(timeIntervalSince1970: 104.25)
+        )
+
+        #expect(record.recordedSeconds == 4.25)
+    }
+
     @Test func aParkedTranscriptSurvivesUntilTheOriginalFieldReturns() throws {
         var record = SessionRecord()
         for state in [

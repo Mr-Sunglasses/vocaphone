@@ -127,6 +127,8 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// ``SessionProcessingLocation``.
     var processingLocation: SessionProcessingLocation?
 
+    var recordedSeconds: Double?
+
     init(
         sessionID: UUID = UUID(),
         state: SessionState = .idle,
@@ -150,6 +152,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         prefersQuickDictation = nil
         claimedAt = nil
         processingLocation = nil
+        recordedSeconds = nil
     }
 
     mutating func transition(to next: SessionState, now: Date = Date()) throws {
@@ -169,6 +172,11 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         meterLevel = min(max(level, 0), 1)
         revision += 1
         updatedAt = Self.normalizedTimestamp(now)
+    }
+
+    mutating func recordCaptureDuration(startedAt: Date?, endedAt: Date = Date()) {
+        guard let startedAt else { return }
+        recordedSeconds = max(0, endedAt.timeIntervalSince(startedAt))
     }
 
     private static let retryableFailures: Set<SessionState> = [
