@@ -349,6 +349,30 @@ abused. It is unrelated
 to the gateway bearer token, which is a real secret and lives in the iOS
 Keychain and the Android Keystore.
 
+## Usage statistics (iOS)
+
+Counters for the Stats screen in Settings: total words, total dictations, total
+recorded seconds, a current and best streak, and words, sessions, and recorded
+time for each of the last seven active days. The screen fills quiet dates into
+its seven-calendar-day chart without storing additional events.
+
+- **Counts, not words.** No transcript text and no audio is stored. A dictation
+  contributes a number, and the number cannot be turned back into what was said.
+- **Never leaves the device.** Nothing here is sent to a gateway, reported as
+  telemetry, or included in the diagnostics export.
+- **Written where the dictation lands.** The keyboard extension appends one
+  small file per inserted dictation to the App Group; the app folds those into a
+  summary when the Stats screen is opened.
+- **Outside transcript retention, deliberately.** The files live in `usage/`,
+  beside `sessions/` rather than inside it, so deleting your transcripts — or
+  running a 7- or 30-day retention setting — keeps your lifetime totals. The
+  reverse also holds: resetting statistics does not touch your transcripts.
+- **Reset at any time**, from the Stats screen. This deletes the summary and any
+  pending events permanently.
+
+Only dictations that were actually inserted are counted. A transcript that is
+produced and then abandoned never becomes a statistic.
+
 ## Diagnostics export
 
 The authenticated WebUI Settings tab and `uv run vocaphone-diagnostics` can export a

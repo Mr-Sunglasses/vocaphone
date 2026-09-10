@@ -117,6 +117,70 @@ enum SemanticPalette {
         UIColor { traits in value(role, isDark: traits.userInterfaceStyle == .dark) }
     }
 
+    enum StatTint: CaseIterable {
+        case speed
+        case words
+        case dictations
+        case time
+        case streak
+    }
+
+    static func statChip(_ tint: StatTint) -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? darkChip(tint)
+                : lightChip(tint)
+        }
+    }
+
+    static func statSymbol(_ tint: StatTint) -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? darkSymbol(tint)
+                : lightSymbol(tint)
+        }
+    }
+
+    private static func lightChip(_ tint: StatTint) -> UIColor {
+        switch tint {
+        case .speed: hex(0xE1_F0_E7)
+        case .words: hex(0xDD_EF_EA)
+        case .dictations: hex(0xE0_E8_F7)
+        case .time: hex(0xE8_E3_F5)
+        case .streak: hex(0xFA_E4_DE)
+        }
+    }
+
+    private static func lightSymbol(_ tint: StatTint) -> UIColor {
+        switch tint {
+        case .speed: hex(0x2C_7A_55)
+        case .words: hex(0x1D_78_6A)
+        case .dictations: hex(0x39_60_A6)
+        case .time: hex(0x5D_49_A6)
+        case .streak: hex(0xC2_53_3A)
+        }
+    }
+
+    private static func darkChip(_ tint: StatTint) -> UIColor {
+        switch tint {
+        case .speed: hex(0x1C_38_2A)
+        case .words: hex(0x15_34_2D)
+        case .dictations: hex(0x1A_29_43)
+        case .time: hex(0x28_23_43)
+        case .streak: hex(0x3C_24_1E)
+        }
+    }
+
+    private static func darkSymbol(_ tint: StatTint) -> UIColor {
+        switch tint {
+        case .speed: hex(0x7F_D8_A6)
+        case .words: hex(0x5F_D3_BE)
+        case .dictations: hex(0x8F_B4_F0)
+        case .time: hex(0xB3_A3_F0)
+        case .streak: hex(0xF0_A1_8A)
+        }
+    }
+
     private static func hex(_ value: UInt32) -> UIColor {
         UIColor(
             red: CGFloat((value >> 16) & 0xFF) / 255,
@@ -143,6 +207,14 @@ extension Color {
     static let vocaWarning = Color(SemanticPalette.color(.warning))
     static let vocaError = Color(SemanticPalette.color(.error))
     static let vocaDisabled = Color(SemanticPalette.color(.disabled))
+
+    static func vocaStatChip(_ tint: SemanticPalette.StatTint) -> Color {
+        Color(SemanticPalette.statChip(tint))
+    }
+
+    static func vocaStatSymbol(_ tint: SemanticPalette.StatTint) -> Color {
+        Color(SemanticPalette.statSymbol(tint))
+    }
 }
 
 // MARK: - Contrast

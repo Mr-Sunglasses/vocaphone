@@ -940,8 +940,12 @@ final class RecordingCoordinator {
         ) ?? resolvedAudioURL(for: record)
         DiagnosticLog.record(.captureStopped)
         if let started = captureStartedAt {
-            lastRecordingDuration = Date().timeIntervalSince(started)
+            record.recordCaptureDuration(startedAt: started)
+            lastRecordingDuration = record.recordedSeconds ?? 0
             captureStartedAt = nil
+            // Only a capture made by this process may replace the duration.
+            // A retry has no microphone clock and must keep the value already
+            // persisted on its session instead of borrowing another session's.
         }
         if wasRecording {
             // Feedback is optional and should never sit in front of gateway work.
@@ -986,6 +990,7 @@ final class RecordingCoordinator {
         // session claimed by an older build carries no route at all — either way
         // this is where the record stops being able to mislead.
         record.processingLocation = Self.selectedProcessingLocation()
+
         captureClaimedTranscriptionSettings()
         try? store.save(record)
 

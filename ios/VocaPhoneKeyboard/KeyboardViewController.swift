@@ -1004,6 +1004,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try store.save(record)
             textDocumentProxy.insertText(prepared)
             lastInsertedText = prepared
+            // The session ID makes this append idempotent if the extension is
+            // interrupted after insertion. Recording here means an insertion
+            // that happened cannot be lost merely because saving the terminal
+            // session state is the next operation to be interrupted.
+            _ = try? UsageStatsStore.shared.record(
+                transcript: transcript,
+                seconds: record.recordedSeconds,
+                id: record.sessionID
+            )
             // A transcript arrives as finished text. It never becomes a
             // composition and is never autocorrected: the model that produced it
             // already had its say.
@@ -1012,11 +1021,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try store.save(record)
             try record.transition(to: .completed)
             try store.save(record)
-            // A keyboard-started dictation inside vocaphone's own field is the
-            // one onboarding exercise that proves the whole loop: Dictate,
-            // record, transcribe and direct insertion. Do not set this for
-            // keyboard sessions started in another app or for the app's
-            // diagnostic microphone test.
+
             if record.startedInContainingApp == true, record.sourceDocumentID != "in-app-test" {
                 KeyboardPreferences.hasCompletedKeyboardPractice = true
             }

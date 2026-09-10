@@ -31,6 +31,9 @@ struct SettingsView: View {
         SnippetStore.key,
         store: SnippetStore.defaults
     ) private var snippetsData = Data()
+    /// Read once when the hub appears rather than folded here: folding is the
+    /// app's job, and the Stats screen is where it happens.
+    @State private var usageStats = UsageStats()
 
     var body: some View {
         List {
@@ -46,6 +49,12 @@ struct SettingsView: View {
                     detail: language.displayName + " · " + writingStyle.displayName,
                     symbol: "mic"
                 ) { DictationSettingsView() }
+
+                destination(
+                    "Stats",
+                    detail: StatsCopy.menuDetail(usageStats, now: Date()),
+                    symbol: "chart.bar"
+                ) { StatsView() }
 
                 destination(
                     "Snippets",
@@ -87,6 +96,7 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .task { usageStats = UsageStatsStore.shared.current() }
     }
 
     private var keyboardHeight: KeyboardHeightPreference {
