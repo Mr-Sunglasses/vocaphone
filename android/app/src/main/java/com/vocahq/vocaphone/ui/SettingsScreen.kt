@@ -1,5 +1,9 @@
 package com.vocahq.vocaphone.ui
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -26,8 +30,10 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,6 +43,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.ime.PersonalDictionary
@@ -51,6 +60,7 @@ import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelEngine
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
+import com.vocahq.vocaphone.core.UsageStats
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
@@ -59,6 +69,7 @@ import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.telemetry.TelemetryInspectPayload
 import kotlin.math.abs
 import kotlin.math.sin
+import kotlinx.coroutines.delay
 
 enum class SettingsPage(val title: String) {
     HOME("Settings"),
@@ -67,6 +78,7 @@ enum class SettingsPage(val title: String) {
     DICTATION("Dictation"),
     SNIPPETS("Snippets"),
     CONNECTION("Speech"),
+    STATS("Stats"),
     ABOUT("About"),
     ;
 
@@ -77,6 +89,7 @@ enum class SettingsPage(val title: String) {
             "dictation" -> DICTATION
             "snippets" -> SNIPPETS
             "connection" -> CONNECTION
+            "stats" -> STATS
             "about" -> ABOUT
             else -> HOME
         }
@@ -133,6 +146,8 @@ fun SettingsScreen(
     telemetryInspect: () -> TelemetryInspectPayload,
     telemetryPendingCount: () -> Int,
     telemetryDeliveryStatus: () -> String,
+    usageStats: UsageStats,
+    onResetUsageStats: () -> Unit,
     page: SettingsPage,
     onPageChange: (SettingsPage) -> Unit,
     openLanguagePicker: Boolean = false,
@@ -145,6 +160,60 @@ fun SettingsScreen(
     var pickingLanguage by remember { mutableStateOf(false) }
     var pickingTranslation by remember { mutableStateOf(false) }
     val localModel = LocalModelCatalog.find(settings.localModelId)
+
+    // A streak expires on a clock rather than on an interaction, so the reading
+    // both streak displays share has to be refreshed by something other than the
+    // user. Three things can age it, and each gets its own trigger below: the app
+    // was away, the day turned, or the clock itself was redefined.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var clockTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) clockTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Not covered by the timer below: flying between zones moves the day
+    // boundary without any time passing at all. The timer is not covered by this
+    // either, since a quiet midnight broadcasts nothing.
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                clockTick++
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_TIME_CHANGED)
+            addAction(Intent.ACTION_DATE_CHANGED)
+            addAction(Intent.ACTION_TIMEZONE_CHANGED)
+        }
+        // Not exported: these are protected system broadcasts, and nothing on
+        // the device has any business poking this screen's clock.
+        context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+
+    val statsNow = remember(usageStats, clockTick) { System.currentTimeMillis() }
+    val pageScrollState = rememberScrollState()
+
+    // Each destination is its own page even though they share this container.
+    // Carrying the Settings list position into Stats can open halfway through
+    // the hero card, which makes the page look broken on first entry.
+    LaunchedEffect(page) { pageScrollState.scrollTo(0) }
+
+    // Bumping the tick recomputes statsNow, which is this effect's own key, so
+    // each firing schedules the next one.
+    //
+    // The resume observer above is not redundant with this: delay runs on the
+    // main looper's uptime clock, which does not advance while the device is
+    // asleep, so a phone that dozes past midnight is caught on the way back
+    // rather than by this timer.
+    LaunchedEffect(statsNow) {
+        delay(UsageStats.millisUntilNextDay(statsNow))
+        clockTick++
+    }
 
     LaunchedEffect(openLanguagePicker) {
         if (openLanguagePicker) {
@@ -160,7 +229,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .wrapContentWidth(Alignment.CenterHorizontally)
             .widthIn(max = AppContentMaxWidth)
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(pageScrollState)
             .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
         verticalArrangement = Arrangement.spacedBy(SectionSpacing),
     ) {
@@ -246,6 +315,13 @@ fun SettingsScreen(
                         },
                         icon = R.drawable.ic_snippets,
                         onClick = { onPageChange(SettingsPage.SNIPPETS) },
+                    )
+                    SettingsMenuDivider()
+                    SettingsMenuRow(
+                        title = "Stats",
+                        supporting = StatsCopy.menuSupporting(usageStats, statsNow),
+                        icon = R.drawable.ic_stats,
+                        onClick = { onPageChange(SettingsPage.STATS) },
                     )
                     SettingsMenuDivider()
                     SettingsMenuRow(
@@ -589,6 +665,14 @@ fun SettingsScreen(
                         onClick = onOpenGateway,
                     )
                 }
+            }
+
+            SettingsPage.STATS -> {
+                StatsPage(
+                    stats = usageStats,
+                    nowMillis = statsNow,
+                    onReset = onResetUsageStats,
+                )
             }
 
             SettingsPage.ABOUT -> {

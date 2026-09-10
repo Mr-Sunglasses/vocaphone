@@ -10,6 +10,7 @@ import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.data.ProcessExitReporter
 import com.vocahq.vocaphone.data.recentProcessExits
+import com.vocahq.vocaphone.data.UsageStatsRepository
 import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
 import com.vocahq.vocaphone.local.LocalModelManager
@@ -42,6 +43,9 @@ class AppContainer(context: Context) {
         .build()
 
     val history = HistoryRepository(database.dictationRecordDao())
+
+    /** Counts only, in their own store, and never sent anywhere. */
+    val usageStats = UsageStatsRepository(context)
 
     /** App-private and bounded; it never contains transcript or gateway data. */
     val diagnostics = DiagnosticLog(context)
@@ -106,6 +110,7 @@ class AppContainer(context: Context) {
         localModels = localModels,
         telemetry = telemetry,
         cues = dictationCues,
+        usageStats = usageStats,
         scope = applicationScope,
     )
 
