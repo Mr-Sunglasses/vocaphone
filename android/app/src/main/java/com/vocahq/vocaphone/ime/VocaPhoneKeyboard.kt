@@ -1303,7 +1303,7 @@ private fun ToolbarMenuPanel(
                 listOf(
                     MenuTile("Speech", R.drawable.ic_connection) { onOpenSettings("connection") },
                     MenuTile("About", R.drawable.ic_about) { onOpenSettings("about") },
-                    MenuTile("App", R.drawable.ic_settings) { onOpenSettings("") },
+                    MenuTile("Settings", R.drawable.ic_settings) { onOpenSettings("") },
                 ),
             ).forEach { row ->
                 Row(
