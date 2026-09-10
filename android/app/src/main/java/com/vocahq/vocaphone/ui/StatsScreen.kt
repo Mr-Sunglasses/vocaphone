@@ -73,22 +73,23 @@ fun StatsPage(stats: UsageStats, nowMillis: Long, onReset: () -> Unit, modifier:
                 val copied = StatsShareExporter.copyCard(context, stats, nowMillis)
                 Toast.makeText(context, if (copied) "Stats card copied — paste it anywhere" else "Couldn’t copy stats card", Toast.LENGTH_SHORT).show()
             },
-            onShare = { destination ->
-                val result = StatsShareExporter.share(context, stats, nowMillis, destination)
-                val place = if (result.target == StatsShareExporter.ShareTarget.INSTALLED_APP) {
-                    "${destination.label} app"
-                } else {
-                    "${destination.label} web composer"
-                }
+            onShareX = {
+                val result = StatsShareExporter.shareOnX(context, stats, nowMillis)
+                val place = if (result.target == StatsShareExporter.ShareTarget.INSTALLED_APP) "X app" else "X web composer"
                 val message = when {
                     result.opened && result.cardCopied && result.textCopied -> "$place opened — card and post text copied"
                     result.opened && result.textCopied -> "$place opened — post text copied (card unavailable)"
                     result.opened && result.cardCopied -> "$place opened — card copied (post text unavailable)"
                     result.opened -> "$place opened (clipboard unavailable)"
-                    result.cardCopied || result.textCopied -> "Share copied, but ${destination.label} could not be opened"
-                    else -> "Couldn’t open ${destination.label}"
+                    result.cardCopied || result.textCopied -> "Share copied, but X could not be opened"
+                    else -> "Couldn’t open X"
                 }
                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            },
+            onShareSheet = {
+                if (!StatsShareExporter.openShareSheet(context, stats, nowMillis)) {
+                    Toast.makeText(context, "Couldn’t open the share menu", Toast.LENGTH_SHORT).show()
+                }
             },
         )
         TextButton(
@@ -212,7 +213,7 @@ private fun ActivityCard(stats: UsageStats, nowMillis: Long) {
 }
 
 @Composable
-private fun ShareCard(onCopy: () -> Unit, onShare: (StatsShareDestination) -> Unit) {
+private fun ShareCard(onCopy: () -> Unit, onShareX: () -> Unit, onShareSheet: () -> Unit) {
     FeaturedCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             MetricIcon(R.drawable.ic_clipboard, MaterialTheme.colorScheme.primary)
@@ -225,8 +226,8 @@ private fun ShareCard(onCopy: () -> Unit, onShare: (StatsShareDestination) -> Un
             val stacked = AdaptiveLayout.stackInfo(maxWidth.value, LocalDensity.current.fontScale)
             val actions = listOf<@Composable (Modifier) -> Unit>(
                 { actionModifier -> ShareAction(R.drawable.ic_clipboard, "Copy", MaterialTheme.colorScheme.primary, onCopy, actionModifier) },
-                { actionModifier -> ShareAction(R.drawable.ic_social_x, "X", MaterialTheme.colorScheme.onSurface, { onShare(StatsShareDestination.X) }, actionModifier) },
-                { actionModifier -> ShareAction(R.drawable.ic_social_linkedin, "LinkedIn", Color(0xFF4D9BE8), { onShare(StatsShareDestination.LINKEDIN) }, actionModifier) },
+                { actionModifier -> ShareAction(R.drawable.ic_social_x, "X", MaterialTheme.colorScheme.onSurface, onShareX, actionModifier) },
+                { actionModifier -> ShareAction(R.drawable.ic_share, "Share", MaterialTheme.colorScheme.onSurface, onShareSheet, actionModifier) },
             )
             if (stacked) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -238,7 +239,7 @@ private fun ShareCard(onCopy: () -> Unit, onShare: (StatsShareDestination) -> Un
                 }
             }
         }
-        Text("Social shares attach the card when the app is installed; otherwise it is copied for the web composer.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("X opens with your post and card ready. Share sends the card to any app and copies the post text, in case that app leaves it out.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

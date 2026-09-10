@@ -192,9 +192,11 @@ bootstrap token or any other paired device.
 
 Usage statistics remain on the phone unless the user explicitly taps a sharing
 action on the Stats page. VocaPhone then creates a share card from the aggregate
-counters, places that image on the device clipboard, and opens the selected X or
-LinkedIn composer with a prefilled post. This is a user-directed share to the
-selected social service; it is not telemetry and does not include recordings,
+counters. The X action places that image on the device clipboard and opens X's
+composer with a prefilled post. The Share action hands the card and post text to
+the system share sheet, where the user picks the destination app, and also
+places the post text on the device clipboard. This is a user-directed share to
+the chosen app; it is not telemetry and does not include recordings,
 transcripts, gateway credentials, or audio.
 
 ## Usage reporting

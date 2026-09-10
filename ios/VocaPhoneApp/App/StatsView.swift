@@ -13,12 +13,7 @@ struct StatsView: View {
     private enum ShareState: Equatable {
         case idle
         case copied
-        case opened(
-            StatsShareDestination,
-            target: StatsShareTarget,
-            cardCopied: Bool,
-            textCopied: Bool
-        )
+        case openedX(target: StatsShareTarget, cardCopied: Bool)
         case failed(String)
     }
 
@@ -353,24 +348,17 @@ struct StatsView: View {
 
             ShareButton(tint: Color.vocaPrimaryText, label: "X", accessibilityLabel: "Share stats on X") {
                 Text("X").font(.headline.weight(.semibold))
-            } action: { share(to: .x) }
+            } action: { shareOnX() }
 
             ShareButton(
-                tint: Self.linkedInBlue,
-                label: "LinkedIn",
-                accessibilityLabel: "Share stats on LinkedIn"
+                tint: Color.vocaPrimaryText,
+                label: "Share",
+                accessibilityLabel: "Share stats card to another app"
             ) {
-                Text("in")
-                    .font(.subheadline.weight(.bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 1)
-                    .background(Self.linkedInBlue, in: RoundedRectangle(cornerRadius: 3))
-            } action: { share(to: .linkedIn) }
+                Image(systemName: "square.and.arrow.up")
+            } action: { presentShareSheet() }
         }
     }
-
-    private static let linkedInBlue = Color(red: 0.04, green: 0.40, blue: 0.71)
 
     private var privacyNote: some View {
         Label(
@@ -388,13 +376,8 @@ struct StatsView: View {
             nil
         case .copied:
             ("Card copied. Paste it wherever you’d like.", "checkmark.circle.fill", false)
-        case .opened(let destination, let target, let cardCopied, let textCopied):
-            shareSuccessNote(
-                destination,
-                target: target,
-                cardCopied: cardCopied,
-                textCopied: textCopied
-            )
+        case .openedX(let target, let cardCopied):
+            xOpenedNote(target: target, cardCopied: cardCopied)
         case .failed(let message):
             (message, "exclamationmark.triangle.fill", true)
         }
@@ -408,80 +391,55 @@ struct StatsView: View {
         setShareState(.copied, clearingAfter: 3)
     }
 
-    private func share(to destination: StatsShareDestination) {
-        let message = StatsShareComposer.message(stats, now: now, destination: destination)
-        guard let route = StatsShareComposer.preferredRoute(
-            destination,
+    private func shareOnX() {
+        let message = StatsShareComposer.message(stats, now: now, handle: StatsShareComposer.xHandle)
+        guard let route = StatsShareComposer.xRoute(
             message: message,
             canOpen: UIApplication.shared.canOpenURL
         ) else {
-            setShareState(.failed("Couldn’t prepare the \(destination.label) post."), clearingAfter: 6)
+            setShareState(.failed("Couldn’t prepare the X post."), clearingAfter: 6)
             return
         }
-        let payload = StatsShareExporter.copySharePayload(
+        let payload = StatsShareExporter.copyXPayload(
             image: StatsShareExporter.renderCard(stats, now: now),
             message: message
         )
-        open(route, destination: destination, message: message, payload: payload)
+        openX(route, message: message, cardCopied: payload.cardCopied)
     }
 
-    private func open(
-        _ route: StatsShareRoute,
-        destination: StatsShareDestination,
-        message: String,
-        payload: StatsShareExporter.PayloadResult
-    ) {
+    private func openX(_ route: StatsShareRoute, message: String, cardCopied: Bool) {
         UIApplication.shared.open(route.url) { accepted in
             Task { @MainActor in
                 if accepted {
-                    setShareState(
-                        .opened(
-                            destination,
-                            target: route.target,
-                            cardCopied: payload.cardCopied,
-                            textCopied: payload.textCopied
-                        ),
-                        clearingAfter: 6
-                    )
+                    setShareState(.openedX(target: route.target, cardCopied: cardCopied), clearingAfter: 6)
                 } else if route.target == .installedApp,
-                          let web = StatsShareComposer.composerURL(destination, message: message) {
-                    open(
-                        StatsShareRoute(url: web, target: .browser),
-                        destination: destination,
-                        message: message,
-                        payload: payload
-                    )
+                          let web = StatsShareComposer.xComposerURL(message: message) {
+                    openX(StatsShareRoute(url: web, target: .browser), message: message, cardCopied: cardCopied)
                 } else {
-                    setShareState(.failed("Couldn’t open \(destination.label)."), clearingAfter: 6)
+                    setShareState(.failed("Couldn’t open X."), clearingAfter: 6)
                 }
             }
         }
     }
 
-    private func shareSuccessNote(
-        _ destination: StatsShareDestination,
+    private func presentShareSheet() {
+        let presented = StatsShareExporter.presentShareSheet(
+            card: StatsShareExporter.renderCard(stats, now: now),
+            message: StatsShareComposer.message(stats, now: now)
+        )
+        if !presented {
+            setShareState(.failed("Couldn’t open the share sheet."), clearingAfter: 6)
+        }
+    }
+
+    private func xOpenedNote(
         target: StatsShareTarget,
-        cardCopied: Bool,
-        textCopied: Bool
+        cardCopied: Bool
     ) -> (text: String, symbol: String, isError: Bool) {
-        let place: String
-        if target == .installedApp {
-            place = "\(destination.label) app"
-        } else if destination == .linkedIn {
-            place = "LinkedIn composer"
-        } else {
-            place = "web composer"
-        }
-        switch (cardCopied, textCopied) {
-        case (true, true):
-            return ("Opened the \(place). Card and post text copied for pasting.", "checkmark.circle.fill", false)
-        case (false, true):
-            return ("Opened the \(place). Post text copied, but the card was unavailable.", "exclamationmark.triangle.fill", true)
-        case (true, false):
-            return ("Opened the \(place). Card copied, but the post text was unavailable.", "exclamationmark.triangle.fill", true)
-        case (false, false):
-            return ("Opened the \(place), but nothing could be copied.", "exclamationmark.triangle.fill", true)
-        }
+        let place = target == .installedApp ? "the X app" : "X in your browser"
+        return cardCopied
+            ? ("Opened \(place) with your post. Paste to attach the card.", "checkmark.circle.fill", false)
+            : ("Opened \(place) with your post, but the card couldn’t be copied.", "exclamationmark.triangle.fill", true)
     }
 
     private func setShareState(_ state: ShareState, clearingAfter seconds: Double) {

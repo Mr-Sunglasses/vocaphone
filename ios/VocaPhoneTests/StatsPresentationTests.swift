@@ -29,7 +29,7 @@ struct StatsPresentationTests {
     }
 
     @Test func shareCopyNamesBothPrivateProcessingRoutes() {
-        let message = StatsShareComposer.message(stats, now: now, destination: .x)
+        let message = StatsShareComposer.message(stats, now: now, handle: StatsShareComposer.xHandle)
         #expect(message.contains("I’ve spoken 12,500 words with VocaPhone"))
         #expect(message.contains("1 hour of talking"))
         #expect(message.contains("my phone or my own self-hosted gateway"))
@@ -38,8 +38,8 @@ struct StatsPresentationTests {
         #expect(message.contains(StatsShareComposer.site))
     }
 
-    @Test func linkedinCopyOmitsTheXHandle() {
-        let message = StatsShareComposer.message(stats, now: now, destination: .linkedIn)
+    @Test func shareSheetCopyOmitsTheXHandle() {
+        let message = StatsShareComposer.message(stats, now: now)
         #expect(!message.contains("@vocahq"))
         #expect(message.hasSuffix(StatsShareComposer.site))
     }
@@ -53,13 +53,13 @@ struct StatsPresentationTests {
             currentStreak: 4_321,
             bestStreak: 5_000
         )
-        let message = StatsShareComposer.message(large, now: now, destination: .x)
+        let message = StatsShareComposer.message(large, now: now, handle: StatsShareComposer.xHandle)
         #expect(xPostLength(message) <= 280)
     }
 
     @Test func shareCopyOmitsUnavailableDetailsAndShortDurations() {
         let empty = UsageStats(totalWords: 1, totalDictations: 0, totalSeconds: 0)
-        let message = StatsShareComposer.message(empty, now: now, destination: .x)
+        let message = StatsShareComposer.message(empty, now: now)
         #expect(message.contains("1 word"))
         #expect(!message.contains("session"))
         #expect(!message.contains("talking"))
@@ -72,7 +72,7 @@ struct StatsPresentationTests {
 
     @Test func xComposerURLRoundTripsTheEntireMessage() throws {
         let message = "words & sessions + streak; हिन्दी 🔒"
-        let url = try #require(StatsShareComposer.composerURL(.x, message: message))
+        let url = try #require(StatsShareComposer.xComposerURL(message: message))
         let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         let items = try #require(components.queryItems)
         #expect(items.first(where: { $0.name == "text" })?.value == message)
@@ -80,48 +80,23 @@ struct StatsPresentationTests {
 
     @Test func xNativeComposerRoundTripsTheEntireMessage() throws {
         let message = "words & sessions + streak; हिन्दी 🔒"
-        let url = try #require(StatsShareComposer.nativeURL(.x, message: message))
+        let url = try #require(StatsShareComposer.xAppURL(message: message))
         let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         #expect(components.scheme == "twitter")
         #expect(components.host == "post")
         #expect(components.queryItems?.first(where: { $0.name == "message" })?.value == message)
     }
 
-    @Test func linkedinNativeRouteOpensTheInstalledApp() throws {
-        let url = try #require(StatsShareComposer.nativeURL(.linkedIn, message: "hello"))
-        #expect(url.scheme == "linkedin")
-    }
-
-    @Test(arguments: StatsShareDestination.allCases)
-    func anInstalledAppIsPreferredOverTheBrowser(_ destination: StatsShareDestination) throws {
-        let route = try #require(
-            StatsShareComposer.preferredRoute(destination, message: "hello") { url in
-                url.scheme != "https"
-            }
-        )
+    @Test func theInstalledXAppIsPreferredOverTheBrowser() throws {
+        let route = try #require(StatsShareComposer.xRoute(message: "hello") { $0.scheme != "https" })
         #expect(route.target == .installedApp)
-        #expect(route.url.scheme != "https")
+        #expect(route.url.scheme == "twitter")
     }
 
-    @Test(arguments: StatsShareDestination.allCases)
-    func theBrowserIsTheFallbackWithoutAnInstalledApp(
-        _ destination: StatsShareDestination
-    ) throws {
-        let route = try #require(
-            StatsShareComposer.preferredRoute(destination, message: "hello") { _ in false }
-        )
+    @Test func theBrowserIsTheFallbackWithoutTheXApp() throws {
+        let route = try #require(StatsShareComposer.xRoute(message: "hello") { _ in false })
         #expect(route.target == .browser)
-        #expect(route.url.scheme == "https")
-    }
-
-    @Test func linkedinFeedComposerReceivesTheEntireMessage() throws {
-        let message = "words & sessions + streak; हिन्दी 🔒"
-        let url = try #require(StatsShareComposer.composerURL(.linkedIn, message: message))
-        let components = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
-        #expect(components.host == "www.linkedin.com")
-        #expect(components.path == "/feed/")
-        #expect(components.queryItems?.first(where: { $0.name == "shareActive" })?.value == "true")
-        #expect(components.queryItems?.first(where: { $0.name == "text" })?.value == message)
+        #expect(route.url.host == "x.com")
     }
 
     @Test func singularPublicCopyIsGrammatical() {
@@ -133,7 +108,7 @@ struct StatsPresentationTests {
             currentStreak: 1,
             bestStreak: 1
         )
-        let message = StatsShareComposer.message(one, now: now, destination: .x)
+        let message = StatsShareComposer.message(one, now: now)
         #expect(message.contains("1 word"))
         #expect(message.contains("1 session"))
         #expect(!message.contains("1 sessions"))
@@ -159,6 +134,6 @@ struct StatsPresentationTests {
             ) as? [String: Any]
         )
         let schemes = try #require(plist["LSApplicationQueriesSchemes"] as? [String])
-        #expect(Set(schemes).isSuperset(of: ["twitter", "linkedin"]))
+        #expect(schemes.contains("twitter"))
     }
 }

@@ -31,13 +31,12 @@
   <string>$(CURRENT_PROJECT_VERSION)</string>
   <key>LSRequiresIPhoneOS</key>
   <true/>
-  <!-- VocaPhone checks the installed-app schemes for X and LinkedIn. iOS
-       returns false from canOpenURL for undeclared schemes, which otherwise
-       made the Stats buttons choose the browser even when an app was present. -->
+  <!-- VocaPhone checks the installed-app scheme for X. iOS returns false
+       from canOpenURL for undeclared schemes, which otherwise made the Stats
+       X button choose the browser even when the app was present. -->
   <key>LSApplicationQueriesSchemes</key>
   <array>
     <string>twitter</string>
-    <string>linkedin</string>
   </array>
   <key>NSMicrophoneUsageDescription</key>
   <string>vocaphone records dictation for your configured transcription gateway and, when Quick Dictation is enabled, keeps microphone input ready for up to 10 minutes. Standby audio is discarded.</string>

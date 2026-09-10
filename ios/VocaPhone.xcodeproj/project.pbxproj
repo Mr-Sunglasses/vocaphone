@@ -60,6 +60,7 @@
 		24D6E87B9EE199DCFDFC66D6 /* TranscriptHistoryModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A89F2BEC08F07614372D84D /* TranscriptHistoryModel.swift */; };
 		2526B8D1B9C721FB3DF83A9F /* SnippetExpander.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1247ACC1CA43648BE4449042 /* SnippetExpander.swift */; };
 		25A9766454D6E24C9AD7BF2B /* CustomVocabulary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85AA9291707DE7366D08EB0C /* CustomVocabulary.swift */; };
+		25C5A0ECE99BDF5D850C959E /* StatsSharePasteboardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A625066A8990A867FF552F12 /* StatsSharePasteboardTests.swift */; };
 		282E28F25550DF3BFB996429 /* SwipeRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07C4BD2142E9377F123A8848 /* SwipeRecognizer.swift */; };
 		2835994232D6867BC96CD41F /* SnippetExpander.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1247ACC1CA43648BE4449042 /* SnippetExpander.swift */; };
 		28C271BC0195C62E93292A9C /* SessionRecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B854354D06D0111DEB123E7A /* SessionRecordTests.swift */; };
@@ -592,6 +593,7 @@
 		A51A47686C093AFE92B89758 /* VocaPhoneKeyboard.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = VocaPhoneKeyboard.entitlements; sourceTree = "<group>"; };
 		A59DB522E7DFDE3B3E009AFD /* SpeechAudioConditioningTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechAudioConditioningTests.swift; sourceTree = "<group>"; };
 		A5E5F9C1D93EF4EFB2AF5EA7 /* KeyboardHandoffView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardHandoffView.swift; sourceTree = "<group>"; };
+		A625066A8990A867FF552F12 /* StatsSharePasteboardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsSharePasteboardTests.swift; sourceTree = "<group>"; };
 		A8E2BF42CAC209DA12464566 /* TranscriptionQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptionQuality.swift; sourceTree = "<group>"; };
 		A8F34BD131F1AB394941AC87 /* KeyboardStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardStatus.swift; sourceTree = "<group>"; };
 		A9711C18238B39EA2E842C0F /* BrandPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrandPalette.swift; sourceTree = "<group>"; };
@@ -965,6 +967,7 @@
 				3C6B7EB27436670B0B1EB1D1 /* SpokenEmojiTests.swift */,
 				8201161064874EF522DF3F70 /* SpokenNumbersTests.swift */,
 				3E30393743BA32A747665278 /* StatsPresentationTests.swift */,
+				A625066A8990A867FF552F12 /* StatsSharePasteboardTests.swift */,
 				1CF82ECCA1F28AB94B4142DE /* SwipeAlternatesTests.swift */,
 				924E5D73CB086A4210BF6052 /* SwipeRecognizerTests.swift */,
 				0DFD83D2BCB84400E7981A4B /* SwipeTrailTests.swift */,
@@ -1590,6 +1593,7 @@
 				9418E647BE968A5FC2064D06 /* SpokenNumbersTests.swift in Sources */,
 				7D1B748A5FA30776EBB5F1A3 /* StatsPresentation.swift in Sources */,
 				5A724B25DE53408E57681DDE /* StatsPresentationTests.swift in Sources */,
+				25C5A0ECE99BDF5D850C959E /* StatsSharePasteboardTests.swift in Sources */,
 				939ADF1C236F670A3541ACAA /* SwipeAlternates.swift in Sources */,
 				612E02043BE5C4F9567D128E /* SwipeAlternatesTests.swift in Sources */,
 				33049B8AD2490B0F8D0A9E0F /* SwipeRecognizer.swift in Sources */,
