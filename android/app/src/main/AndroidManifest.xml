@@ -20,6 +20,13 @@
     <uses-feature
         android:name="android.hardware.camera"
         android:required="false" />
+
+    <!-- Stats sharing checks only these two packages before choosing the web fallback. -->
+    <queries>
+        <package android:name="com.twitter.android" />
+        <package android:name="com.linkedin.android" />
+    </queries>
+
     <application
         android:name=".VocaPhoneApplication"
         android:allowBackup="false"

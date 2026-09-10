@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -18,25 +19,48 @@ import java.util.Locale
 internal enum class StatsShareDestination(val label: String, val packageName: String) {
     X("X", "com.twitter.android"),
     LINKEDIN("LinkedIn", "com.linkedin.android"),
+
+    ;
+
+    val handle: String?
+        get() = if (this == X) "@vocahq" else null
 }
 
 internal object StatsShareComposer {
     private const val SITE = "https://vocaphone.vocahq.com"
 
-    fun message(stats: UsageStats, nowMillis: Long): String {
+    fun message(stats: UsageStats, nowMillis: Long, destination: StatsShareDestination): String {
         val streak = stats.currentStreakAt(nowMillis)
-        return buildString {
-            append("🎤 I’ve dictated ${StatsFormat.count(stats.totalWords)} ")
-            append(if (stats.totalWords == 1L) "word" else "words")
-            append(" with VocaPhone.\n\n")
-            append("📊 ${StatsFormat.count(stats.totalTranscriptions)} ")
-            append(if (stats.totalTranscriptions == 1L) "session" else "sessions")
-            if (stats.averageWordsPerMinute > 0) {
-                append(" · ⚡ ${String.format(Locale.US, "%.0f", stats.averageWordsPerMinute)} WPM")
+        val details = buildList {
+            if (stats.totalTranscriptions > 0) {
+                add("📊 ${pluralized(stats.totalTranscriptions, "session")}")
             }
-            if (streak > 0) append(" · 🔥 $streak-day streak")
-            append("\n\nRuns on my phone, privately. 🔒\n$SITE")
+            spokenDuration(stats.totalAudioMillis)?.let { add("⏱️ $it of talking") }
+            if (stats.averageWordsPerMinute > 0) {
+                add("⚡️ ${String.format(Locale.US, "%.0f", stats.averageWordsPerMinute)} WPM")
+            }
+            if (streak > 0) add("🔥 $streak-day streak")
         }
+        return listOf(
+            "🎤 I’ve spoken ${pluralized(stats.totalWords, "word")} with VocaPhone.",
+            details.joinToString(" · "),
+            "Private voice typing on my phone or my own self-hosted gateway. My audio stays mine. 🔒",
+            listOfNotNull(destination.handle, SITE).joinToString(" · "),
+        ).filter { it.isNotEmpty() }.joinToString("\n\n")
+    }
+
+    fun pluralized(count: Long, noun: String): String =
+        "${StatsFormat.count(count, Locale.US)} ${if (count == 1L) noun else "${noun}s"}"
+
+    fun spokenDuration(millis: Long): String? {
+        val totalMinutes = millis.coerceAtLeast(0) / 60_000
+        if (totalMinutes == 0L) return null
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
+        return buildList {
+            if (hours > 0) add("$hours ${if (hours == 1L) "hour" else "hours"}")
+            if (minutes > 0) add("$minutes ${if (minutes == 1L) "minute" else "minutes"}")
+        }.joinToString(", ")
     }
 
     fun composerUri(destination: StatsShareDestination, message: String): Uri {
@@ -50,7 +74,16 @@ internal object StatsShareComposer {
 }
 
 internal object StatsShareExporter {
-    data class ShareResult(val opened: Boolean, val cardCopied: Boolean)
+    enum class ShareTarget { INSTALLED_APP, BROWSER }
+
+    data class ShareResult(
+        val opened: Boolean,
+        val cardCopied: Boolean,
+        val textCopied: Boolean,
+        val target: ShareTarget?,
+    )
+
+    private data class PayloadResult(val cardCopied: Boolean, val textCopied: Boolean)
     private const val WIDTH = 1080
     private const val HEIGHT = 720
 
@@ -65,20 +98,12 @@ internal object StatsShareExporter {
     }
 
     fun share(context: Context, stats: UsageStats, nowMillis: Long, destination: StatsShareDestination): ShareResult {
-        val message = StatsShareComposer.message(stats, nowMillis)
+        val message = StatsShareComposer.message(stats, nowMillis, destination)
         val cardUri = createCardUri(context, stats, nowMillis)
-        val cardCopied = cardUri?.let { uri ->
-            runCatching {
-                context.getSystemService(ClipboardManager::class.java)
-                    .setPrimaryClip(ClipData.newUri(context.contentResolver, "VocaPhone stats", uri))
-            }.isSuccess
-        } ?: false
-        val nativeOpened = cardUri?.let { uri ->
-            runCatching {
-                context.startActivity(nativeShareIntent(context, destination, message, uri))
-            }.isSuccess
-        } ?: false
-        if (nativeOpened) return ShareResult(true, cardCopied)
+        val payload = copySharePayload(context, cardUri, message)
+        if (openInstalledApp(context, destination, message, cardUri)) {
+            return ShareResult(true, payload.cardCopied, payload.textCopied, ShareTarget.INSTALLED_APP)
+        }
 
         // Do not call resolveActivity first. On modern Android, package
         // visibility can hide an otherwise valid browser from that query; the
@@ -88,7 +113,62 @@ internal object StatsShareExporter {
             StatsShareComposer.composerUri(destination, message),
         ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val opened = runCatching { context.startActivity(webIntent) }.isSuccess
-        return ShareResult(opened, cardCopied)
+        return ShareResult(
+            opened = opened,
+            cardCopied = payload.cardCopied,
+            textCopied = payload.textCopied,
+            target = if (opened) ShareTarget.BROWSER else null,
+        )
+    }
+
+    /**
+     * Installed apps get several native opportunities before the browser.
+     * Some releases reject a PNG share but still accept text or their own web
+     * composer. The final launch intent still opens the installed app with the
+     * card and post text waiting on the clipboard.
+     */
+    private fun openInstalledApp(
+        context: Context,
+        destination: StatsShareDestination,
+        message: String,
+        cardUri: Uri?,
+    ): Boolean {
+        if (!isPackageInstalled(context.packageManager, destination.packageName)) return false
+        val intents = buildList {
+            if (cardUri != null) add(nativeShareIntent(context, destination, message, cardUri))
+            add(nativeTextShareIntent(destination, message))
+            add(
+                Intent(Intent.ACTION_VIEW, StatsShareComposer.composerUri(destination, message))
+                    .setPackage(destination.packageName)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+            context.packageManager.getLaunchIntentForPackage(destination.packageName)?.let {
+                add(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
+        return intents.any { intent -> runCatching { context.startActivity(intent) }.isSuccess }
+    }
+
+    private fun isPackageInstalled(packageManager: PackageManager, packageName: String): Boolean =
+        runCatching {
+            packageManager.getApplicationInfo(
+                packageName,
+                PackageManager.ApplicationInfoFlags.of(0),
+            ).enabled
+        }.getOrDefault(false)
+
+    private fun copySharePayload(context: Context, uri: Uri?, message: String): PayloadResult {
+        val clip = if (uri == null) {
+            ClipData.newPlainText("VocaPhone stats", message)
+        } else {
+            ClipData.newUri(context.contentResolver, "VocaPhone stats", uri).also {
+                it.addItem(ClipData.Item(message))
+            }
+        }
+        val copied = runCatching {
+            context.getSystemService(ClipboardManager::class.java).setPrimaryClip(clip)
+        }.isSuccess
+        return PayloadResult(cardCopied = copied && uri != null, textCopied = copied)
     }
 
     private fun nativeShareIntent(
@@ -104,6 +184,17 @@ internal object StatsShareExporter {
             putExtra(Intent.EXTRA_STREAM, uri)
             clipData = ClipData.newUri(context.contentResolver, "VocaPhone stats", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+    private fun nativeTextShareIntent(
+        destination: StatsShareDestination,
+        message: String,
+    ): Intent =
+        Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            setPackage(destination.packageName)
+            putExtra(Intent.EXTRA_TEXT, message)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
 
     private fun createCardUri(context: Context, stats: UsageStats, nowMillis: Long): Uri? {
@@ -138,7 +229,7 @@ internal object StatsShareExporter {
         }
         text("VocaPhone", 72f, 92f, 42f, white, true)
         text("My dictation stats", 72f, 132f, 25f, muted)
-        text("PRIVATE • ON DEVICE", 820f, 96f, 18f, green, true)
+        text("PRIVATE • YOUR CHOICE", 796f, 96f, 18f, green, true)
         val values = listOf(
             Triple("WORDS", StatsFormat.count(stats.totalWords), green),
             Triple("SESSIONS", StatsFormat.count(stats.totalTranscriptions), green),
@@ -156,7 +247,7 @@ internal object StatsShareExporter {
             paint.color = item.third; canvas.drawRoundRect(left + 24f, top + 116f, left + 68f, top + 122f, 4f, 4f, paint)
         }
         text("vocaphone.vocahq.com", 72f, 660f, 20f, muted)
-        text("Your voice. Your device.", 780f, 660f, 20f, green)
+        text("Your voice. Your control.", 770f, 660f, 20f, green)
         return bitmap
     }
 }

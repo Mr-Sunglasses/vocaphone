@@ -75,10 +75,17 @@ fun StatsPage(stats: UsageStats, nowMillis: Long, onReset: () -> Unit, modifier:
             },
             onShare = { destination ->
                 val result = StatsShareExporter.share(context, stats, nowMillis, destination)
+                val place = if (result.target == StatsShareExporter.ShareTarget.INSTALLED_APP) {
+                    "${destination.label} app"
+                } else {
+                    "${destination.label} web composer"
+                }
                 val message = when {
-                    result.opened && result.cardCopied -> "Card copied — paste it into your ${destination.label} post"
-                    result.opened -> "${destination.label} opened (card copy unavailable)"
-                    result.cardCopied -> "Card copied, but ${destination.label} could not be opened"
+                    result.opened && result.cardCopied && result.textCopied -> "$place opened — card and post text copied"
+                    result.opened && result.textCopied -> "$place opened — post text copied (card unavailable)"
+                    result.opened && result.cardCopied -> "$place opened — card copied (post text unavailable)"
+                    result.opened -> "$place opened (clipboard unavailable)"
+                    result.cardCopied || result.textCopied -> "Share copied, but ${destination.label} could not be opened"
                     else -> "Couldn’t open ${destination.label}"
                 }
                 Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
