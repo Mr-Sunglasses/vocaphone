@@ -7,6 +7,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var activeSessionID: UUID?
     private var pollingTimer: Timer?
     private var pollingInterval: TimeInterval?
+    private var quickDictationReadinessTimer: Timer?
     private var darwinObservations: [VocaPhoneDarwinObservation] = []
     private var appLaunchFallbackTask: Task<Void, Never>?
     private var lastInsertedText: String?
@@ -18,6 +19,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var recordingStartedAt: Date?
     /// Whether the surface held the whole keyboard at the last layout pass.
     private var surfaceOwnedKeyboard = false
+    /// A panel — the compact dashboard or a picker — owns the same full-height
+    /// surface as a live session. Keeping this at the controller level lets
+    /// UIKit hide the grid and hand its space to SwiftUI instead of clipping
+    /// the panel into a 54-point typing strip.
+    private var panelOwnsKeyboard = false
 
     /// How much of the recording's measured audio the meter has already drawn.
     /// The session the meter on screen belongs to.
@@ -168,6 +174,33 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             .keyboardShown,
             metadata: .megabytesAvailable(availableMB)
         )
+        reportIfLowOnMemory(availableMB)
+    }
+
+    /// Below this, a keyboard is living on borrowed time: the measured launches
+    /// that ended in iOS killing the extension — and handing the user another
+    /// keyboard mid-sentence — reported four to eight megabytes, against the
+    /// sixty-five of an unpressured one.
+    private static let lowMemoryMegabytes = 25
+
+    /// Tells the app, which is the only process that can do anything about it.
+    ///
+    /// The keyboard's allowance is not the keyboard's to grow: iOS shrinks what
+    /// an extension may have when the *system* is under pressure, and on this
+    /// phone the pressure is the app's own speech model. So this is a request,
+    /// not a report — see `RecordingCoordinator.releaseLocalEnginesIfIdle`.
+    private func reportIfLowOnMemory(_ availableMB: Int) {
+        guard availableMB < Self.lowMemoryMegabytes else { return }
+        VocaPhoneDarwinCenter.post(.keyboardLowOnMemory)
+    }
+
+    /// The warning comes shortly before the kill, and a keyboard killed while
+    /// on screen is one that freezes and then vanishes mid-word. Hidden planes
+    /// are what this process can give back; the rest is the app's to give.
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        keyGrid.discardHiddenPlanes()
+        VocaPhoneDarwinCenter.post(.keyboardLowOnMemory)
     }
 
 #if DEBUG
@@ -212,6 +245,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // The app's settings screen writes the same two keys, and it may have
         // done so while another keyboard was on screen.
         dictationSurfaceState.refreshPreferences()
+        // A panel belongs to the field it was opened in. A reused extension
+        // instance otherwise comes up in the next field with stats or a picker
+        // where the keys should be.
+        dictationSurfaceState.present(nil)
+        startQuickDictationReadinessPolling()
         // A new appearance is a new field as far as this keyboard can tell.
         //
         // The insertion target was previously kept for the life of the
@@ -285,12 +323,19 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         pollingTimer?.invalidate()
         pollingTimer = nil
         pollingInterval = nil
+        quickDictationReadinessTimer?.invalidate()
+        quickDictationReadinessTimer = nil
         darwinObservations.forEach { $0.invalidate() }
         darwinObservations.removeAll()
         appLaunchFallbackTask?.cancel()
         // A held key or an open accent popover must not survive the keyboard
         // being dismissed; iOS does not reliably cancel those touches for us.
         keyGrid.endActiveInteractions()
+        // The instance is about to be suspended, and a suspended extension is
+        // killed on its footprint like anything else — after which the next
+        // field gets a cold start. Hidden planes are the part of that footprint
+        // this keyboard can give back for free.
+        keyGrid.discardHiddenPlanes()
 #if DEBUG
         FrameMonitor.stop()
 #endif
@@ -334,6 +379,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             .keyboardShown,
             metadata: .fullAccess(hasFullAccess)
         )
+    }
+
+    /// The app's readiness lease expires when its heartbeat stops. An idle
+    /// keyboard has no session poll running, so without this lightweight check
+    /// force-quitting VocaPhone left the old ready badge on screen forever.
+    private func startQuickDictationReadinessPolling() {
+        quickDictationReadinessTimer?.invalidate()
+        quickDictationReadinessTimer = nil
+        guard dictationSurfaceState.usesCompactControls else { return }
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.isKeyboardVisible else { return }
+                self.dictationSurfaceState.refreshQuickDictationReadiness()
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        quickDictationReadinessTimer = timer
     }
 
     override func textDidChange(_ textInput: (any UITextInput)?) {
@@ -533,18 +595,24 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             lastSpaceInsertedAt = nil
             releaseUndoIfDetached()
             updateAutomaticShift()
+        case .beginCursorDrag:
+            let snapshot = refreshDocument()
+            cursorDrag = CursorDrag(document: snapshot)
+        case .endCursorDrag:
+            cursorDrag = nil
+            settleCursor()
         case let .moveCursor(offset):
-            textDocumentProxy.adjustTextPosition(byCharacterOffset: offset)
-            lastSpaceInsertedAt = nil
-            // The cursor is somewhere else now, so whatever was being composed
-            // belongs to a different part of the document.
+            moveCursor(by: offset)
+        case let .nextLayout(forward):
+            guard let next = TypingLayout.next(
+                after: KeyboardPreferences.typingLayout,
+                in: KeyboardPreferences.enabledTypingLayouts,
+                forward: forward
+            ) else { break }
+            KeyboardPreferences.typingLayout = next
+            applyTypingLayout(next, announce: true)
+            // The composition belonged to the alphabet that has just left.
             typing.reconcile(document: refreshDocument())
-            releaseUndoIfDetached()
-        case let .moveCursorLine(lines):
-            moveCursorByLines(lines)
-            lastSpaceInsertedAt = nil
-            typing.reconcile(document: refreshDocument())
-            releaseUndoIfDetached()
         case let .nextInputMode(anchor, event):
             // `handleInputModeList` also drives the long-press keyboard picker,
             // which `advanceToNextInputMode` alone cannot offer.
@@ -817,60 +885,86 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         releaseUndoIfDetached()
     }
 
-    /// Moves the cursor a whole line up or down, keeping its column.
+    /// What the trackpad knows about the document while a finger is on it.
     ///
-    /// A keyboard extension can only `adjustTextPosition(byCharacterOffset:)`,
-    /// so "one line" has to be counted out in characters from the document
-    /// context — which is why this lives here rather than in the grid: the grid
-    /// knows the finger moved, and only the controller can see the text.
-    ///
-    /// Clamped to the ends. Off the top or bottom of the visible context the
-    /// cursor goes to the start or end of it rather than nowhere, which is what
-    /// the user is reaching for anyway.
-    private func moveCursorByLines(_ lines: Int) {
-        guard lines != 0 else { return }
-        let snapshot = document
-        let beforeLines = (snapshot.before ?? "").components(separatedBy: "\n")
-        let afterLines = (snapshot.after ?? "").components(separatedBy: "\n")
-        // How far into its own line the cursor sits. The last element of the
-        // leading context is the part of the current line behind the cursor.
-        let column = beforeLines.last?.count ?? 0
-        let proxy = textDocumentProxy
+    /// A cursor step used to cost what a keystroke costs: `adjustTextPosition`,
+    /// then two properties read across into the host process, then a pass over
+    /// the dictionary — per step, at up to 120 steps a second, against a frame
+    /// budget of 8.3ms that a single one of those reads has already been
+    /// measured eating (see ``cachedSmartPunctuation``). Nothing else is moving
+    /// this cursor, so the document is read once when the finger arrives and
+    /// the drag counts for itself until it leaves.
+    private struct CursorDrag {
+        /// Characters either side of the cursor, in the UTF-16 units that
+        /// `adjustTextPosition(byCharacterOffset:)` actually steps in.
+        ///
+        /// A floor rather than a ceiling. iOS hands a keyboard a window onto
+        /// the document, not the document — often the rest of the current
+        /// paragraph. `0` means that side of the window was empty, which is a
+        /// real end, so the cursor stops. `nil` means the finger has walked
+        /// off the window we were given, so the window is no longer a limit:
+        /// keep going, because the rest of the document is past it.
+        var behind: Int?
+        var ahead: Int?
 
-        if lines < 0 {
-            // Nothing above in the visible context: the start of this line is
-            // the nearest thing to what was asked for, and it is where a finger
-            // dragged off the top is reaching anyway.
-            guard beforeLines.count > 1 else {
-                if column > 0 { proxy.adjustTextPosition(byCharacterOffset: -column) }
-                return
-            }
-            let steps = min(-lines, beforeLines.count - 1)
-            let target = beforeLines.count - 1 - steps
-            // Back to the start of the current line, then over each line
-            // skipped along with the break that ended it.
-            var offset = -column
-            for index in stride(from: beforeLines.count - 2, through: target, by: -1) {
-                offset -= 1 + beforeLines[index].count
-            }
-            // Forward into the target line, clamped to its end so a short line
-            // keeps the cursor on it rather than past it.
-            offset += min(column, beforeLines[target].count)
-            proxy.adjustTextPosition(byCharacterOffset: offset)
-        } else {
-            guard afterLines.count > 1 else {
-                let tail = afterLines.first?.count ?? 0
-                if tail > 0 { proxy.adjustTextPosition(byCharacterOffset: tail) }
-                return
-            }
-            let steps = min(lines, afterLines.count - 1)
-            var offset = afterLines[0].count
-            for index in 1..<steps {
-                offset += 1 + afterLines[index].count
-            }
-            offset += 1 + min(column, afterLines[steps].count)
-            proxy.adjustTextPosition(byCharacterOffset: offset)
+        init(document: DocumentSnapshot) {
+            behind = (document.before ?? "").utf16.count
+            ahead = (document.after ?? "").utf16.count
         }
+    }
+
+    private var cursorDrag: CursorDrag?
+
+    /// Moves the cursor, stopping only at a known empty side of the document.
+    ///
+    /// Without any clamp a finger that runs past the end of the field banks
+    /// every point of that overshoot, and the same travel has to be unwound
+    /// before the cursor moves back at all — which is what "the cursor sticks
+    /// at the end of the box" is. The window iOS hands us is not the document,
+    /// though, so treating its length as a hard stop parks the cursor at a
+    /// paragraph boundary with text still ahead. Empty is the only case the
+    /// window is not lying about.
+    private func moveCursor(by offset: Int) {
+        var applied = offset
+        if var drag = cursorDrag {
+            if offset > 0 {
+                if drag.ahead == 0 {
+                    applied = 0
+                } else if let ahead = drag.ahead {
+                    let remaining = ahead - offset
+                    drag.ahead = remaining > 0 ? remaining : nil
+                    drag.behind = (drag.behind ?? 0) + offset
+                } else {
+                    drag.behind = (drag.behind ?? 0) + offset
+                }
+            } else {
+                if drag.behind == 0 {
+                    applied = 0
+                } else if let behind = drag.behind {
+                    let remaining = behind + offset
+                    drag.behind = remaining > 0 ? remaining : nil
+                    drag.ahead = (drag.ahead ?? 0) - offset
+                } else {
+                    drag.ahead = (drag.ahead ?? 0) - offset
+                }
+            }
+            cursorDrag = drag
+        }
+        guard applied != 0 else { return }
+        textDocumentProxy.adjustTextPosition(byCharacterOffset: applied)
+        lastSpaceInsertedAt = nil
+        // Mid-drag the document is deliberately not re-read; the finger lifting
+        // is what settles it. See ``CursorDrag``.
+        guard cursorDrag == nil else { return }
+        settleCursor()
+    }
+
+    /// The cursor is somewhere else now, so whatever was being composed belongs
+    /// to a different part of the document.
+    private func settleCursor() {
+        lastSpaceInsertedAt = nil
+        typing.reconcile(document: refreshDocument())
+        releaseUndoIfDetached()
     }
 
     private func deleteWordBackward() {
@@ -1137,7 +1231,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         )
         darwinObservations.append(
             VocaPhoneDarwinCenter.observe(.quickDictationChanged) { [weak self] in
-                Task { @MainActor [weak self] in self?.refresh() }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.dictationSurfaceState.refreshPreferences()
+                    self.refresh()
+                }
             }
         )
     }
@@ -1356,8 +1454,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // session to another layout: it stays where it was tapped, the line
         // under the bars becomes "Transcribing", and the check itself turns
         // into the spinner. Cancel keeps working throughout.
-        let isRecording = Self.surfaceOwnsKeyboard(state, hasFullAccess: hasFullAccess)
-        if isRecording {
+        let sessionOwnsKeyboard = Self.surfaceOwnsKeyboard(state, hasFullAccess: hasFullAccess)
+        let surfaceFillsKeyboard = sessionOwnsKeyboard || panelOwnsKeyboard
+        if surfaceFillsKeyboard {
             keyGrid.endActiveInteractions()
             keyGrid.isHidden = true
             // The panel is a second full-height view in the same stack. Left
@@ -1392,11 +1491,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // the state before, which is a stack taller than the keyboard.
         if model.isExpanded != isBarExpanded
             || model.layout != barLayout
-            || isRecording != surfaceOwnedKeyboard
+            || surfaceFillsKeyboard != surfaceOwnedKeyboard
         {
             isBarExpanded = model.isExpanded
             barLayout = model.layout
-            surfaceOwnedKeyboard = isRecording
+            surfaceOwnedKeyboard = surfaceFillsKeyboard
             applyLayoutMetrics(animated: hasRendered)
         }
         dictationBar.apply(model, animated: hasRendered)
@@ -1484,6 +1583,27 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         dictationSurfaceState.onFinish = { [weak self] in self?.perform(.finish) }
         dictationSurfaceState.onCancel = { [weak self] in self?.perform(.cancel) }
         dictationSurfaceState.onGlobe = { [weak self] in self?.advanceToNextInputMode() }
+        dictationSurfaceState.onOpenSettings = { [weak self] in
+            self?.openContainingAppAction("settings")
+        }
+        dictationSurfaceState.onPanelVisibilityChanged = { [weak self] presented in
+            guard let self else { return }
+            panelOwnsKeyboard = presented
+            render(lastRecord)
+        }
+        dictationSurfaceState.onVocaPhoneRunningChanged = { [weak self] running in
+            if running {
+                KeyboardPreferences.quickDictationPausedUntilRelaunch = false
+                self?.openContainingAppAction("ready")
+            } else {
+                // Off is the app switcher's swipe, not the Live Activity's
+                // pause: no preference is written. The marker goes first so
+                // this keyboard stops routing to a window that is ending even
+                // if VocaPhone has already died and nothing is listening.
+                try? self?.store.clearQuickDictationAvailability()
+                VocaPhoneDarwinCenter.post(.closeVocaPhoneRequested)
+            }
+        }
         dictationSurfaceState.onCandidate = { [weak self] candidate in
             guard let self, !isPerformingInsertion else { return }
             documentEvent { self.apply(candidate) }
@@ -1531,6 +1651,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // only part of that delay this code owns.
         hostView.setNeedsLayout()
         hostView.layoutIfNeeded()
+    }
+
+    /// Opens a user-requested destination in the containing app. These actions
+    /// carry no transcript or token; they only foreground VocaPhone so it can
+    /// arm its own microphone session or show its own Settings screen.
+    private func openContainingAppAction(_ action: String) {
+        guard let url = URL(string: "\(AppConfiguration.urlScheme)://\(action)") else { return }
+        openURLFromKeyboard(url) { [weak self] opened in
+            DispatchQueue.main.async {
+                guard let self, !opened else { return }
+                self.dictationSurfaceState.showRecoveryMessage(
+                    "Open vocaphone to continue."
+                )
+            }
+        }
     }
 
     private func configureUI() {
@@ -1700,10 +1835,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         keyGrid.metrics = metrics
         dictationBar.metrics = barMetrics
 
-        let isRecording = Self.surfaceOwnsKeyboard(
+        let surfaceFillsKeyboard = Self.surfaceOwnsKeyboard(
             dictationSurfaceState.state,
             hasFullAccess: hasFullAccess
-        )
+        ) || panelOwnsKeyboard
         // Recording's own bar model is the *expanded status* layout — the tall
         // card the old bar used to draw — and asking it for a height is what
         // still made the keyboard grow, by about forty points, after the two
@@ -1711,8 +1846,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // all: it stands in the strip and then takes the keys' room from the
         // inside, so the height is the strip's, in every state.
         let barHeight = barMetrics.height(
-            for: isRecording ? .strip : barLayout,
-            expanded: isRecording ? false : isBarExpanded
+            for: surfaceFillsKeyboard ? .strip : barLayout,
+            expanded: surfaceFillsKeyboard ? false : isBarExpanded
         )
 
         // One height, and recording does not get a say in it: whatever the
@@ -1730,7 +1865,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             + KeyboardChrome.gapAboveKeys
             + metrics.gridHeight
 
-        let wantedBarHeight = isRecording
+        let wantedBarHeight = surfaceFillsKeyboard
             ? keyboardHeight - Self.chromeInset - Self.chromeBottomInset
             : barHeight
         // Nothing moved, so nothing is animated.
@@ -1747,6 +1882,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             && keyboardHeightConstraint?.constant == keyboardHeight
         guard !unchanged else { return }
 
+        // Whether the keyboard itself changes size, or only what is inside it.
+        // A panel opening over the keys is the second kind: the bar grows into
+        // the grid's room and the keyboard stays exactly as tall as it was.
+        let keyboardResizes = keyboardHeightConstraint?.constant != keyboardHeight
+
         barHeightConstraint?.constant = wantedBarHeight
         gridHeightConstraint?.constant = metrics.gridHeight
         emojiPanelHeightConstraint?.constant = metrics.gridHeight
@@ -1756,12 +1896,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             view.setNeedsLayout()
             return
         }
-        // The host app resizes around the keyboard, so the expansion has to be
-        // a settle rather than a jump.
+        // Two animations run over the same pixels when a panel opens: this one
+        // on the container, and the surface's own spring on the content inside
+        // it. They were 340 ms at 0.9 damping against 150 ms at 1, so the panel
+        // arrived and then kept settling for another fifth of a second, with
+        // SwiftUI re-laying its content against a frame that was still moving.
+        // That is the lag: not slow to start, slow to stop.
+        //
+        // The settle is still right when the *keyboard* resizes, because the
+        // host app resizes around it and a jump there moves the whole document.
+        let duration = keyboardResizes
+            ? 0.34
+            : KeyboardPreferences.surfaceAnimationResponse
+        let damping = keyboardResizes
+            ? 0.9
+            : KeyboardPreferences.surfaceAnimationDamping
         UIView.animate(
-            withDuration: 0.34,
+            withDuration: duration,
             delay: 0,
-            usingSpringWithDamping: 0.9,
+            usingSpringWithDamping: damping,
             initialSpringVelocity: 0,
             options: [.beginFromCurrentState, .allowUserInteraction]
         ) {
@@ -1784,6 +1937,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // the character. Not in a field that has asked for no intelligence.
         keyGrid.traceNamesKeys = policy.allowsTypingIntelligence
         keyGrid.showsGlobeKey = needsInputModeSwitchKey
+        keyGrid.offersCursorTrackpad = KeyboardPreferences.spacebarCursorEnabled
+        applyTypingLayout(KeyboardPreferences.typingLayout)
         let returnKeyType = proxy.returnKeyType ?? .default
         keyGrid.returnKeyTitle = Self.returnKeyTitle(for: returnKeyType)
         keyGrid.returnKeyIsProminent = returnKeyType != .default
@@ -1799,6 +1954,30 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // A returning keyboard may already be at the end of "happy". Restore
         // its suggestions immediately instead of waiting for another key.
         if isKeyboardVisible { typing.reconcile(document: document) }
+    }
+
+    /// Puts a layout under the fingers, and tells everything that cares.
+    ///
+    /// Three things care and they are easy to leave behind one another: the
+    /// grid draws different letters, the spacebar carries the name that makes
+    /// the swipe findable, and typing intelligence corrects against a different
+    /// dictionary. A layout changed in only two of the three is a keyboard that
+    /// autocorrects Russian into English.
+    private func applyTypingLayout(_ layout: TypingLayout, announce: Bool = false) {
+        let switchable = KeyboardPreferences.enabledTypingLayouts.count > 1
+        keyGrid.layout = layout
+        keyGrid.showsLayoutSwitchKey = switchable
+        keyGrid.layoutTitle = switchable ? layout.shortName : nil
+        typing.layout = layout
+        // Only when the language actually just changed. This method also runs
+        // every time the keyboard arrives in a new field, and a caption that
+        // announced itself on every field would be an advertisement.
+        if announce, switchable {
+            keyGrid.flashSpaceTitle("‹ \(layout.displayName) ›")
+            // The caption is visual only; VoiceOver hears the letters change
+            // under its finger with no word of why.
+            UIAccessibility.post(notification: .announcement, argument: layout.displayName)
+        }
     }
 
     /// Dims Return in the fields that asked for it.

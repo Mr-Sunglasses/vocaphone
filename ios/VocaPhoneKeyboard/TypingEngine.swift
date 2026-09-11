@@ -136,6 +136,30 @@ final class TypingEngine {
     private var emojiTriggers: [String: String] = [:]
     private var precedingWord: String?
     private var hasDocumentContext = false
+
+    /// The layout under the fingers, which is what decides the dictionary.
+    ///
+    /// ``TypingLanguage`` was written expecting this: "the layout decides the
+    /// language, and the layout is English". It is no longer only English, so
+    /// the layout's own language now goes to the head of the preferred list and
+    /// the user's locales remain behind it as the fallback they always were.
+    var layout: TypingLayout = .fallback {
+        didSet {
+            guard layout != oldValue else { return }
+            // Resolving the system checker language can wake dictionaries, so
+            // leave it to the same quiet-period task that handles first use.
+            // The old layout's cached checks must not cross the switch.
+            hasResolvedLanguage = false
+            cache.removeAll()
+        }
+    }
+
+    private func resolvedLanguage() -> String {
+        TypingLanguage.resolve(
+            preferred: [layout.checkerLanguage] + Locale.preferredLanguages,
+            available: availableLanguages()
+        )
+    }
     private var customWords: [String] = []
     /// `customWords` folded once. See ``LexiconEntry/lowered``.
     private var loweredCustomWords: [String] = []
@@ -546,10 +570,7 @@ final class TypingEngine {
             try? await Task.sleep(for: Self.checkerQuietPeriod)
             guard !Task.isCancelled, let self, generation == self.generation else { return }
             if !self.hasResolvedLanguage {
-                self.language = TypingLanguage.resolve(
-                    preferred: Locale.preferredLanguages,
-                    available: self.availableLanguages()
-                )
+                self.language = self.resolvedLanguage()
                 self.hasResolvedLanguage = true
             }
             let key = SuggestionCache.Key(prefix: composition.lowercased(), language: self.language)
@@ -601,6 +622,7 @@ final class TypingEngine {
         context.composition = composition
         context.origin = origin
         context.precedingWord = preceding
+        context.layoutRows = layout.rows
         let lowered = composition.lowercased()
         // One pass for both, over the folded copies: the prefix matches that
         // reach the strip, and the exact match that outranks it.

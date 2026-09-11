@@ -53,6 +53,10 @@ enum KeyCap: Equatable {
     case newline
     case plane(KeyPlane)
     case globe
+    /// Steps to the next enabled layout. Distinct from ``globe``, which leaves
+    /// for somebody else's keyboard: these are two different destinations and
+    /// sharing one key made the common one cost a long press.
+    case layoutSwitch
     /// A hole in the grid. The numeric keypads are a 3x4 block with one empty
     /// corner, and iOS leaves that corner genuinely empty rather than
     /// stretching its neighbours across it.
@@ -91,6 +95,7 @@ enum KeyCap: Equatable {
         case .space: return "Space"
         case .newline: return "Return"
         case .globe: return "Next keyboard"
+        case .layoutSwitch: return "Next language"
         case .blank: return ""
         case let .plane(plane):
             switch plane {
@@ -160,6 +165,16 @@ struct KeyRow: Equatable {
 
     let keys: [KeySpec]
     var alignment: Alignment = .fill
+    /// How many columns this row is measured against, when that is not the
+    /// alphabet's own count.
+    ///
+    /// The letter rows set the unit — ten for QWERTY, eleven for ЙЦУКЕН — and
+    /// every row that is *made of letters* should follow it, so the columns
+    /// line up. The bottom row is not made of letters: the spacebar, Return
+    /// and the plane key are the same keys in every language, and letting a
+    /// wider alphabet shrink them means the whole bottom of the keyboard moves
+    /// under the thumb when the language changes. It stays on ten.
+    var columnReference: CGFloat?
 }
 
 enum KeyLayout {
@@ -170,7 +185,9 @@ enum KeyLayout {
     /// URL (`/` and `.`).
     static func rows(
         for plane: KeyPlane,
+        layout: TypingLayout = .fallback,
         includesGlobe: Bool,
+        includesLayoutSwitch: Bool = false,
         returnIsProminent: Bool,
         punctuation: BottomRowPunctuation? = nil
     ) -> [KeyRow] {
@@ -178,16 +195,12 @@ enum KeyLayout {
         case .numberPad, .phonePad, .decimalPad:
             return keypadRows(for: plane, includesGlobe: includesGlobe)
         case .letters:
-            return [
-                KeyRow(keys: map("qwertyuiop")),
-                KeyRow(keys: map("asdfghjkl"), alignment: .centered),
-                KeyRow(keys: [KeySpec(cap: .shift, width: .fill, style: .function)]
-                    + map("zxcvbnm")
-                    + [KeySpec(cap: .delete, width: .fill, style: .function)]),
+            return letterRows(for: layout) + [
                 bottomRow(
                     planeSwitch: .numbers,
                     punctuation: punctuation,
                     includesGlobe: includesGlobe,
+                    includesLayoutSwitch: includesLayoutSwitch,
                     returnIsProminent: returnIsProminent
                 ),
             ]
@@ -204,6 +217,7 @@ enum KeyLayout {
                     planeSwitch: .letters,
                     punctuation: nil,
                     includesGlobe: includesGlobe,
+                    includesLayoutSwitch: includesLayoutSwitch,
                     returnIsProminent: returnIsProminent
                 ),
             ]
@@ -220,6 +234,7 @@ enum KeyLayout {
                     planeSwitch: .letters,
                     punctuation: nil,
                     includesGlobe: includesGlobe,
+                    includesLayoutSwitch: includesLayoutSwitch,
                     returnIsProminent: returnIsProminent
                 ),
             ]
@@ -230,6 +245,22 @@ enum KeyLayout {
     /// Besides matching its visual weight, this keeps longer return labels such
     /// as "Continue" from becoming a much smaller target than users expect.
     static let minimumReturnColumns: CGFloat = 2.5
+
+    /// Return's width once a language key has joined the row.
+    ///
+    /// Below Apple's 2.5, and deliberately: the spacebar is the key this row
+    /// exists to carry, and a Return that keeps a quarter of the row while the
+    /// spacebar shrinks to a thumb's width has the priorities backwards. At
+    /// 1.75 a "Continue" label still fits — it is the same width Return has on
+    /// the numbers plane, where nobody has ever called it small.
+    static let crowdedReturnColumns: CGFloat = 1.75
+
+    /// The width below which the spacebar stops reading as one.
+    ///
+    /// Apple's plain row gives it five columns of ten. Four is the point where
+    /// a thumb aiming for the middle of the bar can still miss by a column and
+    /// land on it, which is what the key is for; below that it is a wide comma.
+    static let minimumSpacebarColumns: CGFloat = 4
 
     /// Column widths that put the spacebar's visible centre on the keyboard's
     /// centre.
@@ -258,17 +289,27 @@ enum KeyLayout {
     struct BottomRowColumns: Equatable {
         var planeSwitch: CGFloat
         var globe: CGFloat?
+        var layoutSwitch: CGFloat?
         var punctuation: CGFloat?
         var period: CGFloat?
         var newline: CGFloat
 
-        var leading: CGFloat { planeSwitch + (globe ?? 0) + (punctuation ?? 0) }
+        var leading: CGFloat {
+            planeSwitch + (globe ?? 0) + (layoutSwitch ?? 0) + (punctuation ?? 0)
+        }
         var trailing: CGFloat { (period ?? 0) + newline }
         /// How far the spacebar's centre sits from the keyboard's, in columns.
         /// Zero is the goal; the sign says which way it leans.
         var centreOffset: CGFloat { (leading - trailing) / 2 }
+        /// What is left for the spacebar, which is the key this row exists to
+        /// carry and the only one whose width is decided by subtraction.
+        var spacebar: CGFloat { 10 - leading - trailing }
 
-        static func resolved(includesGlobe: Bool, includesPunctuation: Bool) -> BottomRowColumns {
+        static func resolved(
+            includesGlobe: Bool,
+            includesLayoutSwitch: Bool = false,
+            includesPunctuation: Bool
+        ) -> BottomRowColumns {
             // Measured on Apple's iOS 26 keyboard at the same 402pt width:
             //   plain:  2.5 |       5       | 2.5
             //   globe:  1.25 | 1.25 | 5     | 2.5
@@ -276,13 +317,82 @@ enum KeyLayout {
             // iOS sometimes supplies the globe in its own row below the
             // extension. In that case 123 occupies the two native leading
             // slots instead of leaving Space unnaturally wide.
-            let punctuation: CGFloat? = includesPunctuation ? 1.25 : nil
-            return BottomRowColumns(
-                planeSwitch: includesGlobe ? 1.25 : 2.5,
-                globe: includesGlobe ? 1.25 : nil,
-                punctuation: punctuation,
-                period: punctuation,
-                newline: minimumReturnColumns
+            // A language key is a fifth thing on a row Apple balances with
+            // four, and something has to give. The first attempt gave the
+            // same thing away every time — every function key trimmed to a
+            // column, Return to 1.75 — which on a row with no punctuation
+            // handed the spacebar six and a quarter columns against Apple's
+            // five, and left the keys either side of it visibly thin. Wrong
+            // in both directions at once.
+            //
+            // So nothing is trimmed until the row is actually short of room.
+            // Apple's widths are tried first; Return gives way before the
+            // function keys do, because Return has the most to spare and is
+            // the least often aimed at; and the trimming stops as soon as the
+            // spacebar is back above the width below which it stops reading
+            // as a spacebar.
+            guard includesLayoutSwitch else {
+                let punctuation: CGFloat? = includesPunctuation ? 1.25 : nil
+                return BottomRowColumns(
+                    planeSwitch: includesGlobe ? 1.25 : 2.5,
+                    globe: includesGlobe ? 1.25 : nil,
+                    layoutSwitch: nil,
+                    punctuation: punctuation,
+                    period: punctuation,
+                    newline: minimumReturnColumns
+                )
+            }
+            func row(function: CGFloat, newline: CGFloat) -> BottomRowColumns {
+                let punctuation: CGFloat? = includesPunctuation ? function : nil
+                return BottomRowColumns(
+                    planeSwitch: function,
+                    globe: includesGlobe ? function : nil,
+                    layoutSwitch: function,
+                    punctuation: punctuation,
+                    period: punctuation,
+                    newline: newline
+                )
+            }
+            let candidates = [
+                row(function: 1.25, newline: minimumReturnColumns),
+                row(function: 1.25, newline: crowdedReturnColumns),
+                row(function: 1, newline: minimumReturnColumns),
+                row(function: 1, newline: crowdedReturnColumns),
+            ]
+            // Of the rows that leave the spacebar wide enough, the one whose
+            // column totals either side of it come closest to equal — which is
+            // the identity that puts its visible centre on the keyboard's, and
+            // the thing a ladder of "trim this, then that" quietly destroys.
+            let roomy = candidates.filter { $0.spacebar >= minimumSpacebarColumns }
+            return roomy.min { abs($0.centreOffset) < abs($1.centreOffset) }
+                ?? candidates[candidates.count - 1]
+        }
+    }
+
+    /// The three letter rows of a layout, above the bottom row every plane
+    /// shares.
+    ///
+    /// The rows are the layout's own, and their *lengths* are what differs:
+    /// QWERTY is 10/9/7, ЙЦУКЕН is 11/11/9, AZERTY is 10/10/6. Nothing here
+    /// sets a width — ``KeyGridView`` reads its column unit off the rows it is
+    /// handed, so an eleven-key row simply produces narrower keys.
+    ///
+    /// The middle row centres itself only when it is shorter than the row above
+    /// it. That is the derivation behind QWERTY's familiar half-column indent,
+    /// and it is why Spanish, whose middle row is the longer one at ten keys
+    /// with ñ on the end, correctly does not indent.
+    private static func letterRows(for layout: TypingLayout) -> [KeyRow] {
+        let letters = layout.rows
+        let top = letters.first?.count ?? 0
+        return letters.enumerated().map { index, row in
+            if index == letters.count - 1 {
+                return KeyRow(keys: [KeySpec(cap: .shift, width: .fill, style: .function)]
+                    + map(row)
+                    + [KeySpec(cap: .delete, width: .fill, style: .function)])
+            }
+            return KeyRow(
+                keys: map(row),
+                alignment: row.count < top ? .centered : .fill
             )
         }
     }
@@ -291,10 +401,12 @@ enum KeyLayout {
         planeSwitch: KeyPlane,
         punctuation: BottomRowPunctuation?,
         includesGlobe: Bool,
+        includesLayoutSwitch: Bool,
         returnIsProminent: Bool
     ) -> KeyRow {
         let columns = BottomRowColumns.resolved(
             includesGlobe: includesGlobe,
+            includesLayoutSwitch: includesLayoutSwitch,
             includesPunctuation: punctuation != nil
         )
         var keys = [
@@ -306,6 +418,11 @@ enum KeyLayout {
         ]
         if let globe = columns.globe {
             keys.append(KeySpec(cap: .globe, width: .multiple(globe), style: .function))
+        }
+        if let layoutSwitch = columns.layoutSwitch {
+            keys.append(
+                KeySpec(cap: .layoutSwitch, width: .multiple(layoutSwitch), style: .function)
+            )
         }
         if let punctuation {
             keys.append(
@@ -331,7 +448,7 @@ enum KeyLayout {
                 style: returnIsProminent ? .accent : .function
             )
         )
-        return KeyRow(keys: keys)
+        return KeyRow(keys: keys, columnReference: 10)
     }
 
     /// The three-column numeric block iOS shows for a `.numberPad`,

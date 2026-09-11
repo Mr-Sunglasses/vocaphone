@@ -20,6 +20,10 @@ enum RecordingSoundCue: Sendable {
 final class RecordingSoundFeedback {
     private var player: AVAudioPlayer?
 
+    /// The tone is 75 ms; this is it plus the margin a player needs to get it
+    /// out of the speaker before the tap opens.
+    static let cueTail: Duration = .milliseconds(95)
+
     func play(_ cue: RecordingSoundCue) async {
         guard KeyboardPreferences.recordingSoundsEnabled else { return }
         do {
@@ -28,7 +32,11 @@ final class RecordingSoundFeedback {
             player.volume = 0.28
             player.prepareToPlay()
             guard player.play() else { return }
-            try? await Task.sleep(for: .milliseconds(140))
+            // The tone itself, and a hair over it. Capture starts when this
+            // returns — that is what keeps the beep out of the recording — so
+            // every millisecond past the sound is the microphone opening late
+            // for no reason. It was 140 for a 75 ms tone.
+            try? await Task.sleep(for: Self.cueTail)
             if Task.isCancelled { player.stop() }
             if self.player === player { self.player = nil }
         } catch {

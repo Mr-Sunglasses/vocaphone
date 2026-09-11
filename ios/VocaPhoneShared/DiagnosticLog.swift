@@ -26,6 +26,8 @@ enum DiagnosticEvent: String, Codable, Sendable {
     case quickDictationArmed
     case quickDictationStopped
     case quickDictationStale
+    /// The loaded speech model was dropped, with how much room that left.
+    case localEngineReleased
     case stopQuickDictationRequested
     case audioInterruptionBegan
     case audioInterruptionEnded
@@ -58,6 +60,9 @@ enum DiagnosticReason: String, Codable, Sendable {
     /// Quick Dictation was stopped from the Live Activity, which pauses the
     /// current window instead of changing the durable preference.
     case pausedUntilRelaunch
+    /// VocaPhone was switched off from the keyboard: the running window ended
+    /// as if the app had been closed, with every preference left alone.
+    case closedFromKeyboard
     case quickDictationOff
     case sessionFinished
     case processExit
@@ -218,6 +223,51 @@ enum DiagnosticLog {
         guard let fileURL else { return "" }
         return writeQueue.sync { coordinatedRead(from: fileURL) }
     }
+
+#if DEBUG
+    /// The keyboard's touch and frame trace, alongside this log.
+    ///
+    /// Written by the extension into the App Group, which `devicectl` will not
+    /// transfer; the app's Documents directory it will.
+    static func mirrorKeyboardTraceForDeviceTransfer() {
+        guard let group = FileManager.default.containerURL(
+                  forSecurityApplicationGroupIdentifier: AppConfiguration.appGroupIdentifier
+              ),
+              let documents = FileManager.default.urls(
+                  for: .documentDirectory,
+                  in: .userDomainMask
+              ).first
+        else { return }
+        let source = group.appendingPathComponent("touch-trace.txt")
+        let destination = documents.appendingPathComponent("touch-trace-latest.txt")
+        writeQueue.async {
+            guard let data = try? Data(contentsOf: source) else { return }
+            try? data.write(to: destination, options: .atomic)
+        }
+    }
+
+    /// Copies the log where a Mac can fetch it with `devicectl`.
+    ///
+    /// The log itself lives at the root of the App Group container, and
+    /// `devicectl` refuses to transfer anything there — it lists only
+    /// `Library/` and answers a root path with "File paths cannot contain
+    /// '..'". The app's own Documents directory it will hand over, so a debug
+    /// build leaves a copy there and the diagnosing loop stops depending on the
+    /// user exporting and pasting a file the clipboard expires in minutes.
+    static func mirrorForDeviceTransfer() {
+        guard let fileURL,
+              let documents = FileManager.default.urls(
+                  for: .documentDirectory,
+                  in: .userDomainMask
+              ).first
+        else { return }
+        let destination = documents.appendingPathComponent("diagnostics-latest.ndjson")
+        writeQueue.async {
+            guard let data = try? Data(contentsOf: fileURL) else { return }
+            try? data.write(to: destination, options: .atomic)
+        }
+    }
+#endif
 
     static func clear() {
         guard let fileURL else { return }

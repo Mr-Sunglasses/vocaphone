@@ -9,39 +9,58 @@ import Foundation
 /// in is most of what separates a correction that lands from one that reads as
 /// the keyboard guessing.
 ///
-/// Adjacency is taken from the QWERTY layout rather than from the live key
-/// frames on purpose. The rows are the same shape at every key height and on
-/// every device, so a static table gives the same answer as measured geometry
-/// while staying pure, cheap and testable — and it keeps working on the numbers
-/// and symbols planes, where the letters are not on screen at all.
+/// Adjacency is taken from the layout's letter rows rather than from the live
+/// key frames on purpose. The rows keep the same shape at every key height and
+/// on every device, so a table built from them gives the same answer as
+/// measured geometry while staying pure, cheap and testable — and it keeps
+/// working on the numbers and symbols planes, where the letters are not on
+/// screen at all.
 enum KeyProximity {
-    /// The three letter rows, as laid out by ``KeyLayout``.
-    private static let rows = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
+    private struct Table {
+        let adjacency: [Character: Set<Character>]
+    }
 
-    /// How far the lower rows are indented, in key columns. The home row sits
-    /// half a column in and the bottom row a full column, which is what makes
-    /// "s" a neighbour of both "w" and "x" but not of "q".
-    private static let rowOffsets: [Double] = [0, 0.5, 1.0]
-
-    /// Column position of every letter, so adjacency is measured rather than
-    /// enumerated by hand — a hand-written table of a hundred and some pairs is
-    /// a place for exactly one typo to hide forever.
-    private static let positions: [Character: (row: Int, column: Double)] = {
-        var positions: [Character: (row: Int, column: Double)] = [:]
-        for (rowIndex, row) in rows.enumerated() {
-            for (columnIndex, character) in row.enumerated() {
-                positions[character] = (rowIndex, Double(columnIndex) + rowOffsets[rowIndex])
-            }
+    /// Built once, for every layout the keyboard ships. `neighbours(of:)` is
+    /// asked several times per candidate word during a correction, and
+    /// rebuilding the set each time turned a cheap lookup into the most
+    /// expensive part of ranking.
+    private static let tables: [[String]: Table] = {
+        var tables: [[String]: Table] = [:]
+        for layout in TypingLayout.catalogue {
+            tables[layout.rows] = makeTable(for: layout.rows)
         }
-        return positions
+        return tables
     }()
 
-    /// Keys within one column and one row of each other.
+    /// How far each letter row is indented, in key columns.
     ///
-    /// Built once. `neighbours(of:)` is asked several times per candidate word
-    /// during a correction, and rebuilding the set each time turned a cheap
-    /// lookup into the most expensive part of ranking.
-    private static let adjacency: [Character: Set<Character>] = {
+    /// The same rule ``KeyLayout`` uses for the letters: a shorter row than the
+    /// one above centres itself, which is QWERTY's half-column home row. The
+    /// bottom letter row sits after a fill-width Shift, which is a full column
+    /// — that is why w neighbours x.
+    static func rowOffsets(for rows: [String]) -> [Double] {
+        let top = Double(rows.first?.count ?? 0)
+        return rows.enumerated().map { index, row in
+            if index == 0 { return 0 }
+            if index == rows.count - 1 { return 1 }
+            let count = Double(row.count)
+            return count < top ? (top - count) / 2 : 0
+        }
+    }
+
+    private static func table(for rows: [String]) -> Table {
+        tables[rows] ?? makeTable(for: rows)
+    }
+
+    private static func makeTable(for rows: [String]) -> Table {
+        let offsets = rowOffsets(for: rows)
+        var positions: [Character: (row: Int, column: Double)] = [:]
+        for (rowIndex, row) in rows.enumerated() {
+            let offset = rowIndex < offsets.count ? offsets[rowIndex] : 0
+            for (columnIndex, character) in row.enumerated() {
+                positions[character] = (rowIndex, Double(columnIndex) + offset)
+            }
+        }
         var adjacency: [Character: Set<Character>] = [:]
         for (character, position) in positions {
             var neighbours: Set<Character> = []
@@ -53,16 +72,24 @@ enum KeyProximity {
             }
             adjacency[character] = neighbours
         }
-        return adjacency
-    }()
-
-    static func neighbours(of character: Character) -> Set<Character> {
-        adjacency[Character(String(character).lowercased())] ?? []
+        return Table(adjacency: adjacency)
     }
 
-    static func areAdjacent(_ left: Character, _ right: Character) -> Bool {
+    static func neighbours(
+        of character: Character,
+        rows: [String] = TypingLayout.fallback.rows
+    ) -> Set<Character> {
+        table(for: rows).adjacency[Character(String(character).lowercased())] ?? []
+    }
+
+    static func areAdjacent(
+        _ left: Character,
+        _ right: Character,
+        rows: [String] = TypingLayout.fallback.rows
+    ) -> Bool {
         guard left != right else { return false }
-        return neighbours(of: left).contains(Character(String(right).lowercased()))
+        return neighbours(of: left, rows: rows)
+            .contains(Character(String(right).lowercased()))
     }
 
     /// What it costs to say the user meant `intended` where they typed `typed`.
@@ -71,12 +98,16 @@ enum KeyProximity {
     /// so it costs less than half a full substitution. Anything else is a
     /// different letter entirely, and paying full price for it is what stops
     /// "cat" being offered for "bat" as readily as "hello" for "hwllo".
-    static func substitutionCost(typed: Character, intended: Character) -> Double {
+    static func substitutionCost(
+        typed: Character,
+        intended: Character,
+        rows: [String] = TypingLayout.fallback.rows
+    ) -> Double {
         if typed == intended { return 0 }
         let lowerTyped = Character(String(typed).lowercased())
         let lowerIntended = Character(String(intended).lowercased())
         if lowerTyped == lowerIntended { return 0 }
-        return areAdjacent(lowerTyped, lowerIntended) ? 0.4 : 1
+        return areAdjacent(lowerTyped, lowerIntended, rows: rows) ? 0.4 : 1
     }
 
     /// Damerau-Levenshtein with the substitution cost above, bounded.
@@ -86,7 +117,12 @@ enum KeyProximity {
     /// at all" threshold should be measured against — but the costs are real
     /// numbers, so a two-key drift can rank ahead of a one-key change to a
     /// letter on the other side of the keyboard.
-    static func weightedDistance(_ left: String, _ right: String, maximum: Double) -> Double {
+    static func weightedDistance(
+        _ left: String,
+        _ right: String,
+        maximum: Double,
+        rows: [String] = TypingLayout.fallback.rows
+    ) -> Double {
         if left == right { return 0 }
         let a = Array(left)
         let b = Array(right)
@@ -104,7 +140,11 @@ enum KeyProximity {
             current[0] = Double(i)
             var rowMinimum = current[0]
             for j in 1...b.count {
-                let substitution = substitutionCost(typed: a[i - 1], intended: b[j - 1])
+                let substitution = substitutionCost(
+                    typed: a[i - 1],
+                    intended: b[j - 1],
+                    rows: rows
+                )
                 var value = min(
                     previous[j] + 1,
                     current[j - 1] + 1,

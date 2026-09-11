@@ -25,82 +25,20 @@ struct KeyboardHandoffView: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// vocaphone has nothing useful to say here and one thing to ask, so the
+    /// screen says that one thing and holds nothing else. Finishing and
+    /// cancelling stay where they already were: the Live Activity, and the
+    /// keyboard the user is going back to.
     private var recordingHandoff: some View {
-        ScrollView {
-            VStack(spacing: VocaMetrics.section) {
-                header
-
-                VStack(spacing: VocaMetrics.related) {
-                    Text("Keep speaking")
-                        .font(.largeTitle.weight(.bold))
-                    Text("Swipe right across the bottom edge to return")
-                        .font(.title2.weight(.semibold))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Recording continues while you switch apps.")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-
-                SwipeBackCoach(reduceMotion: reduceMotion, prominent: true)
-
-                VStack(spacing: VocaMetrics.related) {
-                    Button {
-                        perform(.finish)
-                    } label: {
-                        Label("Can't swipe back? Finish here instead", systemImage: "stop.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .frame(minHeight: VocaMetrics.minimumTarget)
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHint(primaryHint)
-
-                    Button("Cancel dictation", role: .destructive) {
-                        coordinator.cancel()
-                    }
-                    .font(.subheadline.weight(.semibold))
-                    .frame(minHeight: VocaMetrics.minimumTarget)
-                }
-            }
-            .frame(maxWidth: 560)
-            .padding(.horizontal, VocaMetrics.grouping)
-            .padding(.vertical, VocaMetrics.section)
-            .frame(maxWidth: .infinity, minHeight: 720)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            realBottomEdgeCue
-        }
-    }
-
-    private var realBottomEdgeCue: some View {
-        VStack(spacing: 8) {
-            Label("Swipe at the real iPhone bottom edge", systemImage: "arrow.down")
-                .font(.headline)
-
-            HStack(spacing: VocaMetrics.related) {
-                Text("Then swipe right")
-                Rectangle()
-                    .fill(Color.brand)
-                    .frame(height: 3)
-                Image(systemName: "arrow.right")
-                    .font(.headline.weight(.bold))
-            }
-            .font(.subheadline.weight(.bold))
-        }
-        .foregroundStyle(Color.brand)
-        .padding(.horizontal, VocaMetrics.grouping)
-        .padding(.vertical, VocaMetrics.padding)
-        .background(Color.vocaSurface)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.vocaBorder)
-                .frame(height: 1)
-        }
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("At the real bottom edge of this iPhone, swipe right.")
+        SwipeBackScreen(
+            title: presentation.title,
+            detail: presentation.detail,
+            reduceMotion: reduceMotion
+        )
+        // Same picture from launching through recording. Without this the
+        // state change remounts the animation, which is the hitch after the
+        // app has already opened on this screen.
+        .id("recording-handoff")
     }
 
     private var statusHandoff: some View {

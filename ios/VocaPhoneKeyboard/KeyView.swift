@@ -112,6 +112,29 @@ final class KeyView: UIView {
     private var shift: ShiftState = .off
     private var returnTitle = "return"
 
+    /// What the spacebar says, or `nil` for the blank system spacebar.
+    ///
+    /// A keyboard with one layout keeps the bar blank, because there is nothing
+    /// to tell. With two, the name of the language is the only thing that makes
+    /// the swipe findable — an unlabelled gesture is one nobody performs, and
+    /// the HIG asks a custom gesture to be discoverable rather than folklore.
+    var spaceTitle: String? {
+        didSet {
+            guard spaceTitle != oldValue else { return }
+            // Crossfaded rather than swapped: the name arrives because the
+            // language just changed, and a caption that snaps in and out under
+            // a finger reads as a glitch rather than as an answer.
+            UIView.transition(with: titleLabel, duration: 0.2, options: .transitionCrossDissolve) {
+                self.refresh()
+            }
+        }
+    }
+
+    /// What the language key says — the current layout's two letters.
+    var layoutTitle: String? {
+        didSet { if layoutTitle != oldValue { refresh() } }
+    }
+
     init(spec: KeySpec, metrics: KeyboardMetrics, palette: KeyboardPalette) {
         self.spec = spec
         self.metrics = metrics
@@ -153,7 +176,7 @@ final class KeyView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        titleLabel.frame = bounds.insetBy(dx: 2, dy: 0)
+        layoutTitleLabel()
         symbolView.frame = bounds
         layer.cornerRadius = metrics.cornerRadius
         // Without an explicit path every key forces an offscreen pass to derive
@@ -196,7 +219,56 @@ final class KeyView: UIView {
         spec.cap.resolvedText(shift: shift)
     }
 
+    /// Blanks the cap without forgetting what it says.
+    ///
+    /// The cursor trackpad empties the keyboard the way iOS does. Fading the
+    /// two layers rather than clearing their contents means coming back costs
+    /// nothing and cannot disagree with ``refresh()`` about what this key is.
+    var capsAreHidden = false {
+        didSet {
+            guard capsAreHidden != oldValue else { return }
+            let target: CGFloat = capsAreHidden ? 0 : 1
+            UIView.animate(withDuration: 0.14) {
+                self.titleLabel.alpha = target
+                self.symbolView.alpha = target
+            }
+        }
+    }
+
+    /// Sized to the text, not to the key.
+    ///
+    /// A label paints a bitmap the size of its bounds at screen scale, so one
+    /// that filled its key painted a key-sized bitmap around a glyph a fraction
+    /// of that — on every key of every cached plane, in an extension jetsam
+    /// watches at about sixty megabytes. Centred on the same point, the text
+    /// lands where the full-size label drew it; the origin is snapped to the
+    /// pixel grid so the smaller layer is not composited between pixels.
+    private func layoutTitleLabel() {
+        let available = bounds.insetBy(dx: 2, dy: 0)
+        let fitted = titleLabel.text?.isEmpty == false
+            ? titleLabel.sizeThatFits(available.size)
+            : .zero
+        let size = CGSize(
+            width: min(fitted.width.rounded(.up), available.width),
+            height: min(fitted.height.rounded(.up), available.height)
+        )
+        let scale = max(traitCollection.displayScale, 1)
+        func snapped(_ value: CGFloat) -> CGFloat { (value * scale).rounded() / scale }
+        // Immediate even inside the spacebar's crossfade, which runs `refresh`
+        // in an animation block: a frame animating up from nothing would read
+        // as the caption zooming in rather than fading.
+        UIView.performWithoutAnimation {
+            titleLabel.frame = CGRect(
+                x: snapped(available.midX - size.width / 2),
+                y: snapped(available.midY - size.height / 2),
+                width: size.width,
+                height: size.height
+            )
+        }
+    }
+
     private func refresh() {
+        defer { layoutTitleLabel() }
         let symbolFont = UIFont.systemFont(ofSize: metrics.letterFontSize - 3, weight: .medium)
         let symbolConfiguration = UIImage.SymbolConfiguration(font: symbolFont)
 
@@ -226,10 +298,22 @@ final class KeyView: UIView {
                 systemName: "globe",
                 withConfiguration: symbolConfiguration
             )
+        case .layoutSwitch:
+            // Two letters rather than a glyph. Every symbol that means
+            // "language" is either the globe — which belongs to the key that
+            // leaves for another keyboard — or an abstract letterform that
+            // says "text" and not which text. The code says where you are, and
+            // it is the same two characters in the picker and on the key.
+            titleLabel.text = layoutTitle
+            titleLabel.font = planeFont
+            symbolView.image = nil
         case .space:
-            // The system spacebar is visually blank; its name remains available
-            // through the key's accessibility label.
-            titleLabel.text = nil
+            // Blank on a one-layout keyboard, as the system spacebar is; its
+            // name remains available through the key's accessibility label.
+            // Otherwise the language, between the two chevrons that say which
+            // way the finger goes.
+            titleLabel.text = spaceTitle
+            titleLabel.font = functionFont
             symbolView.image = nil
         case .newline:
             if returnTitle == "return" {

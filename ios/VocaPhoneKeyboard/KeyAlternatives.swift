@@ -21,6 +21,15 @@ enum KeyAlternatives {
         "u": ["ú", "ù", "û", "ü", "ū"],
         "y": ["ý", "ÿ"],
         "z": ["ź", "ż", "ž"],
+        // Cyrillic. Thirty-three letters against thirty-one keys, and these are
+        // the two that iOS leaves off the grid: ё behind е, ъ behind ь. Both
+        // are real letters rather than accents, so unlike the Latin rows above
+        // this is not an ergonomic extra — it is the only way to type them.
+        "е": ["ё"],
+        "ь": ["ъ"],
+        // Ukrainian. є and ї are letters and have their own keys; ґ is rare
+        // enough that iOS puts it behind г, and so does this.
+        "г": ["ґ"],
     ]
 
     /// Alternates on the numbers and symbols planes.

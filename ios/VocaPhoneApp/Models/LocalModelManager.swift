@@ -1312,6 +1312,30 @@ final class LocalModelManager {
             }
     }
 
+    /// Drops the loaded engine and its weights.
+    ///
+    /// The model is kept after a dictation so the next one starts instantly,
+    /// which is right for the next dictation and wrong for the ten minutes of
+    /// standby that usually follow it: several hundred megabytes resident for
+    /// nothing. iOS answers memory pressure by shrinking what it allows an app
+    /// *extension*, so the process that pays is the keyboard — launched with
+    /// four megabytes of headroom, killed at once, and the user is handed
+    /// somebody else's keyboard mid-sentence.
+    ///
+    /// The caller decides when: see `RecordingCoordinator`, which waits for the
+    /// window to go quiet and answers memory warnings with this.
+    @discardableResult
+    func releaseLoadedEngines() -> Bool {
+        guard whisperKit != nil || sherpaRecognizer != nil else { return false }
+        whisperKit = nil
+        sherpaRecognizer = nil
+        loadedModelID = nil
+        loadedLanguage = nil
+        loadedTranslateTo = ""
+        loadedQuality = nil
+        return true
+    }
+
     func delete(_ descriptor: LocalModelDescriptor) throws {
         guard let folder = modelDirectory(for: descriptor.id) else {
             throw LocalModelManagerError.noModelContainer

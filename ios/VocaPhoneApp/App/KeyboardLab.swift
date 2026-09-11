@@ -14,11 +14,30 @@ import UIKit
 /// Debug only, and unreachable from a release build: `just ios lint-previews`
 /// fails if anything here becomes reachable from one.
 struct KeyboardLabView: View {
-    @State private var state: SessionState = .recording
-    @State private var isDark = false
-    @State private var isSpeaking = true
-    @State private var showsCandidates = false
-    @State private var usesSurface = true
+    // Idle rather than recording: it is the state the row is actually about —
+    // the one where nothing has been typed and nothing is running — and
+    // opening on a recording meant the left button was the cancel in every
+    // variant, which made the arrangements look identical.
+    @AppStorage("lab.state", store: KeyboardPreferences.defaults)
+    private var stateRawValue = SessionState.idle.rawValue
+    private var state: SessionState {
+        get { SessionState(rawValue: stateRawValue) ?? .idle }
+        nonmutating set { stateRawValue = newValue.rawValue }
+    }
+    // Stored, not `@State`. These were state, which meant every switch in the
+    // lab reset itself the moment the screen went away — turn one on, go back
+    // to compare against the keyboard, come back, and it is off again. A
+    // variant you cannot leave switched on is a variant you cannot look at.
+    @AppStorage("lab.isDark", store: KeyboardPreferences.defaults)
+    private var isDark = false
+    @AppStorage("lab.isSpeaking", store: KeyboardPreferences.defaults)
+    private var isSpeaking = true
+    @AppStorage("lab.showsCandidates", store: KeyboardPreferences.defaults)
+    private var showsCandidates = false
+    @AppStorage("lab.usesSurface", store: KeyboardPreferences.defaults)
+    private var usesSurface = true
+    @AppStorage(KeyboardPreferences.compactControlsKey, store: KeyboardPreferences.defaults)
+    private var usesCompactControls = false
     @State private var touchTrace = KeyboardPreferences.touchTraceEnabled
     @State private var hapticStyle = KeyboardPreferences.typingHapticStyle
     @State private var hapticIntensity = KeyboardPreferences.typingHapticIntensity
@@ -85,9 +104,11 @@ struct KeyboardLabView: View {
             .listRowBackground(Color.clear)
             Section {
                 Toggle("New surface", isOn: $usesSurface)
-                Picker("State", selection: $state) {
+                Toggle("Compact controls", isOn: $usesCompactControls)
+                    .disabled(!usesSurface)
+                Picker("State", selection: $stateRawValue) {
                     ForEach(Self.states, id: \.self) { state in
-                        Text(state.displayName).tag(state)
+                        Text(state.displayName).tag(state.rawValue)
                     }
                 }
                 Toggle("Dark keyboard", isOn: $isDark)
@@ -103,6 +124,7 @@ struct KeyboardLabView: View {
             }
             transitionSection
             hapticsSection
+            handoffSection
         }
         .navigationTitle("Keyboard lab")
         .navigationBarTitleDisplayMode(.inline)
@@ -111,13 +133,30 @@ struct KeyboardLabView: View {
             surface.animationDamping = KeyboardPreferences.surfaceAnimationDamping
             syncSurface()
         }
-        .onChange(of: state) { syncSurface() }
+        .onChange(of: stateRawValue) { syncSurface() }
         .onChange(of: isDark) { syncSurface() }
         .onChange(of: showsCandidates) { syncSurface() }
+        .onChange(of: usesCompactControls) { syncSurface() }
         .onChange(of: touchTrace) { KeyboardPreferences.touchTraceEnabled = touchTrace }
         .onReceive(meterTick) { _ in
             guard usesSurface, state == .recording, isSpeaking else { return }
             surface.appendMeterLevels(Self.nextLevels())
+        }
+    }
+
+    /// The screen the app shows when the keyboard had to open it. It is the
+    /// one surface nobody can reach on purpose from the app: it needs a real
+    /// dictation, started from the keyboard, in some other app.
+    private var handoffSection: some View {
+        Section {
+            NavigationLink("Swipe back screen") { SwipeBackLabScreen() }
+        } header: {
+            Text("Handoff")
+        } footer: {
+            Text(
+                "The loop runs on its own. The toggle inside parks it on the "
+                    + "last frame, which is what Reduce Motion shows."
+            )
         }
     }
 
@@ -202,6 +241,7 @@ struct KeyboardLabView: View {
         surface.state = state
         surface.isDark = isDark
         surface.showsGlobeKey = true
+        surface.usesCompactControls = usesCompactControls
         surface.candidates = showsCandidates && state == .idle ? Self.sampleCandidates : []
         if state != .recording { surface.clearMeterLevels() }
 
@@ -236,6 +276,26 @@ struct KeyboardLabView: View {
             let breath = 0.45 + 0.45 * abs(sin(meterPhase * 0.21))
             return Float(min(max(syllable * breath, 0.05), 1))
         }
+    }
+}
+
+/// The handoff screen at full size, with the motion switch the lab exists for:
+/// the system setting needs a trip to Settings and a relaunch to compare.
+private struct SwipeBackLabScreen: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var parksTheAnimation = false
+
+    var body: some View {
+        SwipeBackScreen(reduceMotion: reduceMotion || parksTheAnimation)
+            .navigationTitle("Swipe back")
+            .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom) {
+                Toggle("Park the animation", isOn: $parksTheAnimation)
+                    .font(.subheadline)
+                    .padding(.horizontal, VocaMetrics.grouping)
+                    .padding(.vertical, VocaMetrics.related)
+                    .background(.bar)
+            }
     }
 }
 

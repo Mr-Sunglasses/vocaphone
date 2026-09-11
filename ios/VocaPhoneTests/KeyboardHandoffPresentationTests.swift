@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 @MainActor
@@ -19,14 +20,37 @@ struct KeyboardHandoffPresentationTests {
         return record
     }
 
-    @Test func externalRecordingShowsTheRealReturnGestureAndFinishAction() {
+    @Test func externalRecordingAsksForTheReturnGestureAndNothingElse() {
         let presentation = KeyboardHandoffPresentation.make(record(state: .recording))
 
         #expect(presentation?.kind == .recording)
-        #expect(presentation?.title == "Recording")
-        #expect(presentation?.primaryAction == .finish)
-        #expect(presentation?.primaryTitle == "Finish & transcribe here")
-        #expect(presentation?.detail.contains("Swipe back") == true)
+        #expect(presentation?.title == "Swipe back to your app")
+        #expect(presentation?.detail == "Recording follows you there.")
+        #expect(presentation?.primaryAction == KeyboardHandoffPresentation.PrimaryAction.none)
+        #expect(presentation?.primaryTitle == nil)
+        #expect(presentation?.showsCancel == false)
+    }
+
+    /// The app is opened by the keyboard, so the screen it opens on has to be
+    /// the hand-off — not the home screen for the moment before the recorder
+    /// catches up.
+    @Test func theWaitForTheAppToOpenIsAlreadyTheHandoff() {
+        for state in [SessionState.launchingApp, .awaitingReturn] {
+            let pending = record(state: state)
+            #expect(KeyboardHandoffPresentation.shouldPresent(pending))
+            #expect(KeyboardHandoffPresentation.make(pending)?.kind == .recording)
+        }
+    }
+
+    /// But not on an ordinary launch days later, with a hand-off nobody claimed
+    /// still sitting in the store.
+    @Test func anAbandonedHandoffDoesNotTakeOverAnOrdinaryLaunch() {
+        var abandoned = record(state: .launchingApp)
+        abandoned.updatedAt = Date(
+            timeIntervalSinceNow: -SessionExpiryPolicy.handoffWindow - 1
+        )
+
+        #expect(!KeyboardHandoffPresentation.shouldPresent(abandoned))
     }
 
     @Test func processingKeepsTheHandoffStoryAndNamesTheConfirmedRoute() {

@@ -11,6 +11,7 @@ import UIKit
 struct ContentView: View {
     @Environment(RecordingCoordinator.self) private var coordinator
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(
         KeyboardPreferences.setupCompletedKey,
         store: KeyboardPreferences.defaults
@@ -37,6 +38,16 @@ struct ContentView: View {
     @State private var testText = ""
     @State private var isShowingSourceDetail = false
     @FocusState private var diagFocused: Bool
+    @Binding private var isShowingSettings: Bool
+    @Binding private var isShowingQuickDictationReturnGuide: Bool
+
+    init(
+        isShowingSettings: Binding<Bool> = .constant(false),
+        isShowingQuickDictationReturnGuide: Binding<Bool> = .constant(false)
+    ) {
+        _isShowingSettings = isShowingSettings
+        _isShowingQuickDictationReturnGuide = isShowingQuickDictationReturnGuide
+    }
 
     var body: some View {
         NavigationStack {
@@ -85,6 +96,12 @@ struct ContentView: View {
                 await coordinator.refreshGatewayHealth()
             }
             .onChange(of: scenePhase) { previousPhase, currentPhase in
+                if currentPhase == .background {
+                    // The guide has done its job once the user swipes back. Do
+                    // not leave it covering Home on a later ordinary launch.
+                    isShowingQuickDictationReturnGuide = false
+                    return
+                }
                 guard previousPhase != .active, currentPhase == .active else { return }
                 coordinator.refreshSetupStatus()
                 Task { await coordinator.refreshGatewayHealth() }
@@ -94,16 +111,25 @@ struct ContentView: View {
                     SetupView(mode: .onboarding)
                 }
             }
+            .sheet(isPresented: $isShowingSettings) {
+                NavigationStack {
+                    SettingsView()
+                }
+                .environment(coordinator)
+                .tint(.brand)
+            }
         }
         .overlay {
             if let record = keyboardHandoffRecord,
                let presentation = KeyboardHandoffPresentation.make(record)
             {
                 KeyboardHandoffView(record: record, presentation: presentation)
-                .transition(.opacity)
+            } else if isShowingQuickDictationReturnGuide {
+                QuickDictationReturnGuide(reduceMotion: reduceMotion) {
+                    isShowingQuickDictationReturnGuide = false
+                }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: keyboardHandoffRecord?.state)
     }
 
     // MARK: - Attention
@@ -454,6 +480,86 @@ struct ContentView: View {
               KeyboardHandoffPresentation.shouldPresent(record)
         else { return nil }
         return record
+    }
+}
+
+/// The keyboard may open the app from a cold start. Do not tell the user to
+/// return until the recorder has actually taken standby and published the
+/// availability lease the keyboard consumes.
+private struct QuickDictationReturnGuide: View {
+    @Environment(RecordingCoordinator.self) private var coordinator
+    let reduceMotion: Bool
+    let onDismiss: () -> Void
+    /// Arming takes well under a second when it works. A wait past this is
+    /// not going to end on its own — audio held by a call, another app's
+    /// session — so the screen stops asking for patience and offers a way out
+    /// instead of covering Home until the user leaves the app.
+    @State private var isTakingLong = false
+
+    var body: some View {
+        if coordinator.isQuickDictationReady {
+            SwipeBackScreen(
+                title: "Swipe back to your keyboard",
+                detail: "Quick Dictation is ready. Tap the microphone there.",
+                reduceMotion: reduceMotion
+            )
+        } else if coordinator.setupStatus.microphone == .denied {
+            status(
+                title: "Microphone access is off",
+                detail: "Quick Dictation needs the microphone. Turn it on in Settings, then try again."
+            ) {
+                VocaPrimaryButton(title: "Open Settings", symbol: "gear") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+            }
+        } else {
+            status(
+                title: "Getting Quick Dictation ready",
+                detail: isTakingLong
+                    ? (coordinator.message ?? "VocaPhone could not get the microphone yet.")
+                    : "Keep VocaPhone open for a moment.",
+                showsProgress: true
+            ) {
+                EmptyView()
+            }
+            .task {
+                try? await Task.sleep(for: .seconds(4))
+                isTakingLong = true
+            }
+        }
+    }
+
+    private func status<Actions: View>(
+        title: String,
+        detail: String,
+        showsProgress: Bool = false,
+        @ViewBuilder actions: () -> Actions
+    ) -> some View {
+        ZStack {
+            Color.vocaCanvas.ignoresSafeArea()
+            VStack(spacing: VocaMetrics.grouping) {
+                if showsProgress {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(Color.brand)
+                }
+                Text(title)
+                    .font(.title2.weight(.bold))
+                Text(detail)
+                    .font(.body)
+                    .foregroundStyle(Color.vocaSecondaryText)
+                actions()
+                if !showsProgress || isTakingLong {
+                    Button("Close", action: onDismiss)
+                        .font(.body.weight(.semibold))
+                        .frame(minHeight: VocaMetrics.minimumTarget)
+                }
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 480)
+            .padding(VocaMetrics.grouping)
+        }
     }
 }
 

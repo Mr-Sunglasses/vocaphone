@@ -23,6 +23,95 @@ struct KeyGridLayoutTests {
         return grid
     }
 
+    private static func makeGrid(layout: TypingLayout, switchKey: Bool = true) -> KeyGridView {
+        let grid = makeGrid()
+        grid.showsLayoutSwitchKey = switchKey
+        grid.layout = layout
+        grid.layoutIfNeeded()
+        return grid
+    }
+
+    // MARK: - Every layout, not just the one that fits
+
+    /// The column unit used to be the constant ten, which is QWERTY's top row.
+    /// ЙЦУКЕН is eleven, AZERTY's middle row is ten against a ten-key top —
+    /// and a unit that does not follow the rows puts the last key of an
+    /// eleven-key row off the side of the keyboard.
+    @Test func noLayoutRunsOffTheEdgeOfTheKeyboard() {
+        for layout in TypingLayout.catalogue {
+            let grid = Self.makeGrid(layout: layout)
+            let inset = grid.metrics.sideInset
+            for key in grid.keyViews {
+                #expect(
+                    key.frame.minX >= inset - 0.5,
+                    "\(layout.displayName): a key starts left of the margin"
+                )
+                #expect(
+                    key.frame.maxX <= Self.referenceWidth - inset + 0.5,
+                    "\(layout.displayName): a key runs past the right margin"
+                )
+            }
+        }
+    }
+
+    /// The property the ten-column constant was there to guarantee, now that it
+    /// is derived: within one layout every single-column key is the same width,
+    /// so the columns still line up between rows.
+    @Test func everyLayoutKeepsItsColumnsOneWidth() {
+        for layout in TypingLayout.catalogue {
+            let grid = Self.makeGrid(layout: layout)
+            let widths = Set(
+                grid.keyViews
+                    .filter { $0.spec.width == .unit }
+                    .map { ($0.frame.width * 100).rounded() }
+            )
+            #expect(widths.count == 1, "\(layout.displayName) has \(widths.count) column widths")
+        }
+    }
+
+    /// A wider alphabet makes narrower letters and must not make a narrower
+    /// bottom row: the spacebar, Return and the plane key are the same keys in
+    /// every language, and having them jump as the letters change is the sort
+    /// of thing a thumb notices before an eye does.
+    @Test func theBottomRowHoldsStillWhileTheLettersChange() {
+        let reference = Self.makeGrid(layout: .fallback)
+        let referenceRow = Self.rowsByPosition(in: reference)[3].map(\.frame)
+        for layout in TypingLayout.catalogue.dropFirst() {
+            let grid = Self.makeGrid(layout: layout)
+            let row = Self.rowsByPosition(in: grid)[3].map(\.frame)
+            #expect(row.count == referenceRow.count, "\(layout.displayName) bottom row differs")
+            for (moved, fixed) in zip(row, referenceRow) {
+                #expect(
+                    abs(moved.minX - fixed.minX) < 0.5 && abs(moved.width - fixed.width) < 0.5,
+                    "\(layout.displayName) moved a bottom-row key"
+                )
+            }
+        }
+    }
+
+    /// Ten stays the floor. The numeric keypads have no single-column keys at
+    /// all — three columns of `.multiple` — and letting the widest row speak
+    /// for them would blow every key up to a third of the keyboard.
+    @Test func theColumnReferenceFollowsTheRowsButNeverGoesBelowTen() {
+        for plane in [KeyPlane.numbers, .symbols, .numberPad, .phonePad] {
+            let rows = KeyLayout.rows(for: plane, includesGlobe: true, returnIsProminent: false)
+            #expect(KeyGridView.referenceColumns(for: rows) == 10, "\(plane)")
+        }
+        for layout in TypingLayout.catalogue {
+            let rows = KeyLayout.rows(
+                for: .letters,
+                layout: layout,
+                includesGlobe: true,
+                returnIsProminent: false
+            )
+            let widest = layout.rows.map(\.count).max() ?? 0
+            #expect(
+                KeyGridView.referenceColumns(for: rows) == CGFloat(max(widest, 10)),
+                "\(layout.displayName)"
+            )
+        }
+    }
+
     /// Rows used to be built from three separate hardcoded widths, so the
     /// columns visibly failed to line up. Every single-column key must now
     /// resolve to the same width.
@@ -236,6 +325,47 @@ struct KeyGridLayoutTests {
             abs(boundaryOnScreen - 293) < 4,
             "spacebar ends at \(boundaryOnScreen) on screen, the system's at ~293"
         )
+    }
+
+    /// Every cached plane keeps its key views, and their bitmaps, alive. Keyed
+    /// by plane and layout, cycling seven layouts once left some seven hundred
+    /// behind; the numbers and symbols are shared and only two layouts' letters
+    /// are kept.
+    @Test func cachedPlanesStayBoundedAcrossLayouts() {
+        let grid = Self.makeGrid(layout: .fallback)
+        for layout in TypingLayout.catalogue {
+            grid.layout = layout
+            for plane in [KeyPlane.letters, .numbers, .symbols] {
+                grid.plane = plane
+            }
+        }
+        grid.plane = .letters
+        func keyCount(_ plane: KeyPlane, _ layout: TypingLayout = .fallback) -> Int {
+            KeyLayout.rows(
+                for: plane,
+                layout: layout,
+                includesGlobe: grid.showsGlobeKey,
+                includesLayoutSwitch: true,
+                returnIsProminent: false
+            ).reduce(0) { $0 + $1.keys.count }
+        }
+        let widestLetters = TypingLayout.catalogue.map { keyCount(.letters, $0) }.max() ?? 0
+        let built = grid.subviews.filter { $0 is KeyView }.count
+        #expect(built <= 2 * widestLetters + keyCount(.numbers) + keyCount(.symbols))
+    }
+
+    @Test func discardingHiddenPlanesKeepsOnlyWhatIsOnScreen() {
+        let grid = Self.makeGrid(layout: .fallback)
+        grid.plane = .numbers
+        grid.plane = .symbols
+        grid.plane = .letters
+        grid.discardHiddenPlanes()
+        #expect(grid.subviews.filter { $0 is KeyView }.count == grid.keyViews.count)
+        #expect(grid.keyViews.allSatisfy { !$0.isHidden })
+
+        // And what was dropped comes back on demand.
+        grid.plane = .numbers
+        #expect(grid.keyViews.contains { $0.spec.cap == .character("1") })
     }
 }
 

@@ -10,6 +10,115 @@ import UIKit
 /// attached to the value.
 @MainActor
 struct KeyboardSurfaceTests {
+    @Test func compactDashboardUsesOnlyRecordedUsageTotals() {
+        let now = Date(timeIntervalSince1970: 1_789_000_000)
+        let stats = UsageStats(
+            totalWords: 6_289,
+            totalDictations: 18,
+            totalSeconds: 4_239,
+            lastDayKey: UsageStats.dayKey(now),
+            currentStreak: 1,
+            bestStreak: 4
+        )
+
+        #expect(CompactDashboardPage.allCases.count == 4)
+        #expect(CompactDashboardPage.words.value(for: stats, now: now) == "6,289")
+        #expect(CompactDashboardPage.words.label(for: stats, now: now) == "Words dictated")
+        #expect(CompactDashboardPage.words.detail(for: stats) == "Across 18 completed dictations")
+        #expect(CompactDashboardPage.sessions.value(for: stats, now: now) == "18")
+        #expect(CompactDashboardPage.streak.value(for: stats, now: now) == "1")
+        #expect(
+            CompactDashboardPage.streak.label(for: stats, now: now)
+                == "Day in your current streak"
+        )
+        #expect(CompactDashboardPage.streak.detail(for: stats) == "Best streak: 4 days")
+        #expect(CompactDashboardPage.speed.value(for: stats, now: now) == "89")
+        #expect(CompactDashboardPage.speed.label(for: stats, now: now) == "Average WPM")
+    }
+
+    @Test func panelsReportOnlyRealVisibilityChanges() {
+        let surface = DictationSurfaceState()
+        var changes: [Bool] = []
+        surface.onPanelVisibilityChanged = { changes.append($0) }
+
+        surface.present(.dashboard)
+        surface.present(.dashboard)
+        surface.present(nil)
+
+        #expect(changes == [true, false])
+    }
+
+    /// Dashboard to language picker is one panel replacing another: the keys
+    /// must not be uncovered in between, and leaving the picker goes back to
+    /// the dashboard it was opened from.
+    @Test func aPickerOpenedFromTheDashboardReturnsToIt() {
+        let surface = DictationSurfaceState()
+        var changes: [Bool] = []
+        surface.onPanelVisibilityChanged = { changes.append($0) }
+
+        surface.present(.dashboard)
+        surface.present(.language, returningTo: .dashboard)
+        #expect(surface.panelReturnsToPrevious)
+        surface.dismissPanel()
+
+        #expect(surface.presentedPanel == .dashboard)
+        #expect(!surface.panelReturnsToPrevious)
+        #expect(changes == [true])
+
+        surface.dismissPanel()
+        #expect(surface.presentedPanel == nil)
+        #expect(changes == [true, false])
+    }
+
+    @Test func theStylePickerFromTheRowClosesBackToTheKeys() {
+        let style = KeyboardPreferences.writingStyle
+        defer { KeyboardPreferences.writingStyle = style }
+        let surface = DictationSurfaceState()
+        var changes: [Bool] = []
+        surface.onPanelVisibilityChanged = { changes.append($0) }
+
+        surface.present(.style)
+        surface.select(style: .formal)
+        surface.dismissPanel()
+
+        #expect(surface.presentedPanel == nil)
+        #expect(surface.style == .formal)
+        #expect(changes == [true, false])
+    }
+
+    @Test func vocaPhoneSwitchClosesTheAppWithoutTouchingQuickDictation() {
+        let enabled = KeyboardPreferences.quickDictationEnabled
+        let duration = KeyboardPreferences.quickDictationDuration
+        let paused = KeyboardPreferences.quickDictationPausedUntilRelaunch
+        defer {
+            KeyboardPreferences.quickDictationEnabled = enabled
+            KeyboardPreferences.quickDictationDuration = duration
+            KeyboardPreferences.quickDictationPausedUntilRelaunch = paused
+        }
+        KeyboardPreferences.quickDictationEnabled = true
+        KeyboardPreferences.quickDictationDuration = .tenMinutes
+        KeyboardPreferences.quickDictationPausedUntilRelaunch = false
+
+        let surface = DictationSurfaceState()
+        surface.quickDictationReady = true
+        surface.present(.dashboard)
+        var changes: [Bool] = []
+        var visibilityChanges: [Bool] = []
+        surface.onVocaPhoneRunningChanged = { changes.append($0) }
+        surface.onPanelVisibilityChanged = { visibilityChanges.append($0) }
+
+        surface.setVocaPhoneRunning(false)
+        surface.setVocaPhoneRunning(false)
+
+        #expect(surface.quickDictationReady == false)
+        #expect(surface.presentedPanel == nil)
+        #expect(changes == [false])
+        #expect(visibilityChanges == [false])
+        #expect(KeyboardPreferences.quickDictationEnabled)
+        #expect(KeyboardPreferences.quickDictationDuration == .tenMinutes)
+        #expect(KeyboardPreferences.quickDictationPausedUntilRelaunch == false)
+    }
+
     @Test func recoveryGuidanceSurvivesPollingUntilTheStateChanges() {
         let surface = DictationSurfaceState()
         surface.state = .awaitingReturn
@@ -84,6 +193,204 @@ struct KeyboardSurfaceTests {
                 #expect(key.width == .fill, "\(plane) row 3 has a fixed-width key")
             }
         }
+    }
+
+    // MARK: - Room for a language key
+
+    /// Apple's proportions, kept exactly, while the row is Apple's row.
+    ///
+    /// The language key is the only reason any of these numbers move. A change
+    /// that also moved them for everyone else would be a redesign of the
+    /// keyboard smuggled in behind a feature, so this is the test that says it
+    /// was not.
+    @Test func aKeyboardWithOneLayoutKeepsApplesBottomRowExactly() {
+        for globe in [true, false] {
+            for punctuation in [true, false] {
+                let columns = KeyLayout.BottomRowColumns.resolved(
+                    includesGlobe: globe,
+                    includesLayoutSwitch: false,
+                    includesPunctuation: punctuation
+                )
+                #expect(columns.layoutSwitch == nil)
+                #expect(columns.newline == KeyLayout.minimumReturnColumns)
+                #expect(columns.planeSwitch == (globe ? 1.25 : 2.5))
+                #expect(columns.punctuation == (punctuation ? 1.25 : nil))
+            }
+        }
+    }
+
+    /// A fifth key on a row balanced for four, at Apple's widths, leaves the
+    /// spacebar around two and a half columns — half a plain row's. That is the
+    /// arithmetic behind the note on ``KeyboardOutput/emojiPanel`` explaining
+    /// why there is no emoji key.
+    ///
+    /// Yandex's Russian keyboard carries the same five and answers the same
+    /// crowding by trimming the function keys to a column and Return to a
+    /// little over one. Measured off a screenshot: the spacebar comes back to
+    /// roughly four and a quarter columns of ten. These are those proportions,
+    /// and this is the number they were for.
+    @Test func aLanguageKeyBuysTheSpacebarBackInsteadOfHalvingIt() {
+        for globe in [true, false] {
+            for punctuation in [true, false] {
+                let label = "globe \(globe), punct \(punctuation)"
+                let apple = KeyLayout.BottomRowColumns.resolved(
+                    includesGlobe: globe,
+                    includesLayoutSwitch: false,
+                    includesPunctuation: punctuation
+                )
+                let crowded = KeyLayout.BottomRowColumns.resolved(
+                    includesGlobe: globe,
+                    includesLayoutSwitch: true,
+                    includesPunctuation: punctuation
+                )
+                // A sixth key does cost the spacebar something on a row that
+                // had room to spare — half a column where Apple's own gave it
+                // five. What it must never do is push it under the width below
+                // which it stops being a spacebar. And where Apple's row was
+                // already under that width, the trimming leaves it wider than
+                // Apple's: the crowded rows come out ahead, not behind.
+                #expect(
+                    crowded.spacebar >= min(KeyLayout.minimumSpacebarColumns, apple.spacebar),
+                    "\(label): \(crowded.spacebar) against Apple's \(apple.spacebar)"
+                )
+                if apple.spacebar < KeyLayout.minimumSpacebarColumns {
+                    #expect(
+                        crowded.spacebar > apple.spacebar,
+                        "\(label): \(crowded.spacebar) against Apple's \(apple.spacebar)"
+                    )
+                }
+            }
+        }
+    }
+
+    /// The spacebar's centre is the keyboard's centre exactly when the column
+    /// totals either side of it are equal — the identity the whole width
+    /// calculation rests on. Adding a key to the leading side is precisely the
+    /// way to break it.
+    @Test func theSpacebarStaysCentredWithALanguageKeyOnTheRow() {
+        for globe in [true, false] {
+            for punctuation in [true, false] {
+                let columns = KeyLayout.BottomRowColumns.resolved(
+                    includesGlobe: globe,
+                    includesLayoutSwitch: true,
+                    includesPunctuation: punctuation
+                )
+                #expect(
+                    abs(columns.centreOffset) <= 0.75,
+                    "off centre by \(columns.centreOffset) — globe \(globe), punct \(punctuation)"
+                )
+            }
+        }
+    }
+
+    /// The spacebar is never traded below the width it needs, and the keys
+    /// beside it are never trimmed further than that trade requires.
+    ///
+    /// The first version trimmed the same amount every time. On a row with no
+    /// punctuation that handed the spacebar six and a quarter columns against
+    /// Apple's five and left the keys either side visibly thin — reported from
+    /// a device as "you cut the side keys a lot and the space bar is big",
+    /// which is both halves of the same mistake.
+    @Test func theRowIsTrimmedOnlyAsFarAsTheSpacebarActuallyNeeds() {
+        for globe in [true, false] {
+            for punctuation in [true, false] {
+                let columns = KeyLayout.BottomRowColumns.resolved(
+                    includesGlobe: globe,
+                    includesLayoutSwitch: true,
+                    includesPunctuation: punctuation
+                )
+                let label = "globe \(globe), punct \(punctuation)"
+                // Six keys and a spacebar do not fit on ten columns at any
+                // width worth having: with both the globe and the punctuation
+                // pair the floor is out of reach even fully trimmed, and the
+                // row settles at 3.25 — still wider than the 2.5 Apple's own
+                // email row leaves. Every other configuration clears it.
+                if !(globe && punctuation) {
+                    #expect(
+                        columns.spacebar >= KeyLayout.minimumSpacebarColumns,
+                        "\(label): spacebar is \(columns.spacebar) columns"
+                    )
+                }
+                #expect(columns.spacebar >= 3.25, "\(label): \(columns.spacebar)")
+                // Never wider than Apple's plain row either: a spacebar that
+                // has eaten the row is not a fix for one that was too narrow.
+                #expect(columns.spacebar <= 5.5, "\(label): spacebar is \(columns.spacebar)")
+                #expect(columns.planeSwitch >= 1, "\(label): plane key is \(columns.planeSwitch)")
+                #expect(columns.newline >= KeyLayout.crowdedReturnColumns, "\(label)")
+                // Apple's Return survives wherever the spacebar did not need
+                // its width, which is the point of trimming by need.
+                if !globe, !punctuation {
+                    #expect(columns.newline == KeyLayout.minimumReturnColumns, "\(label)")
+                }
+            }
+        }
+        // An uncrowded row keeps Apple's widths untouched: there is nothing to
+        // buy back, so nothing is spent.
+        let plain = KeyLayout.BottomRowColumns.resolved(
+            includesGlobe: false,
+            includesLayoutSwitch: true,
+            includesPunctuation: false
+        )
+        #expect(plain.newline == KeyLayout.minimumReturnColumns)
+        #expect(plain.planeSwitch == 1.25)
+    }
+
+    /// A fresh install gets the languages the phone is already set up in.
+    ///
+    /// It used to get all five, which hands somebody who only types English a
+    /// language key, a labelled spacebar and four alphabets they never asked
+    /// for — and the gesture guarding against that is the whole reason the
+    /// count is checked in three places.
+    @Test func aNewInstallStartsWithTheLanguagesThePhoneAlreadyUses() {
+        #expect(TypingLayout.forPreferredLanguages(["en-US"]).map(\.id) == ["en"])
+        #expect(TypingLayout.forPreferredLanguages(["ru-RU", "en-GB"]).map(\.id) == ["en", "ru"])
+        // Order follows the catalogue, not the phone: the list in settings and
+        // the order the language key walks are the same order, and it should
+        // not silently differ between two phones set up the same way.
+        #expect(TypingLayout.forPreferredLanguages(["ru", "de"]).map(\.id) == ["de", "ru"])
+        // Nothing recognised still has to produce a keyboard.
+        #expect(TypingLayout.forPreferredLanguages(["ja-JP"]).map(\.id) == ["en"])
+        #expect(TypingLayout.forPreferredLanguages([]).map(\.id) == ["en"])
+    }
+
+    // MARK: - The catalogue
+
+    /// Adding a language is adding an entry, so what an entry must satisfy is
+    /// worth stating once rather than reviewing five times.
+    @Test func everyLayoutInTheCatalogueIsWellFormed() {
+        var seen = Set<String>()
+        for layout in TypingLayout.catalogue {
+            #expect(seen.insert(layout.id).inserted, "duplicate id \(layout.id)")
+            #expect(!layout.displayName.isEmpty)
+            #expect(!layout.checkerLanguage.isEmpty)
+            #expect(layout.rows.count == 3, "\(layout.displayName) has \(layout.rows.count) rows")
+            let letters = Array(layout.rows.joined())
+            #expect(
+                Set(letters).count == letters.count,
+                "\(layout.displayName) repeats a letter on the grid"
+            )
+            // Twelve is where a key stops being a target and starts being a
+            // sliver: at 393pt a twelve-column row is under 28pt of glass.
+            for row in layout.rows {
+                #expect(row.count <= 12, "\(layout.displayName) has a \(row.count)-key row")
+                #expect(!row.isEmpty)
+            }
+        }
+    }
+
+    /// The one question the spacebar label, the key and the gesture all ask.
+    @Test func steppingThroughLayoutsWrapsBothWaysAndStopsAtOne() {
+        let all = TypingLayout.catalogue
+        let first = all[0]
+        #expect(TypingLayout.next(after: first, in: [first]) == nil)
+        #expect(TypingLayout.next(after: first, in: []) == nil)
+        #expect(TypingLayout.next(after: first, in: all) == all[1])
+        #expect(TypingLayout.next(after: first, in: all, forward: false) == all[all.count - 1])
+        #expect(TypingLayout.next(after: all[all.count - 1], in: all) == first)
+        // A layout that is not in the list has no successor in it, which is the
+        // case a stale stored choice produces.
+        let stray = all[1]
+        #expect(TypingLayout.next(after: stray, in: [first, all[2]]) == nil)
     }
 
     // MARK: - The press nobody could see
@@ -273,6 +580,28 @@ struct KeyboardSurfaceTests {
 
         // A one-character prefix is answered from its own bucket.
         #expect(list.completions(for: "q", limit: 2) == ["quixotic"])
+    }
+
+    // MARK: - Spacebar lift
+
+    /// A swipe that changed the layout, or a hold that became the cursor, has
+    /// already done its job. The lift must not type a space on top.
+    @Test func liftingTheSpacebarDoesNotTypeAfterAGesture() {
+        #expect(
+            KeyGridView.shouldCommitSpace(
+                isEngaged: true, isCursorTracking: false, didSwitchLayout: false, commit: true
+            )
+        )
+        #expect(
+            !KeyGridView.shouldCommitSpace(
+                isEngaged: true, isCursorTracking: true, didSwitchLayout: false, commit: true
+            )
+        )
+        #expect(
+            !KeyGridView.shouldCommitSpace(
+                isEngaged: true, isCursorTracking: false, didSwitchLayout: true, commit: true
+            )
+        )
     }
 }
 

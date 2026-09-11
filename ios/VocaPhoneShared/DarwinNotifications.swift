@@ -9,6 +9,14 @@ enum VocaPhoneDarwinNotification: String, Sendable {
     case keyboardStatusChanged = "com.vocahq.vocaphone.keyboard-status-changed"
     case quickDictationChanged = "com.vocahq.vocaphone.quick-dictation-changed"
     case stopQuickDictationRequested = "com.vocahq.vocaphone.stop-quick-dictation"
+    /// The keyboard's VocaPhone switch turned off. Unlike the Live Activity's
+    /// stop, this is not a Quick Dictation pause: it ends the running app's
+    /// window the way the app switcher would, and changes no preference.
+    case closeVocaPhoneRequested = "com.vocahq.vocaphone.close-requested"
+    /// The keyboard came up with almost no room left. It cannot free what is
+    /// holding the memory — that is the app's loaded speech model, in another
+    /// process — so it says so, and the app answers by letting go.
+    case keyboardLowOnMemory = "com.vocahq.vocaphone.keyboard-low-memory"
     /// The keyboard ran, and could not reach the shared container.
     ///
     /// The exception to the rule above: this one carries no durable record to

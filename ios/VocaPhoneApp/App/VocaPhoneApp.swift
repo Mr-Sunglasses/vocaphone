@@ -59,14 +59,49 @@ struct VocaPhoneApp: App {
     @UIApplicationDelegateAdaptor(VocaPhoneAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var coordinator = RecordingCoordinator()
+    @State private var isShowingSettings = false
+    @State private var isShowingQuickDictationReturnGuide = false
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(
+                isShowingSettings: $isShowingSettings,
+                isShowingQuickDictationReturnGuide: $isShowingQuickDictationReturnGuide
+            )
                 .environment(coordinator)
                 .tint(.brand)
-                .onOpenURL { coordinator.handleDeepLink($0) }
+                .onOpenURL { url in
+                    guard url.scheme == AppConfiguration.urlScheme else {
+                        coordinator.handleDeepLink(url)
+                        return
+                    }
+                    switch url.host {
+                    case "settings":
+                        isShowingQuickDictationReturnGuide = false
+                        isShowingSettings = true
+                    case "ready":
+                        isShowingSettings = false
+                        isShowingQuickDictationReturnGuide = true
+                        // Foregrounding the app is the only supported way for
+                        // its process to own the microphone. If permission has
+                        // not been granted yet, this presents the real system
+                        // request here rather than pretending the keyboard can
+                        // record by itself.
+                        // The keyboard's VocaPhone switch turned on: a launch,
+                        // arming the usual window with the saved duration. It
+                        // also has to leave Quick Dictation enabled — a window
+                        // armed around a disabled setting works once, then every
+                        // later launch from Start comes up with no window at all.
+                        coordinator.setQuickDictationEnabled(true)
+                    default:
+                        coordinator.handleDeepLink(url)
+                    }
+                }
                 .onAppear {
+#if DEBUG
+                    DiagnosticLog.mirrorForDeviceTransfer()
+                    DiagnosticLog.mirrorKeyboardTraceForDeviceTransfer()
+#endif
                     KeyboardPreferences.containingAppIsForeground = true
                     KeyboardPreferences.migrateTypingHapticsIfNeeded()
                     KeyboardPreferences.markQuickDictationRecoveryOfferIfNeeded()
@@ -83,6 +118,10 @@ struct VocaPhoneApp: App {
                     Task.detached(priority: .utility) { EmojiTable.warmUp() }
                 }
                 .onChange(of: scenePhase) { _, phase in
+#if DEBUG
+                    DiagnosticLog.mirrorForDeviceTransfer()
+                    DiagnosticLog.mirrorKeyboardTraceForDeviceTransfer()
+#endif
                     KeyboardPreferences.containingAppIsForeground = phase == .active
                     guard phase == .active else {
                         // The queue is in memory and does not survive the

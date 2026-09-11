@@ -2,6 +2,47 @@ import Testing
 import UIKit
 
 struct KeyAlternativesTests {
+    // MARK: - Every layout can type its own language
+
+    /// A layout whose alphabet contains a letter that is on no key and behind
+    /// no key cannot type its own language.
+    ///
+    /// This is the test the Russian layout was written against and the reason
+    /// ``TypingLayout/alphabet`` exists at all. Thirty-three letters do not fit
+    /// on thirty-one keys, so ё and ъ went behind е and ь — and the only thing
+    /// standing between that decision and a keyboard that silently cannot type
+    /// «объём» is this loop. It costs nothing and it guards every language
+    /// added after this one, which is the point: adding a layout is adding a
+    /// catalogue entry, and this is what makes that safe.
+    @Test func everyLayoutCanReachEveryLetterOfItsOwnAlphabet() {
+        for layout in TypingLayout.catalogue {
+            let onKeys = Set(layout.rows.joined())
+            for letter in layout.alphabet where !onKeys.contains(letter) {
+                let base = String(letter)
+                // Reachable by holding some key whose popover offers it.
+                let carriers = onKeys.filter { key in
+                    KeyAlternatives.options(for: String(key), shift: .off).contains(base)
+                }
+                #expect(
+                    !carriers.isEmpty,
+                    "\(layout.displayName): \(base) is on no key and behind no key"
+                )
+            }
+        }
+    }
+
+    /// ё and ъ are letters, not decorations.
+    ///
+    /// Everything else in the accent table is an ergonomic extra — a Latin
+    /// keyboard types "cafe" without ever opening a popover. These two are the
+    /// only way to type them at all, which is why they are asserted by name
+    /// rather than left to the loop above.
+    @Test func russianHidesItsTwoExtraLettersWhereIOSDoes() {
+        #expect(KeyAlternatives.options(for: "е", shift: .off).contains("ё"))
+        #expect(KeyAlternatives.options(for: "ь", shift: .off).contains("ъ"))
+        #expect(KeyAlternatives.options(for: "Е", shift: .on).contains("Ё"))
+    }
+
     /// Letters with accents and symbols with alternates; nothing else. A key
     /// that opens a popover offering only itself is a key that swallows a
     /// long press for no reason.

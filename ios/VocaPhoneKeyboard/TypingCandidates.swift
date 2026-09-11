@@ -136,6 +136,10 @@ enum TypingCandidates {
         var predictionEnabled = true
         var emojiEnabled = true
         var allowsTypingIntelligence = true
+        /// The letter rows under the fingers. Correction weights keys that sit
+        /// next to each other, and that neighbourhood is the layout's, not
+        /// QWERTY's.
+        var layoutRows: [String] = TypingLayout.fallback.rows
     }
 
     // MARK: - Strip
@@ -559,7 +563,8 @@ enum TypingCandidates {
         var cost = KeyProximity.weightedDistance(
             typed.lowercased(),
             candidate.lowercased(),
-            maximum: 3
+            maximum: 3,
+            rows: context.layoutRows
         )
         // The preceding word predicts this one. Worth about half an edit: enough
         // to settle a tie, never enough to beat a plainly closer spelling.

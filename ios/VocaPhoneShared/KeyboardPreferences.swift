@@ -302,6 +302,160 @@ enum KeyboardHeightPreference: String, CaseIterable, Codable, Identifiable, Send
     }
 }
 
+/// A letter arrangement the keyboard can put under the fingers.
+///
+/// Data, not cases. The first version of this was an enum with `qwerty` and
+/// `jcuken` in it, which meant every language after the second one was three
+/// `switch` statements and a recompile — and a keyboard whose answer to "add
+/// Ukrainian" is "add a case" will never have Ukrainian. A layout is its rows,
+/// its name and the dictionary it corrects against, so that is what it is.
+///
+/// The rows carry no widths. How wide eleven columns make a key is
+/// ``KeyGridView``'s question and it answers it from the rows it is handed;
+/// nothing here has to be kept in step with anything there.
+struct TypingLayout: Identifiable, Hashable, Sendable {
+    let id: String
+    /// What the language key says: two letters, written in the language's own
+    /// script.
+    ///
+    /// Cyrillic rather than a transliteration, because a Russian layout
+    /// labelled `RU` reads like a sticker somebody else put on it. Two letters
+    /// because the key is one column wide — the same column `123` fits in.
+    let shortName: String
+    /// Written in its own language, as iOS writes them: somebody reaching for
+    /// Russian is not looking for the word "Russian".
+    let displayName: String
+    /// Shown beside the name in the picker. A flag is a poor symbol for a
+    /// language and a good one for finding a row in a list of forty while
+    /// scrolling — which is the only job it has here.
+    let flag: String
+    /// The dictionary ``UITextChecker`` should answer in. It reads the user's
+    /// own installed dictionaries, so this is the whole of what a layout needs
+    /// for completion and correction — no shipped word list required.
+    let checkerLanguage: String
+    /// The three letter rows, top to bottom, unshifted.
+    let rows: [String]
+    /// Every letter the language writes, including the ones the rows have no
+    /// column for.
+    ///
+    /// Its only job is to be checked: a layout whose alphabet contains a letter
+    /// that is neither on a key nor behind one is a layout that cannot type its
+    /// own language, and that is a test rather than a code review.
+    let alphabet: String
+
+    /// The four arrangements almost every Latin layout in the catalogue is.
+    ///
+    /// Named rather than repeated, because the difference between Danish and
+    /// Swedish is two letters in the home row and nothing else, and a table
+    /// that spells all three rows out forty times hides that.
+    enum Arrangement {
+        static let qwerty = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
+        static let qwertz = ["qwertzuiop", "asdfghjkl", "yxcvbnm"]
+        static let azerty = ["azertyuiop", "qsdfghjklm", "wxcvbn"]
+    }
+
+    private static let latin = "abcdefghijklmnopqrstuvwxyz"
+
+    /// The layouts the keyboard knows.
+    ///
+    /// Seven, and deliberately not forty. A picker of forty languages is a
+    /// list somebody scrolls; seven is a list somebody reads. These are the
+    /// ones a keyboard is asked for first, and the shape of this table is what
+    /// makes the eighth a three-line addition rather than a project.
+    ///
+    /// Every entry is checked by ``KeyAlternativesTests`` for the only thing
+    /// that really matters here — that each letter of its alphabet is on a key
+    /// or behind one — so a wrong row is a failing test rather than a keyboard
+    /// that cannot spell its own language.
+    static let catalogue: [TypingLayout] = [
+        TypingLayout(
+            id: "en", shortName: "EN", displayName: "English", flag: "🇺🇸",
+            checkerLanguage: "en_US", rows: Arrangement.qwerty, alphabet: latin
+        ),
+        TypingLayout(
+            id: "es", shortName: "ES", displayName: "Español", flag: "🇪🇸",
+            checkerLanguage: "es_ES",
+            // ñ is on the grid rather than behind n: it is an ordinary letter
+            // in Spanish, reached as often as any other, and a hold per word
+            // is not typing. It is also why the home row here is the longer
+            // one, and why the middle row correctly does not indent.
+            rows: ["qwertyuiop", "asdfghjklñ", "zxcvbnm"],
+            alphabet: latin + "áéíóúüñ"
+        ),
+        TypingLayout(
+            id: "pt", shortName: "PT", displayName: "Português", flag: "🇧🇷",
+            checkerLanguage: "pt_BR", rows: Arrangement.qwerty,
+            alphabet: latin + "áâãàçéêíóôõú"
+        ),
+        TypingLayout(
+            id: "fr", shortName: "FR", displayName: "Français", flag: "🇫🇷",
+            checkerLanguage: "fr_FR", rows: Arrangement.azerty,
+            alphabet: latin + "àâçéèêëîïôùûü"
+        ),
+        TypingLayout(
+            id: "de", shortName: "DE", displayName: "Deutsch", flag: "🇩🇪",
+            checkerLanguage: "de_DE", rows: Arrangement.qwertz,
+            alphabet: latin + "äöüß"
+        ),
+        TypingLayout(
+            id: "ru", shortName: "РУ", displayName: "Русский", flag: "🇷🇺",
+            checkerLanguage: "ru_RU",
+            // Thirty-three letters over thirty-one keys: ё and ъ live behind е
+            // and ь, where iOS puts them and where ``KeyAlternatives`` has them.
+            rows: ["йцукенгшщзх", "фывапролджэ", "ячсмитьбю"],
+            alphabet: "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+        ),
+        TypingLayout(
+            id: "uk", shortName: "УК", displayName: "Українська", flag: "🇺🇦",
+            checkerLanguage: "uk_UA",
+            // Twelve on the top row, which is the widest the grid takes: ї is
+            // a letter here, not an accent on і. ґ is rare enough to sit
+            // behind г, which is where iOS puts it too.
+            rows: ["йцукенгшщзхї", "фівапролджє", "ячсмитьбю"],
+            alphabet: "абвгґдеєжзиіїйклмнопрстуфхцчшщьюя"
+        ),
+    ]
+
+    /// The layout every keyboard starts with, and the one that cannot be turned
+    /// off: a keyboard with no layouts types nothing.
+    static let fallback = catalogue[0]
+
+    static func layout(id: String) -> TypingLayout? {
+        catalogue.first { $0.id == id }
+    }
+
+    /// What a fresh install starts with: the layouts for the languages the
+    /// phone is already set up in, and English if none of them are known.
+    ///
+    /// The first version of this defaulted to the whole catalogue, which
+    /// handed somebody who only types English a language key, a labelled
+    /// spacebar and four languages they never asked for. Somebody whose phone
+    /// is set to Russian and English, meanwhile, should not have to go and
+    /// find the setting to get what iOS would have given them.
+    static func forPreferredLanguages(
+        _ preferred: [String] = Locale.preferredLanguages
+    ) -> [TypingLayout] {
+        let subtags = preferred.map { $0.split(separator: "-").first.map(String.init) ?? $0 }
+        let matched = catalogue.filter { subtags.contains($0.id) }
+        return matched.isEmpty ? [fallback] : matched
+    }
+
+    /// The layout after `current` in `enabled`, wrapping.
+    ///
+    /// `nil` when there is nowhere to go, which is also the answer to "should
+    /// the spacebar say anything" and "is the gesture available" — one question
+    /// asked once rather than three flags kept in agreement.
+    static func next(
+        after current: TypingLayout,
+        in enabled: [TypingLayout],
+        forward: Bool = true
+    ) -> TypingLayout? {
+        guard enabled.count > 1, let index = enabled.firstIndex(of: current) else { return nil }
+        let step = forward ? 1 : enabled.count - 1
+        return enabled[(index + step) % enabled.count]
+    }
+}
+
 enum KeyboardPreferences {
     static let autoInsertKey = "autoInsertTranscripts"
     static let keyboardHeightKey = "keyboardHeight"
@@ -328,6 +482,16 @@ enum KeyboardPreferences {
     /// Debug-only touch and frame instrumentation. Kept off unless a developer
     /// explicitly arms it in the keyboard lab.
     static let touchTraceKey = "touchTraceEnabled"
+    /// Holding or sliding the spacebar to move the cursor.
+    static let spacebarCursorKey = "spacebarCursorEnabled"
+    /// The compact dictation row: VocaPhone readiness, writing style and the
+    /// microphone at a glance, with an expandable local-stats dashboard.
+    static let compactControlsKey = "lab.usesCompactControls"
+    /// The layout currently under the fingers.
+    static let typingLayoutKey = "typingLayout"
+    /// Every layout the user has turned on, in the order the space bar and the
+    /// globe walk through them.
+    static let enabledTypingLayoutsKey = "enabledTypingLayouts"
     static let quickDictationKey = "quickDictationEnabled"
     static let quickDictationDurationKey = "quickDictationDuration"
     /// A stop from the Live Activity is a pause, not a preference change: the
@@ -557,6 +721,65 @@ enum KeyboardPreferences {
     static var touchTraceEnabled: Bool {
         get { boolean(touchTraceKey, default: false) }
         set { defaults?.set(newValue, forKey: touchTraceKey) }
+    }
+
+    /// The spacebar's cursor trackpad. On by default: it is what the system
+    /// keyboard does, and somebody who has never heard of it loses nothing by
+    /// having it — the gesture that reaches it is one nobody performs by
+    /// accident.
+    static var spacebarCursorEnabled: Bool {
+        get { boolean(spacebarCursorKey, default: true) }
+        set { defaults?.set(newValue, forKey: spacebarCursorKey) }
+    }
+
+    /// Read by the keyboard itself, not only by the lab.
+    ///
+    /// This is the bug the flag was born with: the lab set it straight onto its
+    /// own preview object, so the switch changed the picture on the settings
+    /// screen and nothing else. Tapping into a real field brought up the
+    /// extension, which had never heard of it, and drew the old row — which
+    /// looks exactly like a switch that does not work.
+    static var compactControlsEnabled: Bool {
+        get { boolean(compactControlsKey, default: false) }
+        set { defaults?.set(newValue, forKey: compactControlsKey) }
+    }
+
+    /// The layouts the user has turned on, in the order the key and the swipe
+    /// walk through them. Never empty.
+    ///
+    /// Stored as ids rather than as indices into the catalogue, so reordering
+    /// or retiring a layout cannot silently point an existing install at a
+    /// different language than the one it chose.
+    static var enabledTypingLayouts: [TypingLayout] {
+        get {
+            let stored = defaults?.stringArray(forKey: enabledTypingLayoutsKey) ?? []
+            let resolved = stored.compactMap(TypingLayout.layout(id:))
+            return resolved.isEmpty ? TypingLayout.forPreferredLanguages() : resolved
+        }
+        set {
+            let unique = newValue.reduce(into: [TypingLayout]()) { list, layout in
+                if !list.contains(layout) { list.append(layout) }
+            }
+            let resolved = unique.isEmpty ? [TypingLayout.fallback] : unique
+            defaults?.set(resolved.map(\.id), forKey: enabledTypingLayoutsKey)
+            // A layout that has just been turned off cannot stay the current
+            // one, or the keyboard comes up on a language the settings say is
+            // not there.
+            if !resolved.contains(typingLayout) { typingLayout = resolved[0] }
+        }
+    }
+
+    /// The layout the keyboard shows, clamped to what is actually enabled.
+    static var typingLayout: TypingLayout {
+        get {
+            let enabled = enabledTypingLayouts
+            let stored = defaults?.string(forKey: typingLayoutKey)
+            guard let resolved = stored.flatMap(TypingLayout.layout(id:)),
+                  enabled.contains(resolved)
+            else { return enabled.first ?? .fallback }
+            return resolved
+        }
+        set { defaults?.set(newValue.id, forKey: typingLayoutKey) }
     }
 
     /// An absent key means "never set", which is the default — not `false`,

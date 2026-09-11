@@ -256,6 +256,17 @@ struct TypingCandidatesTests {
         // keyboard: "w" is beside "e", "p" is not.
         #expect(KeyProximity.areAdjacent("w", "e"))
         #expect(!KeyProximity.areAdjacent("q", "p"))
+        #expect(KeyProximity.rowOffsets(for: TypingLayout.Arrangement.qwerty) == [0, 0.5, 1])
+        // AZERTY puts a and z next to each other on the top row. The QWERTY
+        // table used to call them two rows apart, and discount a/q instead.
+        let azerty = TypingLayout.Arrangement.azerty
+        // z and e sit next to each other on AZERTY's top row. QWERTY puts z
+        // on the bottom, two rows from e, so the old table missed this pair.
+        #expect(KeyProximity.areAdjacent("z", "e", rows: azerty))
+        #expect(!KeyProximity.areAdjacent("z", "e"))
+        let russian = TypingLayout.layout(id: "ru")!.rows
+        #expect(KeyProximity.areAdjacent("й", "ц", rows: russian))
+        #expect(!KeyProximity.areAdjacent("й", "ц"))
         #expect(
             KeyProximity.substitutionCost(typed: "w", intended: "e")
                 < KeyProximity.substitutionCost(typed: "q", intended: "p")
