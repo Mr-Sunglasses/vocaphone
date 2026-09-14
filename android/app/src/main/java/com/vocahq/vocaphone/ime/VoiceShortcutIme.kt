@@ -76,6 +76,108 @@ internal object VoiceShortcutIme {
         }
     }
 
+    /**
+     * How to leave the voice subtype when dictation cannot run.
+     *
+     * [RejectedHandback.IMMEDIATE] is for sensitive editors (passwords): leave
+     * without lingering chrome. [RejectedHandback.GUIDED] covers the system
+     * IME-picker path and other non-dictation fields: show a one-line hint,
+     * then hand back after [REJECTED_HANDBACK_DELAY_MS] so the subtype does
+     * not flicker away in the same frame (#281). HeliBoard/Gboard handoff
+     * still starts dictation when [dictationAllowed] is true.
+     */
+    enum class RejectedHandback {
+        NONE,
+        IMMEDIATE,
+        GUIDED,
+    }
+
+    const val REJECTED_HANDBACK_DELAY_MS = 1_800L
+
+    const val REJECTED_HANDBACK_GUIDANCE =
+        "Open a text field, then use the host keyboard mic"
+
+    fun rejectedHandback(
+        isVoiceShortcut: Boolean,
+        dictationAllowed: Boolean,
+        sensitive: Boolean,
+    ): RejectedHandback {
+        if (!isVoiceShortcut || dictationAllowed) return RejectedHandback.NONE
+        return if (sensitive) RejectedHandback.IMMEDIATE else RejectedHandback.GUIDED
+    }
+
+
+    /**
+     * Side effects for [rejectedHandback] without a Handler or IMS.
+     *
+     * The service applies these: cancel/schedule the delayed bounce, toggle
+     * the one-line hint, leave immediately, or request auto-start. Returning
+     * null means a no-op (guided path after we already handed back).
+     */
+    data class RejectedHandbackEffects(
+        val cancelDelayedHandback: Boolean,
+        val scheduleDelayedHandback: Boolean,
+        val showGuidance: Boolean,
+        val returnImmediately: Boolean,
+        val requestAutoStart: Boolean,
+    )
+
+    fun rejectedHandbackEffects(
+        decision: RejectedHandback,
+        alreadyReturned: Boolean,
+    ): RejectedHandbackEffects? = when (decision) {
+        RejectedHandback.IMMEDIATE -> RejectedHandbackEffects(
+            cancelDelayedHandback = true,
+            scheduleDelayedHandback = false,
+            showGuidance = false,
+            returnImmediately = true,
+            requestAutoStart = false,
+        )
+        RejectedHandback.GUIDED -> {
+            if (alreadyReturned) {
+                null
+            } else {
+                RejectedHandbackEffects(
+                    cancelDelayedHandback = true,
+                    scheduleDelayedHandback = true,
+                    showGuidance = true,
+                    returnImmediately = false,
+                    requestAutoStart = false,
+                )
+            }
+        }
+        RejectedHandback.NONE -> RejectedHandbackEffects(
+            cancelDelayedHandback = true,
+            scheduleDelayedHandback = false,
+            showGuidance = false,
+            returnImmediately = false,
+            requestAutoStart = true,
+        )
+    }
+
+    /**
+     * Pure fold of [RejectedHandbackEffects] onto the delayed-bounce flags the
+     * service keeps (pending Handler callback + guidance chrome). Lets unit
+     * tests prove GUIDED → NONE clears a pending bounce without Robolectric.
+     */
+    data class RejectedHandbackFlags(
+        val delayedPending: Boolean = false,
+        val guidanceVisible: Boolean = false,
+    )
+
+    fun applyRejectedHandbackEffects(
+        flags: RejectedHandbackFlags,
+        effects: RejectedHandbackEffects,
+    ): RejectedHandbackFlags {
+        var delayedPending = flags.delayedPending
+        if (effects.cancelDelayedHandback) delayedPending = false
+        if (effects.scheduleDelayedHandback) delayedPending = true
+        return RejectedHandbackFlags(
+            delayedPending = delayedPending,
+            guidanceVisible = effects.showGuidance,
+        )
+    }
+
     fun shouldReturnWhenDictationRejected(
         isVoiceShortcut: Boolean,
         dictationAllowed: Boolean,

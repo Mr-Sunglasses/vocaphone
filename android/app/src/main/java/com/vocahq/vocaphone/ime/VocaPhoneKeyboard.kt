@@ -1113,6 +1113,7 @@ internal fun VoiceShortcutListeningChrome(
     editor: KeyboardEditorConfig,
     settings: VocaPhoneSettings,
     isPreferenceWritePending: Boolean,
+    rejectGuidance: Boolean = false,
     onMicTap: () -> Unit,
     onMicLongPress: () -> Unit,
     onReadyToListen: () -> Unit = {},
@@ -1128,6 +1129,7 @@ internal fun VoiceShortcutListeningChrome(
                 editor = editor,
                 barHeight = settings.keyboardHeight.dictationBarDp.dp,
                 isPreferenceWritePending = isPreferenceWritePending,
+                rejectGuidance = rejectGuidance,
                 onMicTap = onMicTap,
                 onMicLongPress = onMicLongPress,
             )
@@ -1141,11 +1143,13 @@ private fun VoiceShortcutListeningBar(
     editor: KeyboardEditorConfig,
     barHeight: Dp,
     isPreferenceWritePending: Boolean,
+    rejectGuidance: Boolean = false,
     onMicTap: () -> Unit,
     onMicLongPress: () -> Unit,
 ) {
     val idle = state.phase == DictationPhase.IDLE
     val status = when {
+        rejectGuidance -> "Voice shortcut"
         editor.sensitive -> "Private field"
         !editor.dictationAllowed -> "Typing only"
         idle -> "VocaPhone"
@@ -1153,6 +1157,7 @@ private fun VoiceShortcutListeningBar(
         else -> state.statusText
     }
     val detail = when {
+        rejectGuidance -> VoiceShortcutIme.REJECTED_HANDBACK_GUIDANCE
         editor.sensitive -> "Dictation is off here"
         !editor.dictationAllowed -> "Dictation is available in text fields"
         idle -> "Voice input"

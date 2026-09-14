@@ -247,7 +247,7 @@ class VoiceShortcutImeTest {
     }
 
     @Test
-    fun `password and other rejected fields hand back immediately`() {
+    fun `password and other rejected fields still hand back`() {
         assertTrue(
             VoiceShortcutIme.shouldReturnWhenDictationRejected(
                 isVoiceShortcut = true,
@@ -265,6 +265,135 @@ class VoiceShortcutImeTest {
                 isVoiceShortcut = false,
                 dictationAllowed = false,
             ),
+        )
+    }
+
+    @Test
+    fun `sensitive rejected fields hand back immediately`() {
+        assertEquals(
+            VoiceShortcutIme.RejectedHandback.IMMEDIATE,
+            VoiceShortcutIme.rejectedHandback(
+                isVoiceShortcut = true,
+                dictationAllowed = false,
+                sensitive = true,
+            ),
+        )
+        assertEquals(
+            VoiceShortcutIme.RejectedHandback.NONE,
+            VoiceShortcutIme.rejectedHandback(
+                isVoiceShortcut = true,
+                dictationAllowed = true,
+                sensitive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `late capable EditorInfo after GUIDED cancels bounce and starts`() {
+        // Picker / unknown field first → GUIDED delay is armed.
+        val guidedDecision = VoiceShortcutIme.rejectedHandback(
+            isVoiceShortcut = true,
+            dictationAllowed = false,
+            sensitive = false,
+        )
+        assertEquals(VoiceShortcutIme.RejectedHandback.GUIDED, guidedDecision)
+        val guided = VoiceShortcutIme.rejectedHandbackEffects(
+            decision = guidedDecision,
+            alreadyReturned = false,
+        )!!
+        assertTrue(guided.scheduleDelayedHandback)
+        assertTrue(guided.showGuidance)
+        assertFalse(guided.requestAutoStart)
+        assertFalse(guided.returnImmediately)
+
+        var flags = VoiceShortcutIme.applyRejectedHandbackEffects(
+            VoiceShortcutIme.RejectedHandbackFlags(),
+            guided,
+        )
+        assertTrue(flags.delayedPending)
+        assertTrue(flags.guidanceVisible)
+
+        // A late StartInput can still deliver a dictation-capable EditorInfo.
+        // Live re-check must flip to NONE so the service clears the delayed
+        // bounce + guidance and starts — matching the delayed NONE arm.
+        val noneDecision = VoiceShortcutIme.rejectedHandback(
+            isVoiceShortcut = true,
+            dictationAllowed = true,
+            sensitive = false,
+        )
+        assertEquals(VoiceShortcutIme.RejectedHandback.NONE, noneDecision)
+        val cleared = VoiceShortcutIme.rejectedHandbackEffects(
+            decision = noneDecision,
+            alreadyReturned = false,
+        )!!
+        assertTrue(cleared.cancelDelayedHandback)
+        assertFalse(cleared.scheduleDelayedHandback)
+        assertFalse(cleared.showGuidance)
+        assertTrue(cleared.requestAutoStart)
+        assertFalse(cleared.returnImmediately)
+
+        flags = VoiceShortcutIme.applyRejectedHandbackEffects(flags, cleared)
+        assertFalse("pending Handler bounce must clear", flags.delayedPending)
+        assertFalse("guidance chrome must clear", flags.guidanceVisible)
+        assertTrue(
+            VoiceShortcutIme.shouldAutoStart(
+                isVoiceShortcut = true,
+                dictationAllowed = true,
+                isBusy = false,
+                alreadyRequested = false,
+                inputViewShown = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `guided handback is a no-op after return and immediate clears pending`() {
+        assertEquals(
+            null,
+            VoiceShortcutIme.rejectedHandbackEffects(
+                decision = VoiceShortcutIme.RejectedHandback.GUIDED,
+                alreadyReturned = true,
+            ),
+        )
+        val immediate = VoiceShortcutIme.rejectedHandbackEffects(
+            decision = VoiceShortcutIme.RejectedHandback.IMMEDIATE,
+            alreadyReturned = false,
+        )!!
+        val flags = VoiceShortcutIme.applyRejectedHandbackEffects(
+            VoiceShortcutIme.RejectedHandbackFlags(
+                delayedPending = true,
+                guidanceVisible = true,
+            ),
+            immediate,
+        )
+        assertFalse(flags.delayedPending)
+        assertFalse(flags.guidanceVisible)
+        assertTrue(immediate.returnImmediately)
+        assertFalse(immediate.requestAutoStart)
+    }
+
+    @Test
+    fun `picker and unknown editors use guided delayed handback`() {
+        assertEquals(
+            VoiceShortcutIme.RejectedHandback.GUIDED,
+            VoiceShortcutIme.rejectedHandback(
+                isVoiceShortcut = true,
+                dictationAllowed = false,
+                sensitive = false,
+            ),
+        )
+        assertEquals(
+            VoiceShortcutIme.RejectedHandback.NONE,
+            VoiceShortcutIme.rejectedHandback(
+                isVoiceShortcut = false,
+                dictationAllowed = false,
+                sensitive = false,
+            ),
+        )
+        assertTrue(VoiceShortcutIme.REJECTED_HANDBACK_DELAY_MS > 0L)
+        assertEquals(
+            "Open a text field, then use the host keyboard mic",
+            VoiceShortcutIme.REJECTED_HANDBACK_GUIDANCE,
         )
     }
 

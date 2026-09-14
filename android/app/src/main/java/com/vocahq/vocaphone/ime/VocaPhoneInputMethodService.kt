@@ -92,7 +92,28 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var voiceShortcutLeftIdle = false
     private var voiceShortcutReturned = false
     private var voiceShortcutWindowWaits = 0
+    private var voiceShortcutRejectGuidance by mutableStateOf(false)
     private val startVoiceShortcutDictation = Runnable { maybeStartVoiceShortcutDictation() }
+    private val delayedRejectedHandback = Runnable {
+        // EditorInfo can land a frame after the picker flips us to voice.
+        // Re-check before leaving so a late dictation-capable field can still
+        // auto-start instead of bouncing back.
+        when (
+            VoiceShortcutIme.rejectedHandback(
+                isVoiceShortcut = voiceShortcutActive,
+                dictationAllowed = editorConfig.dictationAllowed,
+                sensitive = editorConfig.sensitive,
+            )
+        ) {
+            VoiceShortcutIme.RejectedHandback.NONE -> {
+                voiceShortcutRejectGuidance = false
+                maybeStartVoiceShortcutDictation()
+            }
+            VoiceShortcutIme.RejectedHandback.IMMEDIATE,
+            VoiceShortcutIme.RejectedHandback.GUIDED,
+            -> returnToPreviousIme()
+        }
+    }
     private var ignoredClipboardText: String? = null
     private var lastRecordedClip: String? = null
     private var lastImageSource: String? = null
@@ -154,6 +175,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 editor = editorConfig,
                 settings = settings,
                 isPreferenceWritePending = isPreferenceWritePending,
+                rejectGuidance = voiceShortcutRejectGuidance,
                 onMicTap = ::toggleDictation,
                 onMicLongPress = ::cancelDictationFromMic,
                 onReadyToListen = ::scheduleVoiceShortcutDictation,
@@ -230,7 +252,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         } else {
             started
         }
-        if (!voiceShortcutActive) refreshEditorText()
+        if (!voiceShortcutActive) {
+            refreshEditorText()
+        } else {
+            // Picker activation can finish StartInput after the subtype flip.
+            // Re-evaluate reject/handback against the editor we just learned.
+            maybeHandBackVoiceShortcut()
+        }
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
@@ -256,7 +284,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             return
         }
         mainHandler.removeCallbacks(startVoiceShortcutDictation)
+        mainHandler.removeCallbacks(delayedRejectedHandback)
         voiceShortcutWindowWaits = 0
+        voiceShortcutRejectGuidance = false
         if (voiceShortcutActive) {
             cancelOwnedDictation("voice_shortcut_hidden")
             if (VoiceShortcutIme.shouldReturnWhenViewFinishes(
@@ -348,7 +378,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     override fun onFinishInput() {
         mainHandler.removeCallbacks(startVoiceShortcutDictation)
+        mainHandler.removeCallbacks(delayedRejectedHandback)
         voiceShortcutWindowWaits = 0
+        voiceShortcutRejectGuidance = false
         cancelOwnedDictation("editor_finished")
         if (VoiceShortcutIme.shouldReturnWhenViewFinishes(
                 voiceShortcutActive,
@@ -382,7 +414,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(startVoiceShortcutDictation)
+        mainHandler.removeCallbacks(delayedRejectedHandback)
         voiceShortcutWindowWaits = 0
+        voiceShortcutRejectGuidance = false
         stopClipboardWatch()
         cancelOwnedDictation("keyboard_destroyed")
         if (container.dictation.imeInserter === this) {
@@ -1000,6 +1034,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         voiceShortcutLeftIdle = false
         voiceShortcutReturned = false
         voiceShortcutWindowWaits = 0
+        mainHandler.removeCallbacks(delayedRejectedHandback)
+        voiceShortcutRejectGuidance = false
     }
 
     private fun scheduleVoiceShortcutDictation() {
@@ -1034,14 +1070,33 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     private fun maybeHandBackVoiceShortcut() {
-        if (VoiceShortcutIme.shouldReturnWhenDictationRejected(
+        val effects = VoiceShortcutIme.rejectedHandbackEffects(
+            decision = VoiceShortcutIme.rejectedHandback(
                 isVoiceShortcut = voiceShortcutActive,
                 dictationAllowed = editorConfig.dictationAllowed,
+                sensitive = editorConfig.sensitive,
+            ),
+            alreadyReturned = voiceShortcutReturned,
+        ) ?: return
+        // Keep the chrome up for a beat with a one-line hint so the system
+        // IME picker path does not look like a broken flicker. Late-capable
+        // EditorInfo while GUIDED chrome is up cancels the bounce and starts
+        // (same as delayedRejectedHandback's NONE arm).
+        if (effects.cancelDelayedHandback) {
+            mainHandler.removeCallbacks(delayedRejectedHandback)
+        }
+        voiceShortcutRejectGuidance = effects.showGuidance
+        if (effects.scheduleDelayedHandback) {
+            mainHandler.postDelayed(
+                delayedRejectedHandback,
+                VoiceShortcutIme.REJECTED_HANDBACK_DELAY_MS,
             )
-        ) {
+        }
+        if (effects.returnImmediately) {
             returnToPreviousIme()
-        } else {
-            maybeReturnToPreviousIme()
+        }
+        if (effects.requestAutoStart) {
+            maybeStartVoiceShortcutDictation()
         }
     }
 
