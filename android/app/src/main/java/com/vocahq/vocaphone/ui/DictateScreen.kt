@@ -56,7 +56,9 @@ internal object DictateCopy {
     const val MODEL = "Model"
     const val GATEWAY = "Gateway"
     const val NO_MODEL = "No model"
-    const val HINT = "Inserted at the cursor. Nothing here is uploaded."
+    const val HINT = "Inserted at the cursor. Nothing here is uploaded. " +
+        "Long-press the mic key in the keyboard below — not the Dictate " +
+        "button above — to cancel while listening or transcribing."
 }
 
 /**
