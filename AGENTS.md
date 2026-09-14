@@ -174,7 +174,7 @@ when the checked-in project is stale.
 | Toolchain | Xcode (project asks for 26), XcodeGen, iOS 17+, Swift 6. Simulator default `iPhone 17` (`VOCAPHONE_SIM` / `just sim="iPhone 16" run`) |
 | Packages | Commit `ios/VocaPhone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` when Swift deps change |
 | User data | Never commit `xcuserdata/` or `*.xcuserstate` |
-| Sherpa runtime | Swift package `sherpa-onnx` 1.13.7 (static product). Pin lives in `project.yml` and `Package.resolved`; do not vendor xcframeworks |
+| Sherpa runtime | Swift package `sherpa-onnx` 1.13.8 (static product). Pin lives in `project.yml` and `Package.resolved`; do not vendor xcframeworks |
 | Device | `just ios device` (signing must already work in Xcode). `VOCAPHONE_DEVICE` if several phones |
 | Previews | `just ios lint-previews` (`ios/tools/check-preview-isolation.py`). Preview-only code stays behind `#if DEBUG` |
 | Signing | Ship identifiers: `com.vocahq.vocaphone` (+ `.keyboard`, `.liveactivity`), App Group `group.com.vocahq`, team `92962VK378`. Personal bundle-id / team edits for a free Apple ID stay local — do not commit them |

@@ -3,8 +3,11 @@
 These are the prebuilt native libraries behind the `full` flavor's Sherpa model
 engine. The `fdroid` flavor drops this directory and builds without them.
 
-- Source: [sherpa-onnx v1.13.6](https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.13.6)
-  (`1cb484af5e69d3c7803c1eb0b3b5ab8041e0e911`)
+- Source: [sherpa-onnx v1.13.8](https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.13.8)
+  (`11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf`). Do not go below it: earlier
+  Canary decoders return an empty transcript whenever end-of-transcript wins
+  the first token, which drops whole windows of a long recording
+  ([sherpa-onnx#3919](https://github.com/k2-fsa/sherpa-onnx/issues/3919))
 - ONNX Runtime: **1.28.0**, taken from
   [csukuangfj/onnxruntime-libs](https://github.com/csukuangfj/onnxruntime-libs/releases/tag/v1.28.0),
   which is the same source sherpa-onnx's own build script uses
@@ -46,7 +49,7 @@ curl -LO https://github.com/csukuangfj/onnxruntime-libs/releases/download/v1.28.
 shasum -a 256 onnxruntime-android-1.28.0.zip   # must match the hash above
 unzip -q onnxruntime-android-1.28.0.zip -d onnxruntime-1.28.0
 
-git clone --depth 1 --branch v1.13.6 https://github.com/k2-fsa/sherpa-onnx.git
+git clone --depth 1 --branch v1.13.8 https://github.com/k2-fsa/sherpa-onnx.git
 cd sherpa-onnx
 
 export ANDROID_NDK="$HOME/Library/Android/sdk/ndk/27.2.12479018"

@@ -28,7 +28,7 @@ enum class SherpaFamily(
      * This is not a preference. sherpa-onnx validates the decoding method when
      * the recognizer is built, and unsupported families answer with `exit(-1)`
      * — not an exception, but the process gone. NeMo TDT accepts the value, but
-     * the implementation in the bundled sherpa-onnx v1.13.6 can intermittently
+     * the implementation in the bundled sherpa-onnx v1.13.8 can intermittently
      * emit empty or hallucinated text (upstream #3267; its proposed fix #3657
      * is not merged). It stays false until a fixed native runtime is shipped
      * and exercised on a phone.

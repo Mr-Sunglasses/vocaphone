@@ -28,7 +28,7 @@ live in [AGENTS.md](AGENTS.md) and [android/AGENTS.md](android/AGENTS.md).
   `git submodule update --init --recursive` on an existing clone). The gateway
   is the [vocagateway](https://github.com/VocaHQ/vocagateway) submodule at
   `gateway/`.
-- iOS Sherpa ONNX is a Swift package (`sherpa-onnx` 1.13.7, static product).
+- iOS Sherpa ONNX is a Swift package (`sherpa-onnx` 1.13.8, static product).
   The first `xcodebuild` / `just ios run` downloads it from the pin in
   `Package.resolved`. `just ios fetch` only prefetches.
 - Install [`just`](https://just.systems), Xcode, XcodeGen, `uv`, and FFmpeg.

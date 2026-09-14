@@ -40,7 +40,7 @@ enum SherpaFamily: String, Codable, Sendable {
     /// setting (sherpa-onnx #2258), and matches the Android client exactly.
     ///
     /// Android passes this into `FeatureConfig.dither`. The pinned iOS runtime
-    /// (sherpa-onnx 1.13.7) has no `dither` field on `SherpaOnnxFeatureConfig`
+    /// (sherpa-onnx 1.13.8) has no `dither` field on `SherpaOnnxFeatureConfig`
     /// at all, so `SherpaFeatureDither` reproduces its effect on the waveform
     /// instead. Move this to `config.feat_config.dither` if a later runtime
     /// grows that field.
