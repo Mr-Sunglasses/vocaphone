@@ -22,6 +22,11 @@ protocol SpellChecking: AnyObject {
     func guesses(for word: String, language: String) -> [String]
     /// Whether the checker recognises the word at all.
     func isKnown(_ word: String, language: String) -> Bool
+    func releaseMemory()
+}
+
+extension SpellChecking {
+    func releaseMemory() {}
 }
 
 /// `UITextChecker`, which is the whole reason iOS needs no shipped dictionary:
@@ -58,6 +63,10 @@ final class SystemSpellChecker: SpellChecking {
 
     /// Whether the dictionaries have actually been paid for yet.
     var isLoaded: Bool { loaded != nil }
+
+    func releaseMemory() {
+        loaded = nil
+    }
 
     /// The languages the checker has data for. Also deferred: enumerating them
     /// touches the same dictionaries.

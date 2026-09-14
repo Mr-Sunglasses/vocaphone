@@ -1,4 +1,26 @@
+import os
 import UIKit
+
+enum KeyboardMemoryBudget {
+    static var availableMegabytes: Int? {
+#if targetEnvironment(simulator)
+        // The simulator does not expose the device extension's memory limit.
+        nil
+#else
+        Int(os_proc_available_memory() / (1024 * 1024))
+#endif
+    }
+
+    static var hasHeadroom: Bool {
+        guard let availableMegabytes else { return true }
+        return availableMegabytes >= 25
+    }
+
+    static var hasRecoveryHeadroom: Bool {
+        guard let availableMegabytes else { return true }
+        return availableMegabytes >= 35
+    }
+}
 
 /// Turns keystrokes into a strip, without ever making a keystroke wait.
 ///
@@ -74,6 +96,11 @@ final class TypingEngine {
     }
 
     private let checker: any SpellChecking
+    private(set) var isMemoryConstrained = false
+    var onMemoryPressure: (() -> Void)?
+    var hasMemoryHeadroom: () -> Bool = {
+        KeyboardMemoryBudget.hasHeadroom
+    }
     /// How long the hand has to be still before the checker is asked anything.
     ///
     /// `UITextChecker` is the most expensive thing this keyboard does — 50 to
@@ -283,6 +310,28 @@ final class TypingEngine {
     /// Retire field work before UIKit starts switching apps or keyboards.
     func suspend() {
         documentChanged(policy: policy)
+    }
+
+    /// Keep the current word and undo state intact. Do not reload the system
+    /// dictionary on the next key: reclaimed memory is needed by the keyboard.
+    /// The controller restores dictionary support after sustained recovery.
+    func reduceMemoryUsage() {
+        guard !isMemoryConstrained else { return }
+        isMemoryConstrained = true
+        pendingCheck?.cancel()
+        pendingCheck = nil
+        generation += 1
+        checker.releaseMemory()
+        cache = SuggestionCache()
+        refreshCurrentCandidates()
+        onMemoryPressure?()
+    }
+
+    func resumeAfterMemoryPressure() {
+        guard isMemoryConstrained else { return }
+        isMemoryConstrained = false
+        // Resolve and load lazily on a future typing pause, not during recovery.
+        hasResolvedLanguage = false
     }
 
     /// Reconciles the composition against what the document says, then
@@ -566,9 +615,14 @@ final class TypingEngine {
             )
         )
         pendingCheck?.cancel()
+        guard !isMemoryConstrained else { return }
         pendingCheck = Task { @MainActor [weak self] in
             try? await Task.sleep(for: Self.checkerQuietPeriod)
             guard !Task.isCancelled, let self, generation == self.generation else { return }
+            guard self.hasMemoryHeadroom() else {
+                self.reduceMemoryUsage()
+                return
+            }
             if !self.hasResolvedLanguage {
                 self.language = self.resolvedLanguage()
                 self.hasResolvedLanguage = true
@@ -582,6 +636,10 @@ final class TypingEngine {
                 // cache-hit path also runs.
                 similar: self.wordList.similarWords(to: composition, limit: 2)
             )
+            guard self.hasMemoryHeadroom() else {
+                self.reduceMemoryUsage()
+                return
+            }
             guard generation == self.generation else { return }
             self.cache.insert(value, for: key)
             self.publishStrip(

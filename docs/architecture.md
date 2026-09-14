@@ -102,7 +102,17 @@ Three constraints shape the design:
    skips entirely. `TypingWordList` provides a pure-Swift fallback that *can*
    leave the main actor if device measurement ever demands it.
 3. **The extension has a hard memory ceiling.** One checker, one word list, a
-   bounded cache and a capped learned-word store.
+   bounded cache and a capped learned-word store. While visible, the keyboard
+   checks available process memory every second and before system dictionary
+   work. Below 25 MiB of headroom, or on a UIKit memory warning, it releases
+   the system checker, suggestion cache, hidden emoji panel and hidden key planes.
+   Cleanup is silent and preserves the visible panel, basic typing, bundled
+   suggestions and correction undo. Emoji panels are also released when closed
+   or when the keyboard disappears; pending catalog delivery is cancelled.
+   System dictionary work resumes lazily after five consecutive one-second
+   samples with at least 35 MiB available. These are conservative policy
+   thresholds, not platform limits or a measured guarantee. iOS can still terminate an
+   extension without delivering a warning; these checks cannot guarantee survival.
 
 The word list, the bigram table, the emoji catalog and the emoji suggestion
 table live once at `assets/keyboard/` in the repository root. The iOS keyboard

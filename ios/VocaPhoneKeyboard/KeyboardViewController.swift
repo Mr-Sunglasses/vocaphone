@@ -86,6 +86,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// panel most sessions never open. Everything the keyboard needs to *appear*
     /// comes first; everything else waits to be asked for.
     private var emojiPanel: EmojiPanelView?
+    private var isMemoryConstrained = false
+    private var healthyMemorySamples = 0
+    private var emojiLoadTask: Task<Void, Never>?
     private lazy var keyGrid = KeyGridView(
         metrics: KeyboardMetrics.resolved(for: traitCollection, preference: heightPreference),
         palette: palette
@@ -136,6 +139,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         typing.onWordListLoaded = { [weak self] list in
             self?.keyGrid.swipeWordList = list
         }
+        typing.onMemoryPressure = { [weak self] in self?.reduceMemoryUsage() }
         // The language half of the touch model. Straight through to the grid,
         // which hands it to the hit map — nothing here interprets it.
         typing.onNextCharacters = { [weak self] weights in
@@ -169,38 +173,61 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func noteAvailableMemory(_ moment: MemorySample) {
         let key = "\(moment)"
         guard sampledMoments.insert(key).inserted else { return }
-        let availableMB = Int(os_proc_available_memory() / (1024 * 1024))
+        guard let availableMB = KeyboardMemoryBudget.availableMegabytes else { return }
         DiagnosticLog.record(
             .keyboardShown,
             metadata: .megabytesAvailable(availableMB)
         )
-        reportIfLowOnMemory(availableMB)
+        reportIfLowOnMemory()
     }
 
-    /// Below this, a keyboard is living on borrowed time: the measured launches
-    /// that ended in iOS killing the extension — and handing the user another
-    /// keyboard mid-sentence — reported four to eight megabytes, against the
-    /// sixty-five of an unpressured one.
-    private static let lowMemoryMegabytes = 25
+    /// Reclaim extension resources before asking the app to release idle
+    /// speech engines as well. The app may be suspended or busy transcribing,
+    /// so its response cannot be the keyboard's only line of defense.
+    private func reportIfLowOnMemory() {
+        if !KeyboardMemoryBudget.hasHeadroom { reduceMemoryUsage() }
+    }
 
-    /// Tells the app, which is the only process that can do anything about it.
-    ///
-    /// The keyboard's allowance is not the keyboard's to grow: iOS shrinks what
-    /// an extension may have when the *system* is under pressure, and on this
-    /// phone the pressure is the app's own speech model. So this is a request,
-    /// not a report — see `RecordingCoordinator.releaseLocalEnginesIfIdle`.
-    private func reportIfLowOnMemory(_ availableMB: Int) {
-        guard availableMB < Self.lowMemoryMegabytes else { return }
+    /// Only the one-second timer advances recovery, never keystrokes. Require
+    /// sustained extra headroom so releasing a cache cannot immediately reload it.
+    private func sampleMemoryRecovery() {
+        reportIfLowOnMemory()
+        guard isMemoryConstrained else { return }
+        guard KeyboardMemoryBudget.hasRecoveryHeadroom else {
+            healthyMemorySamples = 0
+            return
+        }
+        healthyMemorySamples += 1
+        guard healthyMemorySamples >= 5 else { return }
+        healthyMemorySamples = 0
+        isMemoryConstrained = false
+        typing.resumeAfterMemoryPressure()
+    }
+
+    private func reduceMemoryUsage() {
+        guard isViewLoaded else { return }
+        healthyMemorySamples = 0
+        typing.reduceMemoryUsage()
+        keyGrid.discardHiddenPlanes()
+        if emojiPanel?.isHidden == true { discardEmojiPanel() }
+        guard !isMemoryConstrained else { return }
+        isMemoryConstrained = true
         VocaPhoneDarwinCenter.post(.keyboardLowOnMemory)
     }
 
-    /// The warning comes shortly before the kill, and a keyboard killed while
-    /// on screen is one that freezes and then vanishes mid-word. Hidden planes
-    /// are what this process can give back; the rest is the app's to give.
+    private func discardEmojiPanel() {
+        emojiLoadTask?.cancel()
+        emojiLoadTask = nil
+        emojiPanel?.removeFromSuperview()
+        emojiPanel = nil
+        emojiPanelHeightConstraint = nil
+    }
+
+    /// iOS may terminate an extension without this callback. The headroom
+    /// checks use the same cleanup path proactively.
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
-        keyGrid.discardHiddenPlanes()
-        VocaPhoneDarwinCenter.post(.keyboardLowOnMemory)
+        reduceMemoryUsage()
     }
 
 #if DEBUG
@@ -291,6 +318,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        reportIfLowOnMemory()
         typing.prepareResources()
         // UIKit can finalize a changed Full Access setting after the earlier
         // appearance callbacks. This is the last lifecycle point before guided
@@ -316,6 +344,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     }
 
     override func viewWillDisappear(_ animated: Bool) {
+        healthyMemorySamples = 0
+        discardEmojiPanel()
+        keyGrid.isHidden = surfaceOwnedKeyboard || panelOwnsKeyboard
         isKeyboardVisible = false
         announcesStateChanges = false
         typing.suspend()
@@ -387,11 +418,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func startQuickDictationReadinessPolling() {
         quickDictationReadinessTimer?.invalidate()
         quickDictationReadinessTimer = nil
-        guard dictationSurfaceState.usesCompactControls else { return }
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.isKeyboardVisible else { return }
-                self.dictationSurfaceState.refreshQuickDictationReadiness()
+                self.sampleMemoryRecovery()
+                if self.dictationSurfaceState.usesCompactControls {
+                    self.dictationSurfaceState.refreshQuickDictationReadiness()
+                }
             }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -641,9 +674,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             for: traitCollection,
             preference: heightPreference
         )
+        if !showing { discardEmojiPanel() }
     }
 
     private func makeEmojiPanelIfNeeded() -> EmojiPanelView? {
+        reportIfLowOnMemory()
         if let emojiPanel { return emojiPanel }
         let metrics = KeyboardMetrics.resolved(for: traitCollection, preference: heightPreference)
         let panel = EmojiPanelView(palette: palette, metrics: metrics)
@@ -656,9 +691,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         emojiPanel = panel
         // Four thousand lines, parsed off the main actor, the first time anyone
         // asks for an emoji — and never if they do not.
-        Task.detached(priority: .userInitiated) {
-            let catalog = EmojiCatalog.load(from: Bundle(for: KeyboardViewController.self))
-            await MainActor.run { [weak self] in self?.emojiPanel?.catalog = catalog }
+        emojiLoadTask = Task { @MainActor [weak panel] in
+            guard !Task.isCancelled else { return }
+            // Only Sendable catalog data crosses actors; the UIKit panel stays
+            // on the main actor, including its weak reference and delivery.
+            let catalog = await Task.detached(priority: .userInitiated) {
+                EmojiCatalog.load(from: Bundle(for: KeyboardViewController.self))
+            }.value
+            guard !Task.isCancelled else { return }
+            panel?.catalog = catalog
         }
         return panel
     }
