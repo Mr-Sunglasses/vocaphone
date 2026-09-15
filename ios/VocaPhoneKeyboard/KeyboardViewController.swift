@@ -19,6 +19,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var recordingStartedAt: Date?
     /// Whether the surface held the whole keyboard at the last layout pass.
     private var surfaceOwnedKeyboard = false
+    /// `panelOwnsKeyboard` as of the last render, so a layout change can tell
+    /// a panel opening or closing from a session handing the keys back.
+    private var renderedPanelOwnsKeyboard = false
     /// A panel — the compact dashboard or a picker — owns the same full-height
     /// surface as a live session. Keeping this at the controller level lets
     /// UIKit hide the grid and hand its space to SwiftUI instead of clipping
@@ -278,6 +281,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // instance otherwise comes up in the next field with stats or a picker
         // where the keys should be.
         dictationSurfaceState.present(nil)
+        // Empty field: Start in the centre. Field already has text: corner,
+        // so Start does not sit on top of regenerated candidates. A reused
+        // instance may be in another app's field, so an unanswered read starts
+        // over rather than keeping the last field's latch.
+        dictationSurfaceState.noteDocument(readDocument(), isNewField: true)
         startQuickDictationReadinessPolling()
         // A new appearance is a new field as far as this keyboard can tell.
         //
@@ -467,6 +475,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Moving to a different field brings different traits with it, and the
         // plane should reset so a number pad never leaves the user on letters.
         let documentID = currentDocumentID
+        // Start follows the field: a dictation or emoji with no keystroke moves
+        // it aside, and a field cleared by the host brings it back.
+        dictationSurfaceState.noteDocument(snapshot, isNewField: documentID != lastDocumentID)
         if documentID != lastDocumentID {
             lastDocumentID = documentID
             lastSpaceInsertedAt = nil
@@ -598,6 +609,22 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                     documentReads
                 )
             )
+        }
+        // The compact row moves its action button aside as soon as somebody
+        // types, and "as soon as" is the keystroke — not the suggestions it
+        // eventually produces.
+        switch output {
+        case .text, .space, .newline, .swipeWord:
+            dictationSurfaceState.hasTypedThisSession = true
+        case .deleteBackward, .deleteWord:
+            // Delete in an empty field changes nothing, and nothing would
+            // bring Start back from the corner. An unanswered read is left to
+            // `noteDocument`, which hears about any text that did go.
+            if document.before?.isEmpty == false {
+                dictationSurfaceState.hasTypedThisSession = true
+            }
+        default:
+            break
         }
         switch output {
         case let .text(text):
@@ -1581,11 +1608,37 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             || model.layout != barLayout
             || surfaceFillsKeyboard != surfaceOwnedKeyboard
         {
+            // A panel opening or closing over the keys is not a resize. A
+            // spring on the container revealed the panel a strip at a time as
+            // the frame grew — title, then number, then caption — so the room
+            // changes hands in one frame and the surface fades its own content.
+            // The panel itself has to be what changed: a dictation leaving
+            // `.inserting` for `.completed` hands the keys back with the same
+            // bar model and would otherwise pass for a panel closing.
+            let panelOnly = panelOwnsKeyboard != renderedPanelOwnsKeyboard
+                && !sessionOwnsKeyboard
+                && surfaceFillsKeyboard != surfaceOwnedKeyboard
+                && model.isExpanded == isBarExpanded
+                && model.layout == barLayout
             isBarExpanded = model.isExpanded
             barLayout = model.layout
             surfaceOwnedKeyboard = surfaceFillsKeyboard
-            applyLayoutMetrics(animated: hasRendered)
+            applyLayoutMetrics(animated: hasRendered, panelToggled: panelOnly)
+            // The keys come back the same way: faded in, not cut in.
+            if panelOnly, !surfaceFillsKeyboard, hasRendered, !keyGrid.isHidden,
+               !UIAccessibility.isReduceMotionEnabled
+            {
+                keyGrid.alpha = 0
+                UIView.animate(
+                    withDuration: 0.18,
+                    delay: 0,
+                    options: [.curveEaseOut, .allowUserInteraction, .beginFromCurrentState]
+                ) {
+                    self.keyGrid.alpha = 1
+                }
+            }
         }
+        renderedPanelOwnsKeyboard = panelOwnsKeyboard
         dictationBar.apply(model, animated: hasRendered)
         announceStateChange(to: state, saying: model.announcement)
         hasRendered = true
@@ -1698,7 +1751,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         dictationSurfaceState.onLanguageChanged = { [weak self] lang in
             KeyboardPreferences.transcriptionLanguage = lang
-            KeyboardPreferences.noteTranscriptionLanguageUse(lang)
             self?.refresh()
         }
         dictationSurfaceState.onStyleChanged = { [weak self] _ in
@@ -1911,7 +1963,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Sizes everything from the current traits instead of a single portrait
     /// iPhone constant, and gives the dictation bar only as much room as the
     /// current state actually needs.
-    private func applyLayoutMetrics(animated: Bool = false) {
+    private func applyLayoutMetrics(animated: Bool = false, panelToggled: Bool = false) {
         let metrics = KeyboardMetrics.resolved(
             for: traitCollection,
             preference: heightPreference
@@ -1980,7 +2032,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         emojiPanelHeightConstraint?.constant = metrics.gridHeight
         keyboardHeightConstraint?.constant = keyboardHeight
 
-        guard animated, !UIAccessibility.isReduceMotionEnabled else {
+        // A panel over the keys hands over their room in one frame. Only when
+        // the keyboard itself changes height does it still get the spring: the
+        // host app resizes around it, and a jump there moves the document.
+        guard animated,
+              !UIAccessibility.isReduceMotionEnabled,
+              !(panelToggled && !keyboardResizes)
+        else {
             view.setNeedsLayout()
             return
         }

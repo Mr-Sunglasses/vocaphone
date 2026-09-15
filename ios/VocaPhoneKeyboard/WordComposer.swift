@@ -169,6 +169,12 @@ struct DocumentSnapshot: Equatable {
         self.after = after
     }
 
+    /// `nil` when iOS did not answer. Empty strings are an empty field.
+    var hasContent: Bool? {
+        if before == nil, after == nil { return nil }
+        return !(before ?? "").isEmpty || !(after ?? "").isEmpty
+    }
+
     /// Whether a word continues past the cursor.
     ///
     /// `nil` trailing context is treated as "not mid-word": the permissive

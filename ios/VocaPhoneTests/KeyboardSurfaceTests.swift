@@ -36,6 +36,15 @@ struct KeyboardSurfaceTests {
         #expect(CompactDashboardPage.speed.label(for: stats, now: now) == "Average WPM")
     }
 
+    @Test func compactTypingLatchDoesNotResetWhenCandidatesEmpty() {
+        let surface = DictationSurfaceState()
+        surface.usesCompactControls = true
+        #expect(!surface.hasTypedThisSession)
+        surface.hasTypedThisSession = true
+        surface.candidates = []
+        #expect(surface.hasTypedThisSession)
+    }
+
     @Test func panelsReportOnlyRealVisibilityChanges() {
         let surface = DictationSurfaceState()
         var changes: [Bool] = []
@@ -70,16 +79,137 @@ struct KeyboardSurfaceTests {
         #expect(changes == [true, false])
     }
 
+    @Test func choosingALanguageKeepsTheOpenPickerInPlace() {
+        let language = KeyboardPreferences.transcriptionLanguage
+        let recents = KeyboardPreferences.recentTranscriptionLanguages
+        let modelLanguages = KeyboardPreferences.modelLanguages
+        let localEnabled = LocalTranscriptionPreferences.enabled
+        defer {
+            KeyboardPreferences.transcriptionLanguage = language
+            KeyboardPreferences.recentTranscriptionLanguages = recents
+            KeyboardPreferences.modelLanguages = modelLanguages
+            LocalTranscriptionPreferences.enabled = localEnabled
+        }
+        KeyboardPreferences.recentTranscriptionLanguages = [.english]
+        KeyboardPreferences.transcriptionLanguage = .automatic
+        // Other suites leave an English-only model behind, which would resolve
+        // Spanish back to Automatic. An empty set means every language is open.
+        KeyboardPreferences.modelLanguages = []
+        LocalTranscriptionPreferences.enabled = false
+
+        let surface = DictationSurfaceState()
+        surface.usesCompactControls = true
+        surface.present(.language)
+        let shortcuts = surface.languageShortcuts
+        #expect(shortcuts.contains(.english))
+        #expect(!shortcuts.contains(.spanish))
+
+        surface.select(language: .spanish)
+
+        #expect(surface.language == .spanish)
+        #expect(surface.languageShortcuts == shortcuts)
+        #expect(surface.presentedPanel == .language)
+        // Written at the tap: a keyboard switch from the picker ends this
+        // instance without ever closing it.
+        #expect(KeyboardPreferences.recentTranscriptionLanguages == [.spanish, .english])
+
+        surface.dismissPanel()
+        #expect(KeyboardPreferences.recentTranscriptionLanguages == [.spanish, .english])
+    }
+
+    @Test func onlyTheLastPickOfAPickerVisitBecomesRecent() {
+        let language = KeyboardPreferences.transcriptionLanguage
+        let recents = KeyboardPreferences.recentTranscriptionLanguages
+        let modelLanguages = KeyboardPreferences.modelLanguages
+        let localEnabled = LocalTranscriptionPreferences.enabled
+        defer {
+            KeyboardPreferences.transcriptionLanguage = language
+            KeyboardPreferences.recentTranscriptionLanguages = recents
+            KeyboardPreferences.modelLanguages = modelLanguages
+            LocalTranscriptionPreferences.enabled = localEnabled
+        }
+        KeyboardPreferences.recentTranscriptionLanguages = [.english]
+        KeyboardPreferences.transcriptionLanguage = .automatic
+        KeyboardPreferences.modelLanguages = []
+        LocalTranscriptionPreferences.enabled = false
+
+        let surface = DictationSurfaceState()
+        surface.usesCompactControls = true
+        surface.present(.language)
+        surface.select(language: .spanish)
+        surface.select(language: .french)
+        #expect(KeyboardPreferences.recentTranscriptionLanguages == [.french, .english])
+
+        surface.select(language: .automatic)
+        #expect(KeyboardPreferences.recentTranscriptionLanguages == [.english])
+    }
+
+    /// Start's place follows the field, not only the keys pressed in it.
+    @Test func startFollowsWhatTheFieldReports() {
+        let surface = DictationSurfaceState()
+        surface.usesCompactControls = true
+
+        // A dictation or emoji puts text in the field without a keystroke.
+        surface.noteDocument(DocumentSnapshot(before: "Hello there ", after: ""), isNewField: false)
+        #expect(surface.hasTypedThisSession)
+
+        // The same field not answering keeps it where it is.
+        surface.noteDocument(.unknown, isNewField: false)
+        #expect(surface.hasTypedThisSession)
+
+        // A host clearing the field after sending brings it back.
+        surface.noteDocument(DocumentSnapshot(before: "", after: ""), isNewField: false)
+        #expect(!surface.hasTypedThisSession)
+
+        // Another app's empty field often answers nil on both sides.
+        surface.hasTypedThisSession = true
+        surface.noteDocument(.unknown, isNewField: true)
+        #expect(!surface.hasTypedThisSession)
+    }
+
+    @Test func closingTheLanguagePickerWithoutAPickLeavesRecentsAlone() {
+        let language = KeyboardPreferences.transcriptionLanguage
+        let recents = KeyboardPreferences.recentTranscriptionLanguages
+        defer {
+            KeyboardPreferences.transcriptionLanguage = language
+            KeyboardPreferences.recentTranscriptionLanguages = recents
+        }
+        KeyboardPreferences.recentTranscriptionLanguages = [.english]
+        KeyboardPreferences.transcriptionLanguage = .spanish
+
+        let surface = DictationSurfaceState()
+        surface.usesCompactControls = true
+        surface.present(.language)
+        surface.dismissPanel()
+
+        #expect(KeyboardPreferences.recentTranscriptionLanguages == [.english])
+    }
+
+    @Test func aStylePickerOpenedFromTheDashboardReturnsToIt() {
+        let surface = DictationSurfaceState()
+        var changes: [Bool] = []
+        surface.onPanelVisibilityChanged = { changes.append($0) }
+
+        surface.present(.dashboard)
+        surface.present(.style, returningTo: .dashboard)
+        #expect(surface.panelReturnsToPrevious)
+        surface.dismissPanel()
+
+        #expect(surface.presentedPanel == .dashboard)
+        #expect(!surface.panelReturnsToPrevious)
+        #expect(changes == [true])
+    }
+
     @Test func theStylePickerFromTheRowClosesBackToTheKeys() {
         let style = KeyboardPreferences.writingStyle
         defer { KeyboardPreferences.writingStyle = style }
         let surface = DictationSurfaceState()
+        surface.usesCompactControls = false
         var changes: [Bool] = []
         surface.onPanelVisibilityChanged = { changes.append($0) }
 
         surface.present(.style)
         surface.select(style: .formal)
-        surface.dismissPanel()
 
         #expect(surface.presentedPanel == nil)
         #expect(surface.style == .formal)

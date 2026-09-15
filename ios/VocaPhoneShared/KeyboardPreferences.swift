@@ -98,13 +98,32 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Unstyled model output the picker examples are produced from.
-    /// Clean and Formal only diverge when sentence starts are still lowercase.
-    static let exampleSource = "this is VocaPhone. it is a keyboard you talk to"
-
     /// A short worked example, so the choice is obvious before dictating.
+    ///
+    /// Each style has its own source on purpose. One sentence pushed through
+    /// every style only changes a full stop, so the picker reads as six
+    /// identical captions. These still go through ``TranscriptStyler`` — they
+    /// are not invented results — but each source is chosen so that style's
+    /// signature is the whole line.
     var example: String {
-        TranscriptStyler.apply(Self.exampleSource, style: self)
+        TranscriptStyler.apply(exampleSource, style: self)
+    }
+
+    private var exampleSource: String {
+        switch self {
+        case .raw:
+            "ok so  this is VocaPhone. it is a Keyboard"
+        case .clean:
+            "all done for today"
+        case .formal:
+            "please send the report today"
+        case .casual:
+            "I'll be there in ten."
+        case .veryCasual:
+            "Yeah all good. See you in ten."
+        case .excited:
+            "this is going to be great"
+        }
     }
 
     /// Everyday objects rather than typographic notation.
@@ -507,10 +526,9 @@ enum KeyboardPreferences {
     static let touchTraceKey = "touchTraceEnabled"
     /// Holding or sliding the spacebar to move the cursor.
     static let spacebarCursorKey = "spacebarCursorEnabled"
-    /// The compact dictation row: VocaPhone readiness, writing style and the
-    /// microphone at a glance, with an expandable local-stats dashboard. On
-    /// unless turned off; the key keeps its lab name so a switch someone
-    /// already flipped still counts.
+    /// The compact dictation row: More, Start, and the dashboard behind More.
+    /// On by default. The lab switch is an off-ramp, not the way it ships; the
+    /// key keeps its lab name so a switch someone already flipped still counts.
     static let compactControlsKey = "lab.usesCompactControls"
     /// The layout currently under the fingers.
     static let typingLayoutKey = "typingLayout"

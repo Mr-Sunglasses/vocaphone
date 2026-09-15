@@ -73,6 +73,13 @@ final class TypingStripView: UIScrollView {
         // A chip row that bounces looks like a mistake; it is a fixed set of
         // three things, not a feed.
         alwaysBounceHorizontal = false
+        // iOS 27 blurs a keyboard scroll view's edges, and on a strip this
+        // short the blur covers every chip.
+        if #available(iOS 26.0, *) {
+            for edge in [topEdgeEffect, leftEdgeEffect, bottomEdgeEffect, rightEdgeEffect] {
+                edge.isHidden = true
+            }
+        }
         row.axis = .horizontal
         row.alignment = .fill
         row.spacing = Self.chipSpacing

@@ -468,9 +468,13 @@ struct SessionRecordTests {
             #expect(!style.example.isEmpty)
             #expect(!style.symbolName.isEmpty)
         }
-        #expect(WritingStyle.clean.example == "this is VocaPhone. it is a keyboard you talk to.")
-        #expect(WritingStyle.formal.example == "This is VocaPhone. It is a keyboard you talk to.")
-        #expect(WritingStyle.clean.example != WritingStyle.formal.example)
+        #expect(WritingStyle.raw.example == "ok so  this is VocaPhone. it is a Keyboard")
+        #expect(WritingStyle.clean.example == "all done for today.")
+        #expect(WritingStyle.formal.example == "Please send the report today.")
+        #expect(WritingStyle.casual.example == "I'll be there in ten")
+        #expect(WritingStyle.veryCasual.example == "yeah all good, see you in ten")
+        #expect(WritingStyle.excited.example == "This is going to be great!")
+        #expect(Set(WritingStyle.allCases.map(\.example)).count == WritingStyle.allCases.count)
     }
 
     @Test func transcriptionLanguagesHaveStableGatewayValues() {

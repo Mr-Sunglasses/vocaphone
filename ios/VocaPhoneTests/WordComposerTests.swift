@@ -251,4 +251,11 @@ struct DocumentSnapshotTests {
         #expect(!DocumentSnapshot.unknown.isMidWord)
         #expect(!DocumentSnapshot(before: "hello").isMidWord)
     }
+
+    @Test func documentContentIsNilWhenTheHostDidNotAnswer() {
+        #expect(DocumentSnapshot.unknown.hasContent == nil)
+        #expect(DocumentSnapshot(before: "", after: "").hasContent == false)
+        #expect(DocumentSnapshot(before: "hello", after: "").hasContent == true)
+        #expect(DocumentSnapshot(before: "", after: "world").hasContent == true)
+    }
 }
