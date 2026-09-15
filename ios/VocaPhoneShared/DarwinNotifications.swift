@@ -27,6 +27,20 @@ enum VocaPhoneDarwinNotification: String, Sendable {
     /// "you have not opened the keyboard yet" are the same silence, and guided
     /// setup can only show a spinner and hope.
     case keyboardLacksFullAccess = "com.vocahq.vocaphone.keyboard-no-full-access"
+    /// The keyboard wrote ``KeyboardPreferences/hasCompletedKeyboardPractice``.
+    ///
+    /// App Group `UserDefaults` does not reliably wake the containing app, so
+    /// guided setup rereads the durable proof after this ping — including the
+    /// marker file that survives the suite cache.
+    case keyboardPracticeCompleted = "com.vocahq.vocaphone.keyboard-practice-completed"
+    /// "Are you on screen right now?", asked by Enable keyboard.
+    ///
+    /// The keyboard republishes its status only when it *appears*, throttled so
+    /// that flicking between keyboards is not a stream of file writes. A
+    /// keyboard that is already up when the page opens therefore never writes
+    /// again, and a page waiting for a fresh write waits forever. This asks for
+    /// one, and only a running extension can answer.
+    case keyboardStatusRequested = "com.vocahq.vocaphone.keyboard-status-requested"
 
     fileprivate var name: CFNotificationName {
         CFNotificationName(rawValue as CFString)
@@ -83,6 +97,15 @@ final class VocaPhoneDarwinObservation: @unchecked Sendable {
     deinit {
         invalidate()
     }
+}
+
+extension Notification.Name {
+    /// Local bridge for ``VocaPhoneDarwinNotification/keyboardPracticeCompleted``.
+    /// Darwin itself is not a `NotificationCenter` name, and SwiftUI views
+    /// cannot mutate `@AppStorage` from the CF callback.
+    static let vocaKeyboardPracticeCompleted = Notification.Name(
+        "com.vocahq.vocaphone.keyboard-practice-completed.local"
+    )
 }
 
 enum VocaPhoneDarwinCenter {

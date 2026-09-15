@@ -184,6 +184,203 @@ struct LocalModelCatalogTests {
         #expect(russian.count >= 3)
     }
 
+    /// Two keyboards, one card in first place. It has to be the one that can
+    /// hear both of them — the Russian specialist used to lead here, and it
+    /// does not transcribe a word of the English keyboard sitting next to it.
+    @Test func twoKeyboardLanguagesLeadWithTheModelThatCoversBoth() {
+        let spoken = LocalModelCatalog.spokenLanguages(
+            device: "en",
+            keyboards: ["en-US", "ru-RU"]
+        )
+        #expect(spoken == ["en", "ru"])
+        let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
+        #expect(picks[0].role == .multilingual)
+        #expect(picks[0].model.covers("en"))
+        #expect(picks[0].model.covers("ru"))
+        // The specialists stay, as alternates rather than as the answer.
+        #expect(picks.contains { $0.model.id == "giga-am-ctc-ru" })
+        #expect(picks.contains { $0.model.id == "parakeet-tdt-0.6b-v2-en" })
+    }
+
+    /// One keyboard language still leads with its specialist: there is nothing
+    /// for a multilingual model to cover that the specialist does not.
+    @Test func aSingleKeyboardLanguageStillLeadsWithItsSpecialist() {
+        let spoken = LocalModelCatalog.spokenLanguages(device: "en", keyboards: ["ru-RU"])
+        #expect(spoken == ["ru"])
+        let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
+        #expect(picks[0].role == .regional)
+        #expect(picks[0].model.id == "giga-am-ctc-ru")
+    }
+
+    @Test func everyEnabledKeyboardLanguageIsInTheSpokenList() {
+        let spoken = LocalModelCatalog.spokenLanguages(
+            device: "en",
+            keyboards: ["en-US", "zh-Hans", "ja", "ko", "ru-RU"]
+        )
+        #expect(spoken == ["en", "zh", "ja", "ko", "ru"])
+        let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
+        #expect(picks.contains { $0.model.id == "giga-am-ctc-ru" })
+        #expect(picks.contains { $0.model.id == "paraformer-zh-small" })
+        #expect(picks.contains { $0.model.id == "sense-voice" })
+    }
+
+    @Test func noChineseModelWithoutAChineseKeyboard() {
+        let spoken = LocalModelCatalog.spokenLanguages(
+            device: "en",
+            keyboards: ["en-US", "ru-RU"]
+        )
+        #expect(spoken == ["en", "ru"])
+        let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
+        #expect(!picks.contains { $0.model.id == "paraformer-zh-small" })
+        #expect(!picks.contains { $0.model.id == "sense-voice" })
+    }
+
+    /// The phone region and preferred-language list are not keyboards. A
+    /// Chinese iPhone with a Russian layout must not get Paraformer.
+    @Test func deviceLanguageDoesNotInventAKeyboard() {
+        let spoken = LocalModelCatalog.spokenLanguages(
+            device: "zh",
+            keyboards: ["en-US", "ru-RU"]
+        )
+        #expect(spoken == ["en", "ru"])
+        #expect(!spoken.contains("zh"))
+        let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
+        #expect(picks.contains { $0.model.id == "giga-am-ctc-ru" })
+        #expect(!picks.contains { $0.model.id == "paraformer-zh-small" })
+        #expect(!picks.contains { $0.model.id == "sense-voice" })
+    }
+
+    @Test func emptyKeyboardsFallBackToThePhoneLanguage() {
+        let spoken = LocalModelCatalog.spokenLanguages(
+            device: "ru",
+            keyboards: ["emoji", "com.vocahq.vocaphone.keyboard"]
+        )
+        #expect(spoken == ["ru"])
+    }
+
+    @Test func normalizedLanguageCodeSkipsEmojiDictationAndBundles() {
+        #expect(LocalModelCatalog.normalizedLanguageCode("emoji") == nil)
+        #expect(LocalModelCatalog.normalizedLanguageCode("dictation") == nil)
+        #expect(LocalModelCatalog.normalizedLanguageCode("com.vocahq.vocaphone.keyboard") == nil)
+        #expect(LocalModelCatalog.normalizedLanguageCode("ru_RU@sw=Russian") == "ru")
+        #expect(LocalModelCatalog.normalizedLanguageCode("zh-Hans") == "zh")
+        #expect(LocalModelCatalog.normalizedLanguageCode("yue-Hant") == "yue")
+        #expect(LocalModelCatalog.normalizedLanguageCode("en-US") == "en")
+        #expect(LocalModelCatalog.normalizedLanguageCode("auto") == nil)
+    }
+
+    @Test func multilingualPickCoversEveryLanguageOnThePhone() {
+        let pick = LocalModelCatalog.bestMultilingual(
+            deviceMemoryGB: 8,
+            languages: ["ru", "en"]
+        )
+        #expect(pick?.id == "parakeet-tdt-0.6b-v3")
+        #expect(pick?.covers("en") == true)
+        #expect(pick?.covers("ru") == true)
+    }
+
+    /// An English iPhone that also types Hindi. Dolphin covers both, but it is
+    /// an East Asian model, and leading with it put it above Parakeet — the
+    /// best English model this phone can run — under FOR YOU.
+    @Test func anEnglishPhoneWithAnIndicKeyboardLeadsWithTheBestEnglishModel() {
+        let spoken = LocalModelCatalog.spokenLanguages(
+            device: "en",
+            keyboards: ["hi-IN", "en-IN"]
+        )
+        #expect(spoken == ["en", "hi"])
+        let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 6, languages: spoken)
+        #expect(picks[0].model.id == "parakeet-tdt-0.6b-v2-en")
+        #expect(picks.contains { $0.model.covers("hi") })
+    }
+
+    /// The phone language leads only when it is typed too. Globe order is not
+    /// a preference, so a Hindi keyboard listed first must not outrank it.
+    @Test func thePhoneLanguageLeadsTheKeyboardsItIsOn() {
+        #expect(
+            LocalModelCatalog.spokenLanguages(device: "en", keyboards: ["hi-IN", "en-US"])
+                == ["en", "hi"]
+        )
+        #expect(
+            LocalModelCatalog.spokenLanguages(device: "en", keyboards: ["hi-IN"]) == ["hi"]
+        )
+    }
+
+    /// First run offers only the most accurate models. The smallest download
+    /// and a wide model that merely covers English stay in More models.
+    @Test func onboardingOffersOnlyTheMostAccurateModels() {
+        let picks = LocalModelCatalog.onboardingRecommendations(deviceMemoryGB: 6, languages: ["en"])
+        #expect(picks.map(\.model.id) == [
+            "parakeet-tdt-0.6b-v2-en", "parakeet-tdt-0.6b-v3", "canary-180m-flash",
+        ])
+        #expect(picks.allSatisfy { LocalModelCatalog.isHighAccuracy($0.model, for: "en") })
+    }
+
+    /// A second keyboard earns its own most accurate model, after the phone
+    /// language's best.
+    @Test func onboardingKeepsTheBestModelForASecondKeyboard() {
+        let picks = LocalModelCatalog.onboardingRecommendations(
+            deviceMemoryGB: 6,
+            languages: ["en", "hi"]
+        )
+        #expect(picks.count == 3)
+        #expect(picks[0].model.id == "parakeet-tdt-0.6b-v2-en")
+        #expect(picks.contains { $0.model.id == "dolphin-small-ctc" })
+        #expect(!picks.contains { $0.model.id == "dolphin-base-ctc" })
+    }
+
+    /// A phone too small for any of them still gets something to download.
+    @Test func onboardingFallsBackWhenNothingAccurateFits() {
+        let picks = LocalModelCatalog.onboardingRecommendations(deviceMemoryGB: 1, languages: ["en"])
+        #expect(!picks.isEmpty)
+    }
+
+    @Test func everyFamilyHasItsMaker() {
+        let maker = { (id: String) in LocalModelCatalog.descriptor(for: id)?.maker }
+        #expect(maker("parakeet-tdt-0.6b-v2-en") == .nvidia)
+        #expect(maker("canary-180m-flash") == .nvidia)
+        #expect(maker("openai_whisper-base") == .openAI)
+        #expect(maker("distil-whisper_distil-large-v3_594MB") == .huggingFace)
+        #expect(maker("moonshine-base-en") == .usefulSensors)
+        #expect(maker("sense-voice") == .alibaba)
+        #expect(maker("paraformer-zh-small") == .alibaba)
+        #expect(maker("dolphin-small-ctc") == .dataocean)
+        #expect(maker("giga-am-ctc-ru") == .sber)
+    }
+
+    /// Smallest is smallest first, and never a model built for another
+    /// language that merely lists this one.
+    @Test func theSmallestChoiceIsOrderedBySizeForTheLanguage() {
+        let picks = LocalModelCatalog.onboardingRecommendations(
+            deviceMemoryGB: 6,
+            languages: ["en"],
+            priority: .lighter
+        )
+        #expect(picks.count == 3)
+        #expect(picks.map(\.model.sizeBytes) == picks.map(\.model.sizeBytes).sorted())
+        #expect(!picks.contains { $0.model.id == "paraformer-zh-small" })
+        #expect(!picks.contains { $0.model.maker == .dataocean })
+    }
+
+    @Test func theManyLanguagesChoiceNeverOffersAnEnglishOnlyModel() {
+        let picks = LocalModelCatalog.onboardingRecommendations(
+            deviceMemoryGB: 6,
+            languages: ["en", "de"],
+            priority: .multilingual
+        )
+        #expect(!picks.isEmpty)
+        #expect(picks.allSatisfy { !$0.model.englishOnly })
+        #expect(picks[0].model.covers("en") && picks[0].model.covers("de"))
+    }
+
+    @Test func spokenLanguagesUsesDeviceWhenItIsNotEnglish() {
+        let spoken = LocalModelCatalog.spokenLanguages(
+            device: "ru",
+            keyboards: ["ru-RU", "en-US"]
+        )
+        #expect(spoken.first == "ru")
+        #expect(spoken.contains("en"))
+    }
+
     @Test func everyPickFitsTheDeviceAndCoversItsLanguage() {
         for language in ["en", "de", "hi", "zh", "yue", "ja", "ru", "it"] {
             for memory in [2, 3, 4, 8] {

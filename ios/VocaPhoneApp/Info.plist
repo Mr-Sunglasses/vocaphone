@@ -40,11 +40,11 @@
     <string>linkedin</string>
   </array>
   <key>NSMicrophoneUsageDescription</key>
-  <string>vocaphone records dictation for your configured transcription gateway and, when Quick Dictation is enabled, keeps microphone input ready for up to 10 minutes. Standby audio is discarded.</string>
+  <string>vocaphone records your dictation and turns it into text on this iPhone or on a gateway you run. Audio is deleted once the transcript is saved. Quick Dictation can keep the microphone ready between dictations; that audio is discarded.</string>
   <key>NSCameraUsageDescription</key>
-  <string>vocaphone uses the camera only when you choose to scan the gateway pairing QR code.</string>
+  <string>Only to scan a gateway pairing code. Skip this if you transcribe on this iPhone.</string>
   <key>NSLocalNetworkUsageDescription</key>
-  <string>vocaphone connects to the transcription gateway you configure on your private network.</string>
+  <string>Only to reach a gateway on your network. Skip this if you transcribe on this iPhone.</string>
   <key>NSAppTransportSecurity</key>
   <dict>
     <!-- ATS has no CIDR-based exception, and neither NSAllowsLocalNetworking

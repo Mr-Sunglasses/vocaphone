@@ -34,8 +34,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var announcesStateChanges = false
     private var isKeyboardVisible = false
     private var lastPublishedAt: Date?
-    private var lastPublishedFullAccess: Bool?
+    /// Whether the last test's write reached the App Group container.
+    private var lastReachedContainer: Bool?
     private static let statusRepublishInterval: TimeInterval = 10
+    private static let statusRepublishGap: TimeInterval = 1
     private var isBarExpanded = false
     private var barLayout = DictationBarLayout.status
     private var lastDocumentID: String?
@@ -382,33 +384,49 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// `viewDidLoad` alone can leave the app watching a status from an earlier
     /// launch; republishing on every appearance closes that gap, throttled so
     /// that returning to the keyboard repeatedly is not a stream of file writes.
-    private func publishKeyboardStatus() {
+    ///
+    /// `force` answers ``VocaPhoneDarwinNotification/keyboardStatusRequested``:
+    /// the throttle exists to stop repeated *appearances* writing repeatedly,
+    /// and a page that asked for the write is not that.
+    private func publishKeyboardStatus(force: Bool = false) {
         let now = Date()
         guard KeyboardStatusPublication.shouldPublish(
             lastPublishedAt: lastPublishedAt,
-            lastPublishedFullAccess: lastPublishedFullAccess,
-            fullAccess: hasFullAccess,
+            lastReachedContainer: lastReachedContainer,
+            forced: force,
             now: now,
-            minimumInterval: Self.statusRepublishInterval
+            minimumInterval: Self.statusRepublishInterval,
+            minimumGap: Self.statusRepublishGap
         ) else {
             return
         }
         lastPublishedAt = now
-        lastPublishedFullAccess = hasFullAccess
-        if hasFullAccess {
-            try? store.saveKeyboardStatus(
-                KeyboardStatus(lastSeenAt: now, hasFullAccess: hasFullAccess)
-            )
-        } else {
-            // The write above would fail silently: the App Group container is
-            // exactly what Full Access grants. Say so out of band instead, so
-            // guided setup can name the problem rather than waiting forever on
-            // a record that can never arrive.
+        // The write is the test, not `hasFullAccess`.
+        //
+        // `hasFullAccess` is read through the connection to the host app, and
+        // this is called from `viewDidLoad` and `viewWillAppear`, where UIKit
+        // says that connection is not up and such reads "will produce an
+        // inaccurate result". On the first launch after Allow Full Access was
+        // turned on it answered off here and on in `viewDidAppear`, so the app
+        // was told the switch was off by the very launch that proved it on.
+        //
+        // The App Group container needs no host: it is reachable or not from
+        // the moment the process starts, and reaching it is what Full Access
+        // grants. A write that lands is the proof; one that fails is the only
+        // honest "off" — said out of band, since the file it would have
+        // written is the thing it cannot reach.
+        let reachedContainer: Bool
+        do {
+            try store.saveKeyboardStatus(KeyboardStatus(lastSeenAt: now, hasFullAccess: true))
+            reachedContainer = true
+        } catch {
+            reachedContainer = false
             VocaPhoneDarwinCenter.post(.keyboardLacksFullAccess)
         }
+        lastReachedContainer = reachedContainer
         DiagnosticLog.record(
             .keyboardShown,
-            metadata: .fullAccess(hasFullAccess)
+            metadata: .fullAccess(reachedContainer)
         )
     }
 
@@ -480,6 +498,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         case .insert: insertTranscript(force: false)
         case .insertHere: insertTranscript(force: true)
         case .openApp: resumeHandoff()
+        case .openFullAccessSettings: openFullAccessSettings()
         case .retry: retryTranscription()
         case .cancel: cancelSession()
         case .undo: undoInsertion()
@@ -1056,7 +1075,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func startSession() {
         guard hasFullAccess else {
-            dictationBar.flash("Full Access is needed. \(DictationBarModel.fullAccessPath)")
+            openFullAccessSettings()
             return
         }
         discardParkedSession()
@@ -1235,6 +1254,20 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
     }
 
+    /// Opens vocaphone, which immediately opens iOS Settings. The keyboard
+    /// cannot deep-link to Allow Full Access; Settings › vocaphone › Keyboards
+    /// is the pane that has the switch.
+    private func openFullAccessSettings() {
+        openURLFromKeyboard(AppConfiguration.fullAccessDeepLink) { [weak self] opened in
+            DispatchQueue.main.async {
+                guard let self, !opened else { return }
+                self.dictationBar.flash(
+                    "Full Access is needed. \(DictationBarModel.fullAccessPath)"
+                )
+            }
+        }
+    }
+
     private func openURLFromKeyboard(
         _ url: URL,
         completion: @escaping @Sendable (Bool) -> Void
@@ -1242,15 +1275,22 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Custom keyboards don't support opening their containing app through
         // NSExtensionContext on current iOS releases. The responder chain still
         // carries the user-initiated URL request to the owning app or scene.
-        if VocaPhoneOpenURLFromResponderChain(self, url) {
-            completion(true)
+        //
+        // It answers asynchronously, and on some hosts never answers at all.
+        // Reporting success the moment a responder accepted the request is why
+        // a Locked button that opened nothing also said nothing: the caller's
+        // fallback message was suppressed by a launcher that always claimed to
+        // have worked. Silence is treated as failure instead.
+        let reply = SingleShotReply(completion)
+        if VocaPhoneOpenURLFromResponderChain(self, url, { reply.fire($0) }) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { reply.fire(false) }
             return
         }
         guard let extensionContext else {
-            completion(false)
+            reply.fire(false)
             return
         }
-        extensionContext.open(url, completionHandler: completion)
+        extensionContext.open(url) { reply.fire($0) }
     }
 
     private func transition(_ record: inout SessionRecord, to state: SessionState) {
@@ -1277,6 +1317,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                     self.dictationSurfaceState.refreshPreferences()
                     self.refresh()
                 }
+            }
+        )
+        // Only an extension that is actually on screen receives this, so the
+        // reply is proof of exactly what Enable keyboard is waiting to see.
+        darwinObservations.append(
+            VocaPhoneDarwinCenter.observe(.keyboardStatusRequested) { [weak self] in
+                Task { @MainActor [weak self] in self?.publishKeyboardStatus(force: true) }
             }
         )
     }
@@ -2351,4 +2398,23 @@ final class KeyboardStack: UIStackView {
         return claimRect.contains(point)
     }
 
+}
+
+/// Calls back exactly once.
+///
+/// The responder chain and a timeout race to answer whether a URL opened, and
+/// the loser must not reopen a decision the winner already made. Both arms run
+/// on the main queue, which is what makes the unchecked conformance safe.
+private final class SingleShotReply: @unchecked Sendable {
+    private var completion: (@Sendable (Bool) -> Void)?
+
+    init(_ completion: @escaping @Sendable (Bool) -> Void) {
+        self.completion = completion
+    }
+
+    func fire(_ opened: Bool) {
+        guard let completion else { return }
+        self.completion = nil
+        completion(opened)
+    }
 }

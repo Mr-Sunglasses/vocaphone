@@ -46,9 +46,32 @@ extension BrandPalette {
     }
 }
 
+extension BrandPalette {
+    /// `#006d56`, the board's inner fill on the liquid-glass primary button.
+    /// Deliberately not ``light`` (`#0F6B57`): Figma's tint on this one control
+    /// is a shade deeper, and the two are close enough that hardcoding it at
+    /// the call site read as a typo rather than a decision.
+    static let primaryFillLight = UIColor(
+        red: 0x00 / 255, green: 0x6D / 255, blue: 0x56 / 255, alpha: 1
+    )
+
+    /// The same role on a dark surface.
+    ///
+    /// `#006d56` does not follow the palette into dark mode: a near-black
+    /// button on a near-black canvas is the case ``dark`` exists to answer, and
+    /// a primary button that ignored it would be the one control in the app
+    /// that does. The label follows ``onAccent`` either way.
+    static let primaryFill = UIColor { traits in
+        traits.userInterfaceStyle == .dark ? dark : primaryFillLight
+    }
+}
+
 extension Color {
     /// The app's tint. Everything that used to say `.blue` says this instead.
     static let brand = Color(BrandPalette.accent)
+
+    /// The fill of the one filled action a screen is allowed.
+    static let brandPrimaryFill = Color(BrandPalette.primaryFill)
 
     /// For labels drawn on top of a brand-filled background.
     static let onBrand = Color(BrandPalette.onAccent)

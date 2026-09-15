@@ -50,6 +50,50 @@ struct ReliabilityFeatureTests {
         ))
     }
 
+    @Test func startDownloadAllowsTwoModelsAndQueuesAThird() {
+        #expect(
+            ModelDownloadStartDecision.decide(downloadingIDs: ["a"], requestedID: "a")
+                == .alreadyThisModel
+        )
+        #expect(
+            ModelDownloadStartDecision.decide(downloadingIDs: ["a"], requestedID: "b")
+                == .allowed
+        )
+        #expect(
+            ModelDownloadStartDecision.decide(downloadingIDs: ["a", "b"], requestedID: "c")
+                == .atCapacity
+        )
+        #expect(
+            ModelDownloadStartDecision.decide(
+                downloadingIDs: ["a", "b"],
+                queuedIDs: ["c"],
+                requestedID: "c"
+            ) == .alreadyQueued
+        )
+        #expect(
+            ModelDownloadStartDecision.decide(downloadingIDs: [], requestedID: "a")
+                == .allowed
+        )
+    }
+
+    @Test func completingKeyboardPracticePingsDarwinAndWritesAMarker() {
+        let original = KeyboardPreferences.hasCompletedKeyboardPractice
+        defer { KeyboardPreferences.hasCompletedKeyboardPractice = original }
+
+        KeyboardPreferences.hasCompletedKeyboardPractice = false
+        #expect(!KeyboardPreferences.refreshKeyboardPracticeProof())
+
+        let semaphore = DispatchSemaphore(value: 0)
+        let observation = VocaPhoneDarwinCenter.observe(.keyboardPracticeCompleted) {
+            semaphore.signal()
+        }
+        defer { observation.invalidate() }
+
+        KeyboardPreferences.hasCompletedKeyboardPractice = true
+        #expect(semaphore.wait(timeout: .now() + 1) == .success)
+        #expect(KeyboardPreferences.refreshKeyboardPracticeProof())
+    }
+
     @Test func multipleDarwinObserversReceiveTheSameSignal() {
         let semaphore = DispatchSemaphore(value: 0)
         let callbackQueue = DispatchQueue(

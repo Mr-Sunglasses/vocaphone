@@ -27,13 +27,11 @@ final class DictationSurfaceState: ObservableObject {
         get { storedStyle }
         set { change(&storedStyle, to: newValue) }
     }
-    /// The compact arrangement, for looking at in the keyboard lab.
-    ///
-    /// The shipping row keeps language and style in separate leading buttons.
-    /// Compact mode instead shows VocaPhone readiness, style and microphone,
+    /// The compact arrangement: VocaPhone readiness, style and microphone,
     /// with the first control expanding into language, settings and local
-    /// usage stats. Debug builds opt into it from the keyboard lab.
-    private var storedUsesCompactControls: Bool = false
+    /// usage stats. The default; the older row with language and style in
+    /// separate leading buttons is what the keyboard lab switch turns back on.
+    private var storedUsesCompactControls: Bool = KeyboardPreferences.compactControlsEnabled
     var usesCompactControls: Bool {
         get { storedUsesCompactControls }
         set { change(&storedUsesCompactControls, to: newValue) }

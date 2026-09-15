@@ -16,34 +16,70 @@ final class LocalModelManager {
     }
 
     private(set) var downloadedModelIDs: Set<String> = []
-    private(set) var downloadingModelID: String?
-    private(set) var progress: Double = 0
-    /// Bytes expected for the transfer in flight, and when it began. Published
-    /// so the picker can say more than a percent: on a 670 MB download a bare
-    /// percentage reads as stuck.
-    private(set) var downloadTotalBytes: Int64 = 0
-    private(set) var downloadStartedAt: Date?
+    /// Per-model transfers in flight. Two can run at once; a third Get waits.
+    private(set) var inFlightDownloads: [String: InFlightDownload] = [:]
+    /// Models that tapped Get while both slots were busy, in tap order.
+    private(set) var queuedModelIDs: [String] = []
 
-    /// Derived rather than counted a second time: `progress` is already
-    /// completed-over-total from the same aggregator.
-    var downloadedBytes: Int64 {
-        guard downloadTotalBytes > 0 else { return 0 }
-        return Int64(progress * Double(downloadTotalBytes))
+    struct InFlightDownload: Equatable, Sendable {
+        var fraction: Double
+        var totalBytes: Int64
+        var startedAt: Date
     }
 
-    var downloadSizeProgress: String? {
-        DownloadReadiness.sizeProgress(
-            downloadedBytes: downloadedBytes,
-            totalBytes: downloadTotalBytes
+    var downloadingModelIDs: Set<String> { Set(inFlightDownloads.keys) }
+
+    func isDownloading(_ id: String) -> Bool { inFlightDownloads[id] != nil }
+    func isQueued(_ id: String) -> Bool { queuedModelIDs.contains(id) }
+    func progress(for id: String) -> Double { inFlightDownloads[id]?.fraction ?? 0 }
+
+    /// First in-flight id, for surfaces that still show a single transfer.
+    var downloadingModelID: String? { inFlightDownloads.keys.sorted().first }
+
+    var progress: Double {
+        guard let id = downloadingModelID else { return 0 }
+        return progress(for: id)
+    }
+
+    var downloadTotalBytes: Int64 { inFlightDownloads[downloadingModelID ?? ""]?.totalBytes ?? 0 }
+    var downloadStartedAt: Date? { inFlightDownloads[downloadingModelID ?? ""]?.startedAt }
+
+    var downloadedBytes: Int64 {
+        guard let id = downloadingModelID, let item = inFlightDownloads[id], item.totalBytes > 0 else {
+            return 0
+        }
+        return Int64(item.fraction * Double(item.totalBytes))
+    }
+
+    var downloadSizeProgress: String? { downloadingModelID.flatMap { downloadSizeProgress(for: $0) } }
+
+    var downloadTimeRemaining: String? { downloadingModelID.flatMap { downloadTimeRemaining(for: $0) } }
+
+    func downloadSizeProgress(for id: String) -> String? {
+        guard let item = inFlightDownloads[id], item.totalBytes > 0 else { return nil }
+        return DownloadReadiness.sizeProgress(
+            downloadedBytes: Int64(item.fraction * Double(item.totalBytes)),
+            totalBytes: item.totalBytes
         )
     }
 
-    var downloadTimeRemaining: String? {
-        guard let downloadStartedAt else { return nil }
+    /// The estimate without its trailing "left", for a sentence that puts it
+    /// somewhere other than the end.
+    func downloadTimeRemainingPhrase(for id: String) -> String? {
+        guard let item = inFlightDownloads[id] else { return nil }
+        return DownloadReadiness.timeRemainingPhrase(
+            downloadedBytes: Int64(item.fraction * Double(max(item.totalBytes, 1))),
+            totalBytes: item.totalBytes,
+            elapsed: Date().timeIntervalSince(item.startedAt)
+        )
+    }
+
+    func downloadTimeRemaining(for id: String) -> String? {
+        guard let item = inFlightDownloads[id] else { return nil }
         return DownloadReadiness.timeRemaining(
-            downloadedBytes: downloadedBytes,
-            totalBytes: downloadTotalBytes,
-            elapsed: Date().timeIntervalSince(downloadStartedAt)
+            downloadedBytes: Int64(item.fraction * Double(max(item.totalBytes, 1))),
+            totalBytes: item.totalBytes,
+            elapsed: Date().timeIntervalSince(item.startedAt)
         )
     }
 
@@ -101,13 +137,18 @@ final class LocalModelManager {
     /// SwiftUI is free to recreate either onboarding or Settings while a model
     /// is downloading; a view-local task handle made their Cancel buttons lose
     /// the operation they were meant to stop.
-    @ObservationIgnored private var modelDownloadTask: Task<Void, Never>?
+    @ObservationIgnored private var modelDownloadTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var queuedDownloads:
+        [(descriptor: LocalModelDescriptor, onCompletion: @MainActor () -> Void)] = []
 
     /// Downloads run on a foreground session while the app is in front, and are
     /// handed to the background session only when the user leaves. Routing every
     /// byte through `nsurlsessiond` costs real throughput, and the app is in
     /// front for very nearly every download.
     private static let downloadDelegate = FileDownloadDelegate()
+
+    /// Two full models at once. Files inside one model still use `maxParallelTransfers`.
+    static let maxConcurrentModelDownloads = ModelDownloadStartDecision.maxConcurrent
 
     /// How many of a model's small files are fetched side by side.
     static let maxParallelTransfers = 4
@@ -197,6 +238,9 @@ final class LocalModelManager {
     /// transfer that cannot produce any would restart from zero.
     @MainActor
     static func enterBackground() {
+#if DEBUG
+        ModelDownloadTrace.record("app.background", "transfers=\(downloadDelegate.hasTransfers)")
+#endif
         // This runs on every trip to the home screen, so do not take a
         // background assertion unless there is actually a transfer to hand over.
         guard downloadDelegate.hasTransfers else { return }
@@ -223,7 +267,130 @@ final class LocalModelManager {
         // Recreate the session at launch so iOS can reconnect any background
         // events belonging to the stable identifier above.
         _ = Self.backgroundDownloadSession
+        removeAbandonedStaging()
         refresh()
+#if DEBUG
+        ModelDownloadTrace.record(
+            "manager.init",
+            "interrupted=\(Self.interruptedDownloadIDs.joined(separator: ","))"
+        )
+#endif
+        // Inherit before resuming: a download restarted ahead of this would
+        // not know the system was already fetching its largest file.
+        Task { @MainActor [weak self] in
+            await Self.downloadDelegate.inheritTransfers(from: Self.backgroundDownloadSession)
+            self?.resumeInterruptedDownloads()
+        }
+    }
+
+    /// Makes a resumed download the model in use, unless something else
+    /// already is. Mirrors what the picker does when a download it started
+    /// finishes while it is still on screen.
+    private func adoptResumedModel(_ descriptor: LocalModelDescriptor) {
+        let id = descriptor.id
+        guard isDownloaded(id), !failedIntegrityModelIDs.contains(id) else { return }
+        if let inUse = LocalTranscriptionPreferences.modelIdentifier,
+           inUse != id,
+           isDownloaded(inUse),
+           !failedIntegrityModelIDs.contains(inUse)
+        {
+            return
+        }
+        LocalTranscriptionPreferences.modelIdentifier = id
+        LocalTranscriptionPreferences.enabled = true
+#if DEBUG
+        ModelDownloadTrace.record("adopt.ok", id)
+#endif
+        let language = ModelLanguageSupport.resolve(
+            KeyboardPreferences.transcriptionLanguage,
+            modelLanguages: descriptor.selectableLanguageCodes
+        )
+        Task { [weak self] in
+            try? await self?.prepare(descriptor, language: language.rawValue)
+        }
+    }
+
+    /// Build folders left by a process that died mid-download.
+    ///
+    /// Each download assembles into its own `.download-<model>-<uuid>` (and
+    /// each tokenizer into `.tokenizer-<uuid>`) and removes it when it ends —
+    /// in a `defer`, which a terminated process never reaches. A resumed
+    /// download builds into a fresh folder, so the old one stays for good:
+    /// one more after every trip to Settings that changed Full Access mid-way.
+    /// Nothing in this process can be downloading yet, so anything found here
+    /// belongs to a process that is gone.
+    private func removeAbandonedStaging() {
+        let manager = FileManager.default
+        for (directory, prefix) in [(modelsDirectory, ".download-"), (tokenizersDirectory, ".tokenizer-")] {
+            guard let directory else { continue }
+            let names = (try? manager.contentsOfDirectory(atPath: directory.path)) ?? []
+            for name in names where name.hasPrefix(prefix) {
+                Self.removeItemLater(directory.appendingPathComponent(name))
+            }
+        }
+    }
+
+    /// Model ids that had a download running when this process started.
+    ///
+    /// Written durably because the answer has to outlive the process: iOS
+    /// terminates suspended apps routinely, which is the whole reason the
+    /// background session exists. The transfer survives that; the `download`
+    /// call assembling the model does not, so without this nothing claims the
+    /// finished files, nothing reports a failure, and the model quietly never
+    /// appears.
+    private static var interruptedDownloadIDs: [String] {
+        get { KeyboardPreferences.defaults?.stringArray(forKey: interruptedKey) ?? [] }
+        set {
+            if newValue.isEmpty {
+                KeyboardPreferences.defaults?.removeObject(forKey: interruptedKey)
+            } else {
+                KeyboardPreferences.defaults?.set(newValue, forKey: interruptedKey)
+            }
+        }
+    }
+
+    private static let interruptedKey = "localModels.downloadsInFlight"
+
+    private static func rememberDownload(_ id: String) {
+        var ids = interruptedDownloadIDs
+        guard !ids.contains(id) else { return }
+        ids.append(id)
+        interruptedDownloadIDs = ids
+    }
+
+    private static func forgetDownload(_ id: String) {
+        interruptedDownloadIDs = interruptedDownloadIDs.filter { $0 != id }
+    }
+
+    /// Picks up whatever the last process was in the middle of.
+    ///
+    /// Only a process that went away leaves an entry: a download that finishes,
+    /// fails or is cancelled clears its own. Restarting is cheap — the files
+    /// already on disk are claimed from the inbox rather than fetched again.
+    private func resumeInterruptedDownloads() {
+        let interrupted = Self.interruptedDownloadIDs
+        guard !interrupted.isEmpty else { return }
+        for id in interrupted {
+            guard let descriptor = LocalModelCatalog.descriptor(for: id) else {
+                Self.forgetDownload(id)
+                continue
+            }
+            guard !isDownloaded(id) else {
+                Self.forgetDownload(id)
+                continue
+            }
+            // With the completion, not without it. The one that used to claim
+            // the selection lived in the picker and died with the process, so
+            // a resumed download landed the files on disk and left nothing
+            // pointing at them: the flow stayed blocked on a model it already
+            // had, and dictation said it had none.
+#if DEBUG
+            ModelDownloadTrace.record("model.resume", id)
+#endif
+            startDownload(descriptor) { [weak self] in
+                self?.adoptResumedModel(descriptor)
+            }
+        }
     }
 
 #if DEBUG
@@ -247,8 +414,13 @@ final class LocalModelManager {
     ) {
         isPreviewFixture = true
         downloadedModelIDs = downloaded
-        downloadingModelID = downloading
-        self.progress = progress
+        if let downloading {
+            inFlightDownloads[downloading] = InFlightDownload(
+                fraction: progress,
+                totalBytes: 0,
+                startedAt: Date()
+            )
+        }
         loadingModelID = loading
         self.loadingMessage = loadingMessage
         verifyingModelIDs = verifying
@@ -349,6 +521,23 @@ final class LocalModelManager {
         /// picker each time.
         private static let progressInterval: TimeInterval = 0.1
 
+        private struct TransferIdentity: Codable {
+            var token: String
+            /// `<model id>:<path in the repo>`, which is what makes a retained
+            /// file findable again — see `downloadUnit` for why it is the whole
+            /// path and not the file name.
+            ///
+            /// This used to be the request URL, and the hosts these weights
+            /// come from sign their links: every request carries a fresh
+            /// `Expires`, `Policy` and `Signature`. Two requests for the same
+            /// file never produce the same string, so a lookup by URL could
+            /// not match even in principle — the whole inbox was write-only,
+            /// and a 600 MB file that had finished downloading was fetched
+            /// again from zero.
+            var key: String
+            var statusCode: Int?
+        }
+
         private struct Transfer {
             var task: URLSessionDownloadTask
             let request: URLRequest
@@ -370,20 +559,110 @@ final class LocalModelManager {
 
         private let lock = NSLock()
         private var transfers: [String: Transfer] = [:]
+        /// Background transfers this process inherited, by `<model>/<file>`.
+        ///
+        /// A terminated app leaves its downloads running in the background
+        /// session; the next launch gets them back from `allTasks`. Without
+        /// this the resumed download starts a second request for a file the
+        /// system is already fetching, and the same weights come down twice.
+        private var inheritedTransfers: [String: URLSessionDownloadTask] = [:]
+
+        /// Reads back whatever the background session is still running.
+        /// Call once, before any download is started.
+        func inheritTransfers(from session: URLSession) async {
+            // The lock is taken in `store`, not here: `NSLock` may not be held
+            // across a suspension point.
+            let tasks = await session.allTasks
+#if DEBUG
+            ModelDownloadTrace.record(
+                "inherit.tasks",
+                "n=\(tasks.count) states=\(tasks.map { String($0.state.rawValue) }.joined(separator: ","))"
+            )
+#endif
+            store(inherited: tasks)
+        }
+
+        private func store(inherited tasks: [URLSessionTask]) {
+            lock.lock()
+            defer { lock.unlock() }
+            let items = dropRetiredIdentitiesLocked()
+            var found: [String: URLSessionDownloadTask] = [:]
+            for task in tasks {
+                guard let download = task as? URLSessionDownloadTask,
+                      task.state == .running || task.state == .suspended,
+                      let token = task.taskDescription,
+                      let identity = items[token]
+                else { continue }
+                found[identity.key] = download
+            }
+            inheritedTransfers = found
+        }
+
+        /// Forgets transfers recorded under a key format this build no longer
+        /// writes, and deletes whatever file each one left in the inbox.
+        ///
+        /// An entry keyed by URL, or by file name alone, can never be claimed
+        /// again — the lookups no longer produce those strings — so its file
+        /// would sit in the inbox for good. One of them was a finished 622 MB
+        /// weight. Every current key has a `:` between model and path.
+        ///
+        /// It also clears files the index no longer names at all. Renaming a
+        /// field of `TransferIdentity` made the older index undecodable, and
+        /// `loadIndexLocked` reads the index whole: one entry it cannot read
+        /// empties all of it, leaving every file behind with nothing pointing
+        /// at it and nothing that would ever delete it.
+        private func dropRetiredIdentitiesLocked() -> [String: TransferIdentity] {
+            var items = loadIndexLocked()
+            let retired = items.filter { !$0.value.key.contains(":") }
+            for token in retired.keys {
+                items.removeValue(forKey: token)
+                try? FileManager.default.removeItem(
+                    at: Self.inboxDirectory.appendingPathComponent(token)
+                )
+            }
+            if !retired.isEmpty { saveIndexLocked(items) }
+
+            let manager = FileManager.default
+            let files = (try? manager.contentsOfDirectory(atPath: Self.inboxDirectory.path)) ?? []
+            for name in files
+                where name != Self.indexURL.lastPathComponent && items[name] == nil
+            {
+                try? manager.removeItem(at: Self.inboxDirectory.appendingPathComponent(name))
+            }
+            return items
+        }
+
+        private func takeInherited(_ key: String) -> URLSessionDownloadTask? {
+            lock.lock()
+            defer { lock.unlock() }
+            return inheritedTransfers.removeValue(forKey: key)
+        }
 
         func start(
             session: URLSession,
             request: URLRequest,
             expectedBytes: Int64,
             resumeData: Data?,
+            key: String,
             progressHandler: @escaping @Sendable (Int64) -> Void
         ) async throws -> (URL, URLResponse) {
-            let token = UUID().uuidString
+            // A transfer inherited from the last process is already most of
+            // the way through this exact file. Waiting on it costs nothing;
+            // starting a second request for it costs the whole file again.
+            let inherited = takeInherited(key)
+#if DEBUG
+            ModelDownloadTrace.record("unit.start", "\(key) inherited=\(inherited != nil)")
+#endif
+            let token = inherited?.taskDescription ?? UUID().uuidString
+            if inherited == nil {
+                persistIdentity(token: token, key: key)
+            }
             return try await withTaskCancellationHandler(operation: {
                 try await withCheckedThrowingContinuation {
                     (continuation: CheckedContinuation<(URL, URLResponse), Error>) in
                     lock.lock()
-                    let task = resumeData.map(session.downloadTask(withResumeData:))
+                    let task = inherited
+                        ?? resumeData.map(session.downloadTask(withResumeData:))
                         ?? session.downloadTask(with: request)
                     task.taskDescription = token
                     transfers[token] = Transfer(
@@ -398,7 +677,10 @@ final class LocalModelManager {
 
                     if isCancelled {
                         task.cancel()
-                    } else {
+                    } else if inherited == nil || task.state == .suspended {
+                        // An inherited task is already running; resuming a
+                        // running task is harmless but resuming a suspended
+                        // one is the point.
                         task.resume()
                     }
                 }
@@ -495,11 +777,16 @@ final class LocalModelManager {
             downloadTask: URLSessionDownloadTask,
             didFinishDownloadingTo location: URL
         ) {
-            guard let token = downloadTask.taskDescription, isTracking(token) else {
-                // A transfer may finish after iOS relaunched the process. Its
-                // original continuation no longer exists, so ignore this
-                // system-owned temporary file rather than allowing the stale
-                // callback to complete a newer model file.
+            guard let token = downloadTask.taskDescription else { return }
+            guard isTracking(token) else {
+                // The process died after iOS accepted the transfer. Keep the
+                // file under its token so the next `downloadUnit` can claim it
+                // instead of dropping a finished weight on the floor.
+                retainOrphan(
+                    token: token,
+                    from: location,
+                    response: downloadTask.response
+                )
                 return
             }
             let persistentLocation = FileManager.default.temporaryDirectory
@@ -572,7 +859,108 @@ final class LocalModelManager {
             lock.lock()
             let transfer = transfers.removeValue(forKey: token)
             lock.unlock()
+            clearIdentity(token: token)
             transfer?.continuation.resume(with: result)
+        }
+
+        /// A file that finished after this process died. Matched by source URL
+        /// on the next `downloadUnit` for the same request.
+        func claimFinishedFile(key: String, expectedBytes: Int64) -> URL? {
+            lock.lock()
+            defer { lock.unlock() }
+            var items = loadIndexLocked()
+            guard let match = items.first(where: { $0.value.key == key })
+            else { return nil }
+            let file = Self.inboxDirectory.appendingPathComponent(match.key)
+            guard FileManager.default.fileExists(atPath: file.path) else { return nil }
+            // A retained file is only worth claiming whole. A truncated one
+            // would pass every later check by being the right name.
+            if expectedBytes > 0 {
+                let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size]
+                guard (size as? NSNumber)?.int64Value == expectedBytes else {
+                    try? FileManager.default.removeItem(at: file)
+                    items.removeValue(forKey: match.key)
+                    saveIndexLocked(items)
+                    return nil
+                }
+            }
+            if let code = match.value.statusCode, !(200..<300).contains(code) {
+                try? FileManager.default.removeItem(at: file)
+                items.removeValue(forKey: match.key)
+                saveIndexLocked(items)
+                return nil
+            }
+            items.removeValue(forKey: match.key)
+            saveIndexLocked(items)
+            return file
+        }
+
+        private static var inboxDirectory: URL {
+            let root = FileManager.default.urls(
+                for: .applicationSupportDirectory,
+                in: .userDomainMask
+            )[0].appendingPathComponent("LocalModels/DownloadInbox", isDirectory: true)
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            return root
+        }
+
+        private static var indexURL: URL {
+            inboxDirectory.appendingPathComponent("index.json")
+        }
+
+        private func persistIdentity(token: String, key: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            var items = loadIndexLocked()
+            items[token] = TransferIdentity(token: token, key: key, statusCode: nil)
+            saveIndexLocked(items)
+        }
+
+        private func retainOrphan(
+            token: String,
+            from location: URL,
+            response: URLResponse?
+        ) {
+            lock.lock()
+            defer { lock.unlock() }
+            var items = loadIndexLocked()
+            let destination = Self.inboxDirectory.appendingPathComponent(token)
+            try? FileManager.default.removeItem(at: destination)
+            do {
+                try FileManager.default.moveItem(at: location, to: destination)
+                if var identity = items[token] {
+                    identity.statusCode = (response as? HTTPURLResponse)?.statusCode
+                    items[token] = identity
+                    saveIndexLocked(items)
+                }
+            } catch {
+                return
+            }
+        }
+
+        private func clearIdentity(token: String) {
+            lock.lock()
+            defer { lock.unlock() }
+            var items = loadIndexLocked()
+            items.removeValue(forKey: token)
+            saveIndexLocked(items)
+            let leftover = Self.inboxDirectory.appendingPathComponent(token)
+            try? FileManager.default.removeItem(at: leftover)
+        }
+
+        private func loadIndexLocked() -> [String: TransferIdentity] {
+            guard let data = try? Data(contentsOf: Self.indexURL),
+                  let items = try? JSONDecoder().decode(
+                    [String: TransferIdentity].self,
+                    from: data
+                  )
+            else { return [:] }
+            return items
+        }
+
+        private func saveIndexLocked(_ items: [String: TransferIdentity]) {
+            guard let data = try? JSONEncoder().encode(items) else { return }
+            try? data.write(to: Self.indexURL, options: .atomic)
         }
     }
 
@@ -689,6 +1077,10 @@ final class LocalModelManager {
         guard let folder = modelDirectory(for: descriptor.id), isDownloaded(descriptor.id) else {
             throw LocalModelManagerError.modelNotDownloaded(descriptor.id)
         }
+        // Loading Whisper/Sherpa in the background is a memory spike with no
+        // user in front of the picker. The files stay on disk; the next
+        // foreground prepare loads them.
+        guard KeyboardPreferences.containingAppIsForeground else { return }
 
         loadingModelID = descriptor.id
         loadingMessage = "Loading \(descriptor.displayName)… This can take a moment."
@@ -787,19 +1179,24 @@ final class LocalModelManager {
 
     func download(_ descriptor: LocalModelDescriptor) async throws {
         guard !isInert else { return }
-        downloadingModelID = descriptor.id
-        progress = 0
-        // A first figure so the line has something to show before the manifest
-        // is read; replaced below by the total the fraction is measured against.
-        downloadTotalBytes = descriptor.sizeBytes
-        downloadStartedAt = Date()
+        let id = descriptor.id
+        inFlightDownloads[id] = InFlightDownload(
+            fraction: 0,
+            totalBytes: descriptor.sizeBytes,
+            startedAt: Date()
+        )
+        Self.rememberDownload(id)
         message = nil
         hasError = false
         defer {
-            downloadingModelID = nil
-            progress = 0
-            downloadTotalBytes = 0
-            downloadStartedAt = nil
+            inFlightDownloads[id] = nil
+            // Finished, failed or cancelled — all three are answers, and none
+            // of them should be retried on the next launch. Only a process
+            // that never got here leaves the entry behind.
+            Self.forgetDownload(id)
+#if DEBUG
+            ModelDownloadTrace.record("model.forget", id)
+#endif
         }
 
         do {
@@ -837,7 +1234,7 @@ final class LocalModelManager {
                     totalBytes: tokenizer.files.reduce(Int64(0)) { $0 + $1.size }
                         + modelFiles.reduce(Int64(0)) { $0 + $1.size }
                 )
-                downloadTotalBytes = progressTracker.totalBytes
+                setTotalBytes(progressTracker.totalBytes, for: id)
                 try FileManager.default.createDirectory(
                     at: tokenizersDirectory, withIntermediateDirectories: true
                 )
@@ -869,7 +1266,7 @@ final class LocalModelManager {
                 progressTracker = DownloadProgress(
                     totalBytes: manifest.files.reduce(Int64(0)) { $0 + $1.size }
                 )
-                downloadTotalBytes = progressTracker.totalBytes
+                setTotalBytes(progressTracker.totalBytes, for: id)
                 folder = try await downloadModel(
                     descriptor,
                     into: modelsDirectory,
@@ -886,12 +1283,12 @@ final class LocalModelManager {
             Telemetry.shared.modelDownloadFinished(model: descriptor, outcome: .completed)
         } catch is CancellationError {
             hasError = false
-            message = "Model download canceled."
+            message = nil
             Telemetry.shared.modelDownloadFinished(model: descriptor, outcome: .cancelled)
             throw CancellationError()
         } catch let error as URLError where error.code == .cancelled {
             hasError = false
-            message = "Model download canceled."
+            message = nil
             Telemetry.shared.modelDownloadFinished(model: descriptor, outcome: .cancelled)
             throw CancellationError()
         } catch {
@@ -916,27 +1313,97 @@ final class LocalModelManager {
         _ descriptor: LocalModelDescriptor,
         onCompletion: @escaping @MainActor () -> Void = {}
     ) {
-        guard !isInert, modelDownloadTask == nil, downloadingModelID == nil else { return }
-        modelDownloadTask = Task { @MainActor [weak self] in
+        guard !isInert else { return }
+        switch ModelDownloadStartDecision.decide(
+            downloadingIDs: downloadingModelIDs.union(Set(modelDownloadTasks.keys)),
+            queuedIDs: Set(queuedModelIDs),
+            requestedID: descriptor.id
+        ) {
+        case .alreadyThisModel, .alreadyQueued:
+            return
+        case .atCapacity:
+            queuedDownloads.append((descriptor, onCompletion))
+            queuedModelIDs.append(descriptor.id)
+            return
+        case .allowed:
+            break
+        }
+        beginDownload(descriptor, onCompletion: onCompletion)
+    }
+
+    private func beginDownload(
+        _ descriptor: LocalModelDescriptor,
+        onCompletion: @escaping @MainActor () -> Void
+    ) {
+        let id = descriptor.id
+        modelDownloadTasks[id] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
-                self.modelDownloadTask = nil
+                self.modelDownloadTasks[id] = nil
                 onCompletion()
+                self.startNextQueuedDownload()
             }
             do {
+#if DEBUG
+                ModelDownloadTrace.record("model.begin", id)
+#endif
                 try await self.download(descriptor)
+#if DEBUG
+                ModelDownloadTrace.record("model.ok", id)
+#endif
             } catch {
+#if DEBUG
+                ModelDownloadTrace.record("model.fail", "\(id) \(error)")
+#endif
                 // `download` publishes either the actionable error or the
                 // normal cancellation message used by both picker surfaces.
             }
         }
     }
 
-    func cancelDownload() {
-        guard modelDownloadTask != nil || downloadingModelID != nil else { return }
-        message = "Canceling model download…"
-        Self.downloadDelegate.cancel()
-        modelDownloadTask?.cancel()
+    private func startNextQueuedDownload() {
+        while let next = queuedDownloads.first {
+            let id = next.descriptor.id
+            switch ModelDownloadStartDecision.decide(
+                downloadingIDs: downloadingModelIDs.union(Set(modelDownloadTasks.keys)),
+                requestedID: id
+            ) {
+            case .alreadyThisModel:
+                queuedDownloads.removeFirst()
+                queuedModelIDs.removeAll { $0 == id }
+            case .atCapacity, .alreadyQueued:
+                return
+            case .allowed:
+                queuedDownloads.removeFirst()
+                queuedModelIDs.removeAll { $0 == id }
+                if isDownloaded(id), !failedIntegrityModelIDs.contains(id) {
+                    next.onCompletion()
+                    continue
+                }
+                beginDownload(next.descriptor, onCompletion: next.onCompletion)
+                return
+            }
+        }
+    }
+
+    func cancelDownload(_ id: String? = nil) {
+        if let id {
+            if let index = queuedDownloads.firstIndex(where: { $0.descriptor.id == id }) {
+                queuedDownloads.remove(at: index)
+                queuedModelIDs.removeAll { $0 == id }
+                return
+            }
+            guard modelDownloadTasks[id] != nil || inFlightDownloads[id] != nil else { return }
+            inFlightDownloads[id] = nil
+            modelDownloadTasks[id]?.cancel()
+            return
+        }
+        guard !modelDownloadTasks.isEmpty || !inFlightDownloads.isEmpty || !queuedDownloads.isEmpty
+        else { return }
+        inFlightDownloads.removeAll()
+        queuedDownloads.removeAll()
+        queuedModelIDs.removeAll()
+        modelDownloadTasks.values.forEach { $0.cancel() }
     }
 
     /// A failed download that failed its integrity check is worth telling apart
@@ -964,10 +1431,12 @@ final class LocalModelManager {
             Self.tokenizerFolderName(for: repository), isDirectory: true
         )
         let fingerprint = LocalModelIntegrity.fingerprint(of: tokenizer.files)
-        if (try? LocalModelIntegrity.verifySizes(in: destination, files: tokenizer.files)) != nil,
-           LocalModelIntegrity.markerMatches(fingerprint, in: destination) {
-            progress = await progressTracker.addCompleted(
-                tokenizer.files.reduce(Int64(0)) { $0 + $1.size }
+        if Self.tokenizerIsInstalled(fingerprint, at: destination, files: tokenizer.files) {
+            reportProgress(
+                await progressTracker.addCompleted(
+                    tokenizer.files.reduce(Int64(0)) { $0 + $1.size }
+                ),
+                for: descriptor.id
             )
             return
         }
@@ -978,7 +1447,7 @@ final class LocalModelManager {
         )
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: staging) }
+        defer { Self.removeItemLater(staging) }
 
         for file in tokenizer.files {
             try Task.checkCancellation()
@@ -992,16 +1461,41 @@ final class LocalModelManager {
                 from: url,
                 to: staging.appendingPathComponent(file.path),
                 expectedBytes: file.size,
-                progressTracker: progressTracker
+                progressTracker: progressTracker,
+                modelID: descriptor.id
             )
         }
         try await Self.verifyDigests(
             in: staging, files: tokenizer.files, modelIdentifier: repository
         )
+        // A tokenizer repository is shared: four models fetch
+        // `openai/whisper-large-v3`, and two downloads now run at once. The
+        // copy that arrives second must neither delete a good install out from
+        // under the first, nor fail because the destination appeared while
+        // this one was still downloading. Identical content either way.
+        if Self.tokenizerIsInstalled(fingerprint, at: destination, files: tokenizer.files) {
+            return
+        }
         if fileManager.fileExists(atPath: destination.path) {
             try fileManager.removeItem(at: destination)
         }
-        try fileManager.moveItem(at: staging, to: destination)
+        do {
+            try fileManager.moveItem(at: staging, to: destination)
+        } catch {
+            guard Self.tokenizerIsInstalled(
+                fingerprint, at: destination, files: tokenizer.files
+            ) else { throw error }
+        }
+    }
+
+    /// The tokenizer this fingerprint describes is already on disk, whole.
+    private static func tokenizerIsInstalled(
+        _ fingerprint: String,
+        at destination: URL,
+        files: [LocalModelIntegrity.ManifestFile]
+    ) -> Bool {
+        (try? LocalModelIntegrity.verifySizes(in: destination, files: files)) != nil
+            && LocalModelIntegrity.markerMatches(fingerprint, in: destination)
     }
 
     private func downloadModel(
@@ -1021,7 +1515,7 @@ final class LocalModelManager {
         let fileManager = FileManager.default
 
         try fileManager.createDirectory(at: stagingModel, withIntermediateDirectories: true)
-        defer { try? fileManager.removeItem(at: stagingRoot) }
+        defer { Self.removeItemLater(stagingRoot) }
 
         for file in files where !isSafeRelativePath(file.path) {
             throw LocalModelManagerError.integrityFileMissing(file.path)
@@ -1129,7 +1623,8 @@ final class LocalModelManager {
             to: destination,
             keepingPartialExtension: true,
             expectedBytes: file.size,
-            progressTracker: progressTracker
+            progressTracker: progressTracker,
+            modelID: modelIdentifier
         )
         try await Self.verify(
             file: temporaryFile, against: file, modelIdentifier: modelIdentifier
@@ -1173,7 +1668,8 @@ final class LocalModelManager {
         to destination: URL,
         keepingPartialExtension: Bool = false,
         expectedBytes: Int64,
-        progressTracker: DownloadProgress
+        progressTracker: DownloadProgress,
+        modelID: String
     ) async throws -> URL {
         let fileManager = FileManager.default
         try fileManager.createDirectory(
@@ -1187,7 +1683,8 @@ final class LocalModelManager {
         let file = try await downloadUnit(
             from: url,
             expectedBytes: expectedBytes,
-            progressTracker: progressTracker
+            progressTracker: progressTracker,
+            modelID: modelID
         )
         try fileManager.moveItem(at: file, to: target)
         return target
@@ -1198,11 +1695,38 @@ final class LocalModelManager {
     private func downloadUnit(
         from url: URL,
         expectedBytes: Int64,
-        progressTracker: DownloadProgress
+        progressTracker: DownloadProgress,
+        modelID: String
     ) async throws -> URL {
         let fileManager = FileManager.default
         let unit = UUID()
         await progressTracker.begin(unit)
+
+        // `<model id>:<path in the repo>` — the whole path, not the file name.
+        //
+        // A Core ML model is a set of `.mlmodelc` bundles that all use the same
+        // names inside: every one has a `weights/weight.bin`, a `coremldata.bin`
+        // and a `model.mil`. Keyed on the last path component, a resumed
+        // download asked for the audio encoder's `weight.bin` and was handed
+        // the text decoder's — by the inbox claim, and by the inheritance map,
+        // where one live task silently replaced another under the same key.
+        // The wrong weights landed in the encoder's place and the integrity
+        // check failed on their size.
+        //
+        // The path is stable across requests because this is the repository
+        // URL, before the redirect; the signed CDN address with its `Expires`
+        // and `Signature` only exists inside URLSession after it.
+        let key = "\(modelID):\(url.path)"
+        if let claimed = Self.downloadDelegate.claimFinishedFile(
+            key: key,
+            expectedBytes: expectedBytes
+        ) {
+            reportProgress(
+                await progressTracker.complete(unit, bytes: expectedBytes),
+                for: modelID
+            )
+            return claimed
+        }
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 15 * 60
@@ -1212,20 +1736,24 @@ final class LocalModelManager {
                 guard let value = await progressTracker.update(
                     unit, bytesWritten: bytesWritten, expectedBytes: expectedBytes
                 ) else { return }
-                self?.publish(value)
+                self?.reportProgress(value, for: modelID)
             }
         }
 
+        let session = KeyboardPreferences.containingAppIsForeground
+            ? Self.foregroundDownloadSession
+            : Self.backgroundDownloadSession
         let maxAttempts = 3
         var resumeData: Data?
         for attempt in 1...maxAttempts {
             try Task.checkCancellation()
             do {
                 let (temporaryFile, response) = try await Self.downloadDelegate.start(
-                    session: Self.foregroundDownloadSession,
+                    session: session,
                     request: request,
                     expectedBytes: expectedBytes,
                     resumeData: resumeData,
+                    key: key,
                     progressHandler: progressHandler
                 )
                 try Task.checkCancellation()
@@ -1238,10 +1766,13 @@ final class LocalModelManager {
                         statusCode: (response as? HTTPURLResponse)?.statusCode
                     )
                 }
-                progress = await progressTracker.complete(unit, bytes: expectedBytes)
+                reportProgress(
+                    await progressTracker.complete(unit, bytes: expectedBytes),
+                    for: modelID
+                )
                 return temporaryFile
             } catch {
-                progress = await progressTracker.reset(unit)
+                reportProgress(await progressTracker.reset(unit), for: modelID)
                 guard attempt < maxAttempts, isRetryableDownloadError(error) else {
                     _ = await progressTracker.complete(unit, bytes: 0)
                     throw error
@@ -1264,9 +1795,25 @@ final class LocalModelManager {
 
     /// Several transfers report at once and their main-actor hops can land out
     /// of order, which must not make the bar jump backwards mid-download.
-    private func publish(_ value: Double) {
-        guard value > progress else { return }
-        progress = value
+    private func reportProgress(_ value: Double, for id: String) {
+        guard var item = inFlightDownloads[id] else { return }
+        guard value >= item.fraction else { return }
+        item.fraction = value
+        inFlightDownloads[id] = item
+    }
+
+    private func setTotalBytes(_ bytes: Int64, for id: String) {
+        guard var item = inFlightDownloads[id] else { return }
+        item.totalBytes = bytes
+        inFlightDownloads[id] = item
+    }
+
+    /// Staging folders can be hundreds of megabytes. Deleting them on the
+    /// main actor is what made Stop hitch after a Get.
+    private static func removeItemLater(_ url: URL) {
+        Task.detached(priority: .utility) {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     private func isRetryableDownloadError(_ error: Error) -> Bool {
@@ -1699,3 +2246,34 @@ final class LocalModelManager {
         return Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
     }
 }
+
+
+#if DEBUG
+/// Append-only record of a model download's life, readable off the device
+/// with `devicectl ... --domain-type appDataContainer`. The failures worth
+/// catching happen while the app is suspended or already dead, where nothing
+/// on screen can reach.
+enum ModelDownloadTrace {
+    private static let lock = NSLock()
+
+    static func record(_ event: String, _ detail: String = "") {
+        guard let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+            .first?.appendingPathComponent("model-download-trace.log")
+        else { return }
+        let stamp = String(format: "%.3f", Date().timeIntervalSince1970)
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let head = "\(stamp) pid=\(pid) \(event)"
+        guard let data = (detail.isEmpty ? head + "\n" : head + " \(detail)\n").data(using: .utf8)
+        else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+        } else {
+            try? data.write(to: url)
+        }
+    }
+}
+#endif

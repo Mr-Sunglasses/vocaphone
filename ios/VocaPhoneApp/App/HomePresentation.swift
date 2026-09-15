@@ -47,7 +47,11 @@ struct HomeSessionCard: Equatable {
         var errorMessage: String?
         var canRetry = false
         var startedInApp = true
+        /// Whether speech-to-text can actually run. Idle uses this; a finished
+        /// transcript does not — a result is still a result.
         var isSourceReady = true
+        /// Debug: pin the session card on Transcript ready instead of Ready.
+        var showTranscriptOnSession = false
     }
 
     static func make(_ context: Context, now: Date = Date()) -> HomeSessionCard {
@@ -59,14 +63,31 @@ struct HomeSessionCard: Equatable {
         case .finalizing, .uploading, .transcribing:
             return processing(context)
         case .readyToInsert, .targetContextChanged, .inserting, .inserted:
+            // In-app test has nowhere to insert. Parked on readyToInsert it
+            // used to replace Ready to dictate forever. The words live on
+            // Latest transcript; this card is how you start again.
+            if context.startedInApp {
+                return context.showTranscriptOnSession
+                    ? finished(context)
+                    : resting(context, now: now)
+            }
             return delivering(context)
         case .completed:
-            return finished(context)
+            return context.showTranscriptOnSession
+                ? finished(context)
+                : resting(context, now: now)
         case .serverUnavailable, .uploadFailedRecoverable, .transcriptionFailedRecoverable:
             return recoverable(context)
         case .permissionDenied, .transcriptionFailedPermanent:
             return failed(context)
         default:
+            if context.showTranscriptOnSession,
+               context.startedInApp,
+               let transcript = context.transcript,
+               !transcript.isEmpty
+            {
+                return finished(context)
+            }
             return resting(context, now: now)
         }
     }
@@ -74,7 +95,22 @@ struct HomeSessionCard: Equatable {
     // MARK: - States
 
     private static func resting(_ context: Context, now: Date) -> HomeSessionCard {
-        let detail: String?
+        let test = Action(
+            title: "Start microphone test",
+            action: .startTest,
+            symbol: "mic.fill"
+        )
+        // A missing model is the attention card. This one stays the session:
+        // don't claim Ready, and don't steal the headline with Not ready.
+        guard context.isSourceReady else {
+            return HomeSessionCard(
+                status: .inactive,
+                title: "Microphone test",
+                detail: nil,
+                primary: test
+            )
+        }
+        let detail: String
         if context.isQuickDictationReady, let expiresAt = context.quickDictationExpiresAt {
             // Standby, not recording — and the wording has to make that
             // unmistakable, because the iOS microphone indicator is lit either
@@ -83,25 +119,15 @@ struct HomeSessionCard: Equatable {
             detail = "Quick Dictation is on standby "
                 + duration.standbyDescription(expiringAt: expiresAt)
                 + ". Nothing is being recorded."
-        } else if !context.isSourceReady {
-            detail = "Choose where speech becomes text before dictating."
         } else {
             detail = "Dictate from any app with the vocaphone keyboard. The first tap "
                 + "opens vocaphone to record; swipe back once it starts."
         }
         return HomeSessionCard(
-            // Lead with what the product can do, not with what it is not doing.
-            // "Ready to dictate" is the honest claim whenever the selected
-            // source works — Quick Dictation only decides whether the first tap
-            // has to leave the host app, which the detail line explains.
-            status: context.isSourceReady ? .ready : .inactive,
-            title: context.isSourceReady ? "Ready to dictate" : "Not ready to dictate",
+            status: .ready,
+            title: "Ready to dictate",
             detail: detail,
-            primary: Action(
-                title: "Start microphone test",
-                action: .startTest,
-                symbol: "mic.fill"
-            ),
+            primary: test,
             secondary: nil
         )
     }
@@ -162,21 +188,6 @@ struct HomeSessionCard: Equatable {
         )
     }
 
-    private static func delivering(_ context: Context) -> HomeSessionCard {
-        HomeSessionCard(
-            status: .ready,
-            title: "Transcript ready",
-            detail: context.startedInApp
-                ? nil
-                : "Return to the keyboard to insert it into the field you were typing in.",
-            primary: context.startedInApp && context.transcript != nil
-                ? Action(title: "Copy transcript", action: .copyTranscript, symbol: "doc.on.doc")
-                : nil,
-            secondary: nil,
-            showsTranscript: context.startedInApp
-        )
-    }
-
     private static func finished(_ context: Context) -> HomeSessionCard {
         HomeSessionCard(
             status: .ready,
@@ -189,6 +200,21 @@ struct HomeSessionCard: Equatable {
                 : Action(title: "Start microphone test", action: .startTest, symbol: "mic.fill"),
             secondary: nil,
             showsTranscript: context.transcript != nil
+        )
+    }
+
+    private static func delivering(_ context: Context) -> HomeSessionCard {
+        HomeSessionCard(
+            status: .ready,
+            title: "Transcript ready",
+            detail: context.startedInApp
+                ? nil
+                : "Return to the keyboard to insert it into the field you were typing in.",
+            primary: context.startedInApp && context.transcript != nil
+                ? Action(title: "Copy transcript", action: .copyTranscript, symbol: "doc.on.doc")
+                : nil,
+            secondary: nil,
+            showsTranscript: context.startedInApp
         )
     }
 

@@ -12,6 +12,7 @@ enum DictationAction: Equatable {
     case insert
     case insertHere
     case openApp
+    case openFullAccessSettings
     case retry
     case cancel
     case undo
@@ -243,8 +244,8 @@ extension DictationBarModel {
         primary: DictationButton(
             title: "Locked",
             symbol: "lock.fill",
-            action: .start,
-            isEnabled: false
+            action: .openFullAccessSettings,
+            hint: "Opens Settings so you can turn on Allow Full Access."
         ),
         secondaries: [],
         showsElapsedTime: false,

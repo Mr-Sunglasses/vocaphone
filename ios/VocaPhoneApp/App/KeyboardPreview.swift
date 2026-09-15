@@ -12,15 +12,32 @@ import UIKit
 struct KeyboardPreview: View {
     var preference: KeyboardHeightPreference
     var showsSuggestions: Bool
+    /// The row above the keys is the SwiftUI surface when compact controls are
+    /// on — the default — and the older UIKit bar otherwise. Drawing the bar
+    /// here while the keyboard shows the compact row previewed a keyboard
+    /// nobody has.
+    var usesCompactControls: Bool = KeyboardPreferences.compactControlsEnabled
 
     @Environment(\.colorScheme) private var colorScheme
+    @StateObject private var surface = DictationSurfaceState()
 
     var body: some View {
         KeyboardPreviewRepresentable(
             preference: preference,
             showsSuggestions: showsSuggestions,
-            isDark: colorScheme == .dark
+            isDark: colorScheme == .dark,
+            showsBar: !usesCompactControls
         )
+        .overlay(alignment: .top) {
+            if usesCompactControls {
+                DictationSurfaceView(state: surface)
+                    .frame(height: KeyboardPreviewRepresentable.stripAreaHeight(for: preference))
+                    .allowsHitTesting(false)
+            }
+        }
+        .onAppear { syncSurface() }
+        .onChange(of: showsSuggestions) { syncSurface() }
+        .onChange(of: colorScheme) { syncSurface() }
         .frame(height: KeyboardPreviewRepresentable.height(for: preference))
         .clipShape(RoundedRectangle(cornerRadius: VocaMetrics.fieldRadius, style: .continuous))
         .accessibilityElement()
@@ -30,12 +47,28 @@ struct KeyboardPreview: View {
                 + (showsSuggestions ? "on" : "off")
         )
     }
+
+    /// Idle, as the keyboard is before anyone speaks, with the same model the
+    /// extension draws its buttons from.
+    private func syncSurface() {
+        let isDark = colorScheme == .dark
+        surface.state = .idle
+        surface.isDark = isDark
+        surface.typing.isDark = isDark
+        surface.showsGlobeKey = true
+        surface.usesCompactControls = true
+        let model = DictationBarModel.make(DictationContext(state: .idle))
+        surface.primarySymbol = model.primary.symbol
+        surface.primaryIsEnabled = model.primary.isEnabled
+        surface.candidates = showsSuggestions ? KeyboardPreviewContainer.sampleCandidates : []
+    }
 }
 
 private struct KeyboardPreviewRepresentable: UIViewRepresentable {
     let preference: KeyboardHeightPreference
     let showsSuggestions: Bool
     let isDark: Bool
+    let showsBar: Bool
 
     /// The same arithmetic the extension does, so the preview is the height the
     /// keyboard will actually be.
@@ -49,6 +82,13 @@ private struct KeyboardPreviewRepresentable: UIViewRepresentable {
         return 2 * chromeInset + bar.stripHeight + chromeSpacing + grid.gridHeight
     }
 
+    /// The band above the keys, where the dictation row sits.
+    static func stripAreaHeight(for preference: KeyboardHeightPreference) -> CGFloat {
+        let traits = UITraitCollection { $0.verticalSizeClass = .regular }
+        let bar = DictationBarMetrics.resolved(for: traits, preference: preference)
+        return chromeInset + bar.stripHeight + chromeSpacing / 2
+    }
+
     func makeUIView(context: Context) -> KeyboardPreviewContainer {
         KeyboardPreviewContainer()
     }
@@ -57,7 +97,8 @@ private struct KeyboardPreviewRepresentable: UIViewRepresentable {
         view.configure(
             preference: preference,
             showsSuggestions: showsSuggestions,
-            isDark: isDark
+            isDark: isDark,
+            showsBar: showsBar
         )
     }
 }
@@ -68,11 +109,11 @@ private struct KeyboardPreviewRepresentable: UIViewRepresentable {
 final class KeyboardPreviewContainer: UIView {
     private var grid: KeyGridView?
     private var bar: DictationBarView?
-    private var rendered: (KeyboardHeightPreference, Bool, Bool)?
+    private var rendered: (KeyboardHeightPreference, Bool, Bool, Bool)?
 
     /// Something recognisable rather than a real correction: the preview must
     /// never look like it is proposing to change text the user has not typed.
-    private static let sampleCandidates = [
+    static let sampleCandidates = [
         TypingCandidate(text: "hello", kind: .completion),
         TypingCandidate(text: "help", kind: .completion),
         TypingCandidate(text: "hell", kind: .completion),
@@ -92,12 +133,13 @@ final class KeyboardPreviewContainer: UIView {
     func configure(
         preference: KeyboardHeightPreference,
         showsSuggestions: Bool,
-        isDark: Bool
+        isDark: Bool,
+        showsBar: Bool
     ) {
-        guard rendered == nil || rendered! != (preference, showsSuggestions, isDark) else {
+        guard rendered == nil || rendered! != (preference, showsSuggestions, isDark, showsBar) else {
             return
         }
-        rendered = (preference, showsSuggestions, isDark)
+        rendered = (preference, showsSuggestions, isDark, showsBar)
 
         let traits = UITraitCollection { $0.verticalSizeClass = .regular }
         let palette = KeyboardPalette(isDark: isDark)
@@ -124,6 +166,7 @@ final class KeyboardPreviewContainer: UIView {
         }()
         bar.metrics = barMetrics
         bar.palette = palette
+        bar.isHidden = !showsBar
         bar.apply(
             DictationBarModel.make(
                 DictationContext(

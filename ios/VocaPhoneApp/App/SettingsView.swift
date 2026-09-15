@@ -34,6 +34,10 @@ struct SettingsView: View {
     /// Read once when the hub appears rather than folded here: folding is the
     /// app's job, and the Stats screen is where it happens.
     @State private var usageStats = UsageStats()
+    #if DEBUG
+    @AppStorage(AttentionCardPreview.storageKey)
+    private var attentionPreviewRaw = AttentionCardPreview.off.rawValue
+    #endif
 
     var body: some View {
         List {
@@ -80,24 +84,32 @@ struct SettingsView: View {
                     symbol: "stethoscope"
                 ) { DiagnosticsSettingsView() }
             }
-
-            Section {
-                NavigationLink {
-                    SetupView()
-                } label: {
-                    Label("Guided setup", systemImage: "checklist")
-                }
-            } footer: {
-                Text(
-                    "Guided setup re-checks the microphone, the keyboard and your "
-                        + "transcription source, and can be reopened at any time."
-                )
-            }
+            #if DEBUG
+            developerSection
+            #endif
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .task { usageStats = UsageStatsStore.shared.current() }
     }
+
+    #if DEBUG
+    /// Attention-card previews and the keyboard lab. Release has neither.
+    private var developerSection: some View {
+        Section {
+            Picker("Attention card", selection: $attentionPreviewRaw) {
+                ForEach(AttentionCardPreview.allCases) { preview in
+                    Text(preview.settingsLabel).tag(preview.rawValue)
+                }
+            }
+            NavigationLink("Keyboard lab") { KeyboardLabView() }
+        } header: {
+            Text("Developer")
+        } footer: {
+            Text("Debug builds only.")
+        }
+    }
+    #endif
 
     private var keyboardHeight: KeyboardHeightPreference {
         KeyboardHeightPreference(rawValue: keyboardHeightRawValue) ?? .standard
@@ -156,39 +168,39 @@ struct KeyboardSettingsView: View {
     @AppStorage(
         KeyboardPreferences.typingSuggestionsKey,
         store: KeyboardPreferences.defaults
-    ) private var suggestionsEnabled = true
+    ) private var suggestionsEnabled = KeyboardDefaults.typingSuggestions
     @AppStorage(
         KeyboardPreferences.autocorrectKey,
         store: KeyboardPreferences.defaults
-    ) private var autocorrectEnabled = true
+    ) private var autocorrectEnabled = KeyboardDefaults.autocorrect
     @AppStorage(
         KeyboardPreferences.nextWordPredictionKey,
         store: KeyboardPreferences.defaults
-    ) private var predictionEnabled = true
+    ) private var predictionEnabled = KeyboardDefaults.nextWordPrediction
     @AppStorage(
         KeyboardPreferences.learnAsITypeKey,
         store: KeyboardPreferences.defaults
-    ) private var learnAsITypeEnabled = true
+    ) private var learnAsITypeEnabled = KeyboardDefaults.learnAsIType
     @AppStorage(
         KeyboardPreferences.smartPunctuationKey,
         store: KeyboardPreferences.defaults
-    ) private var smartPunctuationEnabled = true
+    ) private var smartPunctuationEnabled = KeyboardDefaults.smartPunctuation
     @AppStorage(
         KeyboardPreferences.typingHapticsKey,
         store: KeyboardPreferences.defaults
-    ) private var typingHapticsEnabled = false
+    ) private var typingHapticsEnabled = KeyboardDefaults.typingHaptics
     @AppStorage(
         KeyboardPreferences.emojiSuggestionsKey,
         store: KeyboardPreferences.defaults
-    ) private var emojiSuggestionsEnabled = true
+    ) private var emojiSuggestionsEnabled = KeyboardDefaults.emojiSuggestions
     @AppStorage(
         KeyboardPreferences.swipeTypingKey,
         store: KeyboardPreferences.defaults
-    ) private var swipeTypingEnabled = false
+    ) private var swipeTypingEnabled = KeyboardDefaults.swipeTyping
     @AppStorage(
         KeyboardPreferences.spacebarCursorKey,
         store: KeyboardPreferences.defaults
-    ) private var spacebarCursorEnabled = true
+    ) private var spacebarCursorEnabled = KeyboardDefaults.spacebarCursor
 
     /// Held rather than read straight from ``KeyboardPreferences`` on every
     /// redraw: the list has to keep its order, and the order is the order the
@@ -215,13 +227,6 @@ struct KeyboardSettingsView: View {
             suggestionsSection
             learningSection
             typingDetailSection
-            appearanceSection
-            // Last: it is a tool for whoever is building the keyboard, and it
-            // has no business sitting between two settings somebody came here
-            // to change.
-            #if DEBUG
-            keyboardLabSection
-            #endif
         }
         .navigationTitle("Keyboard")
         .navigationBarTitleDisplayMode(.inline)
@@ -251,18 +256,6 @@ struct KeyboardSettingsView: View {
             )
         }
     }
-
-    #if DEBUG
-    /// Every dictation state, on demand, without a device build. See
-    /// ``KeyboardLabView``.
-    private var keyboardLabSection: some View {
-        Section {
-            NavigationLink("Keyboard lab") { KeyboardLabView() }
-        } footer: {
-            Text("Debug builds only. The keyboard's own views in every session state.")
-        }
-    }
-    #endif
 
     /// The real keyboard, at the chosen height, redrawing as the switches move.
     private var previewSection: some View {
@@ -461,23 +454,6 @@ struct KeyboardSettingsView: View {
         }
     }
 
-    private var appearanceSection: some View {
-        Section {
-            NavigationLink {
-                SetupView()
-            } label: {
-                Label("How to add the keyboard", systemImage: "questionmark.circle")
-            }
-        } header: {
-            Text("Appearance")
-        } footer: {
-            Text(
-                "The keyboard follows the appearance of the app you are typing in, "
-                    + "and this iPhone's light or dark setting. There is no separate "
-                    + "keyboard theme to choose."
-            )
-        }
-    }
 }
 
 // MARK: - Dictation
@@ -503,15 +479,15 @@ struct DictationSettingsView: View {
     @AppStorage(
         KeyboardPreferences.numbersAsDigitsKey,
         store: KeyboardPreferences.defaults
-    ) private var numbersAsDigits = false
+    ) private var numbersAsDigits = KeyboardDefaults.numbersAsDigits
     @AppStorage(
         KeyboardPreferences.spokenEmojiKey,
         store: KeyboardPreferences.defaults
-    ) private var spokenEmoji = false
+    ) private var spokenEmoji = KeyboardDefaults.spokenEmoji
     @AppStorage(
         KeyboardPreferences.repairSpeechKey,
         store: KeyboardPreferences.defaults
-    ) private var repairSpeech = true
+    ) private var repairSpeech = KeyboardDefaults.repairSpeech
     @AppStorage(
         KeyboardPreferences.transcriptionLanguageKey,
         store: KeyboardPreferences.defaults

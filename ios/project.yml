@@ -95,6 +95,8 @@ targets:
       - VocaPhoneApp/Models/local_model_pins.json
       - VocaPhoneApp/Models/sherpa_model_pins.json
       - VocaPhoneApp/PrivacyInfo.xcprivacy
+      - VocaPhoneApp/Settings.bundle
+      - VocaPhoneApp/Media/SetupKeyboard.mp4
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAPHONE_APP_BUNDLE_ID)"

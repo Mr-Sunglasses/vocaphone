@@ -142,10 +142,12 @@ struct DictationPresentationTests {
         #expect(DictationBarModel.quoted(" \t ") == nil)
     }
 
-    @Test func withoutFullAccessNothingIsActionable() {
+    @Test func withoutFullAccessTheLockOpensSettings() {
         let model = Self.model(.idle, canUndo: true, hasFullAccess: false)
         #expect(model.accent == .locked)
-        #expect(!model.primary.isEnabled)
+        #expect(model.primary.isEnabled)
+        #expect(model.primary.action == .openFullAccessSettings)
+        #expect(model.primary.symbol == "lock.fill")
         #expect(model.secondaries.isEmpty)
     }
 

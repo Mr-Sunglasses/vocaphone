@@ -11,7 +11,8 @@ struct HomePresentationTests {
         startedInApp: Bool = true,
         quickDictationReady: Bool = false,
         quickDictationDuration: QuickDictationDuration = .tenMinutes,
-        sourceReady: Bool = true
+        sourceReady: Bool = true,
+        showTranscriptOnSession: Bool = false
     ) -> HomeSessionCard {
         HomeSessionCard.make(
             HomeSessionCard.Context(
@@ -27,7 +28,8 @@ struct HomePresentationTests {
                 errorMessage: errorMessage,
                 canRetry: canRetry,
                 startedInApp: startedInApp,
-                isSourceReady: sourceReady
+                isSourceReady: sourceReady,
+                showTranscriptOnSession: showTranscriptOnSession
             )
         )
     }
@@ -135,33 +137,54 @@ struct HomePresentationTests {
 
     /// A keyboard dictation delivers its transcript into the host field, so the
     /// home card must not offer to copy something it does not own.
-    @Test func onlyAnInAppResultIsShownOnTheCard() {
-        let inApp = Self.card(.readyToInsert, transcript: "Ship it", startedInApp: true)
+    @Test func aKeyboardResultIsNotCopiedOnHome() {
         let fromKeyboard = Self.card(.readyToInsert, transcript: "Ship it", startedInApp: false)
-
-        #expect(inApp.showsTranscript)
-        #expect(inApp.primary?.action == .copyTranscript)
         #expect(!fromKeyboard.showsTranscript)
         #expect(fromKeyboard.primary == nil)
         #expect(fromKeyboard.detail?.contains("Return to the keyboard") == true)
     }
 
-    /// A card that cannot do its job says so on the card, instead of leaving the
-    /// user to discover it after speaking.
-    @Test func anUnreadySourceIsExplainedBeforeTheTapNotAfter() {
-        let card = Self.card(.idle, sourceReady: false)
-        #expect(card.title == "Not ready to dictate")
-        #expect(card.status == .inactive)
-        #expect(card.detail?.contains("where speech becomes text") == true)
+    @Test func anInAppResultDoesNotReplaceReadyToDictate() {
+        let inApp = Self.card(.readyToInsert, transcript: "Ship it", startedInApp: true)
+        #expect(inApp.title == "Ready to dictate")
+        #expect(!inApp.showsTranscript)
+        #expect(inApp.primary?.action == .startTest)
+    }
+
+    @Test func anIdleReadyCardLeadsWithWhatItCanDo() {
+        let card = Self.card(.idle)
+        #expect(card.title == "Ready to dictate")
+        #expect(card.status == .ready)
         #expect(card.primary?.action == .startTest)
     }
 
-    /// And a card that can do its job leads with that, rather than with what is
-    /// not currently happening.
-    @Test func anIdleReadyCardLeadsWithWhatItCanDo() {
-        let card = Self.card(.idle, sourceReady: true)
+    /// The attention card names the hole. Idle must not claim Ready, and must
+    /// not become a second "not ready" headline. The test button stays.
+    @Test func anUnreadyIdleSessionDoesNotClaimReadyToDictate() {
+        let card = Self.card(.idle, sourceReady: false)
+        #expect(card.title != "Ready to dictate")
+        #expect(card.title != "Not ready to dictate")
+        #expect(card.primary?.action == .startTest)
+    }
+
+    /// After dictation the session card is the session again, not a second
+    /// transcript pane. The words belong on Latest transcript.
+    @Test func aFinishedInAppSessionReturnsToReadyToDictate() {
+        let card = Self.card(.completed, transcript: "Ship it friday")
         #expect(card.title == "Ready to dictate")
-        #expect(card.status == .ready)
+        #expect(!card.showsTranscript)
+        #expect(card.primary?.action == .startTest)
+    }
+
+    @Test func pinningTheSessionOnATranscriptShowsTranscriptReady() {
+        let card = Self.card(
+            .idle,
+            transcript: "Ship it friday",
+            showTranscriptOnSession: true
+        )
+        #expect(card.title == "Transcript ready")
+        #expect(card.showsTranscript)
+        #expect(card.primary?.action == .copyTranscript)
     }
 
     /// A cancel that discards preserved audio is destructive and says so; the

@@ -29,7 +29,7 @@ struct KeyboardLabView: View {
     // to compare against the keyboard, come back, and it is off again. A
     // variant you cannot leave switched on is a variant you cannot look at.
     @AppStorage("lab.isDark", store: KeyboardPreferences.defaults)
-    private var isDark = false
+    private var isDark = true
     @AppStorage("lab.isSpeaking", store: KeyboardPreferences.defaults)
     private var isSpeaking = true
     @AppStorage("lab.showsCandidates", store: KeyboardPreferences.defaults)
@@ -37,7 +37,7 @@ struct KeyboardLabView: View {
     @AppStorage("lab.usesSurface", store: KeyboardPreferences.defaults)
     private var usesSurface = true
     @AppStorage(KeyboardPreferences.compactControlsKey, store: KeyboardPreferences.defaults)
-    private var usesCompactControls = false
+    private var usesCompactControls = true
     @State private var touchTrace = KeyboardPreferences.touchTraceEnabled
     @State private var hapticStyle = KeyboardPreferences.typingHapticStyle
     @State private var hapticIntensity = KeyboardPreferences.typingHapticIntensity

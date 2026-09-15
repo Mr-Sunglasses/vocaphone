@@ -123,6 +123,16 @@ struct VocaPhoneApp: App {
                     DiagnosticLog.mirrorKeyboardTraceForDeviceTransfer()
 #endif
                     KeyboardPreferences.containingAppIsForeground = phase == .active
+                    // A Full Access deep link usually lands mid-launch, when
+                    // iOS ignores the Settings URL. This is the first moment it
+                    // will not.
+                    if phase == .active {
+                        coordinator.openSystemSettingsIfPossible()
+                        // Keyboards can only be added or removed in Settings,
+                        // so coming back is the one moment the model
+                        // recommendations can legitimately change.
+                        KeyboardInputLanguages.refresh()
+                    }
                     guard phase == .active else {
                         // The queue is in memory and does not survive the
                         // process, so backgrounding is the only moment a flush

@@ -126,6 +126,26 @@ final class RecordingCoordinator {
         }
     }
 
+    /// iOS rewrites `AppleKeyboards` after the Keyboards pane. Reading that
+    /// key on the main thread during the rewrite hangs long enough for the
+    /// watchdog to kill the process — the crash after turning vocaphone off.
+    private var keyboardListQuietUntil: Date?
+    /// A single empty read after toggling Full Access is a reload, not
+    /// removal. Two false answers a second apart are removal.
+    private var keyboardListedFalseAt: Date?
+
+    /// Call before Settings, and on the way back, so the next status read
+    /// does not touch the keyboard list while iOS is still rewriting it.
+    func noteKeyboardListMayReload() {
+        keyboardListQuietUntil = Date().addingTimeInterval(0.45)
+    }
+
+    var isKeyboardListReadUnsafe: Bool {
+        if UIApplication.shared.applicationState != .active { return true }
+        if let until = keyboardListQuietUntil, Date() < until { return true }
+        return false
+    }
+
     /// Re-reads every setup signal. Called on foreground and after any action
     /// that could have changed one, because none of them are observable: iOS
     /// exposes no API for whether a keyboard extension is installed, and a
@@ -141,8 +161,12 @@ final class RecordingCoordinator {
             status: keyboardStatus,
             lackedFullAccessAt: lackedFullAccessAt
         )
-        let isKeyboardInstalled = InstalledKeyboards.includesVocaPhone()
-            ?? (hasRun ? true : nil)
+        // Keep the last answer while the list is in flux or the app is not
+        // active. A stale "yes" is safer than a hang; SetupView drops back
+        // once a later read says the keyboard is gone.
+        let isKeyboardInstalled = resolvedKeyboardInstallation(
+            hasRun: hasRun
+        )
         let refreshed = SetupStatus(
             source: transcriptionSource,
             microphone: microphoneAccess,
@@ -160,6 +184,35 @@ final class RecordingCoordinator {
         guard refreshed != setupStatus else { return }
         setupStatus = refreshed
         reportSetupProgress(refreshed)
+    }
+
+    /// `AppleKeyboards` goes empty for a beat while Keyboards rewrites it.
+    /// Believing the first `false` is how Full Access off/on stranded first
+    /// run on Open Settings with the keyboard still in the list.
+    private func resolvedKeyboardInstallation(hasRun: Bool) -> Bool? {
+        if isKeyboardListReadUnsafe {
+            return setupStatus.isKeyboardInstalled
+        }
+        let listed = InstalledKeyboards.includesVocaPhone()
+        switch listed {
+        case true:
+            keyboardListedFalseAt = nil
+            return true
+        case false:
+            if setupStatus.isKeyboardInstalled == true {
+                if keyboardListedFalseAt == nil {
+                    keyboardListedFalseAt = Date()
+                }
+                if let started = keyboardListedFalseAt,
+                   Date().timeIntervalSince(started) < 1
+                {
+                    return true
+                }
+            }
+            return false
+        case nil:
+            return setupStatus.isKeyboardInstalled ?? (hasRun ? true : nil)
+        }
     }
 
     /// Reports each setup step the first time it is satisfied.
@@ -393,8 +446,16 @@ final class RecordingCoordinator {
 
     func handleDeepLink(_ url: URL) {
         guard !isInert else { return }
-        guard url.scheme == AppConfiguration.urlScheme,
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+        guard url.scheme == AppConfiguration.urlScheme else {
+            message = "The keyboard sent an invalid recording request."
+            return
+        }
+        if url.host == "full-access" {
+            wantsSystemSettings = true
+            openSystemSettingsIfPossible()
+            return
+        }
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               let value = components.queryItems?.first(where: { $0.name == "session" })?.value,
               let id = UUID(uuidString: value)
         else {
@@ -422,6 +483,30 @@ final class RecordingCoordinator {
         }
     }
 
+    /// The keyboard asked for Settings and the app is still launching.
+    ///
+    /// `openSettingsURLString` is dropped on the floor while the scene is
+    /// inactive, which is exactly the moment a deep link from the keyboard
+    /// arrives — so the Locked button appeared to do nothing at all. The
+    /// request is held until the scene is active instead.
+    private var wantsSystemSettings = false
+
+    /// vocaphone's page in iOS Settings. Keyboards (and Allow Full Access)
+    /// live there; there is no public URL for the switch itself.
+    func openSystemSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+
+    /// Spends a held request once iOS will honour it. Safe to call on every
+    /// activation: it does nothing unless the keyboard asked.
+    func openSystemSettingsIfPossible() {
+        guard wantsSystemSettings else { return }
+        guard UIApplication.shared.applicationState == .active else { return }
+        wantsSystemSettings = false
+        openSystemSettings()
+    }
+
     /// Sends the preserved recording again, from the home screen rather than
     /// from the keyboard's deep link. The audio outlives a failed upload or a
     /// failed transcription, and Retry is the action that spends it — a new
@@ -441,13 +526,13 @@ final class RecordingCoordinator {
         }
     }
 
-    func requestMicrophonePermission() {
+    func requestMicrophonePermission(armQuickDictationOnGrant: Bool = true) {
         guard !isInert else { return }
         recorder.requestPermission { [weak self] granted in
             guard let self else { return }
             if granted {
                 self.message = "Microphone permission granted."
-                if KeyboardPreferences.quickDictationArmable {
+                if armQuickDictationOnGrant, KeyboardPreferences.quickDictationArmable {
                     self.armQuickDictation()
                 }
             } else {
@@ -465,13 +550,23 @@ final class RecordingCoordinator {
                 + "permission=\(recorder.recordPermission.rawValue) "
                 + "recording=\(recorder.isRecording)"
         )
-        guard KeyboardPreferences.quickDictationArmable,
+        guard KeyboardPreferences.setupCompleted,
+              KeyboardPreferences.quickDictationArmable,
               audioSessionAvailable,
               recorder.recordPermission == .granted,
               !recorder.isRecording,
               startingSessionID == nil
         else { return }
         armQuickDictation()
+    }
+
+    /// First-run must not look like dictation. The orange status-bar dot is
+    /// Quick Dictation waiting to record, and it used to arm on the way back
+    /// from Settings.
+    func suspendQuickDictationDuringFirstRun() {
+        guard !isInert else { return }
+        guard !KeyboardPreferences.setupCompleted else { return }
+        clearQuickDictationReadiness(deactivateAudioSession: true)
     }
 
     /// Called every time vocaphone reaches the foreground. A pause taken from
@@ -1441,7 +1536,8 @@ final class RecordingCoordinator {
     }
 
     private func armQuickDictation() {
-        guard KeyboardPreferences.quickDictationArmable,
+        guard KeyboardPreferences.setupCompleted,
+              KeyboardPreferences.quickDictationArmable,
               audioSessionAvailable,
               !recorder.isRecording
         else { return }

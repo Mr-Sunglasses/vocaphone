@@ -34,6 +34,29 @@ enum TypingHapticStyle: String, CaseIterable, Identifiable, Sendable {
 
 }
 
+/// What every typing and dictation switch is before anyone touches it.
+///
+/// One list, read by the getters in `KeyboardPreferences` and by the switches
+/// in Settings, so the two cannot disagree — a Settings switch drawn off over a
+/// keyboard that behaves as on is a switch that lies. `KeyboardDefaultsTests`
+/// pins the values.
+enum KeyboardDefaults {
+    /// Off: the row above the keys starts empty. Autocorrect and prediction
+    /// keep their own switches on, and wake up with it.
+    static let typingSuggestions = false
+    static let autocorrect = true
+    static let nextWordPrediction = true
+    static let learnAsIType = true
+    static let smartPunctuation = true
+    static let emojiSuggestions = true
+    static let typingHaptics = true
+    static let swipeTyping = true
+    static let spacebarCursor = true
+    static let numbersAsDigits = true
+    static let spokenEmoji = true
+    static let repairSpeech = true
+}
+
 /// Presentation only. No style adds, removes or substitutes a word, and
 /// numbers, times, addresses and contractions are always left as the model
 /// transcribed them.
@@ -485,7 +508,9 @@ enum KeyboardPreferences {
     /// Holding or sliding the spacebar to move the cursor.
     static let spacebarCursorKey = "spacebarCursorEnabled"
     /// The compact dictation row: VocaPhone readiness, writing style and the
-    /// microphone at a glance, with an expandable local-stats dashboard.
+    /// microphone at a glance, with an expandable local-stats dashboard. On
+    /// unless turned off; the key keeps its lab name so a switch someone
+    /// already flipped still counts.
     static let compactControlsKey = "lab.usesCompactControls"
     /// The layout currently under the fingers.
     static let typingLayoutKey = "typingLayout"
@@ -639,10 +664,9 @@ enum KeyboardPreferences {
     /// Every typing-intelligence switch, each defaulting explicitly so that a
     /// keyboard running **without Full Access** — which cannot read the App
     /// Group at all — behaves the same as one that has never been configured.
-    /// Suggestions in particular must work without it: a keyboard that needs
-    /// Full Access to type is not a keyboard.
+    /// The values themselves live in `KeyboardDefaults`.
     static var typingSuggestionsEnabled: Bool {
-        get { boolean(typingSuggestionsKey, default: true) }
+        get { boolean(typingSuggestionsKey, default: KeyboardDefaults.typingSuggestions) }
         set { defaults?.set(newValue, forKey: typingSuggestionsKey) }
     }
 
@@ -650,19 +674,19 @@ enum KeyboardPreferences {
     /// it is applied, so autocorrect without suggestions would replace words
     /// with no warning at all. Callers read ``autocorrectIsActive``.
     static var autocorrectEnabled: Bool {
-        get { boolean(autocorrectKey, default: true) }
+        get { boolean(autocorrectKey, default: KeyboardDefaults.autocorrect) }
         set { defaults?.set(newValue, forKey: autocorrectKey) }
     }
 
     static var autocorrectIsActive: Bool { typingSuggestionsEnabled && autocorrectEnabled }
 
     static var nextWordPredictionEnabled: Bool {
-        get { boolean(nextWordPredictionKey, default: true) }
+        get { boolean(nextWordPredictionKey, default: KeyboardDefaults.nextWordPrediction) }
         set { defaults?.set(newValue, forKey: nextWordPredictionKey) }
     }
 
     static var learnAsITypeEnabled: Bool {
-        get { boolean(learnAsITypeKey, default: true) }
+        get { boolean(learnAsITypeKey, default: KeyboardDefaults.learnAsIType) }
         set { defaults?.set(newValue, forKey: learnAsITypeKey) }
     }
 
@@ -670,7 +694,7 @@ enum KeyboardPreferences {
     /// outranks it: a code editor turns smart quotes off precisely so that a
     /// keyboard does not curl them.
     static var smartPunctuationEnabled: Bool {
-        get { boolean(smartPunctuationKey, default: true) }
+        get { boolean(smartPunctuationKey, default: KeyboardDefaults.smartPunctuation) }
         set { defaults?.set(newValue, forKey: smartPunctuationKey) }
     }
 
@@ -678,15 +702,16 @@ enum KeyboardPreferences {
     /// 😂. On by default: it adds a chip the user may ignore and never changes
     /// text on its own, which is the bar for a suggestion being on.
     static var emojiSuggestionsEnabled: Bool {
-        get { boolean(emojiSuggestionsKey, default: true) }
+        get { boolean(emojiSuggestionsKey, default: KeyboardDefaults.emojiSuggestions) }
         set { defaults?.set(newValue, forKey: emojiSuggestionsKey) }
     }
 
-    /// Custom per-key haptics are opt-in. The standard keyboard input click is
-    /// still available whenever iOS Keyboard Clicks are enabled, with or
-    /// without Full Access.
+    /// Per-key haptics, on by default: the system keyboard taps back, and a
+    /// keyboard that does not feels dead under the thumb. They still need Full
+    /// Access; without it the standard input click is what iOS Keyboard Clicks
+    /// gives.
     static var typingHapticsEnabled: Bool {
-        get { boolean(typingHapticsKey, default: false) }
+        get { boolean(typingHapticsKey, default: KeyboardDefaults.typingHaptics) }
         set { defaults?.set(newValue, forKey: typingHapticsKey) }
     }
 
@@ -695,8 +720,8 @@ enum KeyboardPreferences {
     /// on every character is disruptive enough that preserving the old default
     /// would be worse than asking an interested person to opt in again, so the
     /// stale value is discarded rather than carried over — `typingHapticsKey`
-    /// already defaults to off, and writing that default explicitly would say
-    /// nothing the getter does not. Calling this repeatedly is safe.
+    /// has its own default, and writing it explicitly would say nothing the
+    /// getter does not. Calling this repeatedly is safe.
     static func migrateTypingHapticsIfNeeded() {
         guard let defaults,
               defaults.object(forKey: typingHapticsMigrationKey) == nil
@@ -705,11 +730,11 @@ enum KeyboardPreferences {
         defaults.set(true, forKey: typingHapticsMigrationKey)
     }
 
-    /// Off until device QA says the recogniser has earned it. A swipe engine
-    /// that guesses wrong is worse than no swipe engine, because the user has
-    /// to notice and undo a whole word rather than one letter.
+    /// On by default. Tapping still types exactly as before — a swipe only
+    /// starts when a finger travels across keys — so someone who never swipes
+    /// loses nothing, and someone who does finds it already there.
     static var swipeTypingEnabled: Bool {
-        get { boolean(swipeTypingKey, default: false) }
+        get { boolean(swipeTypingKey, default: KeyboardDefaults.swipeTyping) }
         set { defaults?.set(newValue, forKey: swipeTypingKey) }
     }
 
@@ -728,7 +753,7 @@ enum KeyboardPreferences {
     /// having it — the gesture that reaches it is one nobody performs by
     /// accident.
     static var spacebarCursorEnabled: Bool {
-        get { boolean(spacebarCursorKey, default: true) }
+        get { boolean(spacebarCursorKey, default: KeyboardDefaults.spacebarCursor) }
         set { defaults?.set(newValue, forKey: spacebarCursorKey) }
     }
 
@@ -740,7 +765,7 @@ enum KeyboardPreferences {
     /// extension, which had never heard of it, and drew the old row — which
     /// looks exactly like a switch that does not work.
     static var compactControlsEnabled: Bool {
-        get { boolean(compactControlsKey, default: false) }
+        get { boolean(compactControlsKey, default: true) }
         set { defaults?.set(newValue, forKey: compactControlsKey) }
     }
 
@@ -795,21 +820,20 @@ enum KeyboardPreferences {
     }
 
     /// Whether dictated number words are written as digits — "six pm" as
-    /// "6 pm". Off by default: it changes the words in a transcript rather than
-    /// its formatting, which is not something to start doing to someone's text
-    /// because they updated the app.
+    /// "6 pm". On by default: typed text writes numbers as digits, and a lone
+    /// "one", ordinals and spoken times are already left alone.
     static var numbersAsDigits: Bool {
-        get { boolean(numbersAsDigitsKey, default: false) }
+        get { boolean(numbersAsDigitsKey, default: KeyboardDefaults.numbersAsDigits) }
         set { defaults?.set(newValue, forKey: numbersAsDigitsKey) }
     }
 
     /// Whether "crying emoji" becomes 😭.
     ///
-    /// Off by default, matching Write numbers as digits. Saying "emoji" out
-    /// loud is deliberate, but a default-on converter still rewrites the times
-    /// someone is talking *about* an emoji rather than asking for one. Opt in.
+    /// On by default. It only fires on a whole emoji name followed by the word
+    /// "emoji", and "emoji" on its own is left alone, so talking *about* emoji
+    /// is still typed as said.
     static var spokenEmoji: Bool {
-        get { boolean(spokenEmojiKey, default: false) }
+        get { boolean(spokenEmojiKey, default: KeyboardDefaults.spokenEmoji) }
         set { defaults?.set(newValue, forKey: spokenEmojiKey) }
     }
 
@@ -821,7 +845,7 @@ enum KeyboardPreferences {
     /// words it removes are not words: "um" is a sound someone makes while
     /// deciding what to say, and nobody dictating meant to type it.
     static var repairSpeech: Bool {
-        get { boolean(repairSpeechKey, default: true) }
+        get { boolean(repairSpeechKey, default: KeyboardDefaults.repairSpeech) }
         set { defaults?.set(newValue, forKey: repairSpeechKey) }
     }
 
@@ -1086,9 +1110,54 @@ enum KeyboardPreferences {
     /// A successful keyboard insertion into vocaphone's own practice field.
     /// This powers the stronger onboarding confirmation without changing the
     /// existing first-transcript activation milestone.
+    ///
+    /// The containing app cannot trust App Group `UserDefaults` alone: another
+    /// process's write is often invisible until the suite is reread, and
+    /// `@AppStorage` will not notice it. A marker file in the group container
+    /// plus a Darwin ping is what guided setup actually waits on.
     static var hasCompletedKeyboardPractice: Bool {
-        get { defaults?.bool(forKey: keyboardPracticeKey) ?? false }
-        set { defaults?.set(newValue, forKey: keyboardPracticeKey) }
+        get {
+            if defaults?.bool(forKey: keyboardPracticeKey) == true { return true }
+            return keyboardPracticeProofExists
+        }
+        set {
+            defaults?.set(newValue, forKey: keyboardPracticeKey)
+            writeKeyboardPracticeProof(newValue)
+            if newValue {
+                VocaPhoneDarwinCenter.post(.keyboardPracticeCompleted)
+            }
+        }
+    }
+
+    /// Re-read after a Darwin ping. Forces the suite to notice another
+    /// process's write, then falls back to the marker file.
+    static func refreshKeyboardPracticeProof() -> Bool {
+        defaults?.synchronize()
+        let completed = hasCompletedKeyboardPractice
+        if completed, defaults?.bool(forKey: keyboardPracticeKey) != true {
+            defaults?.set(true, forKey: keyboardPracticeKey)
+        }
+        return completed
+    }
+
+    private static var keyboardPracticeProofURL: URL? {
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: AppConfiguration.appGroupIdentifier)?
+            .appendingPathComponent("hasCompletedKeyboardPractice")
+    }
+
+    private static var keyboardPracticeProofExists: Bool {
+        guard let url = keyboardPracticeProofURL else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    private static func writeKeyboardPracticeProof(_ completed: Bool) {
+        guard let url = keyboardPracticeProofURL else { return }
+        if completed {
+            FileManager.default.createFile(atPath: url.path, contents: Data(), attributes: nil)
+        } else {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     /// Existing users already proved a working transcript before the guided

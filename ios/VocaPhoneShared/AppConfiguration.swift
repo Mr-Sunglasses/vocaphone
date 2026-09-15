@@ -83,13 +83,16 @@ enum AppConfiguration {
     private static let keyboardSuffix = ".keyboard"
     private static let liveActivitySuffix = ".liveactivity"
     static let urlScheme = "vocaphone"
+    /// Keyboard → containing app → iOS Settings. There is no public URL for
+    /// the Full Access switch itself; vocaphone's Settings pane has Keyboards.
+    static var fullAccessDeepLink: URL {
+        URL(string: "\(urlScheme)://full-access")!
+    }
     /// The manual route to the Full Access switch, written once because the app
     /// and the keyboard both have to give it and they must not disagree.
     ///
-    /// iOS exposes no URL that opens this pane — `openSettingsURLString` lands
-    /// in vocaphone's own settings, which does not contain the switch — so these
-    /// words are the whole recovery path, and calling anything else a "deep
-    /// link" to it would be a promise the system cannot keep.
+    /// iOS exposes no URL that opens the switch itself. The lock on a locked
+    /// keyboard opens vocaphone's Settings pane, where Keyboards is.
     static let fullAccessSettingsPath =
         "Settings › General › Keyboard › Keyboards › vocaphone › Allow Full Access."
 

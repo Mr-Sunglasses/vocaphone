@@ -92,6 +92,35 @@ enum DownloadReadiness {
     /// setup, and an estimate that swings from "12 minutes" to "40 seconds" is
     /// worse than no estimate at all. So nothing is claimed until the transfer
     /// has both run for a moment and actually moved.
+    /// The same estimate without the trailing "left", for sentences that put
+    /// it somewhere other than the end. One set of buckets for both, so the
+    /// two can never disagree about how long is left.
+    static func timeRemainingPhrase(
+        downloadedBytes: Int64,
+        totalBytes: Int64,
+        elapsed: TimeInterval
+    ) -> String? {
+        guard totalBytes > 0, downloadedBytes > 0 else { return nil }
+        guard elapsed >= minimumEstimateElapsed else { return nil }
+        guard downloadedBytes < totalBytes else { return nil }
+        let bytesPerSecond = Double(downloadedBytes) / elapsed
+        guard bytesPerSecond > 0 else { return nil }
+        let seconds = Int((Double(totalBytes - downloadedBytes) / bytesPerSecond).rounded())
+        return phrase(forSecondsRemaining: seconds)
+    }
+
+    private static func phrase(forSecondsRemaining seconds: Int) -> String? {
+        switch seconds {
+        case ..<10: "a few seconds"
+        case ..<45: "about \(((seconds + 5) / 10) * 10) seconds"
+        case ..<90: "about a minute"
+        // Past an hour the figure is a guess dressed as a number, and saying
+        // nothing is more honest than saying "about 74 minutes".
+        case ..<3600: "about \((seconds + 30) / 60) minutes"
+        default: nil
+        }
+    }
+
     static func timeRemaining(
         downloadedBytes: Int64,
         totalBytes: Int64,
@@ -103,15 +132,7 @@ enum DownloadReadiness {
         let bytesPerSecond = Double(downloadedBytes) / elapsed
         guard bytesPerSecond > 0 else { return nil }
         let seconds = Int((Double(totalBytes - downloadedBytes) / bytesPerSecond).rounded())
-        switch seconds {
-        case ..<10: return "a few seconds left"
-        case ..<45: return "about \(((seconds + 5) / 10) * 10) seconds left"
-        case ..<90: return "about a minute left"
-        // Past an hour the figure is a guess dressed as a number, and saying
-        // nothing is more honest than saying "about 74 minutes".
-        case ..<3600: return "about \((seconds + 30) / 60) minutes left"
-        default: return nil
-        }
+        return phrase(forSecondsRemaining: seconds).map { "\($0) left" }
     }
 
     private static let minimumEstimateElapsed: TimeInterval = 2.5
