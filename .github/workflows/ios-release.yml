@@ -158,6 +158,29 @@ jobs:
           echo "build=${build}" >> "$GITHUB_OUTPUT"
 
           app="$ARCHIVE_PATH/Products/Applications/VocaPhoneApp.app"
+
+          # CODE_SIGNING_ALLOWED=NO skips signing everything in the archive,
+          # including vendored xcframeworks (SherpaOnnxC, onnxruntime) that
+          # SPM embeds under Frameworks/. -exportArchive only re-signs the
+          # app/extension bundles it manages; it does not walk into and sign
+          # already-embedded frameworks that carry no signature at all, so
+          # they reach App Store Connect unsigned and validation rejects the
+          # upload ("not properly signed ... ad hoc or development
+          # certificate"). Ad-hoc sign them here, innermost first, so every
+          # embedded binary has *a* signature before the app/extension seals
+          # are computed below and before export re-signs the whole tree.
+          for frameworks_dir in \
+            "$app/Frameworks" \
+            "$app/PlugIns/VocaPhoneKeyboard.appex/Frameworks" \
+            "$app/PlugIns/VocaPhoneLiveActivity.appex/Frameworks"; do
+            if [ -d "$frameworks_dir" ]; then
+              while IFS= read -r -d '' framework; do
+                codesign --force --sign - "$framework"
+              done < <(find "$frameworks_dir" -mindepth 1 -maxdepth 1 \
+                \( -name '*.framework' -o -name '*.dylib' \) -print0)
+            fi
+          done
+
           embed_app_group() {
             local bundle="$1"
             local entitlements="$2"
