@@ -1,4 +1,5 @@
 import Foundation
+import UniformTypeIdentifiers
 
 enum StatsCopy {
     static let resetTitle = "Reset statistics?"
@@ -8,7 +9,7 @@ enum StatsCopy {
     static let speedCaption = "Average speaking speed"
     static let shareTitle = "Share your progress"
     static let shareSubtitle = "A private summary you choose where to post"
-    static let shareFootnote = "Installed apps open first. The card and post text are copied so you can paste them if needed."
+    static let shareFootnote = "X opens with your post ready and the card copied. Share sends the card to any app and copies the post text, in case that app leaves it out."
 
     static func menuDetail(_ stats: UsageStats, now: Date) -> String {
         guard stats.hasAny else { return "Words, speaking speed and streaks" }
@@ -95,15 +96,6 @@ enum StatsFormat {
     }
 }
 
-enum StatsShareDestination: CaseIterable, Equatable, Sendable {
-    case x
-    case linkedIn
-
-    var label: String { self == .x ? "X" : "LinkedIn" }
-
-    var handle: String? { self == .x ? "@vocahq" : nil }
-}
-
 enum StatsShareTarget: Equatable, Sendable {
     case installedApp
     case browser
@@ -116,11 +108,13 @@ struct StatsShareRoute: Equatable, Sendable {
 
 enum StatsShareComposer {
     static let site = "https://vocaphone.vocahq.com"
+    static let xHandle = "@vocahq"
 
+    /// `handle` is only for X, where the mention links to the account.
     static func message(
         _ stats: UsageStats,
         now: Date,
-        destination: StatsShareDestination
+        handle: String? = nil
     ) -> String {
         var details: [String] = []
         if stats.totalDictations > 0 {
@@ -139,7 +133,7 @@ enum StatsShareComposer {
             "🎤 I’ve spoken \(pluralized(stats.totalWords, "word")) with VocaPhone.",
             details.joined(separator: " · "),
             "Private voice typing on my phone or my own self-hosted gateway. My audio stays mine. 🔒",
-            [destination.handle, site].compactMap { $0 }.joined(separator: " · "),
+            [handle, site].compactMap { $0 }.joined(separator: " · "),
         ]
         lines.removeAll(where: \.isEmpty)
         return lines.joined(separator: "\n\n")
@@ -164,55 +158,39 @@ enum StatsShareComposer {
         return parts.joined(separator: ", ")
     }
 
-    static func composerURL(_ destination: StatsShareDestination, message: String) -> URL? {
-        switch destination {
-        case .x:
-            guard var components = URLComponents(string: "https://x.com/intent/post") else {
-                return nil
-            }
-            components.queryItems = [URLQueryItem(name: "text", value: message)]
-            return components.url
-        case .linkedIn:
-            // Match VocaMac's feed composer: share-offsite accepts only a URL,
-            // while this route carries the complete post body.
-            guard var components = URLComponents(string: "https://www.linkedin.com/feed/") else {
-                return nil
-            }
-            components.queryItems = [
-                URLQueryItem(name: "shareActive", value: "true"),
-                URLQueryItem(name: "text", value: message),
-            ]
-            return components.url
+    static func xComposerURL(message: String) -> URL? {
+        guard var components = URLComponents(string: "https://x.com/intent/post") else {
+            return nil
         }
+        components.queryItems = [URLQueryItem(name: "text", value: message)]
+        return components.url
     }
 
-    static func nativeURL(_ destination: StatsShareDestination, message: String) -> URL? {
-        switch destination {
-        case .x:
-            var components = URLComponents()
-            // The renamed X app continues to register its long-standing
-            // twitter scheme. The post route opens its native composer.
-            components.scheme = "twitter"
-            components.host = "post"
-            components.queryItems = [URLQueryItem(name: "message", value: message)]
-            return components.url
-        case .linkedIn:
-            // LinkedIn exposes no supported deep link for a prefilled post.
-            // Open the installed app and put both the card and text on the
-            // pasteboard; the browser fallback receives the full post body.
-            return URL(string: "linkedin://")
-        }
+    static func xAppURL(message: String) -> URL? {
+        var components = URLComponents()
+        // The renamed X app continues to register its long-standing twitter
+        // scheme. The post route opens its native composer.
+        components.scheme = "twitter"
+        components.host = "post"
+        components.queryItems = [URLQueryItem(name: "message", value: message)]
+        return components.url
     }
 
-    static func preferredRoute(
-        _ destination: StatsShareDestination,
-        message: String,
-        canOpen: (URL) -> Bool
-    ) -> StatsShareRoute? {
-        if let native = nativeURL(destination, message: message), canOpen(native) {
-            return StatsShareRoute(url: native, target: .installedApp)
+    /// X's composers are handed the post text, but a deep link cannot carry
+    /// an image, so the card waits for Paste. It goes first because
+    /// `UIPasteboard.image` reads only the first pasteboard item.
+    static func xPasteboardItems(cardPNG: Data?, message: String) -> [[String: Any]] {
+        var items: [[String: Any]] = []
+        if let cardPNG { items.append([UTType.png.identifier: cardPNG]) }
+        items.append([UTType.utf8PlainText.identifier: message])
+        return items
+    }
+
+    static func xRoute(message: String, canOpen: (URL) -> Bool) -> StatsShareRoute? {
+        if let app = xAppURL(message: message), canOpen(app) {
+            return StatsShareRoute(url: app, target: .installedApp)
         }
-        guard let web = composerURL(destination, message: message) else { return nil }
+        guard let web = xComposerURL(message: message) else { return nil }
         return StatsShareRoute(url: web, target: .browser)
     }
 }

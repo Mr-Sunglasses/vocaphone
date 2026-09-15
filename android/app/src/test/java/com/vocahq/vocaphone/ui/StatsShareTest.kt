@@ -24,7 +24,7 @@ class StatsShareTest {
             currentStreak = 3,
             lastDayKey = "2026-09-10",
         )
-        val message = StatsShareComposer.message(stats, 1_789_012_800_000, StatsShareDestination.X)
+        val message = StatsShareComposer.message(stats, 1_789_012_800_000, StatsShareComposer.X_HANDLE)
         assertTrue(message.contains("I’ve spoken 1,234 words with VocaPhone"))
         assertTrue(message.contains("12 sessions"))
         assertTrue(message.contains("1 hour of talking"))
@@ -34,8 +34,8 @@ class StatsShareTest {
     }
 
     @Test
-    fun linkedinMessageOmitsTheXHandle() {
-        val message = StatsShareComposer.message(UsageStats(totalWords = 1), 0, StatsShareDestination.LINKEDIN)
+    fun shareSheetMessageOmitsTheXHandle() {
+        val message = StatsShareComposer.message(UsageStats(totalWords = 1), 0)
         assertFalse(message.contains("@vocahq"))
         assertTrue(message.endsWith("https://vocaphone.vocahq.com"))
     }
@@ -50,14 +50,14 @@ class StatsShareTest {
             bestStreak = 5_000,
             lastDayKey = "2026-09-10",
         )
-        val message = StatsShareComposer.message(stats, 1_789_012_800_000, StatsShareDestination.X)
+        val message = StatsShareComposer.message(stats, 1_789_012_800_000, StatsShareComposer.X_HANDLE)
         assertTrue(message, xPostLength(message) <= 280)
     }
 
     @Test
     fun unavailableDetailsAndShortDurationsAreOmitted() {
         val stats = UsageStats(totalWords = 1, totalAudioMillis = 0)
-        val message = StatsShareComposer.message(stats, 0, StatsShareDestination.X)
+        val message = StatsShareComposer.message(stats, 0)
         assertTrue(message.contains("1 word"))
         assertFalse(message.contains("session"))
         assertFalse(message.contains("talking"))
@@ -68,11 +68,4 @@ class StatsShareTest {
         assertTrue(StatsShareComposer.spokenDuration(5_460_000) == "1 hour, 31 minutes")
     }
 
-    @Test
-    fun destinationsHaveUserFacingLabels() {
-        assertTrue(StatsShareDestination.X.label == "X")
-        assertTrue(StatsShareDestination.LINKEDIN.label == "LinkedIn")
-        assertTrue(StatsShareDestination.X.packageName == "com.twitter.android")
-        assertTrue(StatsShareDestination.LINKEDIN.packageName == "com.linkedin.android")
-    }
 }

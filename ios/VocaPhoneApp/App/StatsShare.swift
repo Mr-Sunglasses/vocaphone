@@ -1,3 +1,4 @@
+import LinkPresentation
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
@@ -105,19 +106,78 @@ enum StatsShareExporter {
         return UIPasteboard.general.hasImages
     }
 
-    /// Social deep links cannot carry an image attachment. Keep both pieces on
-    /// the local pasteboard so a native app can receive them with Paste, while
-    /// preventing private usage totals from syncing to another Apple device.
-    static func copySharePayload(image: UIImage?, message: String) -> PayloadResult {
-        var items: [[String: Any]] = []
-        if let image, let data = image.pngData() {
-            items.append([UTType.png.identifier: data])
-        }
-        items.append([UTType.utf8PlainText.identifier: message])
+    /// The pasteboard stays local so private usage totals don't sync to
+    /// another Apple device.
+    static func copyXPayload(image: UIImage?, message: String) -> PayloadResult {
+        let items = StatsShareComposer.xPasteboardItems(
+            cardPNG: image?.pngData(),
+            message: message
+        )
         UIPasteboard.general.setItems(items, options: [.localOnly: true])
         return PayloadResult(
-            cardCopied: image != nil && UIPasteboard.general.hasImages,
+            cardCopied: items.count > 1 && UIPasteboard.general.hasImages,
             textCopied: UIPasteboard.general.hasStrings
         )
+    }
+
+    /// Hands the card and post to whichever app the person picks. Several
+    /// (LinkedIn and Instagram among them) keep the image and drop the text,
+    /// so the post text also waits on the local pasteboard.
+    static func presentShareSheet(card: UIImage?, message: String) -> Bool {
+        guard let presenter = topViewController() else { return false }
+        var items: [Any] = []
+        if let card { items.append(StatsCardActivityItem(card: card)) }
+        items.append(message)
+        let sheet = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        sheet.excludedActivityTypes = [.assignToContact, .addToReadingList]
+        if let popover = sheet.popoverPresentationController {
+            let bounds = presenter.view.bounds
+            popover.sourceView = presenter.view
+            popover.sourceRect = CGRect(x: bounds.midX, y: bounds.midY, width: 0, height: 0)
+            popover.permittedArrowDirections = []
+        }
+        UIPasteboard.general.setItems(
+            [[UTType.utf8PlainText.identifier: message]],
+            options: [.localOnly: true]
+        )
+        presenter.present(sheet, animated: true)
+        return true
+    }
+
+    private static func topViewController() -> UIViewController? {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        let scene = scenes.first { $0.activationState == .foregroundActive } ?? scenes.first
+        var top = scene?.keyWindow?.rootViewController
+        while let presented = top?.presentedViewController { top = presented }
+        return top
+    }
+}
+
+/// Gives the share sheet's header the card as its preview and a readable
+/// title, rather than a generic "Image".
+private final class StatsCardActivityItem: NSObject, UIActivityItemSource {
+    private let card: UIImage
+
+    init(card: UIImage) {
+        self.card = card
+    }
+
+    func activityViewControllerPlaceholderItem(_: UIActivityViewController) -> Any {
+        card
+    }
+
+    func activityViewController(
+        _: UIActivityViewController,
+        itemForActivityType _: UIActivity.ActivityType?
+    ) -> Any? {
+        card
+    }
+
+    func activityViewControllerLinkMetadata(_: UIActivityViewController) -> LPLinkMetadata? {
+        let metadata = LPLinkMetadata()
+        metadata.title = "My VocaPhone stats"
+        metadata.imageProvider = NSItemProvider(object: card)
+        metadata.iconProvider = NSItemProvider(object: card)
+        return metadata
     }
 }

@@ -16,20 +16,12 @@ import com.vocahq.vocaphone.settings.ClipboardImages
 import java.io.File
 import java.util.Locale
 
-internal enum class StatsShareDestination(val label: String, val packageName: String) {
-    X("X", "com.twitter.android"),
-    LINKEDIN("LinkedIn", "com.linkedin.android"),
-
-    ;
-
-    val handle: String?
-        get() = if (this == X) "@vocahq" else null
-}
-
 internal object StatsShareComposer {
     private const val SITE = "https://vocaphone.vocahq.com"
+    const val X_HANDLE = "@vocahq"
 
-    fun message(stats: UsageStats, nowMillis: Long, destination: StatsShareDestination): String {
+    /** [handle] is only for X, where the mention links to the account. */
+    fun message(stats: UsageStats, nowMillis: Long, handle: String? = null): String {
         val streak = stats.currentStreakAt(nowMillis)
         val details = buildList {
             if (stats.totalTranscriptions > 0) {
@@ -45,7 +37,7 @@ internal object StatsShareComposer {
             "🎤 I’ve spoken ${pluralized(stats.totalWords, "word")} with VocaPhone.",
             details.joinToString(" · "),
             "Private voice typing on my phone or my own self-hosted gateway. My audio stays mine. 🔒",
-            listOfNotNull(destination.handle, SITE).joinToString(" · "),
+            listOfNotNull(handle, SITE).joinToString(" · "),
         ).filter { it.isNotEmpty() }.joinToString("\n\n")
     }
 
@@ -63,18 +55,14 @@ internal object StatsShareComposer {
         }.joinToString(", ")
     }
 
-    fun composerUri(destination: StatsShareDestination, message: String): Uri {
-        val encoded = Uri.encode(message)
-        return when (destination) {
-            StatsShareDestination.X -> Uri.parse("https://x.com/intent/post?text=$encoded")
-            StatsShareDestination.LINKEDIN ->
-                Uri.parse("https://www.linkedin.com/feed/?shareActive=true&text=$encoded")
-        }
-    }
+    fun xComposerUri(message: String): Uri =
+        Uri.parse("https://x.com/intent/post?text=${Uri.encode(message)}")
 }
 
 internal object StatsShareExporter {
     enum class ShareTarget { INSTALLED_APP, BROWSER }
+
+    private const val X_PACKAGE = "com.twitter.android"
 
     data class ShareResult(
         val opened: Boolean,
@@ -97,21 +85,19 @@ internal object StatsShareExporter {
         }.getOrDefault(false)
     }
 
-    fun share(context: Context, stats: UsageStats, nowMillis: Long, destination: StatsShareDestination): ShareResult {
-        val message = StatsShareComposer.message(stats, nowMillis, destination)
+    fun shareOnX(context: Context, stats: UsageStats, nowMillis: Long): ShareResult {
+        val message = StatsShareComposer.message(stats, nowMillis, StatsShareComposer.X_HANDLE)
         val cardUri = createCardUri(context, stats, nowMillis)
         val payload = copySharePayload(context, cardUri, message)
-        if (openInstalledApp(context, destination, message, cardUri)) {
+        if (openX(context, message, cardUri)) {
             return ShareResult(true, payload.cardCopied, payload.textCopied, ShareTarget.INSTALLED_APP)
         }
 
         // Do not call resolveActivity first. On modern Android, package
         // visibility can hide an otherwise valid browser from that query; the
         // implicit VIEW intent is still allowed to resolve when launched.
-        val webIntent = Intent(
-            Intent.ACTION_VIEW,
-            StatsShareComposer.composerUri(destination, message),
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val webIntent = Intent(Intent.ACTION_VIEW, StatsShareComposer.xComposerUri(message))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val opened = runCatching { context.startActivity(webIntent) }.isSuccess
         return ShareResult(
             opened = opened,
@@ -122,27 +108,56 @@ internal object StatsShareExporter {
     }
 
     /**
-     * Installed apps get several native opportunities before the browser.
+     * Hands the card and post to whichever app the person picks. Several
+     * (LinkedIn and Instagram among them) keep the image and drop the text, so
+     * the post text also waits on the clipboard, as the only clip item so any
+     * text field pastes it.
+     */
+    fun openShareSheet(context: Context, stats: UsageStats, nowMillis: Long): Boolean {
+        val message = StatsShareComposer.message(stats, nowMillis)
+        val cardUri = createCardUri(context, stats, nowMillis)
+        runCatching {
+            context.getSystemService(ClipboardManager::class.java)
+                .setPrimaryClip(ClipData.newPlainText("VocaPhone stats", message))
+        }
+        val send = if (cardUri != null) {
+            Intent(Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(Intent.EXTRA_STREAM, cardUri)
+                putExtra(Intent.EXTRA_TEXT, message)
+                // ClipData carries the read grant through the chooser and
+                // gives it the card as its preview.
+                clipData = ClipData.newUri(context.contentResolver, "VocaPhone stats", cardUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        } else {
+            Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, message)
+            }
+        }
+        val chooser = Intent.createChooser(send, "Share your VocaPhone stats")
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return runCatching { context.startActivity(chooser) }.isSuccess
+    }
+
+    /**
+     * The installed app gets several native opportunities before the browser.
      * Some releases reject a PNG share but still accept text or their own web
      * composer. The final launch intent still opens the installed app with the
      * card and post text waiting on the clipboard.
      */
-    private fun openInstalledApp(
-        context: Context,
-        destination: StatsShareDestination,
-        message: String,
-        cardUri: Uri?,
-    ): Boolean {
-        if (!isPackageInstalled(context.packageManager, destination.packageName)) return false
+    private fun openX(context: Context, message: String, cardUri: Uri?): Boolean {
+        if (!isPackageInstalled(context.packageManager, X_PACKAGE)) return false
         val intents = buildList {
-            if (cardUri != null) add(nativeShareIntent(context, destination, message, cardUri))
-            add(nativeTextShareIntent(destination, message))
+            if (cardUri != null) add(nativeShareIntent(context, message, cardUri))
+            add(nativeTextShareIntent(message))
             add(
-                Intent(Intent.ACTION_VIEW, StatsShareComposer.composerUri(destination, message))
-                    .setPackage(destination.packageName)
+                Intent(Intent.ACTION_VIEW, StatsShareComposer.xComposerUri(message))
+                    .setPackage(X_PACKAGE)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             )
-            context.packageManager.getLaunchIntentForPackage(destination.packageName)?.let {
+            context.packageManager.getLaunchIntentForPackage(X_PACKAGE)?.let {
                 add(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
         }
@@ -157,6 +172,10 @@ internal object StatsShareExporter {
             ).enabled
         }.getOrDefault(false)
 
+    /**
+     * X is handed the post text, so the card leads: most paste targets read
+     * only the first clip item.
+     */
     private fun copySharePayload(context: Context, uri: Uri?, message: String): PayloadResult {
         val clip = if (uri == null) {
             ClipData.newPlainText("VocaPhone stats", message)
@@ -173,26 +192,22 @@ internal object StatsShareExporter {
 
     private fun nativeShareIntent(
         context: Context,
-        destination: StatsShareDestination,
         message: String,
         uri: Uri,
     ): Intent =
         Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
-            setPackage(destination.packageName)
+            setPackage(X_PACKAGE)
             putExtra(Intent.EXTRA_TEXT, message)
             putExtra(Intent.EXTRA_STREAM, uri)
             clipData = ClipData.newUri(context.contentResolver, "VocaPhone stats", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
         }
 
-    private fun nativeTextShareIntent(
-        destination: StatsShareDestination,
-        message: String,
-    ): Intent =
+    private fun nativeTextShareIntent(message: String): Intent =
         Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
-            setPackage(destination.packageName)
+            setPackage(X_PACKAGE)
             putExtra(Intent.EXTRA_TEXT, message)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
