@@ -134,6 +134,9 @@ jobs:
         run: |
           set -euo pipefail
 
+          deployment_target="$(xcodebuild -project VocaPhone.xcodeproj -scheme VocaPhone \
+            -showBuildSettings 2>/dev/null | awk -F '= ' '/ IPHONEOS_DEPLOYMENT_TARGET /{print $2; exit}')"
+
           # Automatic signing during archive asks Apple for *Development*
           # profiles, which need a registered iPhone. The runner has none.
           # Archive unsigned, then stamp App Group entitlements so export
@@ -169,12 +172,26 @@ jobs:
           # certificate"). Ad-hoc sign them here, innermost first, so every
           # embedded binary has *a* signature before the app/extension seals
           # are computed below and before export re-signs the whole tree.
+          #
+          # onnxruntime-libs' vendored xcframework also ships some releases
+          # with an empty/missing MinimumOSVersion in its own Info.plist
+          # (microsoft/onnxruntime#27396), which App Store Connect rejects
+          # as an invalid bundle (ITMS-90208) during processing, well after
+          # the upload itself succeeds. Backfill it from the app's own
+          # deployment target before signing, since re-signing after
+          # editing the plist would invalidate the seal.
           for frameworks_dir in \
             "$app/Frameworks" \
             "$app/PlugIns/VocaPhoneKeyboard.appex/Frameworks" \
             "$app/PlugIns/VocaPhoneLiveActivity.appex/Frameworks"; do
             if [ -d "$frameworks_dir" ]; then
               while IFS= read -r -d '' framework; do
+                plist="$framework/Info.plist"
+                if [ -f "$plist" ] && [ -z "$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$plist" 2>/dev/null)" ]; then
+                  echo "Backfilling MinimumOSVersion ${deployment_target} in $plist"
+                  /usr/libexec/PlistBuddy -c "Delete :MinimumOSVersion" "$plist" 2>/dev/null || true
+                  /usr/libexec/PlistBuddy -c "Add :MinimumOSVersion string ${deployment_target}" "$plist"
+                fi
                 codesign --force --sign - "$framework"
               done < <(find "$frameworks_dir" -mindepth 1 -maxdepth 1 \
                 \( -name '*.framework' -o -name '*.dylib' \) -print0)
