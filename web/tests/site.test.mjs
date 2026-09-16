@@ -38,7 +38,7 @@ function androidInstallBlock(source) {
 const PLAY_LISTING =
   "https://play.google.com/store/apps/details?id=com.vocahq.vocaphone";
 const ANDROID_TAG =
-  "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.0";
+  "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.1";
 
 function htmlBlock(source, pattern, label) {
   const match = source.match(pattern);
@@ -224,7 +224,7 @@ test("availability and install paths are honest", () => {
   // that the App Store, which VocaPhone is not on, is not implied.
   assert.match(html, /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/);
   assert.match(html, /There is\s+no App Store release yet/);
-  assert.match(html, /v0\.2\.0/);
+  assert.match(html, /v0\.2\.1/);
   assert.match(html, /io\.github\.mrsunglasses\.localflow/);
   assert.match(html, /href="\/iphone\/"/);
   assert.match(html, /SHA256SUMS\.txt/);

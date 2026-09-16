@@ -36,7 +36,7 @@ const val ABOUT_CLEAR_EVENT_LOG = "Clear event log"
 
 const val ABOUT_TAGLINE = "A keyboard you talk to. Transcription stays on this phone."
 
-const val ABOUT_STATUS = "Public beta. Android 13 and newer."
+const val ABOUT_STATUS = "On Google Play. Android 13 and newer."
 
 const val ABOUT_ON_DEVICE =
     "Speech is transcribed on this phone first. A gateway is optional " +
@@ -45,7 +45,7 @@ const val ABOUT_ON_DEVICE =
 const val ABOUT_FAMILY_NOTE =
     "VocaPhone is one of the VocaHQ apps. VocaLinux is available now, " +
         "VocaMac is in beta, and VocaWin is in beta. This APK is " +
-        "the Android beta. iOS 17+ is a source build in the same repo. " +
+        "the Android app on Google Play. iOS 17+ is a source build in the same repo. " +
         "VocaGateway is Early."
 
 const val ABOUT_FEEDBACK_NOTE =

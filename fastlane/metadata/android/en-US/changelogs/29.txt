@@ -1,0 +1,1 @@
+Private usage stats for words, speed, and streaks, shared with the system share sheet. The IME picker labels VocaPhone keyboard and VocaPhone voice input separately so other keyboards can still hand off the mic. Hold the keyboard mic to cancel. Setup copy is plainer. Sherpa 1.13.8 so Canary keeps long recordings.

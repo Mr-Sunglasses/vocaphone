@@ -41,7 +41,7 @@ copyleft that also covers modified versions offered as a network service.
 
 | Client | State |
 | --- | --- |
-| **Android** | Public beta on [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone) for Android 13+. [GitHub APK](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.0) if you prefer to sideload · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
+| **Android** | On [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone) for Android 13+. [GitHub APK](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.1) if you prefer to sideload · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
 | **iOS** | Public TestFlight beta for iOS 17+ · [join](https://testflight.apple.com/join/wd85wQ3W) · or build from source (Mac, Xcode, signing team, physical iPhone) · [iPhone guide](https://vocaphone.vocahq.com/iphone/) |
 | **Gateway** | Optional. Self-host [VocaGateway](https://github.com/VocaHQ/vocagateway) on macOS/Linux or Docker when you want more models or shared compute |
 
@@ -90,7 +90,7 @@ the active cursor. A gateway is never required for on-device mode.
 | Linux | VocaLinux | [vocalinux.com](https://vocalinux.com) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available now |
 | macOS | VocaMac | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
 | Windows | VocaWin | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta · [v0.1.0-beta.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-beta.1) |
-| iOS / Android | VocaPhone | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Google Play beta / iOS TestFlight |
+| iOS / Android | VocaPhone | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Google Play / iOS TestFlight |
 | Gateway | VocaGateway | [vocagateway.vocahq.com](https://vocagateway.vocahq.com) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
 
 Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
@@ -98,7 +98,7 @@ Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
 
 ## Quick start
 
-### 1. Android (public beta)
+### 1. Android
 
 Install from [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone)
 on Android 13+. Enable VocaPhone in Android's keyboard settings, grant
@@ -106,7 +106,7 @@ microphone (and notifications if asked), then download an on-device
 speech-to-text model.
 
 Signed APKs are still on
-[GitHub Releases](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.0)
+[GitHub Releases](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.1)
 if you want to sideload.
 
 To build from source:

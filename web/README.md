@@ -15,7 +15,7 @@ Then open `http://127.0.0.1:4173/`. The iPhone setup guide is available at
 The site uses only local brand assets and system fonts. Public Android install
 and download CTAs point at the Google Play listing
 (`https://play.google.com/store/apps/details?id=com.vocahq.vocaphone`). The
-install card still pins a GitHub release tag (`android/v0.2.0`) as the sideload
+install card still pins a GitHub release tag (`android/v0.2.1`) as the sideload
 path, where the release includes the APK and its verification files. New
 Android tags are `android/v*`; **move that pin when you cut the next Android
 release people should sideload** (see [releasing.md](../docs/releasing.md)).
@@ -51,7 +51,7 @@ so "nothing links to it" does not decide this.
 routes.
 
 The Android product images in `assets/screenshots/` are 576×1280 captures
-from a physical device running the current Android beta. The website frames
+from a physical device running the current Android app. The website frames
 them with CSS and does not load media from GitHub at runtime.
 
 The Open Graph card is `assets/og-image.png` (1200×630), drawn from
