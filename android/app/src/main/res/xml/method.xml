@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <input-method xmlns:android="http://schemas.android.com/apk/res/android"
     android:supportsSwitchingToNextInputMethod="true">
+    <!-- API 33 path: setExplicitlyEnabledInputMethodSubtypes does not exist.
+         xml-v34/method.xml drops the voice override so AOSP can show
+         voice_input_label instead of a null subtypeLabel (#272). -->
     <!-- Non-auxiliary keyboard subtype keeps VocaPhone selectable as a normal IME.
          An auxiliary-only method.xml would mark the whole IME as aux and hide it
          from the default keyboard picker. -->

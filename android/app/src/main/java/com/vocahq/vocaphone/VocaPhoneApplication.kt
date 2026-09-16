@@ -13,6 +13,7 @@ import com.vocahq.vocaphone.data.recentProcessExits
 import com.vocahq.vocaphone.data.UsageStatsRepository
 import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
+import com.vocahq.vocaphone.ime.VoiceShortcutIme
 import com.vocahq.vocaphone.local.LocalModelManager
 import com.vocahq.vocaphone.settings.SettingsRepository
 import com.vocahq.vocaphone.telemetry.Telemetry
@@ -154,6 +155,9 @@ class VocaPhoneApplication : Application() {
         container.workScope.launch {
             runCatching { EmojiTable.load(assets) }
         }
+        // Same process/UID as the IME (see AppContainer). Setup already opens
+        // the companion app, so this runs without VocaPhone being the typing IME.
+        VoiceShortcutIme.publishEnabledSubtypes(this)
     }
 
     override fun onTrimMemory(level: Int) {

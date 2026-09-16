@@ -1014,12 +1014,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         getSystemService(InputMethodManager::class.java)?.currentInputMethodSubtype
 
     private fun publishVoiceShortcutSubtypes() {
-        val imm = getSystemService(InputMethodManager::class.java) ?: return
-        val imi = imm.inputMethodList.firstOrNull {
-            it.packageName == packageName &&
-                it.serviceName.endsWith("VocaPhoneInputMethodService")
-        } ?: return
-        VoiceShortcutIme.publishEnabledSubtypes(imm, imi.id, imi)
+        VoiceShortcutIme.publishEnabledSubtypes(this)
     }
 
     private fun applyVoiceShortcutSubtype(subtype: InputMethodSubtype?) {

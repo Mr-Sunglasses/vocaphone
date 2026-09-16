@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.ime
 
+import android.content.Context
 import android.os.Build
 import android.view.inputmethod.InputMethodInfo
 import android.view.inputmethod.InputMethodManager
@@ -23,6 +24,24 @@ internal object VoiceShortcutIme {
     /** Hash codes of every subtype, so the voice shortcut is explicitly enabled. */
     fun subtypeHashes(imi: InputMethodInfo): IntArray =
         IntArray(imi.subtypeCount) { imi.getSubtypeAt(it).hashCode() }
+
+    /**
+     * Enable both declared subtypes when this IME is installed (API 34+).
+     *
+     * Looks up VocaPhone in [InputMethodManager.getInputMethodList] and no-ops
+     * if the manager or info is missing. Called from the Application (setup
+     * starts that process) and from the IME onCreate so HeliBoard users do
+     * not need VocaPhone to be the current typing IME. Explicit enable is
+     * not a guarantee of a single long-press picker row.
+     */
+    fun publishEnabledSubtypes(context: Context) {
+        val imm = context.getSystemService(InputMethodManager::class.java) ?: return
+        val imi = imm.inputMethodList.firstOrNull {
+            it.packageName == context.packageName &&
+                it.serviceName.endsWith("VocaPhoneInputMethodService")
+        } ?: return
+        publishEnabledSubtypes(imm, imi.id, imi)
+    }
 
     fun publishEnabledSubtypes(imm: InputMethodManager?, imiId: String, imi: InputMethodInfo?) {
         if (imm == null || imi == null) return
