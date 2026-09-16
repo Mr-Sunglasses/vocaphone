@@ -51,10 +51,13 @@ class DictateCopyTest {
     @Test
     fun scratchpadHintLeavesOnceThereIsTextOrARecording() {
         assertEquals(
-            "Inserted at the cursor. Nothing here is uploaded. " +
-                "Long-press the mic key in the keyboard below — not the Dictate " +
-                "button above — to cancel while listening or transcribing.",
-            DictateCopy.HINT,
+            listOf(
+                "Words show up at the cursor",
+                "Nothing here is uploaded",
+                "Hold the mic on the keyboard to cancel while it's listening or transcribing",
+                "The Dictate button doesn't cancel",
+            ),
+            DictateCopy.HINTS,
         )
         assertTrue(showScratchpadHint("", DictationPhase.IDLE))
         assertFalse(showScratchpadHint("hello", DictationPhase.IDLE))
