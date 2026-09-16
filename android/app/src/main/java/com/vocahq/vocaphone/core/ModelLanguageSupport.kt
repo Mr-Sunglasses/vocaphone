@@ -1,5 +1,7 @@
 package com.vocahq.vocaphone.core
 
+import com.vocahq.vocaphone.shared.LanguagePolicy
+
 /**
  * Which languages the loaded model can actually be asked for.
  *
@@ -23,7 +25,11 @@ object ModelLanguageSupport {
      * the writing-style pass use punctuation from a different script.
      */
     fun transcriptLanguage(requested: String, reported: String): String =
-        if (requested == TranscriptionLanguage.AUTOMATIC.wireValue) reported else requested
+        LanguagePolicy.transcriptLanguage(
+            requested = requested,
+            reported = reported,
+            automaticLanguage = TranscriptionLanguage.AUTOMATIC.wireValue,
+        )
 
     /**
      * The language the finished transcript is actually written in.
@@ -36,7 +42,12 @@ object ModelLanguageSupport {
      * leaves [transcriptLanguage] answering exactly as before.
      */
     fun outputLanguage(requested: String, reported: String, translateTo: String): String =
-        translateTo.ifEmpty { transcriptLanguage(requested, reported) }
+        LanguagePolicy.outputLanguage(
+            requested = requested,
+            reported = reported,
+            translateTo = translateTo,
+            automaticLanguage = TranscriptionLanguage.AUTOMATIC.wireValue,
+        )
 
     /**
      * [modelLanguages] empty means nothing was claimed — an older gateway build,
@@ -51,9 +62,11 @@ object ModelLanguageSupport {
         language: TranscriptionLanguage,
         modelLanguages: Set<String>,
     ): Boolean {
-        if (language == TranscriptionLanguage.AUTOMATIC) return true
-        if (modelLanguages.isEmpty()) return true
-        return language.wireValue in modelLanguages
+        return LanguagePolicy.isSelectable(
+            language = language.wireValue,
+            automaticLanguage = TranscriptionLanguage.AUTOMATIC.wireValue,
+            modelLanguageCodes = modelLanguageCodes(modelLanguages),
+        )
     }
 
     /**
@@ -64,12 +77,15 @@ object ModelLanguageSupport {
     fun resolve(
         selected: TranscriptionLanguage,
         modelLanguages: Set<String>,
-    ): TranscriptionLanguage =
-        if (isSelectable(selected, modelLanguages)) {
-            selected
-        } else {
-            TranscriptionLanguage.AUTOMATIC
-        }
+    ): TranscriptionLanguage {
+        return TranscriptionLanguage.fromWire(
+            LanguagePolicy.resolve(
+                selected = selected.wireValue,
+                automaticLanguage = TranscriptionLanguage.AUTOMATIC.wireValue,
+                modelLanguageCodes = modelLanguageCodes(modelLanguages),
+            ),
+        )
+    }
 
     /**
      * What the picker's choice does and does not do here.
@@ -98,31 +114,14 @@ object ModelLanguageSupport {
         canTranslate: Boolean,
         onDevice: Boolean = false,
     ): String? {
-        val owner = if (onDevice) "The on-device model" else "Your gateway's model"
-        val coverage = if (modelLanguages.isEmpty()) {
-            null
-        } else {
-            val noun = if (modelLanguages.size == 1) "language" else "languages"
-            "$owner covers ${modelLanguages.size} $noun. The rest need a different model."
-        }
-        val remedy = if (canTranslate) {
-            "To change the language of the transcript, use Translate to."
-        } else {
-            "This model cannot translate, and picking a language you are not " +
-                "speaking gives unreliable text rather than a translation."
-        }
-        val translation =
-            "This is the language you are speaking, not the language you want back. $remedy"
-        if (!detectsLanguageAutomatically) {
-            return listOfNotNull(coverage, translation).joinToString(" ")
-        }
-        // Said plainly rather than by disabling the rows: this model decides the
-        // language from the audio, and the pick only tells the app how to
-        // punctuate what comes back.
-        val subject = if (coverage == null) owner else "It"
-        val detection = "$subject works out the spoken language itself, so picking one " +
-            "here does not pin the decoder. Your choice sets the language the transcript " +
-            "is punctuated and formatted in, which is what short phrases get wrong."
-        return listOfNotNull(coverage, detection, translation).joinToString(" ")
+        return LanguagePolicy.restriction(
+            modelLanguageCodes = modelLanguageCodes(modelLanguages),
+            detectsLanguageAutomatically = detectsLanguageAutomatically,
+            canTranslate = canTranslate,
+            onDevice = onDevice,
+        )
     }
+
+    private fun modelLanguageCodes(modelLanguages: Set<String>): String =
+        modelLanguages.sorted().joinToString(separator = "\n")
 }

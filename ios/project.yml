@@ -107,7 +107,32 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SWIFT_OBJC_BRIDGING_HEADER: VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h
         HEADER_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models"
-        OTHER_LDFLAGS: "$(inherited) -lc++"
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: "$(inherited) -lc++ -framework VocaPhoneSharedKMP"
+    preBuildScripts:
+      - name: Build VocaPhone shared framework
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$SDK_NAME" = "iphoneos" ]; then
+            target="IosArm64"
+            target_dir="iosArm64"
+          else
+            target="IosSimulatorArm64"
+            target_dir="iosSimulatorArm64"
+          fi
+          if [ "$CONFIGURATION" = "Release" ]; then
+            build_type="Release"
+            build_dir="release"
+          else
+            build_type="Debug"
+            build_dir="debug"
+          fi
+          cd "$SRCROOT/../android"
+          ./gradlew ":shared:link${build_type}Framework${target}"
+          framework="shared/build/bin/$target_dir/${build_dir}Framework/VocaPhoneSharedKMP.framework"
+          destination="shared/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME/VocaPhoneSharedKMP.framework"
+          mkdir -p "$(dirname "$destination")"
+          rsync -a --delete "$framework/" "$destination/"
     dependencies:
       - package: WhisperKit
         product: WhisperKit
@@ -138,10 +163,36 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: "$(LOCAL_KEYBOARD_ENTITLEMENTS:default=VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements)"
         SWIFT_OBJC_BRIDGING_HEADER: VocaPhoneKeyboard/VocaPhoneKeyboard-Bridging-Header.h
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: "$(inherited) -framework VocaPhoneSharedKMP"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: VocaPhoneKeyboard/Info.plist
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
+    preBuildScripts:
+      - name: Build VocaPhone shared framework
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$SDK_NAME" = "iphoneos" ]; then
+            target="IosArm64"
+            target_dir="iosArm64"
+          else
+            target="IosSimulatorArm64"
+            target_dir="iosSimulatorArm64"
+          fi
+          if [ "$CONFIGURATION" = "Release" ]; then
+            build_type="Release"
+            build_dir="release"
+          else
+            build_type="Debug"
+            build_dir="debug"
+          fi
+          cd "$SRCROOT/../android"
+          ./gradlew ":shared:link${build_type}Framework${target}"
+          framework="shared/build/bin/$target_dir/${build_dir}Framework/VocaPhoneSharedKMP.framework"
+          destination="shared/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME/VocaPhoneSharedKMP.framework"
+          mkdir -p "$(dirname "$destination")"
+          rsync -a --delete "$framework/" "$destination/"
   VocaPhoneLiveActivity:
     type: app-extension
     platform: iOS
@@ -156,10 +207,36 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: "$(VOCAPHONE_APP_BUNDLE_ID).liveactivity"
         TARGETED_DEVICE_FAMILY: "1"
         CODE_SIGN_ENTITLEMENTS: "$(LOCAL_LIVEACTIVITY_ENTITLEMENTS:default=VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements)"
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: "$(inherited) -framework VocaPhoneSharedKMP"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: VocaPhoneLiveActivity/Info.plist
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
+    preBuildScripts:
+      - name: Build VocaPhone shared framework
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$SDK_NAME" = "iphoneos" ]; then
+            target="IosArm64"
+            target_dir="iosArm64"
+          else
+            target="IosSimulatorArm64"
+            target_dir="iosSimulatorArm64"
+          fi
+          if [ "$CONFIGURATION" = "Release" ]; then
+            build_type="Release"
+            build_dir="release"
+          else
+            build_type="Debug"
+            build_dir="debug"
+          fi
+          cd "$SRCROOT/../android"
+          ./gradlew ":shared:link${build_type}Framework${target}"
+          framework="shared/build/bin/$target_dir/${build_dir}Framework/VocaPhoneSharedKMP.framework"
+          destination="shared/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME/VocaPhoneSharedKMP.framework"
+          mkdir -p "$(dirname "$destination")"
+          rsync -a --delete "$framework/" "$destination/"
   VocaPhoneTests:
     type: bundle.unit-test
     platform: iOS
@@ -267,6 +344,32 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         TARGETED_DEVICE_FAMILY: "1"
+        FRAMEWORK_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"
+        OTHER_LDFLAGS: "$(inherited) -framework VocaPhoneSharedKMP"
+    preBuildScripts:
+      - name: Build VocaPhone shared framework
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "$SDK_NAME" = "iphoneos" ]; then
+            target="IosArm64"
+            target_dir="iosArm64"
+          else
+            target="IosSimulatorArm64"
+            target_dir="iosSimulatorArm64"
+          fi
+          if [ "$CONFIGURATION" = "Release" ]; then
+            build_type="Release"
+            build_dir="release"
+          else
+            build_type="Debug"
+            build_dir="debug"
+          fi
+          cd "$SRCROOT/../android"
+          ./gradlew ":shared:link${build_type}Framework${target}"
+          framework="shared/build/bin/$target_dir/${build_dir}Framework/VocaPhoneSharedKMP.framework"
+          destination="shared/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME/VocaPhoneSharedKMP.framework"
+          mkdir -p "$(dirname "$destination")"
+          rsync -a --delete "$framework/" "$destination/"
 schemes:
   VocaPhone:
     build:

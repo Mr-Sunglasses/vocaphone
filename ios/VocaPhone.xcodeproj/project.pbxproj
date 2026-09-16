@@ -1091,6 +1091,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 970B6C1D70C8230EA7CE042E /* Build configuration list for PBXNativeTarget "VocaPhoneLiveActivity" */;
 			buildPhases = (
+				673956253F6CD38F2CD48817 /* Build VocaPhone shared framework */,
 				9FC4E35F75A19502E114669C /* Sources */,
 				6EACADC991277F91AA96F64E /* Resources */,
 			);
@@ -1109,6 +1110,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 081550E6407111AF5C8E4E91 /* Build configuration list for PBXNativeTarget "VocaPhoneTests" */;
 			buildPhases = (
+				90222CF739E36D5F6CCCAD86 /* Build VocaPhone shared framework */,
 				D061CC7FC2584C4C5E169DE3 /* Sources */,
 			);
 			buildRules = (
@@ -1126,6 +1128,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = A597F05C6C6A63BF18F55D4C /* Build configuration list for PBXNativeTarget "VocaPhoneKeyboard" */;
 			buildPhases = (
+				83F50BF1EA36E4DFEC125D95 /* Build VocaPhone shared framework */,
 				4BD0D6DD35B769E44E38EA81 /* Sources */,
 				EE106F1E96B738E0292A54D5 /* Resources */,
 			);
@@ -1144,6 +1147,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 78C4D997AE0D4122C3839545 /* Build configuration list for PBXNativeTarget "VocaPhoneApp" */;
 			buildPhases = (
+				F2EBBF57DFF6DD0603151542 /* Build VocaPhone shared framework */,
 				559581F3DAAD0A7B2649B8E4 /* Sources */,
 				5A4C83A3B7AA2104F01D6E1F /* Resources */,
 				B654218EFBC417FBA6B0C47A /* Frameworks */,
@@ -1257,6 +1261,85 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		673956253F6CD38F2CD48817 /* Build VocaPhone shared framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build VocaPhone shared framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$SDK_NAME\" = \"iphoneos\" ]; then\n  target=\"IosArm64\"\n  target_dir=\"iosArm64\"\nelse\n  target=\"IosSimulatorArm64\"\n  target_dir=\"iosSimulatorArm64\"\nfi\nif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  build_type=\"Release\"\n  build_dir=\"release\"\nelse\n  build_type=\"Debug\"\n  build_dir=\"debug\"\nfi\ncd \"$SRCROOT/../android\"\n./gradlew \":shared:link${build_type}Framework${target}\"\nframework=\"shared/build/bin/$target_dir/${build_dir}Framework/VocaPhoneSharedKMP.framework\"\ndestination=\"shared/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME/VocaPhoneSharedKMP.framework\"\nmkdir -p \"$(dirname \"$destination\")\"\nrsync -a --delete \"$framework/\" \"$destination/\"\n";
+		};
+		83F50BF1EA36E4DFEC125D95 /* Build VocaPhone shared framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build VocaPhone shared framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$SDK_NAME\" = \"iphoneos\" ]; then\n  target=\"IosArm64\"\n  target_dir=\"iosArm64\"\nelse\n  target=\"IosSimulatorArm64\"\n  target_dir=\"iosSimulatorArm64\"\nfi\nif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  build_type=\"Release\"\n  build_dir=\"release\"\nelse\n  build_type=\"Debug\"\n  build_dir=\"debug\"\nfi\ncd \"$SRCROOT/../android\"\n./gradlew \":shared:link${build_type}Framework${target}\"\nframework=\"shared/build/bin/$target_dir/${build_dir}Framework/VocaPhoneSharedKMP.framework\"\ndestination=\"shared/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME/VocaPhoneSharedKMP.framework\"\nmkdir -p \"$(dirname \"$destination\")\"\nrsync -a --delete \"$framework/\" \"$destination/\"\n";
+		};
+		90222CF739E36D5F6CCCAD86 /* Build VocaPhone shared framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build VocaPhone shared framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$SDK_NAME\" = \"iphoneos\" ]; then\n  target=\"IosArm64\"\n  target_dir=\"iosArm64\"\nelse\n  target=\"IosSimulatorArm64\"\n  target_dir=\"iosSimulatorArm64\"\nfi\nif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  build_type=\"Release\"\n  build_dir=\"release\"\nelse\n  build_type=\"Debug\"\n  build_dir=\"debug\"\nfi\ncd \"$SRCROOT/../android\"\n./gradlew \":shared:link${build_type}Framework${target}\"\nframework=\"shared/build/bin/$target_dir/${build_dir}Framework/VocaPhoneSharedKMP.framework\"\ndestination=\"shared/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME/VocaPhoneSharedKMP.framework\"\nmkdir -p \"$(dirname \"$destination\")\"\nrsync -a --delete \"$framework/\" \"$destination/\"\n";
+		};
+		F2EBBF57DFF6DD0603151542 /* Build VocaPhone shared framework */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build VocaPhone shared framework";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [ \"$SDK_NAME\" = \"iphoneos\" ]; then\n  target=\"IosArm64\"\n  target_dir=\"iosArm64\"\nelse\n  target=\"IosSimulatorArm64\"\n  target_dir=\"iosSimulatorArm64\"\nfi\nif [ \"$CONFIGURATION\" = \"Release\" ]; then\n  build_type=\"Release\"\n  build_dir=\"release\"\nelse\n  build_type=\"Debug\"\n  build_dir=\"debug\"\nfi\ncd \"$SRCROOT/../android\"\n./gradlew \":shared:link${build_type}Framework${target}\"\nframework=\"shared/build/bin/$target_dir/${build_dir}Framework/VocaPhoneSharedKMP.framework\"\ndestination=\"shared/build/xcode-frameworks/$CONFIGURATION/$SDK_NAME/VocaPhoneSharedKMP.framework\"\nmkdir -p \"$(dirname \"$destination\")\"\nrsync -a --delete \"$framework/\" \"$destination/\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		4BD0D6DD35B769E44E38EA81 /* Sources */ = {
@@ -1711,12 +1794,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -framework VocaPhoneSharedKMP";
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.VocaPhoneTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1728,6 +1813,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_LIVEACTIVITY_ENTITLEMENTS:default=VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements)";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VocaPhoneLiveActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1735,6 +1821,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -framework VocaPhoneSharedKMP";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID).liveactivity";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1747,6 +1834,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_KEYBOARD_ENTITLEMENTS:default=VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements)";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VocaPhoneKeyboard/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1754,6 +1842,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -framework VocaPhoneSharedKMP";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID).keyboard";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1768,6 +1857,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_APP_ENTITLEMENTS:default=VocaPhoneApp/VocaPhoneApp.entitlements)";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models";
 				INFOPLIST_FILE = VocaPhoneApp/Info.plist;
@@ -1775,7 +1865,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_LDFLAGS = "$(inherited) -lc++";
+				OTHER_LDFLAGS = "$(inherited) -lc++ -framework VocaPhoneSharedKMP";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID)";
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h";
@@ -1789,6 +1879,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_APP_ENTITLEMENTS:default=VocaPhoneApp/VocaPhoneApp.entitlements)";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models";
 				INFOPLIST_FILE = VocaPhoneApp/Info.plist;
@@ -1796,7 +1887,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_LDFLAGS = "$(inherited) -lc++";
+				OTHER_LDFLAGS = "$(inherited) -lc++ -framework VocaPhoneSharedKMP";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID)";
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h";
@@ -1808,12 +1899,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = YES;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -framework VocaPhoneSharedKMP";
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.VocaPhoneTests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -1962,6 +2055,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_LIVEACTIVITY_ENTITLEMENTS:default=VocaPhoneLiveActivity/VocaPhoneLiveActivity.entitlements)";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VocaPhoneLiveActivity/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1969,6 +2063,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -framework VocaPhoneSharedKMP";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID).liveactivity";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -1981,6 +2076,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = "$(LOCAL_KEYBOARD_ENTITLEMENTS:default=VocaPhoneKeyboard/VocaPhoneKeyboard.entitlements)";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/../android/shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = VocaPhoneKeyboard/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1988,6 +2084,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -framework VocaPhoneSharedKMP";
 				PRODUCT_BUNDLE_IDENTIFIER = "$(VOCAPHONE_APP_BUNDLE_ID).keyboard";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;

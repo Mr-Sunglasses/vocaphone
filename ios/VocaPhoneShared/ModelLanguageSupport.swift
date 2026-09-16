@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import VocaPhoneSharedKMP
 
 /// Which languages the loaded model can actually be asked for.
 ///
@@ -19,12 +20,20 @@ import Foundation
 /// same conclusion as the containing app.
 enum ModelLanguageSupport {
 
+    private static func modelLanguageCodes(_ languages: Set<String>) -> String {
+        languages.sorted().joined(separator: "\n")
+    }
+
     /// An explicit selection is the output contract. The engine's reported
     /// language is useful only for Automatic; allowing it to replace a selected
     /// language makes the writing-style pass choose punctuation for another
     /// script even though the decoder was pinned to the user's selection.
     static func transcriptLanguage(requested: String, reported: String) -> String {
-        requested == TranscriptionLanguage.automatic.rawValue ? reported : requested
+        LanguagePolicy.shared.transcriptLanguage(
+            requested: requested,
+            reported: reported,
+            automaticLanguage: TranscriptionLanguage.automatic.rawValue
+        )
     }
 
     /// The language the finished transcript is actually written in.
@@ -36,9 +45,12 @@ enum ModelLanguageSupport {
     /// end a Latin sentence with a danda. Empty means no translation, which
     /// leaves `transcriptLanguage` answering exactly as before.
     static func outputLanguage(requested: String, reported: String, translateTo: String) -> String {
-        translateTo.isEmpty
-            ? transcriptLanguage(requested: requested, reported: reported)
-            : translateTo
+        LanguagePolicy.shared.outputLanguage(
+            requested: requested,
+            reported: reported,
+            translateTo: translateTo,
+            automaticLanguage: TranscriptionLanguage.automatic.rawValue
+        )
     }
 
     /// `modelLanguages` empty means nothing was claimed — an older gateway
@@ -52,9 +64,11 @@ enum ModelLanguageSupport {
         _ language: TranscriptionLanguage,
         modelLanguages: Set<String>
     ) -> Bool {
-        if language == .automatic { return true }
-        if modelLanguages.isEmpty { return true }
-        return modelLanguages.contains(language.rawValue)
+        LanguagePolicy.shared.isSelectable(
+            language: language.rawValue,
+            automaticLanguage: TranscriptionLanguage.automatic.rawValue,
+            modelLanguageCodes: modelLanguageCodes(modelLanguages)
+        )
     }
 
     /// The language to actually send. A stored choice goes stale when the gateway
@@ -64,7 +78,13 @@ enum ModelLanguageSupport {
         _ selected: TranscriptionLanguage,
         modelLanguages: Set<String>
     ) -> TranscriptionLanguage {
-        isSelectable(selected, modelLanguages: modelLanguages) ? selected : .automatic
+        TranscriptionLanguage(
+            rawValue: LanguagePolicy.shared.resolve(
+                selected: selected.rawValue,
+                automaticLanguage: TranscriptionLanguage.automatic.rawValue,
+                modelLanguageCodes: modelLanguageCodes(modelLanguages)
+            )
+        ) ?? .automatic
     }
 
     /// What the picker's choice does and does not do here.
@@ -92,36 +112,11 @@ enum ModelLanguageSupport {
         canTranslate: Bool,
         onDevice: Bool = false
     ) -> String? {
-        let owner = onDevice ? "The on-device model" : "Your gateway's model"
-        var coverage: String?
-        if !modelLanguages.isEmpty {
-            let noun = modelLanguages.count == 1 ? "language" : "languages"
-            coverage = """
-            \(owner) covers \(modelLanguages.count) \(noun). \
-            The rest need a different model.
-            """
-        }
-        let remedy = canTranslate
-            ? "To change the language of the transcript, use Translate to."
-            : """
-            This model cannot translate, and picking a language you are not \
-            speaking gives unreliable text rather than a translation.
-            """
-        let translation = """
-        This is the language you are speaking, not the language you want back. \
-        \(remedy)
-        """
-        guard detectsLanguageAutomatically else {
-            return [coverage, translation].compactMap { $0 }.joined(separator: " ")
-        }
-        // Said plainly rather than by disabling the rows: this model decides the
-        // language from the audio, and the pick only tells the app how to
-        // punctuate what comes back.
-        let detection = """
-        \(owner) works out the spoken language itself, so picking one here does \
-        not pin the decoder. It sets the language the transcript is punctuated \
-        and formatted in, which is what short phrases get wrong.
-        """
-        return [coverage, detection, translation].compactMap { $0 }.joined(separator: " ")
+        LanguagePolicy.shared.restriction(
+            modelLanguageCodes: modelLanguageCodes(modelLanguages),
+            detectsLanguageAutomatically: detectsLanguageAutomatically,
+            canTranslate: canTranslate,
+            onDevice: onDevice
+        )
     }
 }

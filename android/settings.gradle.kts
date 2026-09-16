@@ -29,3 +29,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "VocaPhone"
 include(":app")
+include(":shared")
