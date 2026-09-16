@@ -35,6 +35,23 @@ function androidInstallBlock(source) {
   return match[0];
 }
 
+const PLAY_LISTING =
+  "https://play.google.com/store/apps/details?id=com.vocahq.vocaphone";
+const ANDROID_TAG =
+  "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.0";
+
+function htmlBlock(source, pattern, label) {
+  const match = source.match(pattern);
+  assert.ok(match, `${label} missing`);
+  return match[0];
+}
+
+function hrefsContaining(source, needle) {
+  return [...source.matchAll(/href="([^"]+)"/g)]
+    .map((match) => match[1])
+    .filter((href) => href.includes(needle));
+}
+
 test("page has one clear title and a landmark structure", () => {
   assert.match(html, /<title>VocaPhone: voice typing that stays yours<\/title>/);
   assert.equal((html.match(/<h1\b/g) || []).length, 1);
@@ -207,10 +224,6 @@ test("availability and install paths are honest", () => {
   // that the App Store, which VocaPhone is not on, is not implied.
   assert.match(html, /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/);
   assert.match(html, /There is\s+no App Store release yet/);
-  assert.match(
-    html,
-    /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases\/tag\/android\/v0\.2\.0"/,
-  );
   assert.match(html, /v0\.2\.0/);
   assert.match(html, /io\.github\.mrsunglasses\.localflow/);
   assert.match(html, /href="\/iphone\/"/);
@@ -221,6 +234,20 @@ test("availability and install paths are honest", () => {
   assert.doesNotMatch(html, /free forever/i);
   assert.doesNotMatch(html, /available on (the )?App Store/i);
   assert.doesNotMatch(html, /available on F-Droid/i);
+
+  // Every public Play href has to be the listing, not merely "a Play URL
+  // exists somewhere." A typo in the platform card, FAQ, download strip, or
+  // footer used to be invisible.
+  const playHrefs = hrefsContaining(html, "play.google.com");
+  assert.equal(playHrefs.length, 6, `expected 6 Play links, saw ${playHrefs.join(", ")}`);
+  for (const href of playHrefs) {
+    assert.equal(href, PLAY_LISTING);
+  }
+  const tagHrefs = hrefsContaining(html, "/releases/tag/android/");
+  assert.equal(tagHrefs.length, 2, `expected 2 pinned APK links, saw ${tagHrefs.join(", ")}`);
+  for (const href of tagHrefs) {
+    assert.equal(href, ANDROID_TAG);
+  }
 
   // Both ways to install are offered before the fold, not just the Android
   // one. The hero is where most visitors decide, so an iPhone owner reaching
@@ -236,22 +263,44 @@ test("availability and install paths are honest", () => {
   assert.match(hero, /<svg class="mark-solid"/);
   assert.match(hero, /<use href="#mark-android"/);
   assert.match(hero, /<use href="#mark-apple"/);
-  assert.ok(
-    hero.includes("https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.0"),
-    "hero is missing the Android release link",
+  assert.ok(hero.includes(PLAY_LISTING), "hero is missing the Google Play link");
+  assert.ok(!hero.includes(ANDROID_TAG), "hero should send Android visitors to Play, not the GitHub APK");
+
+  const platformAndroid = htmlBlock(
+    html,
+    /<article class="platform-card android-card reveal">[\s\S]*?<\/article>/,
+    "Android platform card",
   );
+  assert.ok(platformAndroid.includes(PLAY_LISTING), "platform card is missing the Google Play link");
+  assert.ok(!platformAndroid.includes(ANDROID_TAG), "platform card should not sideload");
+
+  const faq = htmlBlock(html, /<section class="faq-section[\s\S]*?<\/section>/, "FAQ");
+  assert.ok(faq.includes(PLAY_LISTING), "FAQ is missing the Google Play link");
 
   const androidCard = androidInstallBlock(html);
-  const uninstallAt = androidCard.indexOf("io.github.mrsunglasses.localflow");
-  const tagHrefAt = androidCard.indexOf(
-    "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.0",
-  );
+  const playHrefAt = androidCard.indexOf(PLAY_LISTING);
+  const tagHrefAt = androidCard.indexOf(ANDROID_TAG);
   const checksumAt = androidCard.indexOf("SHA256SUMS.txt");
-  assert.ok(uninstallAt !== -1, "uninstall note missing from Android install block");
+  const uninstallAt = androidCard.indexOf("io.github.mrsunglasses.localflow");
+  assert.ok(playHrefAt !== -1, "Play Store URL missing from Android install block");
   assert.ok(tagHrefAt !== -1, "pinned release URL missing from Android install block");
   assert.ok(checksumAt !== -1, "checksum note missing from Android install block");
-  assert.ok(uninstallAt < tagHrefAt, "uninstall line must lead the Android install block");
+  assert.ok(uninstallAt !== -1, "uninstall note missing from Android install block");
+  assert.ok(playHrefAt < tagHrefAt, "Play Store must lead the Android install block");
   assert.ok(tagHrefAt < checksumAt, "pinned release URL must precede the checksum note");
+  assert.ok(checksumAt < uninstallAt, "sideload checksum note must precede the Local Flow uninstall line");
+
+  const download = htmlBlock(
+    html,
+    /<section class="download-section[\s\S]*?<\/section>/,
+    "download section",
+  );
+  assert.ok(download.includes(PLAY_LISTING), "download section is missing the Google Play link");
+  assert.ok(!download.includes(ANDROID_TAG), "download section should send Android visitors to Play");
+
+  const footer = htmlBlock(html, /<footer class="site-footer">[\s\S]*?<\/footer>/, "footer");
+  assert.ok(footer.includes(PLAY_LISTING), "footer is missing the Google Play link");
+  assert.ok(footer.includes(ANDROID_TAG), "footer is missing the pinned release link");
 
   assert.match(iphoneHtml, /The gateway is optional/);
   assert.match(iphoneHtml, /No gateway address or token\s+is needed for this mode/);

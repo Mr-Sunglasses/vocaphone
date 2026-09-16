@@ -12,13 +12,15 @@ Then open `http://127.0.0.1:4173/`. The iPhone setup guide is available at
 `http://127.0.0.1:4173/iphone/`. The consumer privacy page is at
 `http://127.0.0.1:4173/privacy/`.
 
-The site uses only local brand assets and system fonts. The Android install and
-download CTAs point at a pinned release tag (`android/v0.2.0`), where the release
-includes the APK and its verification files. New Android tags are `android/v*`;
-**move the pin when you cut the next Android release people should install**
-(see [releasing.md](../docs/releasing.md)). `npm run check` asserts the tag the
-install block links to, so a stale pin fails there rather than on the live
-site.
+The site uses only local brand assets and system fonts. Public Android install
+and download CTAs point at the Google Play listing
+(`https://play.google.com/store/apps/details?id=com.vocahq.vocaphone`). The
+install card still pins a GitHub release tag (`android/v0.2.0`) as the sideload
+path, where the release includes the APK and its verification files. New
+Android tags are `android/v*`; **move that pin when you cut the next Android
+release people should sideload** (see [releasing.md](../docs/releasing.md)).
+`npm run check` asserts both the Play URL and the tag the install block links
+to, so a stale pin fails there rather than on the live site.
 
 They deliberately do not use `/releases/latest`, which the check forbids.
 GitHub resolves it to the newest release that is not a prerelease, so while

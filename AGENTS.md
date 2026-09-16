@@ -189,7 +189,9 @@ telemetry to the keyboard target.
 
 `web/` is a dependency-free static site. `npm run check` is the gate
 (`.github/workflows/quality-web.yml`). Pages deploy from `main` when `web/`
-changes. Pin Android download links to a concrete `android/v*` tag — never
+changes. Public Android install CTAs go to Google Play
+(`https://play.google.com/store/apps/details?id=com.vocahq.vocaphone`).
+Sideload APK links pin a concrete `android/v*` tag — never
 `/releases/latest`.
 
 Keyboard word lists and the emoji catalog live once at `assets/keyboard/`.

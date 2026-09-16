@@ -7,7 +7,7 @@
 **Voice dictation for iPhone and Android.**
 
 <!-- Product -->
-[![Status: Android beta / iOS TestFlight](https://img.shields.io/badge/status-Android%20beta%20%2F%20iOS%20TestFlight-yellow)](#status)
+[![Status: Google Play / iOS TestFlight](https://img.shields.io/badge/status-Google%20Play%20%2F%20iOS%20TestFlight-yellow)](#status)
 [![Privacy: on-device / optional gateway](https://img.shields.io/badge/privacy-on--device%20%2F%20optional%20gateway-success)](#privacy-and-platform-boundaries)
 [![Release](https://img.shields.io/github/v/release/VocaHQ/vocaphone?include_prereleases)](https://github.com/VocaHQ/vocaphone/releases/latest)
 [![vocaphone.vocahq.com](https://img.shields.io/badge/site-vocaphone.vocahq.com-0F6B57)](https://vocaphone.vocahq.com)
@@ -41,7 +41,7 @@ copyleft that also covers modified versions offered as a network service.
 
 | Client | State |
 | --- | --- |
-| **Android** | Public beta for Android 13+. [releases](https://github.com/VocaHQ/vocaphone/releases) · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
+| **Android** | Public beta on [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone) for Android 13+. [GitHub APK](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.0) if you prefer to sideload · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
 | **iOS** | Public TestFlight beta for iOS 17+ · [join](https://testflight.apple.com/join/wd85wQ3W) · or build from source (Mac, Xcode, signing team, physical iPhone) · [iPhone guide](https://vocaphone.vocahq.com/iphone/) |
 | **Gateway** | Optional. Self-host [VocaGateway](https://github.com/VocaHQ/vocagateway) on macOS/Linux or Docker when you want more models or shared compute |
 
@@ -90,7 +90,7 @@ the active cursor. A gateway is never required for on-device mode.
 | Linux | VocaLinux | [vocalinux.com](https://vocalinux.com) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available now |
 | macOS | VocaMac | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
 | Windows | VocaWin | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta · [v0.1.0-beta.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-beta.1) |
-| iOS / Android | VocaPhone | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS TestFlight |
+| iOS / Android | VocaPhone | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Google Play beta / iOS TestFlight |
 | Gateway | VocaGateway | [vocagateway.vocahq.com](https://vocagateway.vocahq.com) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
 
 Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
@@ -100,10 +100,14 @@ Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
 
 ### 1. Android (public beta)
 
-Public beta APKs for Android 13+ are on
-[GitHub Releases](https://github.com/VocaHQ/vocaphone/releases). Install one,
-enable VocaPhone in Android's keyboard settings, grant microphone (and
-notifications if asked), then download an on-device speech-to-text model.
+Install from [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone)
+on Android 13+. Enable VocaPhone in Android's keyboard settings, grant
+microphone (and notifications if asked), then download an on-device
+speech-to-text model.
+
+Signed APKs are still on
+[GitHub Releases](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.0)
+if you want to sideload.
 
 To build from source:
 
@@ -253,7 +257,7 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 | [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
 | [Releasing](docs/releasing.md) | Platform-prefixed tags, Android-only / iOS-only / joint drops, changelogs |
 | [TestFlight](docs/testflight.md) | App Store Connect setup, archiving, and TestFlight distribution |
-| [Google Play prep](docs/play-store.md) | Full-flavor AAB, upload signing, listing and Console checklist |
+| [Google Play](docs/play-store.md) | Production listing, AAB upload, signing, and Console promotion |
 | [Tailscale](docs/tailscale.md) | Private HTTPS ingress for the gateway |
 | [Architecture](docs/architecture.md) | Components, state transitions, engine boundary, and observability |
 | [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
