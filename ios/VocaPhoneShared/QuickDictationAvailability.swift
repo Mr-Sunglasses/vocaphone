@@ -37,6 +37,22 @@ struct QuickDictationAvailability: Codable, Equatable, Sendable {
         )
     }
 
+    /// A heartbeat that also pushes the deadline out, for a window the user
+    /// asked to last as long as the app does. The lease still exists — a
+    /// process killed between heartbeats leaves a marker that expires by
+    /// itself — it is just continuously renewed while the app is alive.
+    func renewingLease(
+        _ duration: QuickDictationDuration,
+        at date: Date = Date()
+    ) -> QuickDictationAvailability {
+        guard duration.renewsLease else { return refreshingHeartbeat(at: date) }
+        return QuickDictationAvailability(
+            activatedAt: activatedAt,
+            expiresAt: duration.expiry(from: date),
+            heartbeatAt: date
+        )
+    }
+
     /// A keyboard request and a standby re-arm can cross in separate processes.
     /// The tiny grace window accepts that in-flight request without adopting an
     /// older abandoned session from before Quick Dictation was available.

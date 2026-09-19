@@ -6,7 +6,6 @@ import SwiftUI
 struct SwipeBackCoach: View {
     let reduceMotion: Bool
     var compact = false
-    var prominent = false
 
     @State private var progress: CGFloat = 0
     @State private var replayID = 0
@@ -42,10 +41,10 @@ struct SwipeBackCoach: View {
                     ZStack {
                         Circle()
                             .fill(Color.brand)
-                            .frame(width: prominent ? 48 : 32, height: prominent ? 48 : 32)
+                            .frame(width: 32, height: 32)
                             .shadow(color: .black.opacity(0.18), radius: 5, y: 2)
                         Image(systemName: "hand.point.up.left.fill")
-                            .font((prominent ? Font.body : Font.caption).weight(.bold))
+                            .font(.caption.weight(.bold))
                             .foregroundStyle(Color.onBrand)
                     }
                     .offset(x: -width * 0.31 + progress * width * 0.52, y: -26)
@@ -83,44 +82,30 @@ struct SwipeBackCoach: View {
                         }
                 )
             }
-            .frame(height: prominent ? 258 : compact ? 150 : 174)
-            .allowsHitTesting(!prominent)
+            .frame(height: compact ? 150 : 174)
 
-            if prominent {
-                Label(
-                    "Preview only — do not swipe here",
-                    systemImage: "play.rectangle"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .center)
-            } else {
-                HStack(spacing: 8) {
-                    instruction(number: 1, title: "Touch the home bar")
-                    Image(systemName: "arrow.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityHidden(true)
-                    instruction(number: 2, title: "Swipe right")
-                }
+            HStack(spacing: 8) {
+                instruction(number: 1, title: "Touch the home bar")
+                Image(systemName: "arrow.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                instruction(number: 2, title: "Swipe right")
             }
 
-            if !prominent {
-                HStack {
-                    Label(
-                        progress < 0.5 ? "Try the swipe in this demo" : "The previous app appears",
-                        systemImage: progress < 0.5 ? "hand.point.up.left" : "text.cursor"
-                    )
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.brand)
-                    .contentTransition(.symbolEffect(.replace))
+            HStack {
+                Label(
+                    progress < 0.5 ? "Try the swipe in this demo" : "The previous app appears",
+                    systemImage: progress < 0.5 ? "hand.point.up.left" : "text.cursor"
+                )
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.brand)
+                .contentTransition(.symbolEffect(.replace))
 
-                    Spacer()
+                Spacer()
 
-                    Button("Replay swipe", action: replay)
-                        .font(.caption.weight(.semibold))
-                }
+                Button("Replay swipe", action: replay)
+                    .font(.caption.weight(.semibold))
             }
         }
         .task(id: replayID) {
@@ -128,9 +113,7 @@ struct SwipeBackCoach: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            prominent
-                ? "Animation preview. Use the real iPhone home indicator at the bottom of the screen to return to the app where you were typing."
-                : "Interactive demonstration. Swipe right along the home indicator to return to the app where you were typing."
+            "Interactive demonstration. Swipe right along the home indicator to return to the app where you were typing."
         )
         .accessibilityAction(named: "Replay swipe", replay)
     }
@@ -153,7 +136,7 @@ struct SwipeBackCoach: View {
                 }
                 .padding(12)
             }
-            .frame(height: prominent ? 232 : compact ? 132 : 156)
+            .frame(height: compact ? 132 : 156)
     }
 
     private var vocaphoneCard: some View {
@@ -166,7 +149,7 @@ struct SwipeBackCoach: View {
             .overlay(alignment: .topLeading) {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("vocaphone is recording", systemImage: "mic.fill")
-                        .font((prominent ? Font.subheadline : Font.caption).weight(.semibold))
+                        .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.vocaRecording)
                     HStack(spacing: 4) {
                         ForEach(0..<8, id: \.self) { index in
@@ -178,7 +161,7 @@ struct SwipeBackCoach: View {
                 }
                 .padding(12)
             }
-            .frame(height: prominent ? 194 : compact ? 112 : 136)
+            .frame(height: compact ? 112 : 136)
     }
 
     private func instruction(number: Int, title: String) -> some View {

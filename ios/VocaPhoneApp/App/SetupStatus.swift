@@ -58,9 +58,16 @@ enum InstalledKeyboards {
 
     /// Entries carry trailing layout options, so the bundle identifier is
     /// matched as a substring rather than compared whole.
-    static func includesVocaPhone(_ identifiers: [String]?) -> Bool? {
+    ///
+    /// `keyboard` is injectable because the identifier is derived from the
+    /// running bundle, and a test bundle is not the app — without it a test can
+    /// only ever check the matching against whatever the *test host* is called.
+    static func includesVocaPhone(
+        _ identifiers: [String]?,
+        keyboard: String = AppConfiguration.keyboardBundleIdentifier
+    ) -> Bool? {
         identifiers.map { entries in
-            entries.contains { $0.contains(AppConfiguration.keyboardBundleIdentifier) }
+            entries.contains { $0.contains(keyboard) }
         }
     }
 }
@@ -78,8 +85,11 @@ enum KeyboardSetupState: Equatable, Sendable {
     /// switched to yet. The two are indistinguishable from here, and both are
     /// answered by the same instruction.
     case addedButNeverRun
-    /// Defensive: the extension reports the state it sees, and a write that
-    /// lands while it believes Full Access is off is worth saying plainly.
+    /// The keyboard ran and Full Access was off. Proven, not inferred: the
+    /// extension says so over the one channel it still has in that state (see
+    /// ``VocaPhoneDarwinNotification/keyboardLacksFullAccess``), because the
+    /// shared container it would otherwise write to is the very thing Full
+    /// Access grants.
     case seenWithoutFullAccess(lastSeenAt: Date)
     case ready(lastSeenAt: Date)
     /// Full Access was granted once, but the keyboard has not run since. It may
@@ -107,11 +117,38 @@ enum KeyboardSetupState: Equatable, Sendable {
     /// undocumented keyboard list ever changes shape, the worst that happens is
     /// the checklist stops advancing early — not that a working setup is
     /// declared broken.
+    ///
+    /// `lackedFullAccessAt` is the opposite evidence, and the two are resolved
+    /// by recency alone. Both are things the keyboard reported about itself at
+    /// a known moment, and a user who turns the switch off after a good run —
+    /// or on after a bad one — must not be described by the older of the two.
     static func resolve(
         _ status: KeyboardStatus?,
         isInstalled: Bool? = nil,
+        lackedFullAccessAt: Date? = nil,
         now: Date = Date()
     ) -> KeyboardSetupState {
+        // Compared at the status file's precision, and a tie goes to the
+        // write. `lastSeenAt` is floored to the second; the "no Full Access"
+        // ping is stamped with a fractional `Date()` when it arrives. UIKit
+        // finalizes a changed Full Access setting only after the extension's
+        // early appearance callbacks, so the first launch after turning it on
+        // reports *off* from `viewWillAppear` and *on* from `viewDidAppear` —
+        // inside one second. Compared raw, 200.4 beat 200.0 every time, and
+        // the page insisted Full Access was off until the user toggled it
+        // again to get an instance born with it finalized.
+        //
+        // The write wins the tie on its merits, not by convention: it lands
+        // in the shared container, which only Full Access can reach. It is
+        // proof by construction; the ping is a report from before UIKit knew.
+        if let lackedFullAccessAt {
+            let lackedSecond = Date(
+                timeIntervalSince1970: lackedFullAccessAt.timeIntervalSince1970.rounded(.down)
+            )
+            if lackedSecond > (status?.lastSeenAt ?? .distantPast) {
+                return .seenWithoutFullAccess(lastSeenAt: lackedFullAccessAt)
+            }
+        }
         guard let status else {
             return isInstalled == true ? .addedButNeverRun : .notAdded
         }
@@ -121,6 +158,14 @@ enum KeyboardSetupState: Equatable, Sendable {
         return now.timeIntervalSince(status.lastSeenAt) > silenceThreshold
             ? .silent(lastSeenAt: status.lastSeenAt)
             : .ready(lastSeenAt: status.lastSeenAt)
+    }
+
+    /// Whether the extension has demonstrably run on this device, whatever it
+    /// found when it did. Either report is proof that the keyboard is installed
+    /// — stronger proof than the undocumented preference key, which may simply
+    /// not answer.
+    static func hasRun(status: KeyboardStatus?, lackedFullAccessAt: Date?) -> Bool {
+        status != nil || lackedFullAccessAt != nil
     }
 }
 
@@ -210,6 +255,31 @@ struct SetupStatus: Equatable, Sendable {
         blockingSteps.first.map(detail(for:))
     }
 
+    /// The verb on the home attention card, or `nil` when nothing is blocked.
+    ///
+    /// Source problems live in Transcription settings. Microphone and keyboard
+    /// problems live in iOS Settings — vocaphone cannot flip those switches.
+    var attentionActionTitle: String? {
+        guard attentionHeadline != nil, let first = blockingSteps.first else { return nil }
+        switch first {
+        case .source:
+            switch source.selected {
+            case .onDevice: return "Download a model"
+            case .gateway: return source.recoveryActionTitle
+            }
+        case .microphone, .keyboard:
+            return "Open Settings"
+        case .firstDictation:
+            return nil
+        }
+    }
+
+    /// Whether that action leaves vocaphone for iOS Settings.
+    var attentionOpensSystemSettings: Bool {
+        guard let first = blockingSteps.first else { return false }
+        return first == .microphone || first == .keyboard
+    }
+
     /// Plain-English state for one step.
     ///
     /// This lives beside the model rather than in the view so that a step can
@@ -245,8 +315,9 @@ struct SetupStatus: Equatable, Sendable {
                     + "Access for it, then switch to it in the field below — "
                     + "this ticks itself the moment it runs."
             case .seenWithoutFullAccess:
-                return "vocaphone is added, but Full Access is off. Tap vocaphone "
-                    + "Flow under Keyboards and turn on Allow Full Access."
+                return "The keyboard opened, but Full Access is off, so it "
+                    + "cannot reach vocaphone. Turn it on under "
+                    + "\(AppConfiguration.fullAccessSettingsPath)"
             case let .ready(lastSeenAt):
                 return "Ready. The keyboard last ran \(Self.format(lastSeenAt))."
             case let .silent(lastSeenAt):
@@ -266,3 +337,65 @@ struct SetupStatus: Equatable, Sendable {
         date.formatted(date: .abbreviated, time: .shortened)
     }
 }
+
+#if DEBUG
+/// Draws the home attention card without changing real setup.
+enum AttentionCardPreview: String, CaseIterable, Identifiable {
+    case off
+    case noModel
+    case microphoneOff
+    case keyboardNeedsAccess
+
+    static let storageKey = "debugAttentionCardPreview"
+
+    var id: String { rawValue }
+
+    var settingsLabel: String {
+        switch self {
+        case .off: "Off"
+        case .noModel: "No model card"
+        case .microphoneOff: "Open Settings card"
+        case .keyboardNeedsAccess: "Keyboard Full Access card"
+        }
+    }
+
+    /// `nil` leaves the live status in place.
+    var status: SetupStatus? {
+        let readyKeyboard = KeyboardSetupState.ready(lastSeenAt: Date())
+        switch self {
+        case .off:
+            return nil
+        case .noModel:
+            return SetupStatus(
+                source: TranscriptionSourceStatus(selected: .onDevice),
+                microphone: .granted,
+                keyboard: readyKeyboard,
+                hasDictatedOnce: true
+            )
+        case .microphoneOff:
+            return SetupStatus(
+                source: TranscriptionSourceStatus(
+                    selected: .onDevice,
+                    onDeviceModelName: "Whisper Base",
+                    isOnDeviceReady: true
+                ),
+                microphone: .denied,
+                keyboard: readyKeyboard,
+                hasDictatedOnce: true
+            )
+        case .keyboardNeedsAccess:
+            return SetupStatus(
+                source: TranscriptionSourceStatus(
+                    selected: .onDevice,
+                    onDeviceModelName: "Whisper Base",
+                    isOnDeviceReady: true
+                ),
+                microphone: .granted,
+                keyboard: .seenWithoutFullAccess(lastSeenAt: Date()),
+                isKeyboardInstalled: true,
+                hasDictatedOnce: true
+            )
+        }
+    }
+}
+#endif

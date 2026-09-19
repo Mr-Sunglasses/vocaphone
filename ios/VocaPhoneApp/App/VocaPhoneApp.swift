@@ -59,24 +59,80 @@ struct VocaPhoneApp: App {
     @UIApplicationDelegateAdaptor(VocaPhoneAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var coordinator = RecordingCoordinator()
+    @State private var isShowingSettings = false
+    @State private var isShowingQuickDictationReturnGuide = false
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(
+                isShowingSettings: $isShowingSettings,
+                isShowingQuickDictationReturnGuide: $isShowingQuickDictationReturnGuide
+            )
                 .environment(coordinator)
                 .tint(.brand)
-                .onOpenURL { coordinator.handleDeepLink($0) }
+                .onOpenURL { url in
+                    guard url.scheme == AppConfiguration.urlScheme else {
+                        coordinator.handleDeepLink(url)
+                        return
+                    }
+                    switch url.host {
+                    case "settings":
+                        isShowingQuickDictationReturnGuide = false
+                        isShowingSettings = true
+                    case "ready":
+                        isShowingSettings = false
+                        isShowingQuickDictationReturnGuide = true
+                        // Foregrounding the app is the only supported way for
+                        // its process to own the microphone. If permission has
+                        // not been granted yet, this presents the real system
+                        // request here rather than pretending the keyboard can
+                        // record by itself.
+                        // The keyboard's VocaPhone switch turned on: a launch,
+                        // arming the usual window with the saved duration. It
+                        // also has to leave Quick Dictation enabled — a window
+                        // armed around a disabled setting works once, then every
+                        // later launch from Start comes up with no window at all.
+                        coordinator.setQuickDictationEnabled(true)
+                    default:
+                        coordinator.handleDeepLink(url)
+                    }
+                }
                 .onAppear {
+#if DEBUG
+                    DiagnosticLog.mirrorForDeviceTransfer()
+                    DiagnosticLog.mirrorKeyboardTraceForDeviceTransfer()
+#endif
                     KeyboardPreferences.containingAppIsForeground = true
                     KeyboardPreferences.migrateTypingHapticsIfNeeded()
+                    KeyboardPreferences.markQuickDictationRecoveryOfferIfNeeded()
                     Telemetry.shared.appFirstOpen()
                     // Started once here rather than lazily from the setup card:
                     // the first path update has to have landed by the time that
                     // card decides whether to warn about a 670 MB download.
                     NetworkConditions.shared.start()
+                    // Off the main thread, because parsing 3,477 rows is not
+                    // worth a frame at launch — and off the first transcript,
+                    // which is where the cost sat otherwise. The keyboard needs
+                    // no equivalent: its typing strip reads the same table
+                    // long before anyone dictates.
+                    Task.detached(priority: .utility) { EmojiTable.warmUp() }
                 }
                 .onChange(of: scenePhase) { _, phase in
+#if DEBUG
+                    DiagnosticLog.mirrorForDeviceTransfer()
+                    DiagnosticLog.mirrorKeyboardTraceForDeviceTransfer()
+#endif
                     KeyboardPreferences.containingAppIsForeground = phase == .active
+                    // A Full Access deep link usually lands mid-launch, when
+                    // iOS ignores the Settings URL. This is the first moment it
+                    // will not.
+                    if phase == .active {
+                        coordinator.openSystemSettingsIfPossible()
+                        // Keyboards can only be added or removed in Settings,
+                        // so coming back is the one moment the model
+                        // recommendations can legitimately change.
+                        KeyboardInputLanguages.refresh()
+                    }
                     guard phase == .active else {
                         // The queue is in memory and does not survive the
                         // process, so backgrounding is the only moment a flush
@@ -91,6 +147,11 @@ struct VocaPhoneApp: App {
                         }
                         return
                     }
+                    // A pause taken from the Live Activity ends here: coming
+                    // back to vocaphone is the "turn it back on" gesture, and
+                    // the alternative is a user hunting through Settings for a
+                    // switch they never knowingly flipped.
+                    coordinator.endQuickDictationPause()
                     Task {
                         await coordinator.recoverRecentSession()
                         coordinator.prepareQuickDictationIfEnabled()

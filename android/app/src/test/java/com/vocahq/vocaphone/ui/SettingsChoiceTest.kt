@@ -56,6 +56,7 @@ class SettingsChoiceTest {
         assertEquals(KeyboardHeight.DEFAULT, KeyboardHeight.fromStored(null))
         assertEquals(KeyboardHeight.DEFAULT, VocaPhoneSettings().keyboardHeight)
         assertFalse(VocaPhoneSettings().numbersAsDigits)
+        assertFalse(VocaPhoneSettings().dynamicColorEnabled)
         assertEquals(48, KeyboardHeight.DEFAULT.keyHeightDp)
     }
 

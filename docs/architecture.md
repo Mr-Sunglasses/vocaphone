@@ -57,12 +57,16 @@ the gateway wire format changed.
 9. The keyboard verifies its session context, persists `inserting`, calls
    `insertText`, then persists `inserted` and `completed`.
 
-After Finish, the app can rearm a 10-minute Quick Dictation window without
-tearing down its `AVAudioEngine`. The same input tap writes buffers only while a
-dictation is active and deliberately discards every standby buffer. The shared
-availability file contains only activation and expiry timestamps. It is cleared
-before active recording, on expiry, on audio failure, or when the user turns the
-feature off.
+After Finish, the app can rearm a Quick Dictation window without
+tearing down its `AVAudioEngine`. The window length is a preference — 10
+minutes, 20 minutes, or "until I close vocaphone", which takes a short lease the
+standby heartbeat keeps renewing so a killed process cannot leave a marker that
+never expires. The same input tap writes buffers only while a dictation is
+active and deliberately discards every standby buffer. The shared availability
+file contains only activation and expiry timestamps. It is cleared before active
+recording, on expiry, on audio failure, when the user turns the feature off, and
+when the Live Activity's Pause button ends the current window. Pausing sets a
+flag that the next foreground clears; only the Settings toggle is durable.
 
 Persisting `inserting` before touching the document intentionally favors
 avoiding duplicate text if the extension terminates at the worst moment.
@@ -98,7 +102,17 @@ Three constraints shape the design:
    skips entirely. `TypingWordList` provides a pure-Swift fallback that *can*
    leave the main actor if device measurement ever demands it.
 3. **The extension has a hard memory ceiling.** One checker, one word list, a
-   bounded cache and a capped learned-word store.
+   bounded cache and a capped learned-word store. While visible, the keyboard
+   checks available process memory every second and before system dictionary
+   work. Below 25 MiB of headroom, or on a UIKit memory warning, it releases
+   the system checker, suggestion cache, hidden emoji panel and hidden key planes.
+   Cleanup is silent and preserves the visible panel, basic typing, bundled
+   suggestions and correction undo. Emoji panels are also released when closed
+   or when the keyboard disappears; pending catalog delivery is cancelled.
+   System dictionary work resumes lazily after five consecutive one-second
+   samples with at least 35 MiB available. These are conservative policy
+   thresholds, not platform limits or a measured guarantee. iOS can still terminate an
+   extension without delivering a warning; these checks cannot guarantee survival.
 
 The word list, the bigram table, the emoji catalog and the emoji suggestion
 table live once at `assets/keyboard/` in the repository root. The iOS keyboard

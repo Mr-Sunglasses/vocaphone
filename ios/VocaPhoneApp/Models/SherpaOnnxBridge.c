@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "sherpa-onnx/c-api/c-api.h"
+#include <SherpaOnnxC/sherpa-onnx/c-api/c-api.h>
 
 struct VocaPhoneSherpaContext {
     const SherpaOnnxOfflineRecognizer *recognizer;

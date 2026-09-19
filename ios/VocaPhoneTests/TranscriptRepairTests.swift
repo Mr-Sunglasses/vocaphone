@@ -124,6 +124,16 @@ struct TranscriptRepairTests {
         #expect(TranscriptRepair.apply("um uh", language: "en") == "um uh")
     }
 
+    /// First-run practice: a filler and a restarted phrase. Automatic only
+    /// drops "um" when the sentence already looks English, so this has to.
+    @Test func theOnboardingPracticePromptRepairsToACleanSentence() {
+        #expect(
+            TranscriptRepair.apply(
+                "Hi John. Um, I think I think we should meet at two. Cheers!"
+            ) == "Hi John. I think we should meet at two. Cheers!"
+        )
+    }
+
     // MARK: - False starts
 
     @Test func aRepeatedPhraseCollapses() {

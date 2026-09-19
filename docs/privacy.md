@@ -9,11 +9,14 @@ after a transcript is safely stored. HTTPS or an encrypted private network is
 recommended so the recording and token are protected in transit.
 
 When Quick Dictation is enabled, the containing app may keep microphone input
-active for up to 10 minutes so later keyboard actions do not need another app
-handoff. The system's orange microphone indicator remains visible. Audio buffers
+active so later keyboard actions do not need another app handoff. The window is
+the user's choice — 10 minutes by default, 20 minutes, or until vocaphone is
+closed. The system's orange microphone indicator remains visible. Audio buffers
 captured while waiting are discarded in memory: they are not written to disk,
 placed in shared state, or uploaded. Only audio after an explicit Dictate action
-is saved for transcription. The user can turn Quick Dictation off in the app.
+is saved for transcription. The user can turn Quick Dictation off in the app,
+or pause the current window from the Live Activity without changing the
+setting.
 
 The gateway host stores randomized audio names under its private data directory.
 On success, original and normalized audio are deleted by default. Failed and
@@ -133,6 +136,32 @@ optional clipboard history read
 clips only while the input view is showing; history stays on the phone. Neither
 path is used to insert a transcript.
 
+## Usage statistics (Android)
+
+Settings → Stats counts how much you have dictated. It is counts only: six
+numbers — total words, transcriptions, recorded audio, the current and best day
+streak, and the day of the most recent dictation — plus a word total for each of
+the **seven most recent days** that have one. No transcript text and no audio.
+
+They are written to an app-private DataStore file of their own, separate from the
+file holding settings and the gateway token, so a damaged statistics file costs
+counters rather than a working setup. `allowBackup="false"` applies to the whole
+app, so they are not carried off the phone by Android backup or device transfer.
+Nothing here is transmitted: no usage-reporting event carries any of it, and it
+is absent from the diagnostics export, which stays a closed vocabulary of state
+and lifecycle events.
+
+**They deliberately outlive transcripts.** Deleting your history — one dictation
+or all of it — does not reduce these counters, because they are the record of how
+much you dictated rather than of what you said. The delete-all confirmation says
+so. **Settings → Stats → Reset statistics** erases them, permanently and without
+touching your transcripts, and uninstalling the app removes them with everything
+else.
+
+Only the seven displayed days are retained, so there is no longer-term history of
+which days you dictated on. The streak counters are the exception, and they are
+two integers rather than a diary.
+
 ## Per-device tokens
 
 `VOCAGATEWAY_TOKEN` (or its token file) remains a permanent bootstrap credential
@@ -158,6 +187,17 @@ again) is the one action that actually breaks that device's existing pairing,
 so treat it as opt-in, not routine maintenance. Revoking a device token
 immediately rejects further requests carrying it without affecting the
 bootstrap token or any other paired device.
+
+## Stats sharing
+
+Usage statistics remain on the phone unless the user explicitly taps a sharing
+action on the Stats page. VocaPhone then creates a share card from the aggregate
+counters. The X action places that image on the device clipboard and opens X's
+composer with a prefilled post. The Share action hands the card and post text to
+the system share sheet, where the user picks the destination app, and also
+places the post text on the device clipboard. This is a user-directed share to
+the chosen app; it is not telemetry and does not include recordings,
+transcripts, gateway credentials, or audio.
 
 ## Usage reporting
 
@@ -310,6 +350,30 @@ path at the proxy, which is not in place yet, and rotating the key if it is ever
 abused. It is unrelated
 to the gateway bearer token, which is a real secret and lives in the iOS
 Keychain and the Android Keystore.
+
+## Usage statistics (iOS)
+
+Counters for the Stats screen in Settings: total words, total dictations, total
+recorded seconds, a current and best streak, and words, sessions, and recorded
+time for each of the last seven active days. The screen fills quiet dates into
+its seven-calendar-day chart without storing additional events.
+
+- **Counts, not words.** No transcript text and no audio is stored. A dictation
+  contributes a number, and the number cannot be turned back into what was said.
+- **Never leaves the device.** Nothing here is sent to a gateway, reported as
+  telemetry, or included in the diagnostics export.
+- **Written where the dictation lands.** The keyboard extension appends one
+  small file per inserted dictation to the App Group; the app folds those into a
+  summary when the Stats screen is opened.
+- **Outside transcript retention, deliberately.** The files live in `usage/`,
+  beside `sessions/` rather than inside it, so deleting your transcripts — or
+  running a 7- or 30-day retention setting — keeps your lifetime totals. The
+  reverse also holds: resetting statistics does not touch your transcripts.
+- **Reset at any time**, from the Stats screen. This deletes the summary and any
+  pending events permanently.
+
+Only dictations that were actually inserted are counted. A transcript that is
+produced and then abandoned never becomes a statistic.
 
 ## Diagnostics export
 

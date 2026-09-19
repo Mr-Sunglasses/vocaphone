@@ -387,6 +387,18 @@ object TranscriptRepair {
         // A repeat with nothing after it was said twice on purpose. A false
         // start is the beginning of a sentence the speaker then finishes.
         if (length > 1 && index + length * 2 >= words.size) return false
+        // Neither is a repeat containing [SpokenEmoji]'s trigger. Nobody
+        // abandons a sentence on the one word this app treats as a command, so
+        // "crying emoji crying emoji crying emoji" is three emoji — and unlike
+        // the guard above, those copies *are* followed by more of themselves.
+        //
+        // Anywhere in the unit, not just the end, because this walk advances a
+        // word at a time and re-enters the middle of a run it declined: three
+        // "crying emoji" read from index one are two "emoji crying", and that
+        // rotation puts the trigger first.
+        if (length > 1 && (0 until length).any { words[index + it].key in SpokenEmoji.TRIGGER_WORDS }) {
+            return false
+        }
         for (offset in 0 until length) {
             val first = words[index + offset]
             val second = words[index + length + offset]

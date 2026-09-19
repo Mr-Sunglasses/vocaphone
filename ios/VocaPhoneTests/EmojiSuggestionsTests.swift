@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 
 /// The table is the feature. Matching is three lines; what decides whether the
@@ -6,6 +7,8 @@ import Testing
 /// emoji, but never ordinary prose.
 struct EmojiSuggestionsTests {
     @Test func theWordsPeopleExpectAreOffered() {
+        #expect(EmojiSuggestions.glyph(for: "happy") == "😊")
+        #expect(EmojiSuggestions.glyph(for: "sad") == "😢")
         #expect(EmojiSuggestions.glyph(for: "lol") == "😂")
         #expect(EmojiSuggestions.glyph(for: "pizza") == "🍕")
         #expect(EmojiSuggestions.glyph(for: "birthday") == "🎂")
@@ -57,9 +60,13 @@ struct EmojiSuggestionsTests {
         for (word, glyph) in EmojiSuggestions.triggers {
             #expect(word == word.lowercased(), "\(word) is not lowercased")
             #expect(word.count >= EmojiSuggestions.minimumLength)
+            // Letters, or digits for the handful of curated keys that are a
+            // number — "100" is 💯, and `SpokenEmoji` needs it because a model
+            // writes a spoken "hundred" that way. The generator still refuses
+            // anything else, and its auto path is alphabetic regardless.
             // `allSatisfy` is rethrowing too, so it is answered here rather
             // than inside the macro.
-            let isPlainWord = word.allSatisfy(\.isLetter)
+            let isPlainWord = word.allSatisfy { $0.isLetter || $0.isNumber }
             #expect(isPlainWord, "\(word) is not a plain word")
             #expect(!glyph.isEmpty)
             // One grapheme, so the chip is a glyph rather than a phrase. Flags
@@ -90,5 +97,108 @@ struct EmojiSuggestionsTests {
         #expect(EmojiSuggestions.triggers.count > 2_000)
         let glyphs = Set(EmojiSuggestions.triggers.values)
         #expect(glyphs.count > 1_500)
+    }
+}
+
+@MainActor
+@Suite(.serialized)
+struct EmojiSuggestionLoadingTests {
+    private let triggers = ["happy": "😊", "sad": "😢"]
+
+    private func withEngine(_ body: (TypingEngine) -> Void) {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        let emoji = KeyboardPreferences.emojiSuggestionsEnabled
+        defer {
+            KeyboardPreferences.typingSuggestionsEnabled = suggestions
+            KeyboardPreferences.emojiSuggestionsEnabled = emoji
+        }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        KeyboardPreferences.emojiSuggestionsEnabled = true
+        let engine = TypingEngine(
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        defer { engine.suspend() }
+        body(engine)
+    }
+
+    @Test(arguments: ["happy", "sad", "Happy", "SAD"])
+    func aFinishedWordGetsItsEmojiWhenLoadingCompletes(word: String) {
+        withEngine { engine in
+            engine.insert(word, document: DocumentSnapshot(before: word))
+            #expect(!engine.strip.candidates.contains { $0.kind == .emoji })
+            // Deliver the background result without another keystroke.
+            engine.installResources(wordList: .empty, emojiTriggers: triggers)
+            #expect(engine.strip.candidates.contains {
+                $0.kind == .emoji && $0.text == triggers[word.lowercased()]
+            })
+        }
+    }
+
+    @Test func returningToAFieldRestoresItsEmojiWithoutTyping() {
+        withEngine { engine in
+            engine.installResources(wordList: .empty, emojiTriggers: triggers)
+            engine.documentChanged(policy: .allowed)
+            engine.reconcile(document: DocumentSnapshot(before: "I am happy"))
+            #expect(engine.strip.candidates.contains { $0.text == "😊" && $0.kind == .emoji })
+            #expect(engine.strip.autocorrection == nil)
+        }
+    }
+
+    @Test func loadingUsesTheNewFieldsWord() {
+        withEngine { engine in
+            engine.insert("happy", document: DocumentSnapshot(before: "happy"))
+            engine.documentChanged(policy: .allowed)
+            engine.reconcile(document: DocumentSnapshot(before: "sad"))
+            engine.installResources(wordList: .empty, emojiTriggers: triggers)
+            #expect(engine.strip.candidates.contains { $0.text == "😢" && $0.kind == .emoji })
+            #expect(!engine.strip.candidates.contains { $0.text == "😊" })
+        }
+    }
+
+    @Test func loadingAfterDismissalDoesNotRestoreOldSuggestions() {
+        withEngine { engine in
+            engine.insert("happy", document: DocumentSnapshot(before: "happy"))
+            engine.suspend()
+            engine.installResources(wordList: .empty, emojiTriggers: triggers)
+            #expect(engine.strip.isEmpty)
+        }
+    }
+
+    @Test func disablingEmojiDuringLoadingIsRespected() {
+        withEngine { engine in
+            engine.insert("happy", document: DocumentSnapshot(before: "happy"))
+            KeyboardPreferences.emojiSuggestionsEnabled = false
+            engine.installResources(wordList: .empty, emojiTriggers: triggers)
+            #expect(!engine.strip.candidates.contains { $0.kind == .emoji })
+        }
+    }
+
+    @Test func loadingInASensitiveFieldKeepsSuggestionsHidden() {
+        withEngine { engine in
+            engine.insert("happy", document: DocumentSnapshot(before: "happy"))
+            engine.documentChanged(policy: TypingFieldPolicy(
+                allowsTypingIntelligence: false, reason: .secureEntry
+            ))
+            engine.reconcile(document: DocumentSnapshot(before: "sad"))
+            engine.installResources(wordList: .empty, emojiTriggers: triggers)
+            #expect(engine.strip.isEmpty)
+        }
+    }
+
+    @Test func loadingDoesNotReplaceSwipeAlternatesOrRevert() {
+        withEngine { engine in
+            engine.insert("happy", document: DocumentSnapshot(before: "happy"))
+            engine.noteSwipeWord("sad", alternates: ["sad", "said"])
+            let alternates = engine.strip
+            engine.installResources(wordList: .empty, emojiTriggers: triggers)
+            #expect(engine.strip == alternates)
+            engine.documentChanged(policy: .allowed)
+            engine.insert("the ", document: DocumentSnapshot(before: "the "))
+            engine.noteCorrection(typed: "teh", replacement: "the", boundary: " ")
+            let revert = engine.strip
+            engine.installResources(wordList: .empty, emojiTriggers: triggers)
+            #expect(engine.strip == revert)
+        }
     }
 }

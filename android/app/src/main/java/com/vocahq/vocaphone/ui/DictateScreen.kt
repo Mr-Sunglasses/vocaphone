@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -56,7 +57,12 @@ internal object DictateCopy {
     const val MODEL = "Model"
     const val GATEWAY = "Gateway"
     const val NO_MODEL = "No model"
-    const val HINT = "Inserted at the cursor. Nothing here is uploaded."
+    val HINTS = listOf(
+        "Words show up at the cursor",
+        "Nothing here is uploaded",
+        "Hold the mic on the keyboard to cancel while it's listening or transcribing",
+        "The Dictate button doesn't cancel",
+    )
 }
 
 /**
@@ -222,6 +228,7 @@ fun DictateScreen(
                     onRefreshSetup = onRefreshSetup,
                 )
 
+                val showHint = showScratchpadHint(scratchpad.text, state.phase)
                 val fieldColors = TextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -229,6 +236,13 @@ fun DictateScreen(
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent,
+                    // An empty focused pad would otherwise put a caret on the
+                    // first bullet.
+                    cursorColor = if (showHint) {
+                        Color.Transparent
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
                 )
                 Box(
                     modifier = Modifier
@@ -239,13 +253,8 @@ fun DictateScreen(
                         value = scratchpad,
                         onValueChange = { scratchpad = it },
                         modifier = Modifier.fillMaxSize(),
-                        placeholder = if (showScratchpadHint(scratchpad.text, state.phase)) {
-                            {
-                                Text(
-                                    DictateCopy.HINT,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                )
-                            }
+                        placeholder = if (showHint) {
+                            { ScratchpadHint() }
                         } else {
                             null
                         },
@@ -378,3 +387,22 @@ internal fun showDictateStatus(phase: DictationPhase): Boolean =
 /** Hint lives in the pad and leaves as soon as there is text or a recording. */
 internal fun showScratchpadHint(text: String, phase: DictationPhase): Boolean =
     text.isEmpty() && !phase.isBusy
+
+@Composable
+private fun ScratchpadHint() {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        DictateCopy.HINTS.forEach { line ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("•", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    line,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}

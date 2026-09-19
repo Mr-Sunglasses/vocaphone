@@ -7,36 +7,95 @@ import UIKit
 /// Quick Dictation, the state of the gateway and a practice field all had the
 /// same weight, and three of them could say "Ready" about different things at
 /// once. This is a dashboard instead: what needs attention, what is happening
-/// now, somewhere to try it, and where the words are going.
+/// now, and where the words are going.
 struct ContentView: View {
     @Environment(RecordingCoordinator.self) private var coordinator
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(
         KeyboardPreferences.setupCompletedKey,
         store: KeyboardPreferences.defaults
     ) private var setupCompleted = false
-    /// Presentation state only. `SetupView` stores the durable required page
-    /// that survives a Settings trip or process restart.
-    @State private var isShowingSetup = false
     @AppStorage(
         KeyboardPreferences.firstDictationKey,
         store: KeyboardPreferences.defaults
     ) private var hasDictatedOnce = false
     @AppStorage(
-        KeyboardPreferences.keyboardPracticeKey,
+        KeyboardPreferences.quickDictationKey,
         store: KeyboardPreferences.defaults
-    ) private var hasCompletedKeyboardPractice = false
-    @State private var testText = ""
+    ) private var quickDictationEnabled = true
+    @AppStorage(
+        KeyboardPreferences.quickDictationRecoveryOfferKey,
+        store: KeyboardPreferences.defaults
+    ) private var quickDictationOfferPending = false
     @State private var isShowingSourceDetail = false
     @FocusState private var diagFocused: Bool
+    @Binding private var isShowingSettings: Bool
+    @Binding private var isShowingQuickDictationReturnGuide: Bool
+
+    init(
+        isShowingSettings: Binding<Bool> = .constant(false),
+        isShowingQuickDictationReturnGuide: Binding<Bool> = .constant(false)
+    ) {
+        _isShowingSettings = isShowingSettings
+        _isShowingQuickDictationReturnGuide = isShowingQuickDictationReturnGuide
+    }
+
+    @State private var isShowingTranscriptionSettingsFromAttention = false
+    /// The selected on-device model, observed so the attention card can react
+    /// to it. `setupStatus` is a stored snapshot that home only rewrites on a
+    /// return to the foreground; a download started in setup is adopted once
+    /// it finishes — from the picker, or from `LocalModelManager` after a
+    /// relaunch — and nothing re-read the snapshot. Home then said no model
+    /// was downloaded, right under the model it had just finished.
+    @AppStorage(LocalTranscriptionPreferences.modelKey, store: KeyboardPreferences.defaults)
+    private var selectedModelID: String?
+    #if DEBUG
+    @AppStorage(AttentionCardPreview.storageKey)
+    private var attentionPreviewRaw = AttentionCardPreview.off.rawValue
+    #endif
+
+    /// First-run setup is the window, not a cover over home. Opening iOS
+    /// Settings used to dismiss `fullScreenCover` and flash the home screen
+    /// underneath when coming back.
+    private var needsFirstRunOnboarding: Bool {
+        OnboardingPresentation.requiresFirstRunCover(setupCompleted: setupCompleted)
+    }
 
     var body: some View {
+        Group {
+            if needsFirstRunOnboarding {
+                SetupView()
+            } else {
+                home
+            }
+        }
+        .task {
+            coordinator.refreshSetupStatus()
+            // `scenePhase` does not change on a cold launch, so the pause a
+            // previous run left behind is cleared here too.
+            coordinator.endQuickDictationPause()
+            await coordinator.recoverRecentSession()
+            coordinator.prepareQuickDictationIfEnabled()
+            await coordinator.refreshGatewayHealth()
+        }
+        .overlay {
+            if let record = keyboardHandoffRecord,
+               let presentation = KeyboardHandoffPresentation.make(record)
+            {
+                KeyboardHandoffView(record: record, presentation: presentation)
+            }
+        }
+    }
+
+    private var home: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: VocaMetrics.grouping) {
                     attentionCard
+                    modelDownloadCard
+                    quickDictationOfferCard
                     sessionCard
-                    practiceCard
                     sourceRow
                     transcriptCard
                 }
@@ -44,7 +103,6 @@ struct ContentView: View {
                 .padding(.vertical, VocaMetrics.grouping)
             }
             .background(Color.vocaCanvas)
-            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("vocaphone")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -60,27 +118,34 @@ struct ContentView: View {
                     .accessibilityLabel("Settings")
                 }
             }
-            .task {
-                if OnboardingPresentation.requiresFirstRunCover(
-                    setupCompleted: setupCompleted,
-                    hasCompletedKeyboardPractice: hasCompletedKeyboardPractice
-                ) {
-                    isShowingSetup = true
-                }
-                coordinator.refreshSetupStatus()
-                await coordinator.recoverRecentSession()
-                coordinator.prepareQuickDictationIfEnabled()
-                await coordinator.refreshGatewayHealth()
-            }
             .onChange(of: scenePhase) { previousPhase, currentPhase in
+                if currentPhase == .background {
+                    // The guide has done its job once the user swipes back. Do
+                    // not leave it covering Home on a later ordinary launch.
+                    isShowingQuickDictationReturnGuide = false
+                    return
+                }
                 guard previousPhase != .active, currentPhase == .active else { return }
                 coordinator.refreshSetupStatus()
                 Task { await coordinator.refreshGatewayHealth() }
             }
-            .fullScreenCover(isPresented: $isShowingSetup) {
+            // Both halves of a model arriving: the files landing, and a model
+            // being chosen for them. Either can come second.
+            .onChange(of: coordinator.localModels.downloadedModelIDs) { _, _ in
+                coordinator.refreshSetupStatus()
+            }
+            .onChange(of: selectedModelID) { _, _ in
+                coordinator.refreshSetupStatus()
+            }
+            .navigationDestination(isPresented: $isShowingTranscriptionSettingsFromAttention) {
+                TranscriptionSettingsView()
+            }
+            .sheet(isPresented: $isShowingSettings) {
                 NavigationStack {
-                    SetupView(mode: .onboarding)
+                    SettingsView()
                 }
+                .environment(coordinator)
+                .tint(.brand)
             }
         }
         .overlay {
@@ -88,37 +153,136 @@ struct ContentView: View {
                let presentation = KeyboardHandoffPresentation.make(record)
             {
                 KeyboardHandoffView(record: record, presentation: presentation)
-                .transition(.opacity)
+            } else if isShowingQuickDictationReturnGuide {
+                QuickDictationReturnGuide(reduceMotion: reduceMotion) {
+                    isShowingQuickDictationReturnGuide = false
+                }
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: keyboardHandoffRecord?.state)
     }
 
     // MARK: - Attention
 
+    private var attentionStatus: SetupStatus {
+        #if DEBUG
+        if let preview = AttentionCardPreview(rawValue: attentionPreviewRaw)?.status {
+            return preview
+        }
+        #endif
+        return coordinator.setupStatus
+    }
+
+    /// A Get started in setup must not vanish when first run ends. The
+    /// transfer belongs to the app, not the page that tapped it.
+    private var isModelDownloadInFlight: Bool {
+        coordinator.localModels.downloadingModelID != nil
+            || !coordinator.localModels.queuedModelIDs.isEmpty
+    }
+
     /// Only what actually stops dictation working reaches the top of the home
-    /// screen; the rest of the checklist stays behind guided setup. The truth is
-    /// re-derived from the system every time rather than trusted from a
-    /// one-time "setup completed" flag.
+    /// screen. The truth is re-derived from the system every time rather than
+    /// trusted from a one-time "setup completed" flag.
     @ViewBuilder private var attentionCard: some View {
-        if let headline = coordinator.setupStatus.attentionHeadline {
-            NavigationLink {
-                SetupView()
-            } label: {
-                VocaCard {
-                    VStack(alignment: .leading, spacing: VocaMetrics.related + 4) {
-                        VocaStatusLine(
-                            status: .attention,
-                            title: headline,
-                            detail: coordinator.setupStatus.attentionDetail
-                        )
-                        Label("Finish setup", systemImage: "arrow.forward")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.brand)
+        if let headline = attentionStatus.attentionHeadline {
+            // The download card already says the model is arriving. "Download
+            // a model" on top of it reads as if setup was thrown away.
+            if isModelDownloadInFlight, attentionStatus.blockingSteps.first == .source {
+                EmptyView()
+            } else {
+            VocaCard {
+                VStack(alignment: .leading, spacing: VocaMetrics.padding) {
+                    VocaStatusLine(
+                        status: .attention,
+                        title: headline,
+                        detail: attentionStatus.attentionDetail
+                    )
+                    if let actionTitle = attentionStatus.attentionActionTitle {
+                        VocaPrimaryButton(title: actionTitle) {
+                            if attentionStatus.attentionOpensSystemSettings {
+                                coordinator.openSystemSettings()
+                            } else {
+                                isShowingTranscriptionSettingsFromAttention = true
+                            }
+                        }
                     }
                 }
             }
-            .buttonStyle(.plain)
+            }
+        }
+    }
+
+    /// Same transfer the setup page showed. First run ending must not hide
+    /// a model that is still coming, or home looks like setup was thrown away.
+    @ViewBuilder private var modelDownloadCard: some View {
+        let models = coordinator.localModels
+        if let id = models.downloadingModelID ?? models.queuedModelIDs.first {
+            let name = LocalModelCatalog.descriptor(for: id)?.displayName ?? "Speech model"
+            let inFlight = models.downloadingModelID != nil
+            VocaCard {
+                VStack(alignment: .leading, spacing: VocaMetrics.padding - 2) {
+                    VocaStatusLine(
+                        status: .working,
+                        title: inFlight ? "Downloading \(name)" : "Waiting to download \(name)",
+                        detail: models.downloadTimeRemainingPhrase(for: id).map {
+                            "Ready in \($0)."
+                        } ?? "Started during setup. Dictation waits until this finishes."
+                    )
+                    if inFlight {
+                        ProgressView(value: models.progress(for: id))
+                            .tint(Color.brand)
+                        if let size = models.downloadSizeProgress(for: id) {
+                            Text(size)
+                                .font(.footnote.monospacedDigit())
+                                .foregroundStyle(Color.vocaSecondaryText)
+                        }
+                    }
+                    NavigationLink {
+                        TranscriptionSettingsView()
+                    } label: {
+                        Text("See models")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
+            }
+            .accessibilityLabel(
+                inFlight
+                    ? "Downloading \(name), \(Int(models.progress(for: id) * 100)) percent"
+                    : "Waiting to download \(name)"
+            )
+        }
+    }
+
+    /// Sits below the setup card, which still owns the top slot: an unfinished
+    /// setup blocks dictation outright, while this only costs an app switch.
+    @ViewBuilder private var quickDictationOfferCard: some View {
+        if let offer = QuickDictationRecoveryOffer.make(
+            isPending: quickDictationOfferPending,
+            isEnabled: quickDictationEnabled
+        ) {
+            VocaCard {
+                VStack(alignment: .leading, spacing: VocaMetrics.padding - 2) {
+                    VocaStatusLine(
+                        status: .inactive,
+                        title: offer.title,
+                        detail: offer.detail
+                    )
+                    // The coordinator owns both keys this card reads, and
+                    // `@AppStorage` is watching the same suite, so one call
+                    // turns the feature on, answers the offer, and takes the
+                    // card off screen.
+                    VocaPrimaryButton(title: offer.confirm, symbol: "mic.fill") {
+                        coordinator.setQuickDictationEnabled(true)
+                    }
+                    // Taken as final. The card exists to undo a decision the
+                    // user may never have made knowingly; asking twice would
+                    // make it the nag it is trying not to be.
+                    Button(offer.dismiss) {
+                        quickDictationOfferPending = false
+                    }
+                    .frame(maxWidth: .infinity)
+                    .font(.subheadline)
+                }
+            }
         }
     }
 
@@ -131,6 +295,7 @@ struct ContentView: View {
                 isRecording: coordinator.isRecording,
                 isQuickDictationReady: coordinator.isQuickDictationReady,
                 quickDictationExpiresAt: coordinator.quickDictationExpiresAt,
+                quickDictationDuration: coordinator.quickDictationDuration,
                 processingLocation: coordinator.activeRecord?.processingLocation,
                 transcript: coordinator.transcript,
                 errorMessage: coordinator.hasError ? coordinator.message : nil,
@@ -223,81 +388,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Practice
-
-    /// A real field, not a screenshot. Dictating into it is the whole loop —
-    /// switch keyboard, speak, watch the text arrive — with no app switch in the
-    /// middle, which makes it the shortest honest demonstration of the product.
-    private var practiceCard: some View {
-        VocaCard {
-            VStack(alignment: .leading, spacing: VocaMetrics.related + 4) {
-                VocaSectionHeader(title: "Try the keyboard")
-
-                TextField("Type or dictate here", text: $testText, axis: .vertical)
-                    .lineLimit(3...6)
-                    .focused($diagFocused)
-                    .task {
-                        // Debug-only, like the return-guide launch argument
-                        // below it. A release build must not change what it
-                        // focuses because of an argument someone passed it.
-#if DEBUG
-                        guard ProcessInfo.processInfo.arguments.contains("-diagFocusField")
-                        else { return }
-                        try? await Task.sleep(for: .milliseconds(600))
-                        diagFocused = true
-#endif
-                    }
-                    .textFieldStyle(.plain)
-                    .padding(VocaMetrics.related + 4)
-                    .background(
-                        Color.vocaRecessedSurface,
-                        in: RoundedRectangle(
-                            cornerRadius: VocaMetrics.fieldRadius,
-                            style: .continuous
-                        )
-                    )
-
-                if coordinator.isDictatingIntoContainingApp {
-                    // Dictating into this field needs no app switch, so the
-                    // controls are inline rather than behind a hand-off screen.
-                    HStack(spacing: VocaMetrics.related + 2) {
-                        Image(systemName: "record.circle")
-                            .foregroundStyle(Color.vocaRecording)
-                            .accessibilityHidden(true)
-                        Text("Listening")
-                            .font(.subheadline.weight(.semibold))
-                        Spacer()
-                        RecordingMeter()
-                            .frame(width: 90)
-                    }
-                    .accessibilityElement(children: .combine)
-
-                    VocaPrimaryButton(title: "Finish recording", symbol: "stop.fill") {
-                        coordinator.requestFinish()
-                    }
-                    Button("Cancel", role: .destructive) { coordinator.cancel() }
-                        .frame(maxWidth: .infinity)
-                        .font(.subheadline)
-                    Text("The transcript drops straight into the field above.")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                } else if !hasDictatedOnce {
-                    // Three sentences of setup text, retired once the user has
-                    // proved they no longer need them. A permanent instruction
-                    // is an instruction nobody reads.
-                    Text(
-                        "Tap the field, hold 🌐 and choose vocaphone, then tap Dictate. "
-                            + "From another app the keyboard opens vocaphone to record — "
-                            + "swipe back once it starts, then tap Finish."
-                    )
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-    }
-
     // MARK: - Processing source
 
     /// One row, not a card.
@@ -384,8 +474,7 @@ struct ContentView: View {
                         Text(
                             hasDictatedOnce
                                 ? "Dictations you finish will appear here."
-                                : "Nothing yet. Try the field above, or tap Dictate in "
-                                    + "the keyboard from any app."
+                                : "Nothing yet. Tap Dictate in the keyboard from any app."
                         )
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -407,6 +496,86 @@ struct ContentView: View {
               KeyboardHandoffPresentation.shouldPresent(record)
         else { return nil }
         return record
+    }
+}
+
+/// The keyboard may open the app from a cold start. Do not tell the user to
+/// return until the recorder has actually taken standby and published the
+/// availability lease the keyboard consumes.
+private struct QuickDictationReturnGuide: View {
+    @Environment(RecordingCoordinator.self) private var coordinator
+    let reduceMotion: Bool
+    let onDismiss: () -> Void
+    /// Arming takes well under a second when it works. A wait past this is
+    /// not going to end on its own — audio held by a call, another app's
+    /// session — so the screen stops asking for patience and offers a way out
+    /// instead of covering Home until the user leaves the app.
+    @State private var isTakingLong = false
+
+    var body: some View {
+        if coordinator.isQuickDictationReady {
+            SwipeBackScreen(
+                title: "Swipe back to your keyboard",
+                detail: "Quick Dictation is ready. Tap the microphone there.",
+                reduceMotion: reduceMotion
+            )
+        } else if coordinator.setupStatus.microphone == .denied {
+            status(
+                title: "Microphone access is off",
+                detail: "Quick Dictation needs the microphone. Turn it on in Settings, then try again."
+            ) {
+                VocaPrimaryButton(title: "Open Settings", symbol: "gear") {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    UIApplication.shared.open(url)
+                }
+            }
+        } else {
+            status(
+                title: "Getting Quick Dictation ready",
+                detail: isTakingLong
+                    ? (coordinator.message ?? "VocaPhone could not get the microphone yet.")
+                    : "Keep VocaPhone open for a moment.",
+                showsProgress: true
+            ) {
+                EmptyView()
+            }
+            .task {
+                try? await Task.sleep(for: .seconds(4))
+                isTakingLong = true
+            }
+        }
+    }
+
+    private func status<Actions: View>(
+        title: String,
+        detail: String,
+        showsProgress: Bool = false,
+        @ViewBuilder actions: () -> Actions
+    ) -> some View {
+        ZStack {
+            Color.vocaCanvas.ignoresSafeArea()
+            VStack(spacing: VocaMetrics.grouping) {
+                if showsProgress {
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(Color.brand)
+                }
+                Text(title)
+                    .font(.title2.weight(.bold))
+                Text(detail)
+                    .font(.body)
+                    .foregroundStyle(Color.vocaSecondaryText)
+                actions()
+                if !showsProgress || isTakingLong {
+                    Button("Close", action: onDismiss)
+                        .font(.body.weight(.semibold))
+                        .frame(minHeight: VocaMetrics.minimumTarget)
+                }
+            }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: 480)
+            .padding(VocaMetrics.grouping)
+        }
     }
 }
 
@@ -508,6 +677,20 @@ struct RecordingMeter: View {
     ) { ContentView() }
 }
 
+#Preview("Home — no model downloaded") {
+    PreviewHost(
+        coordinator: RecordingCoordinator(
+            preview: nil,
+            setupStatus: SetupStatus(
+                source: PreviewFixtures.onDeviceMissing,
+                microphone: .granted,
+                keyboard: .ready(lastSeenAt: Date()),
+                hasDictatedOnce: true
+            )
+        )
+    ) { ContentView() }
+}
+
 #Preview("Home — Quick Dictation standby") {
     PreviewHost(coordinator: .previewStandby()) { ContentView() }
 }
@@ -516,7 +699,7 @@ struct RecordingMeter: View {
     PreviewHost(coordinator: .preview(.launchingApp, startedInApp: false)) { ContentView() }
 }
 
-#Preview("Home — listening in the practice field") {
+#Preview("Home — listening") {
     PreviewHost(
         coordinator: .preview(.recording, meterLevel: 0.62, isRecording: true)
     ) { ContentView() }

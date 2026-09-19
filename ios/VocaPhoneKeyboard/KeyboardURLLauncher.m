@@ -2,7 +2,11 @@
 
 #import <objc/message.h>
 
-BOOL VocaPhoneOpenURLFromResponderChain(UIResponder *responder, NSURL *url) {
+BOOL VocaPhoneOpenURLFromResponderChain(
+    UIResponder *responder,
+    NSURL *url,
+    void (^_Nullable completion)(BOOL)
+) {
     SEL modernSelector = NSSelectorFromString(
         @"openURL:options:completionHandler:"
     );
@@ -30,7 +34,7 @@ BOOL VocaPhoneOpenURLFromResponderChain(UIResponder *responder, NSURL *url) {
         // A nil scene-options value is explicitly supported and means the
         // normal (non-universal-link-only) opening behavior.
         id options = [candidate isKindOfClass:[UIScene class]] ? nil : @{};
-        openURL(candidate, modernSelector, url, options, nil);
+        openURL(candidate, modernSelector, url, options, completion);
         return YES;
     }
 
@@ -46,7 +50,11 @@ BOOL VocaPhoneOpenURLFromResponderChain(UIResponder *responder, NSURL *url) {
         typedef BOOL (*LegacyOpenURLFunction)(id, SEL, NSURL *);
         LegacyOpenURLFunction openURL =
             (LegacyOpenURLFunction)(void *)objc_msgSend;
-        return openURL(candidate, legacySelector, url);
+        BOOL opened = openURL(candidate, legacySelector, url);
+        if (completion != nil) {
+            completion(opened);
+        }
+        return opened;
     }
 
     return NO;

@@ -36,6 +36,15 @@ class MicDictationControlTest {
     }
 
     @Test
+    fun `separate cancel is hidden while listening so a walking tap cannot discard`() {
+        assertFalse(MicDictationControl.showsSeparateCancel(DictationPhase.IDLE))
+        assertFalse(MicDictationControl.showsSeparateCancel(DictationPhase.LISTENING))
+        assertTrue(MicDictationControl.showsSeparateCancel(DictationPhase.TRANSCRIBING))
+        assertTrue(MicDictationControl.showsSeparateCancel(DictationPhase.FINALIZING))
+        assertFalse(MicDictationControl.showsSeparateCancel(DictationPhase.FAILED))
+    }
+
+    @Test
     fun `a failed empty transcript does not lock the keyboard menu`() {
         assertTrue(MicDictationControl.allowsMenu(DictationPhase.IDLE))
         assertTrue(MicDictationControl.allowsMenu(DictationPhase.FAILED))

@@ -7,7 +7,7 @@
 **Voice dictation for iPhone and Android.**
 
 <!-- Product -->
-[![Status: Android beta / iOS TestFlight](https://img.shields.io/badge/status-Android%20beta%20%2F%20iOS%20TestFlight-yellow)](#status)
+[![Status: Google Play / iOS TestFlight](https://img.shields.io/badge/status-Google%20Play%20%2F%20iOS%20TestFlight-yellow)](#status)
 [![Privacy: on-device / optional gateway](https://img.shields.io/badge/privacy-on--device%20%2F%20optional%20gateway-success)](#privacy-and-platform-boundaries)
 [![Release](https://img.shields.io/github/v/release/VocaHQ/vocaphone?include_prereleases)](https://github.com/VocaHQ/vocaphone/releases/latest)
 [![vocaphone.vocahq.com](https://img.shields.io/badge/site-vocaphone.vocahq.com-0F6B57)](https://vocaphone.vocahq.com)
@@ -41,7 +41,7 @@ copyleft that also covers modified versions offered as a network service.
 
 | Client | State |
 | --- | --- |
-| **Android** | Public beta for Android 13+. [releases](https://github.com/VocaHQ/vocaphone/releases) · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
+| **Android** | On [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone) for Android 13+. [GitHub APK](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.1) if you prefer to sideload · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
 | **iOS** | Public TestFlight beta for iOS 17+ · [join](https://testflight.apple.com/join/wd85wQ3W) · or build from source (Mac, Xcode, signing team, physical iPhone) · [iPhone guide](https://vocaphone.vocahq.com/iphone/) |
 | **Gateway** | Optional. Self-host [VocaGateway](https://github.com/VocaHQ/vocagateway) on macOS/Linux or Docker when you want more models or shared compute |
 
@@ -60,8 +60,8 @@ the active cursor. A gateway is never required for on-device mode.
 > iOS keyboard extensions cannot access the microphone. VocaPhone records in
 > the containing app, shares only versioned session state with the keyboard, and
 > then inserts through `UITextDocumentProxy`. Quick Dictation can keep that app
-> ready for up to 10 minutes so most later dictations do not require another app
-> switch. The speech-to-text model still runs on the iPhone in on-device mode.
+> ready — for 10 or 20 minutes, or until you close the app — so most later
+> dictations do not require another app switch. The speech-to-text model still runs on the iPhone in on-device mode.
 
 ## Highlights
 
@@ -90,7 +90,7 @@ the active cursor. A gateway is never required for on-device mode.
 | Linux | VocaLinux | [vocalinux.com](https://vocalinux.com) | [VocaHQ/vocalinux](https://github.com/VocaHQ/vocalinux) | Available now |
 | macOS | VocaMac | [vocamac.com](https://vocamac.com) | [VocaHQ/vocamac](https://github.com/VocaHQ/vocamac) | Beta |
 | Windows | VocaWin | [vocawin.com](https://vocawin.com) | [VocaHQ/vocawin](https://github.com/VocaHQ/vocawin) | Beta · [v0.1.0-beta.1](https://github.com/VocaHQ/vocawin/releases/tag/v0.1.0-beta.1) |
-| iOS / Android | VocaPhone | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Android beta / iOS TestFlight |
+| iOS / Android | VocaPhone | [vocaphone.vocahq.com](https://vocaphone.vocahq.com) | [VocaHQ/vocaphone](https://github.com/VocaHQ/vocaphone) | Google Play / iOS TestFlight |
 | Gateway | VocaGateway | [vocagateway.vocahq.com](https://vocagateway.vocahq.com) | [VocaHQ/vocagateway](https://github.com/VocaHQ/vocagateway) | Early |
 
 Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
@@ -98,12 +98,16 @@ Org: [github.com/VocaHQ](https://github.com/VocaHQ). Contact:
 
 ## Quick start
 
-### 1. Android (public beta)
+### 1. Android
 
-Public beta APKs for Android 13+ are on
-[GitHub Releases](https://github.com/VocaHQ/vocaphone/releases). Install one,
-enable VocaPhone in Android's keyboard settings, grant microphone (and
-notifications if asked), then download an on-device speech-to-text model.
+Install from [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone)
+on Android 13+. Enable VocaPhone in Android's keyboard settings, grant
+microphone (and notifications if asked), then download an on-device
+speech-to-text model.
+
+Signed APKs are still on
+[GitHub Releases](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.1)
+if you want to sideload.
 
 To build from source:
 
@@ -160,30 +164,37 @@ VocaPhoneLiveActivity) under **Signing & Capabilities**; automatic signing
 does the rest. If you don't (most outside contributors), either ask a
 maintainer to comment `/build ios` on your pull request for a signed ad-hoc
 IPA (see [CONTRIBUTING.md](CONTRIBUTING.md#on-demand-pr-builds-build)), or run
-it under your own free Apple ID by changing `bundleIdPrefix` and the three
-`PRODUCT_BUNDLE_IDENTIFIER`s in `ios/project.yml`, the App Group string in all
-three `.entitlements` files, and `AppConfiguration.swift`'s
-`appGroupIdentifier`/`keyboardBundleIdentifier`. Don't commit that change.
+it under your own Apple ID and your own identifiers:
+
+```sh
+just ios local-signing <team-id> <your.reverse.dns>   # e.g. ABCDE12345 dev.janedoe
+just ios device
+```
+
+That writes `ios/Local.xcconfig` and entitlement copies under `ios/Local/`,
+both gitignored, and the app installs as `<your.reverse.dns>.vocaphone` with
+its own App Group. Nothing tracked changes — the identifiers are read at build
+time — so there is no local edit to keep out of a commit. `just ios
+local-signing-off` puts it back. The team ID is the **OU** of your signing
+certificate's subject, not the ID inside the certificate's own name; [device
+setup](docs/device-setup.md) has the one-liner that prints it.
 
 Grant microphone access on first launch, add the keyboard as above, and turn
 on Full Access. Complete the physical-device checklist in [device
 setup](docs/device-setup.md).
 
-iOS Sherpa ONNX archives are Git LFS objects, and the gateway checkout is a
-submodule. Clone with both before you build:
+The gateway checkout is a submodule. iOS pulls Sherpa ONNX through Swift
+Package Manager (not Git LFS, not a local tarball):
 
 ```sh
-# macOS: brew install git-lfs; other platforms: https://git-lfs.com/
-git lfs install
 git clone --recurse-submodules https://github.com/VocaHQ/vocaphone.git
 cd vocaphone
-git lfs pull
-git submodule update --init --recursive
 ```
 
-On an existing clone: `git lfs install && git lfs pull && git submodule update --init --recursive`.
-Without Git LFS those framework paths are pointer files and the iOS project
-cannot link the on-device engine. Pin bumps live in
+On an existing clone: `git submodule update --init --recursive`. The first
+iOS build downloads the pinned `sherpa-onnx` package; `just ios fetch` only
+prefetches it.
+Pin bumps live in
 [CONTRIBUTING.md](CONTRIBUTING.md#gateway-submodule-pin-dev-vs-ship).
 
 ### 3. Optional gateway
@@ -246,7 +257,7 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 | [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
 | [Releasing](docs/releasing.md) | Platform-prefixed tags, Android-only / iOS-only / joint drops, changelogs |
 | [TestFlight](docs/testflight.md) | App Store Connect setup, archiving, and TestFlight distribution |
-| [Google Play prep](docs/play-store.md) | Full-flavor AAB, upload signing, listing and Console checklist |
+| [Google Play](docs/play-store.md) | Production listing, AAB upload, signing, and Console promotion |
 | [Tailscale](docs/tailscale.md) | Private HTTPS ingress for the gateway |
 | [Architecture](docs/architecture.md) | Components, state transitions, engine boundary, and observability |
 | [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |

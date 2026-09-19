@@ -16,8 +16,9 @@ enum VocaMetrics {
     static let section: CGFloat = 32
 
     /// Cards and fields. Keys and the dictation bar have their own vocabulary,
-    /// inside the keyboard extension where they belong.
-    static let cardRadius: CGFloat = 14
+    /// inside the keyboard extension where they belong. 16 matches the
+    /// onboarding board cards.
+    static let cardRadius: CGFloat = 16
     static let fieldRadius: CGFloat = 12
     /// Large recording and hero surfaces only.
     static let heroRadius: CGFloat = 22
@@ -30,11 +31,11 @@ enum VocaMetrics {
 
 /// A coherent state, decision, or task — never a generic wrapper.
 ///
-/// Solid surface, one thin border, no shadow. Depth here comes from the border
-/// and the surface contrast, which is what keeps a screen of these from reading
-/// as a stack of floating slabs.
+/// Same chrome as the onboarding board cards: surface fill, 16 continuous,
+/// no stroke. Depth comes from the canvas behind them, not from an outline.
 struct VocaCard<Content: View>: View {
     var padding: CGFloat = VocaMetrics.padding
+    var cornerRadius: CGFloat = VocaMetrics.cardRadius
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -42,11 +43,10 @@ struct VocaCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(padding)
             .background(Color.vocaSurface, in: shape)
-            .overlay(shape.strokeBorder(Color.vocaBorder, lineWidth: 1))
     }
 
     private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: VocaMetrics.cardRadius, style: .continuous)
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
 }
 
@@ -190,15 +190,14 @@ struct VocaCopyButton: View {
             }
         }
         .disabled(value == nil)
-        .animation(.easeInOut(duration: 0.18), value: didCopy)
     }
 
     private func copy() {
         guard let value else { return }
         UIPasteboard.general.string = value
         didCopy = true
-        Task {
-            try? await Task.sleep(for: .seconds(2))
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(900))
             didCopy = false
         }
     }
@@ -235,12 +234,13 @@ struct VocaDestructiveButton: View {
 
 /// The one filled action a card is allowed.
 ///
-/// A disabled one drops to a bordered treatment rather than staying filled.
-/// `.borderedProminent` keeps drawing the label in the colour it was told to
-/// use, so a disabled filled button ends up white-on-grey — legible enough to
-/// notice and not legible enough to read, which is the worst of both. Bordered
-/// says "not available" through shape as well as colour, and its label keeps
-/// full contrast.
+/// Matches Figma `Button - Liquid Glass - Text`: 50pt capsule, SF Pro Medium
+/// 17, filled with ``Color/brandPrimaryFill``. iOS 26 uses `.glassProminent`
+/// (tint + glass + white backing). Do not stack `.borderedProminent` with
+/// `.glassEffect` — that is what muddied the fill and inflated the type.
+///
+/// The label is ``Color/onBrand``, not a literal white: dark mode fills this
+/// with the light brand tint, where white lands at about 1.7:1.
 struct VocaPrimaryButton: View {
     let title: String
     var symbol: String?
@@ -257,11 +257,74 @@ struct VocaPrimaryButton: View {
                     Text(title)
                 }
             }
+            .font(.body.weight(.medium))
             .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(isEnabled ? Color.brand : Color.vocaRecessedSurface)
-        .foregroundStyle(isEnabled ? Color.onBrand : Color.vocaSecondaryText)
+        .buttonBorderShape(.capsule)
         .controlSize(.large)
+        .tint(isEnabled ? Color.brandPrimaryFill : Color.vocaRecessedSurface)
+        .foregroundStyle(isEnabled ? Color.onBrand : Color.vocaSecondaryText)
+        .modifier(VocaGlassPrimaryButtonModifier())
+    }
+}
+
+/// Native circular glass button, same family as ``VocaPrimaryButton``'s
+/// `.glassProminent`. Apply to a `Button`, never to its label.
+struct VocaGlassBackButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.buttonStyle(.glass)
+        } else {
+            content.buttonStyle(.bordered)
+        }
+    }
+}
+
+private struct VocaGlassPrimaryButtonModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.buttonStyle(.glassProminent)
+        } else {
+            content.buttonStyle(.borderedProminent)
+        }
+    }
+}
+
+/// Thick onboarding bar: 16pt track, primary fill, the same recessed colour
+/// as the board's ProgressBar.
+struct OnboardingProgressBar: View {
+    var progress: Double
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.vocaRecessedSurface)
+                Capsule()
+                    .fill(Color.vocaPrimaryText)
+                    .frame(width: max(16, geo.size.width * min(1, max(0, progress))))
+            }
+        }
+        .frame(height: 16)
+        .accessibilityElement(children: .ignore)
+    }
+}
+
+/// Empty media well. George sends the photo/video later; do not put assets here.
+struct OnboardingMediaSlot: View {
+    var kind: String = "Video"
+    var height: CGFloat = 168
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
+            .fill(Color.vocaRecessedSurface)
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .overlay {
+                Text(kind)
+                    .font(.headline)
+                    .foregroundStyle(Color.vocaSecondaryText)
+            }
+            .accessibilityLabel(kind)
     }
 }

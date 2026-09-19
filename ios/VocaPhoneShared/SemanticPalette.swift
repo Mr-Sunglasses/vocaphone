@@ -117,6 +117,70 @@ enum SemanticPalette {
         UIColor { traits in value(role, isDark: traits.userInterfaceStyle == .dark) }
     }
 
+    enum StatTint: CaseIterable {
+        case speed
+        case words
+        case dictations
+        case time
+        case streak
+    }
+
+    static func statChip(_ tint: StatTint) -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? darkChip(tint)
+                : lightChip(tint)
+        }
+    }
+
+    static func statSymbol(_ tint: StatTint) -> UIColor {
+        UIColor { traits in
+            traits.userInterfaceStyle == .dark
+                ? darkSymbol(tint)
+                : lightSymbol(tint)
+        }
+    }
+
+    private static func lightChip(_ tint: StatTint) -> UIColor {
+        switch tint {
+        case .speed: hex(0xE1_F0_E7)
+        case .words: hex(0xDD_EF_EA)
+        case .dictations: hex(0xE0_E8_F7)
+        case .time: hex(0xE8_E3_F5)
+        case .streak: hex(0xFA_E4_DE)
+        }
+    }
+
+    private static func lightSymbol(_ tint: StatTint) -> UIColor {
+        switch tint {
+        case .speed: hex(0x2C_7A_55)
+        case .words: hex(0x1D_78_6A)
+        case .dictations: hex(0x39_60_A6)
+        case .time: hex(0x5D_49_A6)
+        case .streak: hex(0xC2_53_3A)
+        }
+    }
+
+    private static func darkChip(_ tint: StatTint) -> UIColor {
+        switch tint {
+        case .speed: hex(0x1C_38_2A)
+        case .words: hex(0x15_34_2D)
+        case .dictations: hex(0x1A_29_43)
+        case .time: hex(0x28_23_43)
+        case .streak: hex(0x3C_24_1E)
+        }
+    }
+
+    private static func darkSymbol(_ tint: StatTint) -> UIColor {
+        switch tint {
+        case .speed: hex(0x7F_D8_A6)
+        case .words: hex(0x5F_D3_BE)
+        case .dictations: hex(0x8F_B4_F0)
+        case .time: hex(0xB3_A3_F0)
+        case .streak: hex(0xF0_A1_8A)
+        }
+    }
+
     private static func hex(_ value: UInt32) -> UIColor {
         UIColor(
             red: CGFloat((value >> 16) & 0xFF) / 255,
@@ -143,6 +207,14 @@ extension Color {
     static let vocaWarning = Color(SemanticPalette.color(.warning))
     static let vocaError = Color(SemanticPalette.color(.error))
     static let vocaDisabled = Color(SemanticPalette.color(.disabled))
+
+    static func vocaStatChip(_ tint: SemanticPalette.StatTint) -> Color {
+        Color(SemanticPalette.statChip(tint))
+    }
+
+    static func vocaStatSymbol(_ tint: SemanticPalette.StatTint) -> Color {
+        Color(SemanticPalette.statSymbol(tint))
+    }
 }
 
 // MARK: - Contrast
@@ -175,15 +247,35 @@ enum ContrastMath {
 
     /// WCAG relative luminance, which is defined on *linear* channels.
     static func relativeLuminance(_ color: UIColor) -> CGFloat {
+        guard let channels = rgba(color) else { return 0 }
+        func linear(_ channel: CGFloat) -> CGFloat {
+            channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(channels.red)
+            + 0.7152 * linear(channels.green)
+            + 0.0722 * linear(channels.blue)
+    }
+
+    /// Channels for any colour these palettes can produce.
+    ///
+    /// `getRed` answers nothing for a *monochrome* `UIColor` — everything built
+    /// with `UIColor(white:alpha:)`, which is most of the neutral greys here —
+    /// and both callers used to read that failure as pure black. A grey scored
+    /// as black is a contrast test that passes when it should fail, and a
+    /// translucent fill that flattens to nothing.
+    static func rgba(
+        _ color: UIColor
+    ) -> (red: CGFloat, green: CGFloat, blue: CGFloat, alpha: CGFloat)? {
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
         var alpha: CGFloat = 0
-        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return 0 }
-        func linear(_ channel: CGFloat) -> CGFloat {
-            channel <= 0.03928 ? channel / 12.92 : pow((channel + 0.055) / 1.055, 2.4)
+        if color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return (red, green, blue, alpha)
         }
-        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        var white: CGFloat = 0
+        guard color.getWhite(&white, alpha: &alpha) else { return nil }
+        return (white, white, white, alpha)
     }
 }
 
@@ -191,21 +283,13 @@ extension UIColor {
     /// Flattens a translucent colour onto an opaque one, so a disabled fill can
     /// be judged as the user sees it rather than as it was declared.
     func compositedOver(_ background: UIColor) -> UIColor {
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-        var backRed: CGFloat = 0
-        var backGreen: CGFloat = 0
-        var backBlue: CGFloat = 0
-        var backAlpha: CGFloat = 0
-        guard getRed(&red, green: &green, blue: &blue, alpha: &alpha),
-              background.getRed(&backRed, green: &backGreen, blue: &backBlue, alpha: &backAlpha)
+        guard let front = ContrastMath.rgba(self),
+              let back = ContrastMath.rgba(background)
         else { return self }
         return UIColor(
-            red: alpha * red + (1 - alpha) * backRed,
-            green: alpha * green + (1 - alpha) * backGreen,
-            blue: alpha * blue + (1 - alpha) * backBlue,
+            red: front.alpha * front.red + (1 - front.alpha) * back.red,
+            green: front.alpha * front.green + (1 - front.alpha) * back.green,
+            blue: front.alpha * front.blue + (1 - front.alpha) * back.blue,
             alpha: 1
         )
     }

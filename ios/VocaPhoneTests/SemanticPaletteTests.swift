@@ -173,21 +173,46 @@ struct SemanticPaletteTests {
         #expect(Self.rgb(KeyboardPalette(isDark: false).background) == (226, 228, 232))
         #expect(Self.rgb(KeyboardPalette(isDark: false).standardKey) == (255, 255, 255))
         #expect(Self.rgb(KeyboardPalette(isDark: true).background) == (23, 23, 23))
-        #expect(Self.rgb(KeyboardPalette(isDark: true).standardKey) == (61, 61, 61))
+        // The dark key is a film, not a fill: what was measured off the system
+        // keyboard is the film *over that backdrop*, and that is what this
+        // pins. Asserting the colour itself would have frozen the composite
+        // and taken the translucency — the reason the keys stay legible on a
+        // bright home screen — back out again.
+        let dark = KeyboardPalette(isDark: true)
+        #expect(Self.rgb(dark.standardKey.compositedOver(dark.background)) == (61, 61, 61))
     }
 
-    @Test func engagedShiftUsesTheNativeNeutralSurface() {
+    /// An engaged Shift lifts to the *standard* key surface, which is what the
+    /// system keyboard does and what makes the state readable at a glance: a
+    /// filled glyph alone is a small thing to spot mid-sentence, and the lighter
+    /// surface says "the next letter is a capital" without being read.
+    ///
+    /// The point the original test was defending still holds and is asserted
+    /// below: the brand accent stays out of it. A mint Shift made the resting
+    /// keyboard look like something was running.
+    @Test func engagedShiftLiftsToTheStandardSurface() {
         let palette = KeyboardPalette(isDark: false)
         let metrics = KeyboardMetrics.resolved(
             for: UITraitCollection { $0.verticalSizeClass = .regular }
         )
-        let shift = KeyView(
-            spec: KeySpec(cap: .shift, width: .fill, style: .function),
-            metrics: metrics,
-            palette: palette
-        )
-        shift.update(metrics: metrics, palette: palette, shift: .on, returnTitle: "return")
-        #expect(shift.backgroundColor == palette.functionKey)
+        func shiftKey() -> KeyView {
+            KeyView(
+                spec: KeySpec(cap: .shift, width: .fill, style: .function),
+                metrics: metrics,
+                palette: palette
+            )
+        }
+
+        let resting = shiftKey()
+        resting.update(metrics: metrics, palette: palette, shift: .off, returnTitle: "return")
+        #expect(resting.backgroundColor == palette.functionKey)
+
+        for engaged in [ShiftState.on, .locked] {
+            let shift = shiftKey()
+            shift.update(metrics: metrics, palette: palette, shift: engaged, returnTitle: "return")
+            #expect(shift.backgroundColor == palette.standardKey)
+            #expect(shift.backgroundColor != palette.accentKey)
+        }
     }
 
     private static func rgb(_ color: UIColor) -> (Int, Int, Int) {
@@ -213,7 +238,20 @@ struct SemanticPaletteTests {
                 for fill in [
                     palette.background(for: style), palette.pressedBackground(for: style),
                 ] {
-                    let measured = contrast(fill, palette.foreground(for: style))
+                    // Composited first: the dark key fill is a translucent film
+                    // and has no colour of its own to measure. What the eye
+                    // reads is the film over the keyboard surface, and that is
+                    // what has to clear 4.5:1.
+                    //
+                    // This measures against the keyboard's own surface. Over a
+                    // bright wallpaper the system backdrop lightens and so does
+                    // the key, which is the trade the system keyboard itself
+                    // makes with the same white labels; its dark-mode backdrop
+                    // keeps a scrim rather than going clear.
+                    let measured = contrast(
+                        fill.compositedOver(palette.background),
+                        palette.foreground(for: style)
+                    )
                     #expect(
                         measured >= 4.5,
                         "\(isDark ? "dark" : "light") \(style) key label is \(measured):1"

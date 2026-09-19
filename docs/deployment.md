@@ -17,7 +17,7 @@ Phone-specific setup (signing and keyboard) stays in this repository:
 
 - [Device setup](device-setup.md) — physical-device acceptance checklist
 - [TestFlight](testflight.md) — App Store Connect setup, archiving, and upload
-- [Google Play prep](play-store.md) — full-flavor AAB, signing, listing checklist
+- [Google Play](play-store.md) — production listing, AAB upload, signing, Console promotion
 - [Android client](../android/README.md)
 - [Troubleshooting (keyboard / mic / insertion)](troubleshooting.md)
 

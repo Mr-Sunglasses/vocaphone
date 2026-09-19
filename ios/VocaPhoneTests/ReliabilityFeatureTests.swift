@@ -50,6 +50,50 @@ struct ReliabilityFeatureTests {
         ))
     }
 
+    @Test func startDownloadAllowsTwoModelsAndQueuesAThird() {
+        #expect(
+            ModelDownloadStartDecision.decide(downloadingIDs: ["a"], requestedID: "a")
+                == .alreadyThisModel
+        )
+        #expect(
+            ModelDownloadStartDecision.decide(downloadingIDs: ["a"], requestedID: "b")
+                == .allowed
+        )
+        #expect(
+            ModelDownloadStartDecision.decide(downloadingIDs: ["a", "b"], requestedID: "c")
+                == .atCapacity
+        )
+        #expect(
+            ModelDownloadStartDecision.decide(
+                downloadingIDs: ["a", "b"],
+                queuedIDs: ["c"],
+                requestedID: "c"
+            ) == .alreadyQueued
+        )
+        #expect(
+            ModelDownloadStartDecision.decide(downloadingIDs: [], requestedID: "a")
+                == .allowed
+        )
+    }
+
+    @Test func completingKeyboardPracticePingsDarwinAndWritesAMarker() {
+        let original = KeyboardPreferences.hasCompletedKeyboardPractice
+        defer { KeyboardPreferences.hasCompletedKeyboardPractice = original }
+
+        KeyboardPreferences.hasCompletedKeyboardPractice = false
+        #expect(!KeyboardPreferences.refreshKeyboardPracticeProof())
+
+        let semaphore = DispatchSemaphore(value: 0)
+        let observation = VocaPhoneDarwinCenter.observe(.keyboardPracticeCompleted) {
+            semaphore.signal()
+        }
+        defer { observation.invalidate() }
+
+        KeyboardPreferences.hasCompletedKeyboardPractice = true
+        #expect(semaphore.wait(timeout: .now() + 1) == .success)
+        #expect(KeyboardPreferences.refreshKeyboardPracticeProof())
+    }
+
     @Test func multipleDarwinObserversReceiveTheSameSignal() {
         let semaphore = DispatchSemaphore(value: 0)
         let callbackQueue = DispatchQueue(
@@ -105,6 +149,174 @@ struct ReliabilityFeatureTests {
         #expect(availability.isReady(at: refreshedAt))
     }
 
+    /// The bug this replaced: stopping standby from the Dynamic Island wrote the
+    /// durable preference, so Quick Dictation stayed off until the user found
+    /// the switch in Settings. The two states are separate now, and every
+    /// arming path asks for both at once through `quickDictationArmable`.
+    @Test func pausingLeavesTheDurablePreferenceOn() {
+        let enabled = KeyboardPreferences.quickDictationEnabled
+        let paused = KeyboardPreferences.quickDictationPausedUntilRelaunch
+        defer {
+            KeyboardPreferences.quickDictationEnabled = enabled
+            KeyboardPreferences.quickDictationPausedUntilRelaunch = paused
+        }
+
+        KeyboardPreferences.quickDictationEnabled = true
+        KeyboardPreferences.quickDictationPausedUntilRelaunch = false
+        #expect(KeyboardPreferences.quickDictationArmable)
+
+        // The Live Activity's Pause button, which is what
+        // `StopQuickDictationIntent` writes.
+        KeyboardPreferences.quickDictationPausedUntilRelaunch = true
+        #expect(!KeyboardPreferences.quickDictationArmable)
+        #expect(KeyboardPreferences.quickDictationEnabled)
+
+        // Reopening vocaphone, which is `endQuickDictationPause`.
+        KeyboardPreferences.quickDictationPausedUntilRelaunch = false
+        #expect(KeyboardPreferences.quickDictationArmable)
+
+        // The Settings switch is the one that persists: clearing the pause does
+        // not undo it.
+        KeyboardPreferences.quickDictationEnabled = false
+        #expect(!KeyboardPreferences.quickDictationArmable)
+        KeyboardPreferences.quickDictationPausedUntilRelaunch = false
+        #expect(!KeyboardPreferences.quickDictationArmable)
+    }
+
+    /// Both new preferences are absent for everyone upgrading, and the defaults
+    /// they fall back to have to be the behaviour those users already have.
+    @Test func newQuickDictationPreferencesDefaultToTodaysBehaviour() {
+        let storedDuration = KeyboardPreferences.defaults?
+            .string(forKey: KeyboardPreferences.quickDictationDurationKey)
+        let paused = KeyboardPreferences.quickDictationPausedUntilRelaunch
+        defer {
+            if let storedDuration {
+                KeyboardPreferences.defaults?
+                    .set(storedDuration, forKey: KeyboardPreferences.quickDictationDurationKey)
+            } else {
+                KeyboardPreferences.defaults?
+                    .removeObject(forKey: KeyboardPreferences.quickDictationDurationKey)
+            }
+            KeyboardPreferences.quickDictationPausedUntilRelaunch = paused
+        }
+
+        KeyboardPreferences.defaults?
+            .removeObject(forKey: KeyboardPreferences.quickDictationDurationKey)
+        KeyboardPreferences.defaults?
+            .removeObject(forKey: KeyboardPreferences.quickDictationPausedKey)
+
+        #expect(KeyboardPreferences.quickDictationDuration == .tenMinutes)
+        #expect(!KeyboardPreferences.quickDictationPausedUntilRelaunch)
+    }
+
+    @Test func standbyWindowsMatchTheDurationTheUserPicked() {
+        let armedAt = Date(timeIntervalSince1970: 10_000)
+
+        #expect(
+            QuickDictationDuration.tenMinutes.expiry(from: armedAt)
+                == armedAt.addingTimeInterval(600)
+        )
+        #expect(
+            QuickDictationDuration.twentyMinutes.expiry(from: armedAt)
+                == armedAt.addingTimeInterval(1_200)
+        )
+        #expect(!QuickDictationDuration.tenMinutes.renewsLease)
+        #expect(!QuickDictationDuration.twentyMinutes.renewsLease)
+        #expect(QuickDictationDuration.untilAppCloses.renewsLease)
+        // An unlimited window still takes a bounded lease, so a process that
+        // dies between heartbeats cannot leave a marker claiming the microphone
+        // is ready forever.
+        #expect(QuickDictationDuration.untilAppCloses.leaseSeconds > 0)
+    }
+
+    /// Every raw value is persisted, so renaming a case silently resets the
+    /// preference for everyone who chose it.
+    @Test func durationRawValuesAreStable() {
+        #expect(QuickDictationDuration.tenMinutes.rawValue == "tenMinutes")
+        #expect(QuickDictationDuration.twentyMinutes.rawValue == "twentyMinutes")
+        #expect(QuickDictationDuration.untilAppCloses.rawValue == "untilAppCloses")
+        #expect(QuickDictationDuration(rawValue: "nonsense") == nil)
+    }
+
+    @Test func onlyAnUnlimitedWindowMovesItsDeadline() {
+        let started = Date(timeIntervalSince1970: 10_000)
+        let bounded = QuickDictationAvailability(
+            activatedAt: started,
+            expiresAt: QuickDictationDuration.tenMinutes.expiry(from: started)
+        )
+        let laterOn = started.addingTimeInterval(120)
+
+        let heldWindow = bounded.renewingLease(.tenMinutes, at: laterOn)
+        #expect(heldWindow.expiresAt == bounded.expiresAt)
+        #expect(heldWindow.heartbeatAt == laterOn)
+        #expect(heldWindow.isReady(at: laterOn))
+
+        let rolling = QuickDictationAvailability(
+            activatedAt: started,
+            expiresAt: QuickDictationDuration.untilAppCloses.expiry(from: started)
+        ).renewingLease(.untilAppCloses, at: laterOn)
+        #expect(rolling.activatedAt == started)
+        #expect(rolling.expiresAt == QuickDictationDuration.untilAppCloses.expiry(from: laterOn))
+        #expect(rolling.isReady(at: laterOn))
+        // And it dies on its own once the heartbeats stop.
+        #expect(!rolling.isReady(at: laterOn.addingTimeInterval(30)))
+    }
+
+    /// The offer exists for people an older build switched off, and it must not
+    /// reach anybody else — nor reappear after it has been answered.
+    @Test func theRecoveryOfferIsRaisedOnlyForInstallsThatArriveTurnedOff() {
+        #expect(QuickDictationRecoveryOffer.make(isPending: true, isEnabled: false) != nil)
+        // Already on: nothing to ask, whoever turned it on.
+        #expect(QuickDictationRecoveryOffer.make(isPending: true, isEnabled: true) == nil)
+        // Answered, or never affected.
+        #expect(QuickDictationRecoveryOffer.make(isPending: false, isEnabled: false) == nil)
+        #expect(QuickDictationRecoveryOffer.make(isPending: false, isEnabled: true) == nil)
+    }
+
+    /// The migration marks the offer; it must never turn the microphone back on
+    /// by itself, and it must run exactly once so "Not now" stays answered.
+    @Test func theRecoveryMigrationAsksRatherThanReArmingTheMicrophone() {
+        let defaults = KeyboardPreferences.defaults
+        let enabled = KeyboardPreferences.quickDictationEnabled
+        let offer = KeyboardPreferences.quickDictationRecoveryOfferPending
+        let migrated = defaults?
+            .object(forKey: KeyboardPreferences.quickDictationRecoveryMigrationKey)
+        defer {
+            KeyboardPreferences.quickDictationEnabled = enabled
+            KeyboardPreferences.quickDictationRecoveryOfferPending = offer
+            if let migrated {
+                defaults?.set(migrated, forKey: KeyboardPreferences.quickDictationRecoveryMigrationKey)
+            } else {
+                defaults?.removeObject(forKey: KeyboardPreferences.quickDictationRecoveryMigrationKey)
+            }
+        }
+
+        func resetMigration() {
+            defaults?.removeObject(forKey: KeyboardPreferences.quickDictationRecoveryMigrationKey)
+            KeyboardPreferences.quickDictationRecoveryOfferPending = false
+        }
+
+        // An install that arrives with the feature off is asked, and the stored
+        // preference is left exactly as the user's older build left it.
+        resetMigration()
+        KeyboardPreferences.quickDictationEnabled = false
+        KeyboardPreferences.markQuickDictationRecoveryOfferIfNeeded()
+        #expect(KeyboardPreferences.quickDictationRecoveryOfferPending)
+        #expect(!KeyboardPreferences.quickDictationEnabled)
+
+        // Answering it sticks: the migration has already run, so a later launch
+        // does not raise the card again.
+        KeyboardPreferences.quickDictationRecoveryOfferPending = false
+        KeyboardPreferences.markQuickDictationRecoveryOfferIfNeeded()
+        #expect(!KeyboardPreferences.quickDictationRecoveryOfferPending)
+
+        // An install that arrives with the feature on is never asked anything.
+        resetMigration()
+        KeyboardPreferences.quickDictationEnabled = true
+        KeyboardPreferences.markQuickDictationRecoveryOfferIfNeeded()
+        #expect(!KeyboardPreferences.quickDictationRecoveryOfferPending)
+    }
+
     @Test func standbyAcceptsARequestThatRacedWithRearming() {
         let started = Date(timeIntervalSince1970: 10_000)
         let availability = QuickDictationAvailability(
@@ -133,12 +345,35 @@ struct ReliabilityFeatureTests {
         #expect(!availability.isReady(at: Date(timeIntervalSince1970: 1_800_000_000)))
     }
 
-    @Test func cursorTrackpadEmitsOnlyWholeCharacterSteps() {
-        #expect(CursorTrackpad.step(forHorizontalTranslation: 9.9) == 0)
-        #expect(CursorTrackpad.step(forHorizontalTranslation: 10) == 1)
-        #expect(CursorTrackpad.step(forHorizontalTranslation: 27) == 2)
-        #expect(CursorTrackpad.step(forHorizontalTranslation: -9.9) == 0)
-        #expect(CursorTrackpad.step(forHorizontalTranslation: -10) == -1)
+    /// The trackpad used to quantise the *absolute* translation at a fixed ten
+    /// points per character, and this test asserted that ruler. The ruler is
+    /// gone: a fixed rate puts the far end of a seventy-character line off the
+    /// glass, so reaching it cost a lift and another third of a second of
+    /// holding. What replaced it is a rate, and this is its contract.
+    @Test func cursorTravelPerCharacterFollowsHowFastTheFingerIsGoing() {
+        let slow = CursorTrackpad.pointsPerCharacter(atSpeed: 0)
+        let fast = CursorTrackpad.pointsPerCharacter(atSpeed: 10_000)
+        #expect(slow == CursorTrackpad.slowPointsPerCharacter)
+        #expect(fast == CursorTrackpad.fastPointsPerCharacter)
+        // A crawl places the cursor between two specific letters; a flick
+        // crosses a line. Anything else is one of them at the other's price.
+        #expect(slow > fast)
+
+        // Clamped outside the two speeds it interpolates between, so a fast
+        // flick cannot run away and a stationary finger cannot divide by zero.
+        #expect(CursorTrackpad.pointsPerCharacter(atSpeed: -50) == slow)
+        #expect(CursorTrackpad.pointsPerCharacter(atSpeed: CursorTrackpad.slowSpeed) == slow)
+        #expect(CursorTrackpad.pointsPerCharacter(atSpeed: CursorTrackpad.fastSpeed) == fast)
+
+        // Monotonic between them: no speed costs more travel per character than
+        // a slower one, which is the property that makes the gesture feel like
+        // a surface rather than a switch.
+        var previous = slow
+        for speed in stride(from: CGFloat(0), through: 2_000, by: 50) {
+            let rate = CursorTrackpad.pointsPerCharacter(atSpeed: speed)
+            #expect(rate <= previous + 0.001, "rate rose at \(speed) pt/s")
+            previous = rate
+        }
     }
 
     @Test func diagnosticsHaveNoPrivateContentFields() throws {

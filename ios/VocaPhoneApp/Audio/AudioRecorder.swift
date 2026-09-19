@@ -22,7 +22,7 @@ final class AudioRecorder: NSObject {
     private var meterTimer: Timer?
     private var limitTimer: Timer?
     nonisolated(unsafe) private var lifecycleObservers: [any NSObjectProtocol] = []
-    var onMeter: ((Float) -> Void)?
+    var onMeter: (([Float]) -> Void)?
     var onMaximumDuration: (() -> Void)?
     var onInputRouteChanged: ((String?) -> Void)?
     var onAudioSessionLifecycleEvent: ((AudioSessionLifecycleEvent) -> Void)?
@@ -398,7 +398,11 @@ final class AudioRecorder: NSObject {
 
     private func sampleMeter() {
         guard let pipeline else { return }
-        onMeter?(pipeline.meterLevel)
+        // Every level since the last tick, so the meter's motion comes from the
+        // microphone rather than from interpolation between samples.
+        let levels = pipeline.drainMeterLevels()
+        guard !levels.isEmpty else { return }
+        onMeter?(levels)
     }
 
     private func stopTimers() {

@@ -4,7 +4,7 @@ Thanks for trying vocaphone. Use this guide to get help without opening the wron
 
 ## Before you ask
 
-1. Confirm you are on the latest `main` commit (or a released build, when those exist).
+1. Confirm you are on the latest Play, TestFlight, or GitHub release (or the current `main` commit if you built from source).
 2. Read [docs/troubleshooting.md](docs/troubleshooting.md) for common setup and runtime failures.
 3. Check [docs/device-setup.md](docs/device-setup.md) for iOS keyboard / Android bubble setup.
 4. Check [docs/deployment.md](docs/deployment.md) (and the [vocagateway](https://github.com/VocaHQ/vocagateway) guides it links) for gateway, Docker, Tailscale, and HTTPS setup.

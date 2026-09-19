@@ -28,10 +28,80 @@ final class KeyView: UIView {
     /// layout because only the grid knows which keys sit against an edge.
     var hitRect: CGRect = .zero
 
+    /// How long a press stays visible even when the finger has already gone.
+    ///
+    /// A tap can be shorter than a frame. On a 60 Hz panel that is 16.6 ms, and
+    /// a keystroke that goes down and up inside one frame is composited exactly
+    /// once — with the key already back at rest. The letter is typed and the
+    /// key never looked pressed, which is what "some keys don't respond" turns
+    /// out to be: the input is fine and the feedback is missing.
+    ///
+    /// One composited frame, and not a millisecond more than it takes to
+    /// guarantee one. This was four frames, on the reasoning that four is
+    /// easier to see than one — but the hold runs *after the finger has left*,
+    /// and a fast typist is on the next key 125 ms later. At 70 ms the key they
+    /// just left was still lit under the key they were pressing, and the
+    /// keyboard read as trailing a letter or two behind the hand. What the
+    /// press needs is to be drawn at all; 20 ms clears a 60 Hz frame and is
+    /// gone before the hand arrives anywhere else.
+
+    /// How long the release has to wait so the press was visible. Pure, so the
+    /// rule can be tested without a screen.
+    static let minimumHighlightSeconds: TimeInterval = 0.02
+
+    static func releaseDelay(shownFor seconds: TimeInterval) -> TimeInterval {
+        max(0, minimumHighlightSeconds - seconds)
+    }
+
+    private var highlightedAt: CFTimeInterval = 0
+    private var pendingRelease: DispatchWorkItem?
+
     var isHighlighted = false {
         didSet {
             guard isHighlighted != oldValue else { return }
+            // A press that arrives during the hold cancels it: the key is being
+            // used again, and it must look pressed now rather than finish
+            // showing the last one.
+            pendingRelease?.cancel()
+            pendingRelease = nil
+            if isHighlighted {
+                highlightedAt = CACurrentMediaTime()
+                applyColors()
+                return
+            }
+            let delay = Self.releaseDelay(shownFor: CACurrentMediaTime() - highlightedAt)
+            if delay > 0 {
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self, !isHighlighted else { return }
+                    applyColors(animated: KeyboardPreferences.keyReleaseFade)
+                }
+                pendingRelease = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+                return
+            }
+            // Only a character key settles back. Delete, Shift and the plane
+            // keys drop their highlight the instant the finger leaves, which is
+            // what the system does: a held Delete lifts to a key that is
+            // already grey again, where a fade of even a tenth of a second
+            // reads as the key sticking to the thumb.
+            applyColors(
+                animated: !isHighlighted
+                    && spec.cap.isCharacter
+                    && KeyboardPreferences.keyReleaseFade
+            )
+        }
+    }
+
+    /// Whether this key does anything when pressed. Only Return uses it, for
+    /// the fields that set `enablesReturnKeyAutomatically` and expect the key to
+    /// sit dimmed until there is something to send.
+    var isEnabled = true {
+        didSet {
+            guard isEnabled != oldValue else { return }
             applyColors()
+            accessibilityTraits = isEnabled
+                ? .keyboardKey
+                : [.keyboardKey, .notEnabled]
         }
     }
 
@@ -42,6 +112,29 @@ final class KeyView: UIView {
     private var shift: ShiftState = .off
     private var returnTitle = "return"
 
+    /// What the spacebar says, or `nil` for the blank system spacebar.
+    ///
+    /// A keyboard with one layout keeps the bar blank, because there is nothing
+    /// to tell. With two, the name of the language is the only thing that makes
+    /// the swipe findable — an unlabelled gesture is one nobody performs, and
+    /// the HIG asks a custom gesture to be discoverable rather than folklore.
+    var spaceTitle: String? {
+        didSet {
+            guard spaceTitle != oldValue else { return }
+            // Crossfaded rather than swapped: the name arrives because the
+            // language just changed, and a caption that snaps in and out under
+            // a finger reads as a glitch rather than as an answer.
+            UIView.transition(with: titleLabel, duration: 0.2, options: .transitionCrossDissolve) {
+                self.refresh()
+            }
+        }
+    }
+
+    /// What the language key says — the current layout's two letters.
+    var layoutTitle: String? {
+        didSet { if layoutTitle != oldValue { refresh() } }
+    }
+
     init(spec: KeySpec, metrics: KeyboardMetrics, palette: KeyboardPalette) {
         self.spec = spec
         self.metrics = metrics
@@ -49,10 +142,14 @@ final class KeyView: UIView {
         super.init(frame: .zero)
 
         layer.cornerCurve = .continuous
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.16
-        layer.shadowRadius = 0.75
-        layer.shadowOffset = CGSize(width: 0, height: 1.25)
+        applyShadow()
+        // A key is the view a touch is hit-tested to — 516 of 520 touches in a
+        // measured session landed on one of these rather than on the grid behind
+        // them. UIKit gives a view with this flag off *only the first touch of a
+        // multi-touch sequence* and withholds the rest, delivering them nowhere
+        // at all. The grid has always had it on; the keys the touches actually
+        // arrive at did not.
+        isMultipleTouchEnabled = true
 
         titleLabel.textAlignment = .center
         titleLabel.adjustsFontSizeToFitWidth = true
@@ -65,7 +162,9 @@ final class KeyView: UIView {
         addSubview(titleLabel)
         addSubview(symbolView)
 
-        isAccessibilityElement = true
+        // A blank is a hole in the grid, not a control: it takes no touch, so it
+        // must not be somewhere VoiceOver can land either.
+        isAccessibilityElement = spec.cap.isInteractive
         accessibilityTraits = .keyboardKey
         refresh()
     }
@@ -77,11 +176,13 @@ final class KeyView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        titleLabel.frame = bounds.insetBy(dx: 2, dy: 0)
+        layoutTitleLabel()
         symbolView.frame = bounds
         layer.cornerRadius = metrics.cornerRadius
         // Without an explicit path every key forces an offscreen pass to derive
         // its shadow, which is expensive when thirty of them redraw at once.
+        // Nothing to derive when nothing is drawn.
+        guard layer.shadowOpacity > 0 else { return }
         layer.shadowPath = UIBezierPath(
             roundedRect: bounds,
             cornerRadius: metrics.cornerRadius
@@ -118,7 +219,56 @@ final class KeyView: UIView {
         spec.cap.resolvedText(shift: shift)
     }
 
+    /// Blanks the cap without forgetting what it says.
+    ///
+    /// The cursor trackpad empties the keyboard the way iOS does. Fading the
+    /// two layers rather than clearing their contents means coming back costs
+    /// nothing and cannot disagree with ``refresh()`` about what this key is.
+    var capsAreHidden = false {
+        didSet {
+            guard capsAreHidden != oldValue else { return }
+            let target: CGFloat = capsAreHidden ? 0 : 1
+            UIView.animate(withDuration: 0.14) {
+                self.titleLabel.alpha = target
+                self.symbolView.alpha = target
+            }
+        }
+    }
+
+    /// Sized to the text, not to the key.
+    ///
+    /// A label paints a bitmap the size of its bounds at screen scale, so one
+    /// that filled its key painted a key-sized bitmap around a glyph a fraction
+    /// of that — on every key of every cached plane, in an extension jetsam
+    /// watches at about sixty megabytes. Centred on the same point, the text
+    /// lands where the full-size label drew it; the origin is snapped to the
+    /// pixel grid so the smaller layer is not composited between pixels.
+    private func layoutTitleLabel() {
+        let available = bounds.insetBy(dx: 2, dy: 0)
+        let fitted = titleLabel.text?.isEmpty == false
+            ? titleLabel.sizeThatFits(available.size)
+            : .zero
+        let size = CGSize(
+            width: min(fitted.width.rounded(.up), available.width),
+            height: min(fitted.height.rounded(.up), available.height)
+        )
+        let scale = max(traitCollection.displayScale, 1)
+        func snapped(_ value: CGFloat) -> CGFloat { (value * scale).rounded() / scale }
+        // Immediate even inside the spacebar's crossfade, which runs `refresh`
+        // in an animation block: a frame animating up from nothing would read
+        // as the caption zooming in rather than fading.
+        UIView.performWithoutAnimation {
+            titleLabel.frame = CGRect(
+                x: snapped(available.midX - size.width / 2),
+                y: snapped(available.midY - size.height / 2),
+                width: size.width,
+                height: size.height
+            )
+        }
+    }
+
     private func refresh() {
+        defer { layoutTitleLabel() }
         let symbolFont = UIFont.systemFont(ofSize: metrics.letterFontSize - 3, weight: .medium)
         let symbolConfiguration = UIImage.SymbolConfiguration(font: symbolFont)
 
@@ -148,10 +298,22 @@ final class KeyView: UIView {
                 systemName: "globe",
                 withConfiguration: symbolConfiguration
             )
+        case .layoutSwitch:
+            // Two letters rather than a glyph. Every symbol that means
+            // "language" is either the globe — which belongs to the key that
+            // leaves for another keyboard — or an abstract letterform that
+            // says "text" and not which text. The code says where you are, and
+            // it is the same two characters in the picker and on the key.
+            titleLabel.text = layoutTitle
+            titleLabel.font = planeFont
+            symbolView.image = nil
         case .space:
-            // The system spacebar is visually blank; its name remains available
-            // through the key's accessibility label.
-            titleLabel.text = nil
+            // Blank on a one-layout keyboard, as the system spacebar is; its
+            // name remains available through the key's accessibility label.
+            // Otherwise the language, between the two chevrons that say which
+            // way the finger goes.
+            titleLabel.text = spaceTitle
+            titleLabel.font = functionFont
             symbolView.image = nil
         case .newline:
             if returnTitle == "return" {
@@ -168,6 +330,9 @@ final class KeyView: UIView {
         case let .plane(plane):
             titleLabel.text = KeyLayout.planeTitle(plane)
             titleLabel.font = planeFont
+            symbolView.image = nil
+        case .blank:
+            titleLabel.text = nil
             symbolView.image = nil
         }
 
@@ -242,17 +407,71 @@ final class KeyView: UIView {
         }
     }
 
-    private func applyColors() {
-        // Apple's Shift stays on the neutral key surface; its filled Shift or
-        // Caps Lock glyph carries the state. A persistent mint key made the
-        // resting keyboard look active and unlike the keyboard users know.
-        let style = spec.style
-        backgroundColor = isHighlighted
+    /// The style this key is actually drawn in right now.
+    ///
+    /// An active Shift is drawn on the *standard* key surface rather than the
+    /// function one. That is the system keyboard's own behaviour and the reason
+    /// it is legible at a glance: the filled glyph alone is a small difference
+    /// to spot mid-sentence, and the lifted surface is what says "the next
+    /// letter is a capital" without being read.
+    ///
+    /// The brand accent stays out of it. A mint Shift made the resting keyboard
+    /// look like something was running.
+    private var renderedStyle: KeyStyle {
+        guard spec.cap == .shift, shift.isUppercase else { return spec.style }
+        return .standard
+    }
+
+    /// The drop shadow under a key.
+    ///
+    /// 16% black at a 0.75pt radius, one point down, is a hard dark line under
+    /// every key — the contact shadow of a keyboard nobody has drawn this way
+    /// in years, thirty of them at once. Where the keys carry the system's own
+    /// fill against the system's own backdrop, that separation is already
+    /// there, and this draws nothing.
+    private func applyShadow() {
+        guard !palette.usesSystemKeyboardBackdrop, spec.cap.isInteractive else {
+            layer.shadowOpacity = 0
+            return
+        }
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOpacity = 0.16
+        layer.shadowRadius = 0.75
+        layer.shadowOffset = CGSize(width: 0, height: 1.25)
+    }
+
+    private func applyColors(animated: Bool = false) {
+        let style = renderedStyle
+        let background = isHighlighted
             ? palette.pressedBackground(for: style)
             : palette.background(for: style)
         let foreground = palette.foreground(for: style)
-        titleLabel.textColor = foreground
-        symbolView.tintColor = foreground
+        let apply = {
+            self.backgroundColor = self.spec.cap.isInteractive ? background : .clear
+            self.titleLabel.textColor = foreground
+            self.symbolView.tintColor = foreground
+            // Dimmed rather than hidden: a Return that vanishes when the field
+            // is empty is a keyboard that has lost a key.
+            self.alpha = self.isEnabled ? 1 : 0.4
+        }
+        // Pressing is instant — the finger is already there and any delay reads
+        // as lag. Releasing fades, because the system keyboard's key settles
+        // back rather than snapping, and an instant restore under a fast typist
+        // is a strobe.
+        guard animated, !UIAccessibility.isReduceMotionEnabled else {
+            apply()
+            return
+        }
+        // Half of what it was. The key settles back rather than snapping — the
+        // system's does the same — but 110 ms of settling ran on past the next
+        // keystroke, and a row of keys still fading behind the hand is exactly
+        // what a keyboard lagging looks like.
+        UIView.animate(
+            withDuration: 0.06,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction],
+            animations: apply
+        )
     }
 }
 
@@ -271,6 +490,17 @@ final class KeyPreviewView: UIView {
     private let balloonCornerRadius: CGFloat
     private var balloonHeight: CGFloat = 0
     private var neck: CGRect = .zero
+    private var appearedAt: CFTimeInterval = 0
+
+    /// A balloon says where the finger is. It has no business outliving it.
+    ///
+    /// This was held for 70 ms past the lift, so that a tap shorter than a frame
+    /// still showed one. What it actually produced was a balloon still standing
+    /// over the row while the next key was being pressed — two and three of them
+    /// at typing speed — which is what "the keyboard lags when I move between
+    /// keys" turned out to be. The key's own highlight is what guarantees a
+    /// press is seen, and it is bounded for that. This one follows the finger.
+    static let minimumPreviewSeconds: TimeInterval = 0
 
     init(palette: KeyboardPalette, metrics: KeyboardMetrics) {
         keyCornerRadius = metrics.cornerRadius
@@ -281,7 +511,7 @@ final class KeyPreviewView: UIView {
         // The shape carries the fill and the shadow; the view itself must not
         // paint a rectangle behind it.
         backgroundColor = .clear
-        shape.fillColor = palette.standardKey.cgColor
+        shape.fillColor = palette.raisedKey.cgColor
         shape.shadowColor = UIColor.black.cgColor
         shape.shadowOpacity = 0.22
         shape.shadowRadius = 5
@@ -326,6 +556,92 @@ final class KeyPreviewView: UIView {
         self.balloonHeight = balloonHeight
         self.neck = neck
         setNeedsLayout()
+    }
+
+    /// Grows the balloon out of the key it belongs to.
+    ///
+    /// The system keyboard's preview does not simply exist: it swells from the
+    /// key under the finger in about a frame and a half. Appearing fully formed
+    /// is the single clearest tell that a keyboard is not the system one — it
+    /// reads as a tooltip rather than as the key itself lifting — and it costs
+    /// one short animation to fix.
+    ///
+    /// The anchor is the bottom of the view, which is the bottom of the *key*,
+    /// so the growth runs upward out of what the finger is covering.
+    func appear(animated: Bool) {
+        appearedAt = CACurrentMediaTime()
+        layer.removeAllAnimations()
+        isHidden = false
+        guard animated, !UIAccessibility.isReduceMotionEnabled else {
+            alpha = 1
+            transform = .identity
+            return
+        }
+        // Opaque from the first frame. The balloon confirms a key that is
+        // already under the finger, so anything it fades in over is time the
+        // press spends looking unanswered — at 90 ms that was most of a fast
+        // keystroke, and it is what "not as quick as other keyboards" measured
+        // out to. The growth stays: the system's balloon grows out of its key
+        // too, and a scale is free where an opacity ramp is a delay.
+        alpha = 1
+        transform = Self.growth(from: 0.82, 0.62, in: bounds)
+        UIView.animate(
+            withDuration: 0.05,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            self.transform = .identity
+        }
+    }
+
+    /// Settles the balloon back into the key and hands the view back.
+    ///
+    /// `completion` runs whether or not the fade finished, so a pooled preview
+    /// is never left half-transparent for the next keystroke to dequeue.
+    func disappear(animated: Bool, completion: @escaping () -> Void) {
+        let elapsed = CACurrentMediaTime() - appearedAt
+        let remaining = max(0, Self.minimumPreviewSeconds - elapsed)
+        if remaining > 0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + remaining) { [weak self] in
+                self?.disappear(animated: animated, completion: completion)
+            }
+            return
+        }
+        layer.removeAllAnimations()
+        let finish = {
+            self.isHidden = true
+            self.alpha = 1
+            self.transform = .identity
+            completion()
+        }
+        guard animated, !UIAccessibility.isReduceMotionEnabled else {
+            finish()
+            return
+        }
+        UIView.animate(
+            withDuration: 0.08,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            self.alpha = 0
+            self.transform = Self.growth(from: 0.9, 0.75, in: self.bounds)
+        } completion: { _ in
+            finish()
+        }
+    }
+
+    /// A scale about the view's *bottom* edge, expressed as an ordinary
+    /// transform.
+    ///
+    /// The bottom of this view is the bottom of the key, so scaling there is
+    /// what makes the balloon look like it grew out of what the finger is
+    /// covering. Done with a translation rather than by moving `layer.anchorPoint`
+    /// — an anchor point that is not the centre silently changes what setting
+    /// `frame` means, and this view's frame is rewritten on every slide between
+    /// keys.
+    private static func growth(from scaleX: CGFloat, _ scaleY: CGFloat, in bounds: CGRect) -> CGAffineTransform {
+        CGAffineTransform(translationX: 0, y: bounds.height * (1 - scaleY) / 2)
+            .scaledBy(x: scaleX, y: scaleY)
     }
 
     /// The balloon, the tapered shoulders, and the neck over the key, as one

@@ -72,7 +72,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          lfs: true
           # git describe walks tags for the GitHub Release notes range.
           fetch-depth: 0
           persist-credentials: false
@@ -159,6 +158,23 @@ jobs:
           echo "build=${build}" >> "$GITHUB_OUTPUT"
 
           app="$ARCHIVE_PATH/Products/Applications/VocaPhoneApp.app"
+
+          # Static xcframeworks from SPM (onnxruntime, SherpaOnnxC) still get embedded as stub dylibs that nothing loads, and App Store Connect rejects them (ITMS-90208).
+          load_names=""
+          for bundle in "$app" "$app"/PlugIns/*.appex "$app"/Frameworks/*.framework "$app"/PlugIns/*.appex/Frameworks/*.framework; do
+            [ -d "$bundle" ] || continue
+            executable="$bundle/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Info.plist")"
+            load_names+="$(otool -l "$executable" | awk '/cmd LC_(LOAD|LOAD_WEAK|REEXPORT|LAZY_LOAD|LOAD_UPWARD)_DYLIB$/{f=1} f && $1=="name"{print $2; f=0}')"$'\n'
+          done
+          for framework in "$app"/Frameworks/*.framework "$app"/PlugIns/*.appex/Frameworks/*.framework; do
+            [ -d "$framework" ] || continue
+            if [[ "$load_names" == *"/$(basename "$framework")/"* ]]; then
+              continue
+            fi
+            echo "Removing unlinked embedded framework ${framework#"$app"/}"
+            rm -rf "$framework"
+          done
+
           embed_app_group() {
             local bundle="$1"
             local entitlements="$2"

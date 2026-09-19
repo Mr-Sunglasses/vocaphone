@@ -4,6 +4,43 @@ enum KeyPlane: Equatable {
     case letters
     case numbers
     case symbols
+    /// The three numeric layouts iOS gives a field that asks for one.
+    ///
+    /// These are not "the numbers plane with a different starting point", which
+    /// is what a `.numberPad` field used to get: a full QWERTY symbols row
+    /// reading `-/:;()$&@"` above a phone-number box does not read as a
+    /// variant, it reads as a keyboard that has not noticed where it is. They
+    /// have no plane switch, because there is nowhere else for them to go.
+    case numberPad
+    case phonePad
+    case decimalPad
+
+    /// Whether this plane is one of the numeric keypads, which share a shape
+    /// and share the rule that the user cannot leave them.
+    var isKeypad: Bool {
+        switch self {
+        case .numberPad, .phonePad, .decimalPad: true
+        case .letters, .numbers, .symbols: false
+        }
+    }
+}
+
+/// The space around the keys that belongs to the keyboard rather than to any
+/// key, in points.
+///
+/// Three views have to agree about these two numbers, and they used to hold
+/// five copies between two files, tied together by a comment. The stack lays
+/// the gap out, the grid claims it — a stack's spacing belongs to no subview,
+/// so a touch landing there is delivered to nobody — and the stack's own hit
+/// test forwards from both. Changing one copy and not the others is silent:
+/// the stack simply starts claiming a strip the grid does not answer for.
+enum KeyboardChrome {
+    /// Between the dictation bar and the top row.
+    static let gapAboveKeys: CGFloat = 12
+    /// Beyond the grid's left and right edges, out into the keyboard's own
+    /// margin — wider than that margin, so a thumb landing on the bezel side
+    /// of `a` or `l` is not thrown away.
+    static let sideMargin: CGFloat = 8
 }
 
 enum KeyCap: Equatable {
@@ -16,12 +53,32 @@ enum KeyCap: Equatable {
     case newline
     case plane(KeyPlane)
     case globe
+    /// Steps to the next enabled layout. Distinct from ``globe``, which leaves
+    /// for somebody else's keyboard: these are two different destinations and
+    /// sharing one key made the common one cost a long press.
+    case layoutSwitch
+    /// A hole in the grid. The numeric keypads are a 3x4 block with one empty
+    /// corner, and iOS leaves that corner genuinely empty rather than
+    /// stretching its neighbours across it.
+    case blank
 
     /// Character keys are the only ones that show a preview and accept a finger
     /// sliding in from a neighbour, matching the system keyboard.
     var isCharacter: Bool {
         if case .character = self { return true }
         return false
+    }
+
+    /// Whether this key can be pressed at all. A blank is laid out and drawn as
+    /// nothing, and must never take a touch from the keys either side of it.
+    var isInteractive: Bool { self != .blank }
+
+    /// A name for this key in a touch trace. Not user-facing.
+    var traceName: String {
+        switch self {
+        case let .character(base): base
+        default: String(describing: self).prefix(12).description
+        }
     }
 
     func resolvedText(shift: ShiftState) -> String? {
@@ -38,11 +95,14 @@ enum KeyCap: Equatable {
         case .space: return "Space"
         case .newline: return "Return"
         case .globe: return "Next keyboard"
+        case .layoutSwitch: return "Next language"
+        case .blank: return ""
         case let .plane(plane):
             switch plane {
             case .letters: return "Letters"
             case .numbers: return "Numbers"
             case .symbols: return "Symbols"
+            case .numberPad, .phonePad, .decimalPad: return "Numbers"
             }
         }
     }
@@ -105,6 +165,16 @@ struct KeyRow: Equatable {
 
     let keys: [KeySpec]
     var alignment: Alignment = .fill
+    /// How many columns this row is measured against, when that is not the
+    /// alphabet's own count.
+    ///
+    /// The letter rows set the unit — ten for QWERTY, eleven for ЙЦУКЕН — and
+    /// every row that is *made of letters* should follow it, so the columns
+    /// line up. The bottom row is not made of letters: the spacebar, Return
+    /// and the plane key are the same keys in every language, and letting a
+    /// wider alphabet shrink them means the whole bottom of the keyboard moves
+    /// under the thumb when the language changes. It stays on ten.
+    var columnReference: CGFloat?
 }
 
 enum KeyLayout {
@@ -115,22 +185,22 @@ enum KeyLayout {
     /// URL (`/` and `.`).
     static func rows(
         for plane: KeyPlane,
+        layout: TypingLayout = .fallback,
         includesGlobe: Bool,
+        includesLayoutSwitch: Bool = false,
         returnIsProminent: Bool,
-        leadingPunctuation: String? = nil
+        punctuation: BottomRowPunctuation? = nil
     ) -> [KeyRow] {
         switch plane {
+        case .numberPad, .phonePad, .decimalPad:
+            return keypadRows(for: plane, includesGlobe: includesGlobe)
         case .letters:
-            return [
-                KeyRow(keys: map("qwertyuiop")),
-                KeyRow(keys: map("asdfghjkl"), alignment: .centered),
-                KeyRow(keys: [KeySpec(cap: .shift, width: .fill, style: .function)]
-                    + map("zxcvbnm")
-                    + [KeySpec(cap: .delete, width: .fill, style: .function)]),
+            return letterRows(for: layout) + [
                 bottomRow(
                     planeSwitch: .numbers,
-                    punctuation: leadingPunctuation,
+                    punctuation: punctuation,
                     includesGlobe: includesGlobe,
+                    includesLayoutSwitch: includesLayoutSwitch,
                     returnIsProminent: returnIsProminent
                 ),
             ]
@@ -141,12 +211,13 @@ enum KeyLayout {
                 KeyRow(keys: [
                     KeySpec(cap: .plane(.symbols), width: .fill, style: .function)
                 ]
-                    + map(".,?!'")
+                    + fillMap(".,?!'")
                     + [KeySpec(cap: .delete, width: .fill, style: .function)]),
                 bottomRow(
                     planeSwitch: .letters,
                     punctuation: nil,
                     includesGlobe: includesGlobe,
+                    includesLayoutSwitch: includesLayoutSwitch,
                     returnIsProminent: returnIsProminent
                 ),
             ]
@@ -157,12 +228,13 @@ enum KeyLayout {
                 KeyRow(keys: [
                     KeySpec(cap: .plane(.numbers), width: .fill, style: .function)
                 ]
-                    + map(".,?!'")
+                    + fillMap(".,?!'")
                     + [KeySpec(cap: .delete, width: .fill, style: .function)]),
                 bottomRow(
                     planeSwitch: .letters,
                     punctuation: nil,
                     includesGlobe: includesGlobe,
+                    includesLayoutSwitch: includesLayoutSwitch,
                     returnIsProminent: returnIsProminent
                 ),
             ]
@@ -174,6 +246,22 @@ enum KeyLayout {
     /// as "Continue" from becoming a much smaller target than users expect.
     static let minimumReturnColumns: CGFloat = 2.5
 
+    /// Return's width once a language key has joined the row.
+    ///
+    /// Below Apple's 2.5, and deliberately: the spacebar is the key this row
+    /// exists to carry, and a Return that keeps a quarter of the row while the
+    /// spacebar shrinks to a thumb's width has the priorities backwards. At
+    /// 1.75 a "Continue" label still fits — it is the same width Return has on
+    /// the numbers plane, where nobody has ever called it small.
+    static let crowdedReturnColumns: CGFloat = 1.75
+
+    /// The width below which the spacebar stops reading as one.
+    ///
+    /// Apple's plain row gives it five columns of ten. Four is the point where
+    /// a thumb aiming for the middle of the bar can still miss by a column and
+    /// land on it, which is what the key is for; below that it is a wide comma.
+    static let minimumSpacebarColumns: CGFloat = 4
+
     /// Column widths that put the spacebar's visible centre on the keyboard's
     /// centre.
     ///
@@ -184,20 +272,44 @@ enum KeyLayout {
     /// spacebar is centred exactly when **the column totals either side of it
     /// are equal**. That identity is the whole calculation; it holds at every
     /// width, which point-based nudging never did.
+    /// The two punctuation keys iOS adds to the bottom row in the handful of
+    /// field types that earn them.
+    ///
+    /// A pair rather than a single leading key, because the second slot is not
+    /// always a full stop: a `.twitter` field gets `@` and `#`, which are the
+    /// two characters that field is *for*, and hard-coding "." there was why it
+    /// could not be offered.
+    struct BottomRowPunctuation: Equatable {
+        let leading: String
+        let trailing: String
+
+        static let period = BottomRowPunctuation(leading: ",", trailing: ".")
+    }
+
     struct BottomRowColumns: Equatable {
         var planeSwitch: CGFloat
         var globe: CGFloat?
+        var layoutSwitch: CGFloat?
         var punctuation: CGFloat?
         var period: CGFloat?
         var newline: CGFloat
 
-        var leading: CGFloat { planeSwitch + (globe ?? 0) + (punctuation ?? 0) }
+        var leading: CGFloat {
+            planeSwitch + (globe ?? 0) + (layoutSwitch ?? 0) + (punctuation ?? 0)
+        }
         var trailing: CGFloat { (period ?? 0) + newline }
         /// How far the spacebar's centre sits from the keyboard's, in columns.
         /// Zero is the goal; the sign says which way it leans.
         var centreOffset: CGFloat { (leading - trailing) / 2 }
+        /// What is left for the spacebar, which is the key this row exists to
+        /// carry and the only one whose width is decided by subtraction.
+        var spacebar: CGFloat { 10 - leading - trailing }
 
-        static func resolved(includesGlobe: Bool, includesPunctuation: Bool) -> BottomRowColumns {
+        static func resolved(
+            includesGlobe: Bool,
+            includesLayoutSwitch: Bool = false,
+            includesPunctuation: Bool
+        ) -> BottomRowColumns {
             // Measured on Apple's iOS 26 keyboard at the same 402pt width:
             //   plain:  2.5 |       5       | 2.5
             //   globe:  1.25 | 1.25 | 5     | 2.5
@@ -205,25 +317,96 @@ enum KeyLayout {
             // iOS sometimes supplies the globe in its own row below the
             // extension. In that case 123 occupies the two native leading
             // slots instead of leaving Space unnaturally wide.
-            let punctuation: CGFloat? = includesPunctuation ? 1.25 : nil
-            return BottomRowColumns(
-                planeSwitch: includesGlobe ? 1.25 : 2.5,
-                globe: includesGlobe ? 1.25 : nil,
-                punctuation: punctuation,
-                period: punctuation,
-                newline: minimumReturnColumns
+            // A language key is a fifth thing on a row Apple balances with
+            // four, and something has to give. The first attempt gave the
+            // same thing away every time — every function key trimmed to a
+            // column, Return to 1.75 — which on a row with no punctuation
+            // handed the spacebar six and a quarter columns against Apple's
+            // five, and left the keys either side of it visibly thin. Wrong
+            // in both directions at once.
+            //
+            // So nothing is trimmed until the row is actually short of room.
+            // Apple's widths are tried first; Return gives way before the
+            // function keys do, because Return has the most to spare and is
+            // the least often aimed at; and the trimming stops as soon as the
+            // spacebar is back above the width below which it stops reading
+            // as a spacebar.
+            guard includesLayoutSwitch else {
+                let punctuation: CGFloat? = includesPunctuation ? 1.25 : nil
+                return BottomRowColumns(
+                    planeSwitch: includesGlobe ? 1.25 : 2.5,
+                    globe: includesGlobe ? 1.25 : nil,
+                    layoutSwitch: nil,
+                    punctuation: punctuation,
+                    period: punctuation,
+                    newline: minimumReturnColumns
+                )
+            }
+            func row(function: CGFloat, newline: CGFloat) -> BottomRowColumns {
+                let punctuation: CGFloat? = includesPunctuation ? function : nil
+                return BottomRowColumns(
+                    planeSwitch: function,
+                    globe: includesGlobe ? function : nil,
+                    layoutSwitch: function,
+                    punctuation: punctuation,
+                    period: punctuation,
+                    newline: newline
+                )
+            }
+            let candidates = [
+                row(function: 1.25, newline: minimumReturnColumns),
+                row(function: 1.25, newline: crowdedReturnColumns),
+                row(function: 1, newline: minimumReturnColumns),
+                row(function: 1, newline: crowdedReturnColumns),
+            ]
+            // Of the rows that leave the spacebar wide enough, the one whose
+            // column totals either side of it come closest to equal — which is
+            // the identity that puts its visible centre on the keyboard's, and
+            // the thing a ladder of "trim this, then that" quietly destroys.
+            let roomy = candidates.filter { $0.spacebar >= minimumSpacebarColumns }
+            return roomy.min { abs($0.centreOffset) < abs($1.centreOffset) }
+                ?? candidates[candidates.count - 1]
+        }
+    }
+
+    /// The three letter rows of a layout, above the bottom row every plane
+    /// shares.
+    ///
+    /// The rows are the layout's own, and their *lengths* are what differs:
+    /// QWERTY is 10/9/7, ЙЦУКЕН is 11/11/9, AZERTY is 10/10/6. Nothing here
+    /// sets a width — ``KeyGridView`` reads its column unit off the rows it is
+    /// handed, so an eleven-key row simply produces narrower keys.
+    ///
+    /// The middle row centres itself only when it is shorter than the row above
+    /// it. That is the derivation behind QWERTY's familiar half-column indent,
+    /// and it is why Spanish, whose middle row is the longer one at ten keys
+    /// with ñ on the end, correctly does not indent.
+    private static func letterRows(for layout: TypingLayout) -> [KeyRow] {
+        let letters = layout.rows
+        let top = letters.first?.count ?? 0
+        return letters.enumerated().map { index, row in
+            if index == letters.count - 1 {
+                return KeyRow(keys: [KeySpec(cap: .shift, width: .fill, style: .function)]
+                    + map(row)
+                    + [KeySpec(cap: .delete, width: .fill, style: .function)])
+            }
+            return KeyRow(
+                keys: map(row),
+                alignment: row.count < top ? .centered : .fill
             )
         }
     }
 
     private static func bottomRow(
         planeSwitch: KeyPlane,
-        punctuation: String?,
+        punctuation: BottomRowPunctuation?,
         includesGlobe: Bool,
+        includesLayoutSwitch: Bool,
         returnIsProminent: Bool
     ) -> KeyRow {
         let columns = BottomRowColumns.resolved(
             includesGlobe: includesGlobe,
+            includesLayoutSwitch: includesLayoutSwitch,
             includesPunctuation: punctuation != nil
         )
         var keys = [
@@ -236,19 +419,24 @@ enum KeyLayout {
         if let globe = columns.globe {
             keys.append(KeySpec(cap: .globe, width: .multiple(globe), style: .function))
         }
+        if let layoutSwitch = columns.layoutSwitch {
+            keys.append(
+                KeySpec(cap: .layoutSwitch, width: .multiple(layoutSwitch), style: .function)
+            )
+        }
         if let punctuation {
             keys.append(
                 KeySpec(
-                    cap: .character(punctuation),
+                    cap: .character(punctuation.leading),
                     width: .multiple(columns.punctuation ?? 1)
                 )
             )
         }
         keys.append(KeySpec(cap: .space, width: .fill))
-        if punctuation != nil {
+        if let punctuation {
             keys.append(
                 KeySpec(
-                    cap: .character("."),
+                    cap: .character(punctuation.trailing),
                     width: .multiple(columns.period ?? 1)
                 )
             )
@@ -260,11 +448,91 @@ enum KeyLayout {
                 style: returnIsProminent ? .accent : .function
             )
         )
-        return KeyRow(keys: keys)
+        return KeyRow(keys: keys, columnReference: 10)
+    }
+
+    /// The three-column numeric block iOS shows for a `.numberPad`,
+    /// `.phonePad` or `.decimalPad` field.
+    ///
+    /// Four rows, so it occupies exactly the height the letters plane does and
+    /// the keyboard does not resize under the user when the cursor moves from a
+    /// name field to a phone-number one. The bottom-left slot carries the globe
+    /// where iOS asks for one and is genuinely empty otherwise, which is what
+    /// the system keypad does — a stretched `0` there would be a target people
+    /// hit by accident reaching for nothing.
+    static func keypadRows(for plane: KeyPlane, includesGlobe: Bool) -> [KeyRow] {
+        // Three columns in every row. The system keypad is a regular block and
+        // reads as one; a bottom row of four keys under three is a grid that has
+        // come apart.
+        //
+        // The bottom row is the exception, and only where it has to be. A
+        // decimal pad's "." and a phone pad's "+" are the *only* way to type
+        // those characters — these layouts have no second plane and no duplicate
+        // key — so when iOS also demands a globe there are four things that must
+        // be reachable and three slots. Giving the corner to the globe left a
+        // decimal pad that could not type a decimal point, which is not a
+        // narrower keyboard, it is a broken one. The row takes a fourth key
+        // instead; the digits above it stay on three.
+        var last: [KeySpec] = []
+        if includesGlobe {
+            last.append(KeySpec(cap: .globe, width: .multiple(keypadColumns), style: .function))
+        }
+        switch plane {
+        case .decimalPad:
+            last.append(KeySpec(cap: .character("."), width: .multiple(keypadColumns)))
+        case .phonePad:
+            last.append(KeySpec(cap: .character("+"), width: .multiple(keypadColumns)))
+        default:
+            break
+        }
+        // A plain number pad with no globe has nothing for the corner, and iOS
+        // leaves it genuinely empty rather than stretching the zero across it —
+        // a target people would hit reaching for nothing.
+        if last.isEmpty {
+            last.append(KeySpec(cap: .blank, width: .multiple(keypadColumns)))
+        }
+        last.append(KeySpec(cap: .character("0"), width: .multiple(keypadColumns)))
+        last.append(KeySpec(cap: .delete, width: .multiple(keypadColumns), style: .function))
+
+        return [
+            keypadRow("123"),
+            keypadRow("456"),
+            keypadRow("789"),
+            KeyRow(keys: last, alignment: .centered),
+        ]
+    }
+
+    /// How wide one keypad key is, in letter columns. Three of them plus their
+    /// gaps come to a little over two thirds of the keyboard, which is where the
+    /// system keypad sits: wide enough to be unmissable, narrow enough that the
+    /// block still reads as a keypad rather than as a stretched row.
+    static let keypadColumns: CGFloat = 2.4
+
+    private static func keypadRow(_ digits: String) -> KeyRow {
+        KeyRow(keys: keypadSpecs(digits), alignment: .centered)
+    }
+
+    private static func keypadSpecs(_ digits: String) -> [KeySpec] {
+        digits.map {
+            KeySpec(cap: .character(String($0)), width: .multiple(keypadColumns))
+        }
     }
 
     private static func map(_ characters: String) -> [KeySpec] {
         characters.map { KeySpec.letter(String($0)) }
+    }
+
+    /// Character keys that share the row's slack instead of standing at one
+    /// letter column each.
+    ///
+    /// The punctuation row of the numbers and symbols planes has seven keys
+    /// against the ten columns above it. Leaving the five characters at a
+    /// column apiece handed all three spare columns to `#+=` and Delete, which
+    /// came out at two and a half columns each — two slabs on either side of
+    /// five narrow punctuation keys. The system divides that row evenly, and
+    /// the keys people actually reach for there are the punctuation.
+    private static func fillMap(_ characters: String) -> [KeySpec] {
+        characters.map { KeySpec(cap: .character(String($0)), width: .fill) }
     }
 
     /// Title shown on the plane-switch key, mirroring the system keyboard.
@@ -273,6 +541,9 @@ enum KeyLayout {
         case .letters: "ABC"
         case .numbers: "123"
         case .symbols: "#+="
+        // The keypads have no plane key to put a title on; the case exists so
+        // adding a plane later cannot silently inherit the wrong label.
+        case .numberPad, .phonePad, .decimalPad: "123"
         }
     }
 }
@@ -297,6 +568,14 @@ struct KeyboardMetrics: Equatable {
     /// Regular-width iPads and landscape phones are resolved from their traits
     /// instead: a regular/regular canvas has room the preference was never
     /// scaled for, and a compact-height phone has none to give.
+    /// The glyph sizes and radii are read off the system keyboard rather than
+    /// derived: a letter is roughly 0.58 of the key's height and the corner is
+    /// roughly 0.23 of it. The keyboard this replaced sat at 0.51 and 0.14,
+    /// which is what "small letters on square keys" measures out to.
+    ///
+    /// Note that the system does *not* scale its key glyphs with Dynamic Type.
+    /// ``KeyFont/scaled(_:maximum:weight:)`` still does, within a bound, which
+    /// is a deliberate difference and the reason the maximum exists.
     static func resolved(
         for traits: UITraitCollection,
         preference: KeyboardHeightPreference = KeyboardPreferences.keyboardHeight
@@ -307,9 +586,9 @@ struct KeyboardMetrics: Equatable {
                 rowGap: 12,
                 columnGap: 11,
                 sideInset: 8,
-                letterFontSize: 24,
-                functionFontSize: 17,
-                cornerRadius: 7
+                letterFontSize: 25,
+                functionFontSize: 18,
+                cornerRadius: 10
             )
         }
         if traits.verticalSizeClass == .compact {
@@ -320,9 +599,9 @@ struct KeyboardMetrics: Equatable {
                 rowGap: 6,
                 columnGap: 5,
                 sideInset: 3,
-                letterFontSize: 17,
-                functionFontSize: 13,
-                cornerRadius: 5
+                letterFontSize: 18,
+                functionFontSize: 14,
+                cornerRadius: 7
             )
         }
         switch preference {
@@ -332,9 +611,9 @@ struct KeyboardMetrics: Equatable {
                 rowGap: 9,
                 columnGap: 6,
                 sideInset: 2 / 3,
-                letterFontSize: 21,
-                functionFontSize: 15,
-                cornerRadius: 6
+                letterFontSize: 23,
+                functionFontSize: 16,
+                cornerRadius: 9
             )
         case .standard:
             return KeyboardMetrics(
@@ -342,9 +621,9 @@ struct KeyboardMetrics: Equatable {
                 rowGap: 11,
                 columnGap: 6,
                 sideInset: 2 / 3,
-                letterFontSize: 22,
-                functionFontSize: 16,
-                cornerRadius: 6
+                letterFontSize: 24,
+                functionFontSize: 17,
+                cornerRadius: 10
             )
         case .tall:
             return KeyboardMetrics(
@@ -352,9 +631,13 @@ struct KeyboardMetrics: Equatable {
                 rowGap: 12,
                 columnGap: 6,
                 sideInset: 2 / 3,
-                letterFontSize: 23,
-                functionFontSize: 16,
-                cornerRadius: 7
+                // 0.55 of the key, like the other two heights. It was 0.51
+                // here — the tall keyboard kept the old proportion when the
+                // others were corrected, which is the sort of thing nobody
+                // notices until the ratio is written down as a test.
+                letterFontSize: 27,
+                functionFontSize: 17,
+                cornerRadius: 11
             )
         }
     }
@@ -377,6 +660,19 @@ struct KeyboardPalette: Equatable {
         return false
     }
 
+    /// Whether the extension may leave the surface behind the keys unpainted
+    /// and let `UIInputView`'s keyboard style draw it.
+    ///
+    /// ``background`` below is this project's guess at the colour iOS puts
+    /// behind a keyboard, and a guess is exactly what makes a keyboard read as
+    /// somebody else's product: it is one grey nothing else on the phone uses.
+    /// The input view the extension is handed already draws the real thing, in
+    /// every host, both appearances, and the next iOS as well.
+    ///
+    /// ``background`` stays for the surfaces that have no input view to borrow
+    /// it from — the settings preview and the SwiftUI canvases.
+    var usesSystemKeyboardBackdrop: Bool { usesUnifiedSystemKeyFill }
+
     /// Neutral charcoal in dark, neutral grey in light. Both were previously
     /// tinted toward blue, which is the drift the design standard names.
     var background: UIColor {
@@ -396,12 +692,38 @@ struct KeyboardPalette: Equatable {
 
     /// The brightest key in either appearance, because a character key is what
     /// the eye should land on first.
+    ///
+    /// In dark this is *translucent*, and that is the whole point. The 61/255
+    /// this replaces was read off a screenshot of the system keyboard sitting
+    /// on its own near-black backdrop — a true pixel, but a composite one. The
+    /// system draws a light film over whatever is behind the keyboard, so on
+    /// Spotlight or over a bright wallpaper its keys lift and stay legible,
+    /// while an opaque 61/255 stays flat black wherever it is put. That is the
+    /// difference between this keyboard and the system one on a home screen.
+    ///
+    /// The alpha is chosen to reproduce the measured pixel exactly against the
+    /// backdrop it was measured on: 23 + (255 − 23) × 0.164 ≈ 61.
     var standardKey: UIColor {
         if usesUnifiedSystemKeyFill {
-            return isDark ? UIColor(white: 61 / 255, alpha: 1) : .white
+            // Declared in RGB rather than `UIColor(white:alpha:)`: the
+            // contrast maths reads colours through `getRed`, which reports
+            // nothing for a translucent monochrome colour and silently scores
+            // it as black. Everything else in this palette is RGB for the same
+            // reason.
+            return isDark ? UIColor(red: 1, green: 1, blue: 1, alpha: 0.164) : .white
         }
         return isDark ? UIColor(white: 0.29, alpha: 1) : .white
     }
+
+    /// The fill for a surface that floats *above* the keys — the magnified
+    /// preview balloon and the accent popover.
+    ///
+    /// Flattened, not filmed. ``standardKey`` is translucent in dark so a key
+    /// can pick up whatever the keyboard is standing on, but a balloon lifted
+    /// over the row is standing on the keys themselves: left translucent, it
+    /// shows the letters it exists to cover, which is what a magnified preview
+    /// is for.
+    var raisedKey: UIColor { standardKey.compositedOver(background) }
 
     /// Visibly a step down from ``standardKey``, and neutral — a muddy or blue
     /// function key is what made the old palette read as someone else's product.
@@ -475,23 +797,30 @@ private extension UIColor {
     /// would have let the key background show through a key that is meant to
     /// stay solid.
     func blended(with other: UIColor, amount: CGFloat) -> UIColor {
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-        var otherRed: CGFloat = 0
-        var otherGreen: CGFloat = 0
-        var otherBlue: CGFloat = 0
-        var otherAlpha: CGFloat = 0
-        guard getRed(&red, green: &green, blue: &blue, alpha: &alpha),
-              other.getRed(&otherRed, green: &otherGreen, blue: &otherBlue, alpha: &otherAlpha)
+        // Through `ContrastMath.rgba`, which falls back to `getWhite`.
+        //
+        // `getRed` answers nothing for a monochrome colour, and the two this is
+        // always mixed with — `.white` and `.black` — are exactly that. The
+        // guard then returned the colour unchanged, so on any build where that
+        // happens a pressed key kept its resting fill: the press had no visible
+        // effect at all. This is the same trap the luminance maths was just
+        // taken out of, one file away.
+        guard let base = ContrastMath.rgba(self),
+              let mixer = ContrastMath.rgba(other)
         else { return self }
+        let (red, green, blue, alpha) = base
+        let (otherRed, otherGreen, otherBlue, otherAlpha) = mixer
         let mix = min(max(amount, 0), 1)
         return UIColor(
             red: red + (otherRed - red) * mix,
             green: green + (otherGreen - green) * mix,
             blue: blue + (otherBlue - blue) * mix,
-            alpha: 1
+            // Alpha mixes with everything else. Pinning it to 1 was safe while
+            // every fill here was opaque; against the translucent dark key it
+            // turned a press into solid white — with white labels on it. The
+            // accent this was written for still comes out solid, because its
+            // own alpha is 1 and mixing 1 with 1 is 1.
+            alpha: alpha + (otherAlpha - alpha) * mix
         )
     }
 }

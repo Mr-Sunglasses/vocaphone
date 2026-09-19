@@ -14,6 +14,7 @@ import com.vocahq.vocaphone.audio.InputDevices
 import com.vocahq.vocaphone.audio.TonePreview
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.GatewayEndpoint
+import com.vocahq.vocaphone.core.UsageStats
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptionQuality
@@ -90,10 +91,17 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     val history: StateFlow<List<DictationRecordEntity>> = container.history.observeRecent()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /**
+     * Only collected while the companion app is on screen, so the statistics
+     * file is never read on the path that brings the keyboard up.
+     */
+    val usageStats: StateFlow<UsageStats> = container.usageStats.stats
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UsageStats())
+
     val dictation = container.dictation.state
     val localModels: StateFlow<LocalModelState> = container.localModels.state
 
-    private val _setup = MutableStateFlow(SetupStatus())
+    private val _setup = MutableStateFlow(SetupStatus(isLoaded = false))
     val setup: StateFlow<SetupStatus> = _setup.asStateFlow()
 
     private val _connection = MutableStateFlow<ConnectionReport?>(null)
@@ -323,6 +331,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setNumbersAsDigits(enabled: Boolean) =
         viewModelScope.launch { container.settings.setNumbersAsDigits(enabled) }
 
+    fun setSpokenEmoji(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setSpokenEmoji(enabled) }
+
     fun setDictationTone(tone: DictationTone) {
         _tonePreviewListening.value = false
         viewModelScope.launch { container.settings.setDictationTone(tone) }
@@ -392,6 +403,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setSplitKeyboard(mode: SplitKeyboard) =
         viewModelScope.launch { container.settings.setSplitKeyboard(mode) }
+
+    fun setDynamicColorEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setDynamicColorEnabled(enabled) }
 
     fun setSuggestionsEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setSuggestionsEnabled(enabled) }
@@ -599,6 +613,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun deleteAllHistory() = viewModelScope.launch { container.history.deleteAll() }
+
+    /** Deliberately not called by [deleteAllHistory]: totals outlive transcripts. */
+    fun resetUsageStats() = viewModelScope.launch { container.usageStats.reset() }
 
     fun diagnosticEvents(): String = container.diagnostics.read()
 

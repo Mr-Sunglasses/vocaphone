@@ -12,7 +12,7 @@ one of them.
 
 | Tag | Ships | GitHub Release | Store |
 | --- | --- | --- | --- |
-| `android/v0.1.1` | Android only | APK, AAB, fdroid APK, checksums. Marked **Latest**. | Play Internal testing |
+| `android/v0.1.1` | Android only | APK, AAB, fdroid APK, checksums. Marked **Latest**. | Play Internal, then production in Console |
 | `android/v0.1.1-beta.1` | Android only | Same files. Marked **Pre-release**. | Play Internal testing |
 | `ios/v1.0.21` | iOS only | Notes only (no IPA). Not Latest. | TestFlight |
 | *two tags on the same commit* | Both | Two Releases, two changelogs | Both of the above |
@@ -55,7 +55,9 @@ git push origin android/v0.1.1
 
 `.github/workflows/android-release.yml` builds, publishes the GitHub Release,
 and uploads the AAB to Play Internal when `PLAY_SERVICE_ACCOUNT_JSON` is set.
-Closed testing, open testing, and production stay Console clicks.
+Closed testing, open testing, and production stay Console clicks. The public
+listing is
+[Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone).
 
 ## iOS only
 
@@ -110,9 +112,10 @@ If only one side is ready, ship that side. Do not wait.
 `/releases/latest` can point at only one Release. That slot is the Android
 **stable** APK (`android/vX.Y.Z` with no hyphen). iOS Releases are created
 with `--latest=false` so a TestFlight notes post never hijacks the APK
-download. The public site pins a specific Android tag rather than
-`/releases/latest` for the same reason; move the pin in `web/` when you cut
-the next Android release people should install.
+download. The public site sends Android visitors to Google Play. The install
+card still pins a specific Android tag for the sideload APK rather than
+`/releases/latest`; move that pin in `web/` when you cut the next Android
+release people should sideload.
 
 ## Secrets
 

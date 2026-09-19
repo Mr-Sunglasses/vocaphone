@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>PreferenceSpecifiers</key>
+	<array>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>🎙️ How to Activate vocaphone</string>
+			<key>FooterText</key>
+			<string>1. Tap "Keyboards" above
+2. Turn on vocaphone
+3. Allow Full Access
+4. Tap "Allow" to confirm</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>❓ "Keyboards" Not Showing?</string>
+			<key>FooterText</key>
+			<string>Close Settings completely and reopen this page.</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>🛡️ About Full Access</string>
+			<key>FooterText</key>
+			<string>Full Access lets the keyboard reach the vocaphone app to insert what you dictate. The keyboard itself never records. Audio is deleted once the transcript is saved, and leaves this iPhone only if you chose a gateway.</string>
+		</dict>
+	</array>
+</dict>
+</plist>

@@ -17,10 +17,16 @@ import Foundation
 /// 3. Style — but only for transcripts produced on this device. A gateway has
 ///    already applied the writing style the session asked for, and applying it
 ///    twice is how "Hello." becomes "Hello.." on one route and not the other.
-/// 4. Digits. After styling, never before: the styler capitalizes the first
+/// 4. Spoken emoji. After styling, because the styler has to see "emoji" as
+///    an ordinary word to capitalize and terminate around it; before digits,
+///    because the table's keys are words — "hundred emoji" is 💯, and once
+///    digit conversion has made it "100 emoji" there is no key left to find.
+///    Applies whichever route produced the transcript: unlike styling, no
+///    gateway has done it already.
+/// 5. Digits. After styling, never before: the styler capitalizes the first
 ///    letter of a sentence, so a sentence already reduced to "20 people came"
 ///    would have it look past the digits and capitalize "People".
-/// 5. Snippet expansion, last of all. A trigger's expansion is literal text
+/// 6. Snippet expansion, last of all. A trigger's expansion is literal text
 ///    the user wrote themselves — an email address, a signature — and must
 ///    not be run back through capitalization or digit conversion. Trigger
 ///    matching is case-insensitive, so it still fires however styling left
@@ -33,6 +39,7 @@ enum DictatedTranscript {
         styledUpstream: Bool = false,
         repairSpeech: Bool,
         numbersAsDigits: Bool,
+        spokenEmoji: Bool,
         snippets: [Snippet] = SnippetStore.snippets,
         snippetExpander: SnippetExpanding = SnippetExpander()
     ) -> String {
@@ -43,7 +50,12 @@ enum DictatedTranscript {
         let styled = styledUpstream
             ? repaired
             : TranscriptStyler.apply(repaired, style: style, language: language)
-        let digited = numbersAsDigits ? SpokenNumbers.digits(in: styled) : styled
+        // Never for `raw`, on the same grounds as repair: raw promises the
+        // model's own output, and a glyph is not something the model said.
+        let emojified = spokenEmoji && style != .raw
+            ? SpokenEmoji.glyphs(in: styled, language: language)
+            : styled
+        let digited = numbersAsDigits ? SpokenNumbers.digits(in: emojified) : emojified
         return snippetExpander.expand(in: digited, using: snippets)
     }
 }

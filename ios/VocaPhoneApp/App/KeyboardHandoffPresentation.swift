@@ -32,6 +32,16 @@ struct KeyboardHandoffPresentation: Equatable {
               record.startedInContainingApp != true
         else { return false }
 
+        // The wait for the app to come up belongs to the hand-off, not to the
+        // home screen. Presenting from `launchingApp` is what makes the app
+        // open *on* the swipe-back screen instead of painting its home screen
+        // for a frame and then covering it. A hand-off nobody claimed is
+        // retired by `SessionExpiryPolicy`, but a record that is already past
+        // its window must not put this screen up on an ordinary launch.
+        if record.state == .launchingApp || record.state == .awaitingReturn {
+            return !SessionExpiryPolicy.isStale(record)
+        }
+
         return switch record.state {
         case .recording, .finalizing, .uploading, .transcribing, .readyToInsert,
              .targetContextChanged, .serverUnavailable, .uploadFailedRecoverable,
@@ -46,14 +56,18 @@ struct KeyboardHandoffPresentation: Equatable {
         guard shouldPresent(record) else { return nil }
 
         switch record.state {
-        case .recording:
+        // One screen from the moment the app is asked for until the transcript
+        // exists: the request is the same request whether the recorder has
+        // caught up yet or not, and swapping layouts underneath the user while
+        // they are reading is what made this feel like three separate steps.
+        case .launchingApp, .awaitingReturn, .recording:
             return KeyboardHandoffPresentation(
                 kind: .recording,
-                title: "Recording",
-                detail: "Swipe back to the app where you were typing. Recording keeps going as you switch.",
-                primaryAction: .finish,
-                primaryTitle: "Finish & transcribe here",
-                showsCancel: true
+                title: "Swipe back to your app",
+                detail: "Recording follows you there.",
+                primaryAction: .none,
+                primaryTitle: nil,
+                showsCancel: false
             )
         case .finalizing:
             return processing(title: "Finishing recording")

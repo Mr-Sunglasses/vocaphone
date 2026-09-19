@@ -87,7 +87,7 @@ struct DictationBarLayoutTests {
         let before = Self.descendants(of: bar).count
         for _ in 0..<20 {
             bar.apply(Self.model(.recording), animated: false)
-            bar.push(meterLevel: 0.6)
+            bar.push(meterLevels: [0.4, 0.6, 0.5, 0.7, 0.6])
         }
         bar.layoutIfNeeded()
         // A poll tick that changes nothing must not accumulate views.

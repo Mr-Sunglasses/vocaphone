@@ -97,3 +97,46 @@ struct TypingWordListTests {
 
     private final class BundleMarker {}
 }
+
+/// The two things the list precomputes so the keystroke and the swipe do not
+/// have to.
+struct TypingWordListPrecomputationTests {
+    private static let list = TypingWordList(
+        words: ["the", "there", "these", "than", "book", "look"],
+        bigrams: [:]
+    )
+
+    /// The collapsed forms come from the list rather than from the gesture.
+    /// Deriving ten thousand of them inside a swipe meant ten thousand String
+    /// allocations on the main actor at the frame the finger lifted.
+    @Test func collapsedFormsAreBuiltWithTheList() {
+        let list = TypingWordList(words: ["hello", "book", "the"], bigrams: [:])
+        #expect(list.collapsedWords == ["helo", "bok", "the"])
+        #expect(list.collapsedWords.count == list.rankedWords.count)
+    }
+
+    /// After "th" the language plainly expects "e", and that is what lets the
+    /// hit map forgive a finger that lands in the gutter beside it.
+    @Test func theExpectedNextLetterLeadsTheWeights() {
+        let weights = Self.list.nextCharacterWeights(after: "th")
+        #expect(weights["e"] == 1, "the peak is always normalised to 1")
+        #expect((weights["a"] ?? 0) > 0)
+        #expect((weights["a"] ?? 0) < 1)
+        // A letter no word continues into gets no opinion at all.
+        #expect(weights["z"] == nil)
+    }
+
+    /// No prefix, no opinion — which is what clears the bias between words.
+    @Test func anEmptyPrefixExpectsNothing() {
+        #expect(Self.list.nextCharacterWeights(after: "").isEmpty)
+        #expect(Self.list.nextCharacterWeights(after: "qqq").isEmpty)
+    }
+
+    /// Frequency order is the weighting: a continuation found early in the list
+    /// is a more likely one than the same letter found late.
+    @Test func earlierWordsWeighMore() {
+        let list = TypingWordList(words: ["ba"] + Array(repeating: "zz", count: 900) + ["bb"], bigrams: [:])
+        let weights = list.nextCharacterWeights(after: "b")
+        #expect((weights["a"] ?? 0) > (weights["b"] ?? 0))
+    }
+}

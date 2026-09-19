@@ -9,7 +9,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.vocahq.vocaphone.VocaPhoneApplication
@@ -33,7 +35,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 class DictationService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var observer: Job? = null
+    private var pendingSource: DictationSource? = null
+    private var promoteFailures = 0
+    private var microphoneForeground = false
+    private val promoteRetry = Runnable { promoteMicrophoneForeground() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -46,26 +53,26 @@ class DictationService : Service() {
         val controller = VocaPhoneApplication.container(this).dictation
         when (intent?.action) {
             ACTION_START -> {
-                // Called before any capture begins: Android requires the microphone
-                // foreground service to be visible for the whole recording.
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification("Listening"),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
-                )
+                if (microphoneForeground) return START_NOT_STICKY
                 val source = intent.getStringExtra(EXTRA_SOURCE)
                     ?.let { runCatching { DictationSource.valueOf(it) }.getOrNull() }
                     ?: DictationSource.COMPANION_APP
-                controller.start(source)
-                observeUntilIdle()
+                pendingSource = source
+                promoteFailures = 0
+                mainHandler.removeCallbacks(promoteRetry)
+                promoteMicrophoneForeground()
             }
 
             ACTION_FINISH -> {
+                mainHandler.removeCallbacks(promoteRetry)
+                pendingSource = null
                 controller.finish()
                 stopUnlessHoldingMicrophone()
             }
 
             ACTION_CANCEL -> {
+                mainHandler.removeCallbacks(promoteRetry)
+                pendingSource = null
                 controller.cancel()
                 stopUnlessHoldingMicrophone()
             }
@@ -73,6 +80,54 @@ class DictationService : Service() {
             else -> stopSelf()
         }
         return START_NOT_STICKY
+    }
+
+    /**
+     * startForeground(MICROPHONE) is refused until the app is in an eligible
+     * state. HeliBoard can start this service a frame before our IME window
+     * counts; retry rather than crash the process.
+     */
+    private fun promoteMicrophoneForeground() {
+        val source = pendingSource
+        if (source == null) {
+            if (!microphoneForeground && enterMicrophoneForeground()) {
+                stopForegroundAndSelf()
+            }
+            return
+        }
+        if (enterMicrophoneForeground()) {
+            pendingSource = null
+            promoteFailures = 0
+            VocaPhoneApplication.container(this).dictation.start(source)
+            observeUntilIdle()
+            return
+        }
+        promoteFailures++
+        if (source != DictationSource.IME &&
+            MicrophoneForegroundPromote.shouldLaunchVisibleActivity(promoteFailures)
+        ) {
+            launchVisibleStarter(this, source)
+        }
+        if (MicrophoneForegroundPromote.shouldRetry(promoteFailures)) {
+            mainHandler.postDelayed(promoteRetry, MicrophoneForegroundPromote.RETRY_DELAY_MS)
+        }
+    }
+
+    private fun enterMicrophoneForeground(): Boolean {
+        if (microphoneForeground) return true
+        return try {
+            startForeground(
+                NOTIFICATION_ID,
+                notification("Listening"),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
+            )
+            microphoneForeground = true
+            true
+        } catch (_: SecurityException) {
+            false
+        } catch (_: ForegroundServiceStartNotAllowedException) {
+            false
+        }
     }
 
     /**
@@ -113,11 +168,18 @@ class DictationService : Service() {
     private fun stopForegroundAndSelf() {
         observer?.cancel()
         observer = null
+        pendingSource = null
+        promoteFailures = 0
+        microphoneForeground = false
+        mainHandler.removeCallbacks(promoteRetry)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     override fun onDestroy() {
+        mainHandler.removeCallbacks(promoteRetry)
+        pendingSource = null
+        microphoneForeground = false
         scope.cancel()
         super.onDestroy()
     }
@@ -207,18 +269,40 @@ class DictationService : Service() {
             try {
                 ContextCompat.startForegroundService(context, intent)
             } catch (_: ForegroundServiceStartNotAllowedException) {
-                context.startActivity(
-                    Intent(context, DictationLauncherActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
-                        .putExtra(EXTRA_SOURCE, source.name)
-                )
+                launchVisibleStarter(context, source)
+            } catch (_: SecurityException) {
+                launchVisibleStarter(context, source)
             }
         }
 
         fun send(context: Context, action: String) {
             context.startService(Intent(context, DictationService::class.java).setAction(action))
         }
+
+        private fun launchVisibleStarter(context: Context, source: DictationSource) {
+            context.startActivity(
+                Intent(context, DictationLauncherActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    .putExtra(EXTRA_SOURCE, source.name),
+            )
+        }
     }
+}
+
+/**
+ * How long [DictationService] keeps retrying startForeground(MICROPHONE)
+ * after a handoff that beat the IME window. Stays under the system timeout
+ * for startForegroundService (~5–10 s).
+ */
+internal object MicrophoneForegroundPromote {
+    const val RETRY_DELAY_MS = 50L
+    const val MAX_ATTEMPTS = 20
+    const val LAUNCH_ACTIVITY_AFTER = 4
+
+    fun shouldRetry(failedTries: Int): Boolean = failedTries < MAX_ATTEMPTS
+
+    fun shouldLaunchVisibleActivity(failedTries: Int): Boolean =
+        failedTries == LAUNCH_ACTIVITY_AFTER
 }
 
 /**

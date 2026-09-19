@@ -8,9 +8,10 @@ available, while VocaPhone can be selected whenever you want to dictate into an
 editable field. It inserts through Android's `InputConnection` and does not read
 the field.
 
-Android 13+ public beta APKs (and the full-flavor Play AAB) ship from GitHub
-Releases on beta tags. Play Console setup is still outstanding, so the app is
-not listed on Google Play yet. Maintainer steps: [docs/play-store.md](../docs/play-store.md).
+Android 13+ is on
+[Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone).
+Signed APKs (and the full-flavor Play AAB) also ship from GitHub Releases.
+Maintainer Play steps: [docs/play-store.md](../docs/play-store.md).
 The shipped build does not request accessibility-service or overlay access.
 
 > Package name and application ID have been updated to `com.vocahq.vocaphone`;

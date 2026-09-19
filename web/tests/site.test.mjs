@@ -35,6 +35,23 @@ function androidInstallBlock(source) {
   return match[0];
 }
 
+const PLAY_LISTING =
+  "https://play.google.com/store/apps/details?id=com.vocahq.vocaphone";
+const ANDROID_TAG =
+  "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.1";
+
+function htmlBlock(source, pattern, label) {
+  const match = source.match(pattern);
+  assert.ok(match, `${label} missing`);
+  return match[0];
+}
+
+function hrefsContaining(source, needle) {
+  return [...source.matchAll(/href="([^"]+)"/g)]
+    .map((match) => match[1])
+    .filter((href) => href.includes(needle));
+}
+
 test("page has one clear title and a landmark structure", () => {
   assert.match(html, /<title>VocaPhone: voice typing that stays yours<\/title>/);
   assert.equal((html.match(/<h1\b/g) || []).length, 1);
@@ -68,17 +85,23 @@ test("VocaGateway is presented as an explicit optional path", () => {
   assert.match(html, /trusted LAN, an encrypted private\s+network, or HTTPS/i);
   assert.match(html, /href="https:\/\/vocagateway\.vocahq\.com"/);
   assert.match(html, /href="https:\/\/github\.com\/VocaHQ\/vocagateway"/);
+  assert.match(
+    html,
+    /self-host\s+<a href="https:\/\/vocagateway\.vocahq\.com">VocaGateway<\/a>/,
+  );
+  assert.match(html, /<a href="https:\/\/vocagateway\.vocahq\.com">VocaGateway<\/a>/);
+  assert.doesNotMatch(
+    html,
+    /<a href="https:\/\/github\.com\/VocaHQ\/vocagateway">VocaGateway<\/a>/,
+  );
   assert.doesNotMatch(html, /no gateway\. no catch/i);
   assert.doesNotMatch(html, />no gateway needed</i);
 });
 
-test("hero presents a global supported-language mix", () => {
-  assert.match(html, /54 languages \+ automatic/i);
+test("language availability stays tied to the selected model", () => {
+  assert.match(html, /54 language choices/i);
   assert.match(html, /support depends on model/i);
   assert.match(html, /filtered to what your selected model can\s+actually transcribe/i);
-  for (const language of ["English", "Español", "Français", "日本語", "हिन्दी", "العربية"]) {
-    assert.match(html, new RegExp(`<b>${language}</b>`));
-  }
 });
 
 test("all local image assets exist", () => {
@@ -119,10 +142,11 @@ test("production metadata is complete", () => {
     /property="og:image:type" content="image\/png"/,
     /property="og:image:width" content="1200"/,
     /property="og:image:height" content="630"/,
+    /name="description"\s+content="Join the public TestFlight, or build from source, then install the keyboard and run speech-to-text on your iPhone\."/,
     /property="og:image:alt"\s+content="VocaPhone on Android and iPhone, on-device first with an optional self-hosted gateway"/,
     /property="og:description"\s+content="Join the public TestFlight, or build from source, then install the keyboard and run speech-to-text on your iPhone\."/,
     /name="twitter:title" content="Install VocaPhone on iPhone"/,
-    /name="twitter:description"\s+content="Join the public TestFlight, or build from source, then install the private keyboard and run speech-to-text on your iPhone\."/,
+    /name="twitter:description"\s+content="Join the public TestFlight, or build from source, then install the keyboard and run speech-to-text on your iPhone\."/,
     /name="twitter:image" content="https:\/\/vocaphone\.vocahq\.com\/assets\/og-image\.png"/,
     /name="twitter:image:alt"\s+content="VocaPhone on Android and iPhone, on-device first with an optional self-hosted gateway"/,
   ]) {
@@ -189,7 +213,7 @@ test("real Android product screenshots are present", () => {
     assert.ok(existsSync(join(siteRoot, screenshot)), `Missing ${screenshot}`);
   }
   assert.match(html, /real app, real phone/i);
-  assert.match(html, /These are unedited VocaPhone screens from Android/i);
+  assert.match(html, /real iPhone and Android screenshots/i);
 });
 
 test("availability and install paths are honest", () => {
@@ -200,11 +224,7 @@ test("availability and install paths are honest", () => {
   // that the App Store, which VocaPhone is not on, is not implied.
   assert.match(html, /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/);
   assert.match(html, /There is\s+no App Store release yet/);
-  assert.match(
-    html,
-    /href="https:\/\/github\.com\/VocaHQ\/vocaphone\/releases\/tag\/android\/v0\.1\.5"/,
-  );
-  assert.match(html, /v0\.1\.5/);
+  assert.match(html, /v0\.2\.1/);
   assert.match(html, /io\.github\.mrsunglasses\.localflow/);
   assert.match(html, /href="\/iphone\/"/);
   assert.match(html, /SHA256SUMS\.txt/);
@@ -214,6 +234,20 @@ test("availability and install paths are honest", () => {
   assert.doesNotMatch(html, /free forever/i);
   assert.doesNotMatch(html, /available on (the )?App Store/i);
   assert.doesNotMatch(html, /available on F-Droid/i);
+
+  // Every public Play href has to be the listing, not merely "a Play URL
+  // exists somewhere." A typo in the platform card, FAQ, download strip, or
+  // footer used to be invisible.
+  const playHrefs = hrefsContaining(html, "play.google.com");
+  assert.equal(playHrefs.length, 6, `expected 6 Play links, saw ${playHrefs.join(", ")}`);
+  for (const href of playHrefs) {
+    assert.equal(href, PLAY_LISTING);
+  }
+  const tagHrefs = hrefsContaining(html, "/releases/tag/android/");
+  assert.equal(tagHrefs.length, 2, `expected 2 pinned APK links, saw ${tagHrefs.join(", ")}`);
+  for (const href of tagHrefs) {
+    assert.equal(href, ANDROID_TAG);
+  }
 
   // Both ways to install are offered before the fold, not just the Android
   // one. The hero is where most visitors decide, so an iPhone owner reaching
@@ -229,22 +263,44 @@ test("availability and install paths are honest", () => {
   assert.match(hero, /<svg class="mark-solid"/);
   assert.match(hero, /<use href="#mark-android"/);
   assert.match(hero, /<use href="#mark-apple"/);
-  assert.ok(
-    hero.includes("https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.1.5"),
-    "hero is missing the Android release link",
+  assert.ok(hero.includes(PLAY_LISTING), "hero is missing the Google Play link");
+  assert.ok(!hero.includes(ANDROID_TAG), "hero should send Android visitors to Play, not the GitHub APK");
+
+  const platformAndroid = htmlBlock(
+    html,
+    /<article class="platform-card android-card reveal">[\s\S]*?<\/article>/,
+    "Android platform card",
   );
+  assert.ok(platformAndroid.includes(PLAY_LISTING), "platform card is missing the Google Play link");
+  assert.ok(!platformAndroid.includes(ANDROID_TAG), "platform card should not sideload");
+
+  const faq = htmlBlock(html, /<section class="faq-section[\s\S]*?<\/section>/, "FAQ");
+  assert.ok(faq.includes(PLAY_LISTING), "FAQ is missing the Google Play link");
 
   const androidCard = androidInstallBlock(html);
-  const uninstallAt = androidCard.indexOf("io.github.mrsunglasses.localflow");
-  const tagHrefAt = androidCard.indexOf(
-    "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.1.5",
-  );
+  const playHrefAt = androidCard.indexOf(PLAY_LISTING);
+  const tagHrefAt = androidCard.indexOf(ANDROID_TAG);
   const checksumAt = androidCard.indexOf("SHA256SUMS.txt");
-  assert.ok(uninstallAt !== -1, "uninstall note missing from Android install block");
+  const uninstallAt = androidCard.indexOf("io.github.mrsunglasses.localflow");
+  assert.ok(playHrefAt !== -1, "Play Store URL missing from Android install block");
   assert.ok(tagHrefAt !== -1, "pinned release URL missing from Android install block");
   assert.ok(checksumAt !== -1, "checksum note missing from Android install block");
-  assert.ok(uninstallAt < tagHrefAt, "uninstall line must lead the Android install block");
+  assert.ok(uninstallAt !== -1, "uninstall note missing from Android install block");
+  assert.ok(playHrefAt < tagHrefAt, "Play Store must lead the Android install block");
   assert.ok(tagHrefAt < checksumAt, "pinned release URL must precede the checksum note");
+  assert.ok(checksumAt < uninstallAt, "sideload checksum note must precede the Local Flow uninstall line");
+
+  const download = htmlBlock(
+    html,
+    /<section class="download-section[\s\S]*?<\/section>/,
+    "download section",
+  );
+  assert.ok(download.includes(PLAY_LISTING), "download section is missing the Google Play link");
+  assert.ok(!download.includes(ANDROID_TAG), "download section should send Android visitors to Play");
+
+  const footer = htmlBlock(html, /<footer class="site-footer">[\s\S]*?<\/footer>/, "footer");
+  assert.ok(footer.includes(PLAY_LISTING), "footer is missing the Google Play link");
+  assert.ok(footer.includes(ANDROID_TAG), "footer is missing the pinned release link");
 
   assert.match(iphoneHtml, /The gateway is optional/);
   assert.match(iphoneHtml, /No gateway address or token\s+is needed for this mode/);
@@ -345,6 +401,21 @@ test("the iPhone gateway callout uses a dark-surface button", () => {
   );
 });
 
+test("iPhone and privacy Gateway CTAs point at the product site", () => {
+  for (const page of [iphoneHtml, privacyHtml]) {
+    assert.match(page, /href="https:\/\/vocagateway\.vocahq\.com"/);
+    assert.match(page, /href="https:\/\/github\.com\/VocaHQ\/vocagateway"/);
+    assert.match(
+      page,
+      /href="https:\/\/vocagateway\.vocahq\.com"[\s\S]*?explore VocaGateway/,
+    );
+    assert.match(
+      page,
+      /href="https:\/\/github\.com\/VocaHQ\/vocagateway"[\s\S]*?view on GitHub/,
+    );
+  }
+});
+
 test("visual treatment stays flat", () => {
   const bannedFunction = ["linear-" + "gradient", "radial-" + "gradient", "conic-" + "gradient"];
   for (const token of bannedFunction) {
@@ -383,4 +454,51 @@ test("hosted privacy page covers the Play listing facts", () => {
   assert.match(privacyHtml, /F-Droid[\s\S]{0,80}compil/i);
   assert.match(privacyHtml, /AGPL-3\.0/);
   assert.match(privacyHtml, /hello@vocahq\.com/);
+});
+
+test("iPhone screenshot assets preserve full capture dimensions", () => {
+  for (const name of ["keyboard", "dictate", "models", "handoff", "inserted"]) {
+    const bytes = readFileSync(join(siteRoot, `assets/screenshots/iphone-${name}.png`));
+    assert.deepEqual(pngDimensions(bytes), { width: 1179, height: 2556 });
+  }
+  assert.match(html, /real iPhone and Android screenshots/i);
+  assert.match(html, /iPhone beta captures · August 2026/);
+});
+
+test("walkthrough is labeled and does not autoplay or preload video", () => {
+  const video = html.match(/<video\b[\s\S]*?<\/video>/)?.[0];
+  assert.ok(video);
+  assert.match(video, /controls playsinline preload="none"/);
+  assert.doesNotMatch(video, /autoplay/);
+  assert.match(video, /kind="captions"/);
+  assert.match(html, /not live transcription speed/);
+  for (const asset of ["iphone-walkthrough.mp4", "iphone-walkthrough-poster.png", "iphone-walkthrough.vtt"]) {
+    assert.ok(existsSync(join(siteRoot, "assets/demo", asset)));
+  }
+  const movie = readFileSync(join(siteRoot, "assets/demo/iphone-walkthrough.mp4"));
+  assert.equal(movie.toString("ascii", 4, 8), "ftyp");
+  assert.ok(movie.length < 1024 * 1024, "15-second walkthrough should stay below 1 MiB");
+  assert.match(readFileSync(join(siteRoot, "assets/demo/iphone-walkthrough.vtt"), "utf8"), /^WEBVTT/);
+});
+
+test("iPhone guide leads with TestFlight and keeps source builds secondary", () => {
+  assert.ok(iphoneHtml.indexOf('id="iphone-quick-start"') < iphoneHtml.indexOf('id="steps-title"'));
+  assert.match(iphoneHtml, /No Mac or gateway is needed for the TestFlight route/);
+  assert.match(iphoneHtml, /Prefer to build from source/);
+});
+
+test("public pages resolve local links and media", () => {
+  for (const [route, content] of [["/", html], ["/iphone/", iphoneHtml], ["/iphone/device-setup/", deviceSetupHtml], ["/privacy/", privacyHtml]]) {
+    for (const [, value] of content.matchAll(/(?:src|href|poster)="([^"]+)"/g)) {
+      const url = new URL(value, `https://vocaphone.vocahq.com${route}`);
+      if (url.origin !== "https://vocaphone.vocahq.com") continue;
+      const pathname = decodeURIComponent(url.pathname);
+      const localPath = join(siteRoot, pathname, pathname.endsWith("/") ? "index.html" : "");
+      assert.ok(existsSync(localPath), `${route} references missing ${value}`);
+      if (url.hash && localPath.endsWith(".html")) {
+        const target = readFileSync(localPath, "utf8");
+        assert.ok(target.includes(`id="${url.hash.slice(1)}"`), `${route} references missing anchor ${value}`);
+      }
+    }
+  }
 });

@@ -1,7 +1,7 @@
 package com.vocahq.vocaphone.ime
 
 import android.content.res.AssetManager
-import java.io.File
+import com.vocahq.vocaphone.core.EmojiTable
 
 /**
  * Emoji offered for a word as it is typed: "lol" offers 😂, "flamingo" 🦩.
@@ -21,9 +21,14 @@ import java.io.File
  * fuzzy paths, and only when they collapse to a single glyph. Substitution
  * is out: `read` is one edit from `dead`, and offering 💀 for "read" is
  * the strip crying wolf.
+ *
+ * The table itself is [EmojiTable], in `core`, because `SpokenEmoji` reads it
+ * too and `core` cannot depend on this package. Only the loading moved; what
+ * stays here is the strip's own policy about the table, fuzzy matching
+ * included — a spoken trigger must never be fuzzy.
  */
 internal object EmojiSuggestions {
-    const val MINIMUM_LENGTH = 2
+    const val MINIMUM_LENGTH = EmojiTable.MINIMUM_LENGTH
 
     /** Prefix and insert/delete matching start here. Three letters are too ambiguous. */
     const val FUZZY_MIN_LENGTH = 4
@@ -45,7 +50,7 @@ internal object EmojiSuggestions {
     }
 
     private fun resolvePrimary(key: String): String? {
-        TRIGGERS[key]?.let { return it }
+        EmojiTable.glyphForKey(key)?.let { return it }
         if (key.length < FUZZY_MIN_LENGTH) return null
 
         val prefixGlyphs = LinkedHashSet<String>()
@@ -81,50 +86,12 @@ internal object EmojiSuggestions {
         return longer.length == shorter.length + 1 && longer.endsWith(shorter)
     }
 
-    /**
-     * Word → glyph. Production fills this from assets in [load]. JVM tests
-     * that never call [load] pick up the same file by walking up to the
-     * repository root on first read, so the object's init does no I/O.
-     */
-    @Volatile
-    private var table: Map<String, String> = emptyMap()
-
     val TRIGGERS: Map<String, String>
-        get() {
-            val current = table
-            if (current.isNotEmpty()) return current
-            val discovered = discoverFromRepository()
-            if (discovered.isNotEmpty()) table = discovered
-            return table
-        }
+        get() = EmojiTable.triggers
 
-    fun parse(text: String): Map<String, String> {
-        val parsed = LinkedHashMap<String, String>()
-        for (line in text.lineSequence()) {
-            if (line.isEmpty() || line.startsWith("#")) continue
-            val tab = line.indexOf('\t')
-            if (tab <= 0) continue
-            val word = line.substring(0, tab).lowercase()
-            val glyph = line.substring(tab + 1)
-            if (word.isEmpty() || glyph.isEmpty()) continue
-            parsed.putIfAbsent(word, glyph)
-        }
-        return parsed
-    }
+    fun parse(text: String): Map<String, String> = EmojiTable.parse(text)
 
-    fun load(assets: AssetManager) {
-        table = assets.open("emoji/suggestions.tsv").bufferedReader().use { reader ->
-            parse(reader.readText())
-        }
-    }
-
-    private fun discoverFromRepository(): Map<String, String> {
-        val file = generateSequence(File("").absoluteFile) { it.parentFile }
-            .map { File(it, "assets/keyboard/emoji/suggestions.tsv") }
-            .firstOrNull(File::isFile)
-            ?: return emptyMap()
-        return parse(file.readText())
-    }
+    fun load(assets: AssetManager) = EmojiTable.load(assets)
 
     // Related chips, keyed by the primary glyph so every alias shares them.
     private val EXTRAS: Map<String, List<String>> = mapOf(

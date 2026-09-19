@@ -224,3 +224,38 @@ struct PrecedingWordTests {
         #expect(PrecedingWord.lastWord(in: "costs 1200 ") == nil)
     }
 }
+
+/// The trailing context, which this subsystem never read.
+struct DocumentSnapshotTests {
+    /// A cursor at the end of a word is the ordinary case, and everything about
+    /// autocorrect depends on it being distinguishable from the other one.
+    @Test func aCursorAtTheEndOfAWordIsNotMidWord() {
+        #expect(!DocumentSnapshot(before: "hello", after: "").isMidWord)
+        #expect(!DocumentSnapshot(before: "hello", after: " world").isMidWord)
+        #expect(!DocumentSnapshot(before: "hello", after: ". Next").isMidWord)
+    }
+
+    /// Tapping into the middle of "helloworld" after "hello" leaves the composer
+    /// holding a prefix of a word it can only see half of. Rewriting that prefix
+    /// corrupts a word the user never finished typing.
+    @Test func aCursorInsideAWordIsMidWord() {
+        #expect(DocumentSnapshot(before: "hello", after: "world").isMidWord)
+        #expect(DocumentSnapshot(before: "hel", after: "lo").isMidWord)
+        #expect(DocumentSnapshot(before: "don", after: "'t").isMidWord)
+    }
+
+    /// iOS answering with nothing is not the same as an empty document. The
+    /// permissive reading keeps autocorrect working in fields that decline to
+    /// answer, rather than silently switching the feature off there.
+    @Test func anUnansweredContextIsNotTreatedAsMidWord() {
+        #expect(!DocumentSnapshot.unknown.isMidWord)
+        #expect(!DocumentSnapshot(before: "hello").isMidWord)
+    }
+
+    @Test func documentContentIsNilWhenTheHostDidNotAnswer() {
+        #expect(DocumentSnapshot.unknown.hasContent == nil)
+        #expect(DocumentSnapshot(before: "", after: "").hasContent == false)
+        #expect(DocumentSnapshot(before: "hello", after: "").hasContent == true)
+        #expect(DocumentSnapshot(before: "", after: "world").hasContent == true)
+    }
+}

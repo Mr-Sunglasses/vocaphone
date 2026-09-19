@@ -24,7 +24,12 @@ struct TypingCandidatesTests {
         suggestions: Bool = true,
         autocorrect: Bool = true,
         prediction: Bool = true,
-        allowed: Bool = true
+        allowed: Bool = true,
+        followers: [String] = [],
+        expansion: String? = nil,
+        isMidWord: Bool = false,
+        ranks: [String: Int] = [:],
+        hasCheckerAnswer: Bool = true
     ) -> TypingCandidates.Context {
         var context = TypingCandidates.Context()
         context.composition = composition
@@ -37,6 +42,8 @@ struct TypingCandidatesTests {
         context.learnedWords = learned
         context.predictions = predictions
         context.precedingWord = preceding
+        context.listRanks = ranks
+        context.hasCheckerAnswer = hasCheckerAnswer
         context.isKnownToChecker = isKnownToChecker
         context.isInWordList = isInWordList
         context.assertedWords = asserted
@@ -44,7 +51,239 @@ struct TypingCandidatesTests {
         context.autocorrectEnabled = autocorrect
         context.predictionEnabled = prediction
         context.allowsTypingIntelligence = allowed
+        context.contextualFollowers = followers
+        context.lexiconExpansion = expansion
+        context.isMidWord = isMidWord
         return context
+    }
+
+    // MARK: - The touch model
+
+    /// The corrections a spell checker will never make, because nothing is
+    /// misspelled. Every one of these is blocked by a rule that is individually
+    /// right — too short, already a word, case-only — and every one of them is
+    /// something the system keyboard fixes.
+    @Test func theCuratedShortWordsAreCorrected() {
+        let expected = [
+            "i": "I",
+            "im": "I'm",
+            "ive": "I've",
+            "dont": "don't",
+            "cant": "can't",
+            "youre": "you're",
+            "thats": "that's",
+        ]
+        for (typed, replacement) in expected {
+            #expect(
+                TypingCandidates.autocorrection(
+                    Self.context(composition: typed, isKnownToChecker: true, isInWordList: true)
+                ) == replacement,
+                "\(typed) should become \(replacement)"
+            )
+        }
+    }
+
+    /// Someone shouting has still chosen their letters. The curated table must
+    /// not rewrite a contraction typed with caps lock on, for the same reason
+    /// "WIP" is not a misspelling of "wip".
+    @Test func aShoutedContractionIsNotRewritten() {
+        for token in ["DONT", "CANT", "IM", "YOURE"] {
+            #expect(
+                TypingCandidates.autocorrection(
+                    Self.context(composition: token, isKnownToChecker: true)
+                ) == nil,
+                "\(token) should stand"
+            )
+        }
+    }
+
+    /// A text replacement is an instruction the user configured, so it expands
+    /// whatever case it is typed in. This is the deliberate split from the rule
+    /// above.
+    @Test func aShoutedShortcutStillExpands() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "OMW",
+                    isKnownToChecker: true,
+                    expansion: "On my way!"
+                )
+            ) == "On my way!"
+        )
+    }
+
+    /// The words deliberately left out, because only grammar could tell them
+    /// apart and a keyboard has none.
+    @Test func ambiguousContractionsAreLeftAlone() {
+        for token in ["its", "were", "well", "hell", "shell", "wed"] {
+            #expect(
+                TypingCandidates.autocorrection(
+                    Self.context(composition: token, isKnownToChecker: true)
+                ) == nil,
+                "\(token) should stand"
+            )
+        }
+    }
+
+    /// The user's own assertion outranks the table. Someone who put "im" back
+    /// once has answered the question.
+    @Test func anAssertedShortWordIsNotCorrected() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "im", asserted: ["im"])
+            ) == nil
+        )
+    }
+
+    /// A text replacement is an instruction, not a guess: the user told Settings
+    /// what "omw" means. It used to reach the strip as a chip and stop there, so
+    /// the expansion only happened if they noticed and tapped it.
+    @Test func aTextReplacementExpandsOnItsOwn() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "omw",
+                    isKnownToChecker: true,
+                    expansion: "On my way!"
+                )
+            ) == "On my way!"
+        )
+    }
+
+    /// The bug from the recording: typing "world" produced "World".
+    ///
+    /// `UILexicon` is not only the shortcuts someone typed into Settings — it
+    /// also carries Contacts names and system proper nouns as a lowercase
+    /// `userInput` mapped to a properly-cased `documentText`. Applying those on
+    /// an exact match silently capitalised any ordinary word that happened to be
+    /// in the user's address book, mid-sentence, with no way to predict which.
+    @Test func aLexiconEntryNeverAppliesAMereCapitalization() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "world",
+                    isKnownToChecker: true,
+                    expansion: "World"
+                )
+            ) == nil
+        )
+        // The words from the original report, for the same reason.
+        for (typed, cased) in [("are", "Are"), ("the", "The"), ("hello", "Hello")] {
+            #expect(
+                TypingCandidates.autocorrection(
+                    Self.context(composition: typed, isKnownToChecker: true, expansion: cased)
+                ) == nil,
+                "\(typed) must not be capitalised into \(cased)"
+            )
+        }
+    }
+
+    /// A genuine expansion still applies on its own — that is what the lexicon
+    /// is handed to keyboards for.
+    @Test func aGenuineExpansionStillApplies() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "omw",
+                    isKnownToChecker: true,
+                    expansion: "On my way!"
+                )
+            ) == "On my way!"
+        )
+        // A case change *plus* a real edit is an expansion, not a capitalization.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "kp",
+                    isKnownToChecker: true,
+                    expansion: "Kanishk"
+                )
+            ) == "Kanishk"
+        )
+    }
+
+    /// The curated table keeps its case-only power, because every entry in it is
+    /// a word whose capital is unambiguous. This is the line between the two.
+    @Test func theCuratedTableStillCapitalisesI() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "i", isKnownToChecker: true, isInWordList: true)
+            ) == "I"
+        )
+    }
+
+    /// A replacement carrying its own capitalization is a substitution, not a
+    /// spelling of the typed word. Caps lock must not shout it.
+    @Test func anExpansionKeepsItsOwnCapitalization() {
+        #expect(
+            TypingCandidates.matchingCase(of: "OMW", applyingTo: "On my way!") == "On my way!"
+        )
+        #expect(TypingCandidates.matchingCase(of: "i", applyingTo: "I") == "I")
+        // An ordinary correction still follows the typed word's case.
+        #expect(TypingCandidates.matchingCase(of: "Teh", applyingTo: "the") == "The")
+    }
+
+    /// Nothing may be replaced when the cursor is inside a longer word: the
+    /// composition is a prefix of something the keyboard can only see half of,
+    /// and rewriting it corrupts a word the user never finished.
+    @Test func nothingIsCorrectedInTheMiddleOfAWord() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "teh", guesses: ["the"], isMidWord: true)
+            ) == nil
+        )
+    }
+
+    /// The preceding word is evidence the checker never had. Two guesses the
+    /// same distance away, and the bigram says which one the sentence wants.
+    @Test func contextBreaksATieTheCheckerCannot() {
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(
+                    composition: "hend",
+                    guesses: ["hand", "bend"],
+                    preceding: "please",
+                    followers: ["hand"]
+                )
+            ) == "hand"
+        )
+    }
+
+    /// Proximity settles a contest the dictionary rates equally; it never
+    /// manufactures a winner where there genuinely is not one.
+    @Test func proximityBreaksTiesWithoutCreatingThem() {
+        // Adjacent keys cost less than a letter from the other side of the
+        // keyboard: "w" is beside "e", "p" is not.
+        #expect(KeyProximity.areAdjacent("w", "e"))
+        #expect(!KeyProximity.areAdjacent("q", "p"))
+        #expect(KeyProximity.rowOffsets(for: TypingLayout.Arrangement.qwerty) == [0, 0.5, 1])
+        // AZERTY puts a and z next to each other on the top row. The QWERTY
+        // table used to call them two rows apart, and discount a/q instead.
+        let azerty = TypingLayout.Arrangement.azerty
+        // z and e sit next to each other on AZERTY's top row. QWERTY puts z
+        // on the bottom, two rows from e, so the old table missed this pair.
+        #expect(KeyProximity.areAdjacent("z", "e", rows: azerty))
+        #expect(!KeyProximity.areAdjacent("z", "e"))
+        let russian = TypingLayout.layout(id: "ru")!.rows
+        #expect(KeyProximity.areAdjacent("й", "ц", rows: russian))
+        #expect(!KeyProximity.areAdjacent("й", "ц"))
+        #expect(
+            KeyProximity.substitutionCost(typed: "w", intended: "e")
+                < KeyProximity.substitutionCost(typed: "q", intended: "p")
+        )
+        // Still no correction when both readings are one plain edit away.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "hend", guesses: ["hand", "bend"])
+            ) == nil
+        )
+        // But a runner-up needing strictly more edits still loses, which is the
+        // rule proximity weighting must not have taken away.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "hend", guesses: ["hand", "blend"])
+            ) == "hand"
+        )
     }
 
     // MARK: - Autocorrect rules
@@ -342,6 +581,132 @@ struct TypingCandidatesTests {
         #expect(TypingCandidates.matchingCase(of: "TEH", applyingTo: "the") == "THE")
         #expect(TypingCandidates.matchingCase(of: "teh", applyingTo: "the") == "the")
     }
+
+    // MARK: - A word that is two words
+
+    /// The space that never registered is put back.
+    ///
+    /// This is the correction the typing in front of me actually needed —
+    /// "howit", "sothis", "worksn" — and the one a spell checker cannot make,
+    /// because its job is to spell one word rather than to notice there are
+    /// two. It answers them with a hyphen instead.
+    @Test func aMissedSpaceIsPutBack() {
+        let context = Self.context(
+            composition: "howit",
+            ranks: ["how": 40, "it": 20]
+        )
+        #expect(TypingCandidates.autocorrection(context) == "how it")
+    }
+
+    /// Both halves have to be words, and common ones.
+    ///
+    /// A rare word beside a rare word is how "themes" becomes "the mes": the
+    /// cut exists, the dictionary allows it, and nobody meant it.
+    @Test func aSplitNeedsTwoCommonWords() {
+        // The list has never heard of the second half.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "howzt", ranks: ["how": 40])
+            ) == nil
+        )
+        // It has, but only barely — far outside the words people write.
+        #expect(
+            TypingCandidates.autocorrection(
+                Self.context(composition: "howit", ranks: ["how": 40, "it": 9000])
+            ) == nil
+        )
+    }
+
+    /// Two ways to cut it means the keyboard does not know which.
+    ///
+    /// The same rule the margin below lives by: an ambiguity is refused rather
+    /// than settled by a coin toss in somebody's sentence.
+    @Test func anAmbiguousSplitIsRefused() {
+        let context = Self.context(
+            composition: "tobeat",
+            ranks: ["to": 5, "beat": 300, "tobe": 900, "at": 30]
+        )
+        #expect(TypingCandidates.autocorrection(context) == nil)
+    }
+
+    /// And only once the checker has answered.
+    ///
+    /// It is asked when the hand pauses, so for the length of a brisk keystroke
+    /// there is no answer and every word looks unknown. The shipped ten
+    /// thousand contains neither "sometime" nor "backend" nor "logout", so a
+    /// split fired in that window is not a correction, it is damage.
+    @Test func noSplitBeforeTheCheckerHasSpoken() {
+        let waiting = Self.context(
+            composition: "sometime",
+            ranks: ["some": 60, "time": 90],
+            hasCheckerAnswer: false
+        )
+        #expect(TypingCandidates.autocorrection(waiting) == nil)
+        // The same word, once the checker has been heard from and does not
+        // know it either, is a genuine candidate.
+        let answered = Self.context(
+            composition: "sometime",
+            ranks: ["some": 60, "time": 90]
+        )
+        #expect(TypingCandidates.autocorrection(answered) == "some time")
+    }
+
+    // MARK: - Which guesses count
+
+    /// The list says what the checker cannot: which of two is a word people
+    /// write.
+    ///
+    /// `UITextChecker` ranks nothing, so it offers "coth" beside "both" as
+    /// equal readings and the margin rule — rightly unwilling to toss a coin —
+    /// declined both. Measured on a session of real typing, that refusal fired
+    /// seventy-five times.
+    @Test func aGuessTheListHasNeverHeardOfStopsCountingAsAnEqual() {
+        let context = Self.context(
+            composition: "coth",
+            guesses: ["both", "coth-", "cloth"],
+            ranks: ["both": 120]
+        )
+        #expect(TypingCandidates.autocorrection(context) == "both")
+    }
+
+    /// One word typed becomes one word corrected.
+    ///
+    /// The checker answers "howit" with "how-it" and "sothis" with "so-this" —
+    /// it splits at a hyphen because that is a spelling, and a keyboard that
+    /// turns "howit" into "how-it" is not helping.
+    @Test func aHyphenatedGuessIsNotACorrectionOfOneWord() {
+        let context = Self.context(
+            composition: "hwit",
+            guesses: ["how-it"],
+            ranks: ["how-it": 50]
+        )
+        #expect(TypingCandidates.autocorrection(context) == nil)
+    }
+
+    /// A word typed in lowercase does not become a proper noun.
+    ///
+    /// The checker's dictionary carries place names and abbreviations — "Sotho"
+    /// for "sothi", "IoW" for "sow" — and a sentence being typed in lowercase
+    /// did not ask for one. Capitalisation that *is* wanted comes from the
+    /// curated table and the lexicon, which have already had their say.
+    @Test func aLowercaseWordDoesNotBecomeAProperNoun() {
+        let context = Self.context(
+            composition: "sothi",
+            guesses: ["Sotho"],
+            ranks: ["sotho": 4000]
+        )
+        #expect(TypingCandidates.autocorrection(context) == nil)
+    }
+
+    /// A capital typed deliberately still gets the checker's proper nouns.
+    @Test func aCapitalisedWordMayStillBecomeAProperNoun() {
+        let context = Self.context(
+            composition: "Sothi",
+            guesses: ["Sotho"],
+            ranks: ["sotho": 400]
+        )
+        #expect(TypingCandidates.autocorrection(context) == "Sotho")
+    }
 }
 // MARK: - Emoji
 
@@ -433,5 +798,342 @@ struct TypingCandidatesTests {
         var ctx = context("lol", emoji: "😂")
         ctx.allowsTypingIntelligence = false
         #expect(TypingCandidates.strip(ctx).candidates.isEmpty)
+    }
+}
+
+/// A revert deletes a fixed number of characters and types the original in
+/// their place, which is only meaningful where the replacement actually is.
+struct AppliedCorrectionArmingTests {
+    private static let correction = TypingEngine.AppliedCorrection(
+        typed: "teh",
+        replacement: "the",
+        boundary: " "
+    )
+
+    /// Immediately after the correction, with it still in front of the cursor.
+    @Test func aCorrectionInFrontOfTheCursorIsArmed() {
+        #expect(Self.correction.isArmed(documentBefore: "the "))
+        #expect(Self.correction.isArmed(documentBefore: "I saw the "))
+    }
+
+    /// The cursor has moved on. Reverting here would delete four characters of
+    /// unrelated text and insert a word from a paragraph ago.
+    @Test func aCorrectionTheCursorHasLeftIsNotArmed() {
+        #expect(!Self.correction.isArmed(documentBefore: "the quick brown fox"))
+        #expect(!Self.correction.isArmed(documentBefore: "somewhere else entirely"))
+        #expect(!Self.correction.isArmed(documentBefore: ""))
+    }
+
+    /// The host declining to answer is not permission to delete on faith.
+    @Test func anUnansweredContextIsNotArmed() {
+        #expect(!Self.correction.isArmed(documentBefore: nil))
+    }
+
+    /// The boundary counts. "the" alone is a word the user typed, not the
+    /// correction plus the space that applied it.
+    @Test func theBoundaryIsPartOfWhatMustStillBeThere() {
+        #expect(!Self.correction.isArmed(documentBefore: "the"))
+        let punctuated = TypingEngine.AppliedCorrection(
+            typed: "teh",
+            replacement: "the",
+            boundary: "."
+        )
+        #expect(punctuated.isArmed(documentBefore: "the."))
+        #expect(!punctuated.isArmed(documentBefore: "the "))
+    }
+
+}
+
+/// A field switch must drop work that still belongs to the previous document.
+@MainActor
+@Suite(.serialized)
+struct TypingEngineDocumentChangeTests {
+    @Test func memoryRecoveryRestoresChecksLazily() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty,
+            availableLanguages: { ["en_US"] }
+        )
+        engine.hasMemoryHeadroom = { true }
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        engine.reduceMemoryUsage()
+        engine.resumeAfterMemoryPressure()
+        #expect(!engine.isMemoryConstrained)
+        #expect(checker.prefixesAsked.isEmpty)
+        engine.insert("p", document: DocumentSnapshot(before: "help"))
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(checker.prefixesAsked == ["help"])
+        engine.reduceMemoryUsage()
+        #expect(checker.releaseCount == 2)
+    }
+
+    @Test func memoryPressurePreservesCorrectionUndo() {
+        let engine = TypingEngine(
+            checker: RecordingSpellChecker(),
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        engine.noteCorrection(typed: "teh", replacement: "the", boundary: " ")
+        let undo = engine.pendingRevert
+        let strip = engine.strip
+        engine.reduceMemoryUsage()
+        #expect(engine.pendingRevert == undo)
+        #expect(engine.strip == strip)
+        #expect(engine.takeRevert(documentBefore: "the ") == undo)
+    }
+
+    @Test func memoryPressureCancelsChecksAndPreservesTyping() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        engine.reduceMemoryUsage()
+        #expect(engine.composer.text == "hel")
+        #expect(checker.releaseCount == 1)
+        engine.insert("p", document: DocumentSnapshot(before: "help"))
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(engine.composer.text == "help")
+        #expect(checker.prefixesAsked.isEmpty)
+        engine.documentChanged(policy: .allowed)
+        engine.reduceMemoryUsage()
+        #expect(engine.isMemoryConstrained)
+        #expect(checker.releaseCount == 1)
+    }
+
+    @Test func lowHeadroomPreventsDictionaryLoading() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty,
+            availableLanguages: { Issue.record("Must not load languages under pressure"); return [] }
+        )
+        engine.hasMemoryHeadroom = { false }
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(engine.isMemoryConstrained)
+        #expect(checker.prefixesAsked.isEmpty)
+        #expect(engine.composer.text == "hel")
+    }
+    /// The checker blocks the main actor for 50-135 ms on a cold prefix. A
+    /// debounce shorter than the interval between ordinary keystrokes starts
+    /// that block just before the next finger lands, which is exactly the lag
+    /// the debounce is meant to prevent.
+    @Test func briskTypingNeverRunsTheCheckerBetweenLetters() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+
+        var document = ""
+        for character in "hell" {
+            document.append(character)
+            engine.insert(String(character), document: DocumentSnapshot(before: document))
+            try await Task.sleep(for: .milliseconds(120))
+        }
+
+        #expect(checker.prefixesAsked.isEmpty)
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(checker.prefixesAsked == ["hell"])
+    }
+
+    @Test func firstKeyDefersSystemDictionariesUntilTheQuietPeriod() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        var languageQueries = 0
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            availableLanguages: {
+                languageQueries += 1
+                return ["en_US"]
+            }
+        )
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        #expect(languageQueries == 0)
+        #expect(checker.prefixesAsked.isEmpty)
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(languageQueries == 1)
+        #expect(checker.prefixesAsked == ["hel"])
+    }
+
+    @Test func hidingKeyboardCancelsCheckerAndClearsTouchPrediction() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: TypingWordList(words: ["hello", "help"], bigrams: [:])
+        )
+        var weights: [Character: Double] = [:]
+        engine.onNextCharacters = { weights = $0 }
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        #expect(!weights.isEmpty)
+        engine.suspend()
+        #expect(weights.isEmpty)
+        #expect(engine.composer.isEmpty)
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(checker.prefixesAsked.isEmpty)
+        #expect(engine.strip.isEmpty)
+        // The reused engine must still work when another field appears.
+        engine.documentChanged(policy: .allowed)
+        engine.insert("wo", document: DocumentSnapshot(before: "wo"))
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(checker.prefixesAsked == ["wo"])
+    }
+
+    @Test func swipingRetiresThePreviousTypedWordsCheck() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        engine.noteSwipeWord("world", alternates: ["world", "word"])
+        let alternates = engine.strip
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(checker.prefixesAsked.isEmpty)
+        #expect(engine.strip == alternates)
+    }
+    @Test func disablingSuggestionsRetiresThePendingChecker() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let checker = RecordingSpellChecker()
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        KeyboardPreferences.typingSuggestionsEnabled = false
+        engine.reconcile(document: DocumentSnapshot(before: "hel"))
+        try await Task.sleep(for: .milliseconds(350))
+        #expect(checker.prefixesAsked.isEmpty)
+        #expect(engine.strip.isEmpty)
+    }
+    /// Distinctive so a leaked publication cannot be mistaken for a word-list hit.
+    private static let staleCompletion = "hellofromoldfield"
+
+    @MainActor
+    private final class RecordingSpellChecker: SpellChecking {
+        private(set) var releaseCount = 0
+        func releaseMemory() { releaseCount += 1 }
+        var completionsByPrefix: [String: [String]] = [:]
+        private(set) var prefixesAsked: [String] = []
+
+        func completions(for prefix: String, language: String) -> [String] {
+            prefixesAsked.append(prefix)
+            return completionsByPrefix[prefix] ?? []
+        }
+
+        func guesses(for word: String, language: String) -> [String] { [] }
+        func isKnown(_ word: String, language: String) -> Bool { false }
+    }
+
+    /// The checker is asked only after the hand pauses. Switching fields in that
+    /// window used to let the previous composition's completions arrive in the
+    /// next field, because `documentChanged` reset the strip but left the
+    /// deferred task and its generation standing.
+    @Test func aFieldSwitchDropsAPendingCheck() async throws {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+
+        let checker = RecordingSpellChecker()
+        checker.completionsByPrefix = ["hel": [Self.staleCompletion]]
+        let engine = TypingEngine(
+            checker: checker,
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        var published: [TypingStrip] = []
+        engine.onStrip = { published.append($0) }
+
+        engine.insert("hel", document: DocumentSnapshot(before: "hel"))
+        #expect(engine.composer.text == "hel")
+
+        engine.documentChanged(policy: .allowed)
+        #expect(engine.composer.isEmpty)
+        #expect(engine.strip.isEmpty)
+        #expect(engine.pendingSwipeWord == nil)
+        let publishedThroughChange = published.count
+
+        // Longer than `checkerQuietPeriod` (~250 ms), so a task that was not
+        // cancelled would have asked the checker and published by now.
+        try await Task.sleep(for: .milliseconds(350))
+
+        #expect(checker.prefixesAsked.isEmpty)
+        #expect(engine.strip.isEmpty)
+        #expect(published.dropFirst(publishedThroughChange).isEmpty)
+        #expect(!published.contains { strip in
+            strip.candidates.contains { $0.text == Self.staleCompletion }
+        })
+    }
+
+    @Test func lateLexiconDeliveryRefreshesTheWordAlreadyOnScreen() {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let engine = TypingEngine(
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        defer { engine.suspend() }
+
+        engine.insert("omw", document: DocumentSnapshot(before: "omw"))
+        #expect(engine.strip.autocorrection == nil)
+
+        engine.installLexicon([
+            TypingEngine.LexiconEntry(userInput: "omw", documentText: "On my way!"),
+        ])
+
+        #expect(engine.strip.autocorrection == "On my way!")
+    }
+
+    @Test func refreshedCustomVocabularyUpdatesTheWordAlreadyOnScreen() {
+        let suggestions = KeyboardPreferences.typingSuggestionsEnabled
+        defer { KeyboardPreferences.typingSuggestionsEnabled = suggestions }
+        KeyboardPreferences.typingSuggestionsEnabled = true
+        let engine = TypingEngine(
+            learned: LearnedWordStore(containerURL: nil),
+            wordList: .empty
+        )
+        defer { engine.suspend() }
+        engine.installCustomVocabulary("")
+
+        engine.insert("kani", document: DocumentSnapshot(before: "kani"))
+        #expect(!engine.strip.candidates.contains { $0.text == "Kanishk" })
+
+        engine.installCustomVocabulary("Kanishk")
+
+        #expect(engine.strip.candidates.contains { $0.text == "Kanishk" })
     }
 }

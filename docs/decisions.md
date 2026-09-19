@@ -69,7 +69,7 @@ These are changeable implementation defaults, not confirmed product decisions:
 | --- | --- | --- |
 | Minimum iOS | iOS 17.0 | Supports the chosen SwiftUI and audio APIs |
 | Recording | WAV from one persistent `AVAudioEngine` input | Avoids losing background microphone readiness between dictations; FFmpeg normalizes it on the Mac |
-| Quick Dictation | Enabled, 10-minute ready window | Reduces app switching while bounding battery and microphone exposure |
+| Quick Dictation | Enabled; ready window of 10 minutes (default), 20 minutes, or until the app is closed | Reduces app switching while bounding battery and microphone exposure. The Live Activity's stop button pauses the current window only; the next launch arms a new one. Installs that arrive with it already off — which an older build could do on one tap — are asked once on Home, never switched back on silently |
 | Language | Automatic plus Arabic, English, Spanish, Japanese, Korean, Mandarin Chinese, Ukrainian, Russian, and Vietnamese | Automatic follows the selected gateway model; explicit choices must match it |
 | Output mode | Raw | Avoids unconfirmed cleanup by default |
 | Audio retention | Delete on success; keep failures 24 hours | Privacy with retry recovery |

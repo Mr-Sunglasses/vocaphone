@@ -3,4 +3,5 @@
     <string name="app_name">VocaPhone</string>
 
     <string name="ime_name">VocaPhone keyboard</string>
+    <string name="voice_input_label">VocaPhone voice input</string>
 </resources>

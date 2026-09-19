@@ -15,6 +15,12 @@ class SetupStatusTest {
     )
 
     @Test
+    fun `startup placeholder cannot claim readiness before settings are read`() {
+        assertFalse(complete.copy(isLoaded = false).isReadyToDictate)
+        assertTrue(complete.copy(isLoaded = true).isReadyToDictate)
+    }
+
+    @Test
     fun `every required step satisfied is ready to dictate`() {
         assertTrue(complete.isReadyToDictate)
         assertTrue(complete.remainingSteps.isEmpty())

@@ -12,28 +12,70 @@ your iPhone and want to run the full acceptance pass.
 
 ## Signing prerequisites
 
-The bundle IDs, keyboard bundle ID, and App Group are already final — see
-[decisions.md](decisions.md) — so there's nothing to rename before signing.
+The shipping bundle IDs, keyboard bundle ID, and App Group are final — see
+[decisions.md](decisions.md).
+
+### On the VocaHQ team
+
+Nothing to rename.
 
 1. Open `ios/VocaPhone.xcodeproj` (`just ios gen` first if you haven't
-   generated it yet) and choose your Apple team on all three targets — App,
+   generated it yet) and confirm team `92962VK378` on all three targets — App,
    Keyboard, and Live Activity — in **Signing & Capabilities**.
 2. Confirm the same App Group capability (`group.com.vocahq`) is enabled on
-   all three. Automatic signing registers it under your team the first time,
-   as long as your team has access to `com.vocahq.vocaphone` and friends —
-   see [the README's iPhone setup
-   section](../README.md#1-configure-and-install-the-iphone-app) if it
-   doesn't.
-3. Connect the iPhone, select it as the run destination, and run VocaPhoneApp.
+   all three. Automatic signing registers it under the team the first time.
+3. Connect the iPhone, select it as the run destination, and run VocaPhoneApp,
+   or just `just ios device`.
 
-The connected iPhone, automatic development signing, App Group provisioning,
-and on-device installation have been exercised with the current checkout.
+### Under your own Apple ID
+
+Device builds under another team need their own bundle IDs and App Group,
+because the shipping ones are registered to VocaHQ. One command sets all of
+them:
+
+```sh
+just ios local-signing <team-id> <your.reverse.dns>
+just ios device
+```
+
+It writes `ios/Local.xcconfig` and entitlement copies under `ios/Local/`, both
+gitignored, and `project.yml` reads every identifier from that file with the
+shipping value as its default. So the generated `VocaPhone.xcodeproj` is
+byte-identical either way and no tracked file changes — which is the point:
+the previous version of this page asked you to edit the identifiers in
+`project.yml`, three `.entitlements` files and `AppConfiguration.swift` and
+remember never to commit them, and one `git add -A` duly put a personal App
+Group on main.
+
+`just ios local-signing-off` removes both and returns to the shipping identity.
+
+Two things that will waste an afternoon otherwise:
+
+- **The team ID is the OU of your certificate's subject**, not the ten
+  characters inside the certificate's own name — that one is the personal
+  certificate's, has no Xcode account behind it, and fails with "No Account
+  for Team". Print the right one with:
+
+  ```sh
+  security find-certificate -c "Apple Development" -p \
+    | openssl x509 -noout -subject
+  ```
+
+- The **first launch is refused** with "profile has not been explicitly
+  trusted" until **Settings → General → VPN & Device Management → Developer
+  App → Trust**. The install itself has already succeeded at that point.
+
+The connected iPhone, automatic development signing under a personal team, App
+Group provisioning, and on-device installation have been exercised with the
+current checkout.
 
 ## On-device setup
 
 1. Open vocaphone and grant microphone permission.
-2. Leave “Keep Quick Dictation ready for 10 minutes” enabled. Confirm the app
-   shows Quick Dictation as Ready and iOS displays its microphone indicator.
+2. Leave “Keep Quick Dictation ready” enabled. Confirm the app shows Quick
+   Dictation as Ready and iOS displays its microphone indicator. **Stay ready
+   for** picks the window: 10 minutes (default), 20 minutes, or until vocaphone
+   is closed.
 3. Choose a transcription source. Either path completes the step on its own:
    - **On this iPhone** — under **Settings → Transcription**, pick **On this
      iPhone** and download a speech-to-text model. Wait for it to report
@@ -120,6 +162,18 @@ supported one.
   keyboard haptics stop working, which is also stated there.
 - Type continuously for two minutes in a long document. The keyboard must not
   flicker, reset, or lose the composition — that is what a jetsam looks like.
+- After several hours away, open the keyboard in Notes and immediately type
+  and swipe. Repeat after switching from the Apple keyboard. Check first-key
+  responsiveness and that swipe becomes available without first typing a word.
+- With Suggestions and Emoji suggestions enabled, type `happy` or `sad` and
+  pause before pressing Space: 😊 or 😢 should appear even on the first word
+  after launch. Tap it and verify that it replaces only that word. Switch to
+  another keyboard and back with the cursor after `happy`; 😊 should return
+  without another keystroke. Turn Emoji suggestions off and repeat: no emoji.
+- Type part of a word, immediately switch keyboards or apps, and return to a
+  different field. Suggestions and touch prediction must describe the current
+  field. Repeat while a dictation finishes: hidden keyboards must not insert;
+  returning to vocaphone's keyboard should resume the pending session once.
 - Long-press `$`, `-`, `?` for symbol alternates, and `.` in a URL field for
   `.com`. Hold the `123` key to open the emoji panel; the keyboard's height must
   not change when it does.
@@ -137,9 +191,17 @@ Run these checks on a physical iPhone after changing audio or App Group code:
 
 - Start and finish from the keyboard several times. Recording and transcript
   states should update immediately; the slower polling path is only a fallback.
-- Expand the standby Dynamic Island and tap **Turn off Quick Dictation**. The
+- Expand the standby Dynamic Island and tap **Pause Quick Dictation**. The
   Live Activity and orange microphone indicator must disappear without opening
-  vocaphone, and the next keyboard dictation must open the app.
+  vocaphone, and the next keyboard dictation must open the app. Then reopen
+  vocaphone: standby must arm again on its own, and the Settings toggle must
+  still read as on — a pause is not a preference change.
+- Set **Stay ready for** to *Until I close vocaphone*, background the app, and
+  confirm standby is still Ready well past 10 minutes. Force-quit vocaphone and
+  confirm the keyboard falls back to opening the app.
+- Upgrading with Quick Dictation already off must show the one-time card on
+  Home offering to turn it back on, and must not arm the microphone until that
+  card is answered. **Not now** has to keep it off and never ask again.
 - Force-quit vocaphone while Quick Dictation is ready, wait at least 7 seconds,
   and tap Dictate. The keyboard must treat the heartbeat as stale and open the
   app instead of claiming that standby is ready.

@@ -348,7 +348,6 @@ jobs:
         with:
           repository: ${{ needs.prepare.outputs.head_repo }}
           ref: ${{ needs.prepare.outputs.sha }}
-          lfs: true
           persist-credentials: false
 
       - name: Install xcodegen

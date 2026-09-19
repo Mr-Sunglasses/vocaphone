@@ -110,7 +110,11 @@ class EmojiSuggestionsTest {
         for ((word, glyph) in EmojiSuggestions.TRIGGERS) {
             assertEquals(word, word.lowercase())
             assertTrue(word.length >= EmojiSuggestions.MINIMUM_LENGTH)
-            assertTrue(word, word.all { it.isLetter() })
+            // Letters, or digits for the handful of curated keys that are a
+            // number — "100" is 💯, and SpokenEmoji needs it because a model
+            // writes a spoken "hundred" that way. The generator still refuses
+            // anything else, and its auto path is alphabetic regardless.
+            assertTrue(word, word.all { it.isLetterOrDigit() })
             assertTrue(glyph.isNotEmpty())
             assertTrue(word, glyph.any { !it.isLetter() })
         }

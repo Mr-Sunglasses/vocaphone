@@ -1,8 +1,11 @@
-# Preparing Google Play (maintainers)
+# Google Play (maintainers)
 
-How to take a VocaPhone Android tag from GitHub Releases into Play Console.
-This is Console and listing work. The app is not listed on Play until that work
-is finished; there is no store URL to publish yet.
+The Android app is listed at
+[play.google.com/store/apps/details?id=com.vocahq.vocaphone](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone).
+
+This page is how to take a VocaPhone Android tag from GitHub Releases into
+Play Console and promote it. Listing, Data safety, content rating, and Play
+App Signing are already in place.
 
 Android tags (`android/v0.1.1`, see [releasing.md](releasing.md)) attach a
 signed full-flavor AAB as `vocaphone.aab`. When
@@ -10,7 +13,8 @@ signed full-flavor AAB as `vocaphone.aab`. When
 Internal testing after the GitHub Release is published. The step is skipped if
 the secret is empty, so testers still get the GitHub APKs if Play is unset or
 fails. Stable tags go to Internal too: this tag workflow never uploads to
-production, and never to a wider track than Internal.
+production, and never to a wider track than Internal. Promotion to production
+is a Console click.
 
 The Play Developer API account is
 `vocaphone-play-upload@level-approach-506001-h1.iam.gserviceaccount.com`.
@@ -28,8 +32,8 @@ Upload the full AAB only. Never upload the fdroid APK or an fdroid bundle to
 Play. The fdroid flavour drops prebuilt sherpa-onnx / ONNX Runtime so F-Droid
 can rebuild from source; Play testers should get the full catalog.
 
-Package: `com.vocahq.vocaphone`. Current tree on main: `versionCode` 26,
-`versionName` `0.1.5`. Keep that until the next Play-bound tag needs a bump;
+Package: `com.vocahq.vocaphone`. Current tree on main: `versionCode` 29,
+`versionName` `0.2.1`. Keep that until the next Play-bound tag needs a bump;
 the release workflow refuses to publish when the tag is not `android/v$versionName`.
 
 `dependenciesInfo.includeInApk` / `includeInBundle` stay `false` so AGP does
@@ -57,9 +61,10 @@ purpose.
 
 The tag workflow uses the Play API track name `internal`, for prerelease and
 stable tags alike. If that name is missing, `qa` is the only other name to try.
-Closed testing, open testing and production stay in Console. Promotion carries a
-rollout percentage and a staged-release halt behind it, which is a decision
-rather than a consequence of pushing a tag.
+Closed testing, open testing and production stay in Console. Production is
+live at the listing URL above. Promotion carries a rollout percentage and a
+staged-release halt behind it, which is a decision rather than a consequence
+of pushing a tag.
 
 ## Permissions (Console justification notes)
 
@@ -109,17 +114,17 @@ canvas.save("fastlane/metadata/android/en-US/images/featureGraphic.png")
 PY
 ```
 
-## Console checklist (still on you)
+## Console checklist (each release)
 
-1. Play developer account and app record for `com.vocahq.vocaphone`
-2. Play App Signing with the existing upload keystore
-3. Hosted privacy policy URL
-4. Data safety form (no analytics; on-device default; gateway optional)
-5. Content rating questionnaire
-6. Closed testing track before production
-7. Confirm Internal testing received `vocaphone.aab` from the tag workflow
+The Play developer account, app record, Play App Signing, hosted privacy
+policy, Data safety form, and content rating are already in place. For a new
+tag:
+
+1. Confirm Internal testing received `vocaphone.aab` from the tag workflow
    (upload by hand from the matching GitHub Release if the secret was unset)
-8. Confirm listing copy and graphics in Fastlane match what you paste into Console
+2. Confirm listing copy and graphics in Fastlane still match Console if you
+   changed them
+3. Promote Internal to production in Console. Rollout percentage is your call.
 
 ## Building the AAB locally
 

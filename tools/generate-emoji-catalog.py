@@ -289,9 +289,13 @@ def load_overrides() -> dict[str, str]:
         glyph = glyph.strip()
         if not word or not glyph or word in overrides:
             continue
-        if not word.isalpha():
+        # Digits are allowed here and nowhere else. The auto path below stays
+        # alphabetic — `consider` refuses anything that is not — but "100" is
+        # how people write 💯 and how a speech model transcribes someone saying
+        # "hundred", so the curated list has to be able to say so.
+        if not word.isalnum():
             raise SystemExit(
-                f"{OVERRIDES.name}: {word!r} is not a plain alphabetic word"
+                f"{OVERRIDES.name}: {word!r} is not a plain alphanumeric word"
             )
         overrides[word] = glyph
     return overrides

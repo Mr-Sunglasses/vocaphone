@@ -9,6 +9,38 @@ enum VocaPhoneDarwinNotification: String, Sendable {
     case keyboardStatusChanged = "com.vocahq.vocaphone.keyboard-status-changed"
     case quickDictationChanged = "com.vocahq.vocaphone.quick-dictation-changed"
     case stopQuickDictationRequested = "com.vocahq.vocaphone.stop-quick-dictation"
+    /// The keyboard's VocaPhone switch turned off. Unlike the Live Activity's
+    /// stop, this is not a Quick Dictation pause: it ends the running app's
+    /// window the way the app switcher would, and changes no preference.
+    case closeVocaPhoneRequested = "com.vocahq.vocaphone.close-requested"
+    /// The keyboard came up with almost no room left. It cannot free what is
+    /// holding the memory — that is the app's loaded speech model, in another
+    /// process — so it says so, and the app answers by letting go.
+    case keyboardLowOnMemory = "com.vocahq.vocaphone.keyboard-low-memory"
+    /// The keyboard ran, and could not reach the shared container.
+    ///
+    /// The exception to the rule above: this one carries no durable record to
+    /// reread, because a keyboard without Full Access cannot write one. That is
+    /// precisely what it reports. Darwin notifications are name-only IPC and
+    /// are not gated by the App Group, so they are the single channel a
+    /// keyboard in that state still has — without it, "Full Access is off" and
+    /// "you have not opened the keyboard yet" are the same silence, and guided
+    /// setup can only show a spinner and hope.
+    case keyboardLacksFullAccess = "com.vocahq.vocaphone.keyboard-no-full-access"
+    /// The keyboard wrote ``KeyboardPreferences/hasCompletedKeyboardPractice``.
+    ///
+    /// App Group `UserDefaults` does not reliably wake the containing app, so
+    /// guided setup rereads the durable proof after this ping — including the
+    /// marker file that survives the suite cache.
+    case keyboardPracticeCompleted = "com.vocahq.vocaphone.keyboard-practice-completed"
+    /// "Are you on screen right now?", asked by Enable keyboard.
+    ///
+    /// The keyboard republishes its status only when it *appears*, throttled so
+    /// that flicking between keyboards is not a stream of file writes. A
+    /// keyboard that is already up when the page opens therefore never writes
+    /// again, and a page waiting for a fresh write waits forever. This asks for
+    /// one, and only a running extension can answer.
+    case keyboardStatusRequested = "com.vocahq.vocaphone.keyboard-status-requested"
 
     fileprivate var name: CFNotificationName {
         CFNotificationName(rawValue as CFString)
@@ -65,6 +97,15 @@ final class VocaPhoneDarwinObservation: @unchecked Sendable {
     deinit {
         invalidate()
     }
+}
+
+extension Notification.Name {
+    /// Local bridge for ``VocaPhoneDarwinNotification/keyboardPracticeCompleted``.
+    /// Darwin itself is not a `NotificationCenter` name, and SwiftUI views
+    /// cannot mutate `@AppStorage` from the CF callback.
+    static let vocaKeyboardPracticeCompleted = Notification.Name(
+        "com.vocahq.vocaphone.keyboard-practice-completed.local"
+    )
 }
 
 enum VocaPhoneDarwinCenter {

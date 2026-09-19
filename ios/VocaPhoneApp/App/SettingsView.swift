@@ -31,6 +31,13 @@ struct SettingsView: View {
         SnippetStore.key,
         store: SnippetStore.defaults
     ) private var snippetsData = Data()
+    /// Read once when the hub appears rather than folded here: folding is the
+    /// app's job, and the Stats screen is where it happens.
+    @State private var usageStats = UsageStats()
+    #if DEBUG
+    @AppStorage(AttentionCardPreview.storageKey)
+    private var attentionPreviewRaw = AttentionCardPreview.off.rawValue
+    #endif
 
     var body: some View {
         List {
@@ -46,6 +53,12 @@ struct SettingsView: View {
                     detail: language.displayName + " · " + writingStyle.displayName,
                     symbol: "mic"
                 ) { DictationSettingsView() }
+
+                destination(
+                    "Stats",
+                    detail: StatsCopy.menuDetail(usageStats, now: Date()),
+                    symbol: "chart.bar"
+                ) { StatsView() }
 
                 destination(
                     "Snippets",
@@ -71,23 +84,32 @@ struct SettingsView: View {
                     symbol: "stethoscope"
                 ) { DiagnosticsSettingsView() }
             }
-
-            Section {
-                NavigationLink {
-                    SetupView()
-                } label: {
-                    Label("Guided setup", systemImage: "checklist")
-                }
-            } footer: {
-                Text(
-                    "Guided setup re-checks the microphone, the keyboard and your "
-                        + "transcription source, and can be reopened at any time."
-                )
-            }
+            #if DEBUG
+            developerSection
+            #endif
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .task { usageStats = UsageStatsStore.shared.current() }
     }
+
+    #if DEBUG
+    /// Attention-card previews and the keyboard lab. Release has neither.
+    private var developerSection: some View {
+        Section {
+            Picker("Attention card", selection: $attentionPreviewRaw) {
+                ForEach(AttentionCardPreview.allCases) { preview in
+                    Text(preview.settingsLabel).tag(preview.rawValue)
+                }
+            }
+            NavigationLink("Keyboard lab") { KeyboardLabView() }
+        } header: {
+            Text("Developer")
+        } footer: {
+            Text("Debug builds only.")
+        }
+    }
+    #endif
 
     private var keyboardHeight: KeyboardHeightPreference {
         KeyboardHeightPreference(rawValue: keyboardHeightRawValue) ?? .standard
@@ -146,35 +168,48 @@ struct KeyboardSettingsView: View {
     @AppStorage(
         KeyboardPreferences.typingSuggestionsKey,
         store: KeyboardPreferences.defaults
-    ) private var suggestionsEnabled = true
+    ) private var suggestionsEnabled = KeyboardDefaults.typingSuggestions
     @AppStorage(
         KeyboardPreferences.autocorrectKey,
         store: KeyboardPreferences.defaults
-    ) private var autocorrectEnabled = true
+    ) private var autocorrectEnabled = KeyboardDefaults.autocorrect
     @AppStorage(
         KeyboardPreferences.nextWordPredictionKey,
         store: KeyboardPreferences.defaults
-    ) private var predictionEnabled = true
+    ) private var predictionEnabled = KeyboardDefaults.nextWordPrediction
     @AppStorage(
         KeyboardPreferences.learnAsITypeKey,
         store: KeyboardPreferences.defaults
-    ) private var learnAsITypeEnabled = true
+    ) private var learnAsITypeEnabled = KeyboardDefaults.learnAsIType
     @AppStorage(
         KeyboardPreferences.smartPunctuationKey,
         store: KeyboardPreferences.defaults
-    ) private var smartPunctuationEnabled = true
+    ) private var smartPunctuationEnabled = KeyboardDefaults.smartPunctuation
     @AppStorage(
         KeyboardPreferences.typingHapticsKey,
         store: KeyboardPreferences.defaults
-    ) private var typingHapticsEnabled = false
+    ) private var typingHapticsEnabled = KeyboardDefaults.typingHaptics
     @AppStorage(
         KeyboardPreferences.emojiSuggestionsKey,
         store: KeyboardPreferences.defaults
-    ) private var emojiSuggestionsEnabled = true
+    ) private var emojiSuggestionsEnabled = KeyboardDefaults.emojiSuggestions
     @AppStorage(
         KeyboardPreferences.swipeTypingKey,
         store: KeyboardPreferences.defaults
-    ) private var swipeTypingEnabled = false
+    ) private var swipeTypingEnabled = KeyboardDefaults.swipeTyping
+    @AppStorage(
+        KeyboardPreferences.spacebarCursorKey,
+        store: KeyboardPreferences.defaults
+    ) private var spacebarCursorEnabled = KeyboardDefaults.spacebarCursor
+
+    /// Held rather than read straight from ``KeyboardPreferences`` on every
+    /// redraw: the list has to keep its order, and the order is the order the
+    /// language key walks through, so it is a value the view owns and writes
+    /// back rather than a set it recomputes.
+    @State private var enabledLayoutIDs: [String] = KeyboardPreferences
+        .enabledTypingLayouts
+        .map(\.id)
+    @State private var isChoosingLanguages = false
 
     @State private var learnedStore = LearnedWordStore()
     @State private var learnedCount = 0
@@ -187,14 +222,22 @@ struct KeyboardSettingsView: View {
     var body: some View {
         List {
             previewSection
+            languagesSection
             heightSection
             suggestionsSection
             learningSection
             typingDetailSection
-            appearanceSection
         }
         .navigationTitle("Keyboard")
         .navigationBarTitleDisplayMode(.inline)
+        // On the List, not on the section that owns the row. Attached to the
+        // section, the first tap opened the sheet and shut it again: tapping
+        // changes nothing, but presenting re-renders the list, the section is
+        // rebuilt, and the sheet goes down with the modifier it was attached
+        // to. The second tap worked because by then the list had settled.
+        .sheet(isPresented: $isChoosingLanguages) {
+            KeyboardLanguagesSheet(enabledLayoutIDs: $enabledLayoutIDs)
+        }
         .task { learnedCount = learnedStore.snapshot().count }
         .confirmationDialog(
             "Forget \(learnedCount) learned word\(learnedCount == 1 ? "" : "s")?",
@@ -221,6 +264,64 @@ struct KeyboardSettingsView: View {
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
         }
+    }
+
+    private var languagesSection: some View {
+        Section {
+            Button {
+                isChoosingLanguages = true
+            } label: {
+                HStack {
+                    // "Keyboard" rather than "Languages": the header above has
+                    // just said that word, and saying it twice was the first
+                    // thing wrong with this screen.
+                    Text("Keyboard")
+                        .foregroundStyle(.primary)
+                    Spacer(minLength: VocaMetrics.related)
+                    Text(enabledSummary)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+        } header: {
+            Text("Languages")
+        } footer: {
+            Text(
+                enabledLayoutIDs.count > 1
+                    ? "Switch with the key beside 123, or swipe across the space bar."
+                    : "Add another to switch from the keyboard itself — a key beside "
+                        + "123, or a swipe across the space bar."
+            )
+        }
+    }
+
+    /// Only the space bar gestures that are actually on: the cursor has its own
+    /// switch, and the swipe needs a second language to go to.
+    private var spaceBarHelp: String? {
+        let cursor = spacebarCursorEnabled
+            ? "Hold the space bar, then slide to move the cursor." : nil
+        let swipe = enabledLayoutIDs.count > 1
+            ? "Swipe across it to switch language." : nil
+        let parts = [cursor, swipe].compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        if cursor == nil { return "Swipe across the space bar to switch language." }
+        return parts.joined(separator: " ")
+    }
+
+    /// What the row shows on its right: the language, or the first of them and
+    /// how many more. Naming them all turns the row into a paragraph at three,
+    /// and the sheet is one tap away for the rest.
+    private var enabledSummary: String {
+        let names = TypingLayout.catalogue
+            .filter { enabledLayoutIDs.contains($0.id) }
+            .map(\.displayName)
+        guard let first = names.first else { return "" }
+        return names.count > 1 ? "\(first) +\(names.count - 1)" : first
     }
 
     private var heightSection: some View {
@@ -308,6 +409,7 @@ struct KeyboardSettingsView: View {
             Toggle("Emoji suggestions", isOn: $emojiSuggestionsEnabled)
             Toggle("Typing haptics", isOn: $typingHapticsEnabled)
             Toggle("Swipe to type", isOn: $swipeTypingEnabled)
+            Toggle("Space bar cursor", isOn: $spacebarCursorEnabled)
         } footer: {
             VStack(alignment: .leading, spacing: VocaMetrics.related) {
                 Text(
@@ -317,10 +419,10 @@ struct KeyboardSettingsView: View {
                 )
                 Text(
                     "Emoji suggestions offer one emoji beside the word candidates "
-                        + "when a word has an obvious one — typing “lol” offers 😂. "
-                        + "Tapping it replaces the word. It never takes a word "
-                        + "suggestion's place, and words without an obvious emoji "
-                        + "get none."
+                        + "when a word has an obvious one — “happy” offers 😊 "
+                        + "and “sad” offers 😢. Tap the emoji before adding a "
+                        + "space to replace the word. Words without an obvious "
+                        + "emoji get none."
                 )
                 Text(
                     "Typing haptics are off by default. Keyboard clicks follow "
@@ -342,27 +444,16 @@ struct KeyboardSettingsView: View {
                         + "letter without lifting; alternatives appear in the "
                         + "suggestion row."
                 )
+                // The hold is the whole rule, and it is what makes the two
+                // gestures on this one key tell themselves apart: a swipe never
+                // waits, a cursor drag always does.
+                if let spaceBarHelp {
+                    Text(spaceBarHelp)
+                }
             }
         }
     }
 
-    private var appearanceSection: some View {
-        Section {
-            NavigationLink {
-                SetupView()
-            } label: {
-                Label("How to add the keyboard", systemImage: "questionmark.circle")
-            }
-        } header: {
-            Text("Appearance")
-        } footer: {
-            Text(
-                "The keyboard follows the appearance of the app you are typing in, "
-                    + "and this iPhone's light or dark setting. There is no separate "
-                    + "keyboard theme to choose."
-            )
-        }
-    }
 }
 
 // MARK: - Dictation
@@ -378,17 +469,25 @@ struct DictationSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var quickDictationEnabled = true
     @AppStorage(
+        KeyboardPreferences.quickDictationDurationKey,
+        store: KeyboardPreferences.defaults
+    ) private var quickDictationDurationRawValue = QuickDictationDuration.tenMinutes.rawValue
+    @AppStorage(
         KeyboardPreferences.writingStyleKey,
         store: KeyboardPreferences.defaults
     ) private var writingStyleRawValue = WritingStyle.casual.rawValue
     @AppStorage(
         KeyboardPreferences.numbersAsDigitsKey,
         store: KeyboardPreferences.defaults
-    ) private var numbersAsDigits = false
+    ) private var numbersAsDigits = KeyboardDefaults.numbersAsDigits
+    @AppStorage(
+        KeyboardPreferences.spokenEmojiKey,
+        store: KeyboardPreferences.defaults
+    ) private var spokenEmoji = KeyboardDefaults.spokenEmoji
     @AppStorage(
         KeyboardPreferences.repairSpeechKey,
         store: KeyboardPreferences.defaults
-    ) private var repairSpeech = true
+    ) private var repairSpeech = KeyboardDefaults.repairSpeech
     @AppStorage(
         KeyboardPreferences.transcriptionLanguageKey,
         store: KeyboardPreferences.defaults
@@ -422,6 +521,7 @@ struct DictationSettingsView: View {
             writingStyleSection
             cleanUpSection
             numbersSection
+            spokenEmojiSection
             microphoneSection
             recordingFeedbackSection
             customWordsSection
@@ -442,19 +542,35 @@ struct DictationSettingsView: View {
         }
     }
 
+    private var selectedQuickDictationDuration: QuickDictationDuration {
+        QuickDictationDuration(rawValue: quickDictationDurationRawValue) ?? .tenMinutes
+    }
+
     private var quickDictationSection: some View {
         Section {
-            Toggle("Keep Quick Dictation ready for 10 minutes", isOn: $quickDictationEnabled)
+            Toggle("Keep Quick Dictation ready", isOn: $quickDictationEnabled)
                 .onChange(of: quickDictationEnabled) { _, enabled in
                     coordinator.setQuickDictationEnabled(enabled)
                 }
+            // Hidden rather than disabled when the feature is off: a greyed-out
+            // duration for a window that will never open is noise.
+            if quickDictationEnabled {
+                Picker("Stay ready for", selection: $quickDictationDurationRawValue) {
+                    ForEach(QuickDictationDuration.allCases) { duration in
+                        Text(duration.displayName).tag(duration.rawValue)
+                    }
+                }
+                .onChange(of: quickDictationDurationRawValue) { _, rawValue in
+                    guard let duration = QuickDictationDuration(rawValue: rawValue) else { return }
+                    coordinator.setQuickDictationDuration(duration)
+                }
+            }
         } footer: {
             Text(
-                "After vocaphone gets microphone access, it keeps an active background "
-                    + "input for up to 10 minutes so Dictate can start without leaving "
-                    + "the app you are in. Standby audio is discarded and never saved or "
-                    + "uploaded. The orange microphone indicator stays visible while it "
-                    + "is on."
+                quickDictationEnabled
+                    ? selectedQuickDictationDuration.settingsFooter
+                    : "The keyboard's first Dictate tap opens vocaphone to record, then "
+                        + "you swipe back. Turn this on to skip that trip."
             )
         }
     }
@@ -513,8 +629,8 @@ struct DictationSettingsView: View {
                 Text(
                     "Styles only change formatting. Your words, times, links and "
                         + "contractions are never altered by a style; words change "
-                        + "only through Clean up speech, and numbers only through "
-                        + "Write numbers as digits, both below."
+                        + "only through Clean up speech, Write numbers as digits "
+                        + "and Spoken emoji, all below."
                 )
             }
         }
@@ -566,6 +682,39 @@ struct DictationSettingsView: View {
                         + "and spoken times such as “seven thirty” are never rewritten."
                 )
                 Text("English only. Transcripts in other languages are untouched.")
+            }
+        }
+    }
+
+    /// Saying "crying emoji" and getting 😭. Off by default: the third switch
+    /// that changes words rather than formatting, and like Write numbers as
+    /// digits it has to be turned on — talking *about* an emoji should not
+    /// rewrite the sentence until the user asks for that.
+    private var spokenEmojiSection: some View {
+        Section {
+            Toggle("Spoken emoji", isOn: $spokenEmoji)
+        } header: {
+            Text("Emoji")
+        } footer: {
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                Text(
+                    "Say the emoji and then the word “emoji”: “crying emoji” "
+                        + "becomes 😭. The whole name has to match — a partial "
+                        + "suffix is left alone. The same names the keyboard "
+                        + "suggests while you type work here."
+                )
+                // The exception is the point: without it the feature would eat
+                // the word "emoji" out of ordinary sentences.
+                Text(
+                    "“Emoji” on its own is left alone, so “send me the emoji” is "
+                        + "still typed as you said it."
+                )
+                Text(
+                    "The emoji names are English. They still work in a transcript "
+                        + "in any other language — say the English name and the rest "
+                        + "of your sentence is untouched — but only by that name. "
+                        + "Never applied to the Raw writing style."
+                )
             }
         }
     }
@@ -1593,3 +1742,98 @@ private struct SnippetEditorView: View {
     }
 }
 #endif
+
+/// The language picker, as a sheet rather than a pushed screen.
+///
+/// A list of seven with a search field is something somebody opens, changes and
+/// dismisses, and a sheet says exactly that: it comes up over the settings it
+/// belongs to and goes away again, with them still visible behind it. A push
+/// would file it in the navigation stack as though it were somewhere you go.
+struct KeyboardLanguagesSheet: View {
+    @Binding var enabledLayoutIDs: [String]
+    @Environment(\.dismiss) private var dismiss
+    @State private var search = ""
+
+    private var matches: [TypingLayout] {
+        let query = search.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return TypingLayout.catalogue }
+        // Matched on the id as well as the written name, because somebody
+        // looking for Russian may well type "ru" — and somebody whose keyboard
+        // is currently Cyrillic cannot type "Русский" to find it.
+        // And on the name in the phone's own language, since somebody after
+        // German types "German", not "Deutsch".
+        return TypingLayout.catalogue.filter {
+            $0.displayName.lowercased().contains(query)
+                || $0.id.contains(query)
+                || (Locale.current.localizedString(forLanguageCode: $0.id)?
+                    .lowercased().contains(query) ?? false)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(matches) { layout in
+                    Button {
+                        toggle(layout)
+                    } label: {
+                        row(for: layout)
+                    }
+                    .buttonStyle(.plain)
+                    // The last one on cannot be turned off: a keyboard with no
+                    // letters is not a narrower keyboard, it is a broken one.
+                    .disabled(enabledLayoutIDs == [layout.id])
+                }
+            }
+            // Inset grouped is the settings-sheet default. `.plain` draws a
+            // full-width hairline above the first row, under the search field
+            // — a separator with nothing above it, which reads as a fault.
+            .listStyle(.insetGrouped)
+            .searchable(text: $search, prompt: "Search")
+            .navigationTitle("Languages")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+            }
+        }
+        .presentationDetents([.large, .medium])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func row(for layout: TypingLayout) -> some View {
+        let isOn = enabledLayoutIDs.contains(layout.id)
+        return HStack(spacing: VocaMetrics.related) {
+            Text(layout.flag)
+                .font(.title2)
+            Text(layout.displayName)
+                .foregroundStyle(.primary)
+            Spacer(minLength: VocaMetrics.related)
+            Image(systemName: isOn ? "checkmark.circle.fill" : "circle")
+                .font(.title2)
+                .foregroundStyle(isOn ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
+        }
+        .frame(minHeight: VocaMetrics.minimumTarget)
+        .contentShape(.rect)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// Writes straight through to the shared defaults the extension reads.
+    ///
+    /// The order is rebuilt from the catalogue rather than appended to, so
+    /// switching a language off and back on returns it to its place instead of
+    /// to the end of the cycle the language key walks.
+    private func toggle(_ layout: TypingLayout) {
+        var wanted = Set(enabledLayoutIDs)
+        if wanted.contains(layout.id) { wanted.remove(layout.id) } else { wanted.insert(layout.id) }
+        let resolved = TypingLayout.catalogue.filter { wanted.contains($0.id) }
+        guard !resolved.isEmpty else { return }
+        KeyboardPreferences.enabledTypingLayouts = resolved
+        enabledLayoutIDs = resolved.map(\.id)
+    }
+}

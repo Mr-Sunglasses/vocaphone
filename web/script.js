@@ -88,25 +88,6 @@ if (reduceMotion.matches || !("IntersectionObserver" in window)) {
   }, 900);
 }
 
-const demoCopy = document.querySelector("[data-demo-copy]");
-const phrases = [
-  "yes — I’ll be there around six.",
-  "send the notes when you’re ready.",
-  "let’s move it to friday morning.",
-];
-
-if (demoCopy && !reduceMotion.matches) {
-  let phraseIndex = 0;
-  window.setInterval(() => {
-    phraseIndex = (phraseIndex + 1) % phrases.length;
-    demoCopy.classList.add("is-changing");
-    window.setTimeout(() => {
-      demoCopy.textContent = phrases[phraseIndex];
-      demoCopy.classList.remove("is-changing");
-    }, 180);
-  }, 4_600);
-}
-
 document.querySelectorAll(".faq-list details").forEach((detail) => {
   detail.addEventListener("toggle", () => {
     if (!detail.open) return;
@@ -115,3 +96,172 @@ document.querySelectorAll(".faq-list details").forEach((detail) => {
     });
   });
 });
+
+const demoControls = document.querySelector(".demo-controls");
+const platformControls = document.querySelector(".demo-platforms");
+if (demoControls && platformControls) {
+  let selectedPlatform = "iphone";
+  let selectedScreen = "keyboard";
+  const updateDemo = () => {
+    document.querySelectorAll("[data-demo-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.demoPanel !== selectedScreen
+        || panel.dataset.platform !== selectedPlatform;
+    });
+    demoControls.querySelectorAll("[data-demo-select]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.demoSelect === selectedScreen));
+    });
+    platformControls.querySelectorAll("[data-demo-platform]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.demoPlatform === selectedPlatform));
+    });
+  };
+  demoControls.hidden = false;
+  platformControls.hidden = false;
+  updateDemo();
+  demoControls.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-demo-select]");
+    if (button) {
+      selectedScreen = button.dataset.demoSelect;
+      updateDemo();
+    }
+  });
+  platformControls.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-demo-platform]");
+    if (button) {
+      selectedPlatform = button.dataset.demoPlatform;
+      updateDemo();
+    }
+  });
+}
+
+const screenshotDialog = document.querySelector(".screenshot-dialog");
+if (screenshotDialog && typeof screenshotDialog.showModal === "function") {
+  document.querySelectorAll("[data-enlarge]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      const preview = screenshotDialog.querySelector("img");
+      preview.src = link.href;
+      preview.alt = link.querySelector("img").alt;
+      screenshotDialog.showModal();
+    });
+  });
+  screenshotDialog.addEventListener("click", (event) => {
+    if (event.target === screenshotDialog) screenshotDialog.close();
+  });
+}
+
+// Everything below is decorative. Each piece checks reduceMotion (declared
+// above) and either does nothing or settles straight to its end state, so a
+// visitor who asked for less motion still gets the same information.
+
+// Reading progress in the fixed bar.
+const progressBar = document.querySelector("[data-scroll-progress]");
+if (progressBar) {
+  let progressQueued = false;
+  const paintProgress = () => {
+    progressQueued = false;
+    const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+    const ratio = scrollable > 0 ? window.scrollY / scrollable : 0;
+    progressBar.style.setProperty(
+      "--scroll-progress",
+      `${Math.min(100, Math.max(0, ratio * 100)).toFixed(2)}%`,
+    );
+  };
+  const queueProgress = () => {
+    if (progressQueued) return;
+    progressQueued = true;
+    window.requestAnimationFrame(paintProgress);
+  };
+  paintProgress();
+  window.addEventListener("scroll", queueProgress, { passive: true });
+  window.addEventListener("resize", queueProgress);
+}
+
+// Mark the nav link for the section currently in view. aria-current tells
+// assistive tech the same thing the underline tells everyone else.
+const navLinks = [...document.querySelectorAll(".site-nav a[href^='#']")];
+const navTargets = navLinks
+  .map((link) => ({ link, section: document.querySelector(link.getAttribute("href")) }))
+  .filter((entry) => entry.section);
+
+if (navTargets.length && "IntersectionObserver" in window) {
+  const visible = new Set();
+  const syncCurrent = () => {
+    const active = navTargets.find((entry) => visible.has(entry.section));
+    navTargets.forEach((entry) => {
+      if (entry === active) entry.link.setAttribute("aria-current", "true");
+      else entry.link.removeAttribute("aria-current");
+    });
+  };
+  const sectionObserver = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) visible.add(entry.target);
+        else visible.delete(entry.target);
+      });
+      syncCurrent();
+    },
+    { rootMargin: "-45% 0px -50% 0px" },
+  );
+  navTargets.forEach((entry) => sectionObserver.observe(entry.section));
+}
+
+// Count the hero figures up once they are on screen. The final value is
+// already in the markup, so this only ever replaces a number with itself.
+const counters = [...document.querySelectorAll("[data-count-to]")];
+if (counters.length) {
+  const runCount = (node) => {
+    const target = Number(node.dataset.countTo);
+    if (!Number.isFinite(target) || reduceMotion.matches) {
+      node.textContent = String(node.dataset.countTo);
+      return;
+    }
+    const duration = 1100;
+    const started = performance.now();
+    const step = (now) => {
+      const progress = Math.min(1, (now - started) / duration);
+      const eased = 1 - (1 - progress) ** 3;
+      node.textContent = String(Math.round(target * eased));
+      if (progress < 1) window.requestAnimationFrame(step);
+    };
+    window.requestAnimationFrame(step);
+  };
+
+  if (!("IntersectionObserver" in window)) {
+    counters.forEach((node) => runCount(node));
+  } else {
+    const countObserver = new IntersectionObserver(
+      (entries, observer) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          runCount(entry.target);
+          observer.unobserve(entry.target);
+        });
+      },
+      { threshold: 0.6 },
+    );
+    counters.forEach((node) => countObserver.observe(node));
+  }
+}
+
+// A few degrees of pointer parallax on the hero devices. Pointer-driven only,
+// so touch and keyboard users see the frames sitting still.
+const tiltNode = document.querySelector("[data-tilt]");
+if (tiltNode && window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+  const maxTilt = 4;
+  const resetTilt = () => {
+    tiltNode.style.removeProperty("--tilt-x");
+    tiltNode.style.removeProperty("--tilt-y");
+  };
+  const applyTilt = (event) => {
+    if (reduceMotion.matches) return;
+    const box = tiltNode.getBoundingClientRect();
+    const offsetX = (event.clientX - box.left) / box.width - 0.5;
+    const offsetY = (event.clientY - box.top) / box.height - 0.5;
+    tiltNode.style.setProperty("--tilt-y", `${(offsetX * maxTilt * 2).toFixed(2)}deg`);
+    tiltNode.style.setProperty("--tilt-x", `${(-offsetY * maxTilt).toFixed(2)}deg`);
+  };
+  tiltNode.addEventListener("pointermove", applyTilt);
+  tiltNode.addEventListener("pointerleave", resetTilt);
+  reduceMotion.addEventListener("change", resetTilt);
+}

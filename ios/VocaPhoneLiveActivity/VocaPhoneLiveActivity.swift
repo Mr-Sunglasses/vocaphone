@@ -97,7 +97,7 @@ struct VocaPhoneRecordingActivity: Widget {
             .tint(Color.vocaRecording)
         } else if state.effectivePhase == .standby {
             Button(intent: StopQuickDictationIntent()) {
-                Label("Turn off", systemImage: "mic.slash.fill")
+                Label("Pause", systemImage: "mic.slash.fill")
             }
             .buttonStyle(.bordered)
             .tint(.brand)
@@ -118,8 +118,10 @@ struct VocaPhoneRecordingActivity: Widget {
             .buttonStyle(.borderedProminent)
             .tint(Color.vocaRecording)
         } else if state.effectivePhase == .standby {
+            // "Pause", not "Turn off": this button ends the current window and
+            // nothing else. Reopening vocaphone arms a new one.
             Button(intent: StopQuickDictationIntent()) {
-                Label("Turn off Quick Dictation", systemImage: "mic.slash.fill")
+                Label("Pause Quick Dictation", systemImage: "mic.slash.fill")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)

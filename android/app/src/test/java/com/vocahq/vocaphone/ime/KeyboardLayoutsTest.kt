@@ -45,4 +45,15 @@ class KeyboardLayoutsTest {
         val right = bottom.keys.drop(spaceIndex + 1).sumOf { it.weight.toDouble() }
         assertEquals(left, right, 0.01)
     }
+
+    @Test
+    fun `letter utility row keeps comma period and emoji as separate keys`() {
+        val bottom = KeyboardLayouts.rows(KeyboardLayer.LETTERS, KeyboardEditorConfig.empty()).last()
+        val outputs = bottom.keys.map { it.output }
+        assertTrue("," in outputs)
+        assertTrue("." in outputs)
+        assertTrue(
+            bottom.keys.any { it.type == KeyboardKeyType.LAYER_SWITCH && it.targetLayer == KeyboardLayer.EMOJI },
+        )
+    }
 }

@@ -1,5 +1,62 @@
 import Foundation
 
+/// The five taps `UIImpactFeedbackGenerator` can play, named for the hand
+/// rather than for the API: they differ in how hard and how sharp they are.
+enum TypingHapticStyle: String, CaseIterable, Identifiable, Sendable {
+    case light
+    case soft
+    case medium
+    case heavy
+    case rigid
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .light: "Light"
+        case .soft: "Soft"
+        case .medium: "Medium"
+        case .heavy: "Heavy"
+        case .rigid: "Rigid"
+        }
+    }
+
+    /// What each one feels like, so the picker is not five words in a row.
+    var detail: String {
+        switch self {
+        case .light: "A nudge. The softest and most diffuse."
+        case .soft: "Rounded and slow — a cushion rather than a click."
+        case .medium: "The middle of the range."
+        case .heavy: "The hardest hit the engine has."
+        case .rigid: "Short and sharp. What the system keyboard uses."
+        }
+    }
+
+}
+
+/// What every typing and dictation switch is before anyone touches it.
+///
+/// One list, read by the getters in `KeyboardPreferences` and by the switches
+/// in Settings, so the two cannot disagree — a Settings switch drawn off over a
+/// keyboard that behaves as on is a switch that lies. `KeyboardDefaultsTests`
+/// pins the values.
+enum KeyboardDefaults {
+    /// Off: the row above the keys starts empty. Autocorrect and prediction
+    /// keep their own switches on, and wake up with it.
+    static let typingSuggestions = false
+    static let autocorrect = true
+    static let nextWordPrediction = true
+    static let learnAsIType = true
+    static let smartPunctuation = true
+    static let emojiSuggestions = true
+    static let typingHaptics = true
+    static let swipeTyping = true
+    static let spacebarCursor = true
+    static let numbersAsDigits = true
+    static let spokenEmoji = true
+    static let repairSpeech = true
+}
+
 /// Presentation only. No style adds, removes or substitutes a word, and
 /// numbers, times, addresses and contractions are always left as the model
 /// transcribed them.
@@ -41,23 +98,55 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    /// Unstyled model output the picker examples are produced from.
-    /// Clean and Formal only diverge when sentence starts are still lowercase.
-    static let exampleSource = "this is VocaPhone. it is a keyboard you talk to"
-
     /// A short worked example, so the choice is obvious before dictating.
+    ///
+    /// Each style has its own source on purpose. One sentence pushed through
+    /// every style only changes a full stop, so the picker reads as six
+    /// identical captions. These still go through ``TranscriptStyler`` — they
+    /// are not invented results — but each source is chosen so that style's
+    /// signature is the whole line.
     var example: String {
-        TranscriptStyler.apply(Self.exampleSource, style: self)
+        TranscriptStyler.apply(exampleSource, style: self)
     }
 
+    private var exampleSource: String {
+        switch self {
+        case .raw:
+            "ok so  this is VocaPhone. it is a Keyboard"
+        case .clean:
+            "all done for today"
+        case .formal:
+            "please send the report today"
+        case .casual:
+            "I'll be there in ten."
+        case .veryCasual:
+            "Yeah all good. See you in ten."
+        case .excited:
+            "this is going to be great"
+        }
+    }
+
+    /// Everyday objects rather than typographic notation.
+    ///
+    /// The set this replaces described the *genre* of the text — a document, a
+    /// wand, two speech bubbles — while what actually separates these styles is
+    /// punctuation and capitalisation. Nobody tells `textformat` from
+    /// `textformat.abc` at 17 pt, and nobody should have to: an eraser, a
+    /// briefcase and sunglasses are read without being decoded.
     var symbolName: String {
         switch self {
-        case .raw: "doc.plaintext"
-        case .clean: "wand.and.stars"
-        case .formal: "textformat"
-        case .casual: "text.bubble"
-        case .veryCasual: "textformat.abc"
-        case .excited: "sparkles"
+        // What was said, unedited.
+        case .raw: "waveform"
+        // Tidied: spacing, a closing full stop, stray capitals rubbed out.
+        case .clean: "eraser"
+        // Sentence case and a full stop — the way work writing looks.
+        case .formal: "briefcase"
+        // A line in a conversation, which does not end in a full stop.
+        case .casual: "bubble.left"
+        // Lowercase throughout, clauses run together.
+        case .veryCasual: "sunglasses"
+        // Everything ends in an exclamation mark.
+        case .excited: "party.popper"
         }
     }
 }
@@ -255,6 +344,160 @@ enum KeyboardHeightPreference: String, CaseIterable, Codable, Identifiable, Send
     }
 }
 
+/// A letter arrangement the keyboard can put under the fingers.
+///
+/// Data, not cases. The first version of this was an enum with `qwerty` and
+/// `jcuken` in it, which meant every language after the second one was three
+/// `switch` statements and a recompile — and a keyboard whose answer to "add
+/// Ukrainian" is "add a case" will never have Ukrainian. A layout is its rows,
+/// its name and the dictionary it corrects against, so that is what it is.
+///
+/// The rows carry no widths. How wide eleven columns make a key is
+/// ``KeyGridView``'s question and it answers it from the rows it is handed;
+/// nothing here has to be kept in step with anything there.
+struct TypingLayout: Identifiable, Hashable, Sendable {
+    let id: String
+    /// What the language key says: two letters, written in the language's own
+    /// script.
+    ///
+    /// Cyrillic rather than a transliteration, because a Russian layout
+    /// labelled `RU` reads like a sticker somebody else put on it. Two letters
+    /// because the key is one column wide — the same column `123` fits in.
+    let shortName: String
+    /// Written in its own language, as iOS writes them: somebody reaching for
+    /// Russian is not looking for the word "Russian".
+    let displayName: String
+    /// Shown beside the name in the picker. A flag is a poor symbol for a
+    /// language and a good one for finding a row in a list of forty while
+    /// scrolling — which is the only job it has here.
+    let flag: String
+    /// The dictionary ``UITextChecker`` should answer in. It reads the user's
+    /// own installed dictionaries, so this is the whole of what a layout needs
+    /// for completion and correction — no shipped word list required.
+    let checkerLanguage: String
+    /// The three letter rows, top to bottom, unshifted.
+    let rows: [String]
+    /// Every letter the language writes, including the ones the rows have no
+    /// column for.
+    ///
+    /// Its only job is to be checked: a layout whose alphabet contains a letter
+    /// that is neither on a key nor behind one is a layout that cannot type its
+    /// own language, and that is a test rather than a code review.
+    let alphabet: String
+
+    /// The four arrangements almost every Latin layout in the catalogue is.
+    ///
+    /// Named rather than repeated, because the difference between Danish and
+    /// Swedish is two letters in the home row and nothing else, and a table
+    /// that spells all three rows out forty times hides that.
+    enum Arrangement {
+        static let qwerty = ["qwertyuiop", "asdfghjkl", "zxcvbnm"]
+        static let qwertz = ["qwertzuiop", "asdfghjkl", "yxcvbnm"]
+        static let azerty = ["azertyuiop", "qsdfghjklm", "wxcvbn"]
+    }
+
+    private static let latin = "abcdefghijklmnopqrstuvwxyz"
+
+    /// The layouts the keyboard knows.
+    ///
+    /// Seven, and deliberately not forty. A picker of forty languages is a
+    /// list somebody scrolls; seven is a list somebody reads. These are the
+    /// ones a keyboard is asked for first, and the shape of this table is what
+    /// makes the eighth a three-line addition rather than a project.
+    ///
+    /// Every entry is checked by ``KeyAlternativesTests`` for the only thing
+    /// that really matters here — that each letter of its alphabet is on a key
+    /// or behind one — so a wrong row is a failing test rather than a keyboard
+    /// that cannot spell its own language.
+    static let catalogue: [TypingLayout] = [
+        TypingLayout(
+            id: "en", shortName: "EN", displayName: "English", flag: "🇺🇸",
+            checkerLanguage: "en_US", rows: Arrangement.qwerty, alphabet: latin
+        ),
+        TypingLayout(
+            id: "es", shortName: "ES", displayName: "Español", flag: "🇪🇸",
+            checkerLanguage: "es_ES",
+            // ñ is on the grid rather than behind n: it is an ordinary letter
+            // in Spanish, reached as often as any other, and a hold per word
+            // is not typing. It is also why the home row here is the longer
+            // one, and why the middle row correctly does not indent.
+            rows: ["qwertyuiop", "asdfghjklñ", "zxcvbnm"],
+            alphabet: latin + "áéíóúüñ"
+        ),
+        TypingLayout(
+            id: "pt", shortName: "PT", displayName: "Português", flag: "🇧🇷",
+            checkerLanguage: "pt_BR", rows: Arrangement.qwerty,
+            alphabet: latin + "áâãàçéêíóôõú"
+        ),
+        TypingLayout(
+            id: "fr", shortName: "FR", displayName: "Français", flag: "🇫🇷",
+            checkerLanguage: "fr_FR", rows: Arrangement.azerty,
+            alphabet: latin + "àâçéèêëîïôùûü"
+        ),
+        TypingLayout(
+            id: "de", shortName: "DE", displayName: "Deutsch", flag: "🇩🇪",
+            checkerLanguage: "de_DE", rows: Arrangement.qwertz,
+            alphabet: latin + "äöüß"
+        ),
+        TypingLayout(
+            id: "ru", shortName: "РУ", displayName: "Русский", flag: "🇷🇺",
+            checkerLanguage: "ru_RU",
+            // Thirty-three letters over thirty-one keys: ё and ъ live behind е
+            // and ь, where iOS puts them and where ``KeyAlternatives`` has them.
+            rows: ["йцукенгшщзх", "фывапролджэ", "ячсмитьбю"],
+            alphabet: "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+        ),
+        TypingLayout(
+            id: "uk", shortName: "УК", displayName: "Українська", flag: "🇺🇦",
+            checkerLanguage: "uk_UA",
+            // Twelve on the top row, which is the widest the grid takes: ї is
+            // a letter here, not an accent on і. ґ is rare enough to sit
+            // behind г, which is where iOS puts it too.
+            rows: ["йцукенгшщзхї", "фівапролджє", "ячсмитьбю"],
+            alphabet: "абвгґдеєжзиіїйклмнопрстуфхцчшщьюя"
+        ),
+    ]
+
+    /// The layout every keyboard starts with, and the one that cannot be turned
+    /// off: a keyboard with no layouts types nothing.
+    static let fallback = catalogue[0]
+
+    static func layout(id: String) -> TypingLayout? {
+        catalogue.first { $0.id == id }
+    }
+
+    /// What a fresh install starts with: the layouts for the languages the
+    /// phone is already set up in, and English if none of them are known.
+    ///
+    /// The first version of this defaulted to the whole catalogue, which
+    /// handed somebody who only types English a language key, a labelled
+    /// spacebar and four languages they never asked for. Somebody whose phone
+    /// is set to Russian and English, meanwhile, should not have to go and
+    /// find the setting to get what iOS would have given them.
+    static func forPreferredLanguages(
+        _ preferred: [String] = Locale.preferredLanguages
+    ) -> [TypingLayout] {
+        let subtags = preferred.map { $0.split(separator: "-").first.map(String.init) ?? $0 }
+        let matched = catalogue.filter { subtags.contains($0.id) }
+        return matched.isEmpty ? [fallback] : matched
+    }
+
+    /// The layout after `current` in `enabled`, wrapping.
+    ///
+    /// `nil` when there is nowhere to go, which is also the answer to "should
+    /// the spacebar say anything" and "is the gesture available" — one question
+    /// asked once rather than three flags kept in agreement.
+    static func next(
+        after current: TypingLayout,
+        in enabled: [TypingLayout],
+        forward: Bool = true
+    ) -> TypingLayout? {
+        guard enabled.count > 1, let index = enabled.firstIndex(of: current) else { return nil }
+        let step = forward ? 1 : enabled.count - 1
+        return enabled[(index + step) % enabled.count]
+    }
+}
+
 enum KeyboardPreferences {
     static let autoInsertKey = "autoInsertTranscripts"
     static let keyboardHeightKey = "keyboardHeight"
@@ -278,9 +521,37 @@ enum KeyboardPreferences {
     static let typingHapticsMigrationKey = "typingHapticsMigrationV1"
     static let swipeTypingKey = "swipeTypingEnabled"
     static let numberRowKey = "numberRowEnabled"
+    /// Debug-only touch and frame instrumentation. Kept off unless a developer
+    /// explicitly arms it in the keyboard lab.
+    static let touchTraceKey = "touchTraceEnabled"
+    /// Holding or sliding the spacebar to move the cursor.
+    static let spacebarCursorKey = "spacebarCursorEnabled"
+    /// The compact dictation row: More, Start, and the dashboard behind More.
+    /// On by default. The lab switch is an off-ramp, not the way it ships; the
+    /// key keeps its lab name so a switch someone already flipped still counts.
+    static let compactControlsKey = "lab.usesCompactControls"
+    /// The layout currently under the fingers.
+    static let typingLayoutKey = "typingLayout"
+    /// Every layout the user has turned on, in the order the space bar and the
+    /// globe walk through them.
+    static let enabledTypingLayoutsKey = "enabledTypingLayouts"
     static let quickDictationKey = "quickDictationEnabled"
+    static let quickDictationDurationKey = "quickDictationDuration"
+    /// A stop from the Live Activity is a pause, not a preference change: the
+    /// user is silencing this window, not saying they never want Quick
+    /// Dictation again. Reopening vocaphone clears it. Kept in the App Group so
+    /// the Live Activity's intent, which runs in its own process, can set it.
+    static let quickDictationPausedKey = "quickDictationPausedUntilRelaunch"
+    /// Whether Home still owes this install the one-time offer to turn Quick
+    /// Dictation back on. See ``QuickDictationRecoveryOffer``.
+    static let quickDictationRecoveryOfferKey = "quickDictationRecoveryOfferPending"
+    /// Marks the release that stopped letting the Live Activity write the
+    /// durable preference, so the offer above is raised exactly once per
+    /// install rather than every launch.
+    static let quickDictationRecoveryMigrationKey = "quickDictationRecoveryMigrationV1"
     static let writingStyleKey = "writingStyle"
     static let numbersAsDigitsKey = "numbersAsDigitsEnabled"
+    static let spokenEmojiKey = "spokenEmojiEnabled"
     static let repairSpeechKey = "speechRepairEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let translateToKey = "translateTo"
@@ -296,6 +567,13 @@ enum KeyboardPreferences {
     /// state, this survives iOS reclaiming the app while Settings is in front,
     /// so the first return can reveal the confirmation action immediately.
     static let keyboardSettingsRoundTripKey = "keyboardSettingsRoundTripStarted"
+    /// When the keyboard last reported that it ran without Full Access.
+    ///
+    /// Written by the containing app on the keyboard's Darwin signal, because
+    /// the keyboard itself cannot write anything in that state. Kept durable so
+    /// that iOS reclaiming the app mid-setup does not turn a diagnosed problem
+    /// back into an unexplained wait.
+    static let keyboardLackedFullAccessKey = "keyboardLackedFullAccessAt"
     static let firstDictationKey = "hasCompletedFirstDictation"
     /// Separate from the first transcript milestone: this proves the user has
     /// seen a transcript make the complete trip through the keyboard and into a
@@ -323,6 +601,9 @@ enum KeyboardPreferences {
         }
     }
 
+    /// The durable switch. Only the Settings toggle writes it, so a stop from
+    /// the Dynamic Island can never leave a user wondering why Quick Dictation
+    /// stayed off for days.
     static var quickDictationEnabled: Bool {
         get {
             guard let defaults else { return true }
@@ -332,6 +613,55 @@ enum KeyboardPreferences {
         set {
             defaults?.set(newValue, forKey: quickDictationKey)
         }
+    }
+
+    /// Ten minutes for every existing install: the preference is new, and that
+    /// is the window those users already have.
+    static var quickDictationDuration: QuickDictationDuration {
+        get {
+            guard let rawValue = defaults?.string(forKey: quickDictationDurationKey),
+                  let duration = QuickDictationDuration(rawValue: rawValue)
+            else { return .tenMinutes }
+            return duration
+        }
+        set {
+            defaults?.set(newValue.rawValue, forKey: quickDictationDurationKey)
+        }
+    }
+
+    /// Set by the Live Activity's stop button, cleared the next time vocaphone
+    /// comes to the foreground. See ``quickDictationPausedKey``.
+    static var quickDictationPausedUntilRelaunch: Bool {
+        get { defaults?.bool(forKey: quickDictationPausedKey) ?? false }
+        set { defaults?.set(newValue, forKey: quickDictationPausedKey) }
+    }
+
+    /// Whether the app may arm standby right now — the durable switch and the
+    /// temporary pause together. Every arming path asks this, not the switch.
+    static var quickDictationArmable: Bool {
+        quickDictationEnabled && !quickDictationPausedUntilRelaunch
+    }
+
+    static var quickDictationRecoveryOfferPending: Bool {
+        get { defaults?.bool(forKey: quickDictationRecoveryOfferKey) ?? false }
+        set { defaults?.set(newValue, forKey: quickDictationRecoveryOfferKey) }
+    }
+
+    /// Queues the recovery offer for installs that arrive at this release with
+    /// Quick Dictation already off, which older builds could do to somebody who
+    /// only meant to release the microphone once.
+    ///
+    /// The stored value is deliberately left alone. It cannot be told apart
+    /// from a deliberate Settings choice, and turning a microphone back on for
+    /// a person who chose to turn it off is not a fix. Running this repeatedly
+    /// is safe, and a user who is already on is never asked anything.
+    static func markQuickDictationRecoveryOfferIfNeeded() {
+        guard let defaults,
+              defaults.object(forKey: quickDictationRecoveryMigrationKey) == nil
+        else { return }
+        defaults.set(true, forKey: quickDictationRecoveryMigrationKey)
+        guard !quickDictationEnabled else { return }
+        quickDictationRecoveryOfferPending = true
     }
 
     /// Defaults to ``KeyboardHeightPreference/standard`` when absent, which is
@@ -352,10 +682,9 @@ enum KeyboardPreferences {
     /// Every typing-intelligence switch, each defaulting explicitly so that a
     /// keyboard running **without Full Access** — which cannot read the App
     /// Group at all — behaves the same as one that has never been configured.
-    /// Suggestions in particular must work without it: a keyboard that needs
-    /// Full Access to type is not a keyboard.
+    /// The values themselves live in `KeyboardDefaults`.
     static var typingSuggestionsEnabled: Bool {
-        get { boolean(typingSuggestionsKey, default: true) }
+        get { boolean(typingSuggestionsKey, default: KeyboardDefaults.typingSuggestions) }
         set { defaults?.set(newValue, forKey: typingSuggestionsKey) }
     }
 
@@ -363,19 +692,19 @@ enum KeyboardPreferences {
     /// it is applied, so autocorrect without suggestions would replace words
     /// with no warning at all. Callers read ``autocorrectIsActive``.
     static var autocorrectEnabled: Bool {
-        get { boolean(autocorrectKey, default: true) }
+        get { boolean(autocorrectKey, default: KeyboardDefaults.autocorrect) }
         set { defaults?.set(newValue, forKey: autocorrectKey) }
     }
 
     static var autocorrectIsActive: Bool { typingSuggestionsEnabled && autocorrectEnabled }
 
     static var nextWordPredictionEnabled: Bool {
-        get { boolean(nextWordPredictionKey, default: true) }
+        get { boolean(nextWordPredictionKey, default: KeyboardDefaults.nextWordPrediction) }
         set { defaults?.set(newValue, forKey: nextWordPredictionKey) }
     }
 
     static var learnAsITypeEnabled: Bool {
-        get { boolean(learnAsITypeKey, default: true) }
+        get { boolean(learnAsITypeKey, default: KeyboardDefaults.learnAsIType) }
         set { defaults?.set(newValue, forKey: learnAsITypeKey) }
     }
 
@@ -383,7 +712,7 @@ enum KeyboardPreferences {
     /// outranks it: a code editor turns smart quotes off precisely so that a
     /// keyboard does not curl them.
     static var smartPunctuationEnabled: Bool {
-        get { boolean(smartPunctuationKey, default: true) }
+        get { boolean(smartPunctuationKey, default: KeyboardDefaults.smartPunctuation) }
         set { defaults?.set(newValue, forKey: smartPunctuationKey) }
     }
 
@@ -391,15 +720,16 @@ enum KeyboardPreferences {
     /// 😂. On by default: it adds a chip the user may ignore and never changes
     /// text on its own, which is the bar for a suggestion being on.
     static var emojiSuggestionsEnabled: Bool {
-        get { boolean(emojiSuggestionsKey, default: true) }
+        get { boolean(emojiSuggestionsKey, default: KeyboardDefaults.emojiSuggestions) }
         set { defaults?.set(newValue, forKey: emojiSuggestionsKey) }
     }
 
-    /// Custom per-key haptics are opt-in. The standard keyboard input click is
-    /// still available whenever iOS Keyboard Clicks are enabled, with or
-    /// without Full Access.
+    /// Per-key haptics, on by default: the system keyboard taps back, and a
+    /// keyboard that does not feels dead under the thumb. They still need Full
+    /// Access; without it the standard input click is what iOS Keyboard Clicks
+    /// gives.
     static var typingHapticsEnabled: Bool {
-        get { boolean(typingHapticsKey, default: false) }
+        get { boolean(typingHapticsKey, default: KeyboardDefaults.typingHaptics) }
         set { defaults?.set(newValue, forKey: typingHapticsKey) }
     }
 
@@ -408,8 +738,8 @@ enum KeyboardPreferences {
     /// on every character is disruptive enough that preserving the old default
     /// would be worse than asking an interested person to opt in again, so the
     /// stale value is discarded rather than carried over — `typingHapticsKey`
-    /// already defaults to off, and writing that default explicitly would say
-    /// nothing the getter does not. Calling this repeatedly is safe.
+    /// has its own default, and writing it explicitly would say nothing the
+    /// getter does not. Calling this repeatedly is safe.
     static func migrateTypingHapticsIfNeeded() {
         guard let defaults,
               defaults.object(forKey: typingHapticsMigrationKey) == nil
@@ -418,17 +748,81 @@ enum KeyboardPreferences {
         defaults.set(true, forKey: typingHapticsMigrationKey)
     }
 
-    /// Off until device QA says the recogniser has earned it. A swipe engine
-    /// that guesses wrong is worse than no swipe engine, because the user has
-    /// to notice and undo a whole word rather than one letter.
+    /// On by default. Tapping still types exactly as before — a swipe only
+    /// starts when a finger travels across keys — so someone who never swipes
+    /// loses nothing, and someone who does finds it already there.
     static var swipeTypingEnabled: Bool {
-        get { boolean(swipeTypingKey, default: false) }
+        get { boolean(swipeTypingKey, default: KeyboardDefaults.swipeTyping) }
         set { defaults?.set(newValue, forKey: swipeTypingKey) }
     }
 
     static var numberRowEnabled: Bool {
         get { boolean(numberRowKey, default: false) }
         set { defaults?.set(newValue, forKey: numberRowKey) }
+    }
+
+    static var touchTraceEnabled: Bool {
+        get { boolean(touchTraceKey, default: false) }
+        set { defaults?.set(newValue, forKey: touchTraceKey) }
+    }
+
+    /// The spacebar's cursor trackpad. On by default: it is what the system
+    /// keyboard does, and somebody who has never heard of it loses nothing by
+    /// having it — the gesture that reaches it is one nobody performs by
+    /// accident.
+    static var spacebarCursorEnabled: Bool {
+        get { boolean(spacebarCursorKey, default: KeyboardDefaults.spacebarCursor) }
+        set { defaults?.set(newValue, forKey: spacebarCursorKey) }
+    }
+
+    /// Read by the keyboard itself, not only by the lab.
+    ///
+    /// This is the bug the flag was born with: the lab set it straight onto its
+    /// own preview object, so the switch changed the picture on the settings
+    /// screen and nothing else. Tapping into a real field brought up the
+    /// extension, which had never heard of it, and drew the old row — which
+    /// looks exactly like a switch that does not work.
+    static var compactControlsEnabled: Bool {
+        get { boolean(compactControlsKey, default: true) }
+        set { defaults?.set(newValue, forKey: compactControlsKey) }
+    }
+
+    /// The layouts the user has turned on, in the order the key and the swipe
+    /// walk through them. Never empty.
+    ///
+    /// Stored as ids rather than as indices into the catalogue, so reordering
+    /// or retiring a layout cannot silently point an existing install at a
+    /// different language than the one it chose.
+    static var enabledTypingLayouts: [TypingLayout] {
+        get {
+            let stored = defaults?.stringArray(forKey: enabledTypingLayoutsKey) ?? []
+            let resolved = stored.compactMap(TypingLayout.layout(id:))
+            return resolved.isEmpty ? TypingLayout.forPreferredLanguages() : resolved
+        }
+        set {
+            let unique = newValue.reduce(into: [TypingLayout]()) { list, layout in
+                if !list.contains(layout) { list.append(layout) }
+            }
+            let resolved = unique.isEmpty ? [TypingLayout.fallback] : unique
+            defaults?.set(resolved.map(\.id), forKey: enabledTypingLayoutsKey)
+            // A layout that has just been turned off cannot stay the current
+            // one, or the keyboard comes up on a language the settings say is
+            // not there.
+            if !resolved.contains(typingLayout) { typingLayout = resolved[0] }
+        }
+    }
+
+    /// The layout the keyboard shows, clamped to what is actually enabled.
+    static var typingLayout: TypingLayout {
+        get {
+            let enabled = enabledTypingLayouts
+            let stored = defaults?.string(forKey: typingLayoutKey)
+            guard let resolved = stored.flatMap(TypingLayout.layout(id:)),
+                  enabled.contains(resolved)
+            else { return enabled.first ?? .fallback }
+            return resolved
+        }
+        set { defaults?.set(newValue.id, forKey: typingLayoutKey) }
     }
 
     /// An absent key means "never set", which is the default — not `false`,
@@ -444,24 +838,131 @@ enum KeyboardPreferences {
     }
 
     /// Whether dictated number words are written as digits — "six pm" as
-    /// "6 pm". Off by default: it changes the words in a transcript rather than
-    /// its formatting, which is not something to start doing to someone's text
-    /// because they updated the app.
+    /// "6 pm". On by default: typed text writes numbers as digits, and a lone
+    /// "one", ordinals and spoken times are already left alone.
     static var numbersAsDigits: Bool {
-        get { boolean(numbersAsDigitsKey, default: false) }
+        get { boolean(numbersAsDigitsKey, default: KeyboardDefaults.numbersAsDigits) }
         set { defaults?.set(newValue, forKey: numbersAsDigitsKey) }
+    }
+
+    /// Whether "crying emoji" becomes 😭.
+    ///
+    /// On by default. It only fires on a whole emoji name followed by the word
+    /// "emoji", and "emoji" on its own is left alone, so talking *about* emoji
+    /// is still typed as said.
+    static var spokenEmoji: Bool {
+        get { boolean(spokenEmojiKey, default: KeyboardDefaults.spokenEmoji) }
+        set { defaults?.set(newValue, forKey: spokenEmojiKey) }
     }
 
     /// Whether hesitation sounds, false starts, and missing sentence
     /// punctuation are repaired before the writing style is applied.
     ///
-    /// On by default, and the only setting in this file that changes the words
+    /// On by default. One of three settings in this file that change the words
     /// in a transcript rather than its formatting. It earns that because the
     /// words it removes are not words: "um" is a sound someone makes while
     /// deciding what to say, and nobody dictating meant to type it.
     static var repairSpeech: Bool {
-        get { boolean(repairSpeechKey, default: true) }
+        get { boolean(repairSpeechKey, default: KeyboardDefaults.repairSpeech) }
         set { defaults?.set(newValue, forKey: repairSpeechKey) }
+    }
+
+    static let surfaceAnimationResponseKey = "surfaceAnimationResponse2"
+    static let surfaceAnimationDampingKey = "surfaceAnimationDamping2"
+
+    /// The spring the dictation surface changes phase with.
+    ///
+    /// Stored rather than hardcoded so the keyboard lab can tune it against a
+    /// thumb: the lab writes here, the extension reads here, and the value
+    /// survives leaving the screen. Nothing in a shipping build writes these —
+    /// the lab is the only writer and it is debug-only — so the defaults below
+    /// are what every user gets.
+    static var surfaceAnimationResponse: Double {
+        get {
+            let stored = defaults?.double(forKey: surfaceAnimationResponseKey) ?? 0
+            return stored > 0 ? stored : 0.15
+        }
+        set { defaults?.set(newValue, forKey: surfaceAnimationResponseKey) }
+    }
+
+    static var surfaceAnimationDamping: Double {
+        get {
+            let stored = defaults?.double(forKey: surfaceAnimationDampingKey) ?? 0
+            return stored > 0 ? stored : 1.0
+        }
+        set { defaults?.set(newValue, forKey: surfaceAnimationDampingKey) }
+    }
+
+    static let lastShownWritingStyleKey = "lastShownWritingStyle"
+
+    /// The style the dictation surface was showing when it last appeared.
+    ///
+    /// The one signal that iOS's cached picture of the keyboard is out of date:
+    /// the style changed while the keyboard was up, so the snapshot taken
+    /// before that change still carries the previous icon.
+    static var lastShownWritingStyle: WritingStyle? {
+        get {
+            guard let raw = defaults?.string(forKey: lastShownWritingStyleKey) else { return nil }
+            return WritingStyle(rawValue: raw)
+        }
+        set { defaults?.set(newValue?.rawValue, forKey: lastShownWritingStyleKey) }
+    }
+
+    static let keyPreviewAnimatesKey = "keyPreviewAnimates"
+
+    /// Whether the magnified key above a press grows into place, or is simply
+    /// there.
+    ///
+    /// The balloon scales up over about a tenth of a second and back down on
+    /// release. That is the animation a fast typist has several of in flight at
+    /// once, and it is the one thing on the press path that is not instant:
+    /// the touch handler itself measures under a millisecond.
+    static var keyPreviewAnimates: Bool {
+        get { defaults?.object(forKey: keyPreviewAnimatesKey) as? Bool ?? false }
+        set { defaults?.set(newValue, forKey: keyPreviewAnimatesKey) }
+    }
+
+    static let keyReleaseFadeKey = "keyReleaseFade"
+
+    /// Whether a character key fades back to its resting colour when the finger
+    /// leaves, or snaps.
+    ///
+    /// A switch rather than a constant because it is a suspect: every release
+    /// starts a tenth-of-a-second animation, and a fast typist has several of
+    /// them in flight at once. Whether that is what makes speed feel heavy is a
+    /// question for a thumb, not for an argument.
+    static var keyReleaseFade: Bool {
+        get { defaults?.object(forKey: keyReleaseFadeKey) as? Bool ?? false }
+        set { defaults?.set(newValue, forKey: keyReleaseFadeKey) }
+    }
+
+    static let typingHapticStyleKey = "typingHapticStyle"
+    static let typingHapticIntensityKey = "typingHapticIntensity"
+
+    /// How hard a key hits back.
+    ///
+    /// Stored because "strong enough" is a matter of hands and cases, not of
+    /// argument: the same generator that reads as a crisp press through a bare
+    /// phone is a rumour through a thick case.
+    static var typingHapticStyle: TypingHapticStyle {
+        get {
+            guard let raw = defaults?.string(forKey: typingHapticStyleKey),
+                  let style = TypingHapticStyle(rawValue: raw)
+            else { return .rigid }
+            return style
+        }
+        set { defaults?.set(newValue.rawValue, forKey: typingHapticStyleKey) }
+    }
+
+    /// 0 to 1, where 1 is the whole engine.
+    static var typingHapticIntensity: Double {
+        get {
+            guard let stored = defaults?.object(forKey: typingHapticIntensityKey) as? Double,
+                  stored.isFinite
+            else { return 1 }
+            return min(max(stored, 0), 1)
+        }
+        set { defaults?.set(min(max(newValue, 0), 1), forKey: typingHapticIntensityKey) }
     }
 
     static var writingStyle: WritingStyle {
@@ -617,12 +1118,64 @@ enum KeyboardPreferences {
         set { defaults?.set(newValue, forKey: firstDictationKey) }
     }
 
+    /// See ``keyboardLackedFullAccessKey``. `nil` means the keyboard has never
+    /// reported running without Full Access on this install.
+    static var keyboardLackedFullAccessAt: Date? {
+        get { defaults?.object(forKey: keyboardLackedFullAccessKey) as? Date }
+        set { defaults?.set(newValue, forKey: keyboardLackedFullAccessKey) }
+    }
+
     /// A successful keyboard insertion into vocaphone's own practice field.
     /// This powers the stronger onboarding confirmation without changing the
     /// existing first-transcript activation milestone.
+    ///
+    /// The containing app cannot trust App Group `UserDefaults` alone: another
+    /// process's write is often invisible until the suite is reread, and
+    /// `@AppStorage` will not notice it. A marker file in the group container
+    /// plus a Darwin ping is what guided setup actually waits on.
     static var hasCompletedKeyboardPractice: Bool {
-        get { defaults?.bool(forKey: keyboardPracticeKey) ?? false }
-        set { defaults?.set(newValue, forKey: keyboardPracticeKey) }
+        get {
+            if defaults?.bool(forKey: keyboardPracticeKey) == true { return true }
+            return keyboardPracticeProofExists
+        }
+        set {
+            defaults?.set(newValue, forKey: keyboardPracticeKey)
+            writeKeyboardPracticeProof(newValue)
+            if newValue {
+                VocaPhoneDarwinCenter.post(.keyboardPracticeCompleted)
+            }
+        }
+    }
+
+    /// Re-read after a Darwin ping. Forces the suite to notice another
+    /// process's write, then falls back to the marker file.
+    static func refreshKeyboardPracticeProof() -> Bool {
+        defaults?.synchronize()
+        let completed = hasCompletedKeyboardPractice
+        if completed, defaults?.bool(forKey: keyboardPracticeKey) != true {
+            defaults?.set(true, forKey: keyboardPracticeKey)
+        }
+        return completed
+    }
+
+    private static var keyboardPracticeProofURL: URL? {
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: AppConfiguration.appGroupIdentifier)?
+            .appendingPathComponent("hasCompletedKeyboardPractice")
+    }
+
+    private static var keyboardPracticeProofExists: Bool {
+        guard let url = keyboardPracticeProofURL else { return false }
+        return FileManager.default.fileExists(atPath: url.path)
+    }
+
+    private static func writeKeyboardPracticeProof(_ completed: Bool) {
+        guard let url = keyboardPracticeProofURL else { return }
+        if completed {
+            FileManager.default.createFile(atPath: url.path, contents: Data(), attributes: nil)
+        } else {
+            try? FileManager.default.removeItem(at: url)
+        }
     }
 
     /// Existing users already proved a working transcript before the guided

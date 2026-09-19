@@ -61,8 +61,10 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val launchIntent by launchIntents.collectAsStateWithLifecycle()
-            VocaPhoneTheme {
-                VocaPhoneApp(launchIntent = launchIntent)
+            val appViewModel: VocaPhoneViewModel = viewModel()
+            val settings by appViewModel.settings.collectAsStateWithLifecycle()
+            VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled) {
+                VocaPhoneApp(viewModel = appViewModel, launchIntent = launchIntent)
             }
         }
     }
@@ -117,6 +119,7 @@ fun VocaPhoneApp(
     val testing by viewModel.testing.collectAsStateWithLifecycle()
     val microphone by viewModel.microphone.collectAsStateWithLifecycle()
     val localModels by viewModel.localModels.collectAsStateWithLifecycle()
+    val usageStats by viewModel.usageStats.collectAsStateWithLifecycle()
     val tonePreviewListening by viewModel.tonePreviewListening.collectAsStateWithLifecycle()
 
     // The selected keyboard is a system setting, so its state can change while
@@ -405,6 +408,7 @@ fun VocaPhoneApp(
                 onStyle = { viewModel.setStyle(it) },
                 onRepairSpeech = { viewModel.setRepairSpeech(it) },
                 onNumbersAsDigits = { viewModel.setNumbersAsDigits(it) },
+                onSpokenEmoji = { viewModel.setSpokenEmoji(it) },
                 onDictationTone = { viewModel.setDictationTone(it) },
                 onPreviewDictationTone = { viewModel.toggleDictationTonePreview(it) },
                 tonePreviewListening = tonePreviewListening,
@@ -417,6 +421,7 @@ fun VocaPhoneApp(
                 onNumberRow = { viewModel.setNumberRowEnabled(it) },
                 onKeyboardHeight = { viewModel.setKeyboardHeight(it) },
                 onSplitKeyboard = { viewModel.setSplitKeyboard(it) },
+                onDynamicColor = { viewModel.setDynamicColorEnabled(it) },
                 onSuggestions = { viewModel.setSuggestionsEnabled(it) },
                 onCorrections = { viewModel.setCorrectionsEnabled(it) },
                 onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },
@@ -449,6 +454,8 @@ fun VocaPhoneApp(
                 telemetryInspect = viewModel::telemetryInspect,
                 telemetryPendingCount = viewModel::telemetryPendingCount,
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
+                usageStats = usageStats,
+                onResetUsageStats = { viewModel.resetUsageStats() },
                 page = settingsPage,
                 onPageChange = { settingsPage = it },
                 openLanguagePicker = openLanguagePicker,
@@ -472,7 +479,16 @@ fun VocaPhoneApp(
                     },
                 )
             },
-            text = { Text("This removes them from this phone.") },
+            text = {
+                Text(
+                    if (deletingAll) {
+                        "This removes them from this phone. Usage totals are " +
+                            "kept — reset them in Settings → Stats."
+                    } else {
+                        "This removes them from this phone."
+                    },
+                )
+            },
             confirmButton = {
                 DestructiveTextButton(
                     text = if (deletingAll) "Delete all" else "Delete",
