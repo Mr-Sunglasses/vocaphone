@@ -19,9 +19,16 @@ enum LocalTranscriptionPreferences {
         set { defaults?.set(newValue, forKey: enabledKey) }
     }
 
+    /// Setting it also clears `retiredModelReplacement`: every write except the
+    /// migration's is a model the person chose, and "Your voice model was
+    /// updated" would be a false explanation if that model later went missing.
+    /// The migration writes its marker straight after.
     static var modelIdentifier: String? {
         get { defaults?.string(forKey: modelKey) }
-        set { defaults?.set(newValue, forKey: modelKey) }
+        set {
+            defaults?.set(newValue, forKey: modelKey)
+            defaults?.removeObject(forKey: retiredModelReplacementKey)
+        }
     }
 
     static let retiredModelReplacementKey = "localTranscriptionRetiredModelReplacement"

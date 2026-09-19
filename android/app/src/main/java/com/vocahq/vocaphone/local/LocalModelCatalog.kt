@@ -272,8 +272,7 @@ object LocalModelCatalog {
     private const val WHISPER_REVISION = "5359861c739e955e79d9a303bcbc70fb988958b1"
 
     /**
-     * The Q8_0 build of each size, multilingual only, plus a Q5 Large v3 Turbo
-     * for the phones that cannot hold the Q8 one.
+     * The Q8_0 build of each size, multilingual only.
      *
      * whisper.cpp is the fallback engine here, not the recommended one: it is
      * the only engine in the `fdroid` flavor and on x86_64, and the only one a
@@ -299,12 +298,6 @@ object LocalModelCatalog {
             "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9", 2, "100 languages"),
         model("small-q8_0", "Whisper Small", 264_464_607L,
             "49c8fb02b65e6049d5fa6c04f81f53b867b5ec9540406812c643f177317f779f", 3, "100 languages"),
-        // The one Q5 build kept, because it is the only large-class Whisper a
-        // 4 or 5 GB phone can hold. Without it those phones top out at Small,
-        // and in the `fdroid` flavor -- whisper.cpp only -- that is the most
-        // accurate model they can run at all.
-        model("large-v3-turbo-q5_0", "Whisper Large v3 Turbo · compact", 574_041_195L,
-            "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 4, "100 languages"),
         model("large-v3-turbo-q8_0", "Whisper Large v3 Turbo", 874_188_075L,
             "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1", 6, "100 languages"),
     )

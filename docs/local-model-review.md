@@ -88,10 +88,11 @@ defects were found and fixed in the bridges rather than accepted:
 `zipformer-ko` ranks after SenseVoice for Korean — no like-for-like comparison
 exists — and is the smallest Korean download. No phone measurement was made.
 
-The Android Q5 Large v3 Turbo (574 MB, 4 GB) is back in the catalog: without
-it a 4–5 GB phone topped out at Whisper Small, and in the `fdroid` flavour that
-is the most accurate model it could run. Retired Medium and Large rows now step
-down through it before Small.
+A Q5 Large v3 Turbo for 4–5 GB Android phones was considered and left out:
+the catalog is Q8-only until target-device latency, peak-memory and accuracy
+evidence says otherwise (see `AGENTS.md`). Rounding reported RAM up to the
+advertised size already brings 6 GB phones onto the Q8 Turbo; 4–5 GB phones
+still top out at Whisper Small in the `fdroid` flavour.
 
 ## Added: Parakeet TDT-CTC 110M English (VocaHQ int8); removed: Moonshine v2
 

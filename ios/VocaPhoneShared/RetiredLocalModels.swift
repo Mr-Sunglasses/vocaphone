@@ -161,12 +161,13 @@ enum RetiredLocalModels {
         case .unchanged:
             break
         case let .replaced(id):
-            // Remembered so the picker can say why the model changed and offer
-            // the download. Written first: a notice naming a model that is not
-            // yet the selection shows nothing, while the reverse would leave a
-            // changed selection with no explanation.
-            LocalTranscriptionPreferences.retiredModelReplacement = id
+            // The marker goes second because setting the selection clears it.
+            // Interrupted in between, the selection has moved without the
+            // notice, which the before-recording check still covers.
             LocalTranscriptionPreferences.modelIdentifier = id
+            // Remembered so the picker can say why the model changed and offer
+            // the download.
+            LocalTranscriptionPreferences.retiredModelReplacement = id
         case .cleared:
             // The switch goes off first. `UserDefaults` has no transaction, so
             // these two writes can in principle be separated -- and only one

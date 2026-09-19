@@ -80,16 +80,12 @@ class RetiredModelsTest {
     }
 
     /**
-     * "Nearest" has to survive the device. The Q8 Large v3 Turbo needs 6 GB, so
-     * a 4 GB phone on Medium lands on the Q5 Turbo that still fits it -- a
-     * large-class model, not a drop to Small -- and only a phone below that
-     * steps further down the ladder.
+     * "Nearest" has to survive the device. Large v3 Turbo needs 6 GB, so a 4 GB
+     * phone on Medium steps down the surviving ladder instead of off it.
      */
     @Test
     fun `a promotion the phone cannot hold steps down instead`() {
-        assertEquals("large-v3-turbo-q5_0", replacement("medium-q5_0", ram = smallPhone))
-        assertEquals("large-v3-turbo-q5_0", replacement("large-v3", ram = 5))
-        assertEquals("small-q8_0", replacement("medium-q5_0", ram = 3))
+        assertEquals("small-q8_0", replacement("medium-q5_0", ram = smallPhone))
         assertEquals("base-q8_0", replacement("medium-q5_0", ram = 2))
     }
 
@@ -97,12 +93,6 @@ class RetiredModelsTest {
     fun `every moonshine build lands on the small parakeet`() {
         listOf("moonshine-tiny-en", "moonshine-base-en", "moonshine-v2-tiny-en", "moonshine-v2-base-en")
             .forEach { assertEquals(it, "parakeet-tdt-ctc-110m-en", replacement(it, ram = 2)) }
-    }
-
-    @Test
-    fun `the compact turbo is a catalog model, not a retired one`() {
-        assertFalse(RetiredModels.isRetired("large-v3-turbo-q5_0"))
-        assertEquals("large-v3-turbo-q5_0", replacement("large-v3-turbo-q5_0", ram = smallPhone))
     }
 
     @Test

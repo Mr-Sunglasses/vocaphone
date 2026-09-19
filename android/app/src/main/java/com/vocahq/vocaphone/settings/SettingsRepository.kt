@@ -442,7 +442,17 @@ class SettingsRepository(private val context: Context) {
     suspend fun setLocalTranscriptionEnabled(enabled: Boolean) =
         put(Keys.LOCAL_TRANSCRIPTION_ENABLED, enabled)
 
-    suspend fun setLocalModel(modelId: String) = put(Keys.LOCAL_MODEL_ID, modelId)
+    /**
+     * Any selection that is not the retired-model migration's own clears its
+     * marker: from then on the model is one the person chose, and "Your voice
+     * model was updated" would be a false explanation if it went missing.
+     */
+    suspend fun setLocalModel(modelId: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.LOCAL_MODEL_ID] = modelId
+            preferences.remove(Keys.RETIRED_MODEL_REPLACEMENT)
+        }
+    }
 
     /**
      * Move the selection off a retired model and remember that it was the
@@ -470,6 +480,7 @@ class SettingsRepository(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[Keys.LOCAL_MODEL_ID] = ""
             preferences[Keys.LOCAL_TRANSCRIPTION_ENABLED] = false
+            preferences.remove(Keys.RETIRED_MODEL_REPLACEMENT)
         }
     }
 

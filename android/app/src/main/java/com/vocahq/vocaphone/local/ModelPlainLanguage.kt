@@ -52,12 +52,6 @@ data class ModelPlainLanguage(
                 "Works with almost any language. Fewer mistakes than Basic, a little slower.",
                 accuracy = 2, speed = 2,
             ),
-            "large-v3-turbo-q5_0" to ModelPlainLanguage(
-                "Best · most languages (compact)",
-                "The most accurate choice for a language with no model of its own here, " +
-                    "in a build that fits phones with less memory. Slow.",
-                accuracy = 4, speed = 1,
-            ),
             "large-v3-turbo-q8_0" to ModelPlainLanguage(
                 "Best · most languages",
                 "The most accurate choice for a language with no model of its own here. " +
