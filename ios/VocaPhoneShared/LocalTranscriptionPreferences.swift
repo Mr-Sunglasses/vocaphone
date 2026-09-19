@@ -24,6 +24,24 @@ enum LocalTranscriptionPreferences {
         set { defaults?.set(newValue, forKey: modelKey) }
     }
 
+    static let retiredModelReplacementKey = "localTranscriptionRetiredModelReplacement"
+
+    /// The model the retired-model migration moved this iPhone onto, or nil.
+    ///
+    /// The picker offers it back as a one-tap download while it is still the
+    /// selection and not on this iPhone, because the migration can change the
+    /// setting but cannot fetch hundreds of megabytes on its own.
+    static var retiredModelReplacement: String? {
+        get { defaults?.string(forKey: retiredModelReplacementKey) }
+        set { defaults?.set(newValue, forKey: retiredModelReplacementKey) }
+    }
+
+    /// The selection is a replacement the migration chose, not the user.
+    static var selectionIsRetiredModelReplacement: Bool {
+        guard enabled, let id = modelIdentifier else { return false }
+        return id == retiredModelReplacement
+    }
+
     /// How much decoding work the local engines may spend. Read at inference
     /// time rather than passed down, so a change takes effect on the next
     /// dictation without a session needing to carry it.

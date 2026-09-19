@@ -300,11 +300,17 @@ class DictationController(
         if (!configuration.isConfigured && !configuration.localTranscriptionEnabled) {
             add(MissingPermission.GATEWAY_NOT_CONFIGURED)
         }
-        // The only place that checks the stored model still names something
-        // before the microphone opens. Without it a selection the catalog no
-        // longer has -- a retired model whose migration has not run, or was
-        // cancelled part way -- records a full dictation and fails at delivery.
-        if (configuration.localModelMissing) add(MissingPermission.LOCAL_MODEL_UNAVAILABLE)
+        // The only place that checks the stored model can actually run before
+        // the microphone opens. Without it a selection the catalog no longer
+        // has -- or, far more often, the replacement the retired-model
+        // migration moved it to, which is in the catalog but not on this
+        // phone yet -- records a full dictation and fails at delivery.
+        if (configuration.localModelMissing ||
+            (configuration.localTranscriptionEnabled &&
+                !localModels.modelFilesPresent(configuration.localModelId))
+        ) {
+            add(MissingPermission.LOCAL_MODEL_UNAVAILABLE)
+        }
     }
 
     private fun hasPermission(permission: String) =

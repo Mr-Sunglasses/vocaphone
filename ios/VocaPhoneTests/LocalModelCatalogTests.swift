@@ -18,7 +18,7 @@ struct LocalModelCatalogTests {
 
     @Test func sherpaModelsAreAvailableAlongsideWhisperKit() {
         let sherpa = LocalModelCatalog.all.filter { $0.engine == .sherpaOnnx }
-        #expect(sherpa.count == 11)
+        #expect(sherpa.count == 12)
         #expect(sherpa.allSatisfy { $0.repository != nil && $0.revision != nil })
         #expect(sherpa.allSatisfy { $0.sherpaFamily != nil })
     }
@@ -76,16 +76,15 @@ struct LocalModelCatalogTests {
             LocalModelCatalog.recommended(deviceMemoryGB: 4, language: "en").id
                 == "parakeet-tdt-0.6b-v2-en"
         )
+        // The 132 MB Parakeet 110M fits a 2 GB phone as well, so it is the
+        // English answer everywhere the 0.6B does not fit.
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 3, language: "en").id
-                == "moonshine-v2-base-en"
+                == "parakeet-tdt-ctc-110m-en"
         )
-        // Moonshine v2 Base is 141 MB where v1 was 287 MB, so it now fits a
-        // 2 GB phone as well and there is no rung below it worth dropping to.
-        // v2 Tiny stays reachable as the smallest-download pick at 44 MB.
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 2, language: "en").id
-                == "moonshine-v2-base-en"
+                == "parakeet-tdt-ctc-110m-en"
         )
     }
 
@@ -110,11 +109,17 @@ struct LocalModelCatalogTests {
             deviceMemoryGB: 8,
             intent: ModelGuidanceIntent(language: "en", priority: .lighter)
         )
+        // The smallest model built for English, not the smallest that lists
+        // it: Paraformer is smaller, but it is a Mandarin model.
         let smallest = LocalModelCatalog.all
-            .filter { $0.minimumRamGB <= 8 && $0.covers("en") }
+            .filter {
+                $0.minimumRamGB <= 8 && $0.covers("en")
+                    && !LocalModelCatalog.isIncidental($0, for: "en")
+            }
             .min { $0.sizeBytes < $1.sizeBytes }
 
         #expect(lighter.model?.id == smallest?.id)
+        #expect(lighter.model?.id == "parakeet-tdt-ctc-110m-en")
         #expect(lighter.reason.contains("smallest"))
         #expect(balanced.model != nil)
 
@@ -321,12 +326,14 @@ struct LocalModelCatalogTests {
         )
     }
 
-    /// First run offers only the most accurate models. The smallest download
-    /// and a wide model that merely covers English stay in More models.
+    /// First run offers only the most accurate models. A wide model that
+    /// merely covers English stays in More models; the small Parakeet is on the
+    /// English accuracy list, so it takes the third card as the one download
+    /// that is not 660 MB.
     @Test func onboardingOffersOnlyTheMostAccurateModels() {
         let picks = LocalModelCatalog.onboardingRecommendations(deviceMemoryGB: 6, languages: ["en"])
         #expect(picks.map(\.model.id) == [
-            "parakeet-tdt-0.6b-v2-en", "parakeet-tdt-0.6b-v3", "canary-180m-flash",
+            "parakeet-tdt-0.6b-v2-en", "parakeet-tdt-0.6b-v3", "parakeet-tdt-ctc-110m-en",
         ])
         #expect(picks.allSatisfy { LocalModelCatalog.isHighAccuracy($0.model, for: "en") })
     }
@@ -355,7 +362,8 @@ struct LocalModelCatalogTests {
         #expect(maker("parakeet-tdt-0.6b-v2-en") == .nvidia)
         #expect(maker("canary-180m-flash") == .nvidia)
         #expect(maker("openai_whisper-base") == .openAI)
-        #expect(maker("moonshine-v2-base-en") == .usefulSensors)
+        #expect(maker("parakeet-tdt-ctc-110m-en") == .nvidia)
+        #expect(maker("zipformer-vi") == .nextGenKaldi)
         #expect(maker("sense-voice") == .alibaba)
         #expect(maker("paraformer-zh-small") == .alibaba)
         #expect(maker("dolphin-small-ctc") == .dataocean)

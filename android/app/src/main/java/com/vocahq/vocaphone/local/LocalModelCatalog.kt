@@ -66,7 +66,36 @@ enum class SherpaFamily(
      */
     MOONSHINE_V2,
     OMNILINGUAL_CTC,
+
+    /**
+     * An icefall Zipformer transducer. The same three graphs as NeMo's
+     * transducer, but with an empty model type so sherpa-onnx reads the
+     * Zipformer metadata instead of being told it is NeMo. Its transcript is
+     * rebuilt from the tokens and may need lower-casing; see [joinsTokens] and
+     * [transcribesInCapitals].
+     */
+    ZIPFORMER_TRANSDUCER,
     ;
+
+    /**
+     * Whether the transcript has to be rebuilt from the decoded tokens.
+     *
+     * sherpa-onnx drops the word-boundary spaces when it joins tokens in a
+     * non-Latin script, so the Korean Zipformer answers
+     * "지하철에서다리를벌리고앉지마라." although every token it emitted carries its
+     * own leading space. Concatenating the tokens is the text the model made.
+     */
+    val joinsTokens: Boolean get() = this == ZIPFORMER_TRANSDUCER
+
+    /**
+     * Whether this family was trained on upper-cased transcripts.
+     *
+     * The icefall recipes normalise their training text to capitals, so the
+     * Vietnamese Zipformer answers "ÂM LƯỢNG TIVI GIẢM". The styler cannot undo
+     * that alone: it keeps two-to-four letter capitals as acronyms, and most
+     * Vietnamese syllables are exactly that long.
+     */
+    val transcribesInCapitals: Boolean get() = this == ZIPFORMER_TRANSDUCER
 
     /**
      * Whether the accuracy setting changes the recognizer this family builds.
@@ -93,6 +122,21 @@ enum class SherpaFamily(
 
     companion object {
         const val GREEDY_SEARCH = "greedy_search"
+
+        /** [tokens] as the model spelled them, without the first word's leading space. */
+        fun joinTokens(tokens: Array<String>): String =
+            tokens.joinToString("").trim(' ')
+
+        /**
+         * [text] in lower case when it has no lower-case letter at all, which is
+         * what a capitals-trained model looks like; anything mixed is left alone.
+         * Scripts without case -- the Korean Zipformer's -- pass through.
+         */
+        fun lowercasingCapitals(text: String): String {
+            val letters = text.filter(Char::isLetter)
+            val shouted = letters.any(Char::isUpperCase) && letters.none(Char::isLowerCase)
+            return if (shouted) text.lowercase() else text
+        }
     }
 }
 
@@ -228,7 +272,8 @@ object LocalModelCatalog {
     private const val WHISPER_REVISION = "5359861c739e955e79d9a303bcbc70fb988958b1"
 
     /**
-     * The Q8_0 build of each size, multilingual only.
+     * The Q8_0 build of each size, multilingual only, plus a Q5 Large v3 Turbo
+     * for the phones that cannot hold the Q8 one.
      *
      * whisper.cpp is the fallback engine here, not the recommended one: it is
      * the only engine in the `fdroid` flavor and on x86_64, and the only one a
@@ -243,8 +288,8 @@ object LocalModelCatalog {
      *
      * **No F16 builds.** Roughly twice the weight storage of Q8_0.
      *
-     * **No `.en` builds.** English-only whisper is dominated by Moonshine and
-     * Parakeet at a fraction of the size, so the only thing whisper is kept
+     * **No `.en` builds.** English-only whisper is dominated by the Parakeet
+     * builds, the 110M one at a fraction of the size, so the only thing whisper is kept
      * for here is the language coverage the `.en` builds do not have.
      */
     private val whisper: List<LocalModelDescriptor> = listOf(
@@ -254,6 +299,12 @@ object LocalModelCatalog {
             "c577b9a86e7e048a0b7eada054f4dd79a56bbfa911fbdacf900ac5b567cbb7d9", 2, "100 languages"),
         model("small-q8_0", "Whisper Small", 264_464_607L,
             "49c8fb02b65e6049d5fa6c04f81f53b867b5ec9540406812c643f177317f779f", 3, "100 languages"),
+        // The one Q5 build kept, because it is the only large-class Whisper a
+        // 4 or 5 GB phone can hold. Without it those phones top out at Small,
+        // and in the `fdroid` flavor -- whisper.cpp only -- that is the most
+        // accurate model they can run at all.
+        model("large-v3-turbo-q5_0", "Whisper Large v3 Turbo · compact", 574_041_195L,
+            "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2", 4, "100 languages"),
         model("large-v3-turbo-q8_0", "Whisper Large v3 Turbo", 874_188_075L,
             "317eb69c11673c9de1e1f0d459b253999804ec71ac4c23c17ecf5fbe24e259a1", 6, "100 languages"),
     )
@@ -473,8 +524,8 @@ object LocalModelCatalog {
      * The first-run pick for [language], or null when the catalog has no
      * specialist and scoring should choose a small Whisper instead.
      *
-     * Moonshine has no multilingual build, so English gets the tiny English
-     * checkpoint and other languages get a compact specialist, not Parakeet.
+     * English gets the 132 MB Parakeet 110M rather than the 661 MB 0.6B, and
+     * other languages get a compact specialist.
      *
      * This is the first transcription most people ever see, so "compact" is a
      * tie-breaker here and never the whole argument. Two entries used to be
@@ -493,7 +544,7 @@ object LocalModelCatalog {
      */
     internal fun starterForLanguage(language: String): LocalModelDescriptor? {
         val id = when (language.lowercase(Locale.ROOT)) {
-            "en" -> "moonshine-v2-tiny-en"
+            "en" -> "parakeet-tdt-ctc-110m-en"
             "de", "es", "fr" -> "canary-180m-flash"
             // SenseVoice rather than Paraformer for Cantonese: Paraformer is
             // Mandarin and English only, and now that Cantonese is a row in the
@@ -501,6 +552,9 @@ object LocalModelCatalog {
             // than having offered nothing.
             "zh", "yue", "ja", "ko" -> "sense-voice"
             "ru" -> "giga-am-v3-ru"
+            // A Vietnamese specialist trained on 70,000 hours beats Dolphin's
+            // forty-language model on its one language, in a third of the size.
+            "vi" -> "zipformer-vi"
             in DOLPHIN_STARTER_LANGUAGES -> "dolphin-small-ctc"
             else -> null
         }
@@ -524,15 +578,13 @@ data class ModelPick(val role: ModelPickRole, val model: LocalModelDescriptor)
 /**
  * English models best first. Parakeet leads wherever the budget allows it.
  *
- * Both Moonshine builds stay ahead of Canary here even though Canary is smaller
- * and scores better on the Open ASR English suite, because this list decides
- * what a keyboard reaches for and Moonshine decodes the same audio 2.4-2.5x
- * faster on arm64. See the note on `moonshine-v2-base-en` in `SherpaModelCatalog`.
+ * The 110M Parakeet is the small English model: a fifth of the 0.6B's download,
+ * about three times as fast on the same CPU, at 3.00 against 1.75 WER on
+ * LibriSpeech test-clean. See the note on it in `SherpaModelCatalog`.
  */
 private val ENGLISH_PREFERENCE = listOf(
     "parakeet-tdt-0.6b-v2-en",
-    "moonshine-v2-base-en",
-    "moonshine-v2-tiny-en",
+    "parakeet-tdt-ctc-110m-en",
 )
 
 /** Multilingual models by breadth of coverage, widest first. */

@@ -33,56 +33,30 @@ internal object SherpaModelCatalog {
             ),
         ),
         sherpa(
-            id = "moonshine-v2-tiny-en",
+            id = "parakeet-tdt-ctc-110m-en",
             languageCodes = setOf("en"),
-            displayName = "Moonshine v2 Tiny English",
-            // v2 replaces v1 on every axis at once: 44 MB against 124 MB,
-            // 12.01 average WER against 12.66, and faster. Measured on arm64 at
-            // two threads, median of five, same audio -- v1 then v2:
-            //   2.0s  23.2 -> 20.9 ms   4.0s  48.3 -> 44.1   6.6s  86.9 -> 79.2
-            repository = "csukuangfj2/sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27",
-            revision = "d1e6c30921780b8508d04b492dfb3ce8a51605d4",
-            family = SherpaFamily.MOONSHINE_V2,
-            sizeBytes = 44_243_206L,
+            displayName = "Parakeet TDT-CTC 110M English",
+            // The small English model, in place of both Moonshine v2 builds.
+            // Upstream publishes this one only as a 458 MB FP32 graph, so the
+            // int8 build is VocaHQ's own: dynamic weight quantization of the
+            // pinned sherpa-onnx export, reproducible from `quantize.py` in the
+            // repository. LibriSpeech, sherpa-onnx 1.13.8, greedy CTC:
+            //   test-clean  3.00 WER (FP32 2.93)   test-other  6.20
+            // against Moonshine v2 Base's 3.68 / 9.16 on the clips it could
+            // decode at all -- Moonshine v2 returns nothing for any window of
+            // 9.4 s or more. Cased and punctuated by the model itself.
+            repository = "VocaHQ/sherpa-onnx-nemo-parakeet-tdt-ctc-110m-en-int8",
+            revision = "548291ccad79f80d9fb75b2de04cc8f6e4f45342",
+            family = SherpaFamily.NEMO_CTC,
+            sizeBytes = 131_662_124L,
             minimumRamGB = 2,
             languages = "English",
             englishOnly = true,
             files = listOf(
-                PinnedFile("decoder_model_merged.ort", 30_412_256L,
-                    "cf524c4862d36e9e5ab032eddc73637efd822d70e868ac575cf1a46e1e4708a0"),
-                PinnedFile("encoder_model.ort", 13_281_600L,
-                    "94e90a4654fc45cdfedb77c4c08e1739f48862998e58fada384b25118134f221"),
-                PinnedFile("tokens.txt", 549_350L,
-                    "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049"),
-            ),
-        ),
-        sherpa(
-            id = "moonshine-v2-base-en",
-            languageCodes = setOf("en"),
-            displayName = "Moonshine v2 Base English",
-            // The largest single gain in the catalog. v2 is half the size of
-            // v1 (141 MB against 287 MB), 2.2 WER points better (7.84 against
-            // 10.07), and faster. Measured on arm64 at two threads, median of
-            // five, same audio -- v1 then v2:
-            //   2.0s  43.7 -> 34.8 ms   4.0s  91.8 -> 74.4   6.6s 157.4 -> 129.7
-            //
-            // For context, Canary 180M scores 7.12 on the same suite but takes
-            // 122/236/399 ms for those clips: three times the latency for
-            // 0.7 WER points, which is the wrong trade for a keyboard.
-            repository = "csukuangfj2/sherpa-onnx-moonshine-base-en-quantized-2026-02-27",
-            revision = "8f4d6c58c03d40bcea40043bb7120a878f2bbef6",
-            family = SherpaFamily.MOONSHINE_V2,
-            sizeBytes = 141_300_566L,
-            minimumRamGB = 2,
-            languages = "English",
-            englishOnly = true,
-            files = listOf(
-                PinnedFile("decoder_model_merged.ort", 109_424_400L,
-                    "d9d7b333af34bc552580576ddcf248a1c6c839e0d3b43b09afb9376ed009899d"),
-                PinnedFile("encoder_model.ort", 31_326_816L,
-                    "7c66495948d0d08ec1af454cd4b5514862ae6511e94712a60e6d83eaec8dc8cf"),
-                PinnedFile("tokens.txt", 549_350L,
-                    "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049"),
+                PinnedFile("model.int8.onnx", 131_652_171L,
+                    "9177a9146cf32ee0cc8152276ef95116f312018d316be37ccf57f7efea81fc1a"),
+                PinnedFile("tokens.txt", 9_953L,
+                    "450e56bd2f036fe5b6aa821865838cc5aa9d8b0106134ce9a9ba0664abe6cd10"),
             ),
         ),
         sherpa(
@@ -275,6 +249,55 @@ internal object SherpaModelCatalog {
                     "3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec"),
                 PinnedFile("tokens.txt", 75_352L,
                     "4b2d964e18b9cf139b473003b6698fb2ed9a2a5ec55b93daa677b28f578897aa"),
+            ),
+        ),
+        sherpa(
+            id = "zipformer-ko",
+            languageCodes = setOf("ko"),
+            displayName = "Zipformer Korean",
+            // icefall's KsponSpeech recipe: 10.6 CER on eval_clean with greedy
+            // search, in 76 MB. The smallest Korean download by a factor of
+            // three, and a specialist rather than SenseVoice's fifth language.
+            repository = "k2-fsa/sherpa-onnx-zipformer-korean-2024-06-24",
+            revision = "0fb4b2b5c8d3e5766121481ba911961e3649c664",
+            family = SherpaFamily.ZIPFORMER_TRANSDUCER,
+            sizeBytes = 76_271_087L,
+            minimumRamGB = 2,
+            languages = "Korean",
+            files = listOf(
+                PinnedFile("encoder-epoch-99-avg-1.int8.onnx", 70_784_728L,
+                    "8b196d723421a0513c98ec25da2c43420c029e817f5e4a90b29ff80291c0af2b"),
+                PinnedFile("decoder-epoch-99-avg-1.int8.onnx", 2_844_692L,
+                    "2cc8c04ea080a657c18ebc59702e6b049cef08163eba5d68ac5bf707925cb0fb"),
+                PinnedFile("joiner-epoch-99-avg-1.int8.onnx", 2_581_421L,
+                    "eb654db1ea2cc9d63474855f65958b6059084692a9f2eb4f3812aceb1e416a20"),
+                PinnedFile("tokens.txt", 60_246L,
+                    "016bdf0965029263b7ad01b742366ee542ef0bef38261510e8176ff6f2e9e668"),
+            ),
+        ),
+        sherpa(
+            id = "zipformer-vi",
+            languageCodes = setOf("vi"),
+            displayName = "Zipformer Vietnamese",
+            // VietASR's 68M Zipformer, trained on about 70,000 hours of
+            // Vietnamese. Published comparisons put it level with PhoWhisper
+            // Large -- a 1.5B Whisper fine-tuned for Vietnamese -- and ahead of
+            // it on four of five VLSP sets, in 77 MB.
+            repository = "csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20",
+            revision = "b2745a435379992ad3f299635468db0c34918e1e",
+            family = SherpaFamily.ZIPFORMER_TRANSDUCER,
+            sizeBytes = 77_100_477L,
+            minimumRamGB = 2,
+            languages = "Vietnamese",
+            files = listOf(
+                PinnedFile("encoder-epoch-12-avg-8.int8.onnx", 70_876_129L,
+                    "b3abdef7a660fea7faf5e076b3c7613b0fc98406707103784d018189bb522124"),
+                PinnedFile("decoder-epoch-12-avg-8.onnx", 5_165_084L,
+                    "d1d27cca84c824a8acf5ce6edf0f2c0880cfe295d2e69b95134de1707e1d9998"),
+                PinnedFile("joiner-epoch-12-avg-8.int8.onnx", 1_033_417L,
+                    "38ec49e1c18e4feb0cad4de13e25c83a866cf56f4a66f22e8ff579d591a69a46"),
+                PinnedFile("tokens.txt", 25_847L,
+                    "f536d03c2e95ebd2930cf0abec88e823bd17d3c1933da7ae6a82db3b80605e15"),
             ),
         ),
     )

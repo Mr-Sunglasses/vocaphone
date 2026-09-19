@@ -118,7 +118,7 @@ class LocalModelManager(
     private val totalRamGB: Long by lazy {
         val info = ActivityManager.MemoryInfo()
         appContext.getSystemService(ActivityManager::class.java)?.getMemoryInfo(info)
-        info.totalMem / (1024L * 1024L * 1024L)
+        DeviceMemory.advertisedGB(info.totalMem)
     }
     private var whisperContext: WhisperContext? = null
     private var sherpaRecognizer: SherpaRecognizer? = null
@@ -245,6 +245,24 @@ class LocalModelManager(
     fun totalRamGB(): Long = totalRamGB
 
     fun isDownloaded(id: String): Boolean = id in _state.value.downloaded
+
+    /**
+     * Whether every pinned file of [id] is on disk at its pinned size.
+     *
+     * A stat pass, not verification, and deliberately so: it answers "can this
+     * dictation possibly succeed" at the moment one starts, which may be before
+     * the launch [refresh] has filled [LocalModelState.downloaded] in. A model
+     * that is present but later fails its digest check is still caught at
+     * load time; what this rules out is recording a whole dictation for a
+     * model that is not there at all.
+     */
+    fun modelFilesPresent(id: String): Boolean {
+        if (id in _state.value.downloaded) return true
+        val model = LocalModelCatalog.find(id) ?: return false
+        return runCatching {
+            LocalModelIntegrity.verifySizes(model, directoryFor(model), requireMarker = false)
+        }.isSuccess
+    }
 
     fun directoryFor(model: LocalModelDescriptor): File = File(modelRoot, model.id)
 

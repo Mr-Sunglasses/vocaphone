@@ -65,18 +65,28 @@ class ModelCatalogQueryTest {
 
     @Test
     fun recommendationWhyNamesTheFitWithoutHardware() {
-        val moonshine = LocalModelCatalog.find("moonshine-v2-tiny-en")!!
-        val why = moonshine.recommendationWhy()
-        assertTrue(why.contains("small English"))
+        val english = LocalModelCatalog.find("parakeet-tdt-ctc-110m-en")!!
+        val why = english.recommendationWhy()
+        assertTrue(why.contains("English"))
         assertTrue(!why.contains("RAM"))
         assertTrue(!why.contains("GHz"))
         assertTrue(!why.contains("cores"))
         assertTrue(!why.contains("—"))
         val canary = LocalModelCatalog.find("canary-180m-flash")!!
-        assertTrue(canary.recommendationWhy().contains("language"))
+        assertTrue(canary.recommendationWhy().contains("languages"))
         val whisper = LocalModelCatalog.find("tiny-q8_0")!!
-        assertTrue(whisper.recommendationWhy().contains("Whisper"))
+        assertTrue(whisper.recommendationWhy().contains("language"))
         assertTrue(!whisper.recommendationWhy().contains("SHA-256"))
+    }
+
+    @Test
+    fun singleLanguageModelsAreNeverCalledMultilingual() {
+        // Read off the sherpa family, both of these used to be "the fastest
+        // multilingual model that fits this phone".
+        listOf("giga-am-v3-ru", "parakeet-tdt-0.6b-v2-en").forEach { id ->
+            val why = LocalModelCatalog.find(id)!!.recommendationWhy()
+            assertTrue("$id: $why", !why.contains("multilingual", ignoreCase = true))
+        }
     }
 
     @Test

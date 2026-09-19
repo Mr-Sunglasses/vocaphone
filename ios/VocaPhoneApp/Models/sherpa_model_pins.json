@@ -16,48 +16,6 @@
         }
       ]
     },
-    "moonshine-v2-tiny-en": {
-      "repository": "csukuangfj2/sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27",
-      "revision": "d1e6c30921780b8508d04b492dfb3ce8a51605d4",
-      "files": [
-        {
-          "path": "decoder_model_merged.ort",
-          "size": 30412256,
-          "sha256": "cf524c4862d36e9e5ab032eddc73637efd822d70e868ac575cf1a46e1e4708a0"
-        },
-        {
-          "path": "encoder_model.ort",
-          "size": 13281600,
-          "sha256": "94e90a4654fc45cdfedb77c4c08e1739f48862998e58fada384b25118134f221"
-        },
-        {
-          "path": "tokens.txt",
-          "size": 549350,
-          "sha256": "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049"
-        }
-      ]
-    },
-    "moonshine-v2-base-en": {
-      "repository": "csukuangfj2/sherpa-onnx-moonshine-base-en-quantized-2026-02-27",
-      "revision": "8f4d6c58c03d40bcea40043bb7120a878f2bbef6",
-      "files": [
-        {
-          "path": "decoder_model_merged.ort",
-          "size": 109424400,
-          "sha256": "d9d7b333af34bc552580576ddcf248a1c6c839e0d3b43b09afb9376ed009899d"
-        },
-        {
-          "path": "encoder_model.ort",
-          "size": 31326816,
-          "sha256": "7c66495948d0d08ec1af454cd4b5514862ae6511e94712a60e6d83eaec8dc8cf"
-        },
-        {
-          "path": "tokens.txt",
-          "size": 549350,
-          "sha256": "2870d843e14c1e187bf1913a521562a63b53933814bd7f2145120468f494a049"
-        }
-      ]
-    },
     "parakeet-tdt-0.6b-v2-en": {
       "repository": "csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
       "revision": "1ab9323565ddb038682214b292f588070a538ce2",
@@ -218,6 +176,74 @@
           "path": "tokens.txt",
           "size": 75352,
           "sha256": "4b2d964e18b9cf139b473003b6698fb2ed9a2a5ec55b93daa677b28f578897aa"
+        }
+      ]
+    },
+    "zipformer-ko": {
+      "repository": "k2-fsa/sherpa-onnx-zipformer-korean-2024-06-24",
+      "revision": "0fb4b2b5c8d3e5766121481ba911961e3649c664",
+      "files": [
+        {
+          "path": "encoder-epoch-99-avg-1.int8.onnx",
+          "size": 70784728,
+          "sha256": "8b196d723421a0513c98ec25da2c43420c029e817f5e4a90b29ff80291c0af2b"
+        },
+        {
+          "path": "decoder-epoch-99-avg-1.int8.onnx",
+          "size": 2844692,
+          "sha256": "2cc8c04ea080a657c18ebc59702e6b049cef08163eba5d68ac5bf707925cb0fb"
+        },
+        {
+          "path": "joiner-epoch-99-avg-1.int8.onnx",
+          "size": 2581421,
+          "sha256": "eb654db1ea2cc9d63474855f65958b6059084692a9f2eb4f3812aceb1e416a20"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 60246,
+          "sha256": "016bdf0965029263b7ad01b742366ee542ef0bef38261510e8176ff6f2e9e668"
+        }
+      ]
+    },
+    "zipformer-vi": {
+      "repository": "csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20",
+      "revision": "b2745a435379992ad3f299635468db0c34918e1e",
+      "files": [
+        {
+          "path": "encoder-epoch-12-avg-8.int8.onnx",
+          "size": 70876129,
+          "sha256": "b3abdef7a660fea7faf5e076b3c7613b0fc98406707103784d018189bb522124"
+        },
+        {
+          "path": "decoder-epoch-12-avg-8.onnx",
+          "size": 5165084,
+          "sha256": "d1d27cca84c824a8acf5ce6edf0f2c0880cfe295d2e69b95134de1707e1d9998"
+        },
+        {
+          "path": "joiner-epoch-12-avg-8.int8.onnx",
+          "size": 1033417,
+          "sha256": "38ec49e1c18e4feb0cad4de13e25c83a866cf56f4a66f22e8ff579d591a69a46"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 25847,
+          "sha256": "f536d03c2e95ebd2930cf0abec88e823bd17d3c1933da7ae6a82db3b80605e15"
+        }
+      ]
+    },
+    "parakeet-tdt-ctc-110m-en": {
+      "repository": "VocaHQ/sherpa-onnx-nemo-parakeet-tdt-ctc-110m-en-int8",
+      "revision": "548291ccad79f80d9fb75b2de04cc8f6e4f45342",
+      "files": [
+        {
+          "path": "model.int8.onnx",
+          "size": 131652171,
+          "sha256": "9177a9146cf32ee0cc8152276ef95116f312018d316be37ccf57f7efea81fc1a"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 9953,
+          "sha256": "450e56bd2f036fe5b6aa821865838cc5aa9d8b0106134ce9a9ba0664abe6cd10"
         }
       ]
     }

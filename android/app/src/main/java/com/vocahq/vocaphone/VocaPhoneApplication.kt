@@ -177,7 +177,7 @@ class AppContainer(context: Context) {
             )
         ) {
             is RetiredModels.Outcome.Unchanged -> Unit
-            is RetiredModels.Outcome.Replaced -> settings.setLocalModel(outcome.id)
+            is RetiredModels.Outcome.Replaced -> settings.replaceRetiredLocalModel(outcome.id)
             // Nothing that replaces the retired model fits this phone. Clearing
             // the selection alone would leave on-device transcription switched
             // on with nothing behind it, and every dictation would record and

@@ -2,6 +2,8 @@ package com.vocahq.vocaphone.ui
 
 import android.os.SystemClock
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -37,6 +39,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,7 +59,9 @@ import com.vocahq.vocaphone.local.ModelGuidanceIntent
 import com.vocahq.vocaphone.local.ModelGuidancePriority
 import com.vocahq.vocaphone.local.ModelGuidanceResult
 import com.vocahq.vocaphone.local.ModelPick
+import com.vocahq.vocaphone.local.ModelPlainLanguage
 import com.vocahq.vocaphone.local.byteLabel
+import com.vocahq.vocaphone.local.plain
 import com.vocahq.vocaphone.local.downloadSizeProgress
 import com.vocahq.vocaphone.local.downloadTimeRemaining
 import com.vocahq.vocaphone.local.downloadWarning
@@ -84,6 +90,8 @@ fun LocalModelPicker(
     compact: Boolean = false,
     guidanceLanguage: String = "",
     onGuidanceLanguage: (String) -> Unit = {},
+    /** The selection is one the retired-model migration made; see [RetiredModelNotice]. */
+    selectionFromRetiredModel: Boolean = false,
 ) {
     val usable = remember(state.totalRamGB) {
         LocalModelCatalog.usableOnDevice(state.totalRamGB).sortedBy { it.sizeBytes }
@@ -226,9 +234,20 @@ fun LocalModelPicker(
         }
     }
 
+    if (
+        selectionFromRetiredModel && selectedModel != null &&
+        selectedModel.id !in state.downloaded && state.downloading != selectedModel.id
+    ) {
+        RetiredModelNotice(
+            replacement = selectedModel,
+            busy = busy,
+            onDownload = { onDownloadAndUse(selectedModel) },
+        )
+    }
+
     if (!compact && selectedModel != null) {
         Text(
-            "In use · ${selectedModel.displayName} · ${selectedModel.sizeLabel}",
+            "In use · ${selectedModel.plain.title} · ${selectedModel.sizeLabel}",
             style = MaterialTheme.typography.bodyMedium,
         )
     }
@@ -550,7 +569,15 @@ private fun RecommendedModelCard(
             if (compact) "Recommended for you" else "Recommended for this phone",
             style = MaterialTheme.typography.titleSmall,
         )
-        Text(model.displayName, style = MaterialTheme.typography.titleMedium)
+        // What it is for first, in plain words; the upstream name is the small
+        // print for anyone who wants to look it up.
+        Text(model.plain.title, style = MaterialTheme.typography.titleMedium)
+        Text(
+            model.displayName,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ModelRatings(model.plain)
         Text(
             if (compact) (guidanceDetail ?: model.setupMeta()) else model.catalogMeta(),
             style = MaterialTheme.typography.bodySmall,
@@ -1072,9 +1099,16 @@ private fun ModelTile(
                 )
             }
             Text(
-                model.displayName,
+                model.plain.title,
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                model.displayName,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
@@ -1127,7 +1161,14 @@ private fun ModelDetailSheet(
                 .padding(bottom = 28.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(model.displayName, style = MaterialTheme.typography.titleLarge)
+            Text(model.plain.title, style = MaterialTheme.typography.titleLarge)
+            Text(
+                model.displayName,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(model.plain.summary, style = MaterialTheme.typography.bodyMedium)
+            ModelRatings(model.plain)
             if (recommended) {
                 Text(
                     "Recommended for this phone",
@@ -1275,6 +1316,83 @@ private fun ModelActions(
                     Text("Delete downloaded model")
                 }
             }
+        }
+    }
+}
+
+/**
+ * The other half of the retired-model migration.
+ *
+ * Launch can move a stored selection onto its nearest surviving model but
+ * cannot download it -- that is hundreds of megabytes the person has not agreed
+ * to -- so until they do, dictation stops before recording with "Voice model
+ * needed" and the keyboard opens this page. This card is what that page owes
+ * them: why the model changed, what it will cost, and the one button that
+ * fixes it.
+ */
+@Composable
+private fun RetiredModelNotice(
+    replacement: LocalModelDescriptor,
+    busy: Boolean,
+    onDownload: () -> Unit,
+) {
+    Notice(tone = NoticeTone.Warning) {
+        Text("Your voice model was updated", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "The model you were using is no longer offered. Its closest replacement is " +
+                "“${replacement.plain.title}”: ${replacement.plain.summary} " +
+                "Download it to keep dictating on this phone.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        PrimaryButton(
+            text = "Download ${replacement.sizeLabel}",
+            onClick = onDownload,
+            enabled = !busy,
+        )
+    }
+}
+
+/**
+ * Accuracy and speed as four dots each: two answers a person can compare at a
+ * glance without knowing what a word error rate is. See [ModelPlainLanguage]
+ * for where the numbers come from.
+ */
+@Composable
+internal fun ModelRatings(plain: ModelPlainLanguage) {
+    Row(
+        modifier = Modifier.clearAndSetSemantics {
+            contentDescription = plain.accessibilityRatings
+        },
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RatingDots("Accuracy", plain.accuracy)
+        RatingDots("Speed", plain.speed)
+    }
+}
+
+@Composable
+private fun RatingDots(label: String, value: Int) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = colors.onSurfaceVariant,
+            modifier = Modifier.padding(end = 2.dp),
+        )
+        repeat(ModelPlainLanguage.MAXIMUM_RATING) { index ->
+            androidx.compose.foundation.layout.Box(
+                Modifier
+                    .size(6.dp)
+                    .background(
+                        if (index < value) colors.primary else colors.outlineVariant,
+                        CircleShape,
+                    ),
+            )
         }
     }
 }

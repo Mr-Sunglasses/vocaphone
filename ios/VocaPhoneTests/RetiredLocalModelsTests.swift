@@ -22,6 +22,15 @@ struct RetiredLocalModelsTests {
         }
     }
 
+    @Test func everyMoonshineBuildLandsOnTheSmallParakeet() {
+        for id in ["moonshine-tiny-en", "moonshine-base-en", "moonshine-v2-tiny-en", "moonshine-v2-base-en"] {
+            #expect(
+                RetiredLocalModels.replacement(for: id, deviceMemoryGB: 2) == "parakeet-tdt-ctc-110m-en",
+                "\(id)"
+            )
+        }
+    }
+
     @Test func aModelStillInTheCatalogIsLeftAlone() {
         #expect(!RetiredLocalModels.isRetired("openai_whisper-base"))
         #expect(

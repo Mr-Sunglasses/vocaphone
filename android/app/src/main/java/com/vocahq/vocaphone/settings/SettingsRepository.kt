@@ -230,6 +230,13 @@ data class VocaPhoneSettings(
     /** First-run default is this phone. Gateway is opt-in from setup or settings. */
     val localTranscriptionEnabled: Boolean = true,
     val localModelId: String = "",
+    /**
+     * The model the retired-model migration moved this phone onto, or empty.
+     * The picker offers it back as a one-tap download while it is still the
+     * selection and not on the phone, because the migration changes the
+     * setting but cannot fetch hundreds of megabytes on its own.
+     */
+    val retiredModelReplacement: String = "",
     /** Governs the on-device engines only; the gateway decides for itself. */
     val transcriptionQuality: TranscriptionQuality = TranscriptionQuality.DEFAULT,
     /**
@@ -340,6 +347,15 @@ data class VocaPhoneSettings(
      * opens, a full dictation is recorded, and delivery fails at the end on a
      * model that was never going to load.
      */
+    /**
+     * The selection is a replacement the retired-model migration chose, and it
+     * still has to be downloaded. Read together with the download state, which
+     * this settings object does not know.
+     */
+    val selectionIsRetiredModelReplacement: Boolean
+        get() = localTranscriptionEnabled && localModelId.isNotEmpty() &&
+            localModelId == retiredModelReplacement
+
     val localModelMissing: Boolean
         get() = localTranscriptionEnabled && LocalModelCatalog.find(localModelId) == null
 
@@ -427,6 +443,18 @@ class SettingsRepository(private val context: Context) {
         put(Keys.LOCAL_TRANSCRIPTION_ENABLED, enabled)
 
     suspend fun setLocalModel(modelId: String) = put(Keys.LOCAL_MODEL_ID, modelId)
+
+    /**
+     * Move the selection off a retired model and remember that it was the
+     * migration, not the user, that chose [replacementId]. One transaction, so
+     * the notice can never name a model that is not the selection.
+     */
+    suspend fun replaceRetiredLocalModel(replacementId: String) {
+        context.dataStore.edit { preferences ->
+            preferences[Keys.LOCAL_MODEL_ID] = replacementId
+            preferences[Keys.RETIRED_MODEL_REPLACEMENT] = replacementId
+        }
+    }
 
     /**
      * Forget the on-device selection and switch the route off with it, in one
@@ -659,6 +687,7 @@ class SettingsRepository(private val context: Context) {
         modelDetectsLanguage = this[Keys.MODEL_DETECTS_LANGUAGE] ?: false,
         localTranscriptionEnabled = this[Keys.LOCAL_TRANSCRIPTION_ENABLED] ?: true,
         localModelId = this[Keys.LOCAL_MODEL_ID].orEmpty(),
+        retiredModelReplacement = this[Keys.RETIRED_MODEL_REPLACEMENT].orEmpty(),
         transcriptionQuality = TranscriptionQuality.fromStored(this[Keys.TRANSCRIPTION_QUALITY]),
         customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),
         syncWhisperDictionary = this[Keys.SYNC_WHISPER_DICTIONARY] ?: true,
@@ -707,6 +736,7 @@ class SettingsRepository(private val context: Context) {
         val MODEL_DETECTS_LANGUAGE = booleanPreferencesKey("model_detects_language")
         val LOCAL_TRANSCRIPTION_ENABLED = booleanPreferencesKey("local_transcription_enabled")
         val LOCAL_MODEL_ID = stringPreferencesKey("local_model_id")
+        val RETIRED_MODEL_REPLACEMENT = stringPreferencesKey("retired_model_replacement")
         val TRANSCRIPTION_QUALITY = stringPreferencesKey("transcription_quality")
         val CUSTOM_VOCABULARY = stringPreferencesKey("custom_vocabulary")
         val SYNC_WHISPER_DICTIONARY = booleanPreferencesKey("sync_whisper_dictionary")

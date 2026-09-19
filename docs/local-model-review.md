@@ -61,19 +61,108 @@ Sources: [Meta model card](https://huggingface.co/facebook/omniASR-CTC-300M),
 [Sherpa export and reference output](https://k2-fsa.github.io/sherpa/onnx/omnilingual-asr/models.html),
 [upstream language inventory](https://github.com/facebookresearch/omnilingual-asr/blob/main/src/omnilingual_asr/models/wav2vec2_llama/lang_ids.py).
 
+## Added: Zipformer Korean and Vietnamese
+
+Two small icefall Zipformer transducers, as a new `zipformerTransducer` family
+in both bridges (three graphs like NeMo's, but with an empty `model_type` so
+sherpa-onnx reads the Zipformer metadata):
+
+| Model | Download | Evidence | Licence |
+| --- | --- | --- | --- |
+| `zipformer-ko` — `k2-fsa/sherpa-onnx-zipformer-korean-2024-06-24`, all-int8 | 76 MB | KsponSpeech eval_clean CER 10.6 (greedy), upstream card | Apache-2.0 (weights) |
+| `zipformer-vi` — `csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20` (VietASR 68M, ~70k h) | 77 MB | Level with PhoWhisper-Large (1.5B) and ahead on four of five VLSP sets, per the comparison table on `hynt/Zipformer-30M-RNNT-6000h` | Apache-2.0 |
+
+Both were decoded with the pinned sherpa-onnx 1.13.8 (Python wheel, macOS
+arm64) on their own `test_wavs`, against the exact pinned files. Two output
+defects were found and fixed in the bridges rather than accepted:
+
+- **Korean loses every word space.** sherpa-onnx's `text` joins tokens without
+  the leading spaces they carry in non-Latin scripts ("지하철에서다리를벌리고…").
+  The tokens themselves are right, so the family rebuilds the transcript from
+  them; all four samples then match the reference transcripts.
+- **Vietnamese is all capitals.** The recipe trains on upper-cased text, and the
+  styler keeps 2–4 letter capitals as acronyms — most Vietnamese syllables. An
+  all-capitals transcript from this family is lower-cased before styling.
+
+`zipformer-vi` leads Vietnamese (ranking and first-run starter, above Dolphin).
+`zipformer-ko` ranks after SenseVoice for Korean — no like-for-like comparison
+exists — and is the smallest Korean download. No phone measurement was made.
+
+The Android Q5 Large v3 Turbo (574 MB, 4 GB) is back in the catalog: without
+it a 4–5 GB phone topped out at Whisper Small, and in the `fdroid` flavour that
+is the most accurate model it could run. Retired Medium and Large rows now step
+down through it before Small.
+
+## Added: Parakeet TDT-CTC 110M English (VocaHQ int8); removed: Moonshine v2
+
+Upstream publishes Parakeet TDT-CTC 110M for sherpa-onnx only as a 458 MB FP32
+graph; its int8 repository is empty. VocaHQ quantized the pinned export
+(`csukuangfj/sherpa-onnx-nemo-parakeet_tdt_ctc_110m-en-36000@3af92f15`) with
+ONNX Runtime's dynamic QUInt8 weight quantization — the method sherpa-onnx's
+own NeMo export scripts use — and hosts it at
+[`VocaHQ/sherpa-onnx-nemo-parakeet-tdt-ctc-110m-en-int8`](https://huggingface.co/VocaHQ/sherpa-onnx-nemo-parakeet-tdt-ctc-110m-en-int8)
+with the reproduction script and CC-BY-4.0 attribution to NVIDIA.
+
+LibriSpeech (sherpa-onnx 1.13.8, macOS arm64, greedy decoding, Open ASR
+Leaderboard English normaliser, 2,620 / 2,939 utterances):
+
+| Model | Download | test-clean | test-other | test-clean, clips < 9 s | test-other, clips < 9 s |
+| --- | --- | --- | --- | --- | --- |
+| Parakeet 0.6B v2 | 661 MB | 1.75 | 3.25 | 1.87 | 3.68 |
+| Parakeet 110M FP32 | 458 MB | 2.93 | — | 3.24 | — |
+| **Parakeet 110M int8** | **132 MB** | **3.00** | **6.20** | **3.25** | **7.02** |
+| Moonshine v2 Base | 141 MB | 51.58 | 46.71 | 3.68 | 9.16 |
+
+**Moonshine v2 (Tiny and Base) returns an empty transcript for any input of
+9.4 s or more** — an ONNX Runtime broadcast failure in the merged decoder's
+cross-attention, reproduced on both builds with the pinned runtime; 686 of 2,620
+test-clean clips came back empty. The app hands sherpa models windows of up to
+14 s, so every Moonshine dictation past ~9 s paid a failed decode and then a
+blind midpoint split. The earlier latency comparison only measured 2.0–6.6 s
+clips, which is why it was not seen. Even on the clips it can decode, Base is
+the less accurate model. Both builds are retired onto Parakeet 110M, which is
+now the English starter and the small English pick on both platforms. The
+Moonshine families stay in the bridges; only the catalog rows are gone.
+
+With Moonshine Tiny gone, the smallest iOS model that *lists* English is
+Paraformer, a Mandarin model. "Smallest download" now skips a model whose
+coverage of a language is only incidental, so English gets Parakeet 110M.
+
 ## Other candidates
 
-- Moonshine v2 Arabic, Spanish, Japanese, Korean, Ukrainian, Vietnamese, and
-  Chinese exports already fit the new merged-decoder bridge. They are useful
-  candidates for smaller language-specific downloads; add them after checking
-  the exact quantized export against current specialists on representative
-  speech, including accents and background noise.
+Checked on Hugging Face and not added:
+
+- **Moonshine v2 Arabic, Spanish, Japanese, Korean, Ukrainian, Vietnamese and
+  Chinese.** The sherpa-onnx exports are the legacy non-streaming models, which
+  Moonshine's `LICENSE` lists as the only ones *not* MIT: they remain under the
+  non-commercial Moonshine Community License. Revisit if MIT streaming-derived
+  exports appear.
+- **Zipformer Vietnamese 30M (2026-02-09).** Smaller and better on VLSP, but
+  CC-BY-NC-ND.
+- **Thai Zipformer, Canary 1B v2.** No sherpa-onnx offline export found.
 - Omnilingual 1B, Canary 1B, and larger generative ASR models need substantially
   more resources or additional runtime integration. A desktop leaderboard win
   alone does not justify adding them to a phone keyboard.
-- The smaller Parakeet 110M and multilingual Fast Conformer exports remain
-  candidates if complete compact INT8 artifacts become available. Do not
-  substitute their much larger FP32 downloads under an INT8 size claim.
+
+## Retirement migration: what the user sees
+
+Launch moves a retired selection to its nearest surviving model but does not
+download it. Until it is downloaded:
+
+- Dictation stops **before recording** — Android with "Voice model needed" and
+  a keyboard shortcut straight to the Models page, iOS with a session failure
+  naming the model in plain words — instead of recording and failing at the end.
+  The check is a stat of the pinned files (Android) or the verified / verifying
+  sets (iOS), so a model still being hashed after launch is not a false alarm.
+- The Models page shows "Your voice model was updated" with the replacement's
+  plain name, what it is good at, and a one-tap download of its size.
+
+Retired files are still deleted at launch: they cannot be loaded without their
+descriptors and pins, which is the catalog history this PR removes.
+
+Android now rounds reported RAM *up* to the advertised size (a 6 GB phone
+reports ~5.5 GiB). Every `minimumRamGB` is written in advertised gigabytes, as
+on iOS; flooring put every model one tier too high.
 
 ## iOS Large v3 Turbo interruption
 

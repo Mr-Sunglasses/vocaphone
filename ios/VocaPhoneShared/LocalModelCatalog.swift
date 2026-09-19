@@ -18,6 +18,11 @@ enum SherpaFamily: String, Codable, Sendable {
     /// sherpa-onnx config fields both differ and every switch has to answer.
     case moonshineV2
     case omnilingualCtc
+    /// An icefall Zipformer transducer. Three graphs like NeMo's transducer,
+    /// but sherpa-onnx has to read its own metadata rather than be told it is
+    /// NeMo, and its tokens have to be joined by the bridge: see
+    /// `SherpaOnnxBridge.c`.
+    case zipformerTransducer
 
     /// Whether this family can safely use `modified_beam_search`.
     ///
@@ -62,6 +67,24 @@ enum SherpaFamily: String, Codable, Sendable {
     var acceptsLanguage: Bool { self == .senseVoice || self == .canary }
 
     static let greedySearch = "greedy_search"
+
+    /// Whether this family was trained on upper-cased transcripts.
+    ///
+    /// The icefall recipes normalise their training text to capitals, so the
+    /// Vietnamese Zipformer answers "ÂM LƯỢNG TIVI GIẢM". The styler cannot
+    /// undo that on its own: it keeps two-to-four letter capitals as acronyms,
+    /// and most Vietnamese syllables are exactly that long.
+    var transcribesInCapitals: Bool { self == .zipformerTransducer }
+
+    /// `text` in lower case when it has no lower-case letter at all, which is
+    /// what a capitals-trained model looks like; anything mixed is left alone.
+    /// Scripts without case — the Korean Zipformer's — pass through unchanged.
+    static func lowercasingCapitals(_ text: String) -> String {
+        let letters = text.unicodeScalars.filter(CharacterSet.letters.contains)
+        let hasUpper = letters.contains(where: CharacterSet.uppercaseLetters.contains)
+        let hasLower = letters.contains(where: CharacterSet.lowercaseLetters.contains)
+        return hasUpper && !hasLower ? text.lowercased() : text
+    }
 
     /// Whether the accuracy setting changes the recognizer this family builds.
     ///
@@ -406,38 +429,24 @@ enum LocalModelCatalog {
             detectsLanguageAutomatically: true
         ),
         .init(
-            id: "moonshine-v2-tiny-en",
-            displayName: "Moonshine v2 Tiny English",
+            id: "parakeet-tdt-ctc-110m-en",
+            displayName: "Parakeet TDT-CTC 110M English",
             engine: .sherpaOnnx,
-            // v2 replaces v1 on every axis at once: 44 MB against 124 MB,
-            // 12.01 average WER against 12.66, and faster. Measured on arm64 at
-            // two threads, median of five, same audio -- v1 then v2:
-            //   2.0s  23.2 -> 20.9 ms   4.0s  48.3 -> 44.1   6.6s  86.9 -> 79.2
-            repository: "csukuangfj2/sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27",
-            revision: "d1e6c30921780b8508d04b492dfb3ce8a51605d4",
-            sherpaFamily: .moonshineV2,
-            sizeBytes: 44_243_206,
-            minimumRamGB: 2,
-            languages: "English",
-            englishOnly: true
-        ),
-        .init(
-            id: "moonshine-v2-base-en",
-            displayName: "Moonshine v2 Base English",
-            engine: .sherpaOnnx,
-            // The largest single gain in the catalog. v2 is half the size of
-            // v1 (141 MB against 287 MB), 2.2 WER points better (7.84 against
-            // 10.07), and faster. Measured on arm64 at two threads, median of
-            // five, same audio -- v1 then v2:
-            //   2.0s  43.7 -> 34.8 ms   4.0s  91.8 -> 74.4   6.6s 157.4 -> 129.7
-            //
-            // For context, Canary 180M scores 7.12 on the same suite but takes
-            // 122/236/399 ms for those clips: three times the latency for
-            // 0.7 WER points, which is the wrong trade for a keyboard.
-            repository: "csukuangfj2/sherpa-onnx-moonshine-base-en-quantized-2026-02-27",
-            revision: "8f4d6c58c03d40bcea40043bb7120a878f2bbef6",
-            sherpaFamily: .moonshineV2,
-            sizeBytes: 141_300_566,
+            // The small English model, in place of both Moonshine v2 builds.
+            // Upstream publishes this one only as a 458 MB FP32 graph, so the
+            // int8 build is VocaHQ's own: dynamic weight quantization of the
+            // pinned sherpa-onnx export, reproducible from `quantize.py` in the
+            // repository. LibriSpeech, sherpa-onnx 1.13.8, greedy CTC:
+            //   test-clean  3.00 WER (FP32 2.93)   test-other  6.20
+            // against Moonshine v2 Base's 3.68 / 9.16 on the clips it could
+            // decode at all -- Moonshine v2 returns nothing for any window of
+            // 9.4 s or more, which every dictation past that length paid for
+            // with a failed decode and a blind half-split. Cased and
+            // punctuated by the model itself.
+            repository: "VocaHQ/sherpa-onnx-nemo-parakeet-tdt-ctc-110m-en-int8",
+            revision: "548291ccad79f80d9fb75b2de04cc8f6e4f45342",
+            sherpaFamily: .nemoCtc,
+            sizeBytes: 131_662_124,
             minimumRamGB: 2,
             languages: "English",
             englishOnly: true
@@ -584,6 +593,43 @@ enum LocalModelCatalog {
             languages: "Mandarin · English",
             englishOnly: false,
             languageCodesOverride: ["zh", "en"]
+        ),
+        .init(
+            id: "zipformer-ko",
+            displayName: "Zipformer Korean",
+            engine: .sherpaOnnx,
+            // icefall's KsponSpeech recipe: 10.6 CER on eval_clean with greedy
+            // search, in 76 MB. The smallest Korean download by a factor of three,
+            // and a specialist rather than SenseVoice's fifth language. Its
+            // transcript arrives without word spacing unless the bridge joins
+            // the tokens itself; see `SherpaOnnxBridge.c`.
+            repository: "k2-fsa/sherpa-onnx-zipformer-korean-2024-06-24",
+            revision: "0fb4b2b5c8d3e5766121481ba911961e3649c664",
+            sherpaFamily: .zipformerTransducer,
+            sizeBytes: 76_271_087,
+            minimumRamGB: 2,
+            languages: "Korean",
+            englishOnly: false,
+            languageCodesOverride: ["ko"]
+        ),
+        .init(
+            id: "zipformer-vi",
+            displayName: "Zipformer Vietnamese",
+            engine: .sherpaOnnx,
+            // VietASR's 68M Zipformer, trained on about 70,000 hours of
+            // Vietnamese. Published comparisons put it level with PhoWhisper
+            // Large -- a 1.5B Whisper fine-tuned for Vietnamese -- and ahead of
+            // it on four of five VLSP sets, in 77 MB. It transcribes in capitals
+            // with no punctuation; the recognizer lower-cases it and the styler
+            // restores sentence case.
+            repository: "csukuangfj/sherpa-onnx-zipformer-vi-int8-2025-04-20",
+            revision: "b2745a435379992ad3f299635468db0c34918e1e",
+            sherpaFamily: .zipformerTransducer,
+            sizeBytes: 77_100_477,
+            minimumRamGB: 2,
+            languages: "Vietnamese",
+            englishOnly: false,
+            languageCodesOverride: ["vi"]
         ),
     ]
 
@@ -774,7 +820,6 @@ enum LocalModelCatalog {
     /// A language a model transcribes on paper but was not built for.
     private static let incidentalCoverage: [String: Set<String>] = [
         "paraformer-zh-small": ["en"],
-        "dolphin-base-ctc": ["en"],
         "dolphin-small-ctc": ["en"],
     ]
 
@@ -813,14 +858,18 @@ enum LocalModelCatalog {
                 "parakeet-tdt-0.6b-v2-en",
                 "parakeet-tdt-0.6b-v3",
                 "canary-180m-flash",
-                "moonshine-v2-base-en",
+                "parakeet-tdt-ctc-110m-en",
             ] + largeV3
         case "ru":
             return ["giga-am-v3-ru", "parakeet-tdt-0.6b-v3"] + largeV3
         case "ja":
             return ["parakeet-tdt-ctc-ja", "sense-voice"] + largeV3
-        case "zh", "yue", "ko":
+        case "zh", "yue":
             return ["sense-voice"] + largeV3
+        case "ko":
+            return ["sense-voice", "zipformer-ko"] + largeV3
+        case "vi":
+            return ["zipformer-vi", "dolphin-small-ctc"] + largeV3
         case "de", "es", "fr":
             return ["parakeet-tdt-0.6b-v3", "canary-180m-flash"] + largeV3
         default:
@@ -961,9 +1010,18 @@ enum LocalModelCatalog {
         deviceMemoryGB: Int,
         language: String
     ) -> LocalModelDescriptor? {
+        // Not a model that only lists the language. Paraformer transcribes some
+        // English but is a Mandarin model, and with no Whisper Tiny on iOS it
+        // is also the smallest thing that "covers" English -- which put a
+        // Chinese model on an English iPhone as its smallest download.
         fitting(deviceMemoryGB: deviceMemoryGB)
-            .filter { $0.covers(language) }
+            .filter { $0.covers(language) && !isIncidental($0, for: language) }
             .min { $0.sizeBytes < $1.sizeBytes }
+    }
+
+    /// Whether `model` lists `language` without being built for it.
+    static func isIncidental(_ model: LocalModelDescriptor, for language: String) -> Bool {
+        incidentalCoverage[model.id]?.contains(language.lowercased()) == true
     }
 
     /// The compact specialist for `language`, or nil when the catalog has none
@@ -996,17 +1054,15 @@ enum LocalModelCatalog {
 
     /// English models best first. Parakeet leads wherever the memory allows it.
     ///
-    /// Both Moonshine builds stay ahead of Canary even though Canary is smaller
-    /// and scores better on the Open ASR English suite, because this list
-    /// decides what a keyboard reaches for and Moonshine decodes the same audio
-    /// 2.4-2.5x faster on arm64. See the note on `moonshine-v2-base-en` above.
+    /// The 110M Parakeet is the small English model: a fifth of the 0.6B's
+    /// download, about three times as fast on the same CPU, at 3.00 against
+    /// 1.75 WER on LibriSpeech test-clean. See the note on its catalog entry.
     ///
     /// The `.en` WhisperKit builds are gone from the catalog, so the multilingual
     /// Base build is the whisper fallback for English too.
     private static let englishPreference = [
         "parakeet-tdt-0.6b-v2-en",
-        "moonshine-v2-base-en",
-        "moonshine-v2-tiny-en",
+        "parakeet-tdt-ctc-110m-en",
         "openai_whisper-base"
     ]
 
@@ -1043,7 +1099,10 @@ enum LocalModelCatalog {
         // picker, leading with a model that cannot transcribe it is worse than
         // having offered nothing.
         "zh": "sense-voice", "yue": "sense-voice", "ja": "sense-voice", "ko": "sense-voice",
-        "ru": "giga-am-v3-ru"
+        "ru": "giga-am-v3-ru",
+        // A Vietnamese specialist trained on 70,000 hours beats Dolphin's
+        // forty-language model on its one language, in a third of the size.
+        "vi": "zipformer-vi"
     ].merging(
         Dictionary(
             uniqueKeysWithValues: LocalModelLanguages.dolphinStarters.map { ($0, "dolphin-small-ctc") }
@@ -1170,7 +1229,10 @@ extension LocalModelCatalog {
         case .balanced:
             model = balanced
         case .lighter:
-            model = candidates.min {
+            // Same rule as `smallestCovering`: the smallest model *for* this
+            // language, falling back to any that covers it.
+            let purposeBuilt = candidates.filter { !isIncidental($0, for: language) }
+            model = (purposeBuilt.isEmpty ? candidates : purposeBuilt).min {
                 if $0.sizeBytes != $1.sizeBytes { return $0.sizeBytes < $1.sizeBytes }
                 if $0.minimumRamGB != $1.minimumRamGB { return $0.minimumRamGB < $1.minimumRamGB }
                 return $0.id < $1.id
@@ -1292,6 +1354,7 @@ enum ModelMaker: String, CaseIterable, Sendable {
     case dataocean
     case sber
     case meta
+    case nextGenKaldi
 
     var displayName: String {
         switch self {
@@ -1303,6 +1366,7 @@ enum ModelMaker: String, CaseIterable, Sendable {
         case .dataocean: "DataoceanAI"
         case .sber: "Sber"
         case .meta: "Meta"
+        case .nextGenKaldi: "Next-gen Kaldi"
         }
     }
 }
@@ -1311,12 +1375,12 @@ extension LocalModelDescriptor {
     /// Read from the identifier's family, which is stable across builds.
     var maker: ModelMaker {
         if id.hasPrefix("omnilingual") { return .meta }
-        if id.hasPrefix("distil-whisper") { return .huggingFace }
         if id.hasPrefix("openai_whisper") { return .openAI }
         if id.hasPrefix("moonshine") { return .usefulSensors }
         if id.hasPrefix("sense-voice") || id.hasPrefix("paraformer") { return .alibaba }
         if id.hasPrefix("dolphin") { return .dataocean }
         if id.hasPrefix("giga-am") { return .sber }
+        if id.hasPrefix("zipformer") { return .nextGenKaldi }
         return .nvidia
     }
 }

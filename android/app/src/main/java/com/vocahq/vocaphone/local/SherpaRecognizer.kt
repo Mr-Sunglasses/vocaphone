@@ -29,6 +29,7 @@ internal class SherpaRecognizer private constructor(
      * recording too long for one decode may be cut up. See [transcribe].
      */
     private val translating: Boolean = false,
+    private val family: SherpaFamily? = null,
 ) {
     /**
      * Decodes the whole recording, in windows if it is longer than one decode
@@ -100,8 +101,18 @@ internal class SherpaRecognizer private constructor(
             stream.acceptWaveform(samples, SherpaLongAudio.SAMPLE_RATE)
             recognizer.decode(stream)
             val result = recognizer.getResult(stream)
+            val raw = if (family?.joinsTokens == true && result.tokens.isNotEmpty()) {
+                SherpaFamily.joinTokens(result.tokens)
+            } else {
+                result.text
+            }
+            val text = if (family?.transcribesInCapitals == true) {
+                SherpaFamily.lowercasingCapitals(raw)
+            } else {
+                raw
+            }
             SherpaTranscript(
-                text = result.text.trim(),
+                text = text.trim(),
                 language = SherpaTranscript.languageCode(result.lang),
             )
         } finally {
@@ -144,6 +155,15 @@ internal class SherpaRecognizer private constructor(
             fun quantizedOrPlain(stem: String): String =
                 if (File(directory, "$stem.int8.onnx").isFile) path("$stem.int8.onnx")
                 else path("$stem.onnx")
+
+            // An icefall graph, whose file name carries its training checkpoint
+            // (`encoder-epoch-99-avg-1.int8.onnx`). The catalog pins exactly one
+            // file per graph, so that is the one to load.
+            fun pinnedGraph(stem: String): String = path(
+                model.files.map(PinnedFile::path)
+                    .firstOrNull { it.startsWith(stem) && it.endsWith(".onnx") }
+                    ?: "$stem.onnx",
+            )
 
             val tokens = path("tokens.txt")
             val modelConfig = when (family) {
@@ -215,6 +235,14 @@ internal class SherpaRecognizer private constructor(
                     ),
                 )
 
+                SherpaFamily.ZIPFORMER_TRANSDUCER -> OfflineModelConfig(
+                    transducer = OfflineTransducerModelConfig(
+                        encoder = pinnedGraph("encoder"),
+                        decoder = pinnedGraph("decoder"),
+                        joiner = pinnedGraph("joiner"),
+                    ),
+                )
+
                 SherpaFamily.PARAFORMER -> OfflineModelConfig(
                     paraformer = OfflineParaformerModelConfig(model = path("model.int8.onnx")),
                 )
@@ -241,6 +269,7 @@ internal class SherpaRecognizer private constructor(
                 // Only the families that can honour a target are translating,
                 // whatever the caller asked for.
                 translating = family.acceptsLanguage && translateTo.isNotEmpty(),
+                family = family,
             )
         }
     }

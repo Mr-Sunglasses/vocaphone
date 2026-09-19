@@ -26,12 +26,13 @@ object RetiredModels {
      * Retired id to its replacements, best first.
      *
      * The whisper rows collapse three axes that no longer exist in the catalog:
-     * quantization (q5 and F16 are gone, see the `whisper` list in
+     * quantization (F16 and all but one q5 build are gone, see the `whisper` list in
      * [LocalModelCatalog]), the `.en` builds, and the sizes that were never
      * viable on a phone. Everything therefore lands on the Q8_0 build of the
      * same rung, except the sizes with no surviving rung of their own -- medium
      * and the two full large builds -- which move up to `large-v3-turbo-q8_0`
-     * and step down to `small-q8_0` where that will not fit.
+     * and step down through `large-v3-turbo-q5_0` to `small-q8_0` where that
+     * will not fit.
      */
     val replacements: Map<String, List<String>> = buildMap {
         // Whisper: same rung, Q8_0 build.
@@ -43,22 +44,30 @@ object RetiredModels {
             .forEach { put(it, listOf("small-q8_0", "base-q8_0")) }
 
         // Whisper: no surviving rung, so promote and let the device decide.
+        //
+        // The Q5 Turbo stays in the list as the step between the two: a 4 or
+        // 5 GB phone that was running Medium Q5 keeps a large-class model
+        // rather than dropping to Small.
         listOf(
             "medium-q5_0", "medium-q8_0", "medium",
             "medium.en-q5_0", "medium.en-q8_0", "medium.en",
-            "large-v3-turbo-q5_0", "large-v3-turbo",
+            "large-v3-turbo",
             "large-v3-q5_0", "large-v3",
             "large-v2-q5_0", "large-v2-q8_0", "large-v2",
-        ).forEach { put(it, listOf("large-v3-turbo-q8_0", "small-q8_0", "base-q8_0")) }
+        ).forEach {
+            put(it, listOf("large-v3-turbo-q8_0", "large-v3-turbo-q5_0", "small-q8_0", "base-q8_0"))
+        }
 
         // Sherpa. Canary covers the same four languages as the Fast Conformer
         // it replaces, in 207 MB against 461 MB, with better WER and the only
         // speech-translation path in the catalog.
         put("fast-conformer-ctc-4-lang", listOf("canary-180m-flash"))
-        // Moonshine v2 is half the size of v1, faster, and more accurate, so
-        // the v1 ids retire onto it rather than sitting beside it.
-        put("moonshine-tiny-en", listOf("moonshine-v2-tiny-en"))
-        put("moonshine-base-en", listOf("moonshine-v2-base-en", "moonshine-v2-tiny-en"))
+        // Every Moonshine build retires onto the 110M Parakeet. v2 returns
+        // nothing for a window of 9.4 s or more, and on the clips it can decode
+        // it is still the less accurate model (LibriSpeech test-other 9.16
+        // against 6.20); v1 was already behind v2.
+        listOf("moonshine-tiny-en", "moonshine-base-en", "moonshine-v2-tiny-en", "moonshine-v2-base-en")
+            .forEach { put(it, listOf("parakeet-tdt-ctc-110m-en")) }
         put("dolphin-base-ctc", listOf("dolphin-small-ctc"))
         // Same weights family, new export: v3 with punctuation. The id changed
         // rather than the pins so an already-downloaded v2 directory is an

@@ -190,8 +190,17 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// for the life of the install. See `SessionExpiryPolicy`.
     private static let allowedTransitions: [SessionState: Set<SessionState>] = [
         .idle: [.launchingApp, .canceled],
-        .launchingApp: [.awaitingReturn, .recording, .permissionDenied, .canceled, .expired],
-        .awaitingReturn: [.recording, .permissionDenied, .canceled, .expired],
+        // A dictation can also be known impossible before it records: on-device
+        // transcription is selected and its model is not on this iPhone. Failing
+        // there keeps the microphone closed rather than recording audio that
+        // has nowhere to go.
+        .launchingApp: [
+            .awaitingReturn, .recording, .permissionDenied, .transcriptionFailedPermanent,
+            .canceled, .expired,
+        ],
+        .awaitingReturn: [
+            .recording, .permissionDenied, .transcriptionFailedPermanent, .canceled, .expired,
+        ],
         .recording: [.finalizing, .canceled, .expired],
         // A capture can be known unusable before anything is ever sent: a
         // microphone another app silenced yields a file that no amount of

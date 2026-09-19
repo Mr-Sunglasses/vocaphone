@@ -70,10 +70,13 @@ enum RetiredLocalModels {
         // it replaces, in 207 MB against 461 MB, with better WER and the only
         // speech-translation path in the catalog.
         table["fast-conformer-ctc-4-lang"] = ["canary-180m-flash"]
-        // Moonshine v2 is half the size of v1, faster, and more accurate, so
-        // the v1 ids retire onto it rather than sitting beside it.
-        table["moonshine-tiny-en"] = ["moonshine-v2-tiny-en"]
-        table["moonshine-base-en"] = ["moonshine-v2-base-en", "moonshine-v2-tiny-en"]
+        // Every Moonshine build retires onto the 110M Parakeet. v2 returns
+        // nothing for a window of 9.4 s or more, and on the clips it can decode
+        // it is still the less accurate model (LibriSpeech test-other 9.16
+        // against 6.20); v1 was already behind v2.
+        for id in ["moonshine-tiny-en", "moonshine-base-en", "moonshine-v2-tiny-en", "moonshine-v2-base-en"] {
+            table[id] = ["parakeet-tdt-ctc-110m-en"]
+        }
         table["dolphin-base-ctc"] = ["dolphin-small-ctc"]
         // Same weights family, new export: v3 with punctuation. The id changed
         // rather than the pins so an already-downloaded v2 directory is an
@@ -158,6 +161,11 @@ enum RetiredLocalModels {
         case .unchanged:
             break
         case let .replaced(id):
+            // Remembered so the picker can say why the model changed and offer
+            // the download. Written first: a notice naming a model that is not
+            // yet the selection shows nothing, while the reverse would leave a
+            // changed selection with no explanation.
+            LocalTranscriptionPreferences.retiredModelReplacement = id
             LocalTranscriptionPreferences.modelIdentifier = id
         case .cleared:
             // The switch goes off first. `UserDefaults` has no transaction, so

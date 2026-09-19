@@ -8,6 +8,14 @@
 
 struct VocaPhoneSherpaContext {
     const SherpaOnnxOfflineRecognizer *recognizer;
+    /// Rebuild the transcript from its tokens instead of reading `text`.
+    ///
+    /// sherpa-onnx drops the word-boundary spaces when it joins tokens in a
+    /// non-Latin script, so the icefall Korean Zipformer comes back as
+    /// "지하철에서다리를벌리고앉지마라." although every token it emitted carries
+    /// its own leading space. Concatenating the tokens verbatim is the text the
+    /// model actually produced.
+    int join_tokens;
 };
 
 static int copy_text(
@@ -27,6 +35,39 @@ static int copy_text(
     if (written < 0) return VocaPhoneSherpaDecodeInvalidArgument;
     if (written >= output_capacity) return VocaPhoneSherpaDecodeOutputTruncated;
     return written;
+}
+
+/// Concatenates `result`'s tokens into `output`, dropping the leading space
+/// the first word-initial token carries. Same return contract as `copy_text`.
+static int copy_joined_tokens(
+    const SherpaOnnxOfflineRecognizerResult *result,
+    char *output,
+    int32_t output_capacity
+) {
+    if (output == NULL || output_capacity <= 0) {
+        return VocaPhoneSherpaDecodeInvalidArgument;
+    }
+    if (result->tokens_arr == NULL || result->count <= 0) {
+        return copy_text(result->text, output, output_capacity);
+    }
+    size_t used = 0;
+    output[0] = '\0';
+    for (int32_t i = 0; i < result->count; i++) {
+        const char *token = result->tokens_arr[i];
+        if (token == NULL) continue;
+        if (used == 0) {
+            while (*token == ' ') token++;
+        }
+        size_t length = strlen(token);
+        if (used + length >= (size_t)output_capacity) {
+            return VocaPhoneSherpaDecodeOutputTruncated;
+        }
+        memcpy(output + used, token, length);
+        used += length;
+        output[used] = '\0';
+    }
+    while (used > 0 && output[used - 1] == ' ') output[--used] = '\0';
+    return (int)used;
 }
 
 VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
@@ -61,6 +102,14 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
             config.model_config.transducer.decoder = model2;
             config.model_config.transducer.joiner = model3;
             config.model_config.model_type = "nemo_transducer";
+            break;
+        // An icefall Zipformer transducer. Same three graphs as NeMo's, but
+        // sherpa-onnx must not be told it is NeMo: an empty model type lets it
+        // read the Zipformer metadata instead.
+        case VocaPhoneSherpaZipformerTransducer:
+            config.model_config.transducer.encoder = model1;
+            config.model_config.transducer.decoder = model2;
+            config.model_config.transducer.joiner = model3;
             break;
         case VocaPhoneSherpaSenseVoice:
             config.model_config.sense_voice.model = model1;
@@ -121,6 +170,7 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
         return NULL;
     }
     result->recognizer = native;
+    result->join_tokens = family == VocaPhoneSherpaZipformerTransducer;
     return (VocaPhoneSherpaRecognizer)result;
 }
 
@@ -154,7 +204,9 @@ int VocaPhoneSherpaDecode(
         SherpaOnnxGetOfflineStreamResult(stream);
     int copied = result == NULL
         ? VocaPhoneSherpaDecodeResultMissing
-        : copy_text(result->text, output, output_capacity);
+        : context->join_tokens
+            ? copy_joined_tokens(result, output, output_capacity)
+            : copy_text(result->text, output, output_capacity);
     if (result != NULL) {
         // Optional in the struct and left null by every family except
         // SenseVoice, so it is never dereferenced without checking.

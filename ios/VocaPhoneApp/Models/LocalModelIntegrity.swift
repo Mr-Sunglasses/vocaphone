@@ -223,7 +223,15 @@ enum LocalModelManagerError: LocalizedError, Equatable {
         case let .integritySizeMismatch(path): "The model file has an unexpected size: \(path)."
         case let .integrityUnverified(name):
             "\(name) has not been verified on this device. Download it again."
-        case let .modelNotDownloaded(id): "Download \(id) before using on-device transcription."
+        // Named the way the picker names it. An internal id such as
+        // `openai_whisper-large-v3-v20240930_626MB` tells nobody which row to tap.
+        case let .modelNotDownloaded(id):
+            if let model = LocalModelCatalog.descriptor(for: id) {
+                "Download the “\(model.plain.title)” voice model (\(model.sizeLabel)) in "
+                    + "VocaPhone before dictating on this iPhone."
+            } else {
+                "Choose and download a voice model in VocaPhone before dictating on this iPhone."
+            }
         case .engineDecodeFailed:
             "The on-device model could not run. The recording is preserved; try again."
         case .emptyTranscript:
@@ -237,7 +245,9 @@ enum LocalModelManagerError: LocalizedError, Equatable {
             "This model needs \(DownloadReadiness.byteLabel(requiredBytes)) free and this "
                 + "iPhone has \(DownloadReadiness.byteLabel(freeBytes)). "
                 + "Free up some space and try again."
-        case let .engineLoadFailed(id): "Could not load the on-device model \(id)."
+        case let .engineLoadFailed(id):
+            "Could not load the on-device model "
+                + "\(LocalModelCatalog.descriptor(for: id)?.plain.title ?? id)."
         case let .downloadFailed(path, statusCode):
             if let statusCode {
                 "Could not download \(path) (HTTP \(statusCode)). Check your internet connection and try again."

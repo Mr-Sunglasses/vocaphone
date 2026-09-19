@@ -878,6 +878,21 @@ final class RecordingCoordinator {
         }
     }
 
+    /// Why on-device transcription cannot run right now, or nil when it can
+    /// (or is not the route). A model still being hashed after launch counts
+    /// as present: it is on disk, and failing a dictation over a check that has
+    /// not finished would be the false alarm this is meant to prevent.
+    private func localModelUnavailableMessage() -> String? {
+        guard LocalTranscriptionPreferences.enabled else { return nil }
+        let id = LocalTranscriptionPreferences.modelIdentifier
+        if let id, LocalModelCatalog.descriptor(for: id) != nil,
+           localModels.isDownloaded(id) || localModels.verifyingModelIDs.contains(id)
+        {
+            return nil
+        }
+        return LocalModelManagerError.modelNotDownloaded(id ?? "none").errorDescription
+    }
+
     private func startSession(id: UUID) async {
         guard startingSessionID == nil || startingSessionID == id else { return }
         guard startingSessionID != id else { return }
@@ -907,6 +922,22 @@ final class RecordingCoordinator {
             try? store.save(record)
             clearQuickDictationMarker()
             activeRecord = record
+            // Before the microphone, not at delivery: a selected model that is
+            // not on this iPhone — most often the replacement the retired-model
+            // migration chose, which still has to be downloaded — would
+            // otherwise record a whole dictation and fail at the end of it.
+            if let unavailable = localModelUnavailableMessage() {
+                try record.transition(to: .transcriptionFailedPermanent)
+                record.error = SessionFailure(
+                    code: "local_model_unavailable",
+                    message: unavailable,
+                    recoverable: false
+                )
+                try store.save(record)
+                activeRecord = record
+                message = unavailable
+                return
+            }
             // Asked only when the answer is not already known. Every dictation
             // paid a cross-process round trip to be told what
             // `AVAudioApplication` had already cached, in the moment between

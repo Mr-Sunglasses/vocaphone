@@ -132,7 +132,8 @@ fun scoreModel(model: LocalModelDescriptor, profile: DeviceProfile): Int {
     when (model.sherpaFamily) {
         SherpaFamily.MOONSHINE, SherpaFamily.MOONSHINE_V2 -> score += 80
         SherpaFamily.SENSE_VOICE, SherpaFamily.CANARY, SherpaFamily.PARAFORMER -> score += 50
-        SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC -> score += 40
+        SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC,
+        SherpaFamily.ZIPFORMER_TRANSDUCER -> score += 40
         SherpaFamily.NEMO_TRANSDUCER -> score += 20
         SherpaFamily.OMNILINGUAL_CTC -> score += 10
         null -> Unit
@@ -179,4 +180,21 @@ private fun whisperTarget(profile: DeviceProfile): Int = when (profile.tier) {
 private fun whisperClassScore(id: String, profile: DeviceProfile): Int {
     val distance = abs(whisperClass(id) - whisperTarget(profile))
     return 50 - distance * 12
+}
+
+/** Turns what the kernel reports into the memory size the phone was sold with. */
+internal object DeviceMemory {
+    private const val GIB = 1024L * 1024L * 1024L
+
+    /**
+     * `ActivityManager.MemoryInfo.totalMem` is the RAM left after the kernel,
+     * modem and GPU carve-outs, so a 6 GB phone reports roughly 5.4-5.7 GiB and
+     * an 8 GB one about 7.3. Every `minimumRamGB` in the catalog is written in
+     * advertised gigabytes -- the same unit the iOS catalog compares against --
+     * so flooring the reported figure put every model one tier too high: a
+     * 6 GB phone could not see a 6 GB model, and a 4 GB phone not Parakeet.
+     * Rounding up to the whole gigabyte restores the advertised size.
+     */
+    fun advertisedGB(totalMemBytes: Long): Long =
+        if (totalMemBytes <= 0) 0 else (totalMemBytes + GIB - 1) / GIB
 }

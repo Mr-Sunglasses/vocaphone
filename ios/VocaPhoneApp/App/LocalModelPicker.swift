@@ -268,8 +268,52 @@ struct LocalModelPicker: View {
 
     /// More models from onboarding: one flat list, recommended first, nothing
     /// folded away. Folding it would make the sheet a second button to find.
+    /// The model the retired-model migration moved this iPhone onto, while it
+    /// still has to be downloaded. See `retiredModelSection`.
+    private var retiredModelReplacement: LocalModelDescriptor? {
+        guard LocalTranscriptionPreferences.selectionIsRetiredModelReplacement,
+              let model = LocalModelCatalog.descriptor(for: LocalTranscriptionPreferences.modelIdentifier),
+              state(for: model) == .notDownloaded || state(for: model) == .failedIntegrity
+        else { return nil }
+        return model
+    }
+
+    /// The other half of the retired-model migration.
+    ///
+    /// Launch moves a stored selection onto its nearest surviving model but
+    /// cannot download it — that is hundreds of megabytes nobody agreed to — so
+    /// until it is here, a dictation stops before recording and says a voice
+    /// model is needed. This section is what that message points at: why the
+    /// model changed, what it will cost, and the one button that fixes it.
+    @ViewBuilder
+    private var retiredModelSection: some View {
+        if let model = retiredModelReplacement {
+            Section {
+                VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                    Text("Your voice model was updated")
+                        .font(.headline)
+                    Text(
+                        "The model you were using is no longer offered. Its closest "
+                            + "replacement is “\(model.plain.title)”: \(model.plain.summary) "
+                            + "Download it to keep dictating on this iPhone."
+                    )
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    Button("Download \(model.sizeLabel)") {
+                        downloadAndUse(model)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!manager.downloadingModelIDs.isEmpty)
+                }
+                .padding(.vertical, VocaMetrics.tight)
+            }
+        }
+    }
+
     @ViewBuilder
     private var allModelsSections: some View {
+        retiredModelSection
         if !installedModels.isEmpty {
             Section("On this iPhone") {
                 ForEach(installedModels) { model in
@@ -303,6 +347,8 @@ struct LocalModelPicker: View {
     @ViewBuilder
     private var settingsSections: some View {
         Group {
+            retiredModelSection
+
             Section {
                 guideContent
                     .padding(.vertical, VocaMetrics.related)
@@ -703,7 +749,9 @@ struct LocalModelPicker: View {
             ModelMakerTile(maker: model.maker, size: 44)
             VStack(alignment: .leading, spacing: VocaMetrics.related - 2) {
                 if forYou { forYouBadge }
-                Text(onboardingName(for: model))
+                // What it is for first, in plain words; the upstream name is
+                // the small print for anyone who wants to look it up.
+                Text(model.plain.title)
                     .font(.headline)
                     .foregroundStyle(Color.vocaPrimaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -711,6 +759,12 @@ struct LocalModelPicker: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(Color.brand)
                     .fixedSize(horizontal: false, vertical: true)
+                Text(model.plain.summary)
+                    .font(.footnote)
+                    .foregroundStyle(Color.vocaSecondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                ModelRatingsView(plain: model.plain)
+                    .padding(.top, 2)
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: VocaMetrics.padding - VocaMetrics.tight) { onboardingFactLabels(for: model) }
                     VStack(alignment: .leading, spacing: VocaMetrics.tight) { onboardingFactLabels(for: model) }
@@ -745,8 +799,9 @@ struct LocalModelPicker: View {
     private func onboardingFactLabels(for model: LocalModelDescriptor) -> some View {
         Label(model.sizeLabel, systemImage: "arrow.down.circle")
             .labelStyle(OnboardingFactLabelStyle())
-        Label(onboardingLanguagesFact(for: model), systemImage: "globe")
+        Label(onboardingName(for: model), systemImage: "cpu")
             .labelStyle(OnboardingFactLabelStyle())
+            .accessibilityLabel("Model: \(model.technicalName)")
     }
 
     /// The family name with its language, without build details: "Whisper
@@ -1084,8 +1139,17 @@ struct LocalModelPicker: View {
         HStack(alignment: .center, spacing: VocaMetrics.padding - VocaMetrics.tight) {
             ModelMakerTile(maker: model.maker, size: 40)
             VStack(alignment: .leading, spacing: 3) {
-                Text(onboardingName(for: model))
+                Text(model.plain.title)
                     .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(model.plain.summary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ModelRatingsView(plain: model.plain)
+                Text(model.technicalName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(settingsDetail(for: model, state: state))
                     .font(.subheadline)
@@ -1295,6 +1359,37 @@ struct LocalModelPicker: View {
 
 /// A model's maker, as a small brand-coloured tile. Makers with a published
 /// glyph (Simple Icons, CC0) show it; the rest show their initials.
+/// Accuracy and speed as four dots each: two answers a person can compare at
+/// a glance without knowing what a word error rate is. See
+/// `ModelPlainLanguage` for where the numbers come from.
+struct ModelRatingsView: View {
+    let plain: ModelPlainLanguage
+
+    var body: some View {
+        HStack(spacing: VocaMetrics.padding - VocaMetrics.tight) {
+            rating("Accuracy", plain.accuracy)
+            rating("Speed", plain.speed)
+        }
+        .font(.caption)
+        .foregroundStyle(Color.vocaSecondaryText)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(plain.accessibilityRatings)
+    }
+
+    private func rating(_ label: String, _ value: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+            HStack(spacing: 2) {
+                ForEach(1...ModelPlainLanguage.maximumRating, id: \.self) { step in
+                    Circle()
+                        .fill(step <= value ? Color.brand : Color.vocaSecondaryText.opacity(0.25))
+                        .frame(width: 6, height: 6)
+                }
+            }
+        }
+    }
+}
+
 struct ModelMakerTile: View {
     let maker: ModelMaker
     var size: CGFloat = 40
@@ -1329,7 +1424,7 @@ struct ModelMakerTile: View {
         case .openAI: "MakerOpenAI"
         case .huggingFace: "MakerHuggingFace"
         case .alibaba: "MakerAlibaba"
-        case .usefulSensors, .dataocean, .sber, .meta: nil
+        case .usefulSensors, .dataocean, .sber, .meta, .nextGenKaldi: nil
         }
     }
 
@@ -1339,6 +1434,7 @@ struct ModelMakerTile: View {
         case .dataocean: "D"
         case .sber: "S"
         case .meta: "M"
+        case .nextGenKaldi: "K2"
         default: ""
         }
     }
@@ -1353,6 +1449,7 @@ struct ModelMakerTile: View {
         case .dataocean: Color(red: 21 / 255, green: 101 / 255, blue: 192 / 255)
         case .sber: Color(red: 33 / 255, green: 160 / 255, blue: 56 / 255)
         case .meta: Color(red: 8 / 255, green: 102 / 255, blue: 255 / 255)
+        case .nextGenKaldi: Color(red: 196 / 255, green: 60 / 255, blue: 44 / 255)
         }
     }
 
@@ -1500,8 +1597,15 @@ private struct ModelGuidanceChoiceSheet: View {
                 Section("You would get") {
                     if let model = preview.model {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(model.displayName)
+                            Text(model.plain.title)
                                 .font(.headline)
+                            Text(model.plain.summary)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            ModelRatingsView(plain: model.plain)
+                            Text(model.technicalName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             Text(preview.downloadDetail ?? model.sizeLabel)
                                 .font(.subheadline)
                             Text(preview.reason)
