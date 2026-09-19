@@ -81,7 +81,7 @@ final class SherpaRecognizer: @unchecked Sendable {
             models = try [path("encoder_model.ort"), path("decoder_model_merged.ort"), "", ""]
         case .canary:
             models = try [path("encoder.int8.onnx"), path("decoder.int8.onnx"), "", ""]
-        case .senseVoice, .dolphinCtc, .paraformer:
+        case .senseVoice, .dolphinCtc, .paraformer, .omnilingualCtc:
             models = try [path("model.int8.onnx"), "", "", ""]
         case .nemoCtc:
             let name = FileManager.default.fileExists(
@@ -259,6 +259,7 @@ private extension SherpaFamily {
         case .nemoCtc: 5
         case .paraformer: 6
         case .moonshineV2: 7
+        case .omnilingualCtc: 8
         }
     }
 }

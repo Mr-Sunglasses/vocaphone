@@ -65,6 +65,7 @@ enum class SherpaFamily(
      * because the file names and the sherpa-onnx config fields both differ.
      */
     MOONSHINE_V2,
+    OMNILINGUAL_CTC,
     ;
 
     /**
@@ -234,21 +235,13 @@ object LocalModelCatalog {
      * custom word list can reach. What it has to be is four rungs across the
      * RAM range that all cover the hundred languages sherpa does not.
      *
-     * **Q8_0 rather than Q5.** Q5 is the smaller file, which reads like the
-     * mobile-friendly choice, and on the hardware this ships to it is the worse
-     * one on both axes. ggml's ARM-accelerated GEMM/GEMV kernels -- the
-     * `__ARM_FEATURE_MATMUL_INT8` and `__ARM_FEATURE_DOTPROD` paths in
-     * `ggml/src/ggml-cpu/arch/arm/repack.cpp` -- are implemented for
-     * `block_q4_0`, `block_q8_0`, `block_iq4_nl` and `block_mxfp4`. There is no
-     * Q5_0 or Q5_1 path in that file at all, so every Q5 model on an arm64
-     * phone falls back to the generic path while Q8 gets the accelerated one.
-     * whisper.cpp's own checked-in `scripts/bench-all-gg.txt` measures the gap
-     * at 2.5-2.8x on ARM (M2 Ultra, 1024x1024: Q8_0 121.0 GFLOPS against Q5_0
-     * 49.0 and Q5_1 43.9). Q8_0 is also the more accurate build -- near-lossless
-     * against F16, where Q5 costs roughly 0.1-0.3 WER points. Q5's only
-     * advantage is disk footprint, and it pays for that twice.
+     * **Q8_0 rather than Q5.** The pinned ggml ARM repack implementation
+     * supports Q8 but not Q5. This favors Q8 on supported CPUs, but the
+     * desktop matrix benchmark does not establish phone transcription speed
+     * or WER. Q5 saves download and resident weight memory; revisit that trade
+     * with device measurements rather than treating Q8 as universally faster.
      *
-     * **No F16 builds.** Twice the size of Q8_0 for no measurable accuracy gain.
+     * **No F16 builds.** Roughly twice the weight storage of Q8_0.
      *
      * **No `.en` builds.** English-only whisper is dominated by Moonshine and
      * Parakeet at a fraction of the size, so the only thing whisper is kept

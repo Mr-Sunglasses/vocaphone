@@ -13,6 +13,17 @@ import org.junit.Test
  * gateway's last engine report says nothing about the model running on the phone.
  */
 class LocalModelLanguageTest {
+    @Test
+    fun omnilingualHasExplicitCoverageAndUsesSafeGreedyDecoding() {
+        val model = LocalModelCatalog.find("omnilingual-300m-ctc")!!
+        assertTrue(model.languageCodes.containsAll(setOf("ar", "sw", "hi")))
+        assertTrue(model.detectsLanguage)
+        assertFalse(model.sherpaFamily!!.acceptsLanguage)
+        assertFalse(model.sherpaFamily!!.supportsBeamSearch)
+        assertTrue(model.translationTargets.isEmpty())
+        assertEquals(6, model.minimumRamGB)
+    }
+
     private fun settings(
         language: TranscriptionLanguage,
         localModelId: String = "",

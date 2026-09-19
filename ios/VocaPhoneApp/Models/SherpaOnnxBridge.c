@@ -84,6 +84,9 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
         case VocaPhoneSherpaDolphinCtc:
             config.model_config.dolphin.model = model1;
             break;
+        case VocaPhoneSherpaOmnilingualCtc:
+            config.model_config.omnilingual.model = model1;
+            break;
         case VocaPhoneSherpaCanary:
             config.model_config.canary.encoder = model1;
             config.model_config.canary.decoder = model2;

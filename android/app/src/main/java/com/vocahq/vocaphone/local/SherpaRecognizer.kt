@@ -6,6 +6,7 @@ import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineNemoEncDecCtcModelConfig
+import com.k2fsa.sherpa.onnx.OfflineOmnilingualAsrCtcModelConfig
 import com.k2fsa.sherpa.onnx.OfflineParaformerModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
@@ -182,6 +183,10 @@ internal class SherpaRecognizer private constructor(
 
                 SherpaFamily.DOLPHIN_CTC -> OfflineModelConfig(
                     dolphin = OfflineDolphinModelConfig(model = path("model.int8.onnx")),
+                )
+
+                SherpaFamily.OMNILINGUAL_CTC -> OfflineModelConfig(
+                    omnilingual = OfflineOmnilingualAsrCtcModelConfig(model = path("model.int8.onnx")),
                 )
 
                 // The one family that can translate. Equal source and target is

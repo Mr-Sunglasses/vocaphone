@@ -53,6 +53,8 @@ fun LocalModelDescriptor.recommendationWhy(): String = when (sherpaFamily) {
         "Matches this phone's language without a large download."
     SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC ->
         "A compact model for this phone's language."
+    SherpaFamily.OMNILINGUAL_CTC ->
+        "Broad language coverage with automatic language detection."
     null -> if (engine == LocalModelEngine.WHISPER) {
         if (englishOnly) {
             "A small English Whisper model that fits this phone."

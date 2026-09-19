@@ -134,6 +134,7 @@ fun scoreModel(model: LocalModelDescriptor, profile: DeviceProfile): Int {
         SherpaFamily.SENSE_VOICE, SherpaFamily.CANARY, SherpaFamily.PARAFORMER -> score += 50
         SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC -> score += 40
         SherpaFamily.NEMO_TRANSDUCER -> score += 20
+        SherpaFamily.OMNILINGUAL_CTC -> score += 10
         null -> Unit
     }
     if (model.engine == LocalModelEngine.WHISPER) {

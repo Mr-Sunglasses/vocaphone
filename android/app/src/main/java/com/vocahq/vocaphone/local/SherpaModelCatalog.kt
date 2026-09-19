@@ -12,6 +12,27 @@ package com.vocahq.vocaphone.local
 internal object SherpaModelCatalog {
     val all: List<LocalModelDescriptor> = listOf(
         sherpa(
+            id = "omnilingual-300m-ctc",
+            languageCodes = setOf(
+                "en", "de", "es", "fr", "hi", "bn", "ta", "te", "gu", "pa", "mr", "as",
+                "ne", "ur", "th", "vi", "id", "ms", "ar", "sw",
+            ),
+            detectsLanguage = true,
+            displayName = "Omnilingual ASR 300M",
+            repository = "csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12",
+            revision = "6fc542a3b0661c8278cca1230c34deb989f31202",
+            family = SherpaFamily.OMNILINGUAL_CTC,
+            sizeBytes = 365_438_543L,
+            minimumRamGB = 6,
+            languages = "Multilingual · auto-detect",
+            files = listOf(
+                PinnedFile("model.int8.onnx", 365_352_120L,
+                    "e7c4e54ee4c4c47829cc6667d5d00ed8ea7bef1dcfeef0fce766f77752a2726c"),
+                PinnedFile("tokens.txt", 86_423L,
+                    "a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31"),
+            ),
+        ),
+        sherpa(
             id = "moonshine-v2-tiny-en",
             languageCodes = setOf("en"),
             displayName = "Moonshine v2 Tiny English",

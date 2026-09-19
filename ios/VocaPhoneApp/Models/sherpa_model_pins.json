@@ -1,5 +1,21 @@
 {
   "models": {
+    "omnilingual-300m-ctc": {
+      "repository": "csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12",
+      "revision": "6fc542a3b0661c8278cca1230c34deb989f31202",
+      "files": [
+        {
+          "path": "model.int8.onnx",
+          "size": 365352120,
+          "sha256": "e7c4e54ee4c4c47829cc6667d5d00ed8ea7bef1dcfeef0fce766f77752a2726c"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 86423,
+          "sha256": "a7a044c52cb29cbe8b0dc1953e92cefd4ca16b0ed968177b6beab21f9a7d0b31"
+        }
+      ]
+    },
     "moonshine-v2-tiny-en": {
       "repository": "csukuangfj2/sherpa-onnx-moonshine-tiny-en-quantized-2026-02-27",
       "revision": "d1e6c30921780b8508d04b492dfb3ce8a51605d4",

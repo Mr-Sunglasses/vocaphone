@@ -223,9 +223,10 @@ any change that touches the catalog.
 
 Two rules the catalog encodes, both easy to undo by accident:
 
-- **Whisper on Android is Q8_0, never Q5.** ggml has no ARM repack kernel for
-  Q5, so a Q5 build runs the generic path on every phone while Q8 gets
-  `MATMUL_INT8`/`DOTPROD` — 2.5–2.8× slower, and slightly less accurate too.
+- **Whisper on Android currently uses Q8_0.** The pinned ggml ARM repack
+  implementation supports Q8 but not Q5. Its desktop matrix benchmark is not
+  an end-to-end phone measurement; revisit this choice only with target-device
+  latency, peak memory, and accuracy evidence.
 - **Removing a model means adding it to `RetiredModels` / `RetiredLocalModels`.**
   A stored selection is an id, so a dropped row otherwise reads back as no
   selection and silently demotes the user to a first-run recommendation.

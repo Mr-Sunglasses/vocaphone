@@ -17,6 +17,7 @@ enum SherpaFamily: String, Codable, Sendable {
     /// A separate case rather than a flag, because the file names and the
     /// sherpa-onnx config fields both differ and every switch has to answer.
     case moonshineV2
+    case omnilingualCtc
 
     /// Whether this family can safely use `modified_beam_search`.
     ///
@@ -386,6 +387,23 @@ enum LocalModelCatalog {
             minimumRamGB: 4,
             languages: "100 languages",
             englishOnly: false
+        ),
+        .init(
+            id: "omnilingual-300m-ctc",
+            displayName: "Omnilingual ASR 300M",
+            engine: .sherpaOnnx,
+            repository: "csukuangfj2/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12",
+            revision: "6fc542a3b0661c8278cca1230c34deb989f31202",
+            sherpaFamily: .omnilingualCtc,
+            sizeBytes: 365_438_543,
+            minimumRamGB: 6,
+            languages: "Multilingual · auto-detect",
+            englishOnly: false,
+            languageCodesOverride: [
+                "en", "de", "es", "fr", "hi", "bn", "ta", "te", "gu", "pa", "mr", "as",
+                "ne", "ur", "th", "vi", "id", "ms", "ar", "sw",
+            ],
+            detectsLanguageAutomatically: true
         ),
         .init(
             id: "moonshine-v2-tiny-en",
@@ -763,14 +781,12 @@ enum LocalModelCatalog {
     /// Several languages in one model, the accurate ones first.
     private static let manyLanguagesPreference = [
         "parakeet-tdt-0.6b-v3",
-        "openai_whisper-large-v3-v20240930_turbo_632MB",
+        "openai_whisper-large-v3-v20240930_626MB",
         "canary-180m-flash",
         "dolphin-small-ctc",
         "sense-voice",
-        "openai_whisper-small",
-        "dolphin-base-ctc",
+        "openai_whisper-small_216MB",
         "openai_whisper-base",
-        "openai_whisper-tiny",
     ]
 
     /// Whether `model` is among the most accurate for `language`.
@@ -789,7 +805,6 @@ enum LocalModelCatalog {
     static func accuracyRanking(for language: String) -> [String] {
         let code = language.lowercased()
         let largeV3 = [
-            "openai_whisper-large-v3-v20240930_turbo_632MB",
             "openai_whisper-large-v3-v20240930_626MB",
         ]
         switch code {
@@ -798,10 +813,10 @@ enum LocalModelCatalog {
                 "parakeet-tdt-0.6b-v2-en",
                 "parakeet-tdt-0.6b-v3",
                 "canary-180m-flash",
-                "distil-whisper_distil-large-v3_turbo_600MB",
+                "moonshine-v2-base-en",
             ] + largeV3
         case "ru":
-            return ["giga-am-ctc-ru", "parakeet-tdt-0.6b-v3"] + largeV3
+            return ["giga-am-v3-ru", "parakeet-tdt-0.6b-v3"] + largeV3
         case "ja":
             return ["parakeet-tdt-ctc-ja", "sense-voice"] + largeV3
         case "zh", "yue", "ko":
@@ -1276,6 +1291,7 @@ enum ModelMaker: String, CaseIterable, Sendable {
     case usefulSensors
     case dataocean
     case sber
+    case meta
 
     var displayName: String {
         switch self {
@@ -1286,6 +1302,7 @@ enum ModelMaker: String, CaseIterable, Sendable {
         case .usefulSensors: "Useful Sensors"
         case .dataocean: "DataoceanAI"
         case .sber: "Sber"
+        case .meta: "Meta"
         }
     }
 }
@@ -1293,6 +1310,7 @@ enum ModelMaker: String, CaseIterable, Sendable {
 extension LocalModelDescriptor {
     /// Read from the identifier's family, which is stable across builds.
     var maker: ModelMaker {
+        if id.hasPrefix("omnilingual") { return .meta }
         if id.hasPrefix("distil-whisper") { return .huggingFace }
         if id.hasPrefix("openai_whisper") { return .openAI }
         if id.hasPrefix("moonshine") { return .usefulSensors }

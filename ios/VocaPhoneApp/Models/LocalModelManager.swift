@@ -2043,9 +2043,13 @@ final class LocalModelManager {
                 // on. Leaving it off lets a window open on a blank token, which
                 // is how a pause becomes a leading empty segment.
                 suppressBlank: true,
-                chunkingStrategy: .vad
+                concurrentWorkerCount: 1
             )
-            let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: options)
+            let results = try await WhisperTranscription.transcribe(
+                samples: samples, options: options
+            ) { window, options in
+                try await whisperKit.transcribe(audioArray: window, decodeOptions: options)
+            }
             let text = results.map(\.text).joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {

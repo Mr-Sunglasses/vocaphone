@@ -1,9 +1,24 @@
 import Testing
 
 struct LocalModelCatalogTests {
+    @Test func omnilingualIsAnOptionalGreedyModelWithExplicitCoverage() throws {
+        let model = try #require(LocalModelCatalog.descriptor(for: "omnilingual-300m-ctc"))
+        #expect(model.covers("ar"))
+        #expect(model.covers("sw"))
+        #expect(model.covers("hi"))
+        #expect(model.detectsLanguageAutomatically)
+        #expect(model.sherpaFamily?.acceptsLanguage == false)
+        #expect(model.sherpaFamily?.supportsBeamSearch == false)
+        #expect(model.translationTargets.isEmpty)
+        #expect(!model.supportsCustomVocabulary)
+        #expect(model.minimumRamGB == 6)
+        #expect(model.maker == .meta)
+        #expect(!LocalModelCatalog.accuracyRanking(for: "hi").contains(model.id))
+    }
+
     @Test func sherpaModelsAreAvailableAlongsideWhisperKit() {
         let sherpa = LocalModelCatalog.all.filter { $0.engine == .sherpaOnnx }
-        #expect(sherpa.count == 10)
+        #expect(sherpa.count == 11)
         #expect(sherpa.allSatisfy { $0.repository != nil && $0.revision != nil })
         #expect(sherpa.allSatisfy { $0.sherpaFamily != nil })
     }
@@ -200,7 +215,7 @@ struct LocalModelCatalogTests {
         #expect(picks[0].model.covers("en"))
         #expect(picks[0].model.covers("ru"))
         // The specialists stay, as alternates rather than as the answer.
-        #expect(picks.contains { $0.model.id == "giga-am-ctc-ru" })
+        #expect(picks.contains { $0.model.id == "giga-am-v3-ru" })
         #expect(picks.contains { $0.model.id == "parakeet-tdt-0.6b-v2-en" })
     }
 
@@ -211,7 +226,7 @@ struct LocalModelCatalogTests {
         #expect(spoken == ["ru"])
         let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
         #expect(picks[0].role == .regional)
-        #expect(picks[0].model.id == "giga-am-ctc-ru")
+        #expect(picks[0].model.id == "giga-am-v3-ru")
     }
 
     @Test func everyEnabledKeyboardLanguageIsInTheSpokenList() {
@@ -221,8 +236,7 @@ struct LocalModelCatalogTests {
         )
         #expect(spoken == ["en", "zh", "ja", "ko", "ru"])
         let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
-        #expect(picks.contains { $0.model.id == "giga-am-ctc-ru" })
-        #expect(picks.contains { $0.model.id == "paraformer-zh-small" })
+        #expect(picks.contains { $0.model.id == "giga-am-v3-ru" })
         #expect(picks.contains { $0.model.id == "sense-voice" })
     }
 
@@ -247,7 +261,7 @@ struct LocalModelCatalogTests {
         #expect(spoken == ["en", "ru"])
         #expect(!spoken.contains("zh"))
         let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
-        #expect(picks.contains { $0.model.id == "giga-am-ctc-ru" })
+        #expect(picks.contains { $0.model.id == "giga-am-v3-ru" })
         #expect(!picks.contains { $0.model.id == "paraformer-zh-small" })
         #expect(!picks.contains { $0.model.id == "sense-voice" })
     }
@@ -341,12 +355,19 @@ struct LocalModelCatalogTests {
         #expect(maker("parakeet-tdt-0.6b-v2-en") == .nvidia)
         #expect(maker("canary-180m-flash") == .nvidia)
         #expect(maker("openai_whisper-base") == .openAI)
-        #expect(maker("distil-whisper_distil-large-v3_594MB") == .huggingFace)
-        #expect(maker("moonshine-base-en") == .usefulSensors)
+        #expect(maker("moonshine-v2-base-en") == .usefulSensors)
         #expect(maker("sense-voice") == .alibaba)
         #expect(maker("paraformer-zh-small") == .alibaba)
         #expect(maker("dolphin-small-ctc") == .dataocean)
-        #expect(maker("giga-am-ctc-ru") == .sber)
+        #expect(maker("giga-am-v3-ru") == .sber)
+    }
+
+    @Test func accuracyRankingsOnlyReferenceAvailableModels() {
+        for language in TranscriptionLanguage.allCases where language != .automatic {
+            for id in LocalModelCatalog.accuracyRanking(for: language.rawValue) {
+                #expect(LocalModelCatalog.descriptor(for: id) != nil)
+            }
+        }
     }
 
     /// Smallest is smallest first, and never a model built for another

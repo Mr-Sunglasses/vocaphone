@@ -1329,7 +1329,7 @@ struct ModelMakerTile: View {
         case .openAI: "MakerOpenAI"
         case .huggingFace: "MakerHuggingFace"
         case .alibaba: "MakerAlibaba"
-        case .usefulSensors, .dataocean, .sber: nil
+        case .usefulSensors, .dataocean, .sber, .meta: nil
         }
     }
 
@@ -1338,6 +1338,7 @@ struct ModelMakerTile: View {
         case .usefulSensors: "US"
         case .dataocean: "D"
         case .sber: "S"
+        case .meta: "M"
         default: ""
         }
     }
@@ -1351,6 +1352,7 @@ struct ModelMakerTile: View {
         case .usefulSensors: Color(red: 91 / 255, green: 79 / 255, blue: 219 / 255)
         case .dataocean: Color(red: 21 / 255, green: 101 / 255, blue: 192 / 255)
         case .sber: Color(red: 33 / 255, green: 160 / 255, blue: 56 / 255)
+        case .meta: Color(red: 8 / 255, green: 102 / 255, blue: 255 / 255)
         }
     }
 
