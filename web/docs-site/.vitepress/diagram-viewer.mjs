@@ -11,6 +11,7 @@ let zoomLabel;
 let closeButton;
 let zoom = 1;
 let previousFocus;
+let panStart;
 
 function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;
@@ -62,12 +63,51 @@ function createViewer() {
     event.preventDefault();
     setZoom(zoom + (event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
   }, { passive: false });
+
+  stage.addEventListener('pointerdown', (event) => {
+    if (event.button !== 0) return;
+    panStart = {
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: stage.scrollLeft,
+      scrollTop: stage.scrollTop,
+    };
+    stage.setPointerCapture(event.pointerId);
+    stage.classList.add('is-panning');
+  });
+
+  stage.addEventListener('pointermove', (event) => {
+    if (!panStart) return;
+    stage.scrollLeft = panStart.scrollLeft - (event.clientX - panStart.x);
+    stage.scrollTop = panStart.scrollTop - (event.clientY - panStart.y);
+  });
+
+  const stopPanning = () => {
+    panStart = undefined;
+    stage.classList.remove('is-panning');
+  };
+  stage.addEventListener('pointerup', stopPanning);
+  stage.addEventListener('pointercancel', stopPanning);
 }
 
 function setZoom(nextZoom) {
   zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
   canvas.style.transform = `scale(${zoom})`;
   zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
+}
+
+function initialZoomFor(svg) {
+  const viewBox = svg.viewBox?.baseVal;
+  if (!viewBox?.width || !viewBox.height) return 1;
+  const aspectRatio = viewBox.width / viewBox.height;
+  if (aspectRatio >= 6) return 1.5;
+  if (aspectRatio >= 3) return 1.25;
+  return 1;
+}
+
+function centerStage() {
+  stage.scrollLeft = Math.max(0, (stage.scrollWidth - stage.clientWidth) / 2);
+  stage.scrollTop = Math.max(0, (stage.scrollHeight - stage.clientHeight) / 2);
 }
 
 function sizeExpandedSvg() {
@@ -98,7 +138,8 @@ function openViewer(diagram) {
   expandedSvg.style.height = 'auto';
   viewer.hidden = false;
   sizeExpandedSvg();
-  setZoom(1);
+  setZoom(initialZoomFor(expandedSvg));
+  requestAnimationFrame(centerStage);
   document.documentElement.classList.add(OPEN_CLASS);
   closeButton.focus();
 }
