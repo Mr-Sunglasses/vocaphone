@@ -112,19 +112,41 @@ current checkout.
 
 Repeat this in Notes at least five times:
 
-```text
-Notes field → vocaphone keyboard → Start
-→ containing app begins recording → manually swipe back
-→ keyboard shows active recording → Finish
-→ transcript becomes available → Insert
+```mermaid
+sequenceDiagram
+  participant Notes as Notes field
+  participant Keyboard as VocaPhone keyboard
+  participant App as Containing app
+  participant State as App Group state
+
+  Notes->>Keyboard: Tap Start
+  Keyboard->>State: Write launch request
+  Keyboard->>App: Open dictation handoff
+  App->>State: Claim session and start recording
+  Notes-->>Keyboard: User returns to Notes
+  Keyboard->>State: Show active recording
+  Notes->>Keyboard: Tap Finish
+  Keyboard->>App: Request transcription
+  App-->>State: Transcript ready
+  Keyboard->>Notes: Insert transcript
 ```
 
 Then, while Quick Dictation still shows Ready, repeat:
 
-```text
-Notes field → vocaphone keyboard → Dictate
-→ Notes remains visible → keyboard changes to Recording → Finish
-→ transcript becomes available → Insert
+```mermaid
+sequenceDiagram
+  participant Notes as Notes field
+  participant Keyboard as VocaPhone keyboard
+  participant App as Ready containing app
+
+  Notes->>Keyboard: Tap Dictate
+  Keyboard->>App: Send session through ready window
+  App-->>Keyboard: Recording state
+  Notes-->>Keyboard: Notes stays visible
+  Notes->>Keyboard: Tap Finish
+  Keyboard->>App: Request transcription
+  App-->>Keyboard: Transcript ready
+  Keyboard->>Notes: Insert transcript
 ```
 
 Verify that:

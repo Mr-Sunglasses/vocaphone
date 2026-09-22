@@ -20,6 +20,11 @@ Follow the [getting started tutorial](tutorials/getting-started.md) if you are
 new to VocaPhone. It walks through the shortest working path on Android and
 iPhone, then explains when you need a gateway.
 
+If you want to understand the product boundary first, read [What
+VocaPhone is](explanation/product-overview.md). It explains the on-device
+default, the optional self-hosted gateway, and the differences between the
+Android and iPhone clients.
+
 ## Choose a task
 
 ### Use VocaPhone
@@ -40,6 +45,8 @@ iPhone, then explains when you need a gateway.
 
 ### Ship and maintain the project
 
+- [Set up development](how-to/development-setup.md) — install Android, iOS,
+  gateway, and documentation toolchains and run the project locally.
 - [Release VocaPhone](how-to/release.md) — understand tag names, artifacts,
   checks, and the Android/iOS release boundary.
 - [Ship to TestFlight](how-to/testflight.md) — archive, upload, and distribute
@@ -52,6 +59,8 @@ iPhone, then explains when you need a gateway.
 
 ### Understand the system
 
+- [What VocaPhone is](explanation/product-overview.md) — learn the product
+  boundary, supported clients, and privacy-first transcription paths.
 - [How the system fits together](explanation/architecture.md) — follow the
   recording, handoff, gateway, engine, and insertion boundaries.
 - [Privacy and data handling](reference/privacy.md) — see what stays on the

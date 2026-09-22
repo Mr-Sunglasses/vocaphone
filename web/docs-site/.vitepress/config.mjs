@@ -1,10 +1,11 @@
 import { defineConfig } from 'vitepress';
+import { withMermaid } from 'vitepress-plugin-mermaid';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const webNodeModules = fileURLToPath(new URL('../../node_modules/', import.meta.url));
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   lang: 'en-US',
   title: 'VocaPhone docs',
   description: 'Build, use, deploy, and understand VocaPhone.',
@@ -45,6 +46,7 @@ export default defineConfig({
         items: [
           { text: 'Documentation home', link: '/' },
           { text: 'Get started', link: '/tutorials/getting-started' },
+          { text: 'What VocaPhone is', link: '/explanation/product-overview' },
           { text: 'How VocaPhone works', link: '/explanation/architecture' },
           { text: 'Privacy and data handling', link: '/reference/privacy' },
         ],
@@ -61,6 +63,7 @@ export default defineConfig({
       {
         text: 'Ship and contribute',
         items: [
+          { text: 'Development setup', link: '/how-to/development-setup' },
           { text: 'Release VocaPhone', link: '/how-to/release' },
           { text: 'Ship to TestFlight', link: '/how-to/testflight' },
           { text: 'Ship to Google Play', link: '/how-to/google-play' },
@@ -91,4 +94,4 @@ export default defineConfig({
       copyright: 'Copyright © VocaHQ',
     },
   },
-});
+}));

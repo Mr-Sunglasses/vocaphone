@@ -11,19 +11,24 @@ or diagnosing a cross-platform failure.
 
 ## Component boundary
 
-```text
-target app text field
-  ↕ UITextDocumentProxy
-vocaphone keyboard extension
-  ↕ atomic App Group JSON + revision numbers
-vocaphone containing app
-  ↕ bearer-authenticated HTTP/HTTPS through LAN, VPN, or reverse proxy
-FastAPI gateway (VocaHQ/vocagateway submodule at gateway/)
-  on macOS or Linux (native or multi-architecture container)
-  → bounded temporary audio → FFmpeg mono 16 kHz WAV
-  → TranscriptionEngine adapter → VocaMac, Handy, MLX Audio, WhisperKit,
-                                  sherpa-onnx, faster-whisper, Moonshine,
-                                  or whisper.cpp
+```mermaid
+flowchart LR
+  field[Target app text field]
+  keyboard[VocaPhone keyboard]
+  app[Containing app or foreground service]
+  local[On-device speech model]
+  gateway[Self-hosted VocaGateway]
+  normalize[Bounded audio and FFmpeg normalization]
+  engine[TranscriptionEngine adapter]
+  result[Transcript]
+
+  field <-->|insert at cursor| keyboard
+  keyboard <-->|App Group session state| app
+  app --> local
+  app -. authenticated HTTP or WebSocket .-> gateway
+  gateway --> normalize --> engine --> result
+  local --> result
+  result --> app --> keyboard
 ```
 
 The gateway implementation and its ops docs live in
@@ -44,27 +49,51 @@ the gateway wire format changed.
 
 ## Recorded request flow
 
-1. The keyboard creates a UUID session and atomically writes `launchingApp`.
-2. If a nonexpired Quick Dictation marker exists, the already-running app sees
-   the request while its background input is active. Otherwise the keyboard
-   opens `vocaphone://dictate?session=<uuid>` after a short fallback delay.
-3. The app validates the session, claims it, and resolves which speech-to-text
-   route the session will take — `onDevice` or `gateway` — writing that
-   `processingLocation` into the record before any audio moves. It then switches
-   its persistent audio input from discarding buffers to writing a WAV
-   recording, and writes `recording` plus bounded meter updates. The audio graph
-   is not rebuilt between dictations.
-4. The user manually returns to the original app.
-5. Finish changes shared state to `finalizing`.
-6. The app negotiates streaming support on the authenticated WebSocket itself,
-   avoiding a separate health round trip. With a ready Moonshine engine, copied
-   float32 buffers reach the streaming endpoint while the app still writes the
-   complete WAV. Batch-only engines receive a structured unsupported response.
-7. The app stops recording and uses the stream result when available. Otherwise
-   it creates the idempotent session and runs the normal upload/batch flow.
-8. The app writes `readyToInsert` and deletes its audio only after success.
-9. The keyboard verifies its session context, persists `inserting`, calls
-   `insertText`, then persists `inserted` and `completed`.
+The dictation lifecycle is easier to reason about as a message sequence. The
+same session UUID is used across the phone handoff, streaming or batch request,
+retry, and insertion.
+
+```mermaid
+sequenceDiagram
+  participant Field as Text field
+  participant Keyboard as VocaPhone keyboard
+  participant State as App Group or shared state
+  participant App as Containing app or service
+  participant Model as On-device model
+  participant Gateway as Self-hosted gateway
+
+  Field->>Keyboard: User taps Dictate
+  Keyboard->>State: Write UUID and launchingApp
+  alt iOS app is already ready
+    State-->>App: Quick Dictation marker wakes app
+  else Normal handoff
+    Keyboard->>App: Open dictate URL or launch app
+  end
+  App->>State: Claim session and set processingLocation
+  App->>App: Capture bounded PCM16 WAV
+  Field-->>Keyboard: User returns to the text field
+  Keyboard->>State: Finish request
+  alt On-device transcription
+    App->>Model: Transcribe local recording or stream
+    Model-->>App: Transcript
+  else Gateway transcription
+    App->>Gateway: Authenticated stream or idempotent upload
+    Gateway-->>App: Transcript or retryable error
+  end
+  App->>State: Write readyToInsert and remove audio on success
+  Keyboard->>State: Write inserting
+  Keyboard->>Field: insertText(transcript)
+  Keyboard->>State: Write inserted and completed
+```
+
+| Stage | Owner | Boundary |
+| --- | --- | --- |
+| Session launch | Keyboard | Creates a UUID and atomically writes `launchingApp`. |
+| App claim | Containing app or service | Validates the record and writes `processingLocation` before audio moves. |
+| Recording | Phone audio owner | Writes a bounded WAV while publishing meter state; standby buffers are discarded. |
+| Transcription | On-device model or configured gateway | Streaming is attempted when supported; batch upload is the idempotent fallback. |
+| Handoff | Shared session state | Writes `readyToInsert` only after a transcript is available and successful audio can be deleted. |
+| Insertion | Keyboard | Persists `inserting` before calling `insertText` to reduce duplicate text after termination. |
 
 After Finish, the app can rearm a Quick Dictation window without
 tearing down its `AVAudioEngine`. The window length is a preference — 10
@@ -86,13 +115,21 @@ Completion, correction and next-word prediction run entirely inside the keyboard
 extension. Nothing about them touches the gateway, the App Group session record,
 or the network.
 
-```
-keystroke ─▶ WordComposer ─▶ TypingEngine ─▶ TypingCandidates ─▶ TypingStripView
-                  ▲               │
-     documentContextBeforeInput   ├─ UITextChecker (system dictionaries)
-        (reconcile only)          ├─ UILexicon (the user's own replacements)
-                                  ├─ TypingWordList (shipped, frequency-ordered)
-                                  └─ LearnedWords (App Group, capped at 2 000)
+```mermaid
+flowchart LR
+  touch[Keystroke] --> composer[WordComposer]
+  composer --> engine[TypingEngine]
+  engine --> candidates[TypingCandidates]
+  candidates --> strip[TypingStripView]
+  context[documentContextBeforeInput] -. reconcile only .-> composer
+  checker[UITextChecker]
+  lexicon[UILexicon]
+  wordlist[TypingWordList]
+  learned[LearnedWords, capped at 2,000]
+  checker --> engine
+  lexicon --> engine
+  wordlist --> engine
+  learned --> engine
 ```
 
 Three constraints shape the design:
@@ -167,10 +204,23 @@ with DEBUG undefined and is the wider version of the same check.
 
 ## Server states
 
-`created → uploaded → transcribing → completed`
+```mermaid
+stateDiagram-v2
+  [*] --> created
+  created --> uploaded: audio accepted
+  uploaded --> transcribing: engine starts
+  transcribing --> completed: transcript ready
+  created --> failed: validation or upload error
+  uploaded --> failed: normalization error
+  transcribing --> failed: engine error
+  failed --> uploaded: retry same session
+  completed --> completed: idempotent finish
+  completed --> [*]
+```
 
-Failures move to `failed` while retaining original audio for retry. Repeating
-session creation or finishing a completed session returns the same job/result.
+Failures retain the original audio for the configured retry window. Repeating
+session creation or finishing a completed session returns the same job or
+result, so a client can retry without creating a duplicate transcription.
 
 ## Engine boundary
 
@@ -224,6 +274,17 @@ the selected model cannot transcribe. Startup schedules a best-effort filesystem
 prefetch for the selected model while the HTTP process remains available.
 
 ## Deployment boundary
+
+```mermaid
+flowchart TD
+  phone[Phone app] -->|private LAN, VPN, or HTTPS| ingress[Gateway ingress]
+  ingress --> native[Native macOS or Linux gateway]
+  ingress --> container[Docker Compose gateway]
+  native --> nativeEngine[Host-native engines]
+  container --> portable[Portable CPU or GPU engines]
+  nativeEngine --> response[Same API and health semantics]
+  portable --> response
+```
 
 The native macOS gateway can use Apple-platform engines. The container is a
 Linux process with persistent CPU engines and optional GPU-specific images;

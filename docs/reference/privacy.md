@@ -23,6 +23,21 @@ those paths reviewable.
 
 ## Data flow
 
+```mermaid
+flowchart LR
+  phone[Phone microphone] --> capture[Explicit dictation recording]
+  capture --> route{Selected route}
+  route -->|On-device| model[On-device model]
+  route -->|Gateway| auth[Configured URL and bearer token]
+  auth --> gateway[Self-hosted gateway]
+  gateway --> gatewayModel[Selected gateway engine]
+  model --> transcript[Transcript]
+  gatewayModel --> transcript
+  transcript --> insert[Insert at cursor]
+  insert --> cleanup[Delete successful audio]
+  capture -->|Quick Dictation standby| discard[Discard in-memory buffers]
+```
+
 The containing iPhone app records only after an explicit Start action. It keeps
 recoverable audio in the App Group container, sends it to the configured
 bearer-authenticated gateway over HTTP or HTTPS, and deletes the iPhone copy

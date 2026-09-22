@@ -259,12 +259,14 @@ of truth.
 | [Android client](android/README.md) | Building the APK, guided setup, voice keyboard, and privacy boundaries |
 | [Gateway reference](gateway/README.md) | Native service, Compose, models, configuration, health, and CLI commands ([vocagateway](https://github.com/VocaHQ/vocagateway)) |
 | [Get started](docs/tutorials/getting-started.md) | Install VocaPhone and complete a first dictation |
+| [Development setup](docs/how-to/development-setup.md) | Install the Android, iOS, gateway, and docs toolchains; build and install locally |
 | [Gateway deployment](docs/how-to/deploy-gateway.md) | Pointers into vocagateway for native vs Docker, pairing, and host setup |
 | [Device setup](docs/how-to/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
 | [Releasing](docs/how-to/release.md) | Platform-prefixed tags, Android-only / iOS-only / joint drops, changelogs |
 | [TestFlight](docs/how-to/testflight.md) | App Store Connect setup, archiving, and TestFlight distribution |
 | [Google Play](docs/how-to/google-play.md) | Production listing, AAB upload, signing, and Console promotion |
 | [Tailscale](docs/how-to/tailscale.md) | Private HTTPS ingress for the gateway |
+| [Product overview](docs/explanation/product-overview.md) | Supported clients, transcription paths, and privacy boundaries |
 | [Architecture](docs/explanation/architecture.md) | Components, state transitions, engine boundary, and observability |
 | [Privacy](docs/reference/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
 | [Troubleshooting](docs/how-to/troubleshooting.md) | Keyboard, microphone, model, network, and Docker failures |
