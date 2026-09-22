@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
+
+permissions:
+  contents: read
+  pull-requests: write
+  security-events: write
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      android: ${{ steps.scope.outputs.android }}
+      ios: ${{ steps.scope.outputs.ios }}
+      web: ${{ steps.scope.outputs.web }}
+      assets: ${{ steps.scope.outputs.assets }}
+      workflows: ${{ steps.scope.outputs.workflows }}
+      codeql: ${{ steps.scope.outputs.codeql }}
+      semgrep: ${{ steps.scope.outputs.semgrep }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+      - name: Load reviewed CI policy independently of the PR
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: VocaHQ/vocaphone
+          ref: 5c81a7babc87dff2de19fc6702013c22a5df254d
+          path: .ci-policy
+          persist-credentials: false
+      - id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 .ci-policy/tools/ci_scope.py select
+
+  android:
+    needs: scope
+    if: needs.scope.outputs.android == 'true' && !github.event.pull_request.draft
+    uses: ./.github/workflows/quality-android.yml
+  ios:
+    needs: scope
+    if: needs.scope.outputs.ios == 'true' && !github.event.pull_request.draft
+    uses: ./.github/workflows/quality-ios.yml
+  web:
+    needs: scope
+    if: needs.scope.outputs.web == 'true' && !github.event.pull_request.draft
+    uses: ./.github/workflows/quality-web.yml
+  assets:
+    needs: scope
+    if: needs.scope.outputs.assets == 'true' && !github.event.pull_request.draft
+    uses: ./.github/workflows/quality-assets.yml
+  workflows:
+    needs: scope
+    if: needs.scope.outputs.workflows == 'true' && !github.event.pull_request.draft
+    uses: ./.github/workflows/lint-workflows.yml
+  codeql:
+    needs: scope
+    if: needs.scope.outputs.codeql == 'true' && !github.event.pull_request.draft
+    uses: ./.github/workflows/codeql-web.yml
+  semgrep:
+    needs: scope
+    if: needs.scope.outputs.semgrep == 'true' && !github.event.pull_request.draft
+    uses: ./.github/workflows/semgrep.yml
+
+  gate:
+    name: CI gate
+    needs: [scope, android, ios, web, assets, workflows, codeql, semgrep]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: VocaHQ/vocaphone
+          ref: 5c81a7babc87dff2de19fc6702013c22a5df254d
+          persist-credentials: false
+      - env:
+          NEEDS: ${{ toJSON(needs) }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+        run: python3 tools/ci_scope.py gate

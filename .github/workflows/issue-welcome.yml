@@ -1,3 +1,6 @@
+# Snapshot of VocaHQ/.github at 6eacd7e046309a51db9eac2f0a159d74941b351a.
+# Kept local so every executable action is SHA-pinned under repository policy.
+# Never check out or execute contributor code in this privileged workflow.
 name: Welcome
 
 on:
@@ -12,5 +15,66 @@ permissions:
   pull-requests: write
 
 jobs:
-  welcome:
-    uses: VocaHQ/.github/.github/workflows/issue-welcome.yml@main
+  comment:
+    if: >
+      (
+        github.event_name == 'issues' &&
+        github.event.issue.state == 'open' &&
+        github.event.issue.pull_request == null &&
+        github.event.issue.user.type != 'Bot'
+      ) || (
+        contains(fromJSON('["pull_request","pull_request_target"]'), github.event_name) &&
+        github.event.pull_request.state == 'open' &&
+        github.event.pull_request.user.type != 'Bot'
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: welcome-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        with:
+          script: |
+            const marker = '<!-- vocahq-welcome -->';
+            const item = context.payload.issue || context.payload.pull_request;
+            const isPr =
+              context.eventName === 'pull_request' ||
+              context.eventName === 'pull_request_target';
+            const login = item.user.login;
+            const number = item.number;
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: number,
+              per_page: 100,
+            });
+            if (
+              comments.some(
+                (c) =>
+                  c.body &&
+                  (c.body.includes(marker) ||
+                    c.body.includes('<!-- vocahq-issue-welcome -->')),
+              )
+            ) {
+              return;
+            }
+            const thanks = isPr
+              ? `Thanks @${login}. A maintainer will review it.`
+              : `Thanks @${login}. A maintainer will look into it.`;
+            const body = [
+              marker,
+              thanks,
+              '',
+              '---',
+              '',
+              '<img src="https://raw.githubusercontent.com/VocaHQ/.github/main/brand/vocahq/voca-logo-512.png" width="22" height="22" align="absmiddle"> **Meanwhile, connect with us:**',
+              '',
+              '[![Discord](https://img.shields.io/badge/discord-talk-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.gg/t6muquAJbm) [![Substack](https://img.shields.io/badge/substack-VocaHQ-FF6719?style=flat-square&logo=substack&logoColor=white)](https://vocahq.substack.com/) [![YouTube](https://img.shields.io/badge/youtube-@VocaHQ-FF0000?style=flat-square&logo=youtube&logoColor=white)](https://www.youtube.com/@VocaHQ) [![Reddit](https://img.shields.io/badge/reddit-r%2FVocaHQ-FF4500?style=flat-square&logo=reddit&logoColor=white)](https://www.reddit.com/r/VocaHQ/) [![X](https://img.shields.io/badge/x-@vocahq-111111?style=flat-square&logo=x&logoColor=white)](https://x.com/vocahq)',
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: number,
+              body,
+            });

@@ -1,0 +1,14 @@
+{
+  "libsherpa-onnx-jni.so": {
+    "name": "sherpa-onnx",
+    "version": "1.13.8",
+    "source": "https://github.com/k2-fsa/sherpa-onnx/tree/11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf",
+    "license": "Apache-2.0"
+  },
+  "libonnxruntime.so": {
+    "name": "onnxruntime",
+    "version": "1.28.0",
+    "source": "https://github.com/csukuangfj/onnxruntime-libs/releases/tag/v1.28.0",
+    "license": "MIT"
+  }
+}

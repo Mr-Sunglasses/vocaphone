@@ -10,15 +10,7 @@ on:
       - 'web/**'
       - '!web/**.md'
       - '.github/workflows/codeql-web.yml'
-  pull_request:
-    branches: [main]
-    # A draft pull request is filtered out below; listing ready_for_review makes
-    # the checks start the moment it stops being a draft.
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'web/**'
-      - '!web/**.md'
-      - '.github/workflows/codeql-web.yml'
+  workflow_call:
   schedule:
     # Catches newly published CodeQL query packs even in a week nobody
     # touches web/.
@@ -30,7 +22,7 @@ permissions:
   security-events: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: codeql-web-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

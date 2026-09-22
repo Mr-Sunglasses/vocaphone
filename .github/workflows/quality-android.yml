@@ -13,20 +13,7 @@ on:
       - '.github/actions/setup-android/action.yml'
       - '.github/actions/report-size/**'
       - '.github/workflows/quality-android.yml'
-  pull_request:
-    branches: [main]
-    # A draft pull request is filtered out below; listing ready_for_review makes
-    # the checks start the moment it stops being a draft.
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths:
-      - 'android/**'
-      # The keyboard reads the shared word list and emoji catalog from
-      # here; app/build.gradle.kts merges them into the asset root.
-      - 'assets/keyboard/**'
-      - '!android/**.md'
-      - '.github/actions/setup-android/action.yml'
-      - '.github/actions/report-size/**'
-      - '.github/workflows/quality-android.yml'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -37,7 +24,7 @@ permissions:
   pull-requests: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: quality-android-${{ github.workflow }}-${{ github.ref }}
   # A superseded pull request push is wasted minutes, but a run on main is the
   # record for a merged commit, so let that one finish.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -60,12 +47,15 @@ jobs:
           # 10 GB repository cache from filling with one Gradle copy per branch
           # and evicting the entry everything else restores from.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       - run: ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
         working-directory: android
       - name: Fail if the checked-in Room schema is stale
         run: git diff --exit-code -- app/schemas
         working-directory: android
+
+      - name: Exercise release dependency inventory
+        working-directory: android
+        run: ./gradlew --no-configuration-cache --init-script ../tools/android-sbom.init.gradle fullReleaseSbom fdroidReleaseSbom
 
       # A 4 KB-aligned library cannot be loaded at all on a 16 KB-page device,
       # and nothing else in the build says so: lint does not look, and the APK's

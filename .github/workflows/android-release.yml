@@ -25,6 +25,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 concurrency:
   group: android-release-${{ github.ref }}
@@ -171,6 +173,20 @@ jobs:
           (cd release-assets \
             && sha256sum vocaphone.apk vocaphone-fdroid.apk vocaphone.aab \
               > SHA256SUMS.txt)
+      - name: Generate runtime and native dependency inventories
+        run: |
+          set -euo pipefail
+          (cd android && ./gradlew --no-configuration-cache --init-script ../tools/android-sbom.init.gradle fullReleaseSbom fdroidReleaseSbom)
+          python3 tools/complete_android_sbom.py android/app/build/reports/sbom/full.cdx.json release-assets/vocaphone.apk release-assets/vocaphone.cdx.json
+          python3 tools/complete_android_sbom.py android/app/build/reports/sbom/fdroid.cdx.json release-assets/vocaphone-fdroid.apk release-assets/vocaphone-fdroid.cdx.json
+          (cd release-assets && sha256sum ./*.cdx.json >> SHA256SUMS.txt)
+      - name: Attest release artifacts and inventories
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            release-assets/*.apk
+            release-assets/*.aab
+            release-assets/*.cdx.json
       - name: Upload release files as workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -233,6 +249,8 @@ jobs:
             release-assets/vocaphone.apk \
             release-assets/vocaphone-fdroid.apk \
             release-assets/vocaphone.aab \
+            release-assets/vocaphone.cdx.json \
+            release-assets/vocaphone-fdroid.cdx.json \
             release-assets/SHA256SUMS.txt \
             release-assets/SIGNING-CERTIFICATE-SHA256.txt \
             --repo "$GITHUB_REPOSITORY" \

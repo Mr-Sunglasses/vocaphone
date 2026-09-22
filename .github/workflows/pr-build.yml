@@ -34,14 +34,14 @@ on:
           - android
           - ios
       quick:
-        description: Build an unsigned Android debug APK only (faster)
+        description: Build a debug-signed Android APK without release credentials (faster)
         required: false
         default: false
         type: boolean
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: read
   actions: read
 
 concurrency:
@@ -58,6 +58,9 @@ env:
 jobs:
   prepare:
     name: Prepare
+    permissions:
+      contents: read
+      pull-requests: write
     if: >-
       (github.event_name == 'workflow_dispatch') ||
       (github.event.issue.pull_request &&
@@ -200,12 +203,14 @@ jobs:
               ].join('\n')
             });
 
-  android:
-    name: Android
+  android-build:
+    name: Compile Android (no secrets)
     needs: prepare
     if: needs.prepare.outputs.allowed == 'true' && needs.prepare.outputs.want_android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -213,57 +218,91 @@ jobs:
           ref: ${{ needs.prepare.outputs.sha }}
           submodules: recursive
           persist-credentials: false
-
       - uses: ./.github/actions/setup-android
         with:
-          # PR builds read main's cache and never save their own copy.
           cache-read-only: true
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-
-      - name: Build Android APK
-        id: build
+      - name: Compile APK
         env:
           QUICK: ${{ needs.prepare.outputs.quick }}
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_FILE: ${{ runner.temp }}/vocaphone-release.keystore
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
-          SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
         working-directory: android
         run: |
           set -euo pipefail
-          assets="${GITHUB_WORKSPACE}/pr-assets"
-          mkdir -p "$assets"
-          if [ "$QUICK" = "true" ]; then
+          if [ "$QUICK" = true ]; then
             ./gradlew assembleFullDebug
             src=app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
-            out="vocaphone-pr.${PR_NUMBER}+${SHORT_SHA}-debug.apk"
           else
-            if [ -z "${KEYSTORE_BASE64:-}" ] || [ -z "${KEYSTORE_PASSWORD:-}" ] \
-              || [ -z "${KEY_ALIAS:-}" ] || [ -z "${KEY_PASSWORD:-}" ]; then
-              echo "Release signing secrets are missing; cannot build a phone-installable APK." >&2
-              echo "Configure KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD," >&2
-              echo "or comment /build-quick for an unsigned debug APK." >&2
-              exit 1
-            fi
-            # Passed through the environment rather than interpolated into the
-            # script, so the keystore never becomes part of the command line.
-            printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
             ./gradlew assembleFullRelease
             src=app/build/outputs/apk/full/release/vocaphone-fullRelease.apk
-            out="vocaphone-pr.${PR_NUMBER}+${SHORT_SHA}.apk"
           fi
-          cp "$src" "$assets/$out"
-          (
-            cd "$assets"
-            sha256sum "$out" > SHA256SUMS.txt
-          )
+          mkdir -p "$RUNNER_TEMP/apk"
+          cp "$src" "$RUNNER_TEMP/apk/input.apk"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsigned-android-${{ needs.prepare.outputs.sha }}
+          path: ${{ runner.temp }}/apk/input.apk
+          retention-days: 1
+          if-no-files-found: error
+
+  android:
+    name: Package Android
+    needs: [prepare, android-build]
+    if: needs.prepare.outputs.allowed == 'true' && needs.prepare.outputs.want_android == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Debug packaging has no signing secrets and no review gate.
+    environment:
+      name: ${{ needs.prepare.outputs.quick == 'true' && 'pr-build-debug' || 'pr-signing' }}
+      url: https://github.com/${{ github.repository }}/commit/${{ needs.prepare.outputs.sha }}
+    steps:
+      - name: Confirm approved commit is still the PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')" = "$EXPECTED_SHA"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: unsigned-android-${{ needs.prepare.outputs.sha }}
+          path: input
+      - name: Sign release APK using runner tools only
+        if: needs.prepare.outputs.quick != 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          trap 'rm -f "$RUNNER_TEMP/pr-signing.keystore"' EXIT
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pr-signing.keystore"
+          build_tools="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)"
+          "$build_tools/zipalign" -P 16 -f 4 input/input.apk input/aligned.apk
+          "$build_tools/apksigner" sign --ks "$RUNNER_TEMP/pr-signing.keystore" \
+            --ks-pass env:KEYSTORE_PASSWORD --ks-key-alias "$KEY_ALIAS" \
+            --key-pass env:KEY_PASSWORD --out input/signed.apk input/aligned.apk
+          "$build_tools/apksigner" verify --verbose input/signed.apk
+      - name: Package artifact
+        id: build
+        env:
+          QUICK: ${{ needs.prepare.outputs.quick }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p pr-assets
+          suffix=""
+          src=input/signed.apk
+          if [ "$QUICK" = true ]; then suffix="-debug"; src=input/input.apk; fi
+          out="vocaphone-pr.$PR_NUMBER+$SHORT_SHA$suffix.apk"
+          cp "$src" "pr-assets/$out"
+          (cd pr-assets && sha256sum "$out" > SHA256SUMS.txt)
           {
             echo "apk_name=$out"
-            echo "apk_size=$(du -h "$assets/$out" | cut -f1)"
-            echo "apk_sha=$(cut -d' ' -f1 "$assets/SHA256SUMS.txt")"
+            echo "apk_size=$(du -h "pr-assets/$out" | cut -f1)"
+            echo "apk_sha=$(cut -d' ' -f1 pr-assets/SHA256SUMS.txt)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Upload Android APK
@@ -296,9 +335,61 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  ios:
-    name: iOS
+  ios-build:
+    name: Compile iOS (no secrets)
     needs: prepare
+    if: needs.prepare.outputs.allowed == 'true' && needs.prepare.outputs.want_ios == 'true'
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.prepare.outputs.head_repo }}
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - name: Select Xcode
+        run: sudo xcode-select -s "$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)"
+      - run: brew install xcodegen
+      - name: Archive without signing
+        working-directory: ios
+        run: |
+          set -euo pipefail
+          xcodegen generate --spec project.yml
+          xcodebuild -project VocaPhone.xcodeproj -scheme VocaPhone \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/VocaPhone.xcarchive" \
+            -disableAutomaticPackageResolution COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
+          # Match the release archive: static package stubs must not be exported.
+          app="$RUNNER_TEMP/VocaPhone.xcarchive/Products/Applications/VocaPhoneApp.app"
+          load_names=""
+          for bundle in "$app" "$app"/PlugIns/*.appex "$app"/Frameworks/*.framework "$app"/PlugIns/*.appex/Frameworks/*.framework; do
+            [ -d "$bundle" ] || continue
+            executable="$bundle/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$bundle/Info.plist")"
+            load_names+="$(otool -l "$executable" | awk '/cmd LC_(LOAD|LOAD_WEAK|REEXPORT|LAZY_LOAD|LOAD_UPWARD)_DYLIB$/{f=1} f && $1=="name"{print $2; f=0}')"$'\n'
+          done
+          for framework in "$app"/Frameworks/*.framework "$app"/PlugIns/*.appex/Frameworks/*.framework; do
+            [ -d "$framework" ] || continue
+            if [[ "$load_names" != *"/$(basename "$framework")/"* ]]; then
+              rm -rf "$framework"
+            fi
+          done
+          tar -czf "$RUNNER_TEMP/unsigned-ios.tar.gz" -C "$RUNNER_TEMP" VocaPhone.xcarchive
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unsigned-ios-${{ needs.prepare.outputs.sha }}
+          path: ${{ runner.temp }}/unsigned-ios.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  ios:
+    name: Sign iOS
+    needs: [prepare, ios-build]
+    environment:
+      name: pr-signing
+      url: https://github.com/${{ github.repository }}/commit/${{ needs.prepare.outputs.sha }}
     if: needs.prepare.outputs.allowed == 'true' && needs.prepare.outputs.want_ios == 'true'
     runs-on: macos-15
     timeout-minutes: 45
@@ -346,13 +437,39 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: steps.secrets.outputs.configured == 'true'
         with:
-          repository: ${{ needs.prepare.outputs.head_repo }}
-          ref: ${{ needs.prepare.outputs.sha }}
+          # Only trusted workflow-revision entitlements, never contributor scripts.
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
 
-      - name: Install xcodegen
+      - name: Confirm approved commit is still the PR head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          EXPECTED_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq '.head.sha')" = "$EXPECTED_SHA"
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         if: steps.secrets.outputs.configured == 'true'
-        run: brew install xcodegen
+        with:
+          name: unsigned-ios-${{ needs.prepare.outputs.sha }}
+          path: ${{ runner.temp }}/unsigned
+      - name: Extract archive before loading signing credentials
+        if: steps.secrets.outputs.configured == 'true'
+        run: |
+          python3 - <<'PY'
+          import os
+          import tarfile
+          from pathlib import Path
+          temp = Path(os.environ["RUNNER_TEMP"])
+          root = temp / "archive-input"
+          root.mkdir()
+          with tarfile.open(temp / "unsigned/unsigned-ios.tar.gz") as archive:
+              if any(not item.name.startswith("VocaPhone.xcarchive/") and item.name != "VocaPhone.xcarchive" for item in archive):
+                  raise ValueError("Unexpected archive root")
+              archive.extractall(root, filter="data")
+          PY
+          sudo xcode-select -s "$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)"
 
       - name: Import signing certificate and profiles
         if: steps.secrets.outputs.configured == 'true'
@@ -408,12 +525,7 @@ jobs:
 
           echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
 
-      - name: Generate Xcode project
-        if: steps.secrets.outputs.configured == 'true'
-        working-directory: ios
-        run: xcodegen generate --spec project.yml
-
-      - name: Archive and export IPA
+      - name: Export IPA without executing project build scripts
         if: steps.secrets.outputs.configured == 'true'
         id: build
         env:
@@ -423,7 +535,7 @@ jobs:
           KEYBOARD_PROFILE: ${{ steps.signing.outputs.keyboard_name }}
           LIVEACTIVITY_PROFILE: ${{ steps.signing.outputs.liveactivity_name }}
           DERIVED_DATA: ${{ runner.temp }}/DerivedData
-          ARCHIVE_PATH: ${{ runner.temp }}/VocaPhone.xcarchive
+          ARCHIVE_PATH: ${{ runner.temp }}/archive-input/VocaPhone.xcarchive
           EXPORT_PATH: ${{ runner.temp }}/ipa
         working-directory: ios
         run: |
@@ -457,21 +569,22 @@ jobs:
           </plist>
           EOF
 
-          xcodebuild \
-            -project VocaPhone.xcodeproj \
-            -scheme VocaPhone \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath "$DERIVED_DATA" \
-            -archivePath "$ARCHIVE_PATH" \
-            -disableAutomaticPackageResolution \
-            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
-            CODE_SIGN_STYLE=Manual \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
-            COMPILER_INDEX_STORE_ENABLE=NO \
-            MARKETING_VERSION="0.1.0-pr.${PR_NUMBER}" \
-            CURRENT_PROJECT_VERSION="${PR_NUMBER}" \
-            archive
+          app="$ARCHIVE_PATH/Products/Applications/VocaPhoneApp.app"
+          # Stamp only trusted, shipping entitlements before export re-signs.
+          for target in VocaPhoneKeyboard VocaPhoneLiveActivity VocaPhoneApp; do
+            bundle="$app"
+            if [ "$target" != VocaPhoneApp ]; then bundle="$app/PlugIns/$target.appex"; fi
+            case "$target" in
+              VocaPhoneKeyboard) expected=com.vocahq.vocaphone.keyboard ;;
+              VocaPhoneLiveActivity) expected=com.vocahq.vocaphone.liveactivity ;;
+              VocaPhoneApp) expected=com.vocahq.vocaphone ;;
+            esac
+            test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$bundle/Info.plist")" = "$expected"
+            cp "$target/$target.entitlements" "$bundle/archived-expanded-entitlements.xcent"
+            test "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.application-groups:0' "$bundle/archived-expanded-entitlements.xcent")" = group.com.vocahq
+            codesign --force --sign - --generate-entitlement-der \
+              --entitlements "$target/$target.entitlements" "$bundle"
+          done
 
           xcodebuild \
             -exportArchive \
@@ -538,6 +651,10 @@ jobs:
 
   notify:
     name: Notify
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: write
     needs: [prepare, android, ios]
     if: >-
       always() &&

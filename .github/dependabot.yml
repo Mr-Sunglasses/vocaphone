@@ -13,26 +13,45 @@ version: 2
 # everything else.
 updates:
   - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
+  - package-ecosystem: gradle
+    directory: /android
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      android:
+        patterns: ['*']
+    commit-message:
+      prefix: build
+  - package-ecosystem: gitsubmodule
     directory: /
     schedule:
       interval: monthly
     cooldown:
       default-days: 7
-    groups:
-      actions:
-        patterns: ['*']
     commit-message:
-      prefix: ci
-  # Composite actions are not covered by the entry above; they are found only
-  # through the directory that holds them.
-  - package-ecosystem: github-actions
-    directory: /.github/actions/setup-android
+      prefix: build
+  - package-ecosystem: swift
+    directory: /ios
     schedule:
       interval: monthly
     cooldown:
       default-days: 7
     groups:
-      actions:
+      swift:
         patterns: ['*']
     commit-message:
-      prefix: ci
+      prefix: build

@@ -1,0 +1,61 @@
+// Release-only inventory of the resolved runtime graph. No build plugin is
+// added to the app or to normal contributor builds.
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+
+gradle.afterProject { project, state ->
+    if (project.path != ':app') return
+    ['full', 'fdroid'].each { flavor ->
+        project.tasks.register(flavor + 'ReleaseSbom') {
+            doLast {
+                def configuration = project.configurations.getByName(flavor + 'ReleaseRuntimeClasspath')
+                def components = [:]
+                def edges = [:]
+                def ref = { dependency ->
+                    'pkg:maven/' + dependency.moduleGroup + '/' + dependency.moduleName + '@' + dependency.moduleVersion
+                }
+                def visit
+                visit = { dependency ->
+                    def id = ref(dependency)
+                    if (components.containsKey(id)) return
+                    components[id] = [
+                        type: 'library', 'bom-ref': id, purl: id,
+                        group: dependency.moduleGroup,
+                        name: dependency.moduleName, version: dependency.moduleVersion
+                    ]
+                    // Keep variant artifact hashes separate from the package PURL.
+                    components[id].properties = dependency.moduleArtifacts.collect { artifact ->
+                        def digest = MessageDigest.getInstance('SHA-256')
+                        artifact.file.withInputStream { stream ->
+                            byte[] buffer = new byte[65536]
+                            int count
+                            while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
+                        }
+                        [name: 'vocaphone:artifact:' + artifact.file.name + ':sha256',
+                         value: digest.digest().encodeHex().toString()]
+                    }.sort { it.name }
+                    edges[id] = [ref: id, dependsOn: dependency.children.collect(ref).unique().sort()]
+                    dependency.children.each(visit)
+                }
+                def roots = configuration.resolvedConfiguration.firstLevelModuleDependencies
+                roots.each(visit)
+                def root = 'pkg:generic/com.vocahq.vocaphone@' + project.android.defaultConfig.versionName + '?flavor=' + flavor
+                def bom = [
+                    bomFormat: 'CycloneDX', specVersion: '1.6', version: 1,
+                    metadata: [component: [
+                        type: 'application', 'bom-ref': root, purl: root,
+                        name: 'VocaPhone Android (' + flavor + ')',
+                        version: project.android.defaultConfig.versionName,
+                        licenses: [[license: [id: 'AGPL-3.0-only']]]
+                    ]],
+                    components: components.values().sort { it.'bom-ref' },
+                    dependencies: [[ref: root, dependsOn: roots.collect(ref).unique().sort()]] +
+                        edges.values().sort { it.ref }
+                ]
+                def output = new File(project.layout.buildDirectory.get().asFile, 'reports/sbom/' + flavor + '.cdx.json')
+                output.parentFile.mkdirs()
+                output.text = JsonOutput.prettyPrint(JsonOutput.toJson(bom)) + '\n'
+            }
+        }
+    }
+}

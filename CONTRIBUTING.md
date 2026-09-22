@@ -16,8 +16,9 @@ security issues privately via [SECURITY.md](SECURITY.md).
 - Fix bugs or add tests for gateway, iOS, or Android behavior
 - Review pull requests for privacy, security, and platform-constraint regressions
 
-Look for issues labeled `good first issue` or `help wanted` when those labels
-are available.
+Start with [starter contributions](docs/starter-contributions.md) or issues
+labeled `good first issue` / `help wanted`. [Governance](GOVERNANCE.md) explains
+ownership, decisions, current priorities, and how to become a maintainer.
 
 Coding-agent instructions (IME frame budget, `InputConnection`, benchmarks)
 live in [AGENTS.md](AGENTS.md) and [android/AGENTS.md](android/AGENTS.md).
@@ -116,6 +117,17 @@ it, secret and all.
 
 ## Required checks
 
+The required `CI gate` runs on every PR. It selects checks for the changed
+paths, accepts only intentional skips, and fails on failed, cancelled, missing,
+or unexpectedly skipped checks. Mark drafts ready for review to run the full
+app checks. An independent code-owner approval and resolved conversations are
+also required; see [governance](GOVERNANCE.md) for emergency exceptions.
+
+Scope and verdict logic run from an immutable reviewed commit, independently of
+the PR checkout. To change that policy, review and merge the script change first,
+then update both policy pins in `.github/workflows/ci.yml` in a follow-up PR.
+Workflow edits themselves require code-owner review.
+
 Each application has one recipe that runs everything its workflow gates on.
 Run the one for what you changed:
 
@@ -172,6 +184,14 @@ DMG `/build`):
 The workflow reacts with a rocket, posts a started note, uploads artifacts, and
 replies with download links. Only `OWNER` / `MEMBER` / `COLLABORATOR` comments
 trigger it, so fork PRs need a maintainer to run the build.
+
+Compilation runs on runners without signing secrets or repository-write tokens.
+Release APK and IPA signing runs separately through the protected `pr-signing`
+environment. A different administrator must review the linked exact commit and
+approve that deployment; the workflow rejects approval if the PR head has moved.
+Signing jobs only package compiled artifacts and do not run contributor build
+scripts. `/build-quick` uses Android's debug signing and never receives release
+credentials. Dispatch signed builds from `main` only.
 
 Android uses the same release keystore as beta tags, so the APK replaces an
 installed beta. Install with `adb install -r …` or by opening the APK on the

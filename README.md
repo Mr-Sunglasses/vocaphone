@@ -293,6 +293,9 @@ to include (or omit). [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) is Contributor
 Covenant 2.1. [SECURITY.md](SECURITY.md) is the private vulnerability-reporting
 process.
 
+[Governance](GOVERNANCE.md) identifies maintainers and decision-making;
+[starter contributions](docs/starter-contributions.md) lists approachable work.
+
 Report suspected microphone, recording, token, gateway, or tailnet
 vulnerabilities through the private process in [SECURITY.md](SECURITY.md), not a
 public issue.

@@ -48,7 +48,7 @@ Store listing itself needs a new user-visible version.
 
 ```sh
 # 1. Bump versionName and versionCode in android/app/build.gradle.kts
-# 2. Commit on main
+# 2. Merge the reviewed version-bump PR, then update your local main
 git tag android/v0.1.1          # or android/v0.1.1-beta.1
 git push origin android/v0.1.1
 ```
@@ -64,7 +64,7 @@ listing is
 ```sh
 # 1. Bump CURRENT_PROJECT_VERSION in ios/project.yml
 # 2. just ios gen   # commit the regenerated project.pbxproj
-# 3. Commit on main
+# 3. Merge the reviewed version-bump PR, then update your local main
 git tag ios/v1.0.21
 git push origin ios/v1.0.21
 ```
@@ -81,6 +81,36 @@ current ref the same way and does not create a GitHub Release.
 An App Store IPA is not a sideloadable analog of `vocaphone.apk`. Testers
 install from [TestFlight](https://testflight.apple.com/join/wd85wQ3W). The
 iOS GitHub Release is notes plus a TestFlight link, not a binary.
+
+## Verify Android release provenance
+
+New Android releases include `vocaphone.cdx.json` and
+`vocaphone-fdroid.cdx.json` (CycloneDX 1.6), checksums, and GitHub build
+attestations for APKs, AAB, and inventories. The full inventory also describes
+the full AAB's runtime dependencies; native file hashes refer to the APK's
+packaged files. Models downloaded after installation and the optional gateway
+are not bundled and are outside these inventories.
+
+Download assets from the exact release tag you intend to install. Verify:
+
+```sh
+sha256sum --check SHA256SUMS.txt  # macOS: shasum -a 256 --check SHA256SUMS.txt
+gh attestation verify vocaphone.apk --repo VocaHQ/vocaphone \
+  --signer-workflow VocaHQ/vocaphone/.github/workflows/android-release.yml
+gh attestation verify vocaphone.cdx.json --repo VocaHQ/vocaphone \
+  --signer-workflow VocaHQ/vocaphone/.github/workflows/android-release.yml
+```
+
+Check the attestation's source commit/ref against the intended release tag.
+Attestations establish build origin, not absence of vulnerabilities. Existing
+releases are not retroactively attested, and these checks do not establish
+bit-for-bit reproducibility. Continue checking the APK signing certificate
+against the documented release fingerprint.
+
+Before publishing, review the human-readable release notes for user-visible
+changes, upgrade implications, known limitations, and any disclosed security
+advisory identifiers. Generated PR lists are a starting point, not the full
+release explanation. See [dependency maintenance](dependency-maintenance.md).
 
 ## Both (joint product drop)
 
