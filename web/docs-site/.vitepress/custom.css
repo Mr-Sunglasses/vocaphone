@@ -148,6 +148,23 @@
   display: block;
 }
 
+/* Mermaid's sequence labels inherit VitePress's SVG text color. In dark mode
+   that becomes black, which is unreadable on the diagram canvas. Actor labels
+   intentionally stay dark because their boxes are light. */
+.dark .vp-doc .mermaid svg text:not(.actor),
+.dark .voca-diagram-viewer__canvas svg text:not(.actor),
+.dark .vp-doc .mermaid svg text:not(.actor) tspan,
+.dark .voca-diagram-viewer__canvas svg text:not(.actor) tspan {
+  fill: var(--vp-c-text-1) !important;
+}
+
+.dark .vp-doc .mermaid svg text.actor,
+.dark .voca-diagram-viewer__canvas svg text.actor,
+.dark .vp-doc .mermaid svg text.actor tspan,
+.dark .voca-diagram-viewer__canvas svg text.actor tspan {
+  fill: #000 !important;
+}
+
 html.voca-diagram-viewer-open {
   overflow: hidden;
 }
