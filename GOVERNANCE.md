@@ -42,4 +42,4 @@ The immediate priorities are reliable recording and insertion, clear onboarding,
 accurate platform documentation, and maintainable on-device engines. The
 [issue tracker](https://github.com/VocaHQ/vocaphone/issues) is the live backlog;
 an open feature request is not a delivery promise. See
-[starter contributions](docs/starter-contributions.md) for bounded entry points.
+[starter contributions](docs/how-to/contribute.md) for bounded entry points.

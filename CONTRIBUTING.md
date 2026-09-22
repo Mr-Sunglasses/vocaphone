@@ -16,7 +16,7 @@ security issues privately via [SECURITY.md](SECURITY.md).
 - Fix bugs or add tests for gateway, iOS, or Android behavior
 - Review pull requests for privacy, security, and platform-constraint regressions
 
-Start with [starter contributions](docs/starter-contributions.md) or issues
+Start with [starter contributions](docs/how-to/contribute.md) or issues
 labeled `good first issue` / `help wanted`. [Governance](GOVERNANCE.md) explains
 ownership, decisions, current priorities, and how to become a maintainer.
 
