@@ -22,8 +22,10 @@ flowchart LR
   engine[TranscriptionEngine adapter]
   result[Transcript]
 
-  field <-->|insert at cursor| keyboard
-  keyboard <-->|App Group session state| app
+  field -->|insert at cursor| keyboard
+  keyboard -->|text entry| field
+  keyboard -->|App Group session state| app
+  app -->|session updates| keyboard
   app --> local
   app -. authenticated HTTP or WebSocket .-> gateway
   gateway --> normalize --> engine --> result

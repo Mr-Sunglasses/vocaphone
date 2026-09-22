@@ -29,6 +29,26 @@ export default withMermaid(defineConfig({
           find: 'vue',
           replacement: resolve(webNodeModules, 'vue/dist/vue.runtime.esm-bundler.js'),
         },
+        {
+          // Mermaid imports Day.js as an ES module in the browser. Resolve the
+          // package root to its ESM entry so Vite dev does not serve the
+          // CommonJS dayjs.min.js file without a default export.
+          find: /^dayjs$/,
+          replacement: resolve(webNodeModules, 'dayjs/esm/index.js'),
+        },
+        {
+          // Mermaid imports this CommonJS package as a named ESM export. Keep
+          // the browser dev build on a small ESM-compatible sanitizer.
+          find: /^@braintree\/sanitize-url$/,
+          replacement: fileURLToPath(new URL('./sanitize-url.mjs', import.meta.url)),
+        },
+        {
+          // VitePress's browser-side Markdown parser imports debug's CommonJS
+          // entry during dev. A no-op ESM facade keeps that optional logger
+          // from preventing the documentation app from mounting.
+          find: /^debug$/,
+          replacement: fileURLToPath(new URL('./debug.mjs', import.meta.url)),
+        },
       ],
     },
   },
