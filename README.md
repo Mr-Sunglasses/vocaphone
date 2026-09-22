@@ -149,7 +149,7 @@ the same regeneration, then opens it.
 Add the keyboard the same way you would on a device: `just settings` opens
 iOS Settings on the simulator, then **General → Keyboard → Keyboards → Add
 New Keyboard → vocaphone**, with **Allow Full Access** turned on (see
-[privacy.md](docs/privacy.md#full-access) for exactly what that is and isn't
+[privacy.md](docs/reference/privacy.md#full-access) for exactly what that is and isn't
 used for). Typing, autocorrect, and swipe work immediately. For actual
 dictation, **Settings → Transcription → On this iPhone** plus a downloaded
 model is the fastest path with nothing else to configure, or point
@@ -158,7 +158,7 @@ model is the fastest path with nothing else to configure, or point
 **On your own iPhone** (`just device`, phone connected and trusted): code
 signing has to already work in Xcode first. The project ships with VocaHQ's
 own identifiers (`com.vocahq.vocaphone` and friends, team `92962VK378`; see
-[decisions.md](docs/decisions.md)). If you have access to that team, select
+[decisions.md](docs/reference/decisions.md)). If you have access to that team, select
 it on all three targets (VocaPhoneApp, VocaPhoneKeyboard,
 VocaPhoneLiveActivity) under **Signing & Capabilities**; automatic signing
 does the rest. If you don't (most outside contributors), either ask a
@@ -177,11 +177,11 @@ its own App Group. Nothing tracked changes — the identifiers are read at build
 time — so there is no local edit to keep out of a commit. `just ios
 local-signing-off` puts it back. The team ID is the **OU** of your signing
 certificate's subject, not the ID inside the certificate's own name; [device
-setup](docs/device-setup.md) has the one-liner that prints it.
+setup](docs/how-to/device-setup.md) has the one-liner that prints it.
 
 Grant microphone access on first launch, add the keyboard as above, and turn
 on Full Access. Complete the physical-device checklist in [device
-setup](docs/device-setup.md).
+setup](docs/how-to/device-setup.md).
 
 The gateway checkout is a submodule. iOS pulls Sherpa ONNX through Swift
 Package Manager (not Git LFS, not a local tarball):
@@ -202,7 +202,7 @@ Pin bumps live in
 On-device mode needs no gateway. When you want larger models or shared compute,
 self-host [VocaGateway](https://github.com/VocaHQ/vocagateway) and point the
 phone at it. Native vs Docker, pairing, and how the phone reaches the host are
-in that repository and in [docs/deployment.md](docs/deployment.md).
+in that repository and in [docs/how-to/deploy-gateway.md](docs/how-to/deploy-gateway.md).
 
 ## Build and test
 
@@ -244,7 +244,7 @@ physical-device verification.
 ios/                    Swift app, keyboard, Live Activity, shared state, tests
 android/                Kotlin app, voice keyboard, foreground dictation service, tests
 gateway/                Git submodule → VocaHQ/vocagateway (gateway + WebUI)
-docs/                   Architecture, device setup, privacy, decisions, historical plans
+docs/                   Tutorials, how-to guides, reference, and architecture notes
 ```
 
 ## Documentation
@@ -258,18 +258,17 @@ of truth.
 | --- | --- |
 | [Android client](android/README.md) | Building the APK, guided setup, voice keyboard, and privacy boundaries |
 | [Gateway reference](gateway/README.md) | Native service, Compose, models, configuration, health, and CLI commands ([vocagateway](https://github.com/VocaHQ/vocagateway)) |
-| [Deployment](docs/deployment.md) | Pointers into vocagateway for native vs Docker, pairing, and host setup |
-| [Device setup](docs/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
-| [Releasing](docs/releasing.md) | Platform-prefixed tags, Android-only / iOS-only / joint drops, changelogs |
-| [TestFlight](docs/testflight.md) | App Store Connect setup, archiving, and TestFlight distribution |
-| [Google Play](docs/play-store.md) | Production listing, AAB upload, signing, and Console promotion |
-| [Tailscale](docs/tailscale.md) | Private HTTPS ingress for the gateway |
-| [Architecture](docs/architecture.md) | Components, state transitions, engine boundary, and observability |
-| [Privacy](docs/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
-| [Troubleshooting](docs/troubleshooting.md) | Keyboard, microphone, model, network, and Docker failures |
-| [Decisions](docs/decisions.md) | Current assumptions and choices still requiring confirmation |
-| [iOS plan](docs/Plan.md) | Original iOS implementation plan and acceptance criteria |
-| [Android plan](docs/Plan-Android.md) | Original Android implementation plan and acceptance criteria |
+| [Get started](docs/tutorials/getting-started.md) | Install VocaPhone and complete a first dictation |
+| [Gateway deployment](docs/how-to/deploy-gateway.md) | Pointers into vocagateway for native vs Docker, pairing, and host setup |
+| [Device setup](docs/how-to/device-setup.md) | Apple signing, keyboard installation, and physical-device acceptance |
+| [Releasing](docs/how-to/release.md) | Platform-prefixed tags, Android-only / iOS-only / joint drops, changelogs |
+| [TestFlight](docs/how-to/testflight.md) | App Store Connect setup, archiving, and TestFlight distribution |
+| [Google Play](docs/how-to/google-play.md) | Production listing, AAB upload, signing, and Console promotion |
+| [Tailscale](docs/how-to/tailscale.md) | Private HTTPS ingress for the gateway |
+| [Architecture](docs/explanation/architecture.md) | Components, state transitions, engine boundary, and observability |
+| [Privacy](docs/reference/privacy.md) | Audio lifecycle, authentication, metrics, and threat model |
+| [Troubleshooting](docs/how-to/troubleshooting.md) | Keyboard, microphone, model, network, and Docker failures |
+| [Decisions](docs/reference/decisions.md) | Current identifiers and implementation boundaries |
 | [Contributing](CONTRIBUTING.md) | Development workflow and required checks |
 | [Security](SECURITY.md) | Private vulnerability-reporting process |
 
@@ -299,7 +298,7 @@ Covenant 2.1. [SECURITY.md](SECURITY.md) is the private vulnerability-reporting
 process.
 
 [Governance](GOVERNANCE.md) identifies maintainers and decision-making;
-[starter contributions](docs/starter-contributions.md) lists approachable work.
+[starter contributions](docs/how-to/contribute.md) lists approachable work.
 
 Report suspected microphone, recording, token, gateway, or tailnet
 vulnerabilities through the private process in [SECURITY.md](SECURITY.md), not a

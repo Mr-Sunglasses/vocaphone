@@ -1,4 +1,23 @@
-# Troubleshooting
+---
+title: Troubleshoot VocaPhone
+description: Diagnose keyboard, microphone, model, gateway, transcript, and insertion failures.
+---
+
+# Troubleshoot VocaPhone
+
+Start with the symptom that matches what you see. Each section names the
+likely boundary, gives a short repair path, and points to the deeper reference
+when the issue is architectural or privacy-sensitive.
+
+## Find the right path
+
+| Symptom | Start here |
+| --- | --- |
+| The keyboard is missing or cannot record | [Keyboard and microphone](#keyboard-is-missing) |
+| The app opens but transcription is not ready | [Transcription source](#gateway-reachable-model-not-ready) |
+| The gateway cannot be reached | [Gateway connectivity](#gateway-unavailable) |
+| A transcript is wrong or does not insert | [Transcript and insertion](#transcript-did-not-insert) |
+| Setup appears stuck | [Setup state](#finish-appears-unresponsive) |
 
 Phone client issues are covered below. Gateway, model, Docker, and network
 failures for the transcription server are documented in
@@ -248,7 +267,7 @@ bridge network only exposes its own private interface to address
 auto-discovery, never the host's real LAN NIC. On Linux Docker Engine (not
 Docker Desktop), set `VOCAGATEWAY_NETWORK_MODE=host` in `gateway/.env` instead so
 the container shares the host's network namespace and discovery finds the
-`192.168.x.x` address directly. See [deployment.md](deployment.md#trusted-local-network).
+`192.168.x.x` address directly. See [gateway deployment](deploy-gateway.md#trusted-local-network).
 
 ## 401 unauthorized
 

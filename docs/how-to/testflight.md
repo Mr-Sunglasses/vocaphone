@@ -1,4 +1,13 @@
-# Shipping to TestFlight
+---
+title: Ship VocaPhone to TestFlight
+description: Archive, upload, and distribute an iOS VocaPhone build through TestFlight.
+---
+
+# Ship VocaPhone to TestFlight
+
+Use this guide when a maintainer is moving an iOS build from the repository to
+App Store Connect and TestFlight. Run the physical-device acceptance pass
+before spending a TestFlight build on a broken handoff.
 
 How to take `ios/VocaPhone.xcodeproj` from a local build to a build installable
 through TestFlight. This is the App Store Connect side; [device
@@ -12,7 +21,7 @@ checklist. Re-check any row you've touched since.
 
 | Item | Status | Where |
 | --- | --- | --- |
-| Bundle IDs registered on team `92962VK378` | `com.vocahq.vocaphone`, `.keyboard`, `.liveactivity` | [decisions.md](decisions.md) |
+| Bundle IDs registered on team `92962VK378` | `com.vocahq.vocaphone`, `.keyboard`, `.liveactivity` | [decisions](../reference/decisions.md) |
 | App Group registered on the same team | `group.com.vocahq` | same |
 | App icon (1024×1024, light/dark/tinted, no alpha on the base image) | present | `ios/VocaPhoneApp/Assets.xcassets/AppIcon.appiconset` |
 | Privacy manifests (App, Keyboard, Live Activity) | present | `PrivacyInfo.xcprivacy` in each target directory |
@@ -42,7 +51,7 @@ revert — decide which before archiving.
    marketing name you want on the App Store / TestFlight tab, not necessarily
    `CFBundleDisplayName`'s lowercase `vocaphone`.
 2. **App Privacy** tab: answer the nutrition-label questionnaire from
-   [privacy.md](privacy.md). The honest answers are unusually simple —
+   [privacy reference](../reference/privacy.md). The honest answers are unusually simple —
    - Data collected: **Audio Data**, linked to no identity, used only to
      provide app functionality (transcription), not used for tracking.
    - Data collected: **Product Interaction**, only when the user turns on
@@ -54,7 +63,7 @@ revert — decide which before archiving.
    18+ rating on content grounds, but consider the setup burden (the app is
    non-functional without a gateway the tester runs themselves) when writing
    TestFlight's "What to Test" notes — see §5.
-4. Publish a **privacy policy URL**. [privacy.md](privacy.md) is thorough and
+4. Publish a **privacy policy URL**. [the privacy reference](../reference/privacy.md) is thorough and
    ready to publish (GitHub Pages on this repo, or any static host); App Store
    Connect requires a live URL, not a repo-relative link.
 
@@ -112,7 +121,7 @@ shared session." `.github/workflows/ios-release.yml` does this for CI.
 iOS tags are prefixed: `ios/v1.0.21` means TestFlight **1.0 (21)**. Pushing
 one runs `.github/workflows/ios-release.yml` only. Android is a different
 prefix (`android/v0.1.1`). A joint drop is two tags on the same commit. See
-[releasing.md](releasing.md).
+[release VocaPhone](release.md).
 
 Before tagging:
 

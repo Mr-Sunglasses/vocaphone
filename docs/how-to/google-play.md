@@ -1,4 +1,13 @@
-# Google Play (maintainers)
+---
+title: Ship VocaPhone to Google Play
+description: Upload the signed Android bundle and promote VocaPhone from Internal testing.
+---
+
+# Ship VocaPhone to Google Play
+
+Use this guide when a maintainer is promoting an Android release. It describes
+the signed artifacts, the Internal testing track, the permissions and data-safety
+answers, and the final Console checks.
 
 The Android app is listed at
 [play.google.com/store/apps/details?id=com.vocahq.vocaphone](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone).
@@ -7,7 +16,7 @@ This page is how to take a VocaPhone Android tag from GitHub Releases into
 Play Console and promote it. Listing, Data safety, content rating, and Play
 App Signing are already in place.
 
-Android tags (`android/v0.1.1`, see [releasing.md](releasing.md)) attach a
+Android tags (`android/v0.1.1`, see [release VocaPhone](release.md)) attach a
 signed full-flavor AAB as `vocaphone.aab`. When
 `PLAY_SERVICE_ACCOUNT_JSON` is set, the tag workflow uploads that AAB to
 Internal testing after the GitHub Release is published. The step is skipped if
@@ -86,7 +95,7 @@ The app does not use accessibility services or overlay / draw-over-other-apps.
 - Audio leaves the device only if the user configures a gateway they control.
 - No accounts or subscription.
 
-Use [privacy.md](privacy.md) and the Android README "What happens to your audio"
+Use [the privacy reference](../reference/privacy.md) and the Android README "What happens to your audio"
 section when filling the Data safety form. Play still requires a hosted
 privacy policy URL (a live page, not a repo-relative path).
 
@@ -142,4 +151,4 @@ from a version tag so the signing certificate matches the published fingerprint.
 
 - [Android client](https://github.com/VocaHQ/vocaphone/tree/main/android): build flavors, version tags, keyboard setup
 - [TestFlight](testflight.md): iOS counterpart
-- [Privacy](privacy.md): data flow and threat model
+- [Privacy](../reference/privacy.md): data flow and threat model

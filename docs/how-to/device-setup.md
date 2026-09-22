@@ -1,4 +1,15 @@
-# Physical iPhone setup and acceptance
+---
+title: Set up and verify VocaPhone on a physical iPhone
+description: Install, sign, configure, and acceptance-test VocaPhone on a real iPhone.
+---
+
+# Set up and verify VocaPhone on a physical iPhone
+
+Use this guide after installing a development or TestFlight build. It covers
+the device-only checks that a simulator cannot prove: keyboard installation,
+microphone handoff, background recording, App Group state, and text insertion.
+
+## Before you start
 
 Simulator success does not verify custom-keyboard installation, microphone
 handoff, background recording, App Group entitlements, or third-party text
@@ -13,7 +24,7 @@ your iPhone and want to run the full acceptance pass.
 ## Signing prerequisites
 
 The shipping bundle IDs, keyboard bundle ID, and App Group are final — see
-[decisions.md](decisions.md).
+[project decisions](../reference/decisions.md).
 
 ### On the VocaHQ team
 

@@ -1,4 +1,13 @@
-# Architecture
+---
+title: How VocaPhone works
+description: Understand the recording, keyboard, gateway, engine, and insertion boundaries.
+---
+
+# How VocaPhone works
+
+This page explains the system boundary and the path a dictation takes from a
+text field to a transcript. Use it when you need context before changing code
+or diagnosing a cross-platform failure.
 
 ## Component boundary
 

@@ -1,8 +1,17 @@
-# Releasing VocaPhone
+---
+title: Release VocaPhone
+description: Select the correct release tag, artifact, checks, and store handoff for Android or iOS.
+---
+
+# Release VocaPhone
+
+This is the release contract for maintainers. Use it to select the correct tag,
+produce the expected artifact, and keep Android and iOS release history
+separate.
 
 How maintainers ship Android and iOS from this monorepo. Play Console and
-App Store Connect listing work stay in [play-store.md](play-store.md) and
-[testflight.md](testflight.md). This page is the tag and changelog contract.
+App Store Connect listing work stays in [Google Play](google-play.md) and
+[TestFlight](testflight.md). This page is the tag and changelog contract.
 
 Android and iOS are **independent products that share a git history**. They
 do not share a version number, a store, or a changelog. A tag names exactly
@@ -110,7 +119,7 @@ against the documented release fingerprint.
 Before publishing, review the human-readable release notes for user-visible
 changes, upgrade implications, known limitations, and any disclosed security
 advisory identifiers. Generated PR lists are a starting point, not the full
-release explanation. See [dependency maintenance](dependency-maintenance.md).
+release explanation. See [dependency maintenance](../reference/dependency-maintenance.md).
 
 ## Both (joint product drop)
 
@@ -179,7 +188,7 @@ device UDID using a different set of secrets, and never talks to TestFlight.
 - [ ] `CURRENT_PROJECT_VERSION` is higher than any build App Store Connect
       has already seen for `com.vocahq.vocaphone`
 - [ ] `just ios gen` is committed (CI fails if `project.pbxproj` is stale)
-- [ ] App Privacy nutrition label still matches [privacy.md](privacy.md)
+- [ ] App Privacy nutrition label still matches [privacy reference](../reference/privacy.md)
       (Product Interaction if usage reporting is in the binary)
 - [ ] After the upload, add the build to Internal (and External if the
       public link should follow). The workflow does not.

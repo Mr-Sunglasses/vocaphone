@@ -1,4 +1,13 @@
-# Decisions and open setup choices
+---
+title: Project decisions and identifiers
+description: Find the stable product identifiers and implementation decisions used across VocaPhone.
+---
+
+# Project decisions and identifiers
+
+This reference records decisions that other guides depend on. It is the place
+to check an identifier or a boundary before changing code, signing a build, or
+writing release notes.
 
 ## Final naming decisions (v0.3.0)
 
@@ -33,7 +42,7 @@ Native gateway startups migrate a missing vocaphone bootstrap token (and
 WebUI config) from the Local Flow paths once, and the LaunchAgent/systemd
 install helpers remove the obsolete Local Flow units. Everything else remains
 a documented hard cutover — see
-[deployment.md](deployment.md#migrating-from-the-local-flow-working-name-v030).
+[gateway deployment guide](../how-to/deploy-gateway.md#migrating-from-the-local-flow-working-name-v030).
 
 ## Reversed: anonymous usage reporting (August 2026)
 

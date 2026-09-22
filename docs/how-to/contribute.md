@@ -1,8 +1,16 @@
-# Starter contributions
+---
+title: Find a starter contribution
+description: Choose a small VocaPhone contribution with a clear acceptance boundary.
+---
 
-Use [CONTRIBUTING](https://github.com/VocaHQ/vocaphone/blob/main/CONTRIBUTING.md) for setup. You only need the toolchain
-for the area you change; documentation and website work need no phone build.
-Ask in the linked issue before starting to avoid duplicate work.
+# Find a starter contribution
+
+Use the repository [contributing guide](https://github.com/VocaHQ/vocaphone/blob/main/CONTRIBUTING.md)
+for setup, worktrees, checks, and pull requests. The entries below are small
+starting points with an explicit acceptance boundary. Ask in the linked issue
+before starting so two contributors do not take the same work.
+
+## Choose an entry point
 
 | Issue | Scope and acceptance | Validation |
 | --- | --- | --- |
@@ -12,6 +20,8 @@ Ask in the linked issue before starting to avoid duplicate work.
 The website issue is suitable as a first contribution. The Android issue is a
 `help wanted` task for someone with an Android device and familiarity with UI
 state. Neither requires a model engine rewrite or gateway change.
+
+## Keep this page current
 
 Maintainers review these entry points during weekly triage: remove completed
 items, add small reproducible tasks, and keep `good first issue` and `help wanted`

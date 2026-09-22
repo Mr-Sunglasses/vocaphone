@@ -1,4 +1,13 @@
-# Dependency maintenance
+---
+title: Maintain dependencies
+description: Review and update VocaPhone dependencies, submodules, native binaries, and tools.
+---
+
+# Maintain dependencies
+
+Use this page during routine maintenance or when a dependency update changes a
+native runtime, build tool, or release artifact. Every update needs a review of
+the source, the pin, the affected platform, and the appropriate quality gate.
 
 The administrators in [GOVERNANCE](https://github.com/VocaHQ/vocaphone/blob/main/GOVERNANCE.md) own weekly alert triage
 and a monthly dependency review. Security fixes take priority over routine
@@ -37,6 +46,6 @@ and binary hashes. Update `tools/native-dependencies.json` alongside the native
 runtime provenance README when replacing binaries. Transitive native files whose
 origins are not independently mapped are explicitly marked in the inventory.
 These describe bundled dependencies; downloaded models and
-the optional separate gateway are excluded. See [releasing](releasing.md) for
+the optional separate gateway are excluded. See [release VocaPhone](../how-to/release.md) for
 provenance verification. An SBOM is an inventory, not a vulnerability clearance
 or a substitute for distributing required third-party license notices.

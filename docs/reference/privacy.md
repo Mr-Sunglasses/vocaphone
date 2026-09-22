@@ -1,4 +1,25 @@
-# Privacy and threat model
+---
+title: Privacy and data handling
+description: Understand where VocaPhone records, transcribes, stores, and sends data.
+---
+
+# Privacy and data handling
+
+VocaPhone is on-device first. This reference describes the exceptions: the
+optional self-hosted gateway, shared keyboard state, and opt-in operational
+counters. It also records the retention and authentication controls that make
+those paths reviewable.
+
+## The short version
+
+- On-device transcription keeps audio on the phone.
+- Gateway mode sends audio only to the gateway URL and bearer token the user
+  configured.
+- The iOS keyboard never records audio and does not collect unrelated typing.
+- Successful audio is deleted by default; failed work remains only for the
+  configured retry window.
+- Usage reporting is optional, closed-vocabulary, and contains counters rather
+  than audio, transcripts, or free text.
 
 ## Data flow
 
