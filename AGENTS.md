@@ -205,8 +205,8 @@ No nested `web/AGENTS.md` — the site has no extra agent rules beyond this.
 
 ## Privacy, data, and architecture
 
-Read [docs/privacy.md](docs/privacy.md) and
-[docs/architecture.md](docs/architecture.md) before changing audio, tokens,
+Read [docs/reference/privacy.md](docs/reference/privacy.md) and
+[docs/explanation/architecture.md](docs/explanation/architecture.md) before changing audio, tokens,
 insertion, or network code.
 
 **Do not commit** (even in fixtures, screenshots, or docs):
@@ -247,13 +247,13 @@ why (docs-only, Linux host, no submodule, …).
 
 Keyboard, microphone, background audio, or insertion: verify on a physical
 device (`just ios device` / `just android run`) and describe app, OS, and the
-exact sequence in the PR. See [docs/device-setup.md](docs/device-setup.md).
+exact sequence in the PR. See [docs/how-to/device-setup.md](docs/how-to/device-setup.md).
 
 Maintainers may comment `/build`, `/build android`, `/build ios`, or
 `/build-quick` for installable artifacts. Agents do not trigger that.
 
 Do not tag releases (`android/v*`, `ios/v*`) or bump store versions unless the
-task is a release. See [docs/releasing.md](docs/releasing.md).
+task is a release. See [docs/how-to/release.md](docs/how-to/release.md).
 
 ## Git, commits, pull requests
 

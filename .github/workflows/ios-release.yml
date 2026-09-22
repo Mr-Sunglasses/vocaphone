@@ -1,7 +1,7 @@
 name: iOS TestFlight
 
 # iOS-only tags: ios/v{MARKETING_VERSION}.{CURRENT_PROJECT_VERSION}
-# e.g. ios/v1.0.21 is TestFlight 1.0 (21). See docs/releasing.md.
+# e.g. ios/v1.0.21 is TestFlight 1.0 (21). See docs/how-to/release.md.
 #
 # Android uses android/v* tags and is a separate workflow. A joint product
 # drop is two tags on the same commit, not one tag that builds both.
@@ -55,7 +55,7 @@ jobs:
           echo "TestFlight upload. Create an App Store Connect API key with the"
           echo "Admin role (Users and Access → Integrations) and store"
           echo "the .p8 body, Key ID, and Issuer ID as those three secrets."
-          echo "See docs/releasing.md."
+          echo "See docs/how-to/release.md."
           if [[ "$GITHUB_REF" == refs/tags/ios/* ]]; then
             echo "Refusing to no-op an ios/v* tag without API key secrets." >&2
             exit 1

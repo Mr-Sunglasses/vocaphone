@@ -69,4 +69,5 @@ ios/ThirdParty/SherpaOnnx/
 .netlify
 /web/node_modules/
 /web/docs/
-/web/docs-site/.vitepress/cache/
+/docs-site/.vitepress/cache/
+/docs-site/node_modules/

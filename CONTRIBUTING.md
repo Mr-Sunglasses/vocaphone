@@ -151,7 +151,7 @@ paths, real tailnet hostnames, tokens, recordings, or transcript samples.
 
 Keyboard, microphone, background-audio, and insertion changes must also be
 verified on a physical iPhone — `just ios device` builds and installs onto a
-connected phone, and [docs/device-setup.md](docs/device-setup.md) has the
+connected phone, and [docs/how-to/device-setup.md](docs/how-to/device-setup.md) has the
 acceptance sequence. Describe the tested app, iOS version, and exact
 interaction sequence in the pull request.
 
@@ -211,7 +211,7 @@ iOS was skipped. You can also run the workflow manually under Actions → PR Bui
 
 Version tags are platform-prefixed: `android/v0.1.1` publishes Android,
 `ios/v1.0.21` uploads iOS to TestFlight. They can share a commit but never a
-tag. See [releasing.md](docs/releasing.md).
+tag. See [releasing.md](docs/how-to/release.md).
 
 ## Community
 

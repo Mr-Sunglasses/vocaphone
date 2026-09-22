@@ -185,7 +185,7 @@ device: gen
     installed="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${bundle}/Info.plist")"
     xcrun devicectl device process launch --device "${udid}" "${installed}"
     echo "Keyboard, microphone, background audio and insertion changes still"
-    echo "need the manual pass in docs/device-setup.md."
+    echo "need the manual pass in docs/how-to/device-setup.md."
 
 # List connected iPhones and their identifiers.
 [group('device')]

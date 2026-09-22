@@ -40,6 +40,6 @@ Repository administrators triage secret-scanning and dependency alerts weekly,
 and urgently when a credible active exposure is reported. For leaked credentials,
 revoke or rotate first, audit use and affected releases, then remove the exposed
 value. Deleting a commit does not revoke a credential. See
-[dependency maintenance](docs/dependency-maintenance.md) for ownership and cadence.
+[dependency maintenance](docs/reference/dependency-maintenance.md) for ownership and cadence.
 
 For non-security support questions, see [SUPPORT.md](SUPPORT.md).

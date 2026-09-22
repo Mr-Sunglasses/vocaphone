@@ -44,7 +44,7 @@ object TelemetryConfig {
      * `false` means the onboarding step and the settings switch both start off,
      * and nothing is ever queued until the user turns it on. Flipping it to
      * `true` also obliges the onboarding step to become blocking rather than a
-     * card that can be scrolled past, and obliges `docs/privacy.md` to say so
+     * card that can be scrolled past, and obliges `docs/reference/privacy.md` to say so
      * in its first paragraph.
      *
      * It stays `false` on the merits of the audience rather than the law:

@@ -12,7 +12,7 @@ import org.junit.Test
 /**
  * Guards the structural half of the privacy promise.
  *
- * `docs/privacy.md` claims a call site *cannot* put private content into an
+ * `docs/reference/privacy.md` claims a call site *cannot* put private content into an
  * event, rather than that reviewers will notice if it tries. That is only true
  * while [Telemetry] exposes no parameter capable of carrying one.
  */

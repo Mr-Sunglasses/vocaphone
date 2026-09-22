@@ -11,7 +11,7 @@ the field.
 Android 13+ is on
 [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone).
 Signed APKs (and the full-flavor Play AAB) also ship from GitHub Releases.
-Maintainer Play steps: [docs/play-store.md](../docs/play-store.md).
+Maintainer Play steps: [docs/how-to/google-play.md](../docs/how-to/google-play.md).
 The shipped build does not request accessibility-service or overlay access.
 
 > Package name and application ID have been updated to `com.vocahq.vocaphone`;
@@ -69,7 +69,7 @@ sherpa models are hidden from the picker when the library is absent.
 Android tags are prefixed: `android/v0.1.1` or `android/v0.1.1-beta.1`. Pushing
 one runs `.github/workflows/android-release.yml` only. iOS is a different
 prefix (`ios/v1.0.21`); the two can share a commit but never a tag. See
-[releasing.md](../docs/releasing.md).
+[releasing.md](../docs/how-to/release.md).
 
 A hyphen in the version (`android/v0.1.1-beta.1`) is a GitHub prerelease. A
 plain `android/v0.1.1` becomes the latest release. Generated notes span the
@@ -92,7 +92,7 @@ to the release:
 - `vocaphone.apk`
 - `vocaphone.aab`: full-flavor Android App Bundle. CI uploads it to Play
   Internal testing when `PLAY_SERVICE_ACCOUNT_JSON` is set; see
-  [docs/play-store.md](../docs/play-store.md). This tag workflow never uploads
+  [docs/how-to/google-play.md](../docs/how-to/google-play.md). This tag workflow never uploads
   to production and never uploads the fdroid flavour.
 - `vocaphone-fdroid.apk`: the `fdroid` flavour of the same tag. It exists so
   F-Droid can verify a from-source rebuild against it byte-for-byte and then

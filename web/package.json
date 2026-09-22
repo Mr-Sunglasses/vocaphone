@@ -4,15 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 4173 --directory .",
-    "docs:dev": "vitepress dev docs-site",
-    "docs:build": "vitepress build docs-site",
-    "docs:preview": "vitepress preview docs-site",
     "check:site": "node --test tests/site.test.mjs",
-    "check": "npm run docs:build && npm run check:site"
-  },
-  "devDependencies": {
-    "mermaid": "^10.9.4",
-    "vitepress": "^1.6.4",
-    "vitepress-plugin-mermaid": "^2.0.17"
+    "check": "npm --prefix ../docs-site ci && npm --prefix ../docs-site run build && npm run check:site"
   }
 }

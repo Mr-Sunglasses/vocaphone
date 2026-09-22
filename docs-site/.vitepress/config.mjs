@@ -1,17 +1,40 @@
 import { defineConfig } from 'vitepress';
 import { withMermaid } from 'vitepress-plugin-mermaid';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { copyFile, mkdir, readFile } from 'node:fs/promises';
 
-const webNodeModules = fileURLToPath(new URL('../../node_modules/', import.meta.url));
+const docsNodeModules = fileURLToPath(new URL('../node_modules/', import.meta.url));
+const webLogo = fileURLToPath(new URL('../../web/assets/vocaphone-logo.svg', import.meta.url));
+const builtLogo = fileURLToPath(new URL('../../web/docs/assets/vocaphone-logo.svg', import.meta.url));
+
+function localLogoPlugin(base) {
+  return {
+    name: 'vocaphone-local-logo',
+    configureServer(server) {
+      server.middlewares.use(`${base}assets/vocaphone-logo.svg`, async (_request, response, next) => {
+        try {
+          response.setHeader('Content-Type', 'image/svg+xml');
+          response.end(await readFile(webLogo));
+        } catch (error) {
+          next(error);
+        }
+      });
+    },
+    async closeBundle() {
+      await mkdir(dirname(builtLogo), { recursive: true });
+      await copyFile(webLogo, builtLogo);
+    },
+  };
+}
 
 export default withMermaid(defineConfig({
   lang: 'en-US',
   title: 'VocaPhone docs',
   description: 'Build, use, deploy, and understand VocaPhone.',
   base: '/docs/',
-  srcDir: '../../docs',
-  outDir: '../docs',
+  srcDir: '../docs',
+  outDir: '../web/docs',
   cleanUrls: true,
   lastUpdated: true,
   appearance: true,
@@ -25,24 +48,24 @@ export default withMermaid(defineConfig({
   },
   vite: {
     // The Markdown source intentionally stays in the repository-level docs/
-    // directory. Point Vue's SSR entry back at web/node_modules because Vite
+    // directory. Point Vue's SSR entry back at docs-site/node_modules because Vite
     // resolves imports relative to that external source directory first.
     resolve: {
       alias: [
         {
           find: 'vue/server-renderer',
-          replacement: resolve(webNodeModules, '@vue/server-renderer/dist/server-renderer.esm-bundler.js'),
+          replacement: resolve(docsNodeModules, '@vue/server-renderer/dist/server-renderer.esm-bundler.js'),
         },
         {
           find: 'vue',
-          replacement: resolve(webNodeModules, 'vue/dist/vue.runtime.esm-bundler.js'),
+          replacement: resolve(docsNodeModules, 'vue/dist/vue.runtime.esm-bundler.js'),
         },
         {
           // Mermaid imports Day.js as an ES module in the browser. Resolve the
           // package root to its ESM entry so Vite dev does not serve the
           // CommonJS dayjs.min.js file without a default export.
           find: /^dayjs$/,
-          replacement: resolve(webNodeModules, 'dayjs/esm/index.js'),
+          replacement: resolve(docsNodeModules, 'dayjs/esm/index.js'),
         },
         {
           // Mermaid imports this CommonJS package as a named ESM export. Keep
@@ -59,9 +82,10 @@ export default withMermaid(defineConfig({
         },
       ],
     },
+    plugins: [localLogoPlugin('/docs/')],
   },
   themeConfig: {
-    logo: 'https://vocaphone.vocahq.com/assets/vocaphone-logo.svg',
+    logo: '/assets/vocaphone-logo.svg',
     siteTitle: 'vocaphone / docs',
     nav: [
       { text: 'Home', link: '/' },

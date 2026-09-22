@@ -16,7 +16,7 @@ name: Android release
 # historical (through v0.1.0) and no longer trigger this workflow.
 #
 # iOS uses ios/v* tags; see .github/workflows/ios-release.yml and
-# docs/releasing.md.
+# docs/how-to/release.md.
 on:
   push:
     tags:

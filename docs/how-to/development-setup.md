@@ -290,7 +290,8 @@ new gateway revision.
 ## Documentation site development
 
 The documentation source lives in the repository-level `docs/` directory. The
-VitePress app in `web/` publishes it at `/docs/`.
+separate VitePress build tool in `docs-site/` publishes it at `/docs/`, while
+the dependency-free marketing site stays in `web/`.
 
 ```sh
 just docs
@@ -299,11 +300,17 @@ just docs
 Open [http://127.0.0.1:5173/docs/](http://127.0.0.1:5173/docs/). The server
 reloads when you edit Markdown or site configuration.
 
+Install the documentation build tools once before using the docs commands:
+
+```sh
+cd docs-site
+npm ci
+```
+
 Run the full web gate before submitting documentation changes:
 
 ```sh
 cd web
-npm ci
 npm run check
 ```
 

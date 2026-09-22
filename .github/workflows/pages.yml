@@ -8,8 +8,7 @@ on:
     paths:
       - 'web/**'
       - 'docs/**'
-      - 'web/package.json'
-      - 'web/package-lock.json'
+      - 'docs-site/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -34,8 +33,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install web tools
-        working-directory: web
+      - name: Install docs tools
+        working-directory: docs-site
         run: npm ci
 
       - name: Check site

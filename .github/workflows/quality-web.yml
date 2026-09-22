@@ -7,8 +7,7 @@ on:
       - 'web/**'
       - '!web/**.md'
       - 'docs/**'
-      - 'web/package.json'
-      - 'web/package-lock.json'
+      - 'docs-site/**'
       - '.github/actions/report-size/**'
       - '.github/workflows/quality-web.yml'
   workflow_call:
@@ -39,8 +38,8 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install web tools
-        working-directory: web
+      - name: Install docs tools
+        working-directory: docs-site
         run: npm ci
 
       - name: Check site

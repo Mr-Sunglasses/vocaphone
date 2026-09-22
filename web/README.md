@@ -14,11 +14,12 @@ Then open `http://127.0.0.1:4173/`. The iPhone setup guide is available at
 `http://127.0.0.1:4173/iphone/`. The consumer privacy page is at
 `http://127.0.0.1:4173/privacy/`.
 
-To work on the documentation with live reload, run `npm run docs:dev` from
-`web/` and open the URL it prints. To build the documentation into
-`web/docs/` for a production-style local preview, run `npm run docs:preview`
-from `web/` after the build. The regular `npm run dev` server is for the
-marketing site; GitHub Pages supplies the clean URL handling used by the docs.
+The VitePress build tool lives in the repository-level `docs-site/` directory
+so this marketing site remains dependency-free. Run `cd docs-site && npm ci`
+once, then use `just docs` for live documentation reload or `npm run build` to
+write the static documentation into `web/docs/`. The regular `npm run dev`
+server is for the marketing site; GitHub Pages supplies the clean URL handling
+used by the docs.
 
 The site uses only local brand assets and system fonts. Public Android install
 and download CTAs point at the Google Play listing
@@ -26,7 +27,7 @@ and download CTAs point at the Google Play listing
 install card still pins a GitHub release tag (`android/v0.2.1`) as the sideload
 path, where the release includes the APK and its verification files. New
 Android tags are `android/v*`; **move that pin when you cut the next Android
-release people should sideload** (see [releasing.md](../docs/releasing.md)).
+release people should sideload** (see [releasing.md](../docs/how-to/release.md)).
 `npm run check` asserts both the Play URL and the tag the install block links
 to, so a stale pin fails there rather than on the live site.
 

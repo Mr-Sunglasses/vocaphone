@@ -34,7 +34,7 @@ default:
 # Open http://localhost:5173/docs/ after starting this recipe.
 [group('web')]
 docs:
-    npm --prefix web run docs:dev -- --host 127.0.0.1
+    npm --prefix docs-site run dev -- --host 127.0.0.1
 
 # Move gateway/ to the tip of the branch tracked in .gitmodules (usually main).
 # For local gateway work only — does not commit a pin bump.

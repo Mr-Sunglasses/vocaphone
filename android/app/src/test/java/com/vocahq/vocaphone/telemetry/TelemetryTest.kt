@@ -19,7 +19,7 @@ import org.junit.Test
 /**
  * These tests are the privacy claim.
  *
- * The promise made in `docs/privacy.md` and on the onboarding screen is not
+ * The promise made in `docs/reference/privacy.md` and on the onboarding screen is not
  * "we are careful about what we send" — it is that the code cannot send
  * anything else. That is only true while these pass.
  */

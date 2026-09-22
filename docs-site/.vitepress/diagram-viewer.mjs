@@ -3,6 +3,14 @@ const OPEN_CLASS = 'voca-diagram-viewer-open';
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 3;
 const ZOOM_STEP = 0.25;
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 let viewer;
 let stage;
@@ -13,9 +21,33 @@ let zoom = 1;
 let previousFocus;
 let panStart;
 let expandedDiagramCount = 0;
+let backgroundInertStates;
 
 function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;
+}
+
+function dialogFocusables() {
+  return [...viewer.querySelectorAll(FOCUSABLE_SELECTOR)]
+    .filter((element) => !element.hasAttribute('hidden') && element.getClientRects().length > 0);
+}
+
+function setBackgroundInert(isInert) {
+  if (isInert) {
+    backgroundInertStates = new Map();
+    [...document.body.children]
+      .filter((element) => element !== viewer)
+      .forEach((element) => {
+        backgroundInertStates.set(element, element.inert);
+        element.inert = true;
+      });
+    return;
+  }
+
+  backgroundInertStates?.forEach((wasInert, element) => {
+    element.inert = wasInert;
+  });
+  backgroundInertStates = undefined;
 }
 
 function createViewer() {
@@ -156,6 +188,7 @@ function openViewer(diagram) {
   expandedSvg.style.maxWidth = 'none';
   expandedSvg.style.height = 'auto';
   viewer.hidden = false;
+  setBackgroundInert(true);
   sizeExpandedSvg();
   setZoom(initialZoomFor(expandedSvg));
   requestAnimationFrame(centerStage);
@@ -166,6 +199,7 @@ function openViewer(diagram) {
 function closeViewer() {
   if (!viewer || viewer.hidden) return;
   viewer.hidden = true;
+  setBackgroundInert(false);
   canvas.replaceChildren();
   document.documentElement.classList.remove(OPEN_CLASS);
   if (previousFocus instanceof HTMLElement) previousFocus.focus();
@@ -193,7 +227,19 @@ export function installDiagramViewer(router) {
 
   document.addEventListener('keydown', (event) => {
     if (viewer && !viewer.hidden) {
-      if (event.key === 'Escape') {
+      if (event.key === 'Tab') {
+        const focusables = dialogFocusables();
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables.at(-1);
+        if (!viewer.contains(document.activeElement) || (!event.shiftKey && document.activeElement === last)) {
+          event.preventDefault();
+          first.focus();
+        } else if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (event.key === 'Escape') {
         event.preventDefault();
         closeViewer();
       } else if (event.key === '+' || event.key === '=') {

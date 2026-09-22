@@ -31,11 +31,12 @@ runs:
         # "nothing links to it" is not a reason to drop them.
         #
         # tests/ is the site's own check suite, and package.json exists to
-        # carry the two npm scripts that run it and a local server.
+        # carry the two npm scripts that run it and a local server. node_modules/
+        # is local build tooling and must never become part of the Pages artifact.
         # .htmlvalidate.json configures an editor's HTML linting; nothing in
         # this repository reads it. Pages already withheld that one, so listing
         # it changes nothing there and covers anywhere else this is uploaded.
-        NOT_PUBLISHED: 'README.md package.json package-lock.json tests .htmlvalidate.json docs-site'
+        NOT_PUBLISHED: 'README.md package.json package-lock.json node_modules tests .htmlvalidate.json'
       run: |
         set -euo pipefail
         staged="$RUNNER_TEMP/site"

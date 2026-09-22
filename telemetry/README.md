@@ -2,9 +2,9 @@
 
 The self-hosted [Aptabase](https://github.com/aptabase/aptabase) instance behind
 `telemetry.vocahq.com`, which is where the anonymous usage counters described in
-[`docs/privacy.md`](../docs/privacy.md) land.
+[`docs/reference/privacy.md`](../docs/reference/privacy.md) land.
 
-This directory exists for one reason: **`docs/privacy.md` makes claims about a
+This directory exists for one reason: **`docs/reference/privacy.md` makes claims about a
 server, and a claim about a server that nobody can inspect is exactly the vendor
 promise self-hosting was supposed to replace.** The deployment lives here so the
 configuration is readable by anyone who wants to check what we say against what
@@ -22,7 +22,7 @@ we run.
 ## What runs
 
 Three containers, which is the main reason Aptabase was chosen over PostHog's
-eight-service stack (`docs/decisions.md:53`):
+eight-service stack (`docs/reference/decisions.md:53`):
 
 | Container | Role |
 | --- | --- |
@@ -33,10 +33,10 @@ eight-service stack (`docs/decisions.md:53`):
 Ingest and dashboard share a hostname. The clients only ever speak to
 `/api/v0/events`; see `TelemetryConfig` on either platform.
 
-## Verifying what `docs/privacy.md` claims
+## Verifying what `docs/reference/privacy.md` claims
 
 Four things need to be established and dated. Each is a claim currently sitting
-unverified in the table in [`docs/privacy.md`](../docs/privacy.md). Run these,
+unverified in the table in [`docs/reference/privacy.md`](../docs/reference/privacy.md). Run these,
 then replace that table's status column with the date it was checked.
 
 Everything below assumes you are on the host, in this directory.
@@ -77,13 +77,13 @@ docker compose exec aptabase_events_db clickhouse-client --query "
 
 An empty result plus a clean sample row is the pass condition. A `country_code`
 or `region_name` column is expected and is not a raw address — Aptabase derives
-coarse geography before discarding the IP. Note in `docs/privacy.md` that those
+coarse geography before discarding the IP. Note in `docs/reference/privacy.md` that those
 columns exist if they do, because "no raw IP" and "no location at all" are
 different claims and only the first one is ours to make.
 
 ### 2. Retention actually expires
 
-`docs/privacy.md` says events age out. Read the clause rather than assuming the
+`docs/reference/privacy.md` says events age out. Read the clause rather than assuming the
 default:
 
 ```sh
@@ -93,7 +93,7 @@ docker compose exec aptabase_events_db clickhouse-client \
 ```
 
 If there is no `TTL` in the output, there is no retention limit and the sentence
-in `docs/privacy.md` is false. The intended value is 180 days — long enough for
+in `docs/reference/privacy.md` is false. The intended value is 180 days — long enough for
 a beta's seasonality, short enough to state publicly without hedging:
 
 ```sh
@@ -214,7 +214,7 @@ otherwise harmless.
 
 The **ingest key is not in this list and is not a secret** — `A-SH-3275173609`
 is committed into both apps deliberately, because it ships inside every binary
-and is extractable from any store download. `docs/privacy.md` explains the
+and is extractable from any store download. `docs/reference/privacy.md` explains the
 reasoning. Do not "fix" this by moving it to an environment variable; that would
 hide it from contributors and from nobody else.
 
