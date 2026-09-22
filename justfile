@@ -30,6 +30,12 @@ mod? gateway
 default:
     @{{ just_executable() }} --list --unsorted
 
+# Serve the permanent documentation site with VitePress and live reload.
+# Open http://localhost:5173/docs/ after starting this recipe.
+[group('web')]
+docs:
+    npm --prefix web run docs:dev -- --host 127.0.0.1
+
 # Move gateway/ to the tip of the branch tracked in .gitmodules (usually main).
 # For local gateway work only — does not commit a pin bump.
 [group('gateway')]
