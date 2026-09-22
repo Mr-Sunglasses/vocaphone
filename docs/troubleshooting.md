@@ -2,7 +2,7 @@
 
 Phone client issues are covered below. Gateway, model, Docker, and network
 failures for the transcription server are documented in
-[gateway/docs/troubleshooting.md](../gateway/docs/troubleshooting.md) (the
+[gateway troubleshooting guide](https://github.com/VocaHQ/vocagateway/blob/main/docs/troubleshooting.md) (the
 [vocagateway](https://github.com/VocaHQ/vocagateway) submodule).
 
 

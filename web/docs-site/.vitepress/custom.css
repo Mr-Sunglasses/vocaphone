@@ -1,0 +1,64 @@
+:root {
+  --vp-c-bg: #f4f1e8;
+  --vp-c-bg-soft: #ebe7dc;
+  --vp-c-bg-mute: #e3ded1;
+  --vp-c-divider: rgba(31, 46, 42, 0.14);
+  --vp-c-text-1: #1f2e2a;
+  --vp-c-text-2: #53635e;
+  --vp-c-text-3: #75817d;
+  --vp-c-brand-1: #287d6d;
+  --vp-c-brand-2: #1e675a;
+  --vp-c-brand-3: #79d8bf;
+  --vp-c-brand-soft: rgba(121, 216, 191, 0.22);
+  --vp-font-family-base: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --vp-font-family-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+}
+
+.dark {
+  --vp-c-bg: #151d1a;
+  --vp-c-bg-soft: #1d2925;
+  --vp-c-bg-mute: #25332e;
+  --vp-c-divider: rgba(220, 239, 232, 0.14);
+  --vp-c-text-1: #edf7f2;
+  --vp-c-text-2: #b4c9c1;
+  --vp-c-text-3: #829b91;
+  --vp-c-brand-1: #79d8bf;
+  --vp-c-brand-2: #a1e7d4;
+  --vp-c-brand-3: #287d6d;
+  --vp-c-brand-soft: rgba(121, 216, 191, 0.16);
+}
+
+.VPSocialLink[href*="github.com"] {
+  color: var(--vp-c-text-1);
+}
+
+.VPNavBarTitle .title {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.VPHomeHero .name {
+  letter-spacing: -0.045em;
+}
+
+.VPHomeHero .tagline {
+  color: var(--vp-c-text-2);
+}
+
+.vp-doc h2 {
+  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 1.5rem;
+}
+
+.vp-doc a {
+  text-underline-offset: 0.18em;
+}
+
+.vp-doc :not(pre) > code {
+  border-radius: 0.35rem;
+  background: var(--vp-c-brand-soft);
+}
+
+.VPFooter {
+  border-top: 1px solid var(--vp-c-divider);
+}

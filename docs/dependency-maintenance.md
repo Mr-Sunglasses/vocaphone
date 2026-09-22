@@ -1,6 +1,6 @@
 # Dependency maintenance
 
-The administrators in [GOVERNANCE](../GOVERNANCE.md) own weekly alert triage
+The administrators in [GOVERNANCE](https://github.com/VocaHQ/vocaphone/blob/main/GOVERNANCE.md) own weekly alert triage
 and a monthly dependency review. Security fixes take priority over routine
 update batching. Aim to resolve critical alerts immediately and other confirmed
 high/medium vulnerabilities within 30 days; record mitigations or exceptions

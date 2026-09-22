@@ -1,6 +1,6 @@
 # Starter contributions
 
-Use [CONTRIBUTING](../CONTRIBUTING.md) for setup. You only need the toolchain
+Use [CONTRIBUTING](https://github.com/VocaHQ/vocaphone/blob/main/CONTRIBUTING.md) for setup. You only need the toolchain
 for the area you change; documentation and website work need no phone build.
 Ask in the linked issue before starting to avoid duplicate work.
 

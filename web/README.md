@@ -1,6 +1,8 @@
 # VocaPhone website
 
-The public VocaPhone website is a dependency-free static site.
+The public VocaPhone website is a static site. Its marketing pages remain
+dependency-free; the documentation is generated from the repository's
+Markdown with VitePress and published under `/docs/`.
 
 ```sh
 cd web
@@ -11,6 +13,12 @@ npm run dev
 Then open `http://127.0.0.1:4173/`. The iPhone setup guide is available at
 `http://127.0.0.1:4173/iphone/`. The consumer privacy page is at
 `http://127.0.0.1:4173/privacy/`.
+
+To work on the documentation with live reload, run `npm run docs:dev` from
+`web/` and open the URL it prints. To build the documentation into
+`web/docs/` for a production-style local preview, run `npm run docs:preview`
+from `web/` after the build. The regular `npm run dev` server is for the
+marketing site; GitHub Pages supplies the clean URL handling used by the docs.
 
 The site uses only local brand assets and system fonts. Public Android install
 and download CTAs point at the Google Play listing

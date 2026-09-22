@@ -140,6 +140,6 @@ from a version tag so the signing certificate matches the published fingerprint.
 
 ## Related docs
 
-- [Android client](../android/README.md): build flavors, version tags, keyboard setup
+- [Android client](https://github.com/VocaHQ/vocaphone/tree/main/android): build flavors, version tags, keyboard setup
 - [TestFlight](testflight.md): iOS counterpart
 - [Privacy](privacy.md): data flow and threat model

@@ -59,7 +59,7 @@ either binary, nothing sent by default, and nothing sent that is not a counter.
 
 Full detail in [privacy.md](privacy.md#usage-reporting); the backend that
 receives it, and what has and has not been verified about it, is in
-[`telemetry/`](../telemetry/README.md).
+[`telemetry/`](https://github.com/VocaHQ/vocaphone/tree/main/telemetry).
 
 ## Implemented assumptions
 

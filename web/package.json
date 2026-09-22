@@ -4,6 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 4173 --directory .",
-    "check": "node --test tests/site.test.mjs"
+    "docs:dev": "vitepress dev docs-site",
+    "docs:build": "vitepress build docs-site",
+    "docs:preview": "vitepress preview docs-site",
+    "check:site": "node --test tests/site.test.mjs",
+    "check": "npm run check:site && npm run docs:build"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4"
   }
 }

@@ -67,3 +67,6 @@ ios/ThirdParty/SherpaOnnx/
 
 # Local Netlify folder
 .netlify
+/web/node_modules/
+/web/docs/
+/web/docs-site/.vitepress/cache/

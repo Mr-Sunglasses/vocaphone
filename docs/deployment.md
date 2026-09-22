@@ -8,23 +8,23 @@ Canonical guides (after `git submodule update --init --recursive`):
 
 | Topic | Location |
 | --- | --- |
-| Full deployment reference | [gateway/docs/deployment.md](../gateway/docs/deployment.md) |
-| Gateway README (quick start, engines, config) | [gateway/README.md](../gateway/README.md) |
-| Private Tailscale Serve | [gateway/docs/tailscale.md](../gateway/docs/tailscale.md) |
-| Gateway troubleshooting | [gateway/docs/troubleshooting.md](../gateway/docs/troubleshooting.md) |
+| Full deployment reference | [gateway/docs/deployment.md](https://github.com/VocaHQ/vocagateway/blob/main/docs/deployment.md) |
+| Gateway README (quick start, engines, config) | [gateway/README.md](https://github.com/VocaHQ/vocagateway/blob/main/README.md) |
+| Private Tailscale Serve | [gateway/docs/tailscale.md](https://github.com/VocaHQ/vocagateway/blob/main/docs/tailscale.md) |
+| Gateway troubleshooting | [gateway/docs/troubleshooting.md](https://github.com/VocaHQ/vocagateway/blob/main/docs/troubleshooting.md) |
 
 Phone-specific setup (signing and keyboard) stays in this repository:
 
 - [Device setup](device-setup.md) — physical-device acceptance checklist
 - [TestFlight](testflight.md) — App Store Connect setup, archiving, and upload
 - [Google Play](play-store.md) — production listing, AAB upload, signing, Console promotion
-- [Android client](../android/README.md)
+- [Android client](https://github.com/VocaHQ/vocaphone/tree/main/android)
 - [Troubleshooting (keyboard / mic / insertion)](troubleshooting.md)
 
 ## Migrating from the Local Flow working name (v0.3.0)
 
 Gateway token, config, and volume renames are documented in
-[gateway/docs/deployment.md](../gateway/docs/deployment.md#migrating-from-the-local-flow-working-name-v030).
+[gateway deployment guide](https://github.com/VocaHQ/vocagateway/blob/main/docs/deployment.md#migrating-from-the-local-flow-working-name-v030).
 
 ### iOS / Android installations
 

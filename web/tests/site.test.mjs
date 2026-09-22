@@ -59,6 +59,12 @@ test("page has one clear title and a landmark structure", () => {
   assert.match(html, /<nav[^>]+aria-label="Main navigation"/);
 });
 
+test("documentation is discoverable from the public site", () => {
+  assert.match(html, /href="\/docs\/">docs<\/a>/);
+  assert.match(html, /href="\/docs\/">documentation<\/a>/);
+  assert.match(sitemap, /<loc>https:\/\/vocaphone\.vocahq\.com\/docs\/<\/loc>/);
+});
+
 test("in-page links have matching section ids", () => {
   const anchors = [...html.matchAll(/href="#([\w-]+)"/g)].map((match) => match[1]);
   for (const anchor of anchors) {

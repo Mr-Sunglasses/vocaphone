@@ -35,7 +35,7 @@ runs:
         # .htmlvalidate.json configures an editor's HTML linting; nothing in
         # this repository reads it. Pages already withheld that one, so listing
         # it changes nothing there and covers anywhere else this is uploaded.
-        NOT_PUBLISHED: 'README.md package.json tests .htmlvalidate.json'
+        NOT_PUBLISHED: 'README.md package.json package-lock.json tests .htmlvalidate.json docs-site'
       run: |
         set -euo pipefail
         staged="$RUNNER_TEMP/site"

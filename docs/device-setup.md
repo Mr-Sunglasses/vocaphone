@@ -5,7 +5,7 @@ handoff, background recording, App Group entitlements, or third-party text
 insertion. Complete these steps on the actual iPhone.
 
 New to the project? [The README's iPhone setup
-section](../README.md#1-configure-and-install-the-iphone-app) covers getting
+section](https://github.com/VocaHQ/vocaphone#1-configure-and-install-the-iphone-app) covers getting
 a build running at all — Simulator first, then a physical device — in
 plainer language than this page. Come back here once you have a build on
 your iPhone and want to run the full acceptance pass.

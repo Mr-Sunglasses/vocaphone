@@ -249,6 +249,11 @@ docs/                   Architecture, device setup, privacy, decisions, historic
 
 ## Documentation
 
+The documentation is also published at
+[`vocaphone.vocahq.com/docs/`](https://vocaphone.vocahq.com/docs/), with search,
+navigation, and mobile-friendly reading. The Markdown below remains the source
+of truth.
+
 | Guide | Covers |
 | --- | --- |
 | [Android client](android/README.md) | Building the APK, guided setup, voice keyboard, and privacy boundaries |
