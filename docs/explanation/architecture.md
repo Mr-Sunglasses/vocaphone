@@ -12,7 +12,7 @@ or diagnosing a cross-platform failure.
 ## Component boundary
 
 ```mermaid
-flowchart LR
+flowchart TD
   field[Target app text field]
   keyboard[VocaPhone keyboard]
   app[Containing app or foreground service]
@@ -118,7 +118,7 @@ extension. Nothing about them touches the gateway, the App Group session record,
 or the network.
 
 ```mermaid
-flowchart LR
+flowchart TD
   touch[Keystroke] --> composer[WordComposer]
   composer --> engine[TypingEngine]
   engine --> candidates[TypingCandidates]

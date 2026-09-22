@@ -114,13 +114,19 @@ function sizeExpandedSvg() {
   const expandedSvg = canvas?.querySelector('svg');
   if (!expandedSvg) return;
 
-  const viewBoxWidth = expandedSvg.viewBox?.baseVal?.width;
+  const viewBox = expandedSvg.viewBox?.baseVal;
+  const viewBoxWidth = viewBox?.width;
+  const viewBoxHeight = viewBox?.height;
   const declaredWidth = Number.parseFloat(expandedSvg.getAttribute('width'));
   const diagramWidth = viewBoxWidth || declaredWidth || 1200;
+  const diagramHeight = viewBoxHeight || diagramWidth;
+  const aspectRatio = diagramWidth / diagramHeight;
   const stageStyle = getComputedStyle(stage);
   const horizontalPadding = Number.parseFloat(stageStyle.paddingLeft) + Number.parseFloat(stageStyle.paddingRight);
+  const verticalPadding = Number.parseFloat(stageStyle.paddingTop) + Number.parseFloat(stageStyle.paddingBottom);
   const availableWidth = Math.max(320, stage.clientWidth - horizontalPadding);
-  const targetWidth = Math.min(1600, availableWidth, Math.max(1100, diagramWidth * 0.8));
+  const availableHeight = Math.max(240, stage.clientHeight - verticalPadding);
+  const targetWidth = Math.max(240, Math.min(1600, availableWidth, availableHeight * aspectRatio));
   expandedSvg.style.width = `${targetWidth}px`;
 }
 

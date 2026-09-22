@@ -25,7 +25,7 @@ no Voca-hosted speech-to-text service in the path.
 ## The product boundary
 
 ```mermaid
-flowchart LR
+flowchart TD
   field[Editable text field] --> keyboard[VocaPhone keyboard]
   keyboard --> app[Phone app or dictation service]
   app --> local[On-device speech model]

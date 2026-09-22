@@ -24,7 +24,7 @@ those paths reviewable.
 ## Data flow
 
 ```mermaid
-flowchart LR
+flowchart TD
   phone[Phone microphone] --> capture[Explicit dictation recording]
   capture --> route{Selected route}
   route -->|On-device| model[On-device model]

@@ -181,7 +181,7 @@ adb uninstall io.github.mrsunglasses.localflow 2>/dev/null || true
 The local Android loop looks like this:
 
 ```mermaid
-flowchart LR
+flowchart TD
   source[Change Kotlin or native code] --> build[just android run]
   build --> apk[assembleFullDebug]
   apk --> install[adb install -r]
