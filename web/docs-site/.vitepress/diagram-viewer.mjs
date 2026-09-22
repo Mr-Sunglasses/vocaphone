@@ -70,6 +70,20 @@ function setZoom(nextZoom) {
   zoomLabel.textContent = `${Math.round(zoom * 100)}%`;
 }
 
+function sizeExpandedSvg() {
+  const expandedSvg = canvas?.querySelector('svg');
+  if (!expandedSvg) return;
+
+  const viewBoxWidth = expandedSvg.viewBox?.baseVal?.width;
+  const declaredWidth = Number.parseFloat(expandedSvg.getAttribute('width'));
+  const diagramWidth = viewBoxWidth || declaredWidth || 1200;
+  const stageStyle = getComputedStyle(stage);
+  const horizontalPadding = Number.parseFloat(stageStyle.paddingLeft) + Number.parseFloat(stageStyle.paddingRight);
+  const availableWidth = Math.max(320, stage.clientWidth - horizontalPadding);
+  const targetWidth = Math.min(1600, availableWidth, Math.max(1100, diagramWidth * 0.8));
+  expandedSvg.style.width = `${targetWidth}px`;
+}
+
 function openViewer(diagram) {
   createViewer();
   const sourceSvg = diagram.querySelector('svg');
@@ -80,11 +94,11 @@ function openViewer(diagram) {
   const expandedSvg = canvas.querySelector('svg');
   expandedSvg.removeAttribute('id');
   expandedSvg.setAttribute('role', 'img');
-  expandedSvg.style.width = 'min(1100px, 90vw)';
   expandedSvg.style.maxWidth = 'none';
   expandedSvg.style.height = 'auto';
-  setZoom(1);
   viewer.hidden = false;
+  sizeExpandedSvg();
+  setZoom(1);
   document.documentElement.classList.add(OPEN_CLASS);
   closeButton.focus();
 }
@@ -144,6 +158,7 @@ export function installDiagramViewer(router) {
 
   window.addEventListener('hashchange', closeViewer);
   window.addEventListener('popstate', closeViewer);
+  window.addEventListener('resize', sizeExpandedSvg);
   if (router) {
     const previousAfterRouteChange = router.onAfterRouteChange;
     router.onAfterRouteChange = async (to) => {
