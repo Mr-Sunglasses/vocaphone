@@ -12,6 +12,7 @@ let closeButton;
 let zoom = 1;
 let previousFocus;
 let panStart;
+let expandedDiagramCount = 0;
 
 function closestElement(target, selector) {
   return target instanceof Element ? target.closest(selector) : null;
@@ -130,15 +131,27 @@ function sizeExpandedSvg() {
   expandedSvg.style.width = `${targetWidth}px`;
 }
 
+function cloneSvgWithStyles(sourceSvg) {
+  const expandedSvg = sourceSvg.cloneNode(true);
+  const sourceId = sourceSvg.id;
+  if (!sourceId) return expandedSvg;
+
+  const expandedId = `${sourceId}-expanded-${++expandedDiagramCount}`;
+  expandedSvg.id = expandedId;
+  expandedSvg.querySelectorAll('style').forEach((style) => {
+    style.textContent = style.textContent.replaceAll(`#${sourceId}`, `#${expandedId}`);
+  });
+  return expandedSvg;
+}
+
 function openViewer(diagram) {
   createViewer();
   const sourceSvg = diagram.querySelector('svg');
   if (!sourceSvg) return;
 
   previousFocus = document.activeElement;
-  canvas.replaceChildren(sourceSvg.cloneNode(true));
+  canvas.replaceChildren(cloneSvgWithStyles(sourceSvg));
   const expandedSvg = canvas.querySelector('svg');
-  expandedSvg.removeAttribute('id');
   expandedSvg.setAttribute('role', 'img');
   expandedSvg.style.maxWidth = 'none';
   expandedSvg.style.height = 'auto';

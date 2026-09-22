@@ -15,6 +15,14 @@ export default withMermaid(defineConfig({
   cleanUrls: true,
   lastUpdated: true,
   appearance: true,
+  mermaid: {
+    // Use SVG <text> instead of HTML foreignObject labels. The latter measures
+    // correctly in the page but can clip when the SVG is copied into the
+    // zoomable viewer. Native SVG labels scale with the diagram in both views.
+    flowchart: {
+      htmlLabels: false,
+    },
+  },
   vite: {
     // The Markdown source intentionally stays in the repository-level docs/
     // directory. Point Vue's SSR entry back at web/node_modules because Vite
