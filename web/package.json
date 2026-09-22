@@ -8,7 +8,7 @@
     "docs:build": "vitepress build docs-site",
     "docs:preview": "vitepress preview docs-site",
     "check:site": "node --test tests/site.test.mjs",
-    "check": "npm run check:site && npm run docs:build"
+    "check": "npm run docs:build && npm run check:site"
   },
   "devDependencies": {
     "mermaid": "^10.9.4",
