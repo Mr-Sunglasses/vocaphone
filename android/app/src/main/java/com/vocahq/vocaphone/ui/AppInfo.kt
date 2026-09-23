@@ -43,8 +43,8 @@ const val ABOUT_ON_DEVICE =
         "self-hosted compute. On-device dictation never calls it."
 
 const val ABOUT_FAMILY_NOTE =
-    "VocaPhone is one of the VocaHQ apps. VocaLinux is available now, " +
-        "VocaMac is in beta, and VocaWin is in beta. This APK is " +
+    "VocaPhone is one of the VocaHQ apps. VocaLinux and VocaMac are available now, " +
+        "and VocaWin is in beta. This APK is " +
         "the Android app on Google Play. iOS 17+ is a source build in the same repo. " +
         "VocaGateway is Early."
 
