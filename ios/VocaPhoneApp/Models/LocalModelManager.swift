@@ -2034,7 +2034,6 @@ final class LocalModelManager {
                 temperatureIncrementOnFallback: quality.whisperKitTemperatureIncrement,
                 temperatureFallbackCount: quality.whisperKitTemperatureFallbackCount,
                 usePrefillPrompt: true,
-                usePrefillCache: true,
                 // WhisperKit derives this from `usePrefillPrompt`, so leaving it
                 // unset with prefill on resolves it to false — and a nil language
                 // then falls back to English rather than being detected. Automatic

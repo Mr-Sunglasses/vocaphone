@@ -37,7 +37,7 @@ settings:
 packages:
   WhisperKit:
     url: https://github.com/argmaxinc/WhisperKit.git
-    from: 0.16.0
+    from: 1.1.0
   sherpa-onnx:
     url: https://github.com/k2-fsa/sherpa-onnx.git
     exactVersion: 1.13.8

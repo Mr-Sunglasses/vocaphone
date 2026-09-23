@@ -2,7 +2,7 @@ import Foundation
 import WhisperKit
 
 /// Decode one window at a time and propagate every window's error. WhisperKit
-/// 0.18's built-in VAD path runs four windows concurrently on iOS and drops
+/// WhisperKit's built-in VAD path runs windows concurrently on iOS and drops
 /// failed chunks when collecting results, potentially returning partial success.
 @MainActor
 enum WhisperTranscription {
