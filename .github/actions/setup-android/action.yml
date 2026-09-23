@@ -17,7 +17,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+    - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
       with:
         distribution: temurin
         # JDK 21 is what the F-Droid buildserver compiles with, so upstream
@@ -31,7 +31,7 @@ runs:
         # the default package install is a redownload of what is on disk. The
         # action still accepts the licences, which is the part the build needs.
         packages: 'cmake;3.22.1 ndk;27.2.12479018'
-    - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+    - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
       with:
         cache-read-only: ${{ inputs.cache-read-only }}
         cache-encryption-key: ${{ inputs.cache-encryption-key }}
