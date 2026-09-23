@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.StatFs
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.GatewayEndpoint
+import com.vocahq.vocaphone.data.DictationLatency
 import com.vocahq.vocaphone.local.LOCAL_MODELS_DIR
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
@@ -283,6 +284,11 @@ fun diagnosticsReport(
         setup.ime.enabled -> "enabled, not selected"
         else -> "not enabled"
     })
+    val latency = DictationLatency.reportLines(events)
+    if (latency.isNotEmpty()) {
+        appendLine("Latency (from the event log below):")
+        latency.forEach { appendLine("  $it") }
+    }
     if (events.isNotBlank()) {
         appendLine("Event log:")
         append(events.trimEnd())

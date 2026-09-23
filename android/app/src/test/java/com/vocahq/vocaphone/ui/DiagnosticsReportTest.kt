@@ -92,6 +92,21 @@ class DiagnosticsReportTest {
     }
 
     @Test
+    fun `report summarizes dictation latency from the event log`() {
+        val report = diagnosticsReport(
+            info,
+            configured,
+            ready,
+            events = "ts=1000 build=0.1.0 event=action value=start source=IME\n" +
+                "ts=1240 build=0.1.0 event=state value=LISTENING source=IME\n",
+        )
+
+        assertTrue(report.contains("Latency (from the event log below):"))
+        assertTrue(report.contains("Tap -> listening: 240 ms median, 240 ms p95 (n=1)"))
+        assertTrue(report.indexOf("Latency") < report.indexOf("Event log:"))
+    }
+
+    @Test
     fun `local speech names the phone instead of a stale gateway engine`() {
         val settings = configured.copy(
             localTranscriptionEnabled = true,
