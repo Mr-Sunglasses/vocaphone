@@ -283,12 +283,16 @@ enum DiagnosticLog {
         let build = Bundle.main.object(
             forInfoDictionaryKey: "CFBundleVersion"
         ) as? String ?? "unknown"
+        let latency = DiagnosticLatency.reportLines(decodedEntries(entries))
+        let latencyBlock = latency.isEmpty
+            ? ""
+            : "Latency:\n" + latency.map { "  \($0)\n" }.joined()
         let header = """
         VocaPhone diagnostics
         App: \(version) (\(build))
         OS: \(ProcessInfo.processInfo.operatingSystemVersionString)
         Privacy: state and lifecycle metadata only; no transcript, typed text, audio, or credentials.
-        ---
+        \(latencyBlock)---
 
         """
         let body = entries.joined(separator: "\n")
@@ -343,6 +347,12 @@ enum DiagnosticLog {
             else { return nil }
             return String(line)
         }
+    }
+
+    static func decodedEntries(_ lines: [String]) -> [DiagnosticEntry] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return lines.compactMap { try? decoder.decode(DiagnosticEntry.self, from: Data($0.utf8)) }
     }
 
     private static var fileURL: URL? {
