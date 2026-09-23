@@ -24,7 +24,7 @@ enum SetupStep: String, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .source: "Choose where speech becomes text"
-        case .microphone: "Allow microphone access"
+        case .microphone: "Microphone for dictation"
         case .keyboard: "Add the keyboard with Full Access"
         case .firstDictation: "Try one dictation"
         }

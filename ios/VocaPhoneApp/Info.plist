@@ -59,6 +59,9 @@
   <true/>
   <key>ITSAppUsesNonExemptEncryption</key>
   <false/>
+  <!-- The containing app records dictation after it enters the background.
+       Quick Dictation can also keep its input active between dictations.
+       Neither path runs in the keyboard extension. -->
   <key>UIBackgroundModes</key>
   <array>
     <string>audio</string>

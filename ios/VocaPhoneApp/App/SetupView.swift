@@ -804,7 +804,7 @@ struct SetupView: View {
         case .model:
             ("Choose model", "It turns your voice into text, offline on this iPhone. You can switch later.")
         case .microphone:
-            ("Allow microphone access", "So vocaphone can hear what you say.")
+            ("Microphone for dictation", "So vocaphone can hear what you say.")
         case .keyboard:
             ("Set up keyboard", "So vocaphone can type in any app.")
         case .keyboardSwitch:
@@ -896,7 +896,7 @@ struct SetupView: View {
         switch status.microphone {
         case .granted: return ("Continue", advance)
         case .undetermined:
-            return ("Allow access", {
+            return ("Continue", {
                 coordinator.requestMicrophonePermission(armQuickDictationOnGrant: false)
             })
         case .denied: return ("Open Settings", openSystemSettings)
