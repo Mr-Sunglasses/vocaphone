@@ -93,6 +93,10 @@ IME root recomposes the whole keyboard, including keys. Isolate it in
 
 ## Measuring
 
+Budgets for keys, the mic button and dictation live in
+[docs/latency.md](../docs/latency.md). The keystroke budget below is the
+strictest of them.
+
 Activity-level frame metrics never see IME presses (different window). Time
 the work a press actually does, on a 120 Hz phone:
 

@@ -273,6 +273,10 @@ why (docs-only, Linux host, no submodule, …).
 | Gateway pin or submodule work | `just gateway test` | vocagateway CI; this repo does not re-run gateway quality |
 | Any | `git diff --check` | Semgrep on PRs (non-blocking); CodeQL native is post-merge / weekly, not a PR gate |
 
+Keyboard, mic button, capture, transcription, or insertion changes are held
+to the budgets in [docs/latency.md](docs/latency.md). Tap feedback in under
+100 ms is not optional; record a baseline row when you measure.
+
 Keyboard, microphone, background audio, or insertion: verify on a physical
 device (`just ios device` / `just android run`) and describe app, OS, and the
 exact sequence in the PR. See [docs/device-setup.md](docs/device-setup.md).
