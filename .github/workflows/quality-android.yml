@@ -47,6 +47,8 @@ jobs:
           # 10 GB repository cache from filling with one Gradle copy per branch
           # and evicting the entry everything else restores from.
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+      - name: Check native model catalogs and pins
+        run: python3 tools/model-pins/check_catalogs.py
       - run: ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
         working-directory: android
       - name: Fail if the checked-in Room schema is stale

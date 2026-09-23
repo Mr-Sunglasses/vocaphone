@@ -16,6 +16,9 @@ on:
     paths:
       - 'assets/keyboard/**'
       - 'tools/**'
+      - 'android/app/src/main/java/com/vocahq/vocaphone/local/SherpaModelCatalog.kt'
+      - 'ios/VocaPhoneShared/LocalModelCatalog.swift'
+      - 'ios/VocaPhoneApp/Models/*model_pins.json'
       - '.github/workflows/quality-assets.yml'
   workflow_call:
   workflow_dispatch:
@@ -43,5 +46,7 @@ jobs:
 
       - name: Fail if the emoji catalog or suggestions do not match the generator
         run: python3 tools/generate-emoji-catalog.py --check
+      - name: Check native model catalogs and pins
+        run: python3 tools/model-pins/check_catalogs.py
       - name: Check generated brand assets
         run: python3 assets/generate.py --check

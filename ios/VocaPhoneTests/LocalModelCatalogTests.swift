@@ -1,6 +1,21 @@
 import Testing
 
 struct LocalModelCatalogTests {
+    @Test func omnilingualIsAnOptionalGreedyModelWithExplicitCoverage() throws {
+        let model = try #require(LocalModelCatalog.descriptor(for: "omnilingual-300m-ctc"))
+        #expect(model.covers("ar"))
+        #expect(model.covers("sw"))
+        #expect(model.covers("hi"))
+        #expect(model.detectsLanguageAutomatically)
+        #expect(model.sherpaFamily?.acceptsLanguage == false)
+        #expect(model.sherpaFamily?.supportsBeamSearch == false)
+        #expect(model.translationTargets.isEmpty)
+        #expect(!model.supportsCustomVocabulary)
+        #expect(model.minimumRamGB == 6)
+        #expect(model.maker == .meta)
+        #expect(!LocalModelCatalog.accuracyRanking(for: "hi").contains(model.id))
+    }
+
     @Test func sherpaModelsAreAvailableAlongsideWhisperKit() {
         let sherpa = LocalModelCatalog.all.filter { $0.engine == .sherpaOnnx }
         #expect(sherpa.count == 12)
@@ -10,8 +25,7 @@ struct LocalModelCatalogTests {
 
     @Test func sherpaLanguageContractsMatchTheirFamilies() {
         #expect(LocalModelCatalog.descriptor(for: "canary-180m-flash")?.languageCodes == ["en", "de", "es", "fr"])
-        #expect(LocalModelCatalog.descriptor(for: "fast-conformer-ctc-4-lang")?.languageCodes == ["en", "de", "es", "fr"])
-        #expect(LocalModelCatalog.descriptor(for: "giga-am-ctc-ru")?.languageCodes == ["ru"])
+        #expect(LocalModelCatalog.descriptor(for: "giga-am-v3-ru")?.languageCodes == ["ru"])
         // Detecting the language is not the same as covering every language:
         // Parakeet v3 decides for itself, and knows exactly 25.
         let parakeet = LocalModelCatalog.descriptor(for: "parakeet-tdt-0.6b-v3")
@@ -24,7 +38,7 @@ struct LocalModelCatalogTests {
         let senseVoice = LocalModelCatalog.descriptor(for: "sense-voice")
         #expect(senseVoice?.detectsLanguageAutomatically == false)
         #expect(senseVoice?.languageCodes == ["zh", "en", "ja", "ko", "yue"])
-        #expect(LocalModelCatalog.descriptor(for: "dolphin-base-ctc")?.languageCodes.contains("hi") == true)
+        #expect(LocalModelCatalog.descriptor(for: "dolphin-small-ctc")?.languageCodes.contains("hi") == true)
     }
 
     /// The point of declaring Parakeet's coverage: every one of its 25 languages
@@ -44,7 +58,7 @@ struct LocalModelCatalogTests {
     /// Cantonese is language 100. Offering it on a Whisper build that stops at
     /// 99 would not fail, it would silently decode against the wrong token.
     @Test func cantoneseIsOfferedOnlyWhereItDecodes() {
-        let small = LocalModelCatalog.descriptor(for: "openai_whisper-small")
+        let small = LocalModelCatalog.descriptor(for: "openai_whisper-small_216MB")
         #expect(small?.selectableLanguageCodes.contains("yue") == false)
         #expect(small?.selectableLanguageCodes.contains("hi") == true)
         let largeV3 = LocalModelCatalog.all.first { $0.id.contains("large-v3") }
@@ -62,13 +76,15 @@ struct LocalModelCatalogTests {
             LocalModelCatalog.recommended(deviceMemoryGB: 4, language: "en").id
                 == "parakeet-tdt-0.6b-v2-en"
         )
+        // The 132 MB Parakeet 110M fits a 2 GB phone as well, so it is the
+        // English answer everywhere the 0.6B does not fit.
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 3, language: "en").id
-                == "moonshine-base-en"
+                == "parakeet-tdt-ctc-110m-en"
         )
         #expect(
             LocalModelCatalog.recommended(deviceMemoryGB: 2, language: "en").id
-                == "moonshine-tiny-en"
+                == "parakeet-tdt-ctc-110m-en"
         )
     }
 
@@ -93,11 +109,17 @@ struct LocalModelCatalogTests {
             deviceMemoryGB: 8,
             intent: ModelGuidanceIntent(language: "en", priority: .lighter)
         )
+        // The smallest model built for English, not the smallest that lists
+        // it: Paraformer is smaller, but it is a Mandarin model.
         let smallest = LocalModelCatalog.all
-            .filter { $0.minimumRamGB <= 8 && $0.covers("en") }
+            .filter {
+                $0.minimumRamGB <= 8 && $0.covers("en")
+                    && !LocalModelCatalog.isIncidental($0, for: "en")
+            }
             .min { $0.sizeBytes < $1.sizeBytes }
 
         #expect(lighter.model?.id == smallest?.id)
+        #expect(lighter.model?.id == "parakeet-tdt-ctc-110m-en")
         #expect(lighter.reason.contains("smallest"))
         #expect(balanced.model != nil)
 
@@ -179,7 +201,7 @@ struct LocalModelCatalogTests {
         // multilingual and English answers next to it.
         let russian = LocalModelCatalog.recommendations(deviceMemoryGB: 8, language: "ru")
         #expect(russian[0].role == .regional)
-        #expect(russian[0].model.id == "giga-am-ctc-ru")
+        #expect(russian[0].model.id == "giga-am-v3-ru")
         #expect(russian[1].model.id == "parakeet-tdt-0.6b-v3")
         #expect(russian.count >= 3)
     }
@@ -198,7 +220,7 @@ struct LocalModelCatalogTests {
         #expect(picks[0].model.covers("en"))
         #expect(picks[0].model.covers("ru"))
         // The specialists stay, as alternates rather than as the answer.
-        #expect(picks.contains { $0.model.id == "giga-am-ctc-ru" })
+        #expect(picks.contains { $0.model.id == "giga-am-v3-ru" })
         #expect(picks.contains { $0.model.id == "parakeet-tdt-0.6b-v2-en" })
     }
 
@@ -209,7 +231,7 @@ struct LocalModelCatalogTests {
         #expect(spoken == ["ru"])
         let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
         #expect(picks[0].role == .regional)
-        #expect(picks[0].model.id == "giga-am-ctc-ru")
+        #expect(picks[0].model.id == "giga-am-v3-ru")
     }
 
     @Test func everyEnabledKeyboardLanguageIsInTheSpokenList() {
@@ -219,8 +241,7 @@ struct LocalModelCatalogTests {
         )
         #expect(spoken == ["en", "zh", "ja", "ko", "ru"])
         let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
-        #expect(picks.contains { $0.model.id == "giga-am-ctc-ru" })
-        #expect(picks.contains { $0.model.id == "paraformer-zh-small" })
+        #expect(picks.contains { $0.model.id == "giga-am-v3-ru" })
         #expect(picks.contains { $0.model.id == "sense-voice" })
     }
 
@@ -245,7 +266,7 @@ struct LocalModelCatalogTests {
         #expect(spoken == ["en", "ru"])
         #expect(!spoken.contains("zh"))
         let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
-        #expect(picks.contains { $0.model.id == "giga-am-ctc-ru" })
+        #expect(picks.contains { $0.model.id == "giga-am-v3-ru" })
         #expect(!picks.contains { $0.model.id == "paraformer-zh-small" })
         #expect(!picks.contains { $0.model.id == "sense-voice" })
     }
@@ -305,12 +326,14 @@ struct LocalModelCatalogTests {
         )
     }
 
-    /// First run offers only the most accurate models. The smallest download
-    /// and a wide model that merely covers English stay in More models.
+    /// First run offers only the most accurate models. A wide model that
+    /// merely covers English stays in More models; the small Parakeet is on the
+    /// English accuracy list, so it takes the third card as the one download
+    /// that is not 660 MB.
     @Test func onboardingOffersOnlyTheMostAccurateModels() {
         let picks = LocalModelCatalog.onboardingRecommendations(deviceMemoryGB: 6, languages: ["en"])
         #expect(picks.map(\.model.id) == [
-            "parakeet-tdt-0.6b-v2-en", "parakeet-tdt-0.6b-v3", "canary-180m-flash",
+            "parakeet-tdt-0.6b-v2-en", "parakeet-tdt-0.6b-v3", "parakeet-tdt-ctc-110m-en",
         ])
         #expect(picks.allSatisfy { LocalModelCatalog.isHighAccuracy($0.model, for: "en") })
     }
@@ -339,12 +362,20 @@ struct LocalModelCatalogTests {
         #expect(maker("parakeet-tdt-0.6b-v2-en") == .nvidia)
         #expect(maker("canary-180m-flash") == .nvidia)
         #expect(maker("openai_whisper-base") == .openAI)
-        #expect(maker("distil-whisper_distil-large-v3_594MB") == .huggingFace)
-        #expect(maker("moonshine-base-en") == .usefulSensors)
+        #expect(maker("parakeet-tdt-ctc-110m-en") == .nvidia)
+        #expect(maker("zipformer-vi") == .nextGenKaldi)
         #expect(maker("sense-voice") == .alibaba)
         #expect(maker("paraformer-zh-small") == .alibaba)
         #expect(maker("dolphin-small-ctc") == .dataocean)
-        #expect(maker("giga-am-ctc-ru") == .sber)
+        #expect(maker("giga-am-v3-ru") == .sber)
+    }
+
+    @Test func accuracyRankingsOnlyReferenceAvailableModels() {
+        for language in TranscriptionLanguage.allCases where language != .automatic {
+            for id in LocalModelCatalog.accuracyRanking(for: language.rawValue) {
+                #expect(LocalModelCatalog.descriptor(for: id) != nil)
+            }
+        }
     }
 
     /// Smallest is smallest first, and never a model built for another

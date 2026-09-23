@@ -68,6 +68,9 @@ jobs:
           xcodegen generate --spec project.yml
           git diff --exit-code -- VocaPhone.xcodeproj
 
+      - name: Check native model catalogs and pins
+        run: python3 tools/model-pins/check_catalogs.py
+
       # Seconds on the runner, and the only thing standing between the preview
       # harness and a shipping build. Runs before the build so a leak fails
       # fast rather than after twenty minutes of xcodebuild.

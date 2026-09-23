@@ -937,7 +937,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                     container.diagnostics.recordAction("cancel", DictationSource.IME.name)
                     cancelImeDictation()
                 }
-                MicDictationAction.OPEN_APP -> openCompanion()
+                // Straight to Models when a voice model is all that is
+                // missing: that page is where the one-tap download is.
+                MicDictationAction.OPEN_APP ->
+                    openCompanion(page = "models".takeIf { lastState.needsVoiceModel })
                 MicDictationAction.START -> startImeDictation()
             }
         }

@@ -203,6 +203,34 @@ suggestion table: `python3 tools/generate-emoji-catalog.py --check` (and
 
 No nested `web/AGENTS.md` — the site has no extra agent rules beyond this.
 
+## The local model catalog
+
+The sherpa half of the catalog is duplicated by hand across three files, and
+every model is pinned per file by size and SHA-256:
+
+| | |
+| --- | --- |
+| Android whisper.cpp | `android/.../local/LocalModelCatalog.kt` |
+| Android sherpa | `android/.../local/SherpaModelCatalog.kt` |
+| iOS both | `ios/VocaPhoneShared/LocalModelCatalog.swift` |
+| iOS pins | `ios/VocaPhoneApp/Models/{local,sherpa}_model_pins.json` |
+
+Do not hand-write a pin. `tools/model-pins/pin_models.py <repo>` resolves a
+Hugging Face repository to per-file size and SHA-256 and prints it as Kotlin or
+JSON; `tools/model-pins/check_catalogs.py` then asserts the three files agree on
+every id, repository, revision and digest. The checker is offline and belongs in
+any change that touches the catalog.
+
+Two rules the catalog encodes, both easy to undo by accident:
+
+- **Whisper on Android currently uses Q8_0.** The pinned ggml ARM repack
+  implementation supports Q8 but not Q5. Its desktop matrix benchmark is not
+  an end-to-end phone measurement; revisit this choice only with target-device
+  latency, peak memory, and accuracy evidence.
+- **Removing a model means adding it to `RetiredModels` / `RetiredLocalModels`.**
+  A stored selection is an id, so a dropped row otherwise reads back as no
+  selection and silently demotes the user to a first-run recommendation.
+
 ## Privacy, data, and architecture
 
 Read [docs/privacy.md](docs/privacy.md) and

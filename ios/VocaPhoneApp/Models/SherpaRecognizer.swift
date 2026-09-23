@@ -17,15 +17,20 @@ final class SherpaRecognizer: @unchecked Sendable {
     /// pinned runtime has no `dither` field to ask for it. See
     /// `SherpaFeatureDither` and `SherpaFamily.featureDither`.
     private let featureDither: Float
+    /// Whether an all-capitals answer is the model's training casing rather than
+    /// the speaker's. See `SherpaFamily.transcribesInCapitals`.
+    private let lowercasesCapitals: Bool
 
     private init(
         native: UnsafeMutableRawPointer,
         translating: Bool = false,
-        featureDither: Float = 0
+        featureDither: Float = 0,
+        lowercasesCapitals: Bool = false
     ) {
         self.native = native
         self.translating = translating
         self.featureDither = featureDither
+        self.lowercasesCapitals = lowercasesCapitals
     }
 
     deinit {
@@ -52,19 +57,51 @@ final class SherpaRecognizer: @unchecked Sendable {
             return url.path
         }
 
+        /// The quantized file where the model ships one, the plain file where
+        /// it does not. Upstream quantizes per graph rather than per model:
+        /// GigaAM's transducer ships an int8 encoder beside a full-precision
+        /// decoder and joiner, because those two are small enough that
+        /// quantizing them costs accuracy for nothing.
+        func quantizedOrPlain(_ stem: String) throws -> String {
+            let int8 = directory.appendingPathComponent("\(stem).int8.onnx")
+            return FileManager.default.fileExists(atPath: int8.path)
+                ? int8.path
+                : try path("\(stem).onnx")
+        }
+
+        /// An icefall graph, whose file name carries its training checkpoint
+        /// (`encoder-epoch-99-avg-1.int8.onnx`). Only the pinned files are ever
+        /// downloaded, so the one file with this stem is the one to load.
+        func icefallGraph(_ stem: String) throws -> String {
+            let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+            let candidates = names.filter { $0.hasPrefix(stem) && $0.hasSuffix(".onnx") }.sorted()
+            guard let name = candidates.first(where: { $0.contains(".int8.") }) ?? candidates.first
+            else { throw LocalModelManagerError.integrityFileMissing("\(stem).onnx") }
+            return try path(name)
+        }
+
         let tokens = try path("tokens.txt")
         let models: [String]
         switch family {
         case .nemoTransducer:
-            models = try [path("encoder.int8.onnx"), path("decoder.int8.onnx"), path("joiner.int8.onnx"), ""]
+            models = try [
+                quantizedOrPlain("encoder"), quantizedOrPlain("decoder"),
+                quantizedOrPlain("joiner"), ""
+            ]
+        case .zipformerTransducer:
+            models = try [
+                icefallGraph("encoder"), icefallGraph("decoder"), icefallGraph("joiner"), ""
+            ]
         case .moonshine:
             models = try [
                 path("preprocess.onnx"), path("encode.int8.onnx"),
                 path("uncached_decode.int8.onnx"), path("cached_decode.int8.onnx")
             ]
+        case .moonshineV2:
+            models = try [path("encoder_model.ort"), path("decoder_model_merged.ort"), "", ""]
         case .canary:
             models = try [path("encoder.int8.onnx"), path("decoder.int8.onnx"), "", ""]
-        case .senseVoice, .dolphinCtc, .paraformer:
+        case .senseVoice, .dolphinCtc, .paraformer, .omnilingualCtc:
             models = try [path("model.int8.onnx"), "", "", ""]
         case .nemoCtc:
             let name = FileManager.default.fileExists(
@@ -123,7 +160,8 @@ final class SherpaRecognizer: @unchecked Sendable {
         return SherpaRecognizer(
             native: native,
             translating: family.acceptsLanguage && !translateTo.isEmpty,
-            featureDither: family.featureDither
+            featureDither: family.featureDither,
+            lowercasesCapitals: family.transcribesInCapitals
         )
     }
 
@@ -220,7 +258,9 @@ final class SherpaRecognizer: @unchecked Sendable {
         guard result >= 0 else { return .failed(.forStatus(result)) }
         return .decoded(
             SherpaTranscript(
-                text: Self.string(from: output),
+                text: lowercasesCapitals
+                    ? SherpaFamily.lowercasingCapitals(Self.string(from: output))
+                    : Self.string(from: output),
                 language: SherpaTranscript.languageCode(Self.string(from: languageOutput))
             )
         )
@@ -241,6 +281,9 @@ private extension SherpaFamily {
         case .canary: 4
         case .nemoCtc: 5
         case .paraformer: 6
+        case .moonshineV2: 7
+        case .omnilingualCtc: 8
+        case .zipformerTransducer: 9
         }
     }
 }

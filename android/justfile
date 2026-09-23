@@ -126,6 +126,7 @@ lint:
 ci:
     #!/usr/bin/env bash
     set -euo pipefail
+    (cd .. && python3 tools/model-pins/check_catalogs.py)
     export ANDROID_HOME="$({{ just_executable() }} _sdk)"
     ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
     git diff --exit-code -- app/schemas \

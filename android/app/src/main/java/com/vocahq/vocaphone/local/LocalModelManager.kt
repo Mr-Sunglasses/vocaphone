@@ -118,7 +118,7 @@ class LocalModelManager(
     private val totalRamGB: Long by lazy {
         val info = ActivityManager.MemoryInfo()
         appContext.getSystemService(ActivityManager::class.java)?.getMemoryInfo(info)
-        info.totalMem / (1024L * 1024L * 1024L)
+        DeviceMemory.advertisedGB(info.totalMem)
     }
     private var whisperContext: WhisperContext? = null
     private var sherpaRecognizer: SherpaRecognizer? = null
@@ -168,6 +168,7 @@ class LocalModelManager(
             meteredNetwork = appContext.isOnMeteredNetwork(),
         )
         migrateLegacyLayout()
+        deleteRetiredModelFiles()
         val verified = mutableSetOf<String>()
         val pending = mutableListOf<LocalModelDescriptor>()
         LocalModelCatalog.all.forEach { model ->
@@ -216,9 +217,52 @@ class LocalModelManager(
             }
     }
 
+    /**
+     * Reclaim the disk a model still occupies after leaving the catalog.
+     *
+     * Nothing else will: every sweep in here iterates [LocalModelCatalog.all],
+     * and the picker only ever lists catalog rows, so a removed model's files
+     * become unreachable rather than deleted -- and these are not small. A
+     * phone that had collected Whisper Medium and Large v2 is holding three
+     * gigabytes it can no longer see, let alone free.
+     *
+     * Deletes only ids [RetiredModels] names, never "anything not in the
+     * catalog": a directory this build does not recognise may belong to a newer
+     * one the user downgraded from, and guessing there would delete a model
+     * they are about to want back.
+     */
+    private fun deleteRetiredModelFiles() {
+        RetiredModels.replacements.keys.forEach { id ->
+            if (LocalModelCatalog.find(id) != null) return@forEach
+            File(modelRoot, id).takeIf(File::isDirectory)?.deleteRecursively()
+            // Whisper models predating the per-model directory sat in the root
+            // as bare GGML files, and `migrateLegacyLayout` only relocates the
+            // ones still in the catalog.
+            File(modelRoot, "ggml-$id.bin").takeIf(File::isFile)?.delete()
+        }
+    }
+
     fun totalRamGB(): Long = totalRamGB
 
     fun isDownloaded(id: String): Boolean = id in _state.value.downloaded
+
+    /**
+     * Whether every pinned file of [id] is on disk at its pinned size.
+     *
+     * A stat pass, not verification, and deliberately so: it answers "can this
+     * dictation possibly succeed" at the moment one starts, which may be before
+     * the launch [refresh] has filled [LocalModelState.downloaded] in. A model
+     * that is present but later fails its digest check is still caught at
+     * load time; what this rules out is recording a whole dictation for a
+     * model that is not there at all.
+     */
+    fun modelFilesPresent(id: String): Boolean {
+        if (id in _state.value.downloaded) return true
+        val model = LocalModelCatalog.find(id) ?: return false
+        return runCatching {
+            LocalModelIntegrity.verifySizes(model, directoryFor(model), requireMarker = false)
+        }.isSuccess
+    }
 
     fun directoryFor(model: LocalModelDescriptor): File = File(modelRoot, model.id)
 

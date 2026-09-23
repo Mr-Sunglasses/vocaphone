@@ -161,6 +161,7 @@ release-build: gen
 [group('test')]
 ci: gen
     @git diff --exit-code -- {{ project }} || { echo "VocaPhone.xcodeproj is stale — commit the regenerated project." >&2; exit 1; }
+    @cd .. && python3 tools/model-pins/check_catalogs.py
     @{{ just_executable() }} lint-previews
     @{{ just_executable() }} test
 

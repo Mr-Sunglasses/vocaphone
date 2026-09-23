@@ -35,6 +35,12 @@ the gateway wire format changed.
 
 ## Recorded request flow
 
+On-device WhisperKit transcription uses sequential VAD windows of at most
+30 seconds. VocaPhone propagates a failed window rather than accepting a partial
+transcript; the existing failure state retains the recording for retry. See
+[the model review](local-model-review.md) for the pinned-runtime behavior and
+verification limits.
+
 1. The keyboard creates a UUID session and atomically writes `launchingApp`.
 2. If a nonexpired Quick Dictation marker exists, the already-running app sees
    the request while its background input is active. Otherwise the keyboard

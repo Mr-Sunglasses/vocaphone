@@ -254,6 +254,7 @@ fun SetupScreen(
                         LocalModelPicker(
                             state = localModels,
                             selectedModelId = settings.localModelId,
+                            selectionFromRetiredModel = settings.selectionIsRetiredModelReplacement,
                             compact = true,
                             onSelect = onLocalModel,
                             onDownload = onDownloadLocalModel,

@@ -6,6 +6,7 @@ import com.k2fsa.sherpa.onnx.FeatureConfig
 import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineNemoEncDecCtcModelConfig
+import com.k2fsa.sherpa.onnx.OfflineOmnilingualAsrCtcModelConfig
 import com.k2fsa.sherpa.onnx.OfflineParaformerModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
@@ -28,6 +29,7 @@ internal class SherpaRecognizer private constructor(
      * recording too long for one decode may be cut up. See [transcribe].
      */
     private val translating: Boolean = false,
+    private val family: SherpaFamily? = null,
 ) {
     /**
      * Decodes the whole recording, in windows if it is longer than one decode
@@ -99,8 +101,18 @@ internal class SherpaRecognizer private constructor(
             stream.acceptWaveform(samples, SherpaLongAudio.SAMPLE_RATE)
             recognizer.decode(stream)
             val result = recognizer.getResult(stream)
+            val raw = if (family?.joinsTokens == true && result.tokens.isNotEmpty()) {
+                SherpaFamily.joinTokens(result.tokens)
+            } else {
+                result.text
+            }
+            val text = if (family?.transcribesInCapitals == true) {
+                SherpaFamily.lowercasingCapitals(raw)
+            } else {
+                raw
+            }
             SherpaTranscript(
-                text = result.text.trim(),
+                text = text.trim(),
                 language = SherpaTranscript.languageCode(result.lang),
             )
         } finally {
@@ -135,13 +147,31 @@ internal class SherpaRecognizer private constructor(
                 return file.absolutePath
             }
 
+            // The quantized file where the model ships one, the plain file
+            // where it does not. Upstream quantizes per graph rather than per
+            // model: GigaAM's transducer ships an int8 encoder beside a
+            // full-precision decoder and joiner, because those two are small
+            // enough that quantizing them costs accuracy for nothing.
+            fun quantizedOrPlain(stem: String): String =
+                if (File(directory, "$stem.int8.onnx").isFile) path("$stem.int8.onnx")
+                else path("$stem.onnx")
+
+            // An icefall graph, whose file name carries its training checkpoint
+            // (`encoder-epoch-99-avg-1.int8.onnx`). The catalog pins exactly one
+            // file per graph, so that is the one to load.
+            fun pinnedGraph(stem: String): String = path(
+                model.files.map(PinnedFile::path)
+                    .firstOrNull { it.startsWith(stem) && it.endsWith(".onnx") }
+                    ?: "$stem.onnx",
+            )
+
             val tokens = path("tokens.txt")
             val modelConfig = when (family) {
                 SherpaFamily.NEMO_TRANSDUCER -> OfflineModelConfig(
                     transducer = OfflineTransducerModelConfig(
-                        encoder = path("encoder.int8.onnx"),
-                        decoder = path("decoder.int8.onnx"),
-                        joiner = path("joiner.int8.onnx"),
+                        encoder = quantizedOrPlain("encoder"),
+                        decoder = quantizedOrPlain("decoder"),
+                        joiner = quantizedOrPlain("joiner"),
                     ),
                 )
 
@@ -162,8 +192,21 @@ internal class SherpaRecognizer private constructor(
                     ),
                 )
 
+                // The other three fields stay empty, which is how sherpa-onnx
+                // tells the two Moonshine layouts apart.
+                SherpaFamily.MOONSHINE_V2 -> OfflineModelConfig(
+                    moonshine = OfflineMoonshineModelConfig(
+                        encoder = path("encoder_model.ort"),
+                        mergedDecoder = path("decoder_model_merged.ort"),
+                    ),
+                )
+
                 SherpaFamily.DOLPHIN_CTC -> OfflineModelConfig(
                     dolphin = OfflineDolphinModelConfig(model = path("model.int8.onnx")),
+                )
+
+                SherpaFamily.OMNILINGUAL_CTC -> OfflineModelConfig(
+                    omnilingual = OfflineOmnilingualAsrCtcModelConfig(model = path("model.int8.onnx")),
                 )
 
                 // The one family that can translate. Equal source and target is
@@ -189,6 +232,14 @@ internal class SherpaRecognizer private constructor(
                 SherpaFamily.NEMO_CTC -> OfflineModelConfig(
                     nemo = OfflineNemoEncDecCtcModelConfig(
                         model = path(model.primaryFile.path),
+                    ),
+                )
+
+                SherpaFamily.ZIPFORMER_TRANSDUCER -> OfflineModelConfig(
+                    transducer = OfflineTransducerModelConfig(
+                        encoder = pinnedGraph("encoder"),
+                        decoder = pinnedGraph("decoder"),
+                        joiner = pinnedGraph("joiner"),
                     ),
                 )
 
@@ -218,6 +269,7 @@ internal class SherpaRecognizer private constructor(
                 // Only the families that can honour a target are translating,
                 // whatever the caller asked for.
                 translating = family.acceptsLanguage && translateTo.isNotEmpty(),
+                family = family,
             )
         }
     }

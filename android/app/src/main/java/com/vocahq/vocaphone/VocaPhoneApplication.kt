@@ -15,6 +15,7 @@ import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
 import com.vocahq.vocaphone.ime.VoiceShortcutIme
 import com.vocahq.vocaphone.local.LocalModelManager
+import com.vocahq.vocaphone.local.RetiredModels
 import com.vocahq.vocaphone.settings.SettingsRepository
 import com.vocahq.vocaphone.telemetry.Telemetry
 import com.vocahq.vocaphone.telemetry.TelemetryFlushScheduler
@@ -22,8 +23,11 @@ import java.io.File
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The IME, microphone service and companion app all run in one process and
@@ -102,6 +106,30 @@ class AppContainer(context: Context) {
 
     private val telemetryFlush = TelemetryFlushScheduler(telemetry, applicationScope)
 
+    /**
+     * One-time settings migration, started as early as the container exists.
+     *
+     * Held as a [Job] rather than left anonymous so [dictation] can wait on it:
+     * a dictation that begins before it finishes would read a retired model id
+     * with on-device transcription still switched on, record, and fail.
+     */
+    private val settingsMigration: Job = applicationScope.launch {
+        // Bounded, because the first dictation waits on this and a settings
+        // read that never returns would otherwise be a keyboard that never
+        // records. Two DataStore reads and one write take milliseconds; anything
+        // beyond this is broken rather than slow.
+        //
+        // Timing out is survivable rather than merely tolerable: a dictation
+        // that proceeds on un-migrated settings finds a model id the catalog
+        // does not have, and `missingPermissions` turns that into setup before
+        // the microphone opens rather than a failed recording. The wait is an
+        // optimisation -- it keeps the common case off the repair screen -- not
+        // the thing that makes the state correct.
+        withTimeoutOrNull(SETTINGS_MIGRATION_TIMEOUT_MILLIS) {
+            migrateRetiredModelSelection()
+        }
+    }
+
     val dictation = DictationController(
         context = context.applicationContext,
         settings = settings,
@@ -113,11 +141,50 @@ class AppContainer(context: Context) {
         cues = dictationCues,
         usageStats = usageStats,
         scope = applicationScope,
+        awaitSettingsMigration = settingsMigration::join,
     )
 
     init {
-        applicationScope.launch { localModels.refresh() }
+        applicationScope.launch {
+            // The manager reads the selection and sweeps retired downloads, so
+            // it has to see the migrated state rather than race it.
+            settingsMigration.join()
+            localModels.refresh()
+        }
         telemetryFlush.start()
+    }
+
+    /**
+     * Move a stored selection off a model that has left the catalog.
+     *
+     * `local_model_id` holds an id verbatim, so a catalog that stops shipping a
+     * row strands whoever had picked it: `LocalModelCatalog.find` returns null
+     * and the app silently re-derives a first-run recommendation. Someone who
+     * deliberately downloaded Whisper Medium would come back to Tiny, with
+     * nothing on screen to say why.
+     *
+     * Runs before the first [LocalModelManager.refresh] so the manager sees the
+     * migrated id, and writes the replacement back rather than translating on
+     * every read -- the stored value is shared with the keyboard process, which
+     * has no reason to know the catalog's history.
+     */
+    private suspend fun migrateRetiredModelSelection() {
+        val stored = settings.settings.first().localModelId
+        RetiredModels.migrate(
+            stored = stored,
+            totalRamGB = localModels.totalRamGB(),
+            replace = settings::replaceRetiredLocalModel,
+            // No fitting replacement: turn the switch off with the selection.
+            clear = settings::clearLocalModelSelection,
+        )
+    }
+
+    private companion object {
+        /**
+         * Long enough for a cold DataStore read on a slow phone, short enough
+         * that nobody waits on it before their first word.
+         */
+        const val SETTINGS_MIGRATION_TIMEOUT_MILLIS = 5_000L
     }
 
     fun purgeExpiredAudio() {

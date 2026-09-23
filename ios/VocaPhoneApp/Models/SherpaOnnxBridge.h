@@ -11,6 +11,9 @@ enum VocaPhoneSherpaFamily {
     VocaPhoneSherpaCanary = 4,
     VocaPhoneSherpaNemoCtc = 5,
     VocaPhoneSherpaParaformer = 6,
+    VocaPhoneSherpaMoonshineV2 = 7,
+    VocaPhoneSherpaOmnilingualCtc = 8,
+    VocaPhoneSherpaZipformerTransducer = 9,
 };
 
 /// `language` is the language being spoken, and `target_language` the one to

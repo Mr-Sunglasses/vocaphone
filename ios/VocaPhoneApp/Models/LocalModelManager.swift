@@ -432,6 +432,8 @@ final class LocalModelManager {
 
     /// Stat-only pass, safe to run on the main actor during launch.
     func refresh() {
+        RetiredLocalModels.migrateStoredSelection()
+        scheduleRetiredModelCleanup()
         var verified: Set<String> = []
         var needsDigestCheck: [LocalModelDescriptor] = []
         for descriptor in LocalModelCatalog.all {
@@ -448,6 +450,37 @@ final class LocalModelManager {
         // A model downloaded before markers existed, or one whose pins changed in
         // an app update, is hashed once in the background rather than on launch.
         Task { await self.verifyInBackground(needsDigestCheck) }
+    }
+
+    /// Reclaim the storage a model still occupies after leaving the catalog.
+    ///
+    /// Nothing else will: every sweep in here iterates `LocalModelCatalog.all`
+    /// and the picker only ever lists catalog rows, so a removed model's folder
+    /// becomes unreachable rather than deleted -- and these are not small. An
+    /// iPhone that had collected Whisper Medium and Large v2 is holding three
+    /// gigabytes it can no longer see, let alone free.
+    ///
+    /// Deletes only ids `RetiredLocalModels` names, never "any folder not in
+    /// the catalog": a folder this build does not recognise may belong to a
+    /// newer one the user downgraded from, and guessing there would delete a
+    /// model they are about to want back. Tokenizers are left alone -- they are
+    /// a few megabytes and shared across the sizes of one variant.
+    private func scheduleRetiredModelCleanup() {
+        guard let root = modelsDirectory else { return }
+        let retiredIDs = RetiredLocalModels.replacements.keys.filter {
+            LocalModelCatalog.descriptor(for: $0) == nil
+        }
+        Task { [self] in
+            let result = await Task.detached(priority: .utility) {
+                RetiredModelFileCleanup.delete(in: root, ids: retiredIDs)
+            }.value
+            for id in result.deleted {
+                removePersistedPath(for: id)
+            }
+            if !result.failed.isEmpty {
+                DiagnosticLog.record(.operationFailed, metadata: .error(.localModelCleanupFailed))
+            }
+        }
     }
 
     private enum Inspection {
@@ -2016,9 +2049,13 @@ final class LocalModelManager {
                 // on. Leaving it off lets a window open on a blank token, which
                 // is how a pause becomes a leading empty segment.
                 suppressBlank: true,
-                chunkingStrategy: .vad
+                concurrentWorkerCount: 1
             )
-            let results = try await whisperKit.transcribe(audioArray: samples, decodeOptions: options)
+            let results = try await WhisperTranscription.transcribe(
+                samples: samples, options: options
+            ) { window, options in
+                try await whisperKit.transcribe(audioArray: window, decodeOptions: options)
+            }
             let text = results.map(\.text).joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else {
@@ -2246,7 +2283,6 @@ final class LocalModelManager {
         return Array(UnsafeBufferPointer(start: channel, count: Int(buffer.frameLength)))
     }
 }
-
 
 #if DEBUG
 /// Append-only record of a model download's life, readable off the device

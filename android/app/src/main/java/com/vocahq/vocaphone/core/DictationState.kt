@@ -40,6 +40,14 @@ enum class MissingPermission {
     MICROPHONE,
     NOTIFICATIONS,
     GATEWAY_NOT_CONFIGURED,
+
+    /**
+     * On-device transcription is on but the stored model is not in the catalog:
+     * a selection this build no longer ships, or one the launch migration has
+     * not reached yet. Either way the local route cannot run, and saying so
+     * before the microphone opens is the whole point of this state.
+     */
+    LOCAL_MODEL_UNAVAILABLE,
     ;
 
     val title: String
@@ -47,6 +55,7 @@ enum class MissingPermission {
             MICROPHONE -> "Microphone access"
             NOTIFICATIONS -> "Notifications"
             GATEWAY_NOT_CONFIGURED -> "Gateway address and token"
+            LOCAL_MODEL_UNAVAILABLE -> "Voice model"
         }
 }
 
@@ -99,8 +108,20 @@ data class DictationState(
             DictationPhase.INSERTING -> "Inserting"
             DictationPhase.INSERTED -> "Inserted"
             DictationPhase.FAILED -> failure?.message ?: "Dictation failed"
-            DictationPhase.PERMISSION_REPAIR -> "Permission needed"
+            DictationPhase.PERMISSION_REPAIR -> repairTitle
         }
+
+    /**
+     * Whether the only thing missing is a voice model on this phone. The
+     * keyboard says so and opens the Models page rather than "Permission
+     * needed", which sent people looking for a permission that was never off.
+     */
+    val needsVoiceModel: Boolean
+        get() = phase == DictationPhase.PERMISSION_REPAIR &&
+            missingPermissions == setOf(MissingPermission.LOCAL_MODEL_UNAVAILABLE)
+
+    private val repairTitle: String
+        get() = if (needsVoiceModel) "Voice model needed" else "Permission needed"
 
     companion object {
         /** Active dictation follows focus across apps, but never past this. */

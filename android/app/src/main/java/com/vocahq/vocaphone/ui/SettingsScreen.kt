@@ -353,6 +353,7 @@ fun SettingsScreen(
                 LocalModelPicker(
                     state = localModels,
                     selectedModelId = settings.localModelId,
+                    selectionFromRetiredModel = settings.selectionIsRetiredModelReplacement,
                     usingGateway = !settings.localTranscriptionEnabled,
                     onSelect = onLocalModel,
                     onDownload = onDownloadLocalModel,

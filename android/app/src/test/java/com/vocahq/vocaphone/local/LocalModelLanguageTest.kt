@@ -13,6 +13,17 @@ import org.junit.Test
  * gateway's last engine report says nothing about the model running on the phone.
  */
 class LocalModelLanguageTest {
+    @Test
+    fun omnilingualHasExplicitCoverageAndUsesSafeGreedyDecoding() {
+        val model = LocalModelCatalog.find("omnilingual-300m-ctc")!!
+        assertTrue(model.languageCodes.containsAll(setOf("ar", "sw", "hi")))
+        assertTrue(model.detectsLanguage)
+        assertFalse(model.sherpaFamily!!.acceptsLanguage)
+        assertFalse(model.sherpaFamily!!.supportsBeamSearch)
+        assertTrue(model.translationTargets.isEmpty())
+        assertEquals(6, model.minimumRamGB)
+    }
+
     private fun settings(
         language: TranscriptionLanguage,
         localModelId: String = "",
@@ -33,7 +44,7 @@ class LocalModelLanguageTest {
         // a 100-language whisper build.
         val configured = settings(
             TranscriptionLanguage.HINDI,
-            localModelId = "large-v3-turbo-q5_0",
+            localModelId = "large-v3-turbo-q8_0",
             gatewayLanguages = setOf("en"),
         )
         assertEquals(TranscriptionLanguage.HINDI, configured.effectiveLanguage)
@@ -44,7 +55,7 @@ class LocalModelLanguageTest {
     fun aStaleGatewayAutoDetectClaimNoLongerForcesAutomatic() {
         val configured = settings(
             TranscriptionLanguage.GERMAN,
-            localModelId = "large-v3-turbo-q5_0",
+            localModelId = "large-v3-turbo-q8_0",
             gatewayDetects = true,
         )
         assertEquals(TranscriptionLanguage.GERMAN, configured.effectiveLanguage)
@@ -52,7 +63,9 @@ class LocalModelLanguageTest {
 
     @Test
     fun anEnglishOnlyLocalModelStillRejectsOtherLanguages() {
-        val configured = settings(TranscriptionLanguage.HINDI, localModelId = "small.en-q5_1")
+        // Every whisper build in the catalog is multilingual now, so the
+        // English-only case is a sherpa model.
+        val configured = settings(TranscriptionLanguage.HINDI, localModelId = "parakeet-tdt-ctc-110m-en")
         assertEquals(TranscriptionLanguage.AUTOMATIC, configured.effectiveLanguage)
         assertEquals(setOf("en"), configured.activeModelLanguages)
     }
@@ -110,7 +123,7 @@ class LocalModelLanguageTest {
     fun theGatewayClaimStillAppliesWhenOnDeviceIsOff() {
         val configured = settings(
             TranscriptionLanguage.HINDI,
-            localModelId = "large-v3-turbo-q5_0",
+            localModelId = "large-v3-turbo-q8_0",
             localEnabled = false,
             gatewayLanguages = setOf("en"),
         )
@@ -149,11 +162,11 @@ class LocalModelLanguageTest {
         val cantonese = TranscriptionLanguage.CANTONESE
         assertEquals(
             TranscriptionLanguage.AUTOMATIC,
-            settings(cantonese, localModelId = "small-q5_1").effectiveLanguage,
+            settings(cantonese, localModelId = "small-q8_0").effectiveLanguage,
         )
         assertEquals(
             cantonese,
-            settings(cantonese, localModelId = "large-v3-turbo-q5_0").effectiveLanguage,
+            settings(cantonese, localModelId = "large-v3-turbo-q8_0").effectiveLanguage,
         )
         assertEquals(
             cantonese,
@@ -162,7 +175,7 @@ class LocalModelLanguageTest {
         // Everything else the pre-v3 builds cover is still on offer.
         assertEquals(
             TranscriptionLanguage.HINDI,
-            settings(TranscriptionLanguage.HINDI, localModelId = "small-q5_1").effectiveLanguage,
+            settings(TranscriptionLanguage.HINDI, localModelId = "small-q8_0").effectiveLanguage,
         )
     }
 

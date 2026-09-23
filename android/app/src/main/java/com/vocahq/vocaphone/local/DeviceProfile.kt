@@ -123,17 +123,19 @@ fun DeviceProfile.fits(model: LocalModelDescriptor): Boolean {
  * Whisper entries are scored by distance from the class this tier wants.
  * RAM alone never promotes an old phone to a large encoder: devices without a
  * declared Android media performance class stay on base, including the
- * Snapdragon 845 generation. q5 is the phone default; adding a catalog row
- * does not need a new branch here.
+ * Snapdragon 845 generation. Adding a catalog row does not need a new branch
+ * here.
  */
 fun scoreModel(model: LocalModelDescriptor, profile: DeviceProfile): Int {
     if (!profile.fits(model)) return Int.MIN_VALUE
     var score = 0
     when (model.sherpaFamily) {
-        SherpaFamily.MOONSHINE -> score += 80
+        SherpaFamily.MOONSHINE, SherpaFamily.MOONSHINE_V2 -> score += 80
         SherpaFamily.SENSE_VOICE, SherpaFamily.CANARY, SherpaFamily.PARAFORMER -> score += 50
-        SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC -> score += 40
+        SherpaFamily.DOLPHIN_CTC, SherpaFamily.NEMO_CTC,
+        SherpaFamily.ZIPFORMER_TRANSDUCER -> score += 40
         SherpaFamily.NEMO_TRANSDUCER -> score += 20
+        SherpaFamily.OMNILINGUAL_CTC -> score += 10
         null -> Unit
     }
     if (model.engine == LocalModelEngine.WHISPER) {
@@ -164,17 +166,35 @@ private fun whisperTarget(profile: DeviceProfile): Int = when (profile.tier) {
     }
 }
 
+/**
+ * Distance from the whisper class this tier wants, and nothing else.
+ *
+ * This used to carry a quantization term as well, preferring q5 on ordinary
+ * phones and penalising it on flagships. Both halves were wrong. ggml has no
+ * ARM repack kernel for q5 at all, so a q5 model runs the generic path on every
+ * arm64 device while q8 gets `MATMUL_INT8`/`DOTPROD` -- q5 was the slower build
+ * everywhere, not just on flagships, and slightly the less accurate one. The
+ * catalog now ships one quantization per size, so there is no quantization
+ * choice left to score; see the `whisper` list in `LocalModelCatalog`.
+ */
 private fun whisperClassScore(id: String, profile: DeviceProfile): Int {
     val distance = abs(whisperClass(id) - whisperTarget(profile))
-    var score = 50 - distance * 12
-    val declaredFlagship = profile.performanceClass >= 34
-    score += when {
-        "q5" in id && declaredFlagship -> -4
-        "q5" in id -> 10
-        "q8" in id && declaredFlagship -> -2
-        "q8" in id -> 2
-        declaredFlagship -> 8
-        else -> -6
-    }
-    return score
+    return 50 - distance * 12
+}
+
+/** Turns what the kernel reports into the memory size the phone was sold with. */
+internal object DeviceMemory {
+    private const val GIB = 1024L * 1024L * 1024L
+
+    /**
+     * `ActivityManager.MemoryInfo.totalMem` is the RAM left after the kernel,
+     * modem and GPU carve-outs, so a 6 GB phone reports roughly 5.4-5.7 GiB and
+     * an 8 GB one about 7.3. Every `minimumRamGB` in the catalog is written in
+     * advertised gigabytes -- the same unit the iOS catalog compares against --
+     * so flooring the reported figure put every model one tier too high: a
+     * 6 GB phone could not see a 6 GB model, and a 4 GB phone not Parakeet.
+     * Rounding up to the whole gigabyte restores the advertised size.
+     */
+    fun advertisedGB(totalMemBytes: Long): Long =
+        if (totalMemBytes <= 0) 0 else (totalMemBytes + GIB - 1) / GIB
 }

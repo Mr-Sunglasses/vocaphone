@@ -163,9 +163,13 @@ targets:
   VocaPhoneTests:
     type: bundle.unit-test
     platform: iOS
+    dependencies:
+      - package: WhisperKit
     sources:
       - VocaPhoneTests
       - VocaPhoneShared
+      - path: VocaPhoneApp/Models/WhisperTranscription.swift
+      - path: VocaPhoneApp/Models/RetiredModelFileCleanup.swift
       # Key geometry is worth regression tests; the controller itself needs a
       # host extension and stays out of the test target.
       - path: VocaPhoneKeyboard/KeyLayout.swift

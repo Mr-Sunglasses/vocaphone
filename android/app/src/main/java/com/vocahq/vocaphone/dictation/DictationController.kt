@@ -93,6 +93,21 @@ class DictationController(
     private val cues: DictationTonePlayer,
     private val usageStats: UsageStatsRepository,
     private val scope: CoroutineScope,
+    /**
+     * Suspends until one-time settings migration has finished.
+     *
+     * The retired-model migration runs in a coroutine launched from the
+     * application container, while this controller is constructed
+     * synchronously beside it and the keyboard can ask for a dictation as soon
+     * as the process is up. Without this the first dictation after an upgrade
+     * can read the pre-migration settings -- a retired model id with on-device
+     * transcription still enabled -- pass the permission gate, record, and then
+     * fail at `deliverLocal` on an id that is no longer in the catalog.
+     *
+     * Awaiting costs nothing once the migration has completed, which is every
+     * launch but the first after an upgrade.
+     */
+    private val awaitSettingsMigration: suspend () -> Unit = {},
 ) {
     private val _state = MutableStateFlow(DictationState())
     val state: StateFlow<DictationState> = _state.asStateFlow()
@@ -163,6 +178,7 @@ class DictationController(
         cancelRequested = false
         val generation = nextGeneration()
         pipeline = scope.launch {
+            awaitSettingsMigration()
             val configuration = settings.current()
             val missing = missingPermissions(configuration)
             if (missing.isNotEmpty()) {
@@ -226,7 +242,19 @@ class DictationController(
                 lingerThenIdle(id, DictationPhase.FAILED, FAILED_LINGER_MILLIS)
                 return@launch
             }
+            // The same two guards as `start`. A recording kept across an upgrade
+            // can be retried before the retired-model migration has run, and a
+            // retry against a model that is not on the phone fails again every
+            // time -- recoverably, so it could be retried forever.
+            awaitSettingsMigration()
             val configuration = settings.current()
+            if (localModelUnavailable(configuration)) {
+                _state.value = DictationState(
+                    phase = DictationPhase.PERMISSION_REPAIR,
+                    missingPermissions = setOf(MissingPermission.LOCAL_MODEL_UNAVAILABLE),
+                )
+                return@launch
+            }
             _state.value = DictationState(
                 sessionId = UUID.fromString(sessionId),
                 phase = DictationPhase.UPLOADING,
@@ -284,7 +312,18 @@ class DictationController(
         if (!configuration.isConfigured && !configuration.localTranscriptionEnabled) {
             add(MissingPermission.GATEWAY_NOT_CONFIGURED)
         }
+        // The only place that checks the stored model can actually run before
+        // the microphone opens. Without it a selection the catalog no longer
+        // has -- or, far more often, the replacement the retired-model
+        // migration moved it to, which is in the catalog but not on this
+        // phone yet -- records a full dictation and fails at delivery.
+        if (localModelUnavailable(configuration)) add(MissingPermission.LOCAL_MODEL_UNAVAILABLE)
     }
+
+    private fun localModelUnavailable(configuration: VocaPhoneSettings): Boolean =
+        configuration.localModelMissing ||
+            (configuration.localTranscriptionEnabled &&
+                !localModels.modelFilesPresent(configuration.localModelId))
 
     private fun hasPermission(permission: String) =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
