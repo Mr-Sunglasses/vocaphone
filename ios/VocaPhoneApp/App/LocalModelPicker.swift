@@ -1020,27 +1020,39 @@ struct LocalModelPicker: View {
                     EmptyView()
                 } else {
                     VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                        HStack {
-                            Text("Downloading")
-                                .font(.subheadline.weight(.semibold))
-                            Spacer()
-                            Text("\(Int(manager.progress(for: model.id) * 100))%")
-                                .font(.subheadline.monospacedDigit())
+                        if manager.isOptimizing(model.id) {
+                            // Every byte is in; what is left is the one-time
+                            // Neural Engine compile, which has no percentage
+                            // and cannot be cancelled.
+                            HStack(spacing: VocaMetrics.related + 2) {
+                                ProgressView()
+                                Text("Optimizing for this iPhone. This happens once.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            HStack {
+                                Text("Downloading")
+                                    .font(.subheadline.weight(.semibold))
+                                Spacer()
+                                Text("\(Int(manager.progress(for: model.id) * 100))%")
+                                    .font(.subheadline.monospacedDigit())
+                            }
+                            ProgressView(value: manager.progress(for: model.id))
+                            // A bare percentage on a 670 MB download reads as stuck.
+                            // The size says how much is actually moving, and the
+                            // estimate stays absent until it has settled rather than
+                            // swinging wildly through the first seconds.
+                            if let detail = downloadDetailLine(for: model.id) {
+                                Text(detail)
+                                    .font(.footnote.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                            }
+                            Button("Cancel") {
+                                manager.cancelDownload(model.id)
+                            }
+                            .buttonStyle(.bordered)
                         }
-                        ProgressView(value: manager.progress(for: model.id))
-                        // A bare percentage on a 670 MB download reads as stuck.
-                        // The size says how much is actually moving, and the
-                        // estimate stays absent until it has settled rather than
-                        // swinging wildly through the first seconds.
-                        if let detail = downloadDetailLine(for: model.id) {
-                            Text(detail)
-                                .font(.footnote.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                        }
-                        Button("Cancel") {
-                            manager.cancelDownload(model.id)
-                        }
-                        .buttonStyle(.bordered)
                     }
                 }
             case .verifying, .loading:
@@ -1221,6 +1233,8 @@ struct LocalModelPicker: View {
         state: ModelState
     ) -> String {
         switch state {
+        case .downloading where manager.isOptimizing(model.id):
+            "Optimizing for this iPhone"
         case .downloading:
             "\(Int(manager.progress(for: model.id) * 100)) percent downloaded"
         case .waiting:

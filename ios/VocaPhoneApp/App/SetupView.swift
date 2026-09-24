@@ -207,6 +207,14 @@ struct SetupView: View {
         return true
     }
 
+    /// The chosen model, while it is being loaded into memory.
+    private var practiceModelLoading: LocalModelDescriptor? {
+        guard let model = selectedOnDeviceModel,
+              coordinator.localModels.loadingModelID == model.id
+        else { return nil }
+        return model
+    }
+
     /// The transfer Try dictating is waiting on, for the progress it shows.
     private var arrivingModel: LocalModelDescriptor? {
         coordinator.localModels.downloadingModelID.flatMap(LocalModelCatalog.descriptor(for:))
@@ -245,6 +253,12 @@ struct SetupView: View {
             .task(id: keyboardWatchID) {
                 guard readyFlash == .none else { return }
                 await watchForTheKeyboard()
+            }
+            // The model is loaded while the user works through the pages
+            // before Try dictating, and again whenever they come back to one:
+            // a trip to Settings is exactly when iOS reclaims it.
+            .task(id: onboardingWarmKey) {
+                await warmSelectedModel()
             }
             // Try dictating is the one page that waits on something no view
             // touches: a download finishing somewhere else entirely. The
@@ -833,6 +847,15 @@ struct SetupView: View {
                     "Download a model first",
                     "Dictation needs a speech-to-text model on this iPhone."
                 )
+            } else if let loading = practiceModelLoading {
+                // Loading is still going when the user gets here faster than
+                // it. Recording does not wait for it — the words are kept and
+                // transcribed the moment the model is in — so the page says
+                // to start rather than to wait.
+                (
+                    "Try dictating this",
+                    "Loading \(loading.displayName). Start speaking — your words appear once it's ready."
+                )
             } else {
                 ("Try dictating this", "Speak naturally — ums and repeats get cleaned up.")
             }
@@ -1251,6 +1274,11 @@ struct SetupView: View {
     /// it reads as a sentence rather than a third clause on one line.
     private var downloadingModelLine: String {
         let name = arrivingModel?.displayName ?? "your model"
+        if let id = coordinator.localModels.downloadingModelID,
+           coordinator.localModels.isOptimizing(id)
+        {
+            return "Optimizing \(name) for this iPhone"
+        }
         guard let id = coordinator.localModels.downloadingModelID,
               let size = coordinator.localModels.downloadSizeProgress(for: id)
         else {
@@ -1261,8 +1289,10 @@ struct SetupView: View {
 
     /// "about a minute", while there is an estimate worth making.
     private var arrivingModelEstimate: String? {
-        coordinator.localModels.downloadingModelID
-            .flatMap(coordinator.localModels.downloadTimeRemainingPhrase)
+        guard let id = coordinator.localModels.downloadingModelID,
+              !coordinator.localModels.isOptimizing(id)
+        else { return nil }
+        return coordinator.localModels.downloadTimeRemainingPhrase(for: id)
     }
 
     @ViewBuilder private var practiceField: some View {
@@ -1784,19 +1814,46 @@ struct SetupView: View {
     }
 
     private func prepareOnboardingModelInBackground(_ model: LocalModelDescriptor) async {
-        guard coordinator.localModels.isDownloaded(model.id) else { return }
         // Continue is the writer of record. If something else has claimed the
         // selection since, loading this one would leave the resident engine
         // and the stored identifier describing different models.
         guard LocalTranscriptionPreferences.modelIdentifier == model.id else { return }
-        let language = ModelLanguageSupport.resolve(
+        await coordinator.localModels.warm(model, language: warmLanguage(for: model))
+    }
+
+    /// Changes whenever loading the model might have become possible or
+    /// necessary again: a new page, a return to the foreground, a download
+    /// landing.
+    private var onboardingWarmKey: String {
+        [
+            stage.rawValue,
+            scenePhase == .active ? "active" : "inactive",
+            coordinator.localModels.downloadedModelIDs.sorted().joined(separator: ","),
+        ].joined(separator: "|")
+    }
+
+    /// The on-device model Try dictating will use, if one is chosen and on disk.
+    private var selectedOnDeviceModel: LocalModelDescriptor? {
+        guard LocalTranscriptionPreferences.enabled,
+              let id = LocalTranscriptionPreferences.modelIdentifier,
+              coordinator.localModels.isDownloaded(id)
+        else { return nil }
+        return LocalModelCatalog.descriptor(for: id)
+    }
+
+    private func warmSelectedModel() async {
+        guard scenePhase == .active,
+              OnboardingPresentation.warmsSelectedModel(on: stage),
+              let model = selectedOnDeviceModel
+        else { return }
+        await coordinator.localModels.warm(model, language: warmLanguage(for: model))
+    }
+
+    private func warmLanguage(for model: LocalModelDescriptor) -> String {
+        ModelLanguageSupport.resolve(
             KeyboardPreferences.transcriptionLanguage,
             modelLanguages: model.selectableLanguageCodes
-        )
-        try? await coordinator.localModels.prepare(
-            model,
-            language: language.rawValue
-        )
+        ).rawValue
     }
 
     /// First run ends here. The Ready-to-dictate cover is only for a setup

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -34,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import com.vocahq.vocaphone.BuildConfig
@@ -88,6 +90,9 @@ internal object SetupCopy {
         else -> "In keyboard settings, turn on VocaPhone."
     }
 
+    fun preparingModel(name: String): String =
+        "Loading $name. You can start speaking; your words appear once it's ready."
+
     fun stepReady(step: SetupStep): String = when (step) {
         SetupStep.MICROPHONE -> "Microphone ready"
         SetupStep.NOTIFICATIONS -> "Notifications ready"
@@ -125,6 +130,7 @@ fun SetupScreen(
     telemetryDeliveryStatus: () -> String,
     onFinish: () -> Unit,
     onRefreshSetup: () -> Unit,
+    onWarmLocalModel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Resume from the first real read, not the ViewModel's startup placeholder.
@@ -153,6 +159,16 @@ fun SetupScreen(
     val scrollState = rememberScrollState()
     LaunchedEffect(stage) { scrollState.scrollTo(0) }
     BackHandler(enabled = stage != SetupPage.KEYBOARD) { stage = stage.previous() }
+    // Load the model while the user reads the Ready page, and again on every
+    // return to it: leaving the app is when the system takes it back. Without
+    // this the practice dictation carried the whole load.
+    val resumed = LocalLifecycleOwner.current.lifecycle.currentStateAsState().value
+        .isAtLeast(Lifecycle.State.RESUMED)
+    val warmsModel = stage == SetupPage.READY && status.isReadyToDictate &&
+        settings.localTranscriptionEnabled && resumed
+    LaunchedEffect(warmsModel, settings.localModelId) {
+        if (warmsModel) onWarmLocalModel()
+    }
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -281,6 +297,22 @@ fun SetupScreen(
                                 "Not sure what to say? Try \u201CLet\u2019s meet tomorrow at 2PM\u201D.",
                                 style = MaterialTheme.typography.bodyMedium,
                             )
+                        }
+                        // Recording does not wait for the load; the words are
+                        // kept and transcribed once the model is in. So this
+                        // says to start, not to wait.
+                        localModels.preparing?.let { name ->
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.padding(end = 12.dp).size(18.dp),
+                                    strokeWidth = 2.dp,
+                                )
+                                Text(
+                                    SetupCopy.preparingModel(name),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                         // Deliberately not saved: this field may contain a private transcript.
                         var practiceText by remember { mutableStateOf("") }

@@ -227,6 +227,9 @@ targets:
       - path: VocaPhoneKeyboard/TypingStripView.swift
       # The realtime capture path is the highest-risk code in the app.
       - path: VocaPhoneApp/Audio/AudioCapturePipeline.swift
+      # Whether a speech model may be loaded before anyone asked for it: a
+      # wrong answer on a short phone is an out-of-memory kill during setup.
+      - path: VocaPhoneApp/Models/EngineWarmPolicy.swift
       # Guided setup decides what the app claims is done, and every signal it
       # reads can be undone from iOS Settings. The model behind it is pure.
       - path: VocaPhoneApp/App/SetupStatus.swift
