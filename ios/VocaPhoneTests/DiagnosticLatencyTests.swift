@@ -132,7 +132,7 @@ struct DiagnosticLatencyTests {
             entry(20_000, .captureStopped, timestamp: recordingAt.addingTimeInterval(-80)),
             entry(100_000, .sessionStateChanged, state: .recording, timestamp: recordingAt),
             // Delayed same-boot flush: uptime drop > rebootGap, but 30_000 is still
-            // at/after bootMinUptime 20_000 → stay in this boot.
+            // at/after bootMinUptime 20_000 and wall is older than latestTimestamp.
             entry(30_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: recordingAt.addingTimeInterval(-70)),
         ]
 
@@ -157,6 +157,24 @@ struct DiagnosticLatencyTests {
         #expect(
             DiagnosticLatency.reportLines(entries)
                 == ["Tap -> recording: 400 ms median, 400 ms p95 (n=2)"]
+        )
+    }
+
+    @Test func neverMergesRebootWhenFirstUptimeIsAbovePriorBootMin() {
+        let firstBoot = Date(timeIntervalSince1970: 2_000_000)
+        let reboot = firstBoot.addingTimeInterval(120)
+        let entries = [
+            // File order: 5_000 then 100_000 establishes bootMinUptime = 5_000.
+            entry(5_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: firstBoot),
+            entry(100_000, .sessionStateChanged, state: .recording, timestamp: firstBoot.addingTimeInterval(95)),
+            // Reboot: first post-reboot uptime 30_000 is still >= bootMinUptime 5_000,
+            // but wall moved forward vs this boot's latestTimestamp.
+            entry(30_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: reboot),
+            entry(30_400, .sessionStateChanged, state: .recording, timestamp: reboot.addingTimeInterval(0.4)),
+        ]
+        #expect(
+            DiagnosticLatency.reportLines(entries)
+                == ["Tap -> recording: 400 ms median, 95000 ms p95 (n=2)"]
         )
     }
 }
