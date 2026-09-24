@@ -6,6 +6,52 @@ import WhisperKit
 /// failed chunks when collecting results, potentially returning partial success.
 @MainActor
 enum WhisperTranscription {
+    /// The options every on-device Whisper window is decoded with.
+    ///
+    /// `language` is nil for Automatic.
+    static func decodingOptions(
+        language: String?,
+        translate: Bool,
+        quality: TranscriptionQuality,
+        promptTokens: [Int]?
+    ) -> DecodingOptions {
+        DecodingOptions(
+            task: translate ? .translate : .transcribe,
+            language: language,
+            temperature: 0,
+            temperatureIncrementOnFallback: quality.whisperKitTemperatureIncrement,
+            temperatureFallbackCount: quality.whisperKitTemperatureFallbackCount,
+            usePrefillPrompt: true,
+            // WhisperKit derives this from `usePrefillPrompt`, so leaving it
+            // unset with prefill on resolves it to false — and a nil language
+            // then falls back to English rather than being detected. Automatic
+            // has to ask for detection in so many words.
+            detectLanguage: language == nil,
+            skipSpecialTokens: true,
+            // Timestamp tokens are not shown, but Whisper needs to predict
+            // them to stop cleanly instead of repeating into padded audio.
+            withoutTimestamps: false,
+            promptTokens: promptTokens,
+            // WhisperKit defaults this off where Whisper itself defaults it
+            // on. Leaving it off lets a window open on a blank token, which
+            // is how a pause becomes a leading empty segment.
+            suppressBlank: true,
+            // Off, as it is in Whisper itself. Since WhisperKit 1.1.0 this check
+            // scores the first predicted token, and with timestamps on that is
+            // the opening `<|0.00|>`, whose probability is spread across every
+            // timestamp. A window that opens on quiet speech falls under the
+            // threshold, ends on the spot, fails the same way at every fallback
+            // temperature, and comes back as empty text with no error — so the
+            // first thirty seconds of a longer dictation vanished and only the
+            // rest was typed. Before 1.1.0 the check scored a prompt token the
+            // decoder then discarded, so it never fired on real speech. The
+            // average-log-probability, compression and no-speech checks still
+            // catch a window that decoded badly.
+            firstTokenLogProbThreshold: nil,
+            concurrentWorkerCount: 1
+        )
+    }
+
     /// Loads an engine and decodes every window on it, rebuilding the engine
     /// at most once for the whole recording.
     ///
