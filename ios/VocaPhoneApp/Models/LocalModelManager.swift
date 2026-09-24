@@ -2008,28 +2008,11 @@ final class LocalModelManager {
                 let promptTokens = promptText.isEmpty
                     ? nil
                     : whisperKit.tokenizer?.encode(text: promptText)
-                return DecodingOptions(
-                    task: translateTo.isEmpty ? .transcribe : .translate,
+                return WhisperTranscription.decodingOptions(
                     language: requested,
-                    temperature: 0,
-                    temperatureIncrementOnFallback: quality.whisperKitTemperatureIncrement,
-                    temperatureFallbackCount: quality.whisperKitTemperatureFallbackCount,
-                    usePrefillPrompt: true,
-                    // WhisperKit derives this from `usePrefillPrompt`, so leaving it
-                    // unset with prefill on resolves it to false — and a nil language
-                    // then falls back to English rather than being detected. Automatic
-                    // has to ask for detection in so many words.
-                    detectLanguage: requested == nil,
-                    skipSpecialTokens: true,
-                    // Timestamp tokens are not shown, but Whisper needs to predict
-                    // them to stop cleanly instead of repeating into padded audio.
-                    withoutTimestamps: false,
-                    promptTokens: promptTokens,
-                    // WhisperKit defaults this off where Whisper itself defaults it
-                    // on. Leaving it off lets a window open on a blank token, which
-                    // is how a pause becomes a leading empty segment.
-                    suppressBlank: true,
-                    concurrentWorkerCount: 1
+                    translate: !translateTo.isEmpty,
+                    quality: quality,
+                    promptTokens: promptTokens
                 )
             } discard: { _ in
                 DiagnosticLog.record(.localEngineRetried)

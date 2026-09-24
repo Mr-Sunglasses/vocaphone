@@ -5,6 +5,40 @@ import WhisperKit
 struct WhisperTranscriptionTests {
     private enum Failure: Error { case decoder }
 
+    /// WhisperKit 1.1.0 scores the first-token check on the opening timestamp,
+    /// and a window that starts on quiet speech then decodes to empty text
+    /// at every temperature. On, this dropped the first window of a dictation.
+    @Test(arguments: TranscriptionQuality.allCases)
+    func decodingNeverEndsAWindowOnItsFirstTokenAlone(quality: TranscriptionQuality) {
+        let options = WhisperTranscription.decodingOptions(
+            language: nil,
+            translate: false,
+            quality: quality,
+            promptTokens: nil
+        )
+        #expect(options.firstTokenLogProbThreshold == nil)
+        // The checks that still catch a bad window stay on.
+        #expect(options.logProbThreshold != nil)
+        #expect(options.compressionRatioThreshold != nil)
+        #expect(options.noSpeechThreshold != nil)
+        #expect(options.temperatureFallbackCount == quality.whisperKitTemperatureFallbackCount)
+    }
+
+    @Test func automaticLanguageAsksForDetection() {
+        let automatic = WhisperTranscription.decodingOptions(
+            language: nil, translate: false, quality: .balanced, promptTokens: nil
+        )
+        #expect(automatic.detectLanguage)
+        #expect(automatic.task == .transcribe)
+        let hindiToEnglish = WhisperTranscription.decodingOptions(
+            language: "hi", translate: true, quality: .balanced, promptTokens: [1, 2]
+        )
+        #expect(!hindiToEnglish.detectLanguage)
+        #expect(hindiToEnglish.language == "hi")
+        #expect(hindiToEnglish.task == .translate)
+        #expect(hindiToEnglish.promptTokens == [1, 2])
+    }
+
     @Test func longRecordingKeepsEverySampleAndDisablesNestedParallelism() async throws {
         let samples = [Float](repeating: 0.2, count: 62 * 16_000 + 100)
         var decodedCount = 0
