@@ -95,6 +95,7 @@
 		361B273516585197E5B3D8F1 /* TelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D448639495E9251156A2802 /* TelemetryTests.swift */; };
 		36295638EAABF35D05369EB0 /* SessionRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36767643E0E4AA29BBB3D4FD /* SessionRecord.swift */; };
 		3632C1278A31CC6ADBAC33D5 /* EmojiTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA1B6FDE1A86C551FFCD094 /* EmojiTable.swift */; };
+		363390CA8375BE457A287EC0 /* sherpa-onnx in Frameworks */ = {isa = PBXBuildFile; productRef = 75DCC3E44B445930E985CA07 /* sherpa-onnx */; };
 		364C315F292BA4BD66E23C2A /* PairingPayload.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBFB4BB0345784837C629340 /* PairingPayload.swift */; };
 		3655C2E063B7C9B8F286057B /* FinishRecordingIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B19321866AE8083C78C2B7F /* FinishRecordingIntent.swift */; };
 		366E7DFAD5B2666FC1FF9FB3 /* SetupStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342F2B3B437269514C969C77 /* SetupStatus.swift */; };
@@ -172,6 +173,7 @@
 		612E02043BE5C4F9567D128E /* SwipeAlternatesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CF82ECCA1F28AB94B4142DE /* SwipeAlternatesTests.swift */; };
 		6192C923119F158CCE94B48E /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */; };
 		61D705F2D38349B0A9667F2E /* KeyboardStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8F34BD131F1AB394941AC87 /* KeyboardStatus.swift */; };
+		62CAA88EE72C12E64D50286C /* LocalModelIntegrity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 629821E8C5C22C9824A13665 /* LocalModelIntegrity.swift */; };
 		62F20884ED82C44DD050F3E5 /* KeyGridLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EC2C1575D306E7683092FBA /* KeyGridLayoutTests.swift */; };
 		63835D9307A147564F896FB5 /* SmartPunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07178E9C6A3CF354CD83A2C1 /* SmartPunctuation.swift */; };
 		63BC0E226633FBBE88C60EBE /* SmartPunctuationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F8CE24C7BC4F4CA618F4B79 /* SmartPunctuationTests.swift */; };
@@ -300,6 +302,7 @@
 		ACDADCAF73BF41FE2355ED15 /* VocaPhoneKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B7028AF4B134C7EDD726891E /* VocaPhoneKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AD2CCDE7DC189E63810890BB /* SwipeRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07C4BD2142E9377F123A8848 /* SwipeRecognizer.swift */; };
 		AE4E1B1B8CB72567DEF58A40 /* TranscriptionQualityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCAE41267FF8113463CFFF96 /* TranscriptionQualityTests.swift */; };
+		AE63D56AFCE851506959E713 /* SherpaRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0358A093FE299D51D513BC30 /* SherpaRecognizer.swift */; };
 		AEF583A0E9B4984F72636A0A /* KeyboardHandoffPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46E8BCA13C319737A50B7CE9 /* KeyboardHandoffPresentation.swift */; };
 		AF3CF11CC0E9E65B026EBEF8 /* TranscriptRepair.swift in Sources */ = {isa = PBXBuildFile; fileRef = 991F9CD996B90A4DF553DBE5 /* TranscriptRepair.swift */; };
 		B063AE9288450BE04769F7DD /* TypingCandidates.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEAA4440B24071020CD693DB /* TypingCandidates.swift */; };
@@ -326,6 +329,7 @@
 		BB97658DE518187ABA47D495 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F2228242333B1BBC848C90DA /* PrivacyInfo.xcprivacy */; };
 		BBCAD7035421FAF541F20BDD /* EmojiTable.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA1B6FDE1A86C551FFCD094 /* EmojiTable.swift */; };
 		BBEEC542D1574BF6C8DF319B /* BrandPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9711C18238B39EA2E842C0F /* BrandPalette.swift */; };
+		BC211DF109EDB54AEC947798 /* SherpaModelEndToEndTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2492A095F570797748C207A5 /* SherpaModelEndToEndTests.swift */; };
 		BC36D829FEE2BEC0A6BC30C2 /* KeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5118F8CFAAE127CD5FF92076 /* KeyView.swift */; };
 		BCB8CA3BAACE6280D9ED4B22 /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */; };
 		BD67C86E9CCCEEBB2ABC845A /* TypingCandidates.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEAA4440B24071020CD693DB /* TypingCandidates.swift */; };
@@ -358,6 +362,7 @@
 		CE9227DEA1DE35F0F9987562 /* AppConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 894063AE1B3DDA92C529268D /* AppConfiguration.swift */; };
 		CFF7A7DC99B4880EB955D603 /* KeyboardHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 858088F81E12EC57E13F9492 /* KeyboardHaptics.swift */; };
 		D0E6AF99E65342BE66CF809A /* LearnedWords.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4453D027A8B7CC1D29FF8285 /* LearnedWords.swift */; };
+		D136383D1B66D346AAFC824B /* SherpaOnnxBridge.c in Sources */ = {isa = PBXBuildFile; fileRef = 4DF09BE84EE712784C57BC12 /* SherpaOnnxBridge.c */; };
 		D1CD3C13398FA4514EF57CA7 /* TranscriptHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28ECEDA044D2B1021710F205 /* TranscriptHistoryView.swift */; };
 		D32F9FCE7750E51A69E56F10 /* DesignSystemPreviews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B71760E0F5AF9B1965E960E1 /* DesignSystemPreviews.swift */; };
 		D347613BCA81EB9BF9AAC2DD /* TranscriptionSourceStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5995603DDA33014FFA52B079 /* TranscriptionSourceStatus.swift */; };
@@ -515,6 +520,7 @@
 		22AA42EFADB6B77B0C9A5E44 /* UsageReportingCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageReportingCopy.swift; sourceTree = "<group>"; };
 		22D68C853A7603A9B3224B3C /* KeyboardStatusPublicationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardStatusPublicationTests.swift; sourceTree = "<group>"; };
 		241AA5D977A1B036CF16B941 /* OnboardingLoopingVideo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingLoopingVideo.swift; sourceTree = "<group>"; };
+		2492A095F570797748C207A5 /* SherpaModelEndToEndTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SherpaModelEndToEndTests.swift; sourceTree = "<group>"; };
 		2678D836274997421A54E901 /* AudioCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioCaptureTests.swift; sourceTree = "<group>"; };
 		26D08D8869CBFAAE1BC37EAC /* UsageStatsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageStatsStoreTests.swift; sourceTree = "<group>"; };
 		2730948940D555163E520926 /* SnippetExpanderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetExpanderTests.swift; sourceTree = "<group>"; };
@@ -727,6 +733,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5F7EDEAB4B450D3C9CFD33EC /* WhisperKit in Frameworks */,
+				363390CA8375BE457A287EC0 /* sherpa-onnx in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1033,6 +1040,7 @@
 				20F3E310970DBFA3822A4D19 /* SherpaDecodingMethodTests.swift */,
 				BA0A732D03A2951F028DDF6E /* SherpaIncrementalSessionTests.swift */,
 				B90C2BEEA5195CB9CB5A38CA /* SherpaLongAudioTests.swift */,
+				2492A095F570797748C207A5 /* SherpaModelEndToEndTests.swift */,
 				3E3E4382E021BE30F6D687A7 /* SherpaTranscriptTests.swift */,
 				8F8CE24C7BC4F4CA618F4B79 /* SmartPunctuationTests.swift */,
 				2730948940D555163E520926 /* SnippetExpanderTests.swift */,
@@ -1163,6 +1171,7 @@
 			name = VocaPhoneTests;
 			packageProductDependencies = (
 				2FEFC0D61FEC4885D5D6C31E /* WhisperKit */,
+				75DCC3E44B445930E985CA07 /* sherpa-onnx */,
 			);
 			productName = VocaPhoneTests;
 			productReference = AC7B3909E42D8DC662165142 /* VocaPhoneTests.xctest */;
@@ -1647,6 +1656,7 @@
 				F1E23C92AD4C90D424DB84D9 /* LocalModelCatalog.swift in Sources */,
 				B48D69BABE8D1FB3D9DE9504 /* LocalModelCatalogTests.swift in Sources */,
 				E3139FE1D70E26F50B7BEF6F /* LocalModelEndToEndTests.swift in Sources */,
+				62CAA88EE72C12E64D50286C /* LocalModelIntegrity.swift in Sources */,
 				482A8494DA8A03BDB5DF1B0E /* LocalTranscriptionPreferences.swift in Sources */,
 				F4559E426C64C1D75CA1426A /* ModelDownloadStartDecision.swift in Sources */,
 				0B939DE9494D3B8F14F18142 /* ModelLanguageSupport.swift in Sources */,
@@ -1684,6 +1694,9 @@
 				C6E529713960996E85EFD275 /* SherpaIncrementalSessionTests.swift in Sources */,
 				C9A65099749EC5AB021FCC1C /* SherpaLongAudio.swift in Sources */,
 				FD06CBDABE4EA9640EECF39C /* SherpaLongAudioTests.swift in Sources */,
+				BC211DF109EDB54AEC947798 /* SherpaModelEndToEndTests.swift in Sources */,
+				D136383D1B66D346AAFC824B /* SherpaOnnxBridge.c in Sources */,
+				AE63D56AFCE851506959E713 /* SherpaRecognizer.swift in Sources */,
 				332424547CBE2483FE24C975 /* SherpaTranscriptTests.swift in Sources */,
 				A745962F725F14ECF4639938 /* ShortWordCorrections.swift in Sources */,
 				63835D9307A147564F896FB5 /* SmartPunctuation.swift in Sources */,
@@ -1775,13 +1788,16 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -lc++";
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.VocaPhoneTests;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
@@ -1872,13 +1888,16 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				GENERATE_INFOPLIST_FILE = YES;
+				HEADER_SEARCH_PATHS = "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
+				OTHER_LDFLAGS = "$(inherited) -lc++";
 				PRODUCT_BUNDLE_IDENTIFIER = com.vocahq.VocaPhoneTests;
 				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = "VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
@@ -2138,6 +2157,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 07CC791BFA65162FFA62DB9F /* XCRemoteSwiftPackageReference "WhisperKit" */;
 			productName = WhisperKit;
+		};
+		75DCC3E44B445930E985CA07 /* sherpa-onnx */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 8B307651E10B031F70743C0E /* XCRemoteSwiftPackageReference "sherpa-onnx" */;
+			productName = "sherpa-onnx";
 		};
 		EB9A429AF61F90C66B9293CF /* sherpa-onnx */ = {
 			isa = XCSwiftPackageProductDependency;

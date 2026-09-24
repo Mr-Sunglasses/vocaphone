@@ -267,7 +267,7 @@ why (docs-only, Linux host, no submodule, …).
 | --- | --- | --- |
 | `android/**`, `assets/keyboard/**` | `just android ci` | Quality (Android) — JDK 21, recursive submodules, Room schema, 16 KB alignment |
 | `ios/**`, `assets/keyboard/**` | `just ios ci` | Quality (iOS) — macOS, stale `xcodeproj`, preview isolation, unit tests |
-| WhisperKit version, `ios/VocaPhoneApp/Models/**`, transcript finishing | `just ios model-test` (downloads the pinned model) | Quality (iOS) runs it on those paths: a real model on synthesized speech. Unit tests stub WhisperKit, so only this catches a decoder regression |
+| WhisperKit or sherpa-onnx version, `ios/VocaPhoneApp/Models/**`, `Sherpa*`, transcript finishing | `just ios model-test` (downloads the pinned Whisper and Parakeet models) | Quality (iOS) runs it on those paths: real models on synthesized speech. Unit tests stub both engines, so only this catches a decoder regression |
 | `web/**` | `cd web && npm run check` | Quality (web); CodeQL (web) |
 | `assets/keyboard/**`, `tools/**` | `python3 tools/generate-emoji-catalog.py --check` | Quality (shared assets) |
 | `.github/workflows/**` | — | Lint workflows (`actionlint`) |
