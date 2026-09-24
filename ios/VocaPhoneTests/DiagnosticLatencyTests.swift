@@ -110,11 +110,29 @@ struct DiagnosticLatencyTests {
         )
     }
 
+    @Test func neverSortsAcrossARebootWhenClockMovesBackward() {
+        let firstBoot = Date(timeIntervalSince1970: 2_000_000)
+        let entries = [
+            entry(100_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: firstBoot),
+            entry(100_400, .sessionStateChanged, state: .recording, timestamp: firstBoot.addingTimeInterval(0.4)),
+            // Rebooted with wall clock set backward: low uptime, wall time before this boot's earliest stamp.
+            entry(2_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: firstBoot.addingTimeInterval(-3_600)),
+            entry(2_400, .sessionStateChanged, state: .recording, timestamp: firstBoot.addingTimeInterval(-3_600 + 0.4)),
+        ]
+        #expect(
+            DiagnosticLatency.reportLines(entries)
+                == ["Tap -> recording: 400 ms median, 400 ms p95 (n=2)"]
+        )
+    }
+
     @Test func delayedSameBootWriteDoesNotStartANewBoot() {
         let recordingAt = Date(timeIntervalSince1970: 2_000_000)
         let entries = [
+            // Establishes this boot's earliest wall stamp (bootMin).
+            entry(20_000, .captureStopped, timestamp: recordingAt.addingTimeInterval(-80)),
             entry(100_000, .sessionStateChanged, state: .recording, timestamp: recordingAt),
-            // Keyboard was suspended; the earlier tap flushed after the app's recording.
+            // Delayed same-boot flush: uptime drop > rebootGap, wall time before latest
+            // but at/after bootMin → stay in this boot.
             entry(30_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: recordingAt.addingTimeInterval(-70)),
         ]
 
