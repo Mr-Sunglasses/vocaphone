@@ -184,7 +184,7 @@ jobs:
           fi
           git fetch --no-tags --depth=1 origin "${BASE_SHA}"
           changed=$(git diff --name-only "${BASE_SHA}" HEAD)
-          pattern='^(ios/VocaPhone\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved|ios/project\.yml|ios/VocaPhoneApp/Models/|ios/VocaPhoneShared/(SpeechAudioConditioning|DictatedTranscript|Transcript[A-Za-z]*|CustomVocabulary|Spoken[A-Za-z]*|SentencePunctuation|ProtectedSpans|Snippet[A-Za-z]*|EmojiTable|LocalModelCatalog|ModelLanguageSupport)\.swift|ios/VocaPhoneTests/LocalModelEndToEndTests\.swift|tools/model-e2e/|\.github/workflows/quality-ios\.yml)'
+          pattern='^(ios/VocaPhone\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved|ios/project\.yml|ios/VocaPhoneApp/Models/|ios/VocaPhoneShared/(SpeechAudioConditioning|DictatedTranscript|Transcript[A-Za-z]*|CustomVocabulary|Spoken[A-Za-z]*|SentencePunctuation|ProtectedSpans|Snippet[A-Za-z]*|EmojiTable|LocalModelCatalog|ModelLanguageSupport|Sherpa[A-Za-z]*)\.swift|ios/VocaPhoneTests/(LocalModel|SherpaModel)EndToEndTests\.swift|tools/model-e2e/|\.github/workflows/quality-ios\.yml)'
           if printf '%s\n' "${changed}" | grep -Eq "${pattern}"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
@@ -196,7 +196,7 @@ jobs:
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ios/build/model-e2e
-          key: model-e2e-${{ hashFiles('ios/VocaPhoneApp/Models/local_model_pins.json') }}
+          key: model-e2e-${{ hashFiles('ios/VocaPhoneApp/Models/local_model_pins.json', 'ios/VocaPhoneApp/Models/sherpa_model_pins.json') }}
 
       - name: Run the on-device model tests
         if: steps.model-scope.outputs.run == 'true'
@@ -209,6 +209,7 @@ jobs:
           set -euo pipefail
           dir="${PWD}/build/model-e2e"
           python3 ../tools/model-e2e/fetch_whisper.py openai_whisper-small_216MB "${dir}"
+          python3 ../tools/model-e2e/fetch_sherpa.py parakeet-tdt-ctc-110m-en "${dir}"
           python3 ../tools/model-e2e/make_scenarios.py "${dir}/scenarios"
           # xcodebuild hands TEST_RUNNER_-prefixed variables to the tests.
           TEST_RUNNER_VOCA_MODEL_E2E_DIR="${dir}" \
@@ -222,6 +223,7 @@ jobs:
             -disableAutomaticPackageResolution \
             -resultBundlePath "${RESULT_BUNDLE}" \
             -only-testing:VocaPhoneTests/LocalModelEndToEndTests \
+            -only-testing:VocaPhoneTests/SherpaModelEndToEndTests \
             CODE_SIGNING_ALLOWED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
             test-without-building
