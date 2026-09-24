@@ -2020,6 +2020,15 @@ final class LocalModelManager {
                 // exactly a load that skipped specialization it turned out to need.
                 self.releaseLoadedEngines()
                 self.forgetWhisperKitSpecialization(for: descriptor.id)
+            } emptyWindow: { window in
+                DiagnosticLog.record(
+                    .localWindowEmpty,
+                    metadata: .emptyWindow(
+                        index: window.index,
+                        count: window.count,
+                        milliseconds: window.milliseconds
+                    )
+                )
             } decode: { whisperKit, window, options in
                 do {
                     return try await whisperKit.transcribe(audioArray: window, decodeOptions: options)

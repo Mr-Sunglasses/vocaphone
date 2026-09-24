@@ -452,6 +452,21 @@ struct ReliabilityFeatureTests {
         #expect(metadata.underlyingErrorNumber == nil)
     }
 
+    @Test func emptyWindowRecordsOnlyWhereAndHowLong() throws {
+        let entry = DiagnosticEntry(
+            source: .tests,
+            event: .localWindowEmpty,
+            metadata: .emptyWindow(index: 0, count: 2, milliseconds: 29_500)
+        )
+        let encoded = String(decoding: try JSONEncoder().encode(entry), as: UTF8.self)
+        #expect(encoded.contains(#""event":"localWindowEmpty""#))
+        #expect(encoded.contains(#""windowIndex":0"#))
+        #expect(encoded.contains(#""windowCount":2"#))
+        #expect(encoded.contains(#""milliseconds":29500"#))
+        let decoded = try JSONDecoder().decode(DiagnosticEntry.self, from: Data(encoded.utf8))
+        #expect(decoded.metadata == .emptyWindow(index: 0, count: 2, milliseconds: 29_500))
+    }
+
     @Test func sherpaDecodeFailureRecordsTheNativeStatus() {
         let named = DiagnosticMetadata.sherpaDecodeFailure(
             .outputTruncated, appInForeground: false, megabytesAvailable: 300

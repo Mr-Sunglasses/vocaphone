@@ -118,7 +118,14 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
     // to predict their tokens: they are how Whisper cleanly stops after speech.
     // Suppressing them made short phrases repeat over the padded window.
     params.no_timestamps = false;
-    params.single_segment = true;
+    // Off, so that whisper resumes each thirty-second window at the last
+    // timestamp it decoded. Whisper leaves a sentence that runs past the edge
+    // of a window out of that window's text; on, whisper.cpp then advanced a
+    // full thirty seconds regardless, and that sentence was never decoded at
+    // all. Every dictation longer than thirty seconds lost a sentence at each
+    // boundary. Turning it on only ever saved predicting timestamps, and since
+    // they came back on above it saves nothing.
+    params.single_segment = false;
     // whisper.cpp defaults greedy.best_of to five. That default is also used
     // for temperature-fallback passes, and it turns a rare retry into five
     // decoder passes on a phone. One candidate is enough for Fast/Balanced;
