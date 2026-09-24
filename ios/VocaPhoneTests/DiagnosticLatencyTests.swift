@@ -79,4 +79,31 @@ struct DiagnosticLatencyTests {
                 == ["Tap -> recording: 450 ms median, 450 ms p95 (n=1)"]
         )
     }
+
+    @Test func pairsByUptimeWhenTheAppWritesBeforeTheKeyboard() {
+        // The app's queue flushed first; the keyboard's earlier tap landed after.
+        let entries = [
+            entry(1_600, .sessionStateChanged, state: .recording),
+            entry(1_000, .sessionStateChanged, state: .launchingApp, source: .keyboard),
+        ]
+
+        #expect(
+            DiagnosticLatency.reportLines(entries)
+                == ["Tap -> recording: 600 ms median, 600 ms p95 (n=1)"]
+        )
+    }
+
+    @Test func neverSortsAcrossAReboot() {
+        let entries = [
+            entry(900_000, .sessionStateChanged, state: .launchingApp, source: .keyboard),
+            // Rebooted: uptime starts over and this belongs to a new boot.
+            entry(2_000, .sessionStateChanged, state: .launchingApp, source: .keyboard),
+            entry(2_400, .sessionStateChanged, state: .recording),
+        ]
+
+        #expect(
+            DiagnosticLatency.reportLines(entries)
+                == ["Tap -> recording: 400 ms median, 400 ms p95 (n=1)"]
+        )
+    }
 }

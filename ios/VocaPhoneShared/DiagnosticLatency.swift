@@ -53,7 +53,7 @@ enum DiagnosticLatency {
     static func summarize(_ entries: [DiagnosticEntry], spans: [Span] = spans) -> [Summary] {
         var samples = Array(repeating: [UInt64](), count: spans.count)
         var open = [Int: UInt64]()
-        for entry in entries {
+        for entry in chronological(entries) {
             guard let at = entry.uptimeMilliseconds else { continue }
             let marker: Marker = if entry.event == .sessionStateChanged, let state = entry.metadata.state {
                 .state(state)
@@ -61,8 +61,8 @@ enum DiagnosticLatency {
                 .event(entry.event)
             }
             for (index, span) in spans.enumerated() where span.to == marker {
-                if let startedAt = open.removeValue(forKey: index) {
-                    samples[index].append(at >= startedAt ? at - startedAt : 0)
+                if let startedAt = open.removeValue(forKey: index), at >= startedAt {
+                    samples[index].append(at - startedAt)
                 }
             }
             if boundaries.contains(marker) { open.removeAll() }
@@ -80,6 +80,33 @@ enum DiagnosticLatency {
                 medianMilliseconds: percentile(sorted, 50),
                 p95Milliseconds: percentile(sorted, 95)
             )
+        }
+    }
+
+    /// A drop this large in uptime is a reboot, not two processes racing.
+    static let rebootGap: UInt64 = 60_000
+
+    /// The log in the order things happened rather than the order they were
+    /// written.
+    ///
+    /// The keyboard and the app each append through their own queue, so the
+    /// app's `recording` can land in the file before the keyboard's earlier
+    /// `launchingApp`. Uptime restarts at boot, so entries are sorted within
+    /// each boot, never across one.
+    static func chronological(_ entries: [DiagnosticEntry]) -> [DiagnosticEntry] {
+        var boots: [[(offset: Int, at: UInt64, entry: DiagnosticEntry)]] = [[]]
+        var latest: UInt64 = 0
+        for (offset, entry) in entries.enumerated() {
+            guard let at = entry.uptimeMilliseconds else { continue }
+            if at + rebootGap < latest {
+                boots.append([])
+                latest = 0
+            }
+            boots[boots.count - 1].append((offset, at, entry))
+            latest = max(latest, at)
+        }
+        return boots.flatMap { boot in
+            boot.sorted { ($0.at, $0.offset) < ($1.at, $1.offset) }.map(\.entry)
         }
     }
 
