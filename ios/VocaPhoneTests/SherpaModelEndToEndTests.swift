@@ -33,24 +33,25 @@ struct SherpaModelEndToEndTests {
     @Test(arguments: ModelEndToEnd.scenarios)
     func streamingDictationKeepsEverySentence(_ scenario: ModelEndToEnd.Scenario) async throws {
         let captured = try ModelEndToEnd.samples(scenario)
-        let recognizer = try SherpaEndToEnd.recognizer()
-        let (chunks, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
-        let session = SherpaIncrementalSession(chunks: chunks, recognizer: recognizer)
-        for start in stride(from: 0, to: captured.count, by: 1_600) {
-            let chunk = Array(captured[start..<min(captured.count, start + 1_600)])
-            continuation.yield(chunk.withUnsafeBufferPointer { Data(buffer: $0) })
-        }
-        continuation.finish()
-        let streamed = await session.finish()
-
-        var text = streamed.transcript.text
-        if text.isEmpty || streamed.droppedAudibleChunk {
-            let wholeFile = try SherpaEndToEnd.wholeFile(SpeechAudioConditioning.condition(captured))
-            if streamed.supersededBy(wholeFile) { text = wholeFile }
-        }
-        let finished = SherpaEndToEnd.finished(text)
+        let finished = SherpaEndToEnd.finished(try await SherpaEndToEnd.dictate(captured))
         let missing = scenario.markers.filter { !finished.lowercased().contains($0) }
         #expect(missing.isEmpty, "\(scenario.name), streamed: missing \(missing) in “\(finished)”")
+    }
+
+    /// The recorder's own queue refusing chunks: seconds that never reach the
+    /// streaming decoder, which it cannot know are missing. The recorder says
+    /// so instead (`didDropLocalChunks`), and the finish path must then take
+    /// the intact file, as `RecordingCoordinator.finalizeLocally` does.
+    @Test func droppedCaptureIsRecoveredFromTheFile() async throws {
+        let scenario = try #require(ModelEndToEnd.scenarios.first { $0.name == "two_windows" })
+        let captured = try ModelEndToEnd.samples(scenario)
+        // Eight seconds from the middle never reach the stream.
+        let lost = (12 * 16_000)..<(20 * 16_000)
+        let finished = SherpaEndToEnd.finished(
+            try await SherpaEndToEnd.dictate(captured, streamLosing: lost)
+        )
+        let missing = scenario.markers.filter { !finished.lowercased().contains($0) }
+        #expect(missing.isEmpty, "dropped capture: missing \(missing) in “\(finished)”")
     }
 
     /// Continuous speech from many offsets, most of them mid-word, at full and
@@ -91,16 +92,49 @@ enum SherpaEndToEnd {
         if let loaded { return loaded }
         let descriptor = try #require(LocalModelCatalog.descriptor(for: model))
         let family = try #require(descriptor.sherpaFamily)
+        // The scenarios are English speech with English words to find. A model
+        // that does not transcribe English would fail them for no reason that
+        // says anything about a regression, so it is refused by name instead.
+        let languages = descriptor.selectableLanguageCodes
+        try #require(
+            languages.isEmpty || languages.contains("en"),
+            "\(model) does not transcribe English; pick an English-capable sherpa model"
+        )
         // As `LocalModelManager.ensureSherpaRecognizer` builds it.
         let recognizer = try SherpaRecognizer.create(
             model: descriptor,
             directory: try #require(directory),
-            language: descriptor.englishOnly ? "en" : "auto",
+            language: "en",
             threads: max(2, min(ProcessInfo.processInfo.processorCount - 2, 4)),
             quality: family.effectiveQuality(.balanced)
         )
         loaded = recognizer
         return recognizer
+    }
+
+    /// A sherpa dictation end to end: `captured` streamed to the recognizer a
+    /// hundred milliseconds at a time while "recording", less any samples in
+    /// `streamLosing`, which the recorder's queue refused and reported. Then
+    /// the same whole-file decision `RecordingCoordinator.finalizeLocally`
+    /// makes, against the intact capture.
+    static func dictate(_ captured: [Float], streamLosing lost: Range<Int>? = nil) async throws -> String {
+        let (chunks, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
+        let session = SherpaIncrementalSession(chunks: chunks, recognizer: try recognizer())
+        for start in stride(from: 0, to: captured.count, by: 1_600) {
+            if let lost, lost.contains(start) { continue }
+            let chunk = Array(captured[start..<min(captured.count, start + 1_600)])
+            continuation.yield(chunk.withUnsafeBufferPointer { Data(buffer: $0) })
+        }
+        continuation.finish()
+        let streamed = await session.finish()
+        let droppedLocalChunks = lost != nil
+
+        var text = streamed.transcript.text
+        if text.isEmpty || streamed.droppedAudibleChunk || droppedLocalChunks {
+            let wholeFile = try wholeFile(SpeechAudioConditioning.condition(captured))
+            if streamed.supersededBy(wholeFile) { text = wholeFile }
+        }
+        return text
     }
 
     /// Text, or a thrown failure when the native engine itself refused.
