@@ -6,9 +6,11 @@ struct DiagnosticLatencyTests {
         _ at: UInt64,
         _ event: DiagnosticEvent,
         state: SessionState? = nil,
-        source: DiagnosticSource = .app
+        source: DiagnosticSource = .app,
+        timestamp: Date? = nil
     ) -> DiagnosticEntry {
         DiagnosticEntry(
+            timestamp: timestamp ?? Date(),
             uptimeMilliseconds: at,
             source: source,
             event: event,
@@ -94,16 +96,31 @@ struct DiagnosticLatencyTests {
     }
 
     @Test func neverSortsAcrossAReboot() {
+        let reboot = Date(timeIntervalSince1970: 2_000_000)
         let entries = [
-            entry(900_000, .sessionStateChanged, state: .launchingApp, source: .keyboard),
-            // Rebooted: uptime starts over and this belongs to a new boot.
-            entry(2_000, .sessionStateChanged, state: .launchingApp, source: .keyboard),
-            entry(2_400, .sessionStateChanged, state: .recording),
+            entry(900_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: reboot.addingTimeInterval(-120)),
+            // Rebooted: uptime starts over and wall time moved forward.
+            entry(2_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: reboot),
+            entry(2_400, .sessionStateChanged, state: .recording, timestamp: reboot.addingTimeInterval(0.4)),
         ]
 
         #expect(
             DiagnosticLatency.reportLines(entries)
                 == ["Tap -> recording: 400 ms median, 400 ms p95 (n=1)"]
+        )
+    }
+
+    @Test func delayedSameBootWriteDoesNotStartANewBoot() {
+        let recordingAt = Date(timeIntervalSince1970: 2_000_000)
+        let entries = [
+            entry(100_000, .sessionStateChanged, state: .recording, timestamp: recordingAt),
+            // Keyboard was suspended; the earlier tap flushed after the app's recording.
+            entry(30_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: recordingAt.addingTimeInterval(-70)),
+        ]
+
+        #expect(
+            DiagnosticLatency.reportLines(entries)
+                == ["Tap -> recording: 70000 ms median, 70000 ms p95 (n=1)"]
         )
     }
 }

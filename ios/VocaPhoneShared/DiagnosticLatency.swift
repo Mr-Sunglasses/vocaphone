@@ -83,7 +83,8 @@ enum DiagnosticLatency {
         }
     }
 
-    /// A drop this large in uptime is a reboot, not two processes racing.
+    /// A drop this large in uptime looks like a reboot. A delayed same-boot
+    /// flush is distinguished by an earlier wall-clock timestamp.
     static let rebootGap: UInt64 = 60_000
 
     /// The log in the order things happened rather than the order they were
@@ -92,18 +93,29 @@ enum DiagnosticLatency {
     /// The keyboard and the app each append through their own queue, so the
     /// app's `recording` can land in the file before the keyboard's earlier
     /// `launchingApp`. Uptime restarts at boot, so entries are sorted within
-    /// each boot, never across one.
+    /// each boot, never across one. A write delayed past `rebootGap` stays in
+    /// the current boot when its wall-clock `timestamp` is earlier than the
+    /// latest already seen there.
     static func chronological(_ entries: [DiagnosticEntry]) -> [DiagnosticEntry] {
         var boots: [[(offset: Int, at: UInt64, entry: DiagnosticEntry)]] = [[]]
         var latest: UInt64 = 0
+        var latestTimestamp: Date?
         for (offset, entry) in entries.enumerated() {
             guard let at = entry.uptimeMilliseconds else { continue }
             if at + rebootGap < latest {
-                boots.append([])
-                latest = 0
+                // Earlier wall time is a delayed flush of this boot.
+                let delayedFlush = latestTimestamp.map { entry.timestamp < $0 } ?? false
+                if !delayedFlush {
+                    boots.append([])
+                    latest = 0
+                    latestTimestamp = nil
+                }
             }
             boots[boots.count - 1].append((offset, at, entry))
             latest = max(latest, at)
+            if entry.timestamp > (latestTimestamp ?? .distantPast) {
+                latestTimestamp = entry.timestamp
+            }
         }
         return boots.flatMap { boot in
             boot.sorted { ($0.at, $0.offset) < ($1.at, $1.offset) }.map(\.entry)
