@@ -101,7 +101,7 @@ just gateway-sync           # local gateway/ → .gitmodules branch tip; does no
 
 | Area | Everyday | Exit gate |
 | --- | --- | --- |
-| Android | `just android run` · `just android test '*FooTest'` · `just android permissions` · `just android logs` | `just android ci` |
+| Android | `just android run` · `just android test '*FooTest'` · `just android permissions` · `just android logs` · `just android model-test` | `just android ci` |
 | iOS | `just ios run` · `just ios test VocaPhoneTests/KeyLayoutTests` · `just ios edit` · `just ios device` · `just ios model-test` | `just ios ci` |
 | Gateway (submodule checked out, `uv` present) | `just gateway install` · `just gateway run` · `just gateway unit` | `just gateway test` |
 | Web | `cd web && npm run check` · `npm run dev` (port 4173) | `npm run check` |

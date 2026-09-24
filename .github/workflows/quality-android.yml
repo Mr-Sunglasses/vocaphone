@@ -35,7 +35,9 @@ jobs:
     # matter run when the author marks the pull request ready.
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Thirty for the build, tests and lint, and room for the model tests when a
+    # change calls for them.
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -51,6 +53,120 @@ jobs:
         run: python3 tools/model-pins/check_catalogs.py
       - run: ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
         working-directory: android
+      # The unit tests above stop short of native code, which is how a
+      # whisper.cpp setting that dropped a sentence every thirty seconds went
+      # unnoticed. This builds the pinned whisper.cpp and the app's JNI glue for
+      # the runner and decodes synthesized speech with a real pinned model, when
+      # a pull request touches anything between the recording and the typed
+      # text, or on a manual run.
+      - name: Decide whether to run the on-device model tests
+        id: model-scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${EVENT}" != "pull_request" ] || [ -z "${BASE_SHA}" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "${BASE_SHA}"
+          changed=$(git diff --name-only "${BASE_SHA}" HEAD)
+          pattern='^(android/third_party/whisper\.cpp|android/app/src/main/cpp/|android/app/src/main/java/com/vocahq/vocaphone/local/|android/app/src/main/java/com/vocahq/vocaphone/audio/SpeechAudioConditioning\.kt|android/app/src/main/java/com/vocahq/vocaphone/core/(DictatedTranscript|Transcript[A-Za-z]*|CustomVocabulary|Spoken[A-Za-z]*)\.kt|android/app/src/test/cpp/|android/app/src/test/java/com/vocahq/vocaphone/local/WhisperModelEndToEndTest\.kt|tools/model-e2e/|\.github/workflows/quality-android\.yml)'
+          if printf '%s\n' "${changed}" | grep -Eq "${pattern}"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache the pinned test model
+        if: steps.model-scope.outputs.run == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: android/build/model-e2e/ggml-base-q8_0.bin
+          key: model-e2e-android-${{ hashFiles('android/app/src/main/java/com/vocahq/vocaphone/local/LocalModelCatalog.kt') }}
+
+      - name: Run the on-device model tests
+        if: steps.model-scope.outputs.run == 'true'
+        working-directory: android
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # No `say` on Linux; the scenario script speaks with eSpeak instead.
+          sudo apt-get install -y --no-install-recommends espeak-ng >/dev/null
+          cmake -S app/src/test/cpp -B build/host-whisper -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/host-whisper --parallel
+          python3 ../tools/model-e2e/make_scenarios.py build/model-e2e/scenarios
+          results=app/build/test-results/testFullDebugUnitTest/TEST-com.vocahq.vocaphone.local.WhisperModelEndToEndTest.xml
+
+          # $1 the model directory, $2 the model, $3 a Gradle test filter, and
+          # any further arguments go to Gradle. A test whose input did not
+          # arrive is skipped, and a skipped test passes, so require that the
+          # run executed tests and skipped none.
+          decode_with() {
+            local directory=$1 model=$2 filter=$3
+            shift 3
+            ./gradlew :app:testFullDebugUnitTest --rerun --tests "${filter}" \
+              -Dvocaphone.modelE2E="${directory}" \
+              -Dvocaphone.modelE2E.model="${model}" \
+              -Dvocaphone.whisperLibrary="${PWD}/build/host-whisper" "$@"
+            python3 - "${results}" <<'PY'
+          import sys, xml.etree.ElementTree as tree
+          suite = tree.parse(sys.argv[1]).getroot()
+          ran, skipped = int(suite.get("tests")), int(suite.get("skipped"))
+          sys.exit(0 if ran > 0 and skipped == 0 else f"model tests ran {ran}, skipped {skipped}")
+          PY
+          }
+
+          # The whole suite on the model CI keeps cached.
+          python3 ../tools/model-e2e/fetch_ggml.py base-q8_0 build/model-e2e
+          decode_with "${PWD}/build/model-e2e" base-q8_0 'com.vocahq.vocaphone.local.WhisperModelEndToEndTest'
+
+          # Every other model this pull request re-pinned is decoded with its
+          # new pin and with the pin it replaces, and fails if the new one
+          # misses a word the old one heard. Comparing is what makes this fair
+          # to Tiny, which mishears the odd word of eSpeak whatever its pin.
+          # Scenarios only: the window sweep on Large v3 Turbo would outlast
+          # the job.
+          if [ "${EVENT}" = "pull_request" ] && [ -n "${BASE_SHA}" ]; then
+            catalog=app/src/main/java/com/vocahq/vocaphone/local/LocalModelCatalog.kt
+            old_catalog="${RUNNER_TEMP}/LocalModelCatalog.base.kt"
+            git show "${BASE_SHA}:android/${catalog}" > "${old_catalog}"
+            mkdir -p build/model-e2e-old
+            ln -sfn "${PWD}/build/model-e2e/scenarios" build/model-e2e-old/scenarios
+            for model in $(python3 ../tools/model-e2e/fetch_ggml.py --changed-since "${old_catalog}"); do
+              [ "${model}" = base-q8_0 ] && continue
+              echo "Re-pinned: ${model}"
+              python3 ../tools/model-e2e/fetch_ggml.py "${model}" build/model-e2e
+              decode_with "${PWD}/build/model-e2e" "${model}" \
+                'com.vocahq.vocaphone.local.WhisperModelEndToEndTest.everySentenceIsTyped' \
+                -Dvocaphone.modelE2E.report="${RUNNER_TEMP}/new.json"
+              if python3 ../tools/model-e2e/fetch_ggml.py --catalog "${old_catalog}" "${model}" build/model-e2e-old; then
+                decode_with "${PWD}/build/model-e2e-old" "${model}" \
+                  'com.vocahq.vocaphone.local.WhisperModelEndToEndTest.everySentenceIsTyped' \
+                  -Dvocaphone.modelE2E.report="${RUNNER_TEMP}/old.json"
+              else
+                # A model new in this pull request has nothing to compare
+                # with: it must find every word.
+                echo '{}' > "${RUNNER_TEMP}/old.json"
+              fi
+              python3 - "${RUNNER_TEMP}/old.json" "${RUNNER_TEMP}/new.json" "${model}" <<'PY'
+          import json, sys
+          old, new, model = json.load(open(sys.argv[1])), json.load(open(sys.argv[2])), sys.argv[3]
+          worse = {name: sorted(set(missing) - set(old.get(name, []))) for name, missing in new.items()}
+          worse = {name: words for name, words in worse.items() if words}
+          sys.exit(f"{model}: the new pin misses {worse}" if worse else 0)
+          PY
+              rm -f "build/model-e2e/ggml-${model}.bin" "build/model-e2e-old/ggml-${model}.bin"
+            done
+          fi
+
       - name: Fail if the checked-in Room schema is stale
         run: git diff --exit-code -- app/schemas
         working-directory: android

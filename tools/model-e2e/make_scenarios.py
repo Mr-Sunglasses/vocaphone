@@ -2,21 +2,22 @@
 """Synthesize the audio the on-device model tests transcribe.
 
 Nothing here is a recording of a person, and nothing is checked in: macOS `say`
-speaks a fixed script, `afconvert` turns it into the 16 kHz mono float32 WAV the
-app captures, and each scenario then reshapes that audio the way a real
+(or `espeak-ng` where there is no `say`, as on a Linux CI runner) speaks a fixed
+script, which becomes the 16 kHz mono float32 WAV the app captures, and each scenario then reshapes that audio the way a real
 dictation goes wrong -- quiet for its first half, a long pause, silence. The
 tests assert on the distinctive words each sentence carries rather than on exact
 text, so a different voice or a model that punctuates differently still passes.
 
     tools/model-e2e/make_scenarios.py ios/build/model-e2e/scenarios
 
-Writes one WAV per scenario and `scenarios.json` beside them. macOS only.
+Writes one WAV per scenario and `scenarios.json` beside them.
 """
 
 from __future__ import annotations
 
 import json
 import random
+import shutil
 import struct
 import subprocess
 import sys
@@ -45,21 +46,52 @@ SECOND = [
     ("Do not forget to renew your passport before the trip in March.", "passport"),
     ("We watched the sunset from the hill before walking back to the car.", "sunset"),
 ]
-PAUSE = " [[slnc 1200]] "
+# A breath between sentences, long enough that the silence splitter can cut there.
+PAUSE_MS = 1200
 SHORT = ("Please send the quarterly report before noon.", ["quarterly", "report", "noon"])
 
 
-def speak(text: str, workdir: Path) -> list[float]:
-    aiff, wav = workdir / "speech.aiff", workdir / "speech.wav"
-    voice = ["-v", "Samantha"] if b"Samantha" in subprocess.run(
-        ["say", "-v", "?"], capture_output=True, check=True
-    ).stdout else []
-    subprocess.run(["say", *voice, "-r", "150", "-o", str(aiff), text], check=True)
-    subprocess.run(
-        ["afconvert", "-f", "WAVE", "-d", f"LEF32@{RATE}", "-c", "1", str(aiff), str(wav)],
-        check=True,
-    )
-    return read_wav(wav)
+def speak(sentences: list[str], workdir: Path, pause_ms: int = 0) -> list[float]:
+    if shutil.which("say"):
+        aiff, wav = workdir / "speech.aiff", workdir / "speech.wav"
+        voice = ["-v", "Samantha"] if b"Samantha" in subprocess.run(
+            ["say", "-v", "?"], capture_output=True, check=True
+        ).stdout else []
+        text = f" [[slnc {pause_ms}]] ".join(sentences) if pause_ms else " ".join(sentences)
+        subprocess.run(["say", *voice, "-r", "150", "-o", str(aiff), text], check=True)
+        subprocess.run(
+            ["afconvert", "-f", "WAVE", "-d", f"LEF32@{RATE}", "-c", "1", str(aiff), str(wav)],
+            check=True,
+        )
+        return read_wav(wav)
+    if shutil.which("espeak-ng"):
+        wav = workdir / "speech.wav"
+        pause = f'<break time="{pause_ms}ms"/>' if pause_ms else " "
+        ssml = "<speak>" + pause.join(sentences) + "</speak>"
+        subprocess.run(
+            ["espeak-ng", "-m", "-v", "en-us", "-s", "150", "-w", str(wav), ssml],
+            check=True,
+        )
+        return read_pcm16(wav)
+    sys.exit("Needs macOS `say` or `espeak-ng` to synthesize the scenarios")
+
+
+def read_pcm16(path: Path) -> list[float]:
+    """A 16-bit mono WAV at any rate, linearly resampled to 16 kHz."""
+    import wave
+
+    with wave.open(str(path)) as source:
+        rate, frames = source.getframerate(), source.readframes(source.getnframes())
+    pcm = [value / 32_768 for value in struct.unpack(f"<{len(frames) // 2}h", frames)]
+    step = rate / RATE
+    out = []
+    position = 0.0
+    while position < len(pcm) - 1:
+        index = int(position)
+        fraction = position - index
+        out.append(pcm[index] * (1 - fraction) + pcm[index + 1] * fraction)
+        position += step
+    return out
 
 
 def read_wav(path: Path) -> list[float]:
@@ -84,25 +116,30 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     rng = random.Random(7)
 
-    def room(count: int, level: float = 0.002) -> list[float]:
+    # A phone's floor. eSpeak's formant voice is far easier to lose in noise
+    # than a recorded one, and at the quiet scenarios' eightfold boost the
+    # recognizer mishears it at a level `say` survives, so it gets a quieter
+    # room. What the scenarios test is the app, not the synthesizer.
+    noise = 0.002 if shutil.which("say") else 0.0006
+
+    def room(count: int, level: float = noise) -> list[float]:
         # A phone's microphone never delivers digital silence.
         return [rng.gauss(0, level) for _ in range(count)]
 
     def noisy(samples: list[float], gain: float = 1.0) -> list[float]:
-        return [sample * gain + rng.gauss(0, 0.002) for sample in samples]
+        return [sample * gain + rng.gauss(0, noise) for sample in samples]
 
     with tempfile.TemporaryDirectory() as temp:
         workdir = Path(temp)
-        # `[[slnc]]` is a pause between sentences, as a speaker takes a breath.
-        first = speak(PAUSE.join(text for text, _ in FIRST), workdir)
-        second = speak(PAUSE.join(text for text, _ in SECOND), workdir)
+        first = speak([text for text, _ in FIRST], workdir, PAUSE_MS)
+        second = speak([text for text, _ in SECOND], workdir, PAUSE_MS)
         # No pauses at all: the window sweep needs speech under every offset.
-        continuous = speak(" ".join(text for text, _ in FIRST), workdir)
-        opening = speak(FIRST[0][0], workdir)
+        continuous = speak([text for text, _ in FIRST], workdir)
+        opening = speak([FIRST[0][0]], workdir)
         # Spoken on its own so the long pause sits exactly between two
         # sentences, not at a guessed offset into a separate rendering.
-        rest = speak(PAUSE.join(text for text, _ in FIRST[1:]), workdir)
-        short = speak(SHORT[0], workdir)
+        rest = speak([text for text, _ in FIRST[1:]], workdir, PAUSE_MS)
+        short = speak([SHORT[0]], workdir)
 
     if len(first) < 31 * RATE:
         sys.exit(f"The first paragraph is {len(first) / RATE:.1f}s; it has to span two windows")
@@ -116,7 +153,7 @@ def main() -> None:
         # The regression WhisperKit 1.1.0 shipped: a window that opens on
         # quieter speech decoded to nothing, and only the rest was typed.
         "quiet_opening": (
-            [s * (0.12 if i < quiet_until else 1.0) + rng.gauss(0, 0.002) for i, s in enumerate(first)],
+            [s * (0.12 if i < quiet_until else 1.0) + rng.gauss(0, noise) for i, s in enumerate(first)],
             first_markers,
         ),
         # A phone held away from the mouth. The app levels this before decoding.
