@@ -141,6 +141,10 @@ enum ModelEndToEnd {
             )
         } discard: { _ in
             engine = nil
+        } emptyWindow: { window in
+            // The diagnostics line a phone would write. Real speech must never
+            // trip it, and a window that really decoded to nothing must.
+            Issue.record("\(scenario.name): window \(window.index + 1) of \(window.count) decoded to nothing")
         } decode: { engine, window, options in
             try await engine.transcribe(audioArray: window, decodeOptions: options)
         }
