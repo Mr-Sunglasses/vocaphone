@@ -102,7 +102,7 @@ just gateway-sync           # local gateway/ → .gitmodules branch tip; does no
 | Area | Everyday | Exit gate |
 | --- | --- | --- |
 | Android | `just android run` · `just android test '*FooTest'` · `just android permissions` · `just android logs` | `just android ci` |
-| iOS | `just ios run` · `just ios test VocaPhoneTests/KeyLayoutTests` · `just ios edit` · `just ios device` | `just ios ci` |
+| iOS | `just ios run` · `just ios test VocaPhoneTests/KeyLayoutTests` · `just ios edit` · `just ios device` · `just ios model-test` | `just ios ci` |
 | Gateway (submodule checked out, `uv` present) | `just gateway install` · `just gateway run` · `just gateway unit` | `just gateway test` |
 | Web | `cd web && npm run check` · `npm run dev` (port 4173) | `npm run check` |
 | Brand / emoji | `python3 assets/generate.py --check` · `python3 tools/generate-emoji-catalog.py --check` | same (`just ci` always runs the brand check) |
@@ -267,6 +267,7 @@ why (docs-only, Linux host, no submodule, …).
 | --- | --- | --- |
 | `android/**`, `assets/keyboard/**` | `just android ci` | Quality (Android) — JDK 21, recursive submodules, Room schema, 16 KB alignment |
 | `ios/**`, `assets/keyboard/**` | `just ios ci` | Quality (iOS) — macOS, stale `xcodeproj`, preview isolation, unit tests |
+| WhisperKit version, `ios/VocaPhoneApp/Models/**`, transcript finishing | `just ios model-test` (downloads the pinned model) | Quality (iOS) runs it on those paths: a real model on synthesized speech. Unit tests stub WhisperKit, so only this catches a decoder regression |
 | `web/**` | `cd web && npm run check` | Quality (web); CodeQL (web) |
 | `assets/keyboard/**`, `tools/**` | `python3 tools/generate-emoji-catalog.py --check` | Quality (shared assets) |
 | `.github/workflows/**` | — | Lint workflows (`actionlint`) |

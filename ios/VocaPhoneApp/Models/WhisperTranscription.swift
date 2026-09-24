@@ -6,6 +6,31 @@ import WhisperKit
 /// failed chunks when collecting results, potentially returning partial success.
 @MainActor
 enum WhisperTranscription {
+    /// How the app loads a downloaded model: from disk only, never the network.
+    static func engineConfig(
+        model: String,
+        folder: URL,
+        tokenizerFolder: URL,
+        prewarm: Bool
+    ) -> WhisperKitConfig {
+        WhisperKitConfig(
+            model: model,
+            modelFolder: folder.path,
+            // WhisperKit searches this folder directly for tokenizer.json;
+            // supplying it is what keeps model loading off the network.
+            tokenizerFolder: tokenizerFolder,
+            // The mel spectrogram defaults to the GPU, which iOS does not
+            // let a backgrounded app use — and a dictation finished from
+            // the keyboard runs with this app in the background. It is a
+            // few milliseconds of work a window; the CPU is no loss.
+            computeOptions: ModelComputeOptions(melCompute: .cpuOnly),
+            verbose: false,
+            prewarm: prewarm,
+            load: true,
+            download: false
+        )
+    }
+
     /// The options every on-device Whisper window is decoded with.
     ///
     /// `language` is nil for Automatic.
