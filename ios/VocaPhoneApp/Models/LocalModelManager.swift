@@ -2116,21 +2116,11 @@ final class LocalModelManager {
             let prewarm = needsWhisperKitSpecialization(descriptor.id)
             let started = ContinuousClock.now
             whisperKit = try await WhisperKit(
-                WhisperKitConfig(
+                WhisperTranscription.engineConfig(
                     model: descriptor.id,
-                    modelFolder: folder.path,
-                    // WhisperKit searches this folder directly for tokenizer.json;
-                    // supplying it is what keeps model loading off the network.
+                    folder: folder,
                     tokenizerFolder: tokenizerFolder,
-                    // The mel spectrogram defaults to the GPU, which iOS does not
-                    // let a backgrounded app use — and a dictation finished from
-                    // the keyboard runs with this app in the background. It is a
-                    // few milliseconds of work a window; the CPU is no loss.
-                    computeOptions: ModelComputeOptions(melCompute: .cpuOnly),
-                    verbose: false,
-                    prewarm: prewarm,
-                    load: true,
-                    download: false
+                    prewarm: prewarm
                 )
             )
             loadedModelID = descriptor.id
