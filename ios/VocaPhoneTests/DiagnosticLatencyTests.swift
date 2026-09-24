@@ -115,7 +115,7 @@ struct DiagnosticLatencyTests {
         let entries = [
             entry(100_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: firstBoot),
             entry(100_400, .sessionStateChanged, state: .recording, timestamp: firstBoot.addingTimeInterval(0.4)),
-            // Rebooted with wall clock set backward: low uptime, wall time before this boot's earliest stamp.
+            // Rebooted with wall clock set backward: low uptime is below this boot's bootMinUptime.
             entry(2_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: firstBoot.addingTimeInterval(-3_600)),
             entry(2_400, .sessionStateChanged, state: .recording, timestamp: firstBoot.addingTimeInterval(-3_600 + 0.4)),
         ]
@@ -128,17 +128,35 @@ struct DiagnosticLatencyTests {
     @Test func delayedSameBootWriteDoesNotStartANewBoot() {
         let recordingAt = Date(timeIntervalSince1970: 2_000_000)
         let entries = [
-            // Establishes this boot's earliest wall stamp (bootMin).
+            // Establishes this boot's bootMinUptime (20_000).
             entry(20_000, .captureStopped, timestamp: recordingAt.addingTimeInterval(-80)),
             entry(100_000, .sessionStateChanged, state: .recording, timestamp: recordingAt),
-            // Delayed same-boot flush: uptime drop > rebootGap, wall time before latest
-            // but at/after bootMin → stay in this boot.
+            // Delayed same-boot flush: uptime drop > rebootGap, but 30_000 is still
+            // at/after bootMinUptime 20_000 → stay in this boot.
             entry(30_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: recordingAt.addingTimeInterval(-70)),
         ]
 
         #expect(
             DiagnosticLatency.reportLines(entries)
                 == ["Tap -> recording: 70000 ms median, 70000 ms p95 (n=1)"]
+        )
+    }
+
+    @Test func neverMergesRebootWhenClockSetBackIntoPriorBootWallRange() {
+        let firstBoot = Date(timeIntervalSince1970: 2_000_000)
+        let entries = [
+            entry(100_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: firstBoot),
+            entry(100_400, .sessionStateChanged, state: .recording, timestamp: firstBoot.addingTimeInterval(0.4)),
+            // Reboot with clock set back into the prior boot's wall range
+            // (firstBoot+0.1s): wall time is still >= bootMinTimestamp and
+            // < latestTimestamp under the old gate, but uptime 2000 is below
+            // bootMinUptime 100000 so this is a new boot.
+            entry(2_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: firstBoot.addingTimeInterval(0.1)),
+            entry(2_400, .sessionStateChanged, state: .recording, timestamp: firstBoot.addingTimeInterval(0.1 + 0.4)),
+        ]
+        #expect(
+            DiagnosticLatency.reportLines(entries)
+                == ["Tap -> recording: 400 ms median, 400 ms p95 (n=2)"]
         )
     }
 }

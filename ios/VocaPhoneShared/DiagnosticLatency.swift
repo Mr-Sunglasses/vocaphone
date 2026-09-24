@@ -84,9 +84,10 @@ enum DiagnosticLatency {
     }
 
     /// A drop this large in uptime looks like a reboot. A delayed same-boot
-    /// flush is an earlier wall-clock timestamp still at or after this boot's
-    /// earliest stamp; a wall time before that stamp (or wall time forward) is
-    /// a new boot / clock-set-back reboot.
+    /// flush is an uptime still at or after this boot's observed minimum
+    /// (`bootMinUptime`); an uptime below that minimum is a new boot, including
+    /// a clock-set-back reboot whose wall time falls inside the prior boot's
+    /// wall range.
     static let rebootGap: UInt64 = 60_000
 
     /// The log in the order things happened rather than the order they were
@@ -96,40 +97,29 @@ enum DiagnosticLatency {
     /// app's `recording` can land in the file before the keyboard's earlier
     /// `launchingApp`. Uptime restarts at boot, so entries are sorted within
     /// each boot, never across one. A write delayed past `rebootGap` stays in
-    /// the current boot when its wall-clock `timestamp` is earlier than the
-    /// latest already seen there and at or after this boot's earliest stamp
-    /// (an interleaved write from this boot). A wall time before this boot's
-    /// earliest stamp, or wall time moving forward, is a new boot /
-    /// clock-set-back reboot, not a delayed flush.
+    /// the current boot when its uptime is still at or after this boot's
+    /// observed minimum (`bootMinUptime`). An uptime below that minimum is a
+    /// new boot, including a clock-set-back reboot whose wall time falls
+    /// inside the prior boot's wall range.
     static func chronological(_ entries: [DiagnosticEntry]) -> [DiagnosticEntry] {
         var boots: [[(offset: Int, at: UInt64, entry: DiagnosticEntry)]] = [[]]
         var latest: UInt64 = 0
-        var latestTimestamp: Date?
-        var bootMinTimestamp: Date?
+        var bootMinUptime: UInt64?
         for (offset, entry) in entries.enumerated() {
             guard let at = entry.uptimeMilliseconds else { continue }
             if at + rebootGap < latest {
-                // Delayed flush: earlier wall time, still >= this boot's earliest stamp.
-                // Wall time before this boot's earliest stamp, or wall time forward,
-                // is a new boot / clock-set-back reboot.
-                let delayedFlush =
-                    latestTimestamp.map { entry.timestamp < $0 } == true
-                    && bootMinTimestamp.map { entry.timestamp >= $0 } == true
+                // Delayed flush only if uptime is still within this boot's observed range.
+                // Otherwise a reboot (uptime restarted below bootMinUptime).
+                let delayedFlush = bootMinUptime.map { at >= $0 } == true
                 if !delayedFlush {
                     boots.append([])
                     latest = 0
-                    latestTimestamp = nil
-                    bootMinTimestamp = nil
+                    bootMinUptime = nil
                 }
             }
             boots[boots.count - 1].append((offset, at, entry))
             latest = max(latest, at)
-            if latestTimestamp.map({ entry.timestamp > $0 }) ?? true {
-                latestTimestamp = entry.timestamp
-            }
-            if bootMinTimestamp.map({ entry.timestamp < $0 }) ?? true {
-                bootMinTimestamp = entry.timestamp
-            }
+            bootMinUptime = bootMinUptime.map { min($0, at) } ?? at
         }
         return boots.flatMap { boot in
             boot.sorted { ($0.at, $0.offset) < ($1.at, $1.offset) }.map(\.entry)
