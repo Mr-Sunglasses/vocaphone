@@ -494,9 +494,18 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /**
+     * Loads the selected model before the user reaches for the microphone:
+     * setup's Ready page, and every return to it. The first dictation used to
+     * start with the whole load; now it starts with a model that is already in.
+     */
+    fun warmSelectedLocalModel() = preloadLocalEngine()
+
+    /**
      * Warms the selected on-device engine. Best effort throughout: a failure
      * here is silent because the dictation that follows will attempt the same
      * load and report whatever went wrong in a place the user is looking.
+     * Skipped when the phone is short of memory, and released again if no
+     * dictation comes (see [LocalModelManager.warmAhead]).
      */
     private fun preloadLocalEngine() {
         localEnginePreloadJob?.cancel()
@@ -504,14 +513,12 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
             val configuration = container.settings.current()
             if (!configuration.localTranscriptionEnabled) return@launch
             val modelID = configuration.localModelId.takeIf { it.isNotEmpty() } ?: return@launch
-            runCatching {
-                container.localModels.prepare(
-                    modelID = modelID,
-                    language = configuration.effectiveLanguage.wireValue,
-                    quality = configuration.transcriptionQuality,
-                    translateTo = configuration.translationTarget,
-                )
-            }
+            container.localModels.warmAhead(
+                modelID = modelID,
+                language = configuration.effectiveLanguage.wireValue,
+                quality = configuration.transcriptionQuality,
+                translateTo = configuration.translationTarget,
+            )
         }
     }
 
@@ -573,6 +580,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
                             container.settings.setLocalModel(model.id)
                             container.settings.setLocalTranscriptionEnabled(true)
                             refreshSetup()
+                            // Loaded for the dictation setup is about to ask
+                            // for, not for good.
+                            container.localModels.unloadWhenIdle()
                         }
                     }
                 }

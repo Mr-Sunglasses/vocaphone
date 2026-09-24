@@ -7,10 +7,9 @@ or after iOS killed it, memory, and a real microphone. Run this after changing
 native code, audio conditioning or transcript finishing, and after any
 WhisperKit, whisper.cpp or sherpa-onnx bump.
 
-Model tests that decode synthesized speech with the real pinned models, on a
-Mac or in CI, are in review (#330, #333, #334). Once they merge, run
-`just ios model-test` and `just android model-test` first; until then those
-recipes do not exist. This page is for what no such test can reach.
+Model tests decode synthesized speech with the real pinned models on a Mac or
+in CI: run `just ios model-test` and `just android model-test` first. This page
+is for what no such test can reach.
 
 ## How to run a check
 

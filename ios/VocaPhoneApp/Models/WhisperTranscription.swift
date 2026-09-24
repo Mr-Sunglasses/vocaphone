@@ -7,11 +7,15 @@ import WhisperKit
 @MainActor
 enum WhisperTranscription {
     /// How the app loads a downloaded model: from disk only, never the network.
+    ///
+    /// `load: false` with `prewarm: true` only compiles the model for the
+    /// Neural Engine and leaves nothing resident — the last step of a download.
     static func engineConfig(
         model: String,
         folder: URL,
         tokenizerFolder: URL,
-        prewarm: Bool
+        prewarm: Bool,
+        load: Bool = true
     ) -> WhisperKitConfig {
         WhisperKitConfig(
             model: model,
@@ -26,7 +30,7 @@ enum WhisperTranscription {
             computeOptions: ModelComputeOptions(melCompute: .cpuOnly),
             verbose: false,
             prewarm: prewarm,
-            load: true,
+            load: load,
             download: false
         )
     }
@@ -172,6 +176,7 @@ enum WhisperTranscription {
         windowOptions.clipTimestamps = []
         windowOptions.chunkingStrategy = nil
         windowOptions.concurrentWorkerCount = 1
+        let recording = samples
         var results: [TranscriptionResult] = []
         for (index, chunk) in chunks.enumerated() {
             try Task.checkCancellation()
@@ -186,7 +191,7 @@ enum WhisperTranscription {
             try Task.checkCancellation()
             if let emptyWindow,
                decoded.allSatisfy({ $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
-               soundsLikeSpeech(chunk.audioSamples)
+               soundsLikeSpeech(chunk.audioSamples, in: recording)
             {
                 emptyWindow(EmptyWindow(
                     index: index,
@@ -211,9 +216,29 @@ enum WhisperTranscription {
     /// two and a half times the quietest tenth can. Deliberately loose within
     /// that: a false "this was speech" costs one log line; a missed one hides
     /// a lost stretch of dictation.
-    static func soundsLikeSpeech(_ samples: [Float]) -> Bool {
+    ///
+    /// A final window under half a second — kept because it can hold the last
+    /// word — has too few frames for a quiet stretch of its own. Given the
+    /// whole `recording`, it is measured against the recording's quietest
+    /// stretch instead, and half its frames standing out is enough.
+    static func soundsLikeSpeech(_ samples: [Float], in recording: [Float]? = nil) -> Bool {
+        let levels = frameLevels(samples)
+        if levels.count >= minimumSpeechFrames {
+            return loudFrameCount(levels, floor: quietestTenth(levels)) >= minimumSpeechFrames
+        }
+        // 150 ms: shorter than any word.
+        guard let recording, levels.count >= 3 else { return false }
+        let recordingLevels = frameLevels(recording)
+        guard !recordingLevels.isEmpty else { return false }
+        return loudFrameCount(levels, floor: quietestTenth(recordingLevels))
+            >= max(3, (levels.count + 1) / 2)
+    }
+
+    /// Half a second of 50 ms frames.
+    private static let minimumSpeechFrames = 10
+
+    private static func frameLevels(_ samples: [Float]) -> [Float] {
         let frame = WhisperKit.sampleRate / 20
-        guard samples.count >= frame * 10 else { return false }
         var levels: [Float] = []
         levels.reserveCapacity(samples.count / frame)
         var start = 0
@@ -223,8 +248,15 @@ enum WhisperTranscription {
             levels.append((sum / Float(frame)).squareRoot())
             start += frame
         }
-        let floor = levels.sorted()[levels.count / 10]
+        return levels
+    }
+
+    private static func quietestTenth(_ levels: [Float]) -> Float {
+        levels.sorted()[levels.count / 10]
+    }
+
+    private static func loudFrameCount(_ levels: [Float], floor: Float) -> Int {
         let threshold = max(0.01, floor * 2.5)
-        return levels.filter { $0 >= threshold }.count >= 10
+        return levels.filter { $0 >= threshold }.count
     }
 }

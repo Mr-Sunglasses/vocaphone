@@ -101,6 +101,12 @@ final class LocalModelManager {
     /// corrupted or tampered-with model is a different problem from a download
     /// that never happened, and it needs a different sentence.
     private(set) var failedIntegrityModelIDs: Set<String> = []
+    /// Whisper models whose transfer is finished and verified and which are
+    /// being compiled for this iPhone's Neural Engine before the download is
+    /// reported done. See `specializeAfterDownload`.
+    private(set) var optimizingModelIDs: Set<String> = []
+
+    func isOptimizing(_ id: String) -> Bool { optimizingModelIDs.contains(id) }
 
 #if DEBUG
     /// True only for a manager built by the preview initializer below. A canvas
@@ -134,6 +140,16 @@ final class LocalModelManager {
     /// The sherpa load currently running, so a second request waits for it
     /// instead of building a second ONNX graph beside the first.
     private var sherpaLoad: Task<SherpaRecognizer, Error>?
+    /// The WhisperKit load currently running, and the model it will leave
+    /// resident — nil for a specialization pass, which leaves nothing loaded.
+    ///
+    /// A warm-up started by onboarding and the dictation the user starts a
+    /// moment later ask for the same model. Without this the second saw no
+    /// engine yet and built its own copy beside the first: two sets of Core ML
+    /// weights at once, which is an out-of-memory kill rather than a faster
+    /// start.
+    private var whisperLoad: Task<Void, Error>?
+    private var whisperLoadModelID: String?
     /// Download ownership belongs to the manager rather than the picker view.
     /// SwiftUI is free to recreate either onboarding or Settings while a model
     /// is downloading; a view-local task handle made their Cancel buttons lose
@@ -348,7 +364,12 @@ final class LocalModelManager {
                 continue
             }
             guard !isDownloaded(id) else {
+                // Every file landed, but the process died before the download
+                // reported itself finished — during the Neural Engine compile
+                // that ends a Whisper download, most likely. Nothing is left to
+                // fetch, and the selection it would have claimed still is.
                 Self.forgetDownload(id)
+                adoptResumedModel(descriptor)
                 continue
             }
             // With the completion, not without it. The one that used to claim
@@ -1085,7 +1106,7 @@ final class LocalModelManager {
         // Loading Whisper/Sherpa in the background is a memory spike with no
         // user in front of the picker. The files stay on disk; the next
         // foreground prepare loads them.
-        guard KeyboardPreferences.containingAppIsForeground else { return }
+        guard isInForeground else { return }
 
         loadingModelID = descriptor.id
         loadingMessage = "Loading \(descriptor.displayName)… This can take a moment."
@@ -1122,6 +1143,45 @@ final class LocalModelManager {
                 resolvedLanguage: resolvedLanguage
             )
         }
+    }
+
+    /// Loads a model the user is *about* to dictate with, if that is cheap to be
+    /// wrong about: the files are verified, the app is in front, nothing is
+    /// already loaded or loading it, and the phone has room. See
+    /// `EngineWarmPolicy`.
+    ///
+    /// Safe to call as often as a screen likes; everything but the first call
+    /// that finds work to do returns at once.
+    func warm(_ descriptor: LocalModelDescriptor, language: String) async {
+        guard !isInert,
+              isDownloaded(descriptor.id),
+              !failedIntegrityModelIDs.contains(descriptor.id),
+              isInForeground,
+              !isResidentOrLoading(descriptor.id)
+        else { return }
+        let residentBytes = loadedModelID
+            .flatMap(LocalModelCatalog.descriptor(for:))
+            .map(\.sizeBytes) ?? 0
+        guard EngineWarmPolicy.hasRoom(
+            availableBytes: UInt64(os_proc_available_memory()),
+            modelBytes: descriptor.sizeBytes,
+            residentBytes: residentBytes
+        ) else { return }
+        try? await prepare(descriptor, language: language)
+    }
+
+    /// The shared flag is written from the app's scene-phase hook, and a
+    /// screen's own foreground task can run before that hook has: UIKit's
+    /// state is already right by then, so either one is enough.
+    private var isInForeground: Bool {
+        KeyboardPreferences.containingAppIsForeground
+            || UIApplication.shared.applicationState == .active
+    }
+
+    private func isResidentOrLoading(_ id: String) -> Bool {
+        if loadingModelID == id || whisperLoadModelID == id { return true }
+        guard loadedModelID == id else { return false }
+        return whisperKit != nil || sherpaRecognizer != nil
     }
 
     /// Rebuilds the engine after an accuracy change — and only when there is
@@ -1282,9 +1342,13 @@ final class LocalModelManager {
                     progressTracker: progressTracker
                 )
             }
-            downloadedModelIDs.insert(descriptor.id)
             persistPath(folder, for: descriptor.id)
             forgetWhisperKitSpecialization(for: descriptor.id)
+            // Before the model is reported downloaded, so everything waiting on
+            // it keeps showing the transfer rather than a ready model whose
+            // first dictation then sits through the compile.
+            await specializeAfterDownload(descriptor, folder: folder)
+            downloadedModelIDs.insert(descriptor.id)
             message = "\(descriptor.displayName) downloaded and verified."
             Telemetry.shared.modelDownloadFinished(model: descriptor, outcome: .completed)
         } catch is CancellationError {
@@ -1399,6 +1463,10 @@ final class LocalModelManager {
                 queuedModelIDs.removeAll { $0 == id }
                 return
             }
+            // Every byte is on disk and verified, and a Core ML compile cannot
+            // be interrupted. Cancelling would only hide a download that is
+            // about to report itself finished anyway.
+            guard !isOptimizing(id) else { return }
             guard modelDownloadTasks[id] != nil || inFlightDownloads[id] != nil else { return }
             inFlightDownloads[id] = nil
             modelDownloadTasks[id]?.cancel()
@@ -2106,25 +2174,39 @@ final class LocalModelManager {
         folder: URL,
         tokenizerFolder: URL
     ) async throws -> WhisperKit {
-        if loadedModelID != descriptor.id || whisperKit == nil {
-            // Both engines released before the new one is built, for the same
-            // reason as in `ensureSherpaRecognizer`: two sets of model weights
-            // resident at once is an out-of-memory kill on a phone, and the
-            // previous Whisper model is exactly that much memory.
-            sherpaRecognizer = nil
-            whisperKit = nil
-            loadedModelID = nil
-            loadedLanguage = nil
-            loadedQuality = nil
-            // Prewarming loads every Core ML model twice — once to specialize it
-            // for this device's Neural Engine, then again for real — which keeps
-            // peak memory down while that compile runs but doubles the time of
-            // every load after it. So only when the compile is likely to happen:
-            // the first load after a download or an OS update, or after a
-            // failure that may have been one.
-            let prewarm = needsWhisperKitSpecialization(descriptor.id)
+        // A load of this very model already running — onboarding's warm-up,
+        // usually — is joined, and its failure is this call's failure: starting
+        // the same load again straight after would fail the same way, only
+        // later.
+        if whisperLoadModelID == descriptor.id, let inFlight = whisperLoad {
+            try await inFlight.value
+        }
+        await waitForEngineLoads()
+        if loadedModelID == descriptor.id, let whisperKit { return whisperKit }
+
+        // Both engines released before the new one is built, for the same
+        // reason as in `ensureSherpaRecognizer`: two sets of model weights
+        // resident at once is an out-of-memory kill on a phone, and the
+        // previous Whisper model is exactly that much memory.
+        sherpaRecognizer = nil
+        whisperKit = nil
+        loadedModelID = nil
+        loadedLanguage = nil
+        loadedQuality = nil
+        // Prewarming loads every Core ML model twice — once to specialize it
+        // for this device's Neural Engine, then again for real — which keeps
+        // peak memory down while that compile runs but doubles the time of
+        // every load after it. So only when the compile is likely to happen:
+        // the first load after a download that could not do it
+        // (`specializeAfterDownload`), after an OS update, or after a failure
+        // that may have been one.
+        let prewarm = needsWhisperKitSpecialization(descriptor.id)
+        // Its own task rather than this caller's, so a second caller can wait
+        // on it, and so a warm-up whose screen went away still finishes the
+        // load somebody is about to need.
+        let task = Task { @MainActor [self] in
             let started = ContinuousClock.now
-            whisperKit = try await WhisperKit(
+            let loaded = try await WhisperKit(
                 WhisperTranscription.engineConfig(
                     model: descriptor.id,
                     folder: folder,
@@ -2132,6 +2214,7 @@ final class LocalModelManager {
                     prewarm: prewarm
                 )
             )
+            whisperKit = loaded
             loadedModelID = descriptor.id
             loadedLanguage = nil
             rememberWhisperKitSpecialization(for: descriptor.id)
@@ -2145,10 +2228,96 @@ final class LocalModelManager {
                 )
             )
         }
-        guard let whisperKit else {
+        whisperLoad = task
+        whisperLoadModelID = descriptor.id
+        defer { clearWhisperLoad(task) }
+        try await task.value
+        guard let whisperKit, loadedModelID == descriptor.id else {
             throw LocalModelManagerError.modelNotDownloaded(descriptor.id)
         }
         return whisperKit
+    }
+
+    /// Returns once no engine is being built. Every load waits here before it
+    /// releases anything, and registers its own task before its next suspension
+    /// point, so two loads never overlap — whichever engines they are for.
+    private func waitForEngineLoads() async {
+        while true {
+            if let inFlight = whisperLoad {
+                _ = try? await inFlight.value
+                clearWhisperLoad(inFlight)
+            } else if let inFlight = sherpaLoad {
+                _ = try? await inFlight.value
+                if sherpaLoad == inFlight { sherpaLoad = nil }
+            } else {
+                return
+            }
+        }
+    }
+
+    private func clearWhisperLoad(_ task: Task<Void, Error>) {
+        guard whisperLoad == task else { return }
+        whisperLoad = nil
+        whisperLoadModelID = nil
+    }
+
+    /// Compiles a Whisper model for this iPhone's Neural Engine as the last step
+    /// of its download, and leaves nothing loaded.
+    ///
+    /// That compile happens once per model per OS version, and it is most of
+    /// what made the first dictation after a download so slow — a minute or
+    /// more on the large models, spent on a Try dictating page that looked
+    /// ready. Here it is spent under a progress bar the user already expects
+    /// to wait on, and every load after it skips it.
+    ///
+    /// Best effort. It is skipped in the background (the Neural Engine is not
+    /// always available there) and on a phone without room for it, and a
+    /// failure is only logged: either way the first real load compiles instead,
+    /// exactly as before.
+    private func specializeAfterDownload(
+        _ descriptor: LocalModelDescriptor,
+        folder: URL
+    ) async {
+        guard descriptor.engine == .whisperKit,
+              needsWhisperKitSpecialization(descriptor.id),
+              isInForeground,
+              let tokenizerRepository = descriptor.tokenizerRepository,
+              let tokenizerFolder = tokenizerDirectory(for: tokenizerRepository)
+        else { return }
+        let id = descriptor.id
+        optimizingModelIDs.insert(id)
+        inFlightDownloads[id]?.fraction = 1
+        defer { optimizingModelIDs.remove(id) }
+
+        await waitForEngineLoads()
+        // The compile loads the models one at a time, so the whole model is a
+        // generous estimate. A resident engine is not released for it, so,
+        // unlike `warm`, its memory is not counted as room.
+        guard EngineWarmPolicy.hasRoom(
+            availableBytes: UInt64(os_proc_available_memory()),
+            modelBytes: descriptor.sizeBytes
+        ) else { return }
+
+        let task = Task { @MainActor [self] in
+            _ = try await WhisperKit(
+                WhisperTranscription.engineConfig(
+                    model: id,
+                    folder: folder,
+                    tokenizerFolder: tokenizerFolder,
+                    prewarm: true,
+                    load: false
+                )
+            )
+            rememberWhisperKitSpecialization(for: id)
+        }
+        whisperLoad = task
+        whisperLoadModelID = nil
+        defer { clearWhisperLoad(task) }
+        do {
+            try await task.value
+        } catch {
+            recordEngineFailure(.localEngineLoadFailed, error)
+        }
     }
 
     /// Whether the next WhisperKit load should prewarm. The stamp is the OS
@@ -2215,11 +2384,9 @@ final class LocalModelManager {
         // still being built puts both models' weights in memory at the same
         // time, which on a phone is an out-of-memory kill rather than a slow
         // moment. Changing the accuracy setting twice in quick succession is
-        // exactly how that used to happen.
-        while let inFlight = sherpaLoad {
-            _ = try? await inFlight.value
-            if sherpaLoad == inFlight { sherpaLoad = nil }
-        }
+        // exactly how that used to happen. A Whisper load or compile counts
+        // too: it is the same memory.
+        await waitForEngineLoads()
 
         if let sherpaRecognizer,
            loadedModelID == descriptor.id,
@@ -2247,29 +2414,35 @@ final class LocalModelManager {
         // reads hundreds of megabytes from disk, so running it here froze the
         // interface that had just published "Loading…".
         let threads = max(2, min(ProcessInfo.processInfo.processorCount - 2, 4))
-        let task = Task.detached(priority: .userInitiated) {
-            try SherpaRecognizer.create(
-                model: descriptor,
-                directory: folder,
-                language: resolvedLanguage,
-                // ONNX Runtime's CPU pool benefits from a bounded number of
-                // workers on iPhone; using every logical core throttles long
-                // recordings and competes with audio/UI work.
-                threads: threads,
-                quality: quality,
-                translateTo: translateTo
-            )
+        // Published inside the task, not after this caller resumes. A load
+        // waiting in `waitForEngineLoads` can resume first, and it must find
+        // this recognizer already in place — to release it — rather than start
+        // its own build while this one is still about to be installed beside it.
+        let task = Task { @MainActor [self] in
+            let recognizer = try await Task.detached(priority: .userInitiated) {
+                try SherpaRecognizer.create(
+                    model: descriptor,
+                    directory: folder,
+                    language: resolvedLanguage,
+                    // ONNX Runtime's CPU pool benefits from a bounded number of
+                    // workers on iPhone; using every logical core throttles long
+                    // recordings and competes with audio/UI work.
+                    threads: threads,
+                    quality: quality,
+                    translateTo: translateTo
+                )
+            }.value
+            sherpaRecognizer = recognizer
+            loadedModelID = descriptor.id
+            loadedLanguage = resolvedLanguage
+            loadedTranslateTo = translateTo
+            loadedQuality = quality
+            return recognizer
         }
         sherpaLoad = task
         defer { if sherpaLoad == task { sherpaLoad = nil } }
 
-        let recognizer = try await task.value
-        sherpaRecognizer = recognizer
-        loadedModelID = descriptor.id
-        loadedLanguage = resolvedLanguage
-        loadedTranslateTo = translateTo
-        loadedQuality = quality
-        return recognizer
+        return try await task.value
     }
 
     private func modelDirectory(for id: String) -> URL? {
