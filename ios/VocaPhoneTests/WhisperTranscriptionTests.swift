@@ -170,6 +170,56 @@ struct WhisperTranscriptionTests {
         #expect(WhisperTranscription.soundsLikeSpeech(Self.speechLike(seconds: 10, level: 0.05)))
     }
 
+    /// Thirty seconds that never falls quiet, so the chunker cuts exactly at
+    /// the limit and leaves `tail` as a window of its own.
+    private static func withShortTail(_ tail: [Float]) -> [Float] {
+        [Float](repeating: 0.2, count: 30 * 16_000) + tail
+    }
+
+    /// A last word shorter than half a second: too few frames to measure a
+    /// quiet stretch in, so it is measured against the recording's own.
+    @Test func shortFinalWordThatDecodesToNothingIsReported() async throws {
+        let lastWord = (0..<6_400).map { sin(Float($0) * 0.2) * 0.9 }
+        var reported: [WhisperTranscription.EmptyWindow] = []
+        var window = 0
+        _ = try await WhisperTranscription.transcribe(
+            samples: Self.withShortTail(lastWord),
+            options: DecodingOptions(),
+            emptyWindow: { reported.append($0) }
+        ) { _, _ in
+            defer { window += 1 }
+            return window == 0 ? Self.said("everything but the last word") : []
+        }
+        #expect(reported.count == 1)
+        #expect(reported.first?.index == 1)
+        #expect(reported.first?.count == 2)
+        #expect((reported.first?.milliseconds ?? .max) < 500)
+    }
+
+    /// The same short window holding nothing that stands out from the rest of
+    /// the recording.
+    @Test func shortFinalSteadySoundIsNotReported() async throws {
+        var reported = 0
+        var windows = 0
+        _ = try await WhisperTranscription.transcribe(
+            samples: Self.withShortTail([Float](repeating: 0.2, count: 6_400)),
+            options: DecodingOptions(),
+            emptyWindow: { _ in reported += 1 }
+        ) { _, _ in
+            windows += 1
+            return windows == 1 ? Self.said("all of it") : []
+        }
+        #expect(windows == 2)
+        #expect(reported == 0)
+    }
+
+    @Test func aTailTooShortForAWordIsNeverSpeech() {
+        let recording = Self.unbrokenSpeech(seconds: 5)
+        let blip = (0..<1_600).map { sin(Float($0) * 0.2) * 0.3 }
+        #expect(!WhisperTranscription.soundsLikeSpeech(blip, in: recording + blip))
+        #expect(!WhisperTranscription.soundsLikeSpeech(Array(repeating: 0.3, count: 6_400)))
+    }
+
     @Test func shortFinalWindowIsNotSkippedByWhisperSeekPadding() async throws {
         var calls = 0
         var speechSamples = 0
