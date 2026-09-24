@@ -341,6 +341,20 @@ source produced it, including a gateway. It does not change text typed on the
 keyboard. Turn it on in Settings → Dictation → Emoji when you want the
 substitution.
 
+## Part of a dictation is missing
+
+The transcript went in, but a stretch of what you said is not in it: the
+opening, the end, or a sentence in the middle. Nothing reported an error.
+
+- Say whether the missing part was spoken **before the start cue**. Capture
+  begins after the cue, so those words were never recorded. That is expected,
+  not a bug.
+- Otherwise, note the dictation's length and export diagnostics (iPhone) or keep
+  `just android logs` running (Android), then follow
+  [Reading the evidence](on-device-transcription-checks.md#reading-the-evidence).
+  A long dictation that decoded unusually fast is worth a closer look, though
+  speed alone does not prove a window was dropped.
+
 ## Transcript did not insert
 
 Return to the same target field and tap Insert. If the keyboard context changed,

@@ -185,6 +185,14 @@ supported one.
 - Confirm the whole dictation matrix below still passes. Typing intelligence
   must not have touched hand-off, Quick Dictation, insertion or undo.
 
+## On-device transcription gate
+
+Transcription on the phone itself has its own checklist, for both platforms:
+the model unloading and reloading, finishing from the background or after iOS
+closed the app, dictations past thirty seconds, and how to read the
+diagnostics export when text goes missing. See
+[on-device-transcription-checks.md](on-device-transcription-checks.md).
+
 ## Quick Dictation reliability gate
 
 Run these checks on a physical iPhone after changing audio or App Group code:
