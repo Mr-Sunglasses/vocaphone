@@ -2088,6 +2088,15 @@ final class LocalModelManager {
                 // exactly a load that skipped specialization it turned out to need.
                 self.releaseLoadedEngines()
                 self.forgetWhisperKitSpecialization(for: descriptor.id)
+            } emptyWindow: { window in
+                DiagnosticLog.record(
+                    .localWindowEmpty,
+                    metadata: .emptyWindow(
+                        index: window.index,
+                        count: window.count,
+                        milliseconds: window.milliseconds
+                    )
+                )
             } decode: { whisperKit, window, options in
                 do {
                     return try await whisperKit.transcribe(audioArray: window, decodeOptions: options)
@@ -2198,12 +2207,11 @@ final class LocalModelManager {
         let task = Task { @MainActor [self] in
             let started = ContinuousClock.now
             let loaded = try await WhisperKit(
-                Self.whisperKitConfig(
-                    descriptor: descriptor,
+                WhisperTranscription.engineConfig(
+                    model: descriptor.id,
                     folder: folder,
                     tokenizerFolder: tokenizerFolder,
-                    prewarm: prewarm,
-                    load: true
+                    prewarm: prewarm
                 )
             )
             whisperKit = loaded
@@ -2228,31 +2236,6 @@ final class LocalModelManager {
             throw LocalModelManagerError.modelNotDownloaded(descriptor.id)
         }
         return whisperKit
-    }
-
-    private static func whisperKitConfig(
-        descriptor: LocalModelDescriptor,
-        folder: URL,
-        tokenizerFolder: URL,
-        prewarm: Bool,
-        load: Bool
-    ) -> WhisperKitConfig {
-        WhisperKitConfig(
-            model: descriptor.id,
-            modelFolder: folder.path,
-            // WhisperKit searches this folder directly for tokenizer.json;
-            // supplying it is what keeps model loading off the network.
-            tokenizerFolder: tokenizerFolder,
-            // The mel spectrogram defaults to the GPU, which iOS does not
-            // let a backgrounded app use — and a dictation finished from
-            // the keyboard runs with this app in the background. It is a
-            // few milliseconds of work a window; the CPU is no loss.
-            computeOptions: ModelComputeOptions(melCompute: .cpuOnly),
-            verbose: false,
-            prewarm: prewarm,
-            load: load,
-            download: false
-        )
     }
 
     /// Returns once no engine is being built. Every load waits here before it
@@ -2317,8 +2300,8 @@ final class LocalModelManager {
 
         let task = Task { @MainActor [self] in
             _ = try await WhisperKit(
-                Self.whisperKitConfig(
-                    descriptor: descriptor,
+                WhisperTranscription.engineConfig(
+                    model: id,
                     folder: folder,
                     tokenizerFolder: tokenizerFolder,
                     prewarm: true,

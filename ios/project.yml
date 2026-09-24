@@ -165,10 +165,19 @@ targets:
     platform: iOS
     dependencies:
       - package: WhisperKit
+      # The real recognizer and its C bridge, so the model tests can decode
+      # speech with a pinned sherpa model rather than stand a closure in.
+      - package: sherpa-onnx
+        product: sherpa-onnx
     sources:
       - VocaPhoneTests
       - VocaPhoneShared
       - path: VocaPhoneApp/Models/WhisperTranscription.swift
+      - path: VocaPhoneApp/Models/SherpaRecognizer.swift
+      - path: VocaPhoneApp/Models/SherpaOnnxBridge.c
+      # The errors SherpaRecognizer throws are declared beside the integrity
+      # checks it shares them with.
+      - path: VocaPhoneApp/Models/LocalModelIntegrity.swift
       - path: VocaPhoneApp/Models/RetiredModelFileCleanup.swift
       # Key geometry is worth regression tests; the controller itself needs a
       # host extension and stays out of the test target.
@@ -274,6 +283,9 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_OBJC_BRIDGING_HEADER: VocaPhoneApp/Models/SherpaOnnx-Bridging-Header.h
+        HEADER_SEARCH_PATHS: "$(inherited) $(PROJECT_DIR)/VocaPhoneApp/Models"
+        OTHER_LDFLAGS: "$(inherited) -lc++"
 schemes:
   VocaPhone:
     build:

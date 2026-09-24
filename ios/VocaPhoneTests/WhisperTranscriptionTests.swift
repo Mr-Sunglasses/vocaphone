@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import WhisperKit
 
@@ -72,6 +73,101 @@ struct WhisperTranscriptionTests {
             }
         }
         #expect(windows == 2)
+    }
+
+    /// Syllable-like bursts over a quiet floor: what speech looks like to an
+    /// energy detector, without needing a model.
+    private static func speechLike(seconds: Int, level: Float = 0.3) -> [Float] {
+        (0..<(seconds * 16_000)).map { index in
+            let syllable = (index / 3_200) % 2 == 0
+            let tone = sin(Float(index) * 0.2) * (syllable ? level : 0)
+            return tone + Float((index * 7_919) % 97 - 48) / 48 * 0.002
+        }
+    }
+
+    private static func hiss(seconds: Int, level: Float) -> [Float] {
+        (0..<(seconds * 16_000)).map { Float(($0 * 7_919) % 97 - 48) / 48 * level }
+    }
+
+    private static func said(_ text: String) -> [TranscriptionResult] {
+        [TranscriptionResult(text: text, segments: [], language: "en", timings: TranscriptionTimings())]
+    }
+
+    @Test func speechThatDecodesToNothingIsReportedWithItsPlace() async throws {
+        var reported: [WhisperTranscription.EmptyWindow] = []
+        var window = 0
+        let results = try await WhisperTranscription.transcribe(
+            samples: Self.speechLike(seconds: 45),
+            options: DecodingOptions(),
+            emptyWindow: { reported.append($0) }
+        ) { _, _ in
+            defer { window += 1 }
+            // The first window comes back blank, as WhisperKit 1.1.0 did.
+            return window == 0 ? Self.said("  ") : Self.said("the rest of it")
+        }
+        #expect(results.count == 2)
+        #expect(reported.count == 1)
+        #expect(reported.first?.index == 0)
+        #expect(reported.first?.count == 2)
+        #expect((reported.first?.milliseconds ?? 0) > 15_000)
+    }
+
+    /// Speech with no pause anywhere: four syllables a second, each a 150 ms
+    /// vowel and a 100 ms consonant some 23 dB quieter, never falling silent.
+    /// That is the swing measured in the model tests' continuous speech, where
+    /// the loud frames sit 12 to 16 times above the quiet ones.
+    private static func unbrokenSpeech(seconds: Int) -> [Float] {
+        (0..<(seconds * 16_000)).map { index in
+            let vowel = index % 4_000 < 2_400
+            return sin(Float(index) * 0.2) * (vowel ? 0.3 : 0.02)
+        }
+    }
+
+    /// No quiet frames to measure a floor from; the window must still count
+    /// as speech.
+    @Test func continuousSpeechThatDecodesToNothingIsReported() async throws {
+        let unbroken = Self.unbrokenSpeech(seconds: 20)
+        #expect(WhisperTranscription.soundsLikeSpeech(unbroken))
+        var reported = 0
+        _ = try await WhisperTranscription.transcribe(
+            samples: unbroken,
+            options: DecodingOptions(),
+            emptyWindow: { _ in reported += 1 }
+        ) { _, _ in [] }
+        #expect(reported == 1)
+    }
+
+    /// Steady room hiss as the decoder receives it: through the app's own
+    /// levelling, which boosts a quiet recording up to eight times. Loud as
+    /// that makes it, it never moves, and it must not be reported.
+    @Test(arguments: [Float(0.002), 0.005, 0.01])
+    func levelledRoomHissIsNotReported(level: Float) async throws {
+        let hiss = SpeechAudioConditioning.condition(Self.hiss(seconds: 12, level: level))
+        #expect(!WhisperTranscription.soundsLikeSpeech(hiss))
+        var reported = 0
+        _ = try await WhisperTranscription.transcribe(
+            samples: hiss,
+            options: DecodingOptions(),
+            emptyWindow: { _ in reported += 1 }
+        ) { _, _ in [] }
+        #expect(reported == 0)
+    }
+
+    @Test func silenceThatDecodesToNothingIsNotReported() async throws {
+        var reported = 0
+        _ = try await WhisperTranscription.transcribe(
+            samples: Self.hiss(seconds: 10, level: 0.002),
+            options: DecodingOptions(),
+            emptyWindow: { _ in reported += 1 }
+        ) { _, _ in [] }
+        #expect(reported == 0)
+    }
+
+    /// The app multiplies a quiet recording by up to eight before decoding, which
+    /// puts room hiss well above any fixed level. It is still not speech.
+    @Test func levelledHissIsNotMistakenForSpeech() {
+        #expect(!WhisperTranscription.soundsLikeSpeech(Self.hiss(seconds: 10, level: 0.02)))
+        #expect(WhisperTranscription.soundsLikeSpeech(Self.speechLike(seconds: 10, level: 0.05)))
     }
 
     @Test func shortFinalWindowIsNotSkippedByWhisperSeekPadding() async throws {

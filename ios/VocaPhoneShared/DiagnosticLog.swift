@@ -36,6 +36,10 @@ enum DiagnosticEvent: String, Codable, Sendable {
     /// A load or decode failed and is being tried once more on a fresh engine.
     /// The failure itself is the `operationFailed` line just before it.
     case localEngineRetried
+    /// A Whisper window that sounded like speech decoded to no text. Nothing
+    /// failed and the rest of the transcript went in, so without this line a
+    /// dictation missing half its words looks like one that worked.
+    case localWindowEmpty
     case stopQuickDictationRequested
     case audioInterruptionBegan
     case audioInterruptionEnded
@@ -180,6 +184,9 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
     let appInForeground: Bool?
     /// A duration, in whole milliseconds.
     let milliseconds: Int?
+    /// Which decoding window of how many, counted from zero.
+    let windowIndex: Int?
+    let windowCount: Int?
 
     static let empty = DiagnosticMetadata()
 
@@ -195,7 +202,9 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
         underlyingErrorDomain: DiagnosticErrorDomain? = nil,
         underlyingErrorNumber: Int? = nil,
         appInForeground: Bool? = nil,
-        milliseconds: Int? = nil
+        milliseconds: Int? = nil,
+        windowIndex: Int? = nil,
+        windowCount: Int? = nil
     ) {
         self.state = state
         self.reason = reason
@@ -209,6 +218,8 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
         self.underlyingErrorNumber = underlyingErrorNumber
         self.appInForeground = appInForeground
         self.milliseconds = milliseconds
+        self.windowIndex = windowIndex
+        self.windowCount = windowCount
     }
 
     static func state(_ state: SessionState) -> DiagnosticMetadata {
@@ -275,6 +286,10 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
             errorNumber: failure.status.map(Int.init),
             appInForeground: appInForeground
         )
+    }
+
+    static func emptyWindow(index: Int, count: Int, milliseconds: Int) -> DiagnosticMetadata {
+        DiagnosticMetadata(milliseconds: milliseconds, windowIndex: index, windowCount: count)
     }
 
     static func localEngineLoaded(

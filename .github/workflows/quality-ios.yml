@@ -43,7 +43,9 @@ jobs:
     # matter run when the author marks the pull request ready.
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-15
-    timeout-minutes: 20
+    # Twenty for the build and unit tests, and room for the model tests when a
+    # change calls for them.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -154,12 +156,95 @@ jobs:
             -resultBundlePath "${RESULT_BUNDLE}" \
             test-without-building
 
+      # The unit tests above stub WhisperKit out, which is how an upgrade that
+      # returned empty windows passed them. This decodes synthesized speech
+      # with the real pinned model, so it runs when a pull request touches
+      # anything between the recording and the typed text, or WhisperKit's
+      # version, and on a manual run. It reuses the build above.
+      #
+      # The filter lists what the pipeline reads: conditioning, the decode
+      # options and quality, the catalog, and everything
+      # DictatedTranscript.finished calls. KeyboardPreferences is left out
+      # although it declares WritingStyle, because nearly every keyboard change
+      # touches it and a style change is covered by the unit tests.
+      - name: Decide whether to run the on-device model tests
+        id: model-scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${EVENT}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "${EVENT}" != "pull_request" ] || [ -z "${BASE_SHA}" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "${BASE_SHA}"
+          changed=$(git diff --name-only "${BASE_SHA}" HEAD)
+          pattern='^(ios/VocaPhone\.xcodeproj/project\.xcworkspace/xcshareddata/swiftpm/Package\.resolved|ios/project\.yml|ios/VocaPhoneApp/Models/|ios/VocaPhoneShared/(SpeechAudioConditioning|DictatedTranscript|Transcript[A-Za-z]*|CustomVocabulary|Spoken[A-Za-z]*|SentencePunctuation|ProtectedSpans|Snippet[A-Za-z]*|EmojiTable|LocalModelCatalog|ModelLanguageSupport|Sherpa[A-Za-z]*)\.swift|ios/VocaPhoneTests/(LocalModel|SherpaModel)EndToEndTests\.swift|tools/model-e2e/|\.github/workflows/quality-ios\.yml)'
+          if printf '%s\n' "${changed}" | grep -Eq "${pattern}"; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache the pinned test model
+        if: steps.model-scope.outputs.run == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ios/build/model-e2e
+          key: model-e2e-${{ hashFiles('ios/VocaPhoneApp/Models/local_model_pins.json', 'ios/VocaPhoneApp/Models/sherpa_model_pins.json') }}
+
+      - name: Run the on-device model tests
+        if: steps.model-scope.outputs.run == 'true'
+        working-directory: ios
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+          DERIVED_DATA: ${{ runner.temp }}/DerivedData
+          RESULT_BUNDLE: ${{ runner.temp }}/VocaPhoneModel.xcresult
+        run: |
+          set -euo pipefail
+          dir="${PWD}/build/model-e2e"
+          python3 ../tools/model-e2e/fetch_whisper.py openai_whisper-small_216MB "${dir}"
+          python3 ../tools/model-e2e/fetch_sherpa.py parakeet-tdt-ctc-110m-en "${dir}"
+          python3 ../tools/model-e2e/make_scenarios.py "${dir}/scenarios"
+          # xcodebuild hands TEST_RUNNER_-prefixed variables to the tests.
+          TEST_RUNNER_VOCA_MODEL_E2E_DIR="${dir}" \
+          TEST_RUNNER_VOCA_MODEL_E2E_MODEL=openai_whisper-small_216MB \
+          xcodebuild \
+            -project VocaPhone.xcodeproj \
+            -scheme VocaPhone \
+            -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,id=${UDID}" \
+            -derivedDataPath "${DERIVED_DATA}" \
+            -disableAutomaticPackageResolution \
+            -resultBundlePath "${RESULT_BUNDLE}" \
+            -only-testing:VocaPhoneTests/LocalModelEndToEndTests \
+            -only-testing:VocaPhoneTests/SherpaModelEndToEndTests \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            test-without-building
+
+          # A suite whose input did not arrive is skipped, not failed, and a
+          # skipped suite passes. So require that tests ran and none skipped.
+          summary=$(xcrun xcresulttool get test-results summary --path "${RESULT_BUNDLE}" --compact)
+          echo "${summary}"
+          python3 -c 'import json, sys
+          s = json.loads(sys.argv[1])
+          ran, skipped = s.get("passedTests", 0) + s.get("failedTests", 0), s.get("skippedTests", 0)
+          sys.exit(0 if ran > 0 and skipped == 0 else f"model tests ran {ran}, skipped {skipped}")' "${summary}"
+
       - name: Upload the test result bundle
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ios-test-results
-          path: ${{ runner.temp }}/VocaPhone.xcresult
+          path: |
+            ${{ runner.temp }}/VocaPhone.xcresult
+            ${{ runner.temp }}/VocaPhoneModel.xcresult
           retention-days: 7
           if-no-files-found: ignore
 

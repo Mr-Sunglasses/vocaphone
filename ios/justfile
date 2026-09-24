@@ -132,6 +132,26 @@ test *only: gen
     xcodebuild {{ sim_flags }} -destination "platform=iOS Simulator,id=${udid}" \
         ${filters[@]+"${filters[@]}"} test-without-building
 
+# Every other test stubs WhisperKit out; this is the one that decodes words, so
+# run it for any change to WhisperKit, the model pins or the local transcription
+# path. The models (about 200 MB for Whisper small, 130 MB for Parakeet 110M)
+# are verified and cached under build/.
+#
+# Transcribe synthesized dictations with real downloaded Whisper and sherpa models.
+[group('test')]
+model-test model="openai_whisper-small_216MB" sherpa="parakeet-tdt-ctc-110m-en":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="{{ justfile_directory() }}/build/model-e2e"
+    python3 "{{ justfile_directory() }}/../tools/model-e2e/fetch_whisper.py" '{{ model }}' "${dir}" >/dev/null
+    python3 "{{ justfile_directory() }}/../tools/model-e2e/fetch_sherpa.py" '{{ sherpa }}' "${dir}" >/dev/null
+    python3 "{{ justfile_directory() }}/../tools/model-e2e/make_scenarios.py" "${dir}/scenarios"
+    # xcodebuild hands TEST_RUNNER_-prefixed variables to the tests, prefix removed.
+    TEST_RUNNER_VOCA_MODEL_E2E_DIR="${dir}" TEST_RUNNER_VOCA_MODEL_E2E_MODEL='{{ model }}' \
+    TEST_RUNNER_VOCA_MODEL_E2E_SHERPA_MODEL='{{ sherpa }}' \
+        {{ just_executable() }} test VocaPhoneTests/LocalModelEndToEndTests \
+        VocaPhoneTests/SherpaModelEndToEndTests
+
 # A Release build proves the same thing, but only by compiling WhisperKit twice.
 # This takes under a second, so it can run on every change instead of on the
 # ones somebody remembers.

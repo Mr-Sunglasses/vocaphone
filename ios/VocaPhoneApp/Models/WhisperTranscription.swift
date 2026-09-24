@@ -6,6 +6,35 @@ import WhisperKit
 /// failed chunks when collecting results, potentially returning partial success.
 @MainActor
 enum WhisperTranscription {
+    /// How the app loads a downloaded model: from disk only, never the network.
+    ///
+    /// `load: false` with `prewarm: true` only compiles the model for the
+    /// Neural Engine and leaves nothing resident — the last step of a download.
+    static func engineConfig(
+        model: String,
+        folder: URL,
+        tokenizerFolder: URL,
+        prewarm: Bool,
+        load: Bool = true
+    ) -> WhisperKitConfig {
+        WhisperKitConfig(
+            model: model,
+            modelFolder: folder.path,
+            // WhisperKit searches this folder directly for tokenizer.json;
+            // supplying it is what keeps model loading off the network.
+            tokenizerFolder: tokenizerFolder,
+            // The mel spectrogram defaults to the GPU, which iOS does not
+            // let a backgrounded app use — and a dictation finished from
+            // the keyboard runs with this app in the background. It is a
+            // few milliseconds of work a window; the CPU is no loss.
+            computeOptions: ModelComputeOptions(melCompute: .cpuOnly),
+            verbose: false,
+            prewarm: prewarm,
+            load: load,
+            download: false
+        )
+    }
+
     /// The options every on-device Whisper window is decoded with.
     ///
     /// `language` is nil for Automatic.
@@ -75,6 +104,7 @@ enum WhisperTranscription {
         load: @MainActor () async throws -> Engine,
         options: @MainActor (Engine) -> DecodingOptions,
         discard: @MainActor (Error) -> Void,
+        emptyWindow: ((EmptyWindow) -> Void)? = nil,
         decode: @MainActor (Engine, [Float], DecodingOptions) async throws -> [TranscriptionResult]
     ) async throws -> [TranscriptionResult] {
         var rebuilt = false
@@ -97,7 +127,11 @@ enum WhisperTranscription {
         // Optional so the failed engine can be let go before its replacement is
         // built: two sets of weights resident at once is an out-of-memory kill.
         var engine: Engine? = try await initialEngine()
-        return try await transcribe(samples: samples, options: options(engine!)) { window, windowOptions in
+        return try await transcribe(
+            samples: samples,
+            options: options(engine!),
+            emptyWindow: emptyWindow
+        ) { window, windowOptions in
             let failure: Error
             do {
                 return try await decode(engine!, window, windowOptions)
@@ -110,9 +144,26 @@ enum WhisperTranscription {
         }
     }
 
+    /// A window that held speech and came back without a word.
+    ///
+    /// Nothing about it fails: WhisperKit returns success with empty text, and
+    /// the windows either side still produce theirs, so the transcript that
+    /// reaches the field is simply missing a stretch. That is how a WhisperKit
+    /// upgrade came to drop the first thirty seconds of long dictations with no
+    /// error anywhere. This is reported so the diagnostics can say so.
+    struct EmptyWindow: Equatable, Sendable {
+        /// Zero-based, in recording order.
+        let index: Int
+        let count: Int
+        let milliseconds: Int
+    }
+
+    /// `emptyWindow` is told about every window that sounds like speech and
+    /// decoded to nothing. It changes nothing about the result.
     static func transcribe(
         samples: [Float],
         options: DecodingOptions,
+        emptyWindow: ((EmptyWindow) -> Void)? = nil,
         decode: ([Float], DecodingOptions) async throws -> [TranscriptionResult]
     ) async throws -> [TranscriptionResult] {
         // Keep a final sub-second tail too; it can contain the last spoken word.
@@ -126,7 +177,7 @@ enum WhisperTranscription {
         windowOptions.chunkingStrategy = nil
         windowOptions.concurrentWorkerCount = 1
         var results: [TranscriptionResult] = []
-        for chunk in chunks {
+        for (index, chunk) in chunks.enumerated() {
             try Task.checkCancellation()
             var samples = chunk.audioSamples
             // Whisper's seek loop skips clips shorter than windowClipTime.
@@ -137,8 +188,47 @@ enum WhisperTranscription {
             }
             let decoded = try await decode(samples, windowOptions)
             try Task.checkCancellation()
+            if let emptyWindow,
+               decoded.allSatisfy({ $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
+               soundsLikeSpeech(chunk.audioSamples)
+            {
+                emptyWindow(EmptyWindow(
+                    index: index,
+                    count: chunks.count,
+                    milliseconds: chunk.audioSamples.count * 1_000 / WhisperKit.sampleRate
+                ))
+            }
             results.append(contentsOf: decoded)
         }
         return results
+    }
+
+    /// Whether a window carries at least half a second of sound well above its
+    /// own quietest stretch.
+    ///
+    /// Movement, not level. Speech rises and falls with every syllable even
+    /// when it never pauses: across the model tests' continuous speech the
+    /// loudest tenth of 50 ms frames sits 12 to 16 times above the quietest.
+    /// Hiss, hum and a fan hold their level, at 1.06 times whatever it is, and
+    /// the app levels a quiet recording by up to eight times before decoding,
+    /// so no absolute threshold can tell those apart from speech. Frames at
+    /// two and a half times the quietest tenth can. Deliberately loose within
+    /// that: a false "this was speech" costs one log line; a missed one hides
+    /// a lost stretch of dictation.
+    static func soundsLikeSpeech(_ samples: [Float]) -> Bool {
+        let frame = WhisperKit.sampleRate / 20
+        guard samples.count >= frame * 10 else { return false }
+        var levels: [Float] = []
+        levels.reserveCapacity(samples.count / frame)
+        var start = 0
+        while start + frame <= samples.count {
+            var sum: Float = 0
+            for sample in samples[start..<(start + frame)] { sum += sample * sample }
+            levels.append((sum / Float(frame)).squareRoot())
+            start += frame
+        }
+        let floor = levels.sorted()[levels.count / 10]
+        let threshold = max(0.01, floor * 2.5)
+        return levels.filter { $0 >= threshold }.count >= 10
     }
 }
