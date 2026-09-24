@@ -995,7 +995,7 @@ struct LocalModelPicker: View {
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
                 .accessibilityValue(onboardingAccessibilityValue(model: model, state: state))
-                .accessibilityHint(onboardingAccessibilityHint(state: state))
+                .accessibilityHint(onboardingAccessibilityHint(model: model, state: state))
             } else {
                 settingsRowHeader(for: model, state: state)
             }
@@ -1220,6 +1220,10 @@ struct LocalModelPicker: View {
         case .notDownloaded, .failedIntegrity:
             didCancelDownload = false
             downloadAndUse(model)
+        case .downloading where manager.isOptimizing(model.id):
+            // Every byte is in and the compile cannot be stopped, so the card
+            // has nothing to offer until it reports itself ready.
+            break
         case .downloading, .waiting:
             didCancelDownload = true
             manager.cancelDownload(model.id)
@@ -1246,8 +1250,10 @@ struct LocalModelPicker: View {
         }
     }
 
-    private func onboardingAccessibilityHint(state: ModelState) -> String {
+    private func onboardingAccessibilityHint(model: LocalModelDescriptor, state: ModelState) -> String {
         switch state {
+        case .downloading where manager.isOptimizing(model.id):
+            ""
         case .downloading, .waiting:
             "Stops this download"
         case .notDownloaded, .failedIntegrity:

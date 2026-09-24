@@ -364,7 +364,12 @@ final class LocalModelManager {
                 continue
             }
             guard !isDownloaded(id) else {
+                // Every file landed, but the process died before the download
+                // reported itself finished — during the Neural Engine compile
+                // that ends a Whisper download, most likely. Nothing is left to
+                // fetch, and the selection it would have claimed still is.
                 Self.forgetDownload(id)
+                adoptResumedModel(descriptor)
                 continue
             }
             // With the completion, not without it. The one that used to claim
@@ -1339,9 +1344,6 @@ final class LocalModelManager {
             }
             persistPath(folder, for: descriptor.id)
             forgetWhisperKitSpecialization(for: descriptor.id)
-            // The transfer is over. A process killed during the compile below
-            // must not come back to a download it would start again.
-            Self.forgetDownload(id)
             // Before the model is reported downloaded, so everything waiting on
             // it keeps showing the transfer rather than a ready model whose
             // first dictation then sits through the compile.
@@ -2446,29 +2448,35 @@ final class LocalModelManager {
         // reads hundreds of megabytes from disk, so running it here froze the
         // interface that had just published "Loading…".
         let threads = max(2, min(ProcessInfo.processInfo.processorCount - 2, 4))
-        let task = Task.detached(priority: .userInitiated) {
-            try SherpaRecognizer.create(
-                model: descriptor,
-                directory: folder,
-                language: resolvedLanguage,
-                // ONNX Runtime's CPU pool benefits from a bounded number of
-                // workers on iPhone; using every logical core throttles long
-                // recordings and competes with audio/UI work.
-                threads: threads,
-                quality: quality,
-                translateTo: translateTo
-            )
+        // Published inside the task, not after this caller resumes. A load
+        // waiting in `waitForEngineLoads` can resume first, and it must find
+        // this recognizer already in place — to release it — rather than start
+        // its own build while this one is still about to be installed beside it.
+        let task = Task { @MainActor [self] in
+            let recognizer = try await Task.detached(priority: .userInitiated) {
+                try SherpaRecognizer.create(
+                    model: descriptor,
+                    directory: folder,
+                    language: resolvedLanguage,
+                    // ONNX Runtime's CPU pool benefits from a bounded number of
+                    // workers on iPhone; using every logical core throttles long
+                    // recordings and competes with audio/UI work.
+                    threads: threads,
+                    quality: quality,
+                    translateTo: translateTo
+                )
+            }.value
+            sherpaRecognizer = recognizer
+            loadedModelID = descriptor.id
+            loadedLanguage = resolvedLanguage
+            loadedTranslateTo = translateTo
+            loadedQuality = quality
+            return recognizer
         }
         sherpaLoad = task
         defer { if sherpaLoad == task { sherpaLoad = nil } }
 
-        let recognizer = try await task.value
-        sherpaRecognizer = recognizer
-        loadedModelID = descriptor.id
-        loadedLanguage = resolvedLanguage
-        loadedTranslateTo = translateTo
-        loadedQuality = quality
-        return recognizer
+        return try await task.value
     }
 
     private func modelDirectory(for id: String) -> URL? {
