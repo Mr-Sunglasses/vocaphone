@@ -28,6 +28,14 @@ enum DiagnosticEvent: String, Codable, Sendable {
     case quickDictationStale
     /// The loaded speech model was dropped, with how much room that left.
     case localEngineReleased
+    /// An on-device engine finished building, with how long it took, whether
+    /// the app was in front, and the headroom left. A cold load in the
+    /// background is the usual story behind a first dictation that fails and a
+    /// second one that works, and this line is what tells the two apart.
+    case localEngineLoaded
+    /// A load or decode failed and is being tried once more on a fresh engine.
+    /// The failure itself is the `operationFailed` line just before it.
+    case localEngineRetried
     case stopQuickDictationRequested
     case audioInterruptionBegan
     case audioInterruptionEnded
@@ -93,6 +101,10 @@ enum DiagnosticErrorCode: String, Codable, Sendable {
     case gatewayNotConfigured
     case languageUnsupported
     case localModelCleanupFailed
+    /// The on-device engine could not be built from files already on disk.
+    case localEngineLoadFailed
+    /// The engine was built and then failed while decoding.
+    case localDecodeFailed
     case microphonePermissionDenied
     /// Recording succeeded but another app held the input, so it captured only
     /// silence. Distinct from a permission problem, which the user fixes once.
@@ -102,6 +114,47 @@ enum DiagnosticErrorCode: String, Codable, Sendable {
     case serverUnavailable
     case transcriptionFailed
     case uploadFailed
+}
+
+/// Which framework an error came from, reduced to a closed set. The domain
+/// string itself is not recorded: it is the framework's own, but keeping the
+/// field an enum is what keeps the log free of any text it did not choose.
+enum DiagnosticErrorDomain: String, Codable, Sendable {
+    case coreML
+    case whisperKit
+    /// A sherpa-onnx native status, from the bridge rather than an `Error`.
+    case sherpa
+    case localModel
+    case audio
+    case cocoa
+    case posix
+    case osStatus
+    case mach
+    case cancellation
+    case other
+
+    init(_ error: Error) {
+        let domain = (error as NSError).domain
+        switch domain {
+        case "com.apple.CoreML": self = .coreML
+        case "com.apple.coreaudio.avfaudio": self = .audio
+        case NSCocoaErrorDomain: self = .cocoa
+        case NSPOSIXErrorDomain: self = .posix
+        case NSOSStatusErrorDomain: self = .osStatus
+        case NSMachErrorDomain: self = .mach
+        default:
+            // A Swift error bridges with its type's qualified name as the domain.
+            if error is CancellationError {
+                self = .cancellation
+            } else if domain.hasPrefix("WhisperKit.") {
+                self = .whisperKit
+            } else if domain.hasSuffix(".LocalModelManagerError") {
+                self = .localModel
+            } else {
+                self = .other
+            }
+        }
+    }
 }
 
 struct DiagnosticMetadata: Codable, Equatable, Sendable {
@@ -114,6 +167,19 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
     /// else — a keyboard extension is killed for exceeding its budget, and
     /// without this number the only symptom is a keyboard that will not open.
     let megabytesAvailable: Int?
+    /// Where an error came from and its numeric code — the outermost error and,
+    /// when Core ML wraps the real cause, the innermost one it carries. Numbers
+    /// and a closed domain only; an error's message is never recorded.
+    let errorDomain: DiagnosticErrorDomain?
+    let errorNumber: Int?
+    let underlyingErrorDomain: DiagnosticErrorDomain?
+    let underlyingErrorNumber: Int?
+    /// Whether the containing app was on screen. iOS treats a backgrounded app
+    /// very differently — suspension, no GPU — and a failure reads differently
+    /// once you know which side of that it happened on.
+    let appInForeground: Bool?
+    /// A duration, in whole milliseconds.
+    let milliseconds: Int?
 
     static let empty = DiagnosticMetadata()
 
@@ -123,7 +189,13 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
         phase: DiagnosticPhase? = nil,
         errorCode: DiagnosticErrorCode? = nil,
         hasFullAccess: Bool? = nil,
-        megabytesAvailable: Int? = nil
+        megabytesAvailable: Int? = nil,
+        errorDomain: DiagnosticErrorDomain? = nil,
+        errorNumber: Int? = nil,
+        underlyingErrorDomain: DiagnosticErrorDomain? = nil,
+        underlyingErrorNumber: Int? = nil,
+        appInForeground: Bool? = nil,
+        milliseconds: Int? = nil
     ) {
         self.state = state
         self.reason = reason
@@ -131,6 +203,12 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
         self.errorCode = errorCode
         self.hasFullAccess = hasFullAccess
         self.megabytesAvailable = megabytesAvailable
+        self.errorDomain = errorDomain
+        self.errorNumber = errorNumber
+        self.underlyingErrorDomain = underlyingErrorDomain
+        self.underlyingErrorNumber = underlyingErrorNumber
+        self.appInForeground = appInForeground
+        self.milliseconds = milliseconds
     }
 
     static func state(_ state: SessionState) -> DiagnosticMetadata {
@@ -155,6 +233,60 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
 
     static func megabytesAvailable(_ megabytes: Int) -> DiagnosticMetadata {
         DiagnosticMetadata(megabytesAvailable: megabytes)
+    }
+
+    /// An on-device engine failure, with the error reduced to numbers.
+    static func localEngineFailure(
+        _ errorCode: DiagnosticErrorCode,
+        underlying error: Error,
+        appInForeground: Bool,
+        megabytesAvailable: Int
+    ) -> DiagnosticMetadata {
+        let outer = error as NSError
+        var innermost = outer
+        // Bounded: a cyclic chain is not expected, but it must not hang a log line.
+        for _ in 0..<8 {
+            guard let next = innermost.userInfo[NSUnderlyingErrorKey] as? NSError else { break }
+            innermost = next
+        }
+        let hasUnderlying = innermost !== outer
+        return DiagnosticMetadata(
+            errorCode: errorCode,
+            megabytesAvailable: megabytesAvailable,
+            errorDomain: DiagnosticErrorDomain(error),
+            errorNumber: outer.code,
+            underlyingErrorDomain: hasUnderlying ? DiagnosticErrorDomain(innermost) : nil,
+            underlyingErrorNumber: hasUnderlying ? innermost.code : nil,
+            appInForeground: appInForeground
+        )
+    }
+
+    /// A sherpa decode that failed natively. The bridge returns a status, not an
+    /// `Error`, so the status itself is the number; one it does not name has none.
+    static func sherpaDecodeFailure(
+        _ failure: SherpaNativeFailure,
+        appInForeground: Bool,
+        megabytesAvailable: Int
+    ) -> DiagnosticMetadata {
+        DiagnosticMetadata(
+            errorCode: .localDecodeFailed,
+            megabytesAvailable: megabytesAvailable,
+            errorDomain: .sherpa,
+            errorNumber: failure.status.map(Int.init),
+            appInForeground: appInForeground
+        )
+    }
+
+    static func localEngineLoaded(
+        milliseconds: Int,
+        appInForeground: Bool,
+        megabytesAvailable: Int
+    ) -> DiagnosticMetadata {
+        DiagnosticMetadata(
+            megabytesAvailable: megabytesAvailable,
+            appInForeground: appInForeground,
+            milliseconds: milliseconds
+        )
     }
 }
 

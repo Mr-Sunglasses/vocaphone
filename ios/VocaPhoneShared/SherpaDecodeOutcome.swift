@@ -24,6 +24,18 @@ enum SherpaNativeFailure: String, Sendable, Equatable {
     /// Maps `VocaPhoneSherpaDecodeStatus`. Lives here rather than at the call
     /// site so the shared target — and its tests — can reason about the values
     /// without importing the bridge.
+    /// The bridge status this failure was read from, or nil for one it does not
+    /// name.
+    var status: Int32? {
+        switch self {
+        case .invalidArgument: -1
+        case .streamUnavailable: -2
+        case .resultMissing: -3
+        case .outputTruncated: -4
+        case .unknown: nil
+        }
+    }
+
     static func forStatus(_ status: Int32) -> SherpaNativeFailure {
         switch status {
         case -1: .invalidArgument
