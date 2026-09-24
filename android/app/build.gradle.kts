@@ -180,6 +180,21 @@ android {
             System.getProperty("vocaphone.benchmark")?.let {
                 test.systemProperty("vocaphone.benchmark", it)
             }
+            // WhisperModelEndToEndTest: a downloaded model, synthesized speech,
+            // and the host build of the whisper JNI library to decode it with.
+            // `just model-test` sets all three; without them the test skips.
+            System.getProperty("vocaphone.modelE2E")?.let {
+                test.systemProperty("vocaphone.modelE2E", it)
+            }
+            System.getProperty("vocaphone.modelE2E.model")?.let {
+                test.systemProperty("vocaphone.modelE2E.model", it)
+            }
+            System.getProperty("vocaphone.modelE2E.report")?.let {
+                test.systemProperty("vocaphone.modelE2E.report", it)
+            }
+            System.getProperty("vocaphone.whisperLibrary")?.let {
+                test.systemProperty("java.library.path", it)
+            }
         }
     }
 

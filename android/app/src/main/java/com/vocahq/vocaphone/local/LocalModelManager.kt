@@ -523,9 +523,7 @@ class LocalModelManager(
     fun releaseIfIdle() {
         if (engineUsers.get() > 0) return
         cancelIdleUnload()
-        engineScope.launch {
-            engineMutex.withLock { releaseEngines() }
-        }
+        engineScope.launch { releaseEnginesIfUnused() }
     }
 
     private fun scheduleIdleUnload(idleMs: Long) {
@@ -534,8 +532,21 @@ class LocalModelManager(
         idleUnloadJob = engineScope.launch {
             if (idleMs > 0L) delay(idleMs)
             if (engineUsers.get() > 0) return@launch
-            engineMutex.withLock { releaseEngines() }
+            releaseEnginesIfUnused()
         }
+    }
+
+    /**
+     * Checked again under the lock. An unload that passed the first check can
+     * wait on [engineMutex] behind a load, and by the time it gets the lock a
+     * dictation may own the engine: freeing it between that dictation's
+     * [prepareEngine] and [decodePrepared] fails the decode with "engine
+     * changed before inference started" — a first dictation that fails and a
+     * retry that works.
+     */
+    private suspend fun releaseEnginesIfUnused() = engineMutex.withLock {
+        if (engineUsers.get() > 0) return@withLock
+        releaseEngines()
     }
 
     private fun cancelIdleUnload() {

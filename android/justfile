@@ -113,6 +113,30 @@ test *filter:
     # macOS ships bash 3.2, where an empty array under `set -u` is an error.
     ./gradlew testFullDebugUnitTest ${filters[@]+"${filters[@]}"}
 
+# Every other test stops short of native code; this one builds the pinned
+# whisper.cpp and the app's JNI glue for this computer and decodes words, so run
+# it for a whisper.cpp bump, a model pin change or the local transcription path.
+# The model is verified and cached under build/. Needs CMake and a JDK.
+#
+# Transcribe synthesized dictations with a real downloaded whisper.cpp model.
+[group('test')]
+model-test model="base-q8_0":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ANDROID_HOME="$({{ just_executable() }} _sdk)"
+    root="{{ justfile_directory() }}"
+    dir="${root}/build/model-e2e"
+    cmake -S "${root}/app/src/test/cpp" -B "${root}/build/host-whisper" \
+        -DCMAKE_BUILD_TYPE=Release >/dev/null
+    cmake --build "${root}/build/host-whisper" --parallel >/dev/null
+    python3 "${root}/../tools/model-e2e/fetch_ggml.py" '{{ model }}' "${dir}" >/dev/null
+    python3 "${root}/../tools/model-e2e/make_scenarios.py" "${dir}/scenarios"
+    ./gradlew :app:testFullDebugUnitTest --rerun \
+        --tests 'com.vocahq.vocaphone.local.WhisperModelEndToEndTest' \
+        -Dvocaphone.modelE2E="${dir}" \
+        -Dvocaphone.modelE2E.model='{{ model }}' \
+        -Dvocaphone.whisperLibrary="${root}/build/host-whisper"
+
 # Run Android Lint over the debug variant.
 [group('test')]
 lint:

@@ -1145,6 +1145,15 @@ final class RecordingCoordinator {
     }
 
     private func finalizeAndTranscribe(_ incoming: SessionRecord) async {
+        // Finishing usually runs with this app behind whatever the user is
+        // typing into, and once Quick Dictation stops standing by, the audio
+        // session is released below — after which nothing keeps the process
+        // running. A cold model load takes seconds, and without this iOS can
+        // suspend it half-way: the first dictation after a quiet spell failed
+        // where the next one, on a model already loaded, succeeded.
+        let backgroundAssertion = BackgroundAssertion(name: "finish-dictation")
+        backgroundAssertion.begin()
+        defer { backgroundAssertion.end() }
         pollingTask?.cancel()
         beginCancellationMonitoring(sessionID: incoming.sessionID)
         defer { cancellationMonitorTask?.cancel() }
