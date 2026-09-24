@@ -218,19 +218,24 @@ struct ContentView: View {
         if let id = models.downloadingModelID ?? models.queuedModelIDs.first {
             let name = LocalModelCatalog.descriptor(for: id)?.displayName ?? "Speech model"
             let inFlight = models.downloadingModelID != nil
+            let optimizing = models.isOptimizing(id)
             VocaCard {
                 VStack(alignment: .leading, spacing: VocaMetrics.padding - 2) {
                     VocaStatusLine(
                         status: .working,
-                        title: inFlight ? "Downloading \(name)" : "Waiting to download \(name)",
-                        detail: models.downloadTimeRemainingPhrase(for: id).map {
-                            "Ready in \($0)."
-                        } ?? "Started during setup. Dictation waits until this finishes."
+                        title: optimizing
+                            ? "Optimizing \(name) for this iPhone"
+                            : inFlight ? "Downloading \(name)" : "Waiting to download \(name)",
+                        detail: optimizing
+                            ? "A one-time step, so your first dictation starts quickly."
+                            : models.downloadTimeRemainingPhrase(for: id).map {
+                                "Ready in \($0)."
+                            } ?? "Started during setup. Dictation waits until this finishes."
                     )
                     if inFlight {
                         ProgressView(value: models.progress(for: id))
                             .tint(Color.brand)
-                        if let size = models.downloadSizeProgress(for: id) {
+                        if !optimizing, let size = models.downloadSizeProgress(for: id) {
                             Text(size)
                                 .font(.footnote.monospacedDigit())
                                 .foregroundStyle(Color.vocaSecondaryText)
@@ -245,7 +250,9 @@ struct ContentView: View {
                 }
             }
             .accessibilityLabel(
-                inFlight
+                optimizing
+                    ? "Optimizing \(name) for this iPhone"
+                    : inFlight
                     ? "Downloading \(name), \(Int(models.progress(for: id) * 100)) percent"
                     : "Waiting to download \(name)"
             )

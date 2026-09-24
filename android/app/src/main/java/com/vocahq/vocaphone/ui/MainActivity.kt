@@ -343,6 +343,7 @@ fun VocaPhoneApp(
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 onFinish = { viewModel.setOnboardingComplete(true) },
                 onRefreshSetup = viewModel::refreshSetup,
+                onWarmLocalModel = viewModel::warmSelectedLocalModel,
                 modifier = content,
             )
 

@@ -90,6 +90,40 @@ const val CANCEL_MODEL_DOWNLOAD_WHEN_HOST_LEAVES = false
  */
 internal const val LOCAL_ENGINE_IDLE_UNLOAD_MS = 2 * 60 * 1000L
 
+/**
+ * How long weights loaded *ahead* of a dictation stay when none comes. Longer
+ * than [LOCAL_ENGINE_IDLE_UNLOAD_MS] because the load is aimed at a screen the
+ * user is still reading — setup's Ready page, a model just chosen — and still
+ * bounded, because until a dictation starts the load is only a guess.
+ */
+internal const val LOCAL_ENGINE_WARM_UNLOAD_MS = 5 * 60 * 1000L
+
+/** Left over after a speculative load: the keyboard, the recorder, the phone. */
+internal const val LOCAL_ENGINE_WARM_HEADROOM_BYTES = 512L * 1024 * 1024
+
+/**
+ * Whether loading a model before anyone asked for it is worth the memory.
+ *
+ * A dictation loads regardless, because then the model is needed. A warm-up
+ * is a guess, and a wrong guess on a phone that is already short gets the app
+ * or the user's other apps killed — far worse than the seconds it would save.
+ * [residentBytes] is a model already loaded that this one replaces: engines
+ * are released before the next is built. Zero [availableBytes] means the
+ * system would not say, which is not a reason to refuse.
+ */
+internal fun hasRoomToWarm(
+    availableBytes: Long,
+    thresholdBytes: Long,
+    lowMemory: Boolean,
+    modelBytes: Long,
+    residentBytes: Long = 0,
+): Boolean {
+    if (lowMemory) return false
+    if (availableBytes <= 0L) return true
+    val usable = availableBytes - thresholdBytes.coerceAtLeast(0) + residentBytes.coerceAtLeast(0)
+    return usable >= modelBytes.coerceAtLeast(0) + LOCAL_ENGINE_WARM_HEADROOM_BYTES
+}
+
 internal fun idleEngineUnloadDue(
     users: Int,
     lastIdleAtMs: Long,
@@ -517,6 +551,49 @@ class LocalModelManager(
         engineScope.launch {
             runCatching { prepare(modelID, language, quality, translateTo) }
         }
+    }
+
+    /**
+     * Loads a model ahead of a dictation nobody has started yet, if the phone
+     * has room for it (see [hasRoomToWarm]), and lets it go again after
+     * [unloadAfterMs] if no dictation claims it. A dictation that starts while
+     * this is still loading joins it through [engineMutex].
+     */
+    fun warmAhead(
+        modelID: String,
+        language: String,
+        quality: TranscriptionQuality,
+        translateTo: String,
+        unloadAfterMs: Long = LOCAL_ENGINE_WARM_UNLOAD_MS,
+    ) {
+        val model = LocalModelCatalog.find(modelID) ?: return
+        if (!isDownloaded(model.id)) return
+        val resident = loadedModelID?.let(LocalModelCatalog::find)?.sizeBytes ?: 0L
+        val memory = ActivityManager.MemoryInfo()
+        appContext.getSystemService(ActivityManager::class.java)?.getMemoryInfo(memory)
+        val room = hasRoomToWarm(
+            availableBytes = memory.availMem,
+            thresholdBytes = memory.threshold,
+            lowMemory = memory.lowMemory,
+            modelBytes = model.sizeBytes,
+            residentBytes = resident,
+        )
+        if (!room) return
+        cancelIdleUnload()
+        engineScope.launch {
+            runCatching { prepare(modelID, language, quality, translateTo) }
+            unloadWhenIdle(unloadAfterMs)
+        }
+    }
+
+    /**
+     * Schedules the weights to be released after [afterMs] unless a dictation
+     * is using them. For loads made ahead of a dictation, which would otherwise
+     * stay resident until the system asked for the memory back.
+     */
+    fun unloadWhenIdle(afterMs: Long = LOCAL_ENGINE_WARM_UNLOAD_MS) {
+        if (engineUsers.get() > 0) return
+        scheduleIdleUnload(afterMs)
     }
 
     /** Drop native weights now if nothing is dictating. Used on memory trim. */

@@ -421,6 +421,21 @@ enum OnboardingPresentation {
         return true
     }
 
+    /// The pages where the chosen on-device model is loaded ahead of Try
+    /// dictating: every page after Choose model that leads to it.
+    ///
+    /// Loading takes seconds — far longer on a model's first load — and until
+    /// now it started on Try dictating, when the user tapped the microphone.
+    /// Microphone and the two keyboard pages are a minute of the user's own
+    /// work, which is exactly the time the load needs. Usage reporting comes
+    /// after the practice, and home loads on its first dictation as always.
+    static func warmsSelectedModel(on stage: OnboardingStage) -> Bool {
+        switch stage {
+        case .microphone, .keyboard, .keyboardSwitch, .practice: true
+        case .welcome, .source, .model, .usageReporting, .complete: false
+        }
+    }
+
     /// Skip on Choose model is allowed. On-device dictation has nothing to
     /// run until a model is on disk, so Try dictating is omitted.
     static func practiceIsBlockedUntilModelDownload(status: SetupStatus) -> Bool {
