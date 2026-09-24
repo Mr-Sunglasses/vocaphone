@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.data
 
 import android.content.Context
+import android.os.SystemClock
 import java.io.File
 
 /**
@@ -14,6 +15,12 @@ class DiagnosticLog(
     private val file: File,
     private val buildVersion: String = "unknown",
     private val nowMillis: () -> Long = System::currentTimeMillis,
+    /**
+     * Monotonic since boot, for durations. `ts` is wall-clock so a pasted log
+     * reads as a time of day, but a clock change mid-dictation would bend any
+     * span measured with it.
+     */
+    private val elapsedMillis: () -> Long = SystemClock::elapsedRealtime,
 ) {
     private var lineCount: Int? = null
 
@@ -116,8 +123,11 @@ class DiagnosticLog(
         atMillis: Long? = null,
         details: List<Pair<String, String?>> = emptyList(),
     ) {
-        val fields = listOf(
+        // An event written after the fact (an exit) has no monotonic stamp:
+        // the clock now says nothing about when it happened.
+        val fields = listOfNotNull(
             "ts=${atMillis ?: nowMillis()}",
+            if (atMillis == null) "up=${elapsedMillis()}" else null,
             "build=${safe(buildVersion)}",
             "event=${knownEvent(event)}",
             "value=${knownValue(event, value)}",

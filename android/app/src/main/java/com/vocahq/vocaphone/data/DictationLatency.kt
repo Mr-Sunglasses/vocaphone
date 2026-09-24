@@ -4,7 +4,8 @@ package com.vocahq.vocaphone.data
  * Median and p95 of the dictation spans that [DiagnosticLog] already stamps.
  *
  * The log records when each stage happened; nothing turned that into the
- * number a latency budget is written in. This reads the log back, pairs each
+ * number a latency budget is written in. Durations use the monotonic `up`
+ * stamp, so a wall-clock change mid-dictation cannot bend them. This reads the log back, pairs each
  * span's start with the first matching end inside the same dictation, and
  * reports how long they took. See docs/latency.md for the budgets.
  *
@@ -38,22 +39,28 @@ object DictationLatency {
 
     fun summarize(events: String, spans: List<Span> = SPANS): List<Summary> {
         val samples = spans.associateWith { mutableListOf<Long>() }
-        val open = mutableMapOf<Span, Long>()
+        val open = mutableMapOf<Span, Stamp>()
         for (line in events.lineSequence()) {
             val fields = parse(line) ?: continue
-            val ts = fields["ts"]?.toLongOrNull() ?: continue
+            val stamp = stamp(fields) ?: continue
             val key = "${fields["event"]}:${fields["value"]}"
             for (span in spans) {
                 val startedAt = open[span]
                 if (key == span.to && startedAt != null) {
-                    samples.getValue(span) += (ts - startedAt).coerceAtLeast(0L)
                     open.remove(span)
+                    // Different clocks (a log spanning an upgrade), or a clock
+                    // that went backwards (a reboot, or wall-clock time moved):
+                    // no honest duration, so no sample.
+                    val duration = stamp.millis - startedAt.millis
+                    if (stamp.monotonic == startedAt.monotonic && duration >= 0) {
+                        samples.getValue(span) += duration
+                    }
                 }
             }
             if (key in BOUNDARIES) open.clear()
             // A second Finish tap is not a new request; the first is the tap.
             for (span in spans) {
-                if (key == span.from && span !in open) open[span] = ts
+                if (key == span.from && span !in open) open[span] = stamp
             }
         }
         return spans.mapNotNull { span ->
@@ -75,6 +82,13 @@ object DictationLatency {
         val rank = (percent / 100.0 * sorted.size).let { kotlin.math.ceil(it).toInt() }
         return sorted[(rank - 1).coerceIn(0, sorted.lastIndex)]
     }
+
+    private data class Stamp(val millis: Long, val monotonic: Boolean)
+
+    /** `up` (monotonic) when the line has it; `ts` only for logs written before it existed. */
+    private fun stamp(fields: Map<String, String>): Stamp? =
+        fields["up"]?.toLongOrNull()?.let { Stamp(it, monotonic = true) }
+            ?: fields["ts"]?.toLongOrNull()?.let { Stamp(it, monotonic = false) }
 
     private fun parse(line: String): Map<String, String>? {
         if (line.isBlank()) return null

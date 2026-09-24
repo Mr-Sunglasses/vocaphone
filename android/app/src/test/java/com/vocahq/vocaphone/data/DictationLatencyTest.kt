@@ -85,4 +85,32 @@ class DictationLatencyTest {
             DictationLatency.reportLines(log),
         )
     }
+
+    @Test
+    fun `durations use the monotonic stamp when the wall clock jumps`() {
+        val log = listOf(
+            "ts=50000 up=1000 build=1.0 event=action value=start source=IME",
+            // The wall clock was set back an hour between the two events.
+            "ts=10 up=1300 build=1.0 event=state value=LISTENING source=IME",
+        ).joinToString("\n")
+
+        assertEquals(
+            listOf("Tap -> listening: 300 ms median, 300 ms p95 (n=1)"),
+            DictationLatency.reportLines(log),
+        )
+    }
+
+    @Test
+    fun `a span that runs backwards or mixes clocks is dropped, not zeroed`() {
+        val log = listOf(
+            // Old build: wall clock only. New build after the upgrade: monotonic.
+            line(1_000, "timing", "finish_requested"),
+            "ts=2000 up=500 build=1.0 event=timing value=capture_stopped source=IME",
+            // A reboot reset the monotonic clock mid-span.
+            "ts=3000 up=90000 build=1.0 event=action value=start source=IME",
+            "ts=3200 up=40 build=1.0 event=state value=LISTENING source=IME",
+        ).joinToString("\n")
+
+        assertTrue(DictationLatency.summarize(log).isEmpty())
+    }
 }

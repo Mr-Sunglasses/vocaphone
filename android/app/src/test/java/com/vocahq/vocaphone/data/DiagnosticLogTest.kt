@@ -160,4 +160,25 @@ class DiagnosticLogTest {
             directory.deleteRecursively()
         }
     }
+
+    @Test
+    fun `live events carry a monotonic stamp and exits do not`() {
+        val directory = Files.createTempDirectory("vocaphone-diagnostics").toFile()
+        try {
+            val log = DiagnosticLog(
+                directory.resolve("events.log"),
+                nowMillis = { 9_000L },
+                elapsedMillis = { 1_234L },
+            )
+
+            log.recordTiming("finish_requested", "IME")
+            log.recordExit("crash", "foreground", "under_1gb", "none", atMillis = 8_000L)
+
+            val lines = log.read().lines().filter { it.isNotBlank() }
+            assertTrue(lines[0].startsWith("ts=9000 up=1234 "))
+            assertTrue(lines[1].startsWith("ts=8000 build="))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
 }

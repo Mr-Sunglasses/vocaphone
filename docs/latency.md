@@ -85,11 +85,15 @@ and the iOS keyboard's `FrameMonitor`.
 
 Notes on accuracy:
 
-- Android timestamps are wall-clock milliseconds. State lines are written by a
+- Durations use a monotonic clock on both platforms. On Android that is the
+  `up=` field (`SystemClock.elapsedRealtime`); `ts=` stays wall-clock so a
+  pasted log reads as a time of day. Android state lines are written by a
   collector, so they can land a few milliseconds after the transition.
 - iOS uses `uptimeMilliseconds`, which is monotonic across the keyboard and
-  the app, so a span can start in one process and end in the other.
-- A span that crosses a cancel or a failure is dropped, not counted.
+  the app, so a span can start in one process and end in the other. The two
+  processes append through separate queues, so entries are sorted by uptime
+  within each boot before pairing.
+- A span that crosses a cancel, a failure or a reboot is dropped, not counted.
 
 ## Baselines
 
