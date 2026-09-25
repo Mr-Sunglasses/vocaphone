@@ -20,6 +20,13 @@ class SetupPageTest {
     }
 
     @Test
+    fun `welcome is only satisfied by an explicit acknowledgement`() {
+        assertFalse(SetupPage.WELCOME.isSatisfied(SetupStatus()))
+        assertTrue(SetupPage.WELCOME.isSatisfied(SetupStatus(), welcomeAcknowledged = true))
+        assertEquals(SetupPage.WELCOME, SetupPage.resume(SetupStatus(), welcomeAcknowledged = false))
+    }
+
+    @Test
     fun `enabled but unselected keyboard cannot advance`() {
         val status = ready.copy(keyboard = false, ime = ImeSetupStatus(enabled = true))
         assertFalse(SetupPage.KEYBOARD.isSatisfied(status))
@@ -43,11 +50,18 @@ class SetupPageTest {
 
     @Test
     fun `back and forward preserve the ordered journey without granting readiness`() {
-        assertEquals(SetupPage.KEYBOARD, SetupPage.KEYBOARD.previous())
+        assertEquals(SetupPage.WELCOME, SetupPage.KEYBOARD.previous())
+        assertEquals(SetupPage.WELCOME, SetupPage.WELCOME.previous())
+        assertEquals(SetupPage.KEYBOARD, SetupPage.WELCOME.next())
         assertEquals(SetupPage.READY, SetupPage.READY.next())
         SetupPage.entries.dropLast(1).forEach { page ->
             assertEquals(page, page.next().previous())
-            assertFalse(page.isSatisfied(SetupStatus()))
+            if (page == SetupPage.WELCOME) {
+                assertFalse(page.isSatisfied(SetupStatus()))
+                assertTrue(page.isSatisfied(SetupStatus(), welcomeAcknowledged = true))
+            } else {
+                assertFalse(page.isSatisfied(SetupStatus()))
+            }
         }
     }
 }

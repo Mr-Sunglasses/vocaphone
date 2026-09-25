@@ -563,6 +563,7 @@ enum KeyboardPreferences {
     /// user is in Settings. Setup is mandatory, so a relaunch must continue the
     /// task instead of replaying Welcome or falling through to Home.
     static let onboardingStageKey = "onboardingStage"
+    static let onboardingMotionIntroSeenKey = "onboardingMotionIntroSeen"
     /// Set before onboarding opens iOS Settings for the keyboard. Unlike view
     /// state, this survives iOS reclaiming the app while Settings is in front,
     /// so the first return can reveal the confirmation action immediately.

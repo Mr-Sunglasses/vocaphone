@@ -173,6 +173,20 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Select Xcode 26
+        run: |
+          set -euo pipefail
+          # Same step as quality-ios.yml. `macos-15` still defaults to Xcode
+          # 16.4 / iOS 18.5, and the keyboard's Liquid Glass code
+          # (`UIGlassEffect`, `glassEffect`, `GlassEffectContainer`) does not
+          # compile against that SDK even behind `#available(iOS 26, *)`. The
+          # traced build failed on every run, and each failure uploaded an
+          # "unsuccessful execution" analysis for /language:swift, which code
+          # scanning reports as a broken configuration.
+          app="$(printf '%s\n' /Applications/Xcode_26*.app | sort -V | tail -1)"
+          sudo xcode-select -s "$app"
+          xcodebuild -version
+
       - run: brew install xcodegen
 
       - name: Generate Xcode project

@@ -42,6 +42,10 @@ struct SetupView: View {
         store: KeyboardPreferences.defaults
     ) private var persistedStageRaw = OnboardingStage.welcome.rawValue
     @AppStorage(
+        KeyboardPreferences.onboardingMotionIntroSeenKey,
+        store: KeyboardPreferences.defaults
+    ) private var motionIntroSeen = false
+    @AppStorage(
         KeyboardPreferences.keyboardPracticeKey,
         store: KeyboardPreferences.defaults
     ) private var hasCompletedKeyboardPractice = false
@@ -225,7 +229,16 @@ struct SetupView: View {
     }
 
     private var setupChrome: some View {
-        onboardingBody
+        Group {
+            if !setupCompleted && !motionIntroSeen
+                && persistedStageRaw == OnboardingStage.welcome.rawValue {
+                OnboardingMotionIntroView {
+                    motionIntroSeen = true
+                }
+            } else {
+                onboardingBody
+            }
+        }
             .background(Color.vocaCanvas.ignoresSafeArea())
             .sheet(isPresented: $isShowingGatewaySetup, onDismiss: {
                 coordinator.refreshSetupStatus()
@@ -880,7 +893,7 @@ struct SetupView: View {
             nil
         } else {
         switch page {
-        case .welcome: ("Get started", advance)
+        case .welcome: ("Continue", advance)
         case .source:
             if localTranscriptionEnabled {
                 ("Next", advance)
