@@ -129,6 +129,8 @@ fun SetupScreen(
     telemetryPendingCount: () -> Int,
     telemetryDeliveryStatus: () -> String,
     onFinish: () -> Unit,
+    onIntroSeen: () -> Unit,
+    onWelcomeSeen: () -> Unit,
     onRefreshSetup: () -> Unit,
     onWarmLocalModel: () -> Unit,
     modifier: Modifier = Modifier,
@@ -146,6 +148,10 @@ fun SetupScreen(
         }
         return
     }
+    if (!settings.onboardingIntroSeen) {
+        OnboardingWordFlow(onContinue = onIntroSeen, modifier = modifier)
+        return
+    }
     val context = LocalContext.current
     val activity = context.findActivity()
     val requestPermission = rememberLauncherForActivityResult(
@@ -155,10 +161,22 @@ fun SetupScreen(
     var askingUsageReporting by remember { mutableStateOf(false) }
     val recentlyReady = rememberRecentlyReadySteps(status)
 
-    var stage by rememberSaveable { mutableStateOf(SetupPage.resume(status)) }
+    var welcomeAcknowledged by rememberSaveable { mutableStateOf(settings.onboardingWelcomeSeen) }
+    var stage by rememberSaveable {
+        mutableStateOf(
+            if (settings.onboardingWelcomeSeen) SetupPage.resume(status)
+            else SetupPage.WELCOME
+        )
+    }
+    LaunchedEffect(settings.onboardingWelcomeSeen) {
+        if (settings.onboardingWelcomeSeen && !welcomeAcknowledged) {
+            welcomeAcknowledged = true
+            if (stage == SetupPage.WELCOME) stage = SetupPage.resume(status)
+        }
+    }
     val scrollState = rememberScrollState()
     LaunchedEffect(stage) { scrollState.scrollTo(0) }
-    BackHandler(enabled = stage != SetupPage.KEYBOARD) { stage = stage.previous() }
+    BackHandler(enabled = stage != SetupPage.WELCOME) { stage = stage.previous() }
     // Load the model while the user reads the Ready page, and again on every
     // return to it: leaving the app is when the system takes it back. Without
     // this the practice dictation carried the whole load.
@@ -191,13 +209,16 @@ fun SetupScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        if (stage == SetupPage.READY) {
-                            if (status.isReadyToDictate) "Setup complete" else "Setup needs attention"
-                        } else "Step ${stage.ordinal + 1} of 4",
+                        when {
+                            stage == SetupPage.WELCOME -> "Welcome"
+                            stage == SetupPage.READY ->
+                                if (status.isReadyToDictate) "Setup complete" else "Setup needs attention"
+                            else -> "Step ${stage.ordinal} of 4"
+                        },
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                     )
-                    if (stage != SetupPage.KEYBOARD) {
+                    if (stage != SetupPage.WELCOME) {
                         TextButton(onClick = { stage = stage.previous() }) { Text("Back") }
                     }
                 }
@@ -219,6 +240,20 @@ fun SetupScreen(
             }
 
             when (stage) {
+                SetupPage.WELCOME -> {
+                    Notice {
+                        Text("Your voice stays on this phone", style = MaterialTheme.typography.titleMedium)
+                        Text("On-device by default. A gateway you run is a separate choice.")
+                    }
+                    Notice {
+                        Text("No subscriptions or limits", style = MaterialTheme.typography.titleMedium)
+                        Text("Dictate as much as you want, whenever you want.")
+                    }
+                    Notice {
+                        Text("Works anywhere you can type", style = MaterialTheme.typography.titleMedium)
+                        Text("Use it in any app with a keyboard.")
+                    }
+                }
                 SetupPage.KEYBOARD -> {
                     Notice {
                         Text("Your voice, wherever you type", style = MaterialTheme.typography.titleMedium)
@@ -352,15 +387,20 @@ fun SetupScreen(
                         .padding(top = 16.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-            if (stage.isSatisfied(status) || stage == SetupPage.READY) {
+            if (stage == SetupPage.WELCOME || stage.isSatisfied(status, welcomeAcknowledged) || stage == SetupPage.READY) {
                 PrimaryButton(
                     text = when {
+                        stage == SetupPage.WELCOME -> "Continue"
                         stage == SetupPage.READY && !status.isReadyToDictate -> "Review remaining setup"
                         stage == SetupPage.READY -> SetupCopy.START
                         else -> "Continue"
                     },
                     onClick = {
-                        if (stage != SetupPage.READY) stage = stage.next()
+                        if (stage == SetupPage.WELCOME) {
+                            welcomeAcknowledged = true
+                            onWelcomeSeen()
+                            stage = stage.next()
+                        } else if (stage != SetupPage.READY) stage = stage.next()
                         else if (!status.isReadyToDictate) stage = SetupPage.resume(status)
                         else if (askUsageReporting) askingUsageReporting = true
                         else onFinish()
@@ -369,8 +409,11 @@ fun SetupScreen(
                 )
             }
             Text(
-                if (stage == SetupPage.READY) "You can change your setup in Settings."
-                else "${status.completedStepCount} of ${status.stepCount} requirements ready. Your progress is kept when you leave.",
+                when {
+                    stage == SetupPage.WELCOME -> "Next you will set up the keyboard and permissions."
+                    stage == SetupPage.READY -> "You can change your setup in Settings."
+                    else -> "${status.completedStepCount} of ${status.stepCount} requirements ready. Your progress is kept when you leave."
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

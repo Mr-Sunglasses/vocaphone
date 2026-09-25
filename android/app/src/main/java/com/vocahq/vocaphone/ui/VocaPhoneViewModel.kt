@@ -456,6 +456,12 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
             if (complete) container.telemetry.setupFinished()
         }
 
+    fun setOnboardingIntroSeen() =
+        viewModelScope.launch { container.settings.setOnboardingIntroSeen(true) }
+
+    fun setOnboardingWelcomeSeen() =
+        viewModelScope.launch { container.settings.setOnboardingWelcomeSeen(true) }
+
     fun setLocalTranscriptionEnabled(enabled: Boolean) =
         viewModelScope.launch {
             container.settings.setLocalTranscriptionEnabled(enabled)
