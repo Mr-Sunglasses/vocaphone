@@ -85,13 +85,11 @@ enum DiagnosticLatency {
 
     /// A drop this large in uptime looks like a reboot. A delayed same-boot
     /// flush is an uptime still at or after this boot's observed minimum
-    /// (`bootMinUptime`) with a wall time at or before this boot's latest,
-    /// unless this boot already saw a wall-clock setback of more than one
-    /// second. After that setback, uptime at or after the minimum is enough.
+    /// (`bootMinUptime`) with a wall time at or before this boot's latest.
     /// Wall time moving forward is a new boot even when uptime is at or after
-    /// that minimum, until a setback has been seen. An uptime below the
-    /// minimum is a new boot, including a clock-set-back reboot whose wall
-    /// time falls inside the prior boot's wall range.
+    /// that minimum. An uptime below the minimum is a new boot, including a
+    /// clock-set-back reboot whose wall time falls inside the prior boot's
+    /// wall range.
     static let rebootGap: UInt64 = 60_000
 
     /// The log in the order things happened rather than the order they were
@@ -103,42 +101,34 @@ enum DiagnosticLatency {
     /// each boot, never across one. A write delayed past `rebootGap` stays in
     /// the current boot when its uptime is still at or after this boot's
     /// observed minimum (`bootMinUptime`) and its wall time is at or before
-    /// this boot's latest, or when this boot already saw a wall-clock setback
-    /// of more than one second. Wall time moving forward starts a new boot
-    /// even when uptime is at or after that minimum, until a setback has been
-    /// seen. An uptime below the minimum is a new boot, including a
-    /// clock-set-back reboot whose wall time falls inside the prior boot's
-    /// wall range.
+    /// this boot's latest. Wall time moving forward starts a new boot even
+    /// when uptime is at or after that minimum. An uptime below the minimum
+    /// is a new boot, including a clock-set-back reboot whose wall time
+    /// falls inside the prior boot's wall range.
     static func chronological(_ entries: [DiagnosticEntry]) -> [DiagnosticEntry] {
         var boots: [[(offset: Int, at: UInt64, entry: DiagnosticEntry)]] = [[]]
         var latest: UInt64 = 0
         var bootMinUptime: UInt64?
         var latestTimestamp: Date?
-        var sawClockSetback = false
         for (offset, entry) in entries.enumerated() {
             guard let at = entry.uptimeMilliseconds else { continue }
             if at + rebootGap < latest {
-                // Delayed flush: at >= bootMinUptime, and wall at or before
-                // latestTimestamp unless this boot already saw a clock setback.
-                // Otherwise a reboot (wall forward, or uptime below bootMinUptime).
+                // Delayed flush: at >= bootMinUptime and wall at or before
+                // latestTimestamp. Otherwise a reboot (wall forward, or
+                // uptime below bootMinUptime).
                 let wallMovedForward = latestTimestamp.map { entry.timestamp > $0 } == true
                 let delayedFlush =
-                    bootMinUptime.map { at >= $0 } == true
-                    && (!wallMovedForward || sawClockSetback)
+                    bootMinUptime.map { at >= $0 } == true && !wallMovedForward
                 if !delayedFlush {
                     boots.append([])
                     latest = 0
                     bootMinUptime = nil
                     latestTimestamp = nil
-                    sawClockSetback = false
                 }
             }
             boots[boots.count - 1].append((offset, at, entry))
             latest = max(latest, at)
             bootMinUptime = bootMinUptime.map { min($0, at) } ?? at
-            if let latestTimestamp, latestTimestamp.timeIntervalSince(entry.timestamp) > 1 {
-                sawClockSetback = true
-            }
             latestTimestamp = latestTimestamp.map { max($0, entry.timestamp) } ?? entry.timestamp
         }
         return boots.flatMap { boot in

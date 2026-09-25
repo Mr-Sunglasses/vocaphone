@@ -151,14 +151,36 @@ struct DiagnosticLatencyTests {
             // stays at T0 because the set-back wall is earlier.
             entry(100_000, .sessionStateChanged, state: .recording, timestamp: t0.addingTimeInterval(-3_600)),
             // Delayed same-boot flush: uptime drop > rebootGap, 30_000 is still
-            // at/after bootMinUptime 20_000, but wall is after latestTimestamp T0.
-            // A prior setback keeps this in the same boot.
-            entry(30_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: t0.addingTimeInterval(50)),
+            // at/after bootMinUptime 20_000. Wall T0-10 is later than the
+            // setback entry's T0-3600 but still <= latestTimestamp T0.
+            entry(30_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: t0.addingTimeInterval(-10)),
         ]
 
         #expect(
             DiagnosticLatency.reportLines(entries)
                 == ["Tap -> recording: 70000 ms median, 70000 ms p95 (n=1)"]
+        )
+    }
+
+    @Test func wallForwardRebootAfterSetbackStartsNewBoot() {
+        let t0 = Date(timeIntervalSince1970: 2_000_000)
+        let entries = [
+            // Establishes this boot's bootMinUptime (20_000) and latestTimestamp (T0).
+            entry(20_000, .captureStopped, timestamp: t0),
+            // Mid-boot clock set back; latestTimestamp stays at T0.
+            entry(100_000, .sessionStateChanged, state: .recording, timestamp: t0.addingTimeInterval(-3_600)),
+            // Delayed same-boot flush: 30_000 >= bootMinUptime and wall T0-10
+            // is still <= latestTimestamp T0, so this stays in the first boot.
+            entry(30_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: t0.addingTimeInterval(-10)),
+            // Wall-forward reboot: 25_000 is still >= bootMinUptime, but wall
+            // moved past latestTimestamp, so this starts a new boot.
+            entry(25_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: t0.addingTimeInterval(120)),
+            entry(25_400, .sessionStateChanged, state: .recording, timestamp: t0.addingTimeInterval(120.4)),
+        ]
+
+        #expect(
+            DiagnosticLatency.reportLines(entries)
+                == ["Tap -> recording: 400 ms median, 70000 ms p95 (n=2)"]
         )
     }
 
