@@ -142,6 +142,26 @@ struct DiagnosticLatencyTests {
         )
     }
 
+    @Test func delayedSameBootWriteAfterClockSetbackDoesNotStartANewBoot() {
+        let t0 = Date(timeIntervalSince1970: 2_000_000)
+        let entries = [
+            // Establishes this boot's bootMinUptime (20_000) and latestTimestamp (T0).
+            entry(20_000, .captureStopped, timestamp: t0),
+            // Mid-boot clock set back; high uptime already processed. latestTimestamp
+            // stays at T0 because the set-back wall is earlier.
+            entry(100_000, .sessionStateChanged, state: .recording, timestamp: t0.addingTimeInterval(-3_600)),
+            // Delayed same-boot flush: uptime drop > rebootGap, 30_000 is still
+            // at/after bootMinUptime 20_000, but wall is after latestTimestamp T0.
+            // A prior setback keeps this in the same boot.
+            entry(30_000, .sessionStateChanged, state: .launchingApp, source: .keyboard, timestamp: t0.addingTimeInterval(50)),
+        ]
+
+        #expect(
+            DiagnosticLatency.reportLines(entries)
+                == ["Tap -> recording: 70000 ms median, 70000 ms p95 (n=1)"]
+        )
+    }
+
     @Test func neverMergesRebootWhenClockSetBackIntoPriorBootWallRange() {
         let firstBoot = Date(timeIntervalSince1970: 2_000_000)
         let entries = [
