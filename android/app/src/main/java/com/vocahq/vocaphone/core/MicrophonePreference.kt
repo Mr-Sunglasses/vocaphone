@@ -32,13 +32,16 @@ enum class MicrophonePreference(val storedValue: String) {
         get() = when (this) {
             AUTOMATIC ->
                 "Uses a Bluetooth headset when one is connected. Otherwise uses " +
-                    "this phone's microphone."
+                    "this phone's microphone. A Bluetooth headset sends telephone-quality " +
+                    "audio, which on-device models transcribe less accurately; choose " +
+                    "Phone microphone for the best results."
             PHONE -> "Always use the microphone built into this phone."
             WIRED -> "Always use the microphone on a wired headset."
             BLUETOOTH ->
                 "Always use the microphone on a Bluetooth headset. Android puts " +
                     "the headset into call mode, so music playback drops in quality " +
-                    "while you dictate."
+                    "while you dictate, and on-device models transcribe its " +
+                    "telephone-quality audio less accurately."
             USB -> "Always use a USB microphone or headset."
         }
 

@@ -511,6 +511,14 @@ struct SessionRecordTests {
         #expect(MicrophonePreference.iPhone.rawValue == "iphone")
     }
 
+    /// Full-quality AirPods recording needs iOS 26; older systems are not
+    /// promised it.
+    @Test func automaticMicrophoneOnlyPromisesFullQualityAirPodsWhereItExists() {
+        #expect(MicrophonePreference.automaticDetail(fullQualityAirPods: true).contains("full quality"))
+        #expect(!MicrophonePreference.automaticDetail(fullQualityAirPods: false).contains("full quality"))
+        #expect(MicrophonePreference.automaticDetail(fullQualityAirPods: false).contains("telephone-quality"))
+    }
+
     @Test func gatewayEndpointAcceptsLANAndHTTPSHosts() {
         let lan = GatewayEndpoint.validatedURL(from: "  http://homelabone:8765/  ")
         let vps = GatewayEndpoint.validatedURL(from: "https://dictation.example.com")
