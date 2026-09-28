@@ -1037,9 +1037,9 @@ private fun SnippetEditorDialog(
 }
 
 /**
- * Always shown. Whisper can use the list. Other on-device engines cannot, so
- * the field disables and the warning stays visible instead of hiding the
- * section.
+ * Always shown and always editable. Every route spells close matches the
+ * user's way; only Whisper is also nudged toward the words while decoding, and
+ * a note says so for any other model.
  */
 @Composable
 private fun CustomVocabularySection(
@@ -1053,38 +1053,35 @@ private fun CustomVocabularySection(
     var draft by remember(vocabulary) { mutableStateOf(vocabulary) }
     val source = if (synced) personalDictionary else draft
     val terms = remember(source) { CustomVocabulary.terms(source) }
-    val whisperWarning = CustomVocabulary.whisperOnlyWarning(unsupportedModel)
-    val whisperOnly = whisperWarning != null
+    val spellingOnly = CustomVocabulary.spellingOnlyNote(unsupportedModel)
 
     Section(
         title = "Custom words and phrases",
-        supporting = "Names, places, and jargon an on-device Whisper model is " +
-            "unlikely to know. One per line, or separated by commas.",
+        supporting = "Names, places, and jargon a speech model is unlikely to know. " +
+            "One per line, or separated by commas.",
     ) {
         // Switch, not a checkbox: Material 3 uses switches for independent
         // on/off settings. A checkbox is for picking items from a list.
         SettingToggle(
             title = "Use personal dictionary",
-            detail = "Whisper sees the same names as the suggestion strip. " +
+            detail = "Dictation uses the same names as the suggestion strip. " +
                 "Turn this off to keep a separate list.",
             checked = synced,
             onCheckedChange = onSyncedChange,
         )
-        if (whisperWarning != null) {
-            Notice(tone = NoticeTone.Warning) {
-                Text(whisperWarning, style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "This list is kept for when you switch back to a Whisper model.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+        if (spellingOnly != null) {
+            Text(
+                spellingOnly,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (synced) {
             Text(
                 when (terms.size) {
                     0 -> "No words in the personal dictionary. Transcription is unchanged."
-                    1 -> "1 word from the personal dictionary will bias Whisper."
-                    else -> "${terms.size} words from the personal dictionary will bias Whisper."
+                    1 -> "1 word from the personal dictionary will be spelled your way."
+                    else -> "${terms.size} words from the personal dictionary will be spelled your way."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1099,29 +1096,27 @@ private fun CustomVocabularySection(
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !whisperOnly,
                 label = { Text("Words and phrases") },
                 placeholder = { Text("Kanishk\nVocaHQ\nTailscale") },
                 minLines = 3,
                 maxLines = 6,
             )
-            if (!whisperOnly) {
-                Text(
-                    if (terms.isEmpty()) {
-                        "No custom words. Transcription is unchanged."
-                    } else {
-                        "${terms.size} word${if (terms.size == 1) "" else "s"} will bias the decoder. " +
-                            "This nudges spelling rather than guaranteeing it, and a very long " +
-                            "list starts to crowd out the speech itself."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                if (terms.isEmpty()) {
+                    "No custom words. Transcription is unchanged."
+                } else {
+                    "${terms.size} word${if (terms.size == 1) "" else "s"} will be spelled your way " +
+                        "when the transcript comes close — \"whisper kit\" becomes \"WhisperKit\". " +
+                        "Whisper models are also nudged toward them while decoding; a very long " +
+                        "list starts to crowd out the speech itself."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SecondaryButton(
                 text = "Save words",
                 onClick = { onSave(draft) },
-                enabled = !whisperOnly && draft != vocabulary,
+                enabled = draft != vocabulary,
             )
         }
     }

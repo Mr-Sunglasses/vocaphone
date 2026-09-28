@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.audio
 
 import kotlin.math.abs
+import kotlin.math.tanh
 
 /**
  * Levels a recording before an on-device model sees it.
@@ -68,22 +69,80 @@ object SpeechAudioConditioning {
             for (index in samples.indices) samples[index] -= offset
         }
 
-        var peak = 0f
-        for (index in analysisStart until samples.size) {
-            val magnitude = abs(samples[index])
-            if (magnitude > peak) peak = magnitude
-        }
-        if (peak < SILENCE_PEAK) return samples
+        val level = speechLevel(samples, analysisStart)
+        if (level < SILENCE_PEAK) return samples
 
         // Already loud enough. Attenuating a hot recording cannot undo whatever
         // clipping it arrived with, and quiet is the problem worth solving.
-        val gain = gainFor(peak)
+        val gain = gainFor(level)
         if (gain <= 1f) return samples
 
         for (index in samples.indices) {
-            samples[index] = (samples[index] * gain).coerceIn(-1f, 1f)
+            samples[index] = limited(samples[index] * gain)
         }
         return samples
+    }
+
+    /**
+     * The level a recording's gain is derived from: its loudest 20 ms frames,
+     * with the very loudest few set aside.
+     *
+     * The single loudest sample used to decide it, and the loudest sample of a
+     * dictation is often not speech: the thump of the finger that tapped Stop,
+     * a knock on the desk, the phone being set down. One of those at 0.9 left
+     * speech at 0.1 exactly where it was, when the recording otherwise earned
+     * eight times the level. Setting aside the loudest 2% of frames (at least
+     * two, so a click that straddles a boundary goes too) takes a transient out
+     * of the decision; real speech keeps nearly all of its level, and [limited]
+     * rounds off the peaks that sit above it.
+     */
+    fun speechLevel(samples: FloatArray, start: Int = 0): Float {
+        val frameCount = (samples.size - start + FRAME_SAMPLES - 1) / FRAME_SAMPLES
+        if (frameCount <= 0) return 0f
+        val frames = FloatArray(frameCount)
+        for (frame in 0 until frameCount) {
+            val from = start + frame * FRAME_SAMPLES
+            val to = minOf(from + FRAME_SAMPLES, samples.size)
+            var loudest = 0f
+            for (index in from until to) loudest = maxOf(loudest, abs(samples[index]))
+            frames[frame] = loudest
+        }
+        if (frameCount <= MINIMUM_FRAMES) return frames.max()
+        val audible = frames.count { it >= SILENCE_PEAK }
+        frames.sortDescending()
+        return frames[minOf(setAside(audible), frameCount - 1)]
+    }
+
+    /**
+     * How many of the loudest frames to set aside: enough for a knock or a
+     * fumble (sixteen frames, 320 ms), never more than half of the frames that
+     * carry any sound, and at least two.
+     *
+     * A fixed allowance rather than a share. A share of the whole recording set
+     * aside every word of three seconds of speech followed by minutes of
+     * silence; a share of the audible frames did the same to one second of
+     * speech over thirty seconds of room noise. Handling noise is short whatever
+     * the recording's length, so its allowance is too, and half the audible
+     * frames keeps a very short utterance its own level. Noise longer and louder
+     * than 320 ms cannot be told from speech by level alone, and gets the gain
+     * the loudest sample used to give.
+     */
+    fun setAside(audibleFrames: Int): Int = maxOf(2, minOf(MAXIMUM_SET_ASIDE, audibleFrames / 2))
+
+    private const val MAXIMUM_SET_ASIDE = 16
+
+    /**
+     * Leaves everything up to the target alone and bends what is above it
+     * smoothly towards full scale, never past it. A transient [speechLevel] set
+     * aside is amplified with the speech and would otherwise clip; so would a
+     * streaming chunk louder than every one before it.
+     */
+    fun limited(sample: Float): Float {
+        val magnitude = abs(sample)
+        if (magnitude <= TARGET_PEAK) return sample
+        val headroom = 1f - TARGET_PEAK
+        val bent = TARGET_PEAK + headroom * tanh((magnitude - TARGET_PEAK) / headroom)
+        return if (sample < 0f) -bent else bent
     }
 
     /**
@@ -100,7 +159,7 @@ object SpeechAudioConditioning {
         val gain = gainFor(peakSoFar)
         if (gain <= 1f) return samples
 
-        for (index in samples.indices) samples[index] *= gain
+        for (index in samples.indices) samples[index] = limited(samples[index] * gain)
         return samples
     }
 
@@ -118,6 +177,12 @@ object SpeechAudioConditioning {
         if (peak < SILENCE_PEAK) return 1f
         return (TARGET_PEAK / peak).coerceIn(1f, MAX_GAIN)
     }
+
+    /** 20 ms at 16 kHz: short enough that a click fills one or two frames. */
+    private const val FRAME_SAMPLES = CaptureFormat.SAMPLE_RATE / 50
+
+    /** Below this many frames nothing can be called a transient; the peak decides. */
+    private const val MINIMUM_FRAMES = 10
 
     /** One AudioRecord frame: enough signal to derive a meaningful level. */
     private const val MIN_ANALYSIS_SAMPLES = CaptureFormat.SAMPLE_RATE / 10
