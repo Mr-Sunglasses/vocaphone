@@ -2030,11 +2030,18 @@ final class LocalModelManager {
         }
         if needsLoad { await Task.yield() }
 
-        let loaded = try Self.loadSamples(from: audioURL)
-        guard !loaded.isEmpty else { throw LocalModelManagerError.modelNotDownloaded("empty audio") }
-        // Safe here and not on the incremental path: this is the whole recording,
-        // so one gain covers all of it.
-        let samples = SpeechAudioConditioning.condition(loaded)
+        // Off the main actor: reading a long recording and levelling it is a
+        // pass over millions of samples, and this runs while the finished
+        // dictation's screen is on the way in.
+        let samples = try await Task.detached(priority: .userInitiated) {
+            let loaded = try Self.loadSamples(from: audioURL)
+            guard !loaded.isEmpty else {
+                throw LocalModelManagerError.modelNotDownloaded("empty audio")
+            }
+            // Safe here and not on the incremental path: this is the whole
+            // recording, so one gain covers all of it.
+            return SpeechAudioConditioning.condition(loaded)
+        }.value
 
         switch descriptor.engine {
         case .whisperKit:
@@ -2487,7 +2494,7 @@ final class LocalModelManager {
 
     private func pathKey(for id: String) -> String { "localModelPath.\(id)" }
 
-    private static func loadSamples(from url: URL) throws -> [Float] {
+    nonisolated private static func loadSamples(from url: URL) throws -> [Float] {
         let file = try AVAudioFile(forReading: url)
         let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,
