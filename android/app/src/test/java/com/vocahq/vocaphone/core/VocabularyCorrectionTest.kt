@@ -9,7 +9,7 @@ class VocabularyCorrectionTest {
     private val dictionary = setOf("strip", "vocal", "phone", "must", "whisper", "kit", "is", "here")
 
     private fun corrected(text: String, vararg terms: String) =
-        VocabularyCorrection.apply(text, terms.toList()) { it in dictionary }
+        VocabularyCorrection.apply(text, terms.toList(), isDictionaryWord = { it in dictionary })
 
     @Test
     fun `spacing and case are fixed`() {
@@ -84,5 +84,35 @@ class VocabularyCorrectionTest {
             vocabulary = listOf("Kanishk"),
         )
         assertTrue(raw, !raw.contains("Kanishk"))
+    }
+
+    @Test
+    fun `snippet triggers are left for the snippet`() {
+        assertEquals(
+            "sign it kanish please",
+            VocabularyCorrection.apply("sign it kanish please", listOf("Kanishk"), protectedPhrases = listOf("kanish")),
+        )
+        val finished = DictatedTranscript.finished(
+            "sign it kanish",
+            style = WritingStyle.CASUAL,
+            repairSpeech = false,
+            snippets = listOf(Snippet(id = "1", trigger = "kanish", expansion = "Kanishk Pachauri")),
+            vocabulary = listOf("Kanishk"),
+        )
+        assertTrue(finished, finished.contains("Kanishk Pachauri"))
+    }
+
+    @Test
+    fun `a term's own punctuation joins its words`() {
+        assertEquals("ask O'Brien now", corrected("ask o'brien now", "O'Brien"))
+        assertEquals("a Wi-Fi network", corrected("a wi-fi network", "Wi-Fi"))
+        assertEquals("o, brien", corrected("o, brien", "O'Brien"))
+    }
+
+    @Test
+    fun `a huge list is bounded`() {
+        val many = (0 until 5_000).map { "Term${it}x" }
+        assertEquals("kanish", VocabularyCorrection.apply("kanish", many + "Kanishk"))
+        assertEquals("Kanishk", VocabularyCorrection.apply("kanish", listOf("Kanishk") + many))
     }
 }

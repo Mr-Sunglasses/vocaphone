@@ -59,7 +59,13 @@ enum DictatedTranscript {
         // Never for `raw`, on the same grounds as repair: raw promises the
         // model's own output, and a glyph is not something the model said.
         let spelled = style != .raw
-            ? VocabularyCorrection.apply(styled, terms: vocabulary, isDictionaryWord: EnglishWords.contains)
+            ? VocabularyCorrection.apply(
+                styled,
+                terms: vocabulary,
+                isDictionaryWord: EnglishWords.contains,
+                // A trigger corrected into a term would never expand.
+                protectedPhrases: snippets.map(\.trigger)
+            )
             : styled
         let emojified = spokenEmoji && style != .raw
             ? SpokenEmoji.glyphs(in: spelled, language: language)

@@ -35,15 +35,33 @@ object VocabularyCorrection {
      */
     private const val EXTRA_WORDS = 1
 
+    /**
+     * More than anyone types into a settings field; past it, the rest of the
+     * list is still Whisper's prompt but is not matched here, so a pasted
+     * dictionary cannot turn finishing a dictation into a long scan.
+     */
+    const val MAXIMUM_TERMS = 500
+
+    /**
+     * [text] with every near-miss of a term in [terms] replaced by the term as
+     * the user wrote it. A single [isDictionaryWord] is only ever replaced by an
+     * exact match. Words that make up any of [protectedPhrases] — snippet
+     * triggers, which expand after this runs — are never touched.
+     */
     fun apply(
         text: String,
         terms: List<String>,
         isDictionaryWord: (String) -> Boolean = { false },
+        protectedPhrases: List<String> = emptyList(),
     ): String {
-        val candidates = terms.mapNotNull(Term::of).sortedByDescending { it.key.length }
-        if (candidates.isEmpty() || text.isEmpty()) return text
+        if (text.isEmpty()) return text
+        // Every match shares the term's first letter, so each word is only
+        // compared with the terms that start the way it does.
+        val byFirstLetter = terms.take(MAXIMUM_TERMS).mapNotNull(Term::of).groupBy { it.key.first() }
+        if (byFirstLetter.isEmpty()) return text
         val words = words(text)
         if (words.isEmpty()) return text
+        val protected = protectedIndices(protectedPhrases, words)
 
         val replacements = mutableListOf<Pair<IntRange, String>>()
         var index = 0
@@ -51,11 +69,13 @@ object VocabularyCorrection {
             var bestLength = 0
             var bestTerm: Term? = null
             var bestDistance = Int.MAX_VALUE
+            val candidates = words[index].key.firstOrNull()?.let { byFirstLetter[it] }.orEmpty()
             for (term in candidates) {
                 val longest = minOf(term.wordCount + EXTRA_WORDS, words.size - index)
                 for (length in longest downTo 1) {
+                    if ((index until index + length).any { it in protected }) continue
                     val span = words.subList(index, index + length)
-                    if (!isContiguous(span, text)) continue
+                    if (!isContiguous(span, text, term.joiners)) continue
                     val key = span.joinToString("") { it.key }
                     val distance = term.accepts(
                         key,
@@ -90,7 +110,30 @@ object VocabularyCorrection {
         return result.toString()
     }
 
+    /** Every word that belongs to an occurrence of one of [phrases]. */
+    private fun protectedIndices(phrases: List<String>, words: List<Word>): Set<Int> {
+        val protected = mutableSetOf<Int>()
+        for (phrase in phrases) {
+            val keys = words(phrase).map { it.key }
+            if (keys.isEmpty() || keys.size > words.size) continue
+            for (start in 0..words.size - keys.size) {
+                if (keys.indices.all { words[start + it].key == keys[it] }) {
+                    protected += start until start + keys.size
+                }
+            }
+        }
+        return protected
+    }
+
     private class Term(val text: String, val key: String, val wordCount: Int) {
+        /**
+         * What may sit between the transcript words matched against this term:
+         * a space, and whatever punctuation the term itself uses inside it, so
+         * "o'brien" can become "O'Brien" without a term swallowing punctuation
+         * it never had.
+         */
+        val joiners: Set<Char> = text.filterNot { it.isLetterOrDigit() }.toSet() + ' '
+
         /** The edit distance at which [candidate] is taken to be this term, or null. */
         fun accepts(candidate: String, wordCount: Int, isDictionaryWord: Boolean): Int? {
             if (candidate == key) return 0
@@ -139,11 +182,11 @@ object VocabularyCorrection {
         return words
     }
 
-    /** Words joined by nothing but spaces. A term must not swallow a comma. */
-    private fun isContiguous(span: List<Word>, text: String): Boolean {
+    /** Words joined only by [joiners]. A term must not swallow a comma. */
+    private fun isContiguous(span: List<Word>, text: String, joiners: Set<Char>): Boolean {
         for (i in 1 until span.size) {
             val gap = text.substring(span[i - 1].end, span[i].start)
-            if (gap.isEmpty() || gap.any { it != ' ' }) return false
+            if (gap.isEmpty() || gap.any { it !in joiners }) return false
         }
         return true
     }

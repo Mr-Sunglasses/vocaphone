@@ -89,4 +89,39 @@ struct VocabularyCorrectionTests {
         )
         #expect(!raw.contains("Kanishk"))
     }
+
+    /// A snippet trigger expands after correction runs, so correction must not
+    /// rewrite it into a term first.
+    @Test func snippetTriggersAreLeftForTheSnippet() {
+        let text = VocabularyCorrection.apply(
+            "sign it kanish please",
+            terms: ["Kanishk"],
+            protectedPhrases: ["kanish"]
+        )
+        #expect(text == "sign it kanish please")
+        let finished = DictatedTranscript.finished(
+            "sign it kanish",
+            style: .casual,
+            repairSpeech: false,
+            numbersAsDigits: false,
+            spokenEmoji: false,
+            snippets: [Snippet(trigger: "kanish", expansion: "Kanishk Pachauri")],
+            vocabulary: ["Kanishk"]
+        )
+        #expect(finished.contains("Kanishk Pachauri"))
+    }
+
+    /// The term's own punctuation may join its words; other punctuation may not.
+    @Test func aTermsOwnPunctuationJoinsItsWords() {
+        #expect(corrected("ask o'brien now", ["O'Brien"]) == "ask O'Brien now")
+        #expect(corrected("a wi-fi network", ["Wi-Fi"]) == "a Wi-Fi network")
+        #expect(corrected("o, brien", ["O'Brien"]) == "o, brien")
+    }
+
+    /// A pasted dictionary is bounded rather than scanned in full.
+    @Test func aHugeListIsBounded() {
+        let many = (0..<5_000).map { "Term\($0)x" } + ["Kanishk"]
+        #expect(VocabularyCorrection.apply("kanish", terms: many) == "kanish")
+        #expect(VocabularyCorrection.apply("kanish", terms: ["Kanishk"] + many) == "Kanishk")
+    }
 }

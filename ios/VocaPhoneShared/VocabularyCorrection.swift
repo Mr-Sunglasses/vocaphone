@@ -30,29 +30,46 @@ enum VocabularyCorrection {
     /// two ("voca phone") more often than it joins two into one.
     private static let extraWords = 1
 
+    /// More than anyone types into a settings field; past it, the rest of the
+    /// list is still Whisper's prompt but is not matched here, so a pasted
+    /// dictionary cannot turn finishing a dictation into a long scan.
+    static let maximumTerms = 500
+
     /// `text` with every near-miss of a term in `terms` replaced by the term as
     /// the user wrote it. `isDictionaryWord` answers for one lowercased word;
-    /// a single such word is only ever replaced by an exact match.
+    /// a single such word is only ever replaced by an exact match. Words that
+    /// make up any of `protectedPhrases` — snippet triggers, which expand
+    /// after this runs — are never touched.
     static func apply(
         _ text: String,
         terms: [String],
-        isDictionaryWord: (String) -> Bool = { _ in false }
+        isDictionaryWord: (String) -> Bool = { _ in false },
+        protectedPhrases: [String] = []
     ) -> String {
-        let candidates = terms.compactMap(Term.init).sorted { $0.key.count > $1.key.count }
-        guard !candidates.isEmpty, !text.isEmpty else { return text }
+        guard !text.isEmpty else { return text }
+        // Every match shares the term's first letter, so each word is only
+        // compared with the terms that start the way it does.
+        var byFirstLetter: [Character: [Term]] = [:]
+        for term in terms.prefix(maximumTerms).compactMap(Term.init) {
+            byFirstLetter[term.key.first!, default: []].append(term)
+        }
+        guard !byFirstLetter.isEmpty else { return text }
         let words = Self.words(in: text)
         guard !words.isEmpty else { return text }
+        let protected = protectedIndices(of: protectedPhrases, in: words)
 
         var replacements: [(range: Range<String.Index>, term: String)] = []
         var index = 0
         while index < words.count {
             var best: (length: Int, term: Term, distance: Int)?
+            let candidates = words[index].key.first.flatMap { byFirstLetter[$0] } ?? []
             for term in candidates {
                 let longest = min(term.wordCount + extraWords, words.count - index)
                 guard longest >= 1 else { continue }
                 for length in stride(from: longest, through: 1, by: -1) {
+                    guard !(index..<(index + length)).contains(where: protected.contains) else { continue }
                     let span = words[index..<(index + length)]
-                    guard Self.isContiguous(span, in: text) else { continue }
+                    guard Self.isContiguous(span, in: text, allowing: term.joiners) else { continue }
                     let key = span.map(\.key).joined()
                     guard let distance = term.accepts(
                         key,
@@ -87,6 +104,21 @@ enum VocabularyCorrection {
         return result
     }
 
+    /// The positions of every word that belongs to an occurrence of one of
+    /// `phrases`, matched word by word on letters and digits.
+    private static func protectedIndices(of phrases: [String], in words: [Word]) -> Set<Int> {
+        var protected: Set<Int> = []
+        for phrase in phrases {
+            let keys = Self.words(in: phrase).map(\.key)
+            guard !keys.isEmpty, keys.count <= words.count else { continue }
+            for start in 0...(words.count - keys.count)
+            where (0..<keys.count).allSatisfy({ words[start + $0].key == keys[$0] }) {
+                protected.formUnion(start..<(start + keys.count))
+            }
+        }
+        return protected
+    }
+
     // MARK: - Terms
 
     private struct Term {
@@ -94,6 +126,11 @@ enum VocabularyCorrection {
         /// Letters and digits, lowercased: what spacing and case cannot change.
         let key: String
         let wordCount: Int
+        /// What may sit between the transcript words matched against this
+        /// term: a space, and whatever punctuation the term itself uses inside
+        /// it, so "o'brien" can become "O'Brien" without a term swallowing
+        /// punctuation it never had.
+        let joiners: Set<Character>
 
         init?(_ text: String) {
             let key = VocabularyCorrection.key(text)
@@ -101,6 +138,7 @@ enum VocabularyCorrection {
             self.text = text
             self.key = key
             wordCount = max(1, VocabularyCorrection.words(in: text).count)
+            joiners = Set(text.filter { !$0.isLetter && !$0.isNumber }).union([" "])
         }
 
         /// The edit distance at which `candidate` is taken to be this term, or
@@ -156,14 +194,18 @@ enum VocabularyCorrection {
         return words
     }
 
-    /// Words joined by nothing but spaces. "phone, and" is two phrases, and a
-    /// term must not swallow the comma between them.
-    private static func isContiguous(_ span: ArraySlice<Word>, in text: String) -> Bool {
+    /// Words joined only by `joiners`. "phone, and" is two phrases, and a term
+    /// must not swallow the comma between them.
+    private static func isContiguous(
+        _ span: ArraySlice<Word>,
+        in text: String,
+        allowing joiners: Set<Character>
+    ) -> Bool {
         var previous: Word?
         for word in span {
             if let previous {
                 let gap = text[previous.range.upperBound..<word.range.lowerBound]
-                guard !gap.isEmpty, gap.allSatisfy({ $0 == " " }) else { return false }
+                guard !gap.isEmpty, gap.allSatisfy(joiners.contains) else { return false }
             }
             previous = word
         }
