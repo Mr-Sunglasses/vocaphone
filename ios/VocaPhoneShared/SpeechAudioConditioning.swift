@@ -31,7 +31,7 @@ enum SpeechAudioConditioning {
     /// Returns `samples` levelled.
     ///
     /// Only whole recordings should be passed here. The gain is derived from the
-    /// loudest sample in what it is given, so feeding it one streaming chunk at
+    /// ``speechLevel(_:)`` of what it is given, so feeding it one streaming chunk at
     /// a time would apply a different gain to each — jarring across a chunk
     /// boundary, and outright wrong for a chunk that happens to be a pause.
     static func condition(_ samples: [Float]) -> [Float] {
@@ -45,8 +45,58 @@ enum SpeechAudioConditioning {
             for index in samples.indices { samples[index] -= offset }
         }
 
-        return condition(samples, peak: samples.reduce(Float(0)) { max($0, abs($1)) })
+        return condition(samples, peak: speechLevel(samples))
     }
+
+    /// The level a recording's gain is derived from: its loudest 20 ms frames,
+    /// with the very loudest few set aside.
+    ///
+    /// The single loudest sample used to decide it, and the loudest sample of a
+    /// dictation is often not speech: the thump of the finger that tapped Stop,
+    /// a knock on the desk, the phone being set down. One of those at 0.9 left
+    /// speech at 0.1 exactly where it was, when the recording otherwise earned
+    /// eight times the level. Setting aside the loudest 2% of frames (at least
+    /// two, so a click that straddles a boundary goes too) takes a transient
+    /// out of the decision; real speech keeps nearly all of its level, and the
+    /// limiter in ``limited(_:)`` rounds off the peaks that sit above it.
+    static func speechLevel(_ samples: [Float]) -> Float {
+        let frame = 320
+        var frames: [Float] = []
+        frames.reserveCapacity(samples.count / frame + 1)
+        var start = 0
+        while start < samples.count {
+            let end = min(start + frame, samples.count)
+            var loudest: Float = 0
+            for index in start..<end { loudest = max(loudest, abs(samples[index])) }
+            frames.append(loudest)
+            start = end
+        }
+        guard frames.count > minimumFrames else { return frames.max() ?? 0 }
+        frames.sort(by: >)
+        return frames[min(setAside(audibleFrames: frames.count { $0 >= silencePeak }), frames.count - 1)]
+    }
+
+    /// How many of the loudest frames to set aside: enough for a knock or a
+    /// fumble (sixteen frames, 320 ms), never more than half of the frames
+    /// that carry any sound, and at least two.
+    ///
+    /// A fixed allowance rather than a share. A share of the whole recording
+    /// set aside every word of three seconds of speech followed by minutes of
+    /// silence; a share of the audible frames did the same to one second of
+    /// speech over thirty seconds of room noise. Handling noise is short
+    /// whatever the recording's length, so its allowance is too, and half the
+    /// audible frames keeps a very short utterance its own level. Noise longer
+    /// and louder than 320 ms cannot be told from speech by level alone, and
+    /// gets the gain the loudest sample used to give.
+    static func setAside(audibleFrames: Int) -> Int {
+        max(2, min(maximumSetAside, audibleFrames / 2))
+    }
+
+    private static let maximumSetAside = 16
+
+    /// Below this many frames there is too little recording to call anything
+    /// in it a transient, and the plain peak decides.
+    private static let minimumFrames = 10
 
     /// Levels `samples` with a gain derived from `peak` rather than from the
     /// slice itself.
@@ -66,7 +116,19 @@ enum SpeechAudioConditioning {
         guard gain > 1 else { return samples }
 
         var samples = samples
-        for index in samples.indices { samples[index] *= gain }
+        for index in samples.indices { samples[index] = limited(samples[index] * gain) }
         return samples
+    }
+
+    /// Leaves everything up to the target alone and bends what is above it
+    /// smoothly towards full scale, never past it. A transient the level set
+    /// aside is amplified with the speech and would otherwise clip; so would a
+    /// streaming chunk louder than every one before it.
+    static func limited(_ sample: Float) -> Float {
+        let magnitude = abs(sample)
+        guard magnitude > targetPeak else { return sample }
+        let headroom = 1 - targetPeak
+        let bent = targetPeak + headroom * Float(tanh(Double((magnitude - targetPeak) / headroom)))
+        return sample < 0 ? -bent : bent
     }
 }
