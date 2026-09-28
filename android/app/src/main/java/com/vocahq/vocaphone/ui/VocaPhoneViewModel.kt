@@ -331,6 +331,9 @@ class VocaPhoneViewModel(application: Application) : AndroidViewModel(applicatio
     fun setNumbersAsDigits(enabled: Boolean) =
         viewModelScope.launch { container.settings.setNumbersAsDigits(enabled) }
 
+    fun setStopAfterPause(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setStopAfterPause(enabled) }
+
     fun setSpokenEmoji(enabled: Boolean) =
         viewModelScope.launch { container.settings.setSpokenEmoji(enabled) }
 

@@ -23,6 +23,7 @@ import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MissingPermission
 import com.vocahq.vocaphone.core.ModelLanguageSupport
+import com.vocahq.vocaphone.core.PauseDetector
 import com.vocahq.vocaphone.core.SnippetExpander
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.UsageStatsRepository
@@ -499,6 +500,7 @@ class DictationController(
         // Frames are drained off the capture thread: file writes and socket sends
         // must never stall the AudioRecord read loop.
         val heardSomething = AtomicBoolean(false)
+        val pauseDetector = if (configuration.stopAfterPause) PauseDetector() else null
         val drain = scope.launch(Dispatchers.IO) {
             for (frame in frames) {
                 writer.write(frame, frame.size)
@@ -510,6 +512,14 @@ class DictationController(
                     heardSomething.set(true)
                 }
                 val level = PcmConversion.level(frame, frame.size)
+                // Stop after a pause: the same finish a tap on Stop sends.
+                // `finish` completes a signal, so a second call is harmless.
+                if (pauseDetector?.observe(level, frame.size.toDouble() / CaptureFormat.SAMPLE_RATE) == true &&
+                    _state.value.phase == DictationPhase.LISTENING
+                ) {
+                    diagnostics.recordAction("stop_after_pause", source.name)
+                    finish()
+                }
                 _state.update { current ->
                     if (current.phase != DictationPhase.LISTENING) {
                         current

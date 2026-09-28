@@ -20,6 +20,10 @@ final class RecordingCoordinator {
     /// Levels produced in the current recording, counted so the keyboard can
     /// tell new audio from a re-read of the same file.
     private var meterSequence = 0
+    /// Listens for the end of speech when Stop after a pause is on, reset for
+    /// every recording.
+    private var pauseDetector = PauseDetector()
+    private var pauseDetectorSessionID: UUID?
     /// Guided setup reads system state that emits no change notifications —
     /// keyboard installation, a permission flipped in iOS Settings — so it is
     /// snapshotted here and refreshed deliberately rather than polled.
@@ -1560,6 +1564,7 @@ final class RecordingCoordinator {
         // draws one bar per level, and the levels it never saw are the motion
         // it used to invent.
         meterSequence += levels.count
+        finishIfSpeechEnded(levels, sessionID: record.sessionID)
         // Meter updates are intentionally stored separately from the session
         // record. Otherwise a stale meter write from the app can overwrite a
         // finalizing/canceled state written by the keyboard extension.
@@ -1567,6 +1572,26 @@ final class RecordingCoordinator {
             MeterSample(sequence: meterSequence, levels: levels),
             for: record.sessionID
         )
+    }
+
+    /// Each meter level is 50 ms of audio, stored as the square root of its
+    /// RMS (see `AudioCapturePipeline.normalizedLevel`); the detector wants
+    /// the RMS back. Finishing goes through ``requestFinish()``, the same path
+    /// the recording limit takes.
+    private func finishIfSpeechEnded(_ levels: [Float], sessionID: UUID) {
+        guard KeyboardPreferences.stopAfterPause else { return }
+        if pauseDetectorSessionID != sessionID {
+            pauseDetector = PauseDetector()
+            pauseDetectorSessionID = sessionID
+        }
+        var ended = false
+        for level in levels {
+            let rms = level * level
+            ended = pauseDetector.observe(rms: rms, seconds: 0.05) || ended
+        }
+        guard ended else { return }
+        pauseDetectorSessionID = nil
+        requestFinish()
     }
 
     private func shouldKeepQuickDictationReady(after record: SessionRecord) -> Bool {
