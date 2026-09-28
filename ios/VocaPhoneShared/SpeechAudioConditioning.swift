@@ -76,19 +76,20 @@ enum SpeechAudioConditioning {
         return frames[min(setAside(audibleFrames: frames.count { $0 >= silencePeak }), frames.count - 1)]
     }
 
-    /// How many of the loudest frames to set aside: 2% of the frames that
-    /// carry any sound, at least two, and never more than ten (200 ms).
+    /// How many of the loudest frames to set aside: 5% of the frames that
+    /// carry any sound, and at least two.
     ///
     /// Counted over the audible frames only. Counted over the whole recording,
     /// three seconds of quiet speech followed by five minutes of a recorder
     /// left running set aside six seconds of frames — every word — and the
-    /// speech got no gain at all. A click is a frame or two; ten is room for a
-    /// knock that rings.
+    /// speech got no gain at all. Five percent covers a knock or a fumble as
+    /// long as a twentieth of what was said; the level is then the loudest
+    /// speech outside that, and ``limited(_:)`` rounds off what sits above it.
+    /// Handling noise longer and louder than that cannot be told from speech by
+    /// level alone, and gets the gain the loudest sample used to give.
     static func setAside(audibleFrames: Int) -> Int {
-        min(maximumSetAside, max(2, audibleFrames / 50))
+        max(2, audibleFrames / 20)
     }
-
-    private static let maximumSetAside = 10
 
     /// Below this many frames there is too little recording to call anything
     /// in it a transient, and the plain peak decides.

@@ -137,9 +137,17 @@ class SpeechAudioConditioningTest {
     }
 
     @Test
-    fun `the set aside is bounded`() {
+    fun `the set aside follows the audible audio`() {
         assertEquals(2, SpeechAudioConditioning.setAside(0))
-        assertEquals(5, SpeechAudioConditioning.setAside(250))
-        assertEquals(10, SpeechAudioConditioning.setAside(15_000))
+        assertEquals(25, SpeechAudioConditioning.setAside(500))
+    }
+
+    @Test
+    fun `a longer knock in a dictation does not set the level`() {
+        // A 300 ms fumble in ten seconds of speech.
+        val recording = tone(peak = 0.05f, count = 10 * 16_000)
+        for (index in 100_000 until 104_800) recording[index] = if (index % 2 == 0) 0.9f else -0.9f
+        val conditioned = SpeechAudioConditioning.condition(recording)
+        assertEquals(0.4f, peak(conditioned.copyOfRange(0, 99_000)), 0.02f)
     }
 }

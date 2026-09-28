@@ -95,9 +95,17 @@ struct SpeechAudioConditioningTests {
         #expect(abs(peak(Array(conditioned[0..<(3 * 16_000)])) - 0.4) < 0.02)
     }
 
-    @Test func theSetAsideIsBounded() {
+    @Test func theSetAsideFollowsTheAudibleAudio() {
         #expect(SpeechAudioConditioning.setAside(audibleFrames: 0) == 2)
-        #expect(SpeechAudioConditioning.setAside(audibleFrames: 250) == 5)
-        #expect(SpeechAudioConditioning.setAside(audibleFrames: 15_000) == 10)
+        #expect(SpeechAudioConditioning.setAside(audibleFrames: 500) == 25)
+    }
+
+    /// A 300 ms fumble in ten seconds of speech: longer than a click, and still
+    /// not the level.
+    @Test func aLongerKnockInADictationDoesNotSetTheLevel() {
+        var recording = tone(peak: 0.05, count: 10 * 16_000)
+        for index in 100_000..<104_800 { recording[index] = index.isMultiple(of: 2) ? 0.9 : -0.9 }
+        let conditioned = SpeechAudioConditioning.condition(recording)
+        #expect(abs(peak(Array(conditioned[0..<99_000])) - 0.4) < 0.02)
     }
 }

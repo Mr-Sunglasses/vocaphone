@@ -114,18 +114,18 @@ object SpeechAudioConditioning {
     }
 
     /**
-     * How many of the loudest frames to set aside: 2% of the frames that carry
-     * any sound, at least two, and never more than ten (200 ms).
+     * How many of the loudest frames to set aside: 5% of the frames that carry
+     * any sound, and at least two.
      *
      * Counted over the audible frames only. Counted over the whole recording,
      * three seconds of quiet speech followed by five minutes of a recorder left
      * running set aside six seconds of frames — every word — and the speech got
-     * no gain at all. A click is a frame or two; ten is room for a knock that
-     * rings.
+     * no gain at all. Five percent covers a knock or a fumble as long as a
+     * twentieth of what was said; [limited] rounds off what sits above the
+     * level. Handling noise longer and louder than that cannot be told from
+     * speech by level alone, and gets the gain the loudest sample used to give.
      */
-    fun setAside(audibleFrames: Int): Int = minOf(MAXIMUM_SET_ASIDE, maxOf(2, audibleFrames / 50))
-
-    private const val MAXIMUM_SET_ASIDE = 10
+    fun setAside(audibleFrames: Int): Int = maxOf(2, audibleFrames / 20)
 
     /**
      * Leaves everything up to the target alone and bends what is above it
