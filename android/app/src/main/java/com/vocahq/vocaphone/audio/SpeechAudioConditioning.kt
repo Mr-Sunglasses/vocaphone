@@ -114,18 +114,22 @@ object SpeechAudioConditioning {
     }
 
     /**
-     * How many of the loudest frames to set aside: 5% of the frames that carry
-     * any sound, and at least two.
+     * How many of the loudest frames to set aside: enough for a knock or a
+     * fumble (sixteen frames, 320 ms), never more than half of the frames that
+     * carry any sound, and at least two.
      *
-     * Counted over the audible frames only. Counted over the whole recording,
-     * three seconds of quiet speech followed by five minutes of a recorder left
-     * running set aside six seconds of frames — every word — and the speech got
-     * no gain at all. Five percent covers a knock or a fumble as long as a
-     * twentieth of what was said; [limited] rounds off what sits above the
-     * level. Handling noise longer and louder than that cannot be told from
-     * speech by level alone, and gets the gain the loudest sample used to give.
+     * A fixed allowance rather than a share. A share of the whole recording set
+     * aside every word of three seconds of speech followed by minutes of
+     * silence; a share of the audible frames did the same to one second of
+     * speech over thirty seconds of room noise. Handling noise is short whatever
+     * the recording's length, so its allowance is too, and half the audible
+     * frames keeps a very short utterance its own level. Noise longer and louder
+     * than 320 ms cannot be told from speech by level alone, and gets the gain
+     * the loudest sample used to give.
      */
-    fun setAside(audibleFrames: Int): Int = maxOf(2, audibleFrames / 20)
+    fun setAside(audibleFrames: Int): Int = maxOf(2, minOf(MAXIMUM_SET_ASIDE, audibleFrames / 2))
+
+    private const val MAXIMUM_SET_ASIDE = 16
 
     /**
      * Leaves everything up to the target alone and bends what is above it

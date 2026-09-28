@@ -137,9 +137,22 @@ class SpeechAudioConditioningTest {
     }
 
     @Test
+    fun `speech over room noise still sets the level`() {
+        // A second of speech in thirty seconds of room noise.
+        val noise = FloatArray(30 * 16_000) { ((it % 997) * 7_919 % 97 - 48) / 48f * 0.01f }
+        // Loud enough that the right level (0.3, a gain under 3) and the wrong
+        // one (the noise, the full eight) come out differently.
+        val recording = noise + tone(peak = 0.3f, count = 16_000)
+        val conditioned = SpeechAudioConditioning.condition(recording)
+        assertEquals(0.85f, peak(conditioned.copyOfRange(30 * 16_000, conditioned.size)), 0.03f)
+    }
+
+    @Test
     fun `the set aside follows the audible audio`() {
         assertEquals(2, SpeechAudioConditioning.setAside(0))
-        assertEquals(25, SpeechAudioConditioning.setAside(500))
+        assertEquals(5, SpeechAudioConditioning.setAside(10))
+        assertEquals(16, SpeechAudioConditioning.setAside(500))
+        assertEquals(16, SpeechAudioConditioning.setAside(15_000))
     }
 
     @Test

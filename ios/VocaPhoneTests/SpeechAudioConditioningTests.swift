@@ -95,9 +95,28 @@ struct SpeechAudioConditioningTests {
         #expect(abs(peak(Array(conditioned[0..<(3 * 16_000)])) - 0.4) < 0.02)
     }
 
+    /// A second of speech in thirty seconds of room noise: the noise is sound
+    /// in every frame, and must not push the speech out of the level.
+    @Test func speechOverRoomNoiseStillSetsTheLevel() {
+        var recording: [Float] = []
+        recording.reserveCapacity(31 * 16_000)
+        for index in 0..<(30 * 16_000) {
+            let hiss = Float((index % 997) * 7_919 % 97 - 48) / 48
+            recording.append(hiss * 0.01)
+        }
+        // Loud enough that the right level (0.3, a gain under 3) and the wrong
+        // one (the noise, the full eight) come out differently.
+        recording += tone(peak: 0.3, count: 16_000)
+        let conditioned = SpeechAudioConditioning.condition(recording)
+        let speech = Array(conditioned[(30 * 16_000)...])
+        #expect(abs(peak(speech) - 0.85) < 0.03)
+    }
+
     @Test func theSetAsideFollowsTheAudibleAudio() {
         #expect(SpeechAudioConditioning.setAside(audibleFrames: 0) == 2)
-        #expect(SpeechAudioConditioning.setAside(audibleFrames: 500) == 25)
+        #expect(SpeechAudioConditioning.setAside(audibleFrames: 10) == 5)
+        #expect(SpeechAudioConditioning.setAside(audibleFrames: 500) == 16)
+        #expect(SpeechAudioConditioning.setAside(audibleFrames: 15_000) == 16)
     }
 
     /// A 300 ms fumble in ten seconds of speech: longer than a click, and still
