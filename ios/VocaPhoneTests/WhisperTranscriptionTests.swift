@@ -93,6 +93,57 @@ struct WhisperTranscriptionTests {
         [TranscriptionResult(text: text, segments: [], language: "en", timings: TranscriptionTimings())]
     }
 
+    /// Automatic detects once, like whisper.cpp: a mixed-language dictation
+    /// must not switch script from one window to the next.
+    @Test func automaticLanguageIsDecidedOncePerRecording() async throws {
+        var seen: [(language: String?, detects: Bool?)] = []
+        _ = try await WhisperTranscription.transcribe(
+            samples: Self.speechLike(seconds: 70),
+            options: WhisperTranscription.decodingOptions(
+                language: nil, translate: false, quality: .balanced, promptTokens: nil
+            )
+        ) { _, options in
+            seen.append((options.language, options.detectLanguage))
+            return [TranscriptionResult(text: "namaste", segments: [], language: "hi", timings: TranscriptionTimings())]
+        }
+        #expect(seen.count >= 3)
+        #expect(seen.first?.language == nil)
+        #expect(seen.first?.detects == true)
+        for later in seen.dropFirst() {
+            #expect(later.language == "hi")
+            #expect(later.detects == false)
+        }
+    }
+
+    /// A window that said nothing, or too little, does not decide it.
+    @Test func onlyAWindowWithWordsDecidesTheLanguage() {
+        let automatic = WhisperTranscription.decodingOptions(
+            language: nil, translate: false, quality: .balanced, promptTokens: nil
+        )
+        let long = WhisperTranscription.minimumDetectionSamples
+        let blank = [TranscriptionResult(text: " ", segments: [], language: "ja", timings: TranscriptionTimings())]
+        #expect(WhisperTranscription.lockingDetectedLanguage(automatic, after: blank, windowSamples: long).language == nil)
+        let short = WhisperTranscription.lockingDetectedLanguage(
+            automatic, after: Self.said("hi there"), windowSamples: long - 1
+        )
+        #expect(short.language == nil)
+        #expect(short.detectLanguage == true)
+        #expect(WhisperTranscription.lockingDetectedLanguage(
+            automatic, after: Self.said("hi there"), windowSamples: long
+        ).language == "en")
+    }
+
+    /// A language the user chose is never replaced by a detected one.
+    @Test func aChosenLanguageIsLeftAlone() {
+        let german = WhisperTranscription.decodingOptions(
+            language: "de", translate: false, quality: .balanced, promptTokens: nil
+        )
+        let after = WhisperTranscription.lockingDetectedLanguage(
+            german, after: Self.said("hello"), windowSamples: WhisperTranscription.minimumDetectionSamples
+        )
+        #expect(after.language == "de")
+    }
+
     @Test func speechThatDecodesToNothingIsReportedWithItsPlace() async throws {
         var reported: [WhisperTranscription.EmptyWindow] = []
         var window = 0

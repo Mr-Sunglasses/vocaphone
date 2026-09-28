@@ -189,6 +189,11 @@ enum WhisperTranscription {
             }
             let decoded = try await decode(samples, windowOptions)
             try Task.checkCancellation()
+            windowOptions = Self.lockingDetectedLanguage(
+                windowOptions,
+                after: decoded,
+                windowSamples: chunk.audioSamples.count
+            )
             if let emptyWindow,
                decoded.allSatisfy({ $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
                soundsLikeSpeech(chunk.audioSamples, in: recording)
@@ -203,6 +208,37 @@ enum WhisperTranscription {
         }
         return results
     }
+
+    /// Automatic language, decided once per recording.
+    ///
+    /// Each thirty-second window used to detect its own language, so a
+    /// dictation that mixes languages — Hindi with English words in it, say —
+    /// could come back in Devanagari for one window and Latin script for the
+    /// next, halfway through a sentence. whisper.cpp, which Android runs,
+    /// detects once on the first window and keeps it, and this now does the
+    /// same. The first window that produced words and carried at least
+    /// ``minimumDetectionSamples`` decides: a blank window or a two-second
+    /// fragment is a poor basis for the rest of the recording.
+    static func lockingDetectedLanguage(
+        _ options: DecodingOptions,
+        after decoded: [TranscriptionResult],
+        windowSamples: Int
+    ) -> DecodingOptions {
+        guard options.language == nil, options.detectLanguage == true,
+              windowSamples >= minimumDetectionSamples,
+              let detected = decoded.first(where: {
+                  !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+              })?.language,
+              !detected.isEmpty
+        else { return options }
+        var locked = options
+        locked.language = detected
+        locked.detectLanguage = false
+        return locked
+    }
+
+    /// Five seconds of audio: enough speech for detection to mean something.
+    static let minimumDetectionSamples = 5 * WhisperKit.sampleRate
 
     /// Whether a window carries at least half a second of sound well above its
     /// own quietest stretch.
