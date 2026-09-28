@@ -2136,7 +2136,7 @@ final class LocalModelManager {
                 text: text,
                 language: ModelLanguageSupport.outputLanguage(
                     requested: resolvedLanguage,
-                    reported: results.first?.language ?? "",
+                    reported: WhisperTranscription.reportedLanguage(results),
                     translateTo: translateTo
                 )
             )
