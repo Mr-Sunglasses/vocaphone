@@ -93,12 +93,16 @@ struct VocabularyCorrectionTests {
     /// A snippet trigger expands after correction runs, so correction must not
     /// rewrite it into a term first.
     @Test func snippetTriggersAreLeftForTheSnippet() {
+        let transcript = "sign it kanish please"
         let text = VocabularyCorrection.apply(
-            "sign it kanish please",
+            transcript,
             terms: ["Kanishk"],
-            protectedPhrases: ["kanish"]
+            protectedRanges: SnippetExpander.triggerRanges(
+                in: transcript,
+                using: [Snippet(trigger: "kanish", expansion: "Kanishk Pachauri")]
+            )
         )
-        #expect(text == "sign it kanish please")
+        #expect(text == transcript)
         let finished = DictatedTranscript.finished(
             "sign it kanish",
             style: .casual,
@@ -118,10 +122,28 @@ struct VocabularyCorrectionTests {
         #expect(corrected("o, brien", ["O'Brien"]) == "o, brien")
     }
 
-    /// A pasted dictionary is bounded rather than scanned in full.
-    @Test func aHugeListIsBounded() {
-        let many = (0..<5_000).map { "Term\($0)x" } + ["Kanishk"]
-        #expect(VocabularyCorrection.apply("kanish", terms: many) == "kanish")
-        #expect(VocabularyCorrection.apply("kanish", terms: ["Kanishk"] + many) == "Kanishk")
+    /// Only what the expander will actually expand is protected: "o brien"
+    /// as a trigger does not match "o'brien", so the term still applies.
+    @Test func aTriggerTheExpanderWouldNotMatchProtectsNothing() {
+        let transcript = "ask o'brien now"
+        let ranges = SnippetExpander.triggerRanges(
+            in: transcript,
+            using: [Snippet(trigger: "o brien", expansion: "Mr O'Brien")]
+        )
+        #expect(ranges.isEmpty)
+        #expect(VocabularyCorrection.apply(transcript, terms: ["O'Brien"], protectedRanges: ranges)
+            == "ask O'Brien now")
+    }
+
+    /// Every term counts however long the list, the last one included: an
+    /// exact match is a lookup and is never rationed. One-letter slips are
+    /// found within a fixed budget, which a realistic list never exhausts.
+    @Test func aHugeListStillAppliesEveryTerm() {
+        let many = (0..<5_000).map { "Term\($0)x" }
+        #expect(VocabularyCorrection.apply("kanish", terms: many + ["Kanishk"]) == "Kanishk")
+        let transcript = Array(repeating: "please tell whisper kit about the plan", count: 200)
+            .joined(separator: " ")
+        let corrected = VocabularyCorrection.apply(transcript, terms: many + ["WhisperKit"])
+        #expect(corrected.components(separatedBy: "WhisperKit").count == 201)
     }
 }

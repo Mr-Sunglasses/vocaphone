@@ -30,58 +30,84 @@ enum VocabularyCorrection {
     /// two ("voca phone") more often than it joins two into one.
     private static let extraWords = 1
 
-    /// More than anyone types into a settings field; past it, the rest of the
-    /// list is still Whisper's prompt but is not matched here, so a pasted
-    /// dictionary cannot turn finishing a dictation into a long scan.
-    static let maximumTerms = 500
+    /// The longest run of transcript words ever compared with one term.
+    private static let maximumSpan = 8
+
+    /// How many near-miss comparisons one transcript may spend. Exact
+    /// matches — spacing and case — are a lookup and never count against it.
+    /// A realistic list of a few hundred names never comes close; a pasted
+    /// list of thousands that share their first letters stops looking for
+    /// one-letter slips before it can hold up the transcript.
+    static let fuzzyComparisonBudget = 60_000
 
     /// `text` with every near-miss of a term in `terms` replaced by the term as
     /// the user wrote it. `isDictionaryWord` answers for one lowercased word;
     /// a single such word is only ever replaced by an exact match. Words that
-    /// make up any of `protectedPhrases` — snippet triggers, which expand
-    /// after this runs — are never touched.
+    /// overlap `protectedRanges` — snippet triggers, which expand after this
+    /// runs — are never touched.
+    ///
+    /// Every term is used, however long the list. An exact match is a lookup;
+    /// for a near miss, terms are filed by first letter and length, the two
+    /// things every match already has to share within two, so each run of
+    /// words is only compared with the terms that could match it.
     static func apply(
         _ text: String,
         terms: [String],
         isDictionaryWord: (String) -> Bool = { _ in false },
-        protectedPhrases: [String] = []
+        protectedRanges: [Range<String.Index>] = []
     ) -> String {
         guard !text.isEmpty else { return text }
-        // Every match shares the term's first letter, so each word is only
-        // compared with the terms that start the way it does.
-        var byFirstLetter: [Character: [Term]] = [:]
-        for term in terms.prefix(maximumTerms).compactMap(Term.init) {
-            byFirstLetter[term.key.first!, default: []].append(term)
+        var exact: [String: Term] = [:]
+        var filed: [Character: [Int: [Term]]] = [:]
+        var widest = 0
+        for term in terms.compactMap(Term.init) {
+            if exact[term.key] == nil { exact[term.key] = term }
+            filed[term.key.first!, default: [:]][term.key.count, default: []].append(term)
+            widest = max(widest, term.wordCount + extraWords)
         }
-        guard !byFirstLetter.isEmpty else { return text }
+        guard !filed.isEmpty else { return text }
+        var budget = fuzzyComparisonBudget
         let words = Self.words(in: text)
         guard !words.isEmpty else { return text }
-        let protected = protectedIndices(of: protectedPhrases, in: words)
+        let protected = Set(words.indices.filter { index in
+            protectedRanges.contains { $0.overlaps(words[index].range) }
+        })
 
         var replacements: [(range: Range<String.Index>, term: String)] = []
         var index = 0
         while index < words.count {
             var best: (length: Int, term: Term, distance: Int)?
-            let candidates = words[index].key.first.flatMap { byFirstLetter[$0] } ?? []
-            for term in candidates {
-                let longest = min(term.wordCount + extraWords, words.count - index)
-                guard longest >= 1 else { continue }
-                for length in stride(from: longest, through: 1, by: -1) {
-                    guard !(index..<(index + length)).contains(where: protected.contains) else { continue }
-                    let span = words[index..<(index + length)]
-                    guard Self.isContiguous(span, in: text, allowing: term.joiners) else { continue }
-                    let key = span.map(\.key).joined()
-                    guard let distance = term.accepts(
-                        key,
-                        wordCount: length,
-                        isDictionaryWord: length == 1 && isDictionaryWord(key)
-                    ) else { continue }
-                    // A term already written correctly still wins here, so a
-                    // longer near-miss cannot swallow it with the next word.
-                    if best == nil || distance < best!.distance
-                        || (distance == best!.distance && length > best!.length)
+            let longest = min(widest, maximumSpan, words.count - index)
+            for length in stride(from: longest, through: 1, by: -1) {
+                guard !(index..<(index + length)).contains(where: protected.contains) else { continue }
+                let span = words[index..<(index + length)]
+                let key = span.map(\.key).joined()
+                if let term = exact[key], term.wordCount + extraWords >= length,
+                   Self.isContiguous(span, in: text, allowing: term.joiners)
+                {
+                    if best == nil || best!.distance > 0 || length > best!.length {
+                        best = (length, term, 0)
+                    }
+                    continue
+                }
+                guard budget > 0, let first = key.first, let byLength = filed[first] else { continue }
+                let dictionaryWord = length == 1 && isDictionaryWord(key)
+                for termLength in max(1, key.count - 2)...(key.count + 2) {
+                    for term in byLength[termLength] ?? []
+                    where term.wordCount + extraWords >= length
+                        && Self.isContiguous(span, in: text, allowing: term.joiners)
                     {
-                        best = (length, term, distance)
+                        budget -= 1
+                        guard let distance = term.accepts(
+                            key, wordCount: length, isDictionaryWord: dictionaryWord
+                        ) else { continue }
+                        // A term already written correctly still wins here, so
+                        // a longer near-miss cannot swallow it with the next word.
+                        if best == nil || distance < best!.distance
+                            || (distance == best!.distance && length > best!.length)
+                        {
+                            best = (length, term, distance)
+                        }
                     }
                 }
             }
@@ -102,21 +128,6 @@ enum VocabularyCorrection {
             result.replaceSubrange(replacement.range, with: replacement.term)
         }
         return result
-    }
-
-    /// The positions of every word that belongs to an occurrence of one of
-    /// `phrases`, matched word by word on letters and digits.
-    private static func protectedIndices(of phrases: [String], in words: [Word]) -> Set<Int> {
-        var protected: Set<Int> = []
-        for phrase in phrases {
-            let keys = Self.words(in: phrase).map(\.key)
-            guard !keys.isEmpty, keys.count <= words.count else { continue }
-            for start in 0...(words.count - keys.count)
-            where (0..<keys.count).allSatisfy({ words[start + $0].key == keys[$0] }) {
-                protected.formUnion(start..<(start + keys.count))
-            }
-        }
-        return protected
     }
 
     // MARK: - Terms

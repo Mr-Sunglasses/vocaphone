@@ -35,33 +35,51 @@ object VocabularyCorrection {
      */
     private const val EXTRA_WORDS = 1
 
+    /** The longest run of transcript words ever compared with one term. */
+    private const val MAXIMUM_SPAN = 8
+
     /**
-     * More than anyone types into a settings field; past it, the rest of the
-     * list is still Whisper's prompt but is not matched here, so a pasted
-     * dictionary cannot turn finishing a dictation into a long scan.
+     * How many near-miss comparisons one transcript may spend. Exact matches —
+     * spacing and case — are a lookup and never count against it. A realistic
+     * list of a few hundred names never comes close; a pasted list of thousands
+     * that share their first letters stops looking for one-letter slips before
+     * it can hold up the transcript.
      */
-    const val MAXIMUM_TERMS = 500
+    const val FUZZY_COMPARISON_BUDGET = 60_000
 
     /**
      * [text] with every near-miss of a term in [terms] replaced by the term as
      * the user wrote it. A single [isDictionaryWord] is only ever replaced by an
-     * exact match. Words that make up any of [protectedPhrases] — snippet
-     * triggers, which expand after this runs — are never touched.
+     * exact match. Words that overlap [protectedRanges] — snippet triggers,
+     * which expand after this runs — are never touched.
+     *
+     * Every term is used, however long the list. An exact match is a lookup;
+     * for a near miss, terms are filed by first letter and length, the two
+     * things every match already has to share within two.
      */
     fun apply(
         text: String,
         terms: List<String>,
         isDictionaryWord: (String) -> Boolean = { false },
-        protectedPhrases: List<String> = emptyList(),
+        protectedRanges: List<IntRange> = emptyList(),
     ): String {
         if (text.isEmpty()) return text
-        // Every match shares the term's first letter, so each word is only
-        // compared with the terms that start the way it does.
-        val byFirstLetter = terms.take(MAXIMUM_TERMS).mapNotNull(Term::of).groupBy { it.key.first() }
-        if (byFirstLetter.isEmpty()) return text
+        val exact = HashMap<String, Term>()
+        val filed = HashMap<Char, HashMap<Int, MutableList<Term>>>()
+        var widest = 0
+        for (term in terms.mapNotNull(Term::of)) {
+            exact.putIfAbsent(term.key, term)
+            filed.getOrPut(term.key.first()) { HashMap() }.getOrPut(term.key.length) { mutableListOf() } += term
+            widest = maxOf(widest, term.wordCount + EXTRA_WORDS)
+        }
+        if (filed.isEmpty()) return text
         val words = words(text)
         if (words.isEmpty()) return text
-        val protected = protectedIndices(protectedPhrases, words)
+        val protected = words.indices.filter { index ->
+            val word = words[index]
+            protectedRanges.any { it.first < word.end && word.start <= it.last }
+        }.toSet()
+        var budget = FUZZY_COMPARISON_BUDGET
 
         val replacements = mutableListOf<Pair<IntRange, String>>()
         var index = 0
@@ -69,25 +87,37 @@ object VocabularyCorrection {
             var bestLength = 0
             var bestTerm: Term? = null
             var bestDistance = Int.MAX_VALUE
-            val candidates = words[index].key.firstOrNull()?.let { byFirstLetter[it] }.orEmpty()
-            for (term in candidates) {
-                val longest = minOf(term.wordCount + EXTRA_WORDS, words.size - index)
-                for (length in longest downTo 1) {
-                    if ((index until index + length).any { it in protected }) continue
-                    val span = words.subList(index, index + length)
-                    if (!isContiguous(span, text, term.joiners)) continue
-                    val key = span.joinToString("") { it.key }
-                    val distance = term.accepts(
-                        key,
-                        wordCount = length,
-                        isDictionaryWord = length == 1 && isDictionaryWord(key),
-                    ) ?: continue
-                    // A term already written correctly still wins here, so a
-                    // longer near-miss cannot swallow it with the next word.
-                    if (distance < bestDistance || (distance == bestDistance && length > bestLength)) {
-                        bestLength = length
-                        bestTerm = term
-                        bestDistance = distance
+            fun offer(term: Term, length: Int, distance: Int) {
+                // A term already written correctly still wins here, so a longer
+                // near-miss cannot swallow it with the next word.
+                if (distance < bestDistance || (distance == bestDistance && length > bestLength)) {
+                    bestLength = length
+                    bestTerm = term
+                    bestDistance = distance
+                }
+            }
+            val longest = minOf(widest, MAXIMUM_SPAN, words.size - index)
+            for (length in longest downTo 1) {
+                if ((index until index + length).any { it in protected }) continue
+                val span = words.subList(index, index + length)
+                val key = span.joinToString("") { it.key }
+                val exactTerm = exact[key]
+                if (exactTerm != null && exactTerm.wordCount + EXTRA_WORDS >= length &&
+                    isContiguous(span, text, exactTerm.joiners)
+                ) {
+                    offer(exactTerm, length, 0)
+                    continue
+                }
+                if (budget <= 0) continue
+                val byLength = key.firstOrNull()?.let { filed[it] } ?: continue
+                val dictionaryWord = length == 1 && isDictionaryWord(key)
+                for (termLength in maxOf(1, key.length - 2)..key.length + 2) {
+                    for (term in byLength[termLength].orEmpty()) {
+                        if (term.wordCount + EXTRA_WORDS < length) continue
+                        if (!isContiguous(span, text, term.joiners)) continue
+                        budget -= 1
+                        val distance = term.accepts(key, length, dictionaryWord) ?: continue
+                        offer(term, length, distance)
                     }
                 }
             }
@@ -108,21 +138,6 @@ object VocabularyCorrection {
             result.replace(range.first, range.last + 1, replacement)
         }
         return result.toString()
-    }
-
-    /** Every word that belongs to an occurrence of one of [phrases]. */
-    private fun protectedIndices(phrases: List<String>, words: List<Word>): Set<Int> {
-        val protected = mutableSetOf<Int>()
-        for (phrase in phrases) {
-            val keys = words(phrase).map { it.key }
-            if (keys.isEmpty() || keys.size > words.size) continue
-            for (start in 0..words.size - keys.size) {
-                if (keys.indices.all { words[start + it].key == keys[it] }) {
-                    protected += start until start + keys.size
-                }
-            }
-        }
-        return protected
     }
 
     private class Term(val text: String, val key: String, val wordCount: Int) {

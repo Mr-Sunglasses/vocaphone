@@ -88,18 +88,35 @@ class VocabularyCorrectionTest {
 
     @Test
     fun `snippet triggers are left for the snippet`() {
+        val transcript = "sign it kanish please"
+        val snippet = Snippet(id = "1", trigger = "kanish", expansion = "Kanishk Pachauri")
         assertEquals(
-            "sign it kanish please",
-            VocabularyCorrection.apply("sign it kanish please", listOf("Kanishk"), protectedPhrases = listOf("kanish")),
+            transcript,
+            VocabularyCorrection.apply(
+                transcript,
+                listOf("Kanishk"),
+                protectedRanges = SnippetExpander.triggerRanges(transcript, listOf(snippet)),
+            ),
         )
         val finished = DictatedTranscript.finished(
             "sign it kanish",
             style = WritingStyle.CASUAL,
             repairSpeech = false,
-            snippets = listOf(Snippet(id = "1", trigger = "kanish", expansion = "Kanishk Pachauri")),
+            snippets = listOf(snippet),
             vocabulary = listOf("Kanishk"),
         )
         assertTrue(finished, finished.contains("Kanishk Pachauri"))
+    }
+
+    @Test
+    fun `a trigger the expander would not match protects nothing`() {
+        val transcript = "ask o'brien now"
+        val ranges = SnippetExpander.triggerRanges(
+            transcript,
+            listOf(Snippet(id = "1", trigger = "o brien", expansion = "Mr O'Brien")),
+        )
+        assertTrue(ranges.isEmpty())
+        assertEquals("ask O'Brien now", VocabularyCorrection.apply(transcript, listOf("O'Brien"), protectedRanges = ranges))
     }
 
     @Test
@@ -110,9 +127,13 @@ class VocabularyCorrectionTest {
     }
 
     @Test
-    fun `a huge list is bounded`() {
+    fun `a huge list still applies every term`() {
+        // Exact matches are a lookup and never rationed; one-letter slips are
+        // found within a fixed budget a realistic list never exhausts.
         val many = (0 until 5_000).map { "Term${it}x" }
-        assertEquals("kanish", VocabularyCorrection.apply("kanish", many + "Kanishk"))
-        assertEquals("Kanishk", VocabularyCorrection.apply("kanish", listOf("Kanishk") + many))
+        assertEquals("Kanishk", VocabularyCorrection.apply("kanish", many + "Kanishk"))
+        val transcript = List(200) { "please tell whisper kit about the plan" }.joinToString(" ")
+        val corrected = VocabularyCorrection.apply(transcript, many + "WhisperKit")
+        assertEquals(201, corrected.split("WhisperKit").size)
     }
 }

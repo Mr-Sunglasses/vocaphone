@@ -54,8 +54,14 @@ object DictatedTranscript {
         // Never for RAW, on the same grounds as repair: raw promises the
         // model's own output, and a glyph is not something the model said.
         val spelled = if (style != WritingStyle.RAW) {
-            // A trigger corrected into a term would never expand.
-            VocabularyCorrection.apply(styled, vocabulary, isDictionaryWord, snippets.map { it.trigger })
+            // A trigger corrected into a term would never expand. Found by the
+            // expander's own pattern, so exactly what it will match.
+            VocabularyCorrection.apply(
+                styled,
+                vocabulary,
+                isDictionaryWord,
+                SnippetExpander.triggerRanges(styled, snippets),
+            )
         } else {
             styled
         }

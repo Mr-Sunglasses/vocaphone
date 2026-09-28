@@ -63,8 +63,9 @@ enum DictatedTranscript {
                 styled,
                 terms: vocabulary,
                 isDictionaryWord: EnglishWords.contains,
-                // A trigger corrected into a term would never expand.
-                protectedPhrases: snippets.map(\.trigger)
+                // A trigger corrected into a term would never expand. Found by
+                // the expander's own pattern, so exactly what it will match.
+                protectedRanges: SnippetExpander.triggerRanges(in: styled, using: snippets)
             )
             : styled
         let emojified = spokenEmoji && style != .raw
