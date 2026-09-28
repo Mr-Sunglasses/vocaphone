@@ -108,6 +108,7 @@ fun SettingsScreen(
     onNumbersAsDigits: (Boolean) -> Unit,
     onSpokenEmoji: (Boolean) -> Unit,
     onDictationTone: (DictationTone) -> Unit,
+    onStopAfterPause: (Boolean) -> Unit,
     onPreviewDictationTone: (DictationTone) -> Unit,
     tonePreviewListening: Boolean,
     onMicrophone: (MicrophonePreference) -> Unit,
@@ -569,6 +570,16 @@ fun SettingsScreen(
                         text = if (tonePreviewListening) "Stop preview" else "Preview",
                         onClick = { onPreviewDictationTone(settings.dictationTone) },
                         enabled = settings.dictationTone.playsCues,
+                    )
+                }
+                Section(title = "Ending a dictation") {
+                    SettingToggle(
+                        title = "Stop after a pause",
+                        detail = "Finishes a dictation by itself after three seconds of " +
+                            "quiet following at least a second of speech. Leave it off " +
+                            "if you pause to think while you talk.",
+                        checked = settings.stopAfterPause,
+                        onCheckedChange = onStopAfterPause,
                     )
                 }
                 MicrophoneSection(

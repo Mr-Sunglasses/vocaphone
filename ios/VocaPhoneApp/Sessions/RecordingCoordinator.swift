@@ -20,6 +20,11 @@ final class RecordingCoordinator {
     /// Levels produced in the current recording, counted so the keyboard can
     /// tell new audio from a re-read of the same file.
     private var meterSequence = 0
+    /// Listens for the end of speech when Stop after a pause is on, reset for
+    /// every recording.
+    private var pauseDetector = PauseDetector()
+    private var pauseDetectorSessionID: UUID?
+    private var pauseDetectorLastBatchAt: TimeInterval?
     /// Guided setup reads system state that emits no change notifications —
     /// keyboard installation, a permission flipped in iOS Settings — so it is
     /// snapshotted here and refreshed deliberately rather than polled.
@@ -1560,6 +1565,7 @@ final class RecordingCoordinator {
         // draws one bar per level, and the levels it never saw are the motion
         // it used to invent.
         meterSequence += levels.count
+        finishIfSpeechEnded(levels, sessionID: record.sessionID)
         // Meter updates are intentionally stored separately from the session
         // record. Otherwise a stale meter write from the app can overwrite a
         // finalizing/canceled state written by the keyboard extension.
@@ -1567,6 +1573,36 @@ final class RecordingCoordinator {
             MeterSample(sequence: meterSequence, levels: levels),
             for: record.sessionID
         )
+    }
+
+    /// Meter levels are the square root of their RMS (see
+    /// `AudioCapturePipeline.normalizedLevel`); the detector wants the RMS
+    /// back. A batch of levels covers however much audio was drained since the
+    /// last one — the pipeline always splits a drain into five, whatever its
+    /// length — so the time is measured, not assumed: capture is real time, and
+    /// the clock between batches is the audio they hold. Finishing goes through
+    /// ``requestFinish()``, the same path the recording limit takes.
+    private func finishIfSpeechEnded(_ levels: [Float], sessionID: UUID) {
+        guard KeyboardPreferences.stopAfterPause, !levels.isEmpty else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        if pauseDetectorSessionID != sessionID {
+            pauseDetector = PauseDetector()
+            pauseDetectorSessionID = sessionID
+            pauseDetectorLastBatchAt = nil
+        }
+        // The first batch has nothing to measure against; a stalled one is
+        // capped, so a suspended app catching up cannot count as a pause.
+        let elapsed = pauseDetectorLastBatchAt.map { min(max(now - $0, 0), 1) } ?? 0.25
+        pauseDetectorLastBatchAt = now
+        let perLevel = elapsed / Double(levels.count)
+        var ended = false
+        for level in levels {
+            let rms = level * level
+            ended = pauseDetector.observe(rms: rms, seconds: perLevel) || ended
+        }
+        guard ended else { return }
+        pauseDetectorSessionID = nil
+        requestFinish()
     }
 
     private func shouldKeepQuickDictationReady(after record: SessionRecord) -> Bool {

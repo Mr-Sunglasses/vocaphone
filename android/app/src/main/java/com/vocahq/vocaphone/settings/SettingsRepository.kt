@@ -205,6 +205,11 @@ data class VocaPhoneSettings(
     /** Whether dictated English number words are written as digits. Off by default. */
     val numbersAsDigits: Boolean = false,
     /**
+     * Whether a dictation finishes by itself after a pause in speech. Off by
+     * default: people pause to think. See [com.vocahq.vocaphone.core.PauseDetector].
+     */
+    val stopAfterPause: Boolean = false,
+    /**
      * Whether "crying emoji" becomes 😭.
      *
      * Off by default, matching Write numbers as digits. Saying "emoji" out
@@ -505,6 +510,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setNumbersAsDigits(enabled: Boolean) = put(Keys.NUMBERS_AS_DIGITS, enabled)
 
+    suspend fun setStopAfterPause(enabled: Boolean) = put(Keys.STOP_AFTER_PAUSE, enabled)
+
     suspend fun setSpokenEmoji(enabled: Boolean) = put(Keys.SPOKEN_EMOJI, enabled)
 
     suspend fun setNumberRowEnabled(enabled: Boolean) = put(Keys.NUMBER_ROW, enabled)
@@ -714,6 +721,7 @@ class SettingsRepository(private val context: Context) {
         syncWhisperDictionary = this[Keys.SYNC_WHISPER_DICTIONARY] ?: true,
         repairSpeech = this[Keys.REPAIR_SPEECH] ?: true,
         numbersAsDigits = this[Keys.NUMBERS_AS_DIGITS] ?: false,
+        stopAfterPause = this[Keys.STOP_AFTER_PAUSE] ?: false,
         spokenEmoji = this[Keys.SPOKEN_EMOJI] ?: false,
         numberRowEnabled = this[Keys.NUMBER_ROW] ?: true,
         keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
@@ -765,6 +773,7 @@ class SettingsRepository(private val context: Context) {
         val SYNC_WHISPER_DICTIONARY = booleanPreferencesKey("sync_whisper_dictionary")
         val REPAIR_SPEECH = booleanPreferencesKey("repair_speech")
         val NUMBERS_AS_DIGITS = booleanPreferencesKey("numbers_as_digits")
+        val STOP_AFTER_PAUSE = booleanPreferencesKey("stop_after_pause")
         val SPOKEN_EMOJI = booleanPreferencesKey("spoken_emoji")
         val NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
         val KEYBOARD_HEIGHT = stringPreferencesKey("keyboard_height")

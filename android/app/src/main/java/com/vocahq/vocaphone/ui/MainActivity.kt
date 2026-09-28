@@ -417,6 +417,7 @@ fun VocaPhoneApp(
                 onNumbersAsDigits = { viewModel.setNumbersAsDigits(it) },
                 onSpokenEmoji = { viewModel.setSpokenEmoji(it) },
                 onDictationTone = { viewModel.setDictationTone(it) },
+                onStopAfterPause = { viewModel.setStopAfterPause(it) },
                 onPreviewDictationTone = { viewModel.toggleDictationTonePreview(it) },
                 tonePreviewListening = tonePreviewListening,
                 onMicrophone = { viewModel.setMicrophone(it) },

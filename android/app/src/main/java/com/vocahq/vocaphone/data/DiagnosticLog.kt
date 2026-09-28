@@ -265,6 +265,7 @@ class DiagnosticLog(
             "start",
             "cancel",
             "finish",
+            "stop_after_pause",
             "ready_to_insert",
             "inserted",
             "insertion_failed",
