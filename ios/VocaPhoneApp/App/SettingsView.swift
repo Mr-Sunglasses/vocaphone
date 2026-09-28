@@ -773,24 +773,27 @@ struct DictationSettingsView: View {
             let terms = CustomVocabulary.terms(customVocabularyDraft)
             VStack(alignment: .leading, spacing: VocaMetrics.related) {
                 Text(
-                    "Names, places and jargon an on-device Whisper model is unlikely "
-                        + "to know. One per line, or separated by commas."
+                    "Names, places and jargon a speech model is unlikely to know. "
+                        + "One per line, or separated by commas."
                 )
                 Text(
                     terms.isEmpty
                         ? "No custom words. Transcription is unchanged."
-                        : "\(terms.count) word\(terms.count == 1 ? "" : "s") will bias the "
-                            + "decoder. This nudges spelling rather than guaranteeing it, and "
-                            + "a very long list starts to crowd out the speech itself."
+                        : "\(terms.count) word\(terms.count == 1 ? "" : "s") will be spelled "
+                            + "your way when the transcript comes close — \"whisper kit\" "
+                            + "becomes \"WhisperKit\". Whisper models are also nudged toward "
+                            + "them while decoding; a very long list starts to crowd out the "
+                            + "speech itself."
                 )
-                // Said plainly rather than letting the list quietly do nothing:
-                // only Whisper's decoder has somewhere to put a vocabulary.
+                // Said plainly: every model gets the spelling fix, but only
+                // Whisper's decoder has somewhere to put the list itself.
                 if let unsupported = unsupportedVocabularyModel, !terms.isEmpty {
                     Text(
-                        "\(unsupported) cannot use these words. Only Whisper models take a "
-                            + "vocabulary; the list is kept for when you switch back to one."
+                        "\(unsupported) cannot be nudged while it decodes, so only close "
+                            + "matches are corrected. A word it hears as something else "
+                            + "entirely stays as it heard it."
                     )
-                    .foregroundStyle(Color.vocaError)
+                    .foregroundStyle(.secondary)
                 }
             }
         }

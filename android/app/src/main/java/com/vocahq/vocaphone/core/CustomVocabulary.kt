@@ -17,9 +17,15 @@ import java.util.Locale
  */
 object CustomVocabulary {
 
-    fun whisperOnlyWarning(modelName: String?): String? {
+    /**
+     * What a model that cannot take a prompt still does with the list: every
+     * route spells close matches the user's way ([VocabularyCorrection]), but
+     * only Whisper's decoder can be nudged toward the words while it listens.
+     */
+    fun spellingOnlyNote(modelName: String?): String? {
         if (modelName.isNullOrBlank()) return null
-        return "$modelName is not Whisper. Custom words only apply to Whisper models."
+        return "$modelName cannot be nudged while it decodes, so only close matches are " +
+            "corrected. A word it hears as something else entirely stays as it heard it."
     }
 
     /**
