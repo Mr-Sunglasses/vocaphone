@@ -115,6 +115,29 @@ struct WhisperTranscriptionTests {
         }
     }
 
+    /// Through the window loop: a blank first window leaves detection on, and
+    /// the first window with words decides every window after it.
+    @Test func aBlankFirstWindowLeavesTheDecisionToTheNext() async throws {
+        var seen: [(language: String?, detects: Bool?)] = []
+        _ = try await WhisperTranscription.transcribe(
+            samples: Self.speechLike(seconds: 100),
+            options: WhisperTranscription.decodingOptions(
+                language: nil, translate: false, quality: .balanced, promptTokens: nil
+            )
+        ) { _, options in
+            seen.append((options.language, options.detectLanguage))
+            let text = seen.count == 1 ? " " : "namaste"
+            return [TranscriptionResult(text: text, segments: [], language: "hi", timings: TranscriptionTimings())]
+        }
+        #expect(seen.count >= 4)
+        #expect(seen[0].language == nil && seen[0].detects == true)
+        #expect(seen[1].language == nil && seen[1].detects == true)
+        for later in seen.dropFirst(2) {
+            #expect(later.language == "hi")
+            #expect(later.detects == false)
+        }
+    }
+
     /// A window that said nothing, or too little, does not decide it.
     @Test func onlyAWindowWithWordsDecidesTheLanguage() {
         let automatic = WhisperTranscription.decodingOptions(
