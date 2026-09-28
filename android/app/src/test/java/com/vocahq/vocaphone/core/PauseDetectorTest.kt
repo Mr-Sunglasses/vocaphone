@@ -48,6 +48,15 @@ class PauseDetectorTest {
     }
 
     @Test
+    fun `quiet speech over background still stops`() {
+        // About 9 dB apart: the background after the speech is still the pause.
+        val detector = PauseDetector()
+        detector.feed(0.001f, 1.0)
+        detector.feed(0.02f, 2.0)
+        assertTrue(detector.feed(0.007f, 3.2))
+    }
+
+    @Test
     fun `a noisy room is the floor`() {
         val detector = PauseDetector()
         assertFalse(detector.feed(0.02f, 5.0))

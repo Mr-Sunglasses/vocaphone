@@ -47,6 +47,15 @@ struct PauseDetectorTests {
         #expect(!feed(&detector, rms: 0.03, seconds: 120))
     }
 
+    /// Quiet speech over steady background, about 9 dB apart: the background
+    /// after it is still the pause.
+    @Test func quietSpeechOverBackgroundStillStops() {
+        var detector = PauseDetector()
+        _ = feed(&detector, rms: 0.001, seconds: 1)
+        _ = feed(&detector, rms: 0.02, seconds: 2)
+        #expect(feed(&detector, rms: 0.007, seconds: 3.2))
+    }
+
     /// A steady fan is the floor, not speech; speech over it still counts,
     /// and the fan alone after it is the pause.
     @Test func aNoisyRoomIsTheFloor() {

@@ -61,12 +61,13 @@ class PauseDetector {
         const val SPEECH_OVER_FLOOR = 4f
         const val MINIMUM_SPEECH_LEVEL = 0.008f
         /**
-         * A quiet stretch has to sit this far under the speech before it —
-         * about 12 dB. A fan that switches on mid-recording is heard as speech
-         * until the floor catches up with it, and afterwards it is still
-         * nowhere near this far under what was said, so it never reads as the
-         * pause.
+         * A quiet stretch has to sit this far under the speech before it — half
+         * its level, about 6 dB. A fan that switches on mid-recording is heard
+         * as speech until the floor catches up with it, and in that time it
+         * pulls the speech level down to its own; afterwards it is never half
+         * of it, so it never reads as the pause. Quiet speech over steady
+         * background, 9 dB apart, still stops.
          */
-        const val PAUSE_UNDER_SPEECH = 4f
+        const val PAUSE_UNDER_SPEECH = 2f
     }
 }
