@@ -185,6 +185,27 @@ struct WhisperTranscriptionTests {
         #expect(WhisperTranscription.reportedLanguage([]) == "")
     }
 
+    /// A window that did not lock the language — too short, or no detection
+    /// to go on — must not label the recording with its own guess: once a
+    /// later window locks, every result carries the language the rest was
+    /// decoded in.
+    @Test func everyResultCarriesTheLockedLanguage() async throws {
+        var window = 0
+        let results = try await WhisperTranscription.transcribe(
+            samples: Self.speechLike(seconds: 70),
+            options: WhisperTranscription.decodingOptions(
+                language: nil, translate: false, quality: .balanced, promptTokens: nil
+            )
+        ) { _, options in
+            window += 1
+            let guess = options.language ?? (window == 1 ? "" : "hi")
+            return [TranscriptionResult(text: "words", segments: [], language: guess, timings: TranscriptionTimings())]
+        }
+        #expect(results.count >= 3)
+        #expect(results.allSatisfy { $0.language == "hi" })
+        #expect(WhisperTranscription.reportedLanguage(results) == "hi")
+    }
+
     /// A language the user chose is never replaced by a detected one.
     @Test func aChosenLanguageIsLeftAlone() {
         let german = WhisperTranscription.decodingOptions(

@@ -206,6 +206,13 @@ enum WhisperTranscription {
             }
             results.append(contentsOf: decoded)
         }
+        // The language every window after the lock was decoded in is the
+        // recording's language. Earlier windows each reported their own
+        // guess — a blank one, a two-second fragment — and whichever came
+        // first would otherwise label and punctuate the transcript.
+        if options.language == nil, let locked = windowOptions.language {
+            for result in results { result.language = locked }
+        }
         return results
     }
 
@@ -245,11 +252,13 @@ enum WhisperTranscription {
         !TranscriptSanitizer.clean(result.text).isEmpty
     }
 
-    /// The language to report for a finished Automatic recording: the one the
-    /// first window with words detected, which is also the one every later
-    /// window was locked to. A blank or marker-only first window detects
-    /// something too, and reporting it would label and punctuate the
-    /// transcript in a language nobody spoke.
+    /// The language to report for a finished Automatic recording.
+    ///
+    /// Once a window has locked the language, ``transcribe(samples:options:emptyWindow:decode:)``
+    /// has already set every result to it, so the first result answers. A
+    /// recording where no window qualified reports the first window with
+    /// words: a blank or marker-only first window detects something too, and
+    /// reporting it would label the transcript in a language nobody spoke.
     static func reportedLanguage(_ results: [TranscriptionResult]) -> String {
         results.first(where: carriesSpeech)?.language ?? results.first?.language ?? ""
     }
