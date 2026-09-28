@@ -107,6 +107,21 @@ enum ModelEndToEnd {
         return loaded
     }
 
+    /// `speech` brought down to a 0.015 peak, as from a phone lying on a desk,
+    /// with a 25 ms knock at 0.9 a third of a second before the end: the finger
+    /// that tapped Stop, as the microphone hears it.
+    static func quietWithStopTap(_ speech: [Float]) -> [Float] {
+        let peak = speech.reduce(Float(0)) { max($0, abs($1)) }
+        guard peak > 0 else { return speech }
+        var recording = speech.map { $0 * 0.015 / peak }
+        let knock = max(0, recording.count - 5_600)
+        for index in 0..<400 where knock + index < recording.count {
+            let decay = Float(exp(-Double(index) / 120))
+            recording[knock + index] += 0.9 * decay * (index.isMultiple(of: 2) ? 1 : -1)
+        }
+        return recording
+    }
+
     static func samples(_ scenario: Scenario) throws -> [Float] {
         let directory = try #require(directory)
         return try loadSamples(directory.appendingPathComponent("scenarios/\(scenario.file)"))
