@@ -770,8 +770,27 @@ enum LocalModelCatalog {
         var picks: [ModelPick]
         switch priority {
         case .balanced:
-            picks = base.filter { pick in
-                needed.contains { isHighAccuracy(pick.model, for: $0) }
+            let leadRanking = accuracyRanking(for: lead)
+            func fits(_ model: LocalModelDescriptor, _ language: String) -> Bool {
+                deviceMemoryGB >= model.minimumRamGB && model.covers(language)
+            }
+            func role(of model: LocalModelDescriptor) -> ModelPickRole {
+                model.englishOnly ? .english
+                    : model.languageCodes.count == 1 ? .regional : .multilingual
+            }
+            // The lead language's most accurate model is the first card, the
+            // one that carries FOR YOU. `base` leads with whatever its roles
+            // put first, which on a Croatian iPhone with a Hindi keyboard was
+            // the Hindi model — "Asian languages", captioned "Most accurate
+            // for Croatian".
+            picks = leadRanking.lazy
+                .compactMap(descriptor(for:))
+                .first { fits($0, lead) }
+                .map { [ModelPick(role: role(of: $0), model: $0)] } ?? []
+            for pick in base where !picks.contains(where: { $0.model.id == pick.model.id }) {
+                if needed.contains(where: { isHighAccuracy(pick.model, for: $0) }) {
+                    picks.append(pick)
+                }
             }
             // Lead language first: its best models fill the page before a
             // second keyboard's do.
@@ -779,15 +798,20 @@ enum LocalModelCatalog {
                 for id in accuracyRanking(for: language) {
                     guard picks.count < limit else { break }
                     guard let model = descriptor(for: id),
-                          deviceMemoryGB >= model.minimumRamGB,
-                          model.covers(language),
+                          fits(model, language),
                           !picks.contains(where: { $0.model.id == id })
                     else { continue }
-                    let role: ModelPickRole = model.englishOnly ? .english
-                        : model.languageCodes.count == 1 ? .regional : .multilingual
-                    picks.append(ModelPick(role: role, model: model))
+                    picks.append(ModelPick(role: role(of: model), model: model))
                 }
             }
+            // Within the page, the lead language's own ranking decides the
+            // order; anything it does not rank keeps its place after those.
+            picks = Array(picks.prefix(limit)).enumerated().sorted { lhs, rhs in
+                let l = leadRanking.firstIndex(of: lhs.element.model.id) ?? Int.max
+                let r = leadRanking.firstIndex(of: rhs.element.model.id) ?? Int.max
+                return l != r ? l < r : lhs.offset < rhs.offset
+            }
+            .map(\.element)
         case .lighter:
             // Smallest first, among models that are actually for this
             // language. Paraformer lists English, but it is a Mandarin model,
@@ -934,6 +958,12 @@ enum LocalModelCatalog {
             ?? localePart.split { $0 == "-" || $0 == "_" }.first.map(String.init)?.lowercased()
             ?? localePart.lowercased()
         if code.hasPrefix("zh") { code = "zh" }
+        // Foundation canonicalises two of the picker's own codes into ones it
+        // does not list: "tl" becomes "fil" and "no" becomes "nb". Dropped
+        // here, they fell through to the phone's language, and a Filipino or
+        // Norwegian speaker was offered English models.
+        if code == "fil" { code = "tl" }
+        if code == "nb" || code == "nn" { code = "no" }
         if code == "yue" { return "yue" }
         if code == TranscriptionLanguage.automatic.rawValue { return nil }
         if code == "und" || code == "mul" { return nil }
@@ -1111,231 +1141,21 @@ enum LocalModelCatalog {
     )
 }
 
-/// The small set of practical choices that can change a first-run model.
+/// The trade-off a recommendation is ranked by. Choose model offers one
+/// row per trade-off; see `LocalModelCatalog.modelChoices`.
 enum ModelGuidancePriority: String, CaseIterable, Identifiable, Sendable {
     case balanced
     case lighter
     case multilingual
 
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .balanced: "Balanced"
-        case .lighter: "Smallest download"
-        case .multilingual: "Works across languages"
-        }
-    }
-
-    /// The tile symbol on Choose model.
-    var symbol: String {
-        switch self {
-        case .balanced: "checkmark.seal"
-        case .lighter: "arrow.down.circle"
-        case .multilingual: "globe"
-        }
-    }
-
-    /// Segment labels on Choose model. Three words a person can pick between
-    /// without knowing what a word error rate is.
-    var shortTitle: String {
-        switch self {
-        case .balanced: "Accurate"
-        case .lighter: "Smallest"
-        case .multilingual: "Multilingual"
-        }
-    }
-
-    /// The line under the segments, saying what the choice trades.
-    var onboardingDetail: String {
-        switch self {
-        case .balanced: "The best at getting your words right. Larger downloads."
-        case .lighter: "Quick to download and light on storage. Less accurate."
-        case .multilingual: "One model that understands several languages."
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .balanced: "The best all-round match for this iPhone and your language."
-        case .lighter: "Least data and storage. Best on a metered connection."
-        case .multilingual: "One model for several languages, instead of a specialist in one."
-        }
-    }
 }
 
-struct ModelGuidanceIntent: Sendable, Equatable {
-    let language: String
-    let priority: ModelGuidancePriority
-
-    init(language: String, priority: ModelGuidancePriority = .balanced) {
-        self.language = language
-        self.priority = priority
-    }
-}
-
-enum ModelGuidanceConfidence: Sendable, Equatable {
-    case goodDefault
-    case noMatch
-}
-
-struct ModelGuidanceResult: Sendable {
-    let model: LocalModelDescriptor?
-    let intent: ModelGuidanceIntent
-    let confidence: ModelGuidanceConfidence
-    let reason: String
-
-    var languageName: String {
-        TranscriptionLanguage(rawValue: intent.language)?.displayName
-            ?? Locale.current.localizedString(forLanguageCode: intent.language)
-            ?? intent.language.uppercased()
-    }
-
-    /// The one line that says what this download costs and what it covers.
-    /// Mirrors `downloadDetail` in `ModelGuidance.kt`.
-    var downloadDetail: String? {
-        model.map { "Works with \(languageName) · \($0.sizeLabel) download" }
-    }
-}
-
-extension LocalModelCatalog {
-    /// A single, plain-language answer for first-run setup. The existing role
-    /// recommendations remain available to the advanced Settings catalog.
-    static func guidance(
-        deviceMemoryGB: Int,
-        intent: ModelGuidanceIntent
-    ) -> ModelGuidanceResult {
-        let requestedLanguage = intent.language.lowercased()
-        let language = requestedLanguage.isEmpty || requestedLanguage == TranscriptionLanguage.automatic.rawValue
-            ? deviceLanguage
-            : requestedLanguage
-        let candidates = all.filter { deviceMemoryGB >= $0.minimumRamGB && $0.covers(language) }
-        let normalized = ModelGuidanceIntent(language: language, priority: intent.priority)
-        guard !candidates.isEmpty else {
-            return ModelGuidanceResult(
-                model: nil,
-                intent: normalized,
-                confidence: .noMatch,
-                reason: "No on-device model in this build supports \(displayName(for: language)) on this iPhone."
-            )
-        }
-
-        let balanced = recommended(deviceMemoryGB: deviceMemoryGB, language: language)
-            .takeIf { candidates.contains($0) }
-            ?? candidates.min(by: stableGuidanceOrder)
-            ?? candidates[0]
-        let model: LocalModelDescriptor
-        switch intent.priority {
-        case .balanced:
-            model = balanced
-        case .lighter:
-            // Same rule as `smallestCovering`: the smallest model *for* this
-            // language, falling back to any that covers it.
-            let purposeBuilt = candidates.filter { !isIncidental($0, for: language) }
-            model = (purposeBuilt.isEmpty ? candidates : purposeBuilt).min {
-                if $0.sizeBytes != $1.sizeBytes { return $0.sizeBytes < $1.sizeBytes }
-                if $0.minimumRamGB != $1.minimumRamGB { return $0.minimumRamGB < $1.minimumRamGB }
-                return $0.id < $1.id
-            } ?? candidates[0]
-        case .multilingual:
-            model = bestMultilingual(deviceMemoryGB: deviceMemoryGB, language: language)
-                .flatMap { pick in candidates.contains(pick) ? pick : nil }
-                ?? candidates.max(by: widestCoverage)
-                ?? balanced
-        }
-
-        let languageName = displayName(for: language)
-        let reason: String
-        switch intent.priority {
-        case .balanced:
-            reason = "A balanced match that fits this iPhone and covers \(languageName)."
-        case .lighter:
-            reason = "The smallest compatible download that covers \(languageName)."
-        case .multilingual:
-            reason = model.id == balanced.id
-                ? "The balanced match already covers several languages on this iPhone."
-                : "Covers \(model.languages), so you can switch language without "
-                    + "switching model. " + qualityDownloadComparison(model, balanced)
-        }
-        return ModelGuidanceResult(
-            model: model,
-            intent: normalized,
-            confidence: .goodDefault,
-            reason: reason
-        )
-    }
-
-    /// How wide a model's coverage is, for ranking breadth.
-    ///
-    /// An empty `languageCodes` means no restriction rather than no coverage —
-    /// that is how the multilingual Whisper builds are declared — so it sorts
-    /// above every model that names its languages.
-    private static func widestCoverage(
-        _ lhs: LocalModelDescriptor,
-        _ rhs: LocalModelDescriptor
-    ) -> Bool {
-        func breadth(_ model: LocalModelDescriptor) -> Int {
-            if model.englishOnly { return 1 }
-            return model.languageCodes.isEmpty ? .max : model.languageCodes.count
-        }
-        if breadth(lhs) != breadth(rhs) { return breadth(lhs) < breadth(rhs) }
-        if lhs.sizeBytes != rhs.sizeBytes { return lhs.sizeBytes < rhs.sizeBytes }
-        return lhs.id > rhs.id
-    }
-
-    private static func displayName(for language: String) -> String {
-        TranscriptionLanguage(rawValue: language)?.displayName
-            ?? Locale.current.localizedString(forLanguageCode: language)
-            ?? language.uppercased()
-    }
-
-    private static func stableGuidanceOrder(
-        _ lhs: LocalModelDescriptor,
-        _ rhs: LocalModelDescriptor
-    ) -> Bool {
-        if lhs.sizeBytes != rhs.sizeBytes { return lhs.sizeBytes < rhs.sizeBytes }
-        if lhs.minimumRamGB != rhs.minimumRamGB { return lhs.minimumRamGB < rhs.minimumRamGB }
-        return lhs.id < rhs.id
-    }
-
-    private static func qualityDownloadComparison(
-        _ model: LocalModelDescriptor,
-        _ balanced: LocalModelDescriptor
-    ) -> String {
-        if model.sizeBytes > balanced.sizeBytes {
-            return "Bigger download than the balanced match."
-        }
-        if model.sizeBytes < balanced.sizeBytes {
-            return "Smaller download than the balanced match."
-        }
-        return "About the same download size as the balanced match."
-    }
-}
-
-private extension LocalModelDescriptor {
-    func takeIf(_ predicate: (LocalModelDescriptor) -> Bool) -> LocalModelDescriptor? {
-        predicate(self) ? self : nil
-    }
-}
-
-/// Why a model is being offered. The picker shows this next to each alternate,
-/// so the picks read as several different answers rather than a ranking.
 enum ModelPickRole: String, Sendable {
-    case guided
     case english
     case multilingual
     case regional
     case compact
-
-    var label: String {
-        switch self {
-        case .guided: "Your match"
-        case .english: "Best for English"
-        case .multilingual: "Multilingual"
-        case .regional: "Your language"
-        case .compact: "Smallest download"
-        }
-    }
 }
 
 struct ModelPick: Sendable, Equatable {
@@ -1397,5 +1217,104 @@ extension LocalModelDescriptor {
             return id.contains("large-v3")
         }
         return true
+    }
+}
+
+/// One of the three answers Choose model offers, named by what it trades
+/// rather than by what it is.
+///
+/// People pick a download by what it costs them and what it gets right, not
+/// by a family name. So the page asks one question — which language — and
+/// answers with at most three rows: the most accurate model for it, a much
+/// smaller one, and one that hears more languages. Everything else is behind
+/// All models.
+struct ModelChoice: Sendable, Equatable, Identifiable {
+    enum Kind: String, Sendable, Equatable {
+        case best
+        case smaller
+        case moreLanguages
+    }
+
+    let kind: Kind
+    let model: LocalModelDescriptor
+
+    var id: String { model.id }
+}
+
+extension LocalModelCatalog {
+    /// A smaller choice has to be a real saving: under this share of the best
+    /// model's download. Two 600 MB rows offered as "smaller" and "best" are
+    /// one choice shown twice.
+    static let smallerChoiceShare = 0.6
+
+    /// The rows on Choose model, best first, each model once. Empty when
+    /// nothing this iPhone can run covers the language.
+    static func modelChoices(
+        deviceMemoryGB: Int,
+        languages: [String]
+    ) -> [ModelChoice] {
+        // Every row must hear the language the page asked about. The
+        // recommendations fall back to anything that fits when nothing covers
+        // it, which is right for a first-run default and wrong for a row
+        // titled "Best for Croatian".
+        let lead = languages.lazy.compactMap(normalizedLanguageCode).first ?? deviceLanguage
+        func recommended(_ priority: ModelGuidancePriority) -> [LocalModelDescriptor] {
+            onboardingRecommendations(
+                deviceMemoryGB: deviceMemoryGB,
+                languages: languages,
+                priority: priority,
+                limit: 6
+            )
+            .map(\.model)
+            .filter { $0.covers(lead) && deviceMemoryGB >= $0.minimumRamGB }
+        }
+        let accurate = recommended(.balanced)
+        let lighter = recommended(.lighter)
+        let wide = recommended(.multilingual)
+        // No ranked model fits — a 3 GB iPhone asking for Croatian — so the
+        // best rated of what does: Whisper Small over Whisper Base.
+        let ranked = accurate.first { isHighAccuracy($0, for: lead) }
+        let fallback = (accurate + lighter + wide).max {
+            $0.plain.accuracy != $1.plain.accuracy
+                ? $0.plain.accuracy < $1.plain.accuracy
+                : $0.sizeBytes > $1.sizeBytes
+        }
+        guard let best = ranked ?? fallback else { return [] }
+        var choices = [ModelChoice(kind: .best, model: best)]
+
+        // The most accurate model that is a real saving, and only then the
+        // plain smallest: a Japanese speaker is better served by SenseVoice at
+        // 240 MB than by the 147 MB Whisper Base.
+        let ceiling = Double(best.sizeBytes) * smallerChoiceShare
+        let isSaving = { (model: LocalModelDescriptor) in
+            model.id != best.id && Double(model.sizeBytes) < ceiling
+        }
+        // Rated best first, then the smaller of two equals — across both
+        // lists, so size never outranks accuracy: English gets the 131 MB
+        // English model rather than the 207 MB four-language one, and Italian
+        // gets Whisper Small rather than the less accurate Whisper Base.
+        var seen = Set<String>()
+        let savings = (accurate + lighter)
+            .filter { isSaving($0) && seen.insert($0.id).inserted }
+            .sorted {
+                $0.plain.accuracy != $1.plain.accuracy
+                    ? $0.plain.accuracy > $1.plain.accuracy
+                    : $0.sizeBytes < $1.sizeBytes
+            }
+        if let smaller = savings.first {
+            choices.append(ModelChoice(kind: .smaller, model: smaller))
+        }
+
+        // Only when it genuinely hears more than the best one does.
+        func breadth(_ model: LocalModelDescriptor) -> Int {
+            if model.englishOnly { return 1 }
+            return model.languageCodes.isEmpty ? .max : model.languageCodes.count
+        }
+        if let more = wide.first(where: { model in
+            breadth(model) > breadth(best) && !choices.contains { $0.model.id == model.id }
+        }) {
+            choices.append(ModelChoice(kind: .moreLanguages, model: more))
+        }
+        return choices
     }
 }

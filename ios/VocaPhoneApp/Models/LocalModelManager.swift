@@ -1406,6 +1406,16 @@ final class LocalModelManager {
         onCompletion: @escaping @MainActor () -> Void
     ) {
         let id = descriptor.id
+        // In flight from this call, not from the task's first turn. Choose
+        // model starts a download and leaves the page in the same tap, and
+        // the page after it asks whether a model is on its way.
+        if !isInert {
+            inFlightDownloads[id] = InFlightDownload(
+                fraction: 0,
+                totalBytes: descriptor.sizeBytes,
+                startedAt: Date()
+            )
+        }
         modelDownloadTasks[id] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {

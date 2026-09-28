@@ -29,11 +29,16 @@ RATE = 16_000
 # Each sentence carries a word that no other sentence does, so a missing
 # sentence is a missing marker. Spoken back to back, the first paragraph runs
 # past 30 seconds, which is what makes a recording two decoding windows.
+#
+# A marker detects a lost sentence, not a misheard word, so it must be one the
+# recognizers do not slip on. "milk" and "sunset" were: Whisper Small typed
+# "buy mill" in quiet_throughout and Parakeet 110M streamed "the sunet" in
+# three_windows, failing every run although both sentences were there.
 FIRST = [
     ("The quick brown fox jumps over the lazy dog near the river bank.", "fox"),
     ("I am checking whether the opening of this dictation survives transcription.", "transcription"),
     ("The weather today is warm and the sky is clear with a few clouds.", "weather"),
-    ("Please remember to buy milk, eggs, bread and coffee on the way home.", "milk"),
+    ("Please remember to buy milk, eggs, bread and coffee on the way home.", "coffee"),
     ("The meeting has been moved to Thursday afternoon at three o'clock.", "thursday"),
     ("Our train leaves from platform nine at half past seven in the morning.", "platform"),
     ("This is the final sentence and it should appear at the very end.", "final"),
@@ -44,7 +49,7 @@ SECOND = [
     ("My appointment with the dentist was moved to next Monday.", "dentist"),
     ("We planted tomatoes and basil in the small garden behind the house.", "garden"),
     ("Do not forget to renew your passport before the trip in March.", "passport"),
-    ("We watched the sunset from the hill before walking back to the car.", "sunset"),
+    ("We watched the sunset from the hill before walking back to the car.", "walking"),
 ]
 # A breath between sentences, long enough that the silence splitter can cut there.
 PAUSE_MS = 1200

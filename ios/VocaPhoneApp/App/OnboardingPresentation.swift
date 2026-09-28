@@ -442,6 +442,32 @@ enum OnboardingPresentation {
         status.source.selected == .onDevice && !status.source.isOnDeviceReady
     }
 
+    /// Whether a download started by Choose model's docked button becomes
+    /// the model in use when it lands.
+    ///
+    /// The transfer outlives the page — often the whole of setup — so by the
+    /// time it finishes the person may have chosen something else: another
+    /// row and Continue, Use in Settings, a second download. A late finish
+    /// must not undo any of those. It wins only when nothing usable is in use,
+    /// or when it is still the latest pick and nobody has chosen since the tap.
+    ///
+    /// `adoptedByEarlierDownload` is a model an earlier onboarding download
+    /// put in place only because nothing else was there. That is a stopgap,
+    /// not a choice, so it does not count as someone choosing since.
+    static func adoptsOnboardingDownload(
+        modelID: String,
+        latestRequestID: String?,
+        inUseAtRequest: String?,
+        inUseNow: String?,
+        inUseNowIsUsable: Bool,
+        adoptedByEarlierDownload: String?
+    ) -> Bool {
+        guard let inUseNow, inUseNowIsUsable else { return true }
+        if inUseNow == modelID { return true }
+        guard latestRequestID == modelID else { return false }
+        return inUseNow == inUseAtRequest || inUseNow == adoptedByEarlierDownload
+    }
+
     /// After Get finishes, skip rooms already proven. Walking Microphone and
     /// Set up keyboard again is what made "download a model, then try" a loop.
     /// A keyboard already in the list still needs Enable keyboard (the globe),

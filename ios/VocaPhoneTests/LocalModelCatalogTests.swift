@@ -88,105 +88,6 @@ struct LocalModelCatalogTests {
         )
     }
 
-    @Test func guidanceReturnsOnePlainLanguageMatch() {
-        let result = LocalModelCatalog.guidance(
-            deviceMemoryGB: 4,
-            intent: ModelGuidanceIntent(language: "en")
-        )
-
-        #expect(result.confidence == .goodDefault)
-        #expect(result.intent.language == "en")
-        #expect(result.model?.id == "parakeet-tdt-0.6b-v2-en")
-        #expect(result.reason.contains("English"))
-    }
-
-    @Test func guidancePriorityChangesTheDownloadTradeoff() {
-        let balanced = LocalModelCatalog.guidance(
-            deviceMemoryGB: 8,
-            intent: ModelGuidanceIntent(language: "en", priority: .balanced)
-        )
-        let lighter = LocalModelCatalog.guidance(
-            deviceMemoryGB: 8,
-            intent: ModelGuidanceIntent(language: "en", priority: .lighter)
-        )
-        // The smallest model built for English, not the smallest that lists
-        // it: Paraformer is smaller, but it is a Mandarin model.
-        let smallest = LocalModelCatalog.all
-            .filter {
-                $0.minimumRamGB <= 8 && $0.covers("en")
-                    && !LocalModelCatalog.isIncidental($0, for: "en")
-            }
-            .min { $0.sizeBytes < $1.sizeBytes }
-
-        #expect(lighter.model?.id == smallest?.id)
-        #expect(lighter.model?.id == "parakeet-tdt-ctc-110m-en")
-        #expect(lighter.reason.contains("smallest"))
-        #expect(balanced.model != nil)
-
-    }
-
-    /// The reason this option exists at all. "Best accuracy" was replaced
-    /// because it returned the balanced match on every language and every
-    /// memory size, which is a control that does nothing.
-    @Test func multilingualIsADifferentAnswerWhereverAWiderModelFits() {
-        var differed = 0
-        for language in ["en", "ru", "de", "ja", "zh"] {
-            for memory in [8, 4, 3] {
-                let balanced = LocalModelCatalog.guidance(
-                    deviceMemoryGB: memory,
-                    intent: ModelGuidanceIntent(language: language, priority: .balanced)
-                ).model
-                let wide = LocalModelCatalog.guidance(
-                    deviceMemoryGB: memory,
-                    intent: ModelGuidanceIntent(language: language, priority: .multilingual)
-                ).model
-
-                #expect(wide != nil, "no multilingual match for \(language) at \(memory)GB")
-                #expect(wide?.covers(language) == true, "\(language) pick cannot transcribe it")
-                #expect(wide?.englishOnly == false, "\(language) got an English-only model")
-                #expect((wide?.minimumRamGB ?? .max) <= memory, "\(language) pick does not fit")
-                if wide?.id != balanced?.id { differed += 1 }
-            }
-        }
-        // The option has to actually earn its place on ordinary iPhones.
-        #expect(differed >= 10, "multilingual never differed from balanced")
-    }
-
-
-
-
-    @Test func guidanceAutomaticLanguageUsesThePhoneLanguage() {
-        let result = LocalModelCatalog.guidance(
-            deviceMemoryGB: 8,
-            intent: ModelGuidanceIntent(language: "auto", priority: .balanced)
-        )
-
-        #expect(result.intent.language == LocalModelCatalog.deviceLanguage)
-        #expect(result.model?.covers(result.intent.language) == true)
-    }
-
-    @Test func guidanceReportsNoMatchWhenNothingFits() {
-        let result = LocalModelCatalog.guidance(
-            deviceMemoryGB: 1,
-            intent: ModelGuidanceIntent(language: "en")
-        )
-
-        #expect(result.confidence == .noMatch)
-        #expect(result.model == nil)
-        #expect(result.reason.contains("English"))
-    }
-
-    @Test func guidanceDoesNotMislabelAnUnlistedPhoneLanguageAsAutomatic() {
-        let result = LocalModelCatalog.guidance(
-            deviceMemoryGB: 8,
-            intent: ModelGuidanceIntent(language: "af", priority: .balanced)
-        )
-
-        #expect(result.intent.language == "af")
-        #expect(!result.languageName.isEmpty)
-        #expect(result.languageName != TranscriptionLanguage.automatic.displayName)
-    }
-
     /// The list is what makes a 670 MB default acceptable: someone on cellular
     /// can see a small answer to the same question without going hunting through
     /// the catalog.
@@ -349,6 +250,94 @@ struct LocalModelCatalogTests {
         #expect(picks[0].model.id == "parakeet-tdt-0.6b-v2-en")
         #expect(picks.contains { $0.model.id == "dolphin-small-ctc" })
         #expect(!picks.contains { $0.model.id == "dolphin-base-ctc" })
+    }
+
+    /// The page leads with the chosen language's model. A Croatian speaker
+    /// with a Hindi keyboard was shown "Asian languages" as FOR YOU, under
+    /// "Most accurate for Croatian".
+    @Test func onboardingLeadsWithTheChosenLanguagesBestModel() {
+        let picks = LocalModelCatalog.onboardingRecommendations(
+            deviceMemoryGB: 6,
+            languages: ["hr", "en", "hi"]
+        )
+        #expect(picks.first?.model.id == "parakeet-tdt-0.6b-v3")
+        #expect(picks.first.map { $0.model.covers("hr") } == true)
+    }
+
+    @Test func choicesAreBestSmallerAndWiderForEnglish() {
+        let choices = LocalModelCatalog.modelChoices(deviceMemoryGB: 6, languages: ["en"])
+        #expect(choices.map(\.kind) == [.best, .smaller, .moreLanguages])
+        #expect(choices.map(\.model.id) == [
+            "parakeet-tdt-0.6b-v2-en", "parakeet-tdt-ctc-110m-en", "parakeet-tdt-0.6b-v3",
+        ])
+    }
+
+    /// Foundation rewrites "tl" to "fil" and "no" to "nb". Both are picker
+    /// languages, and losing them sent those speakers English models.
+    @Test func filipinoAndNorwegianSurviveNormalizing() {
+        #expect(LocalModelCatalog.normalizedLanguageCode("tl") == "tl")
+        #expect(LocalModelCatalog.normalizedLanguageCode("fil-PH") == "tl")
+        #expect(LocalModelCatalog.normalizedLanguageCode("no") == "no")
+        #expect(LocalModelCatalog.normalizedLanguageCode("nb-NO") == "no")
+    }
+
+    /// Every row covers the language, each model appears once, the smaller
+    /// row is a real saving, and the wider row hears more than the best.
+    @Test func choicesHoldTheirPromisesForEveryLanguage() {
+        for language in TranscriptionLanguage.allCases where language != .automatic {
+            for memory in [2, 3, 4, 6, 8] {
+                let choices = LocalModelCatalog.modelChoices(
+                    deviceMemoryGB: memory,
+                    languages: [language.rawValue]
+                )
+                guard let best = choices.first else { continue }
+                #expect(best.kind == .best)
+                #expect(Set(choices.map(\.model.id)).count == choices.count)
+                for choice in choices {
+                    #expect(choice.model.covers(language.rawValue), "\(choice.model.id) for \(language)")
+                    #expect(memory >= choice.model.minimumRamGB)
+                }
+                if let smaller = choices.first(where: { $0.kind == .smaller }) {
+                    #expect(
+                        Double(smaller.model.sizeBytes)
+                            < Double(best.model.sizeBytes) * LocalModelCatalog.smallerChoiceShare
+                    )
+                }
+                if let wider = choices.first(where: { $0.kind == .moreLanguages }) {
+                    #expect(!wider.model.englishOnly)
+                    #expect(
+                        wider.model.languageCodes.isEmpty
+                            || (!best.model.languageCodes.isEmpty
+                                && wider.model.languageCodes.count > best.model.languageCodes.count)
+                    )
+                }
+            }
+        }
+    }
+
+    /// Nothing ranked for Croatian fits in 3 GB, but Whisper does. The page
+    /// must offer it rather than say no model understands the language.
+    @Test func choicesFallBackToWhatFitsWhenNothingRankedDoes() {
+        let choices = LocalModelCatalog.modelChoices(deviceMemoryGB: 3, languages: ["hr"])
+        #expect(choices.first?.model.id == "openai_whisper-small_216MB")
+        #expect(choices.allSatisfy { $0.model.covers("hr") && $0.model.minimumRamGB <= 3 })
+    }
+
+    /// Size never outranks accuracy among the smaller choices. Italian's
+    /// ranked list has nothing under the cut, so the choice falls to the
+    /// size-ordered list, where Whisper Base comes first and Whisper Small is
+    /// the better answer.
+    @Test func theSmallerChoiceIsTheMostAccurateSaving() {
+        let choices = LocalModelCatalog.modelChoices(deviceMemoryGB: 6, languages: ["it"])
+        let smaller = choices.first { $0.kind == .smaller }?.model
+        #expect(smaller?.id == "openai_whisper-small_216MB")
+        let english = LocalModelCatalog.modelChoices(deviceMemoryGB: 6, languages: ["en"])
+        #expect(english.first { $0.kind == .smaller }?.model.id == "parakeet-tdt-ctc-110m-en")
+    }
+
+    @Test func croatianIsOfferedTheEuropeanModelFirst() {
+        let choices = LocalModelCatalog.modelChoices(deviceMemoryGB: 6, languages: ["hr", "hi"])
+        #expect(choices.first?.model.id == "parakeet-tdt-0.6b-v3")
     }
 
     /// A phone too small for any of them still gets something to download.

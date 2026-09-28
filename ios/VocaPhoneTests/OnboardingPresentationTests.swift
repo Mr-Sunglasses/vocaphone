@@ -913,4 +913,60 @@ struct OnboardingPresentationTests {
         #expect(OnboardingStage.keyboard.chromeProgress == OnboardingStage.keyboardSwitch.chromeProgress)
         #expect(OnboardingStage.practice.chromeProgress == 1)
     }
+
+    // MARK: - A late onboarding download
+
+    /// The review's case: B downloads from Choose model, and the person picks
+    /// C in Settings before it lands. B must not switch them back.
+    @Test func aLateDownloadDoesNotUndoALaterChoice() {
+        #expect(!OnboardingPresentation.adoptsOnboardingDownload(
+            modelID: "B", latestRequestID: "B",
+            inUseAtRequest: nil, inUseNow: "C", inUseNowIsUsable: true,
+            adoptedByEarlierDownload: nil
+        ))
+        #expect(!OnboardingPresentation.adoptsOnboardingDownload(
+            modelID: "B", latestRequestID: "B",
+            inUseAtRequest: "A", inUseNow: "C", inUseNowIsUsable: true,
+            adoptedByEarlierDownload: nil
+        ))
+    }
+
+    @Test func theLatestPickLandsWhenNobodyChoseSince() {
+        #expect(OnboardingPresentation.adoptsOnboardingDownload(
+            modelID: "B", latestRequestID: "B",
+            inUseAtRequest: "A", inUseNow: "A", inUseNowIsUsable: true,
+            adoptedByEarlierDownload: nil
+        ))
+    }
+
+    /// Something beats nothing: with no usable model in use, any finished
+    /// download is taken, superseded or not.
+    @Test func anyDownloadFillsAnEmptySlot() {
+        #expect(OnboardingPresentation.adoptsOnboardingDownload(
+            modelID: "B", latestRequestID: "C",
+            inUseAtRequest: nil, inUseNow: nil, inUseNowIsUsable: false,
+            adoptedByEarlierDownload: nil
+        ))
+        #expect(OnboardingPresentation.adoptsOnboardingDownload(
+            modelID: "B", latestRequestID: "C",
+            inUseAtRequest: nil, inUseNow: "gone", inUseNowIsUsable: false,
+            adoptedByEarlierDownload: nil
+        ))
+    }
+
+    /// B was asked for, then C. B lands first and fills the empty slot; C is
+    /// still the pick, so it replaces the stopgap when it lands. B landing
+    /// after C must not.
+    @Test func aSupersededDownloadIsOnlyAStopgap() {
+        #expect(OnboardingPresentation.adoptsOnboardingDownload(
+            modelID: "C", latestRequestID: "C",
+            inUseAtRequest: nil, inUseNow: "B", inUseNowIsUsable: true,
+            adoptedByEarlierDownload: "B"
+        ))
+        #expect(!OnboardingPresentation.adoptsOnboardingDownload(
+            modelID: "B", latestRequestID: "C",
+            inUseAtRequest: nil, inUseNow: "C", inUseNowIsUsable: true,
+            adoptedByEarlierDownload: nil
+        ))
+    }
 }

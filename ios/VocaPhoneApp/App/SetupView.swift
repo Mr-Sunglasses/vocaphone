@@ -94,6 +94,9 @@ struct SetupView: View {
         store: KeyboardPreferences.defaults
     ) private var keyboardSettingsRoundTripStarted = false
     @State private var isShowingGatewaySetup = false
+    /// The row picked on Choose model. The picker keeps it on the page; the
+    /// docked button downloads it or continues with it.
+    @State private var onboardingModelChoice: String?
     /// Answered here or with the switch in Settings › Privacy.
     @State private var hasAskedAboutReporting = UserDefaultsTelemetryPreferences().hasBeenAsked
     @State private var isShowingReportingPayload = false
@@ -165,16 +168,45 @@ struct SetupView: View {
 
     private var status: SetupStatus { coordinator.setupStatus }
 
-    /// The three onboarding cards, the same list `LocalModelPicker` draws.
+    /// The rows on Choose model, the same list `LocalModelPicker` draws.
     private var onboardingModelPicks: [LocalModelDescriptor] {
-        let languages = LocalModelPicker.recommendationLanguages(
+        LocalModelPicker.choices(
             preferred: KeyboardPreferences.transcriptionLanguage.rawValue
         )
-        return LocalModelCatalog.onboardingRecommendations(
-            deviceMemoryGB: LocalModelCatalog.deviceMemoryGB,
-            languages: languages
-        )
         .map(\.model)
+    }
+
+    /// What the docked button on Choose model acts on: the picked row, or the
+    /// best one before the picker has written a pick.
+    private var chosenOnboardingModel: LocalModelDescriptor? {
+        LocalModelCatalog.descriptor(for: onboardingModelChoice) ?? onboardingModelPicks.first
+    }
+
+    /// The chosen model is verified and on disk.
+    private var chosenModelIsReady: Bool {
+        guard let model = chosenOnboardingModel else { return false }
+        let models = coordinator.localModels
+        return models.isDownloaded(model.id) && !models.failedIntegrityModelIDs.contains(model.id)
+    }
+
+    /// The chosen model is downloading or waiting for a slot.
+    private var chosenModelIsArriving: Bool {
+        guard let model = chosenOnboardingModel else { return false }
+        return coordinator.localModels.isDownloading(model.id) || coordinator.localModels.isQueued(model.id)
+    }
+
+    /// Too big for what is free. The page says so under the list.
+    private var chosenModelLacksStorage: Bool {
+        guard let model = chosenOnboardingModel, !chosenModelIsReady, !chosenModelIsArriving else {
+            return false
+        }
+        let warning = DownloadReadiness.warning(
+            sizeBytes: model.sizeBytes,
+            freeBytes: coordinator.localModels.availableStorageBytes,
+            metered: false
+        )
+        if case .notEnoughStorage = warning { return true }
+        return false
     }
 
     /// Continue is available once a model is on disk *or* on its way.
@@ -184,7 +216,7 @@ struct SetupView: View {
     /// Continue must not do is leave with nothing coming at all — that is what
     /// Skip is for, and Skip says so by dropping Try dictating.
     private var isOnboardingModelActionDisabled: Bool {
-        onboardingReadyModels.isEmpty && !modelIsArriving
+        chosenOnboardingModel == nil || chosenModelLacksStorage
     }
 
     /// Every verified model on disk, not only the three cards: More models
@@ -879,9 +911,14 @@ struct SetupView: View {
         }
     }
 
-    /// App Store pattern: Get lives on the cards. The docked button is Continue.
+    /// One button for the whole page: it downloads the picked row and moves
+    /// on, or continues with it when it is already here or on its way. The
+    /// default path through Choose model is a single tap.
     private var onboardingModelAction: (title: String, perform: () -> Void) {
-        ("Continue", continueOnboardingModels)
+        if let model = chosenOnboardingModel, !chosenModelIsReady, !chosenModelIsArriving {
+            return ("Download · \(model.sizeLabel)", downloadChosenModelAndContinue)
+        }
+        return ("Continue", continueOnboardingModels)
     }
 
     /// Keep the next action in reach, including on small screens and at large text sizes.
@@ -1069,7 +1106,8 @@ struct SetupView: View {
                 manager: coordinator.localModels,
                 onChange: { coordinator.refreshSetupStatus() },
                 onboarding: true,
-                guidanceLanguage: KeyboardPreferences.transcriptionLanguage.rawValue
+                guidanceLanguage: KeyboardPreferences.transcriptionLanguage.rawValue,
+                selection: $onboardingModelChoice
             )
         }
         .task { coordinator.refreshSetupStatus() }
@@ -1809,7 +1847,11 @@ struct SetupView: View {
     private func continueOnboardingModels() {
         let ready = onboardingReadyModels
         let readyIDs = Set(ready.map(\.id))
-        guard let model = ready.first(where: { $0.id == LocalTranscriptionPreferences.modelIdentifier })
+        // The picked row wins when it is here: it is what the page showed as
+        // chosen when the button was tapped.
+        let chosen = chosenModelIsReady ? chosenOnboardingModel : nil
+        guard let model = chosen
+            ?? ready.first(where: { $0.id == LocalTranscriptionPreferences.modelIdentifier })
             ?? onboardingModelPicks.first(where: { readyIDs.contains($0.id) })
             ?? ready.first
         else {
@@ -1824,6 +1866,45 @@ struct SetupView: View {
         coordinator.refreshSetupStatus()
         advance()
         Task { await prepareOnboardingModelInBackground(model) }
+    }
+
+    /// Starts the picked model and leaves the page in the same tap. The
+    /// transfer outlives the page; adding the keyboard takes about as long as
+    /// the download does.
+    private func downloadChosenModelAndContinue() {
+        guard let model = chosenOnboardingModel else { return }
+        let models = coordinator.localModels
+        let inUseAtRequest = LocalTranscriptionPreferences.modelIdentifier
+        OnboardingDownloadRequests.latest = model.id
+        models.startDownload(model) {
+            defer { coordinator.refreshSetupStatus() }
+            guard models.isDownloaded(model.id),
+                  !models.failedIntegrityModelIDs.contains(model.id)
+            else { return }
+            // Read from storage, not from this page's state: the page is
+            // usually long gone by the time a download finishes.
+            let inUseNow = LocalTranscriptionPreferences.modelIdentifier
+            let adopts = OnboardingPresentation.adoptsOnboardingDownload(
+                modelID: model.id,
+                latestRequestID: OnboardingDownloadRequests.latest,
+                inUseAtRequest: inUseAtRequest,
+                inUseNow: inUseNow,
+                inUseNowIsUsable: inUseNow.map {
+                    models.isDownloaded($0) && !models.failedIntegrityModelIDs.contains($0)
+                } ?? false,
+                adoptedByEarlierDownload: OnboardingDownloadRequests.adopted
+            )
+            guard adopts else { return }
+            LocalTranscriptionPreferences.modelIdentifier = model.id
+            LocalTranscriptionPreferences.enabled = true
+            if OnboardingDownloadRequests.latest != model.id {
+                // In place only because nothing else was. A later pick that
+                // lands after it may still replace it.
+                OnboardingDownloadRequests.adopted = model.id
+            }
+        }
+        coordinator.refreshSetupStatus()
+        advance()
     }
 
     private func prepareOnboardingModelInBackground(_ model: LocalModelDescriptor) async {
@@ -3067,3 +3148,14 @@ private struct OnboardingWelcomeVisual: View {
     }
 }
 #endif
+
+/// Choose model's docked downloads, across the life of the process rather
+/// than of the page that started them. See
+/// `OnboardingPresentation.adoptsOnboardingDownload`.
+@MainActor
+enum OnboardingDownloadRequests {
+    /// The model the docked button asked for most recently.
+    static var latest: String?
+    /// A model an earlier download put in use only because nothing was.
+    static var adopted: String?
+}
