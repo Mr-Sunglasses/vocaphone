@@ -534,6 +534,33 @@ struct ReliabilityFeatureTests {
         )
 
         let size = try #require(file.resourceValues(forKeys: [.fileSizeKey]).fileSize)
-        #expect(size <= DiagnosticLog.maximumFileSize)
+        #expect(size <= DiagnosticLog.trimmedFileSize)
+    }
+
+    /// A full log used to be read and rewritten whole for every line after it
+    /// first reached the cap. A trim now leaves room, so the next line appends.
+    @Test func aTrimLeavesRoomForTheLinesAfterIt() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("diagnostics.ndjson")
+        let line = Data((String(repeating: "x", count: 99) + "\n").utf8)
+        var contents = Data()
+        while contents.count <= DiagnosticLog.maximumFileSize { contents.append(line) }
+        try contents.write(to: file)
+
+        let entry = DiagnosticEntry(source: .tests, event: .appStarted)
+        DiagnosticLog.append(entry, to: file)
+        let trimmed = try #require(FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int)
+        #expect(trimmed <= DiagnosticLog.trimmedFileSize)
+
+        DiagnosticLog.append(entry, to: file)
+        let appended = try #require(FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int)
+        #expect(appended > trimmed)
+        let text = try String(contentsOf: file, encoding: .utf8)
+        #expect(text.components(separatedBy: "appStarted").count - 1 == 2)
+        // Whole lines only: the trim cuts at a newline.
+        #expect(text.hasPrefix("x"))
     }
 }
