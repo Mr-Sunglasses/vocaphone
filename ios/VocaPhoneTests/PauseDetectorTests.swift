@@ -38,6 +38,15 @@ struct PauseDetectorTests {
         #expect(!feed(&detector, rms: 0.001, seconds: 5))
     }
 
+    /// A fan that switches on after the speech is heard as speech at first and
+    /// then absorbed into the floor — at no point is it the pause.
+    @Test func aFanSwitchingOnNeverEndsTheRecording() {
+        var detector = PauseDetector()
+        _ = feed(&detector, rms: 0.001, seconds: 1)
+        _ = feed(&detector, rms: 0.05, seconds: 2)
+        #expect(!feed(&detector, rms: 0.03, seconds: 120))
+    }
+
     /// A steady fan is the floor, not speech; speech over it still counts,
     /// and the fan alone after it is the pause.
     @Test func aNoisyRoomIsTheFloor() {

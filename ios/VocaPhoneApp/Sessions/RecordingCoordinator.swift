@@ -24,6 +24,7 @@ final class RecordingCoordinator {
     /// every recording.
     private var pauseDetector = PauseDetector()
     private var pauseDetectorSessionID: UUID?
+    private var pauseDetectorLastBatchAt: TimeInterval?
     /// Guided setup reads system state that emits no change notifications —
     /// keyboard installation, a permission flipped in iOS Settings — so it is
     /// snapshotted here and refreshed deliberately rather than polled.
@@ -1574,20 +1575,30 @@ final class RecordingCoordinator {
         )
     }
 
-    /// Each meter level is 50 ms of audio, stored as the square root of its
-    /// RMS (see `AudioCapturePipeline.normalizedLevel`); the detector wants
-    /// the RMS back. Finishing goes through ``requestFinish()``, the same path
-    /// the recording limit takes.
+    /// Meter levels are the square root of their RMS (see
+    /// `AudioCapturePipeline.normalizedLevel`); the detector wants the RMS
+    /// back. A batch of levels covers however much audio was drained since the
+    /// last one — the pipeline always splits a drain into five, whatever its
+    /// length — so the time is measured, not assumed: capture is real time, and
+    /// the clock between batches is the audio they hold. Finishing goes through
+    /// ``requestFinish()``, the same path the recording limit takes.
     private func finishIfSpeechEnded(_ levels: [Float], sessionID: UUID) {
-        guard KeyboardPreferences.stopAfterPause else { return }
+        guard KeyboardPreferences.stopAfterPause, !levels.isEmpty else { return }
+        let now = ProcessInfo.processInfo.systemUptime
         if pauseDetectorSessionID != sessionID {
             pauseDetector = PauseDetector()
             pauseDetectorSessionID = sessionID
+            pauseDetectorLastBatchAt = nil
         }
+        // The first batch has nothing to measure against; a stalled one is
+        // capped, so a suspended app catching up cannot count as a pause.
+        let elapsed = pauseDetectorLastBatchAt.map { min(max(now - $0, 0), 1) } ?? 0.25
+        pauseDetectorLastBatchAt = now
+        let perLevel = elapsed / Double(levels.count)
         var ended = false
         for level in levels {
             let rms = level * level
-            ended = pauseDetector.observe(rms: rms, seconds: 0.05) || ended
+            ended = pauseDetector.observe(rms: rms, seconds: perLevel) || ended
         }
         guard ended else { return }
         pauseDetectorSessionID = nil

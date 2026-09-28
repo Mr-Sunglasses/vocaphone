@@ -22,7 +22,15 @@ struct PauseDetector: Equatable, Sendable {
     static let speechOverFloor: Float = 4
     static let minimumSpeechLevel: Float = 0.008
 
+    /// A quiet stretch has to sit this far under the speech before it — about
+    /// 12 dB. A fan that switches on mid-recording is heard as speech until
+    /// the floor catches up with it, and afterwards it is still nowhere near
+    /// this far under what was said, so it can never read as the pause.
+    static let pauseUnderSpeech: Float = 4
+
     private(set) var floor: Float = 0
+    /// How loud the speech has been, a running average of speech levels.
+    private(set) var speechLevel: Float = 0
     private(set) var speechSeconds = 0.0
     private(set) var quietSeconds = 0.0
 
@@ -42,8 +50,15 @@ struct PauseDetector: Equatable, Sendable {
         if level >= max(floor * Self.speechOverFloor, Self.minimumSpeechLevel) {
             speechSeconds += seconds
             quietSeconds = 0
-        } else if speechSeconds >= Self.minimumSpeechSeconds {
+            speechLevel = speechLevel == 0 ? level : speechLevel + (level - speechLevel) * 0.1
+        } else if speechSeconds >= Self.minimumSpeechSeconds,
+                  level * Self.pauseUnderSpeech <= speechLevel
+        {
             quietSeconds += seconds
+        } else {
+            // Neither speech nor a pause — a sound the floor has absorbed but
+            // that is as loud as the talking was. It breaks a quiet stretch.
+            quietSeconds = 0
         }
         return speechSeconds >= Self.minimumSpeechSeconds && quietSeconds >= Self.pauseSeconds
     }

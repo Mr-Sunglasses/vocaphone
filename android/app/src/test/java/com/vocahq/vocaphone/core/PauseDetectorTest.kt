@@ -40,6 +40,14 @@ class PauseDetectorTest {
     }
 
     @Test
+    fun `a fan switching on never ends the recording`() {
+        val detector = PauseDetector()
+        detector.feed(0.001f, 1.0)
+        detector.feed(0.05f, 2.0)
+        assertFalse(detector.feed(0.03f, 120.0))
+    }
+
+    @Test
     fun `a noisy room is the floor`() {
         val detector = PauseDetector()
         assertFalse(detector.feed(0.02f, 5.0))

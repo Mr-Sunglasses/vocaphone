@@ -18,6 +18,9 @@ import kotlin.math.max
 class PauseDetector {
     var floor = 0f
         private set
+    /** How loud the speech has been, a running average of speech levels. */
+    var speechLevel = 0f
+        private set
     var speechSeconds = 0.0
         private set
     var quietSeconds = 0.0
@@ -38,8 +41,13 @@ class PauseDetector {
         if (level >= max(floor * SPEECH_OVER_FLOOR, MINIMUM_SPEECH_LEVEL)) {
             speechSeconds += seconds
             quietSeconds = 0.0
-        } else if (speechSeconds >= MINIMUM_SPEECH_SECONDS) {
+            speechLevel = if (speechLevel == 0f) level else speechLevel + (level - speechLevel) * 0.1f
+        } else if (speechSeconds >= MINIMUM_SPEECH_SECONDS && level * PAUSE_UNDER_SPEECH <= speechLevel) {
             quietSeconds += seconds
+        } else {
+            // Neither speech nor a pause — a sound the floor has absorbed but
+            // that is as loud as the talking was. It breaks a quiet stretch.
+            quietSeconds = 0.0
         }
         return speechSeconds >= MINIMUM_SPEECH_SECONDS && quietSeconds >= PAUSE_SECONDS
     }
@@ -52,5 +60,13 @@ class PauseDetector {
         /** Speech is this many times the floor, and never below about −42 dBFS. */
         const val SPEECH_OVER_FLOOR = 4f
         const val MINIMUM_SPEECH_LEVEL = 0.008f
+        /**
+         * A quiet stretch has to sit this far under the speech before it —
+         * about 12 dB. A fan that switches on mid-recording is heard as speech
+         * until the floor catches up with it, and afterwards it is still
+         * nowhere near this far under what was said, so it never reads as the
+         * pause.
+         */
+        const val PAUSE_UNDER_SPEECH = 4f
     }
 }
