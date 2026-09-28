@@ -226,15 +226,32 @@ enum WhisperTranscription {
     ) -> DecodingOptions {
         guard options.language == nil, options.detectLanguage == true,
               windowSamples >= minimumDetectionSamples,
-              let detected = decoded.first(where: {
-                  !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-              })?.language,
+              let detected = decoded.first(where: carriesSpeech)?.language,
               !detected.isEmpty
         else { return options }
         var locked = options
         locked.language = detected
         locked.detectLanguage = false
         return locked
+    }
+
+    /// Whether a result holds words rather than nothing or a marker.
+    ///
+    /// Judged after the sanitizer, the same way the finished transcript is:
+    /// `[BLANK_AUDIO]` or `(music)` is text to the decoder but no speech to
+    /// anyone, and a window of it must not decide what language the dictation
+    /// is in.
+    static func carriesSpeech(_ result: TranscriptionResult) -> Bool {
+        !TranscriptSanitizer.clean(result.text).isEmpty
+    }
+
+    /// The language to report for a finished Automatic recording: the one the
+    /// first window with words detected, which is also the one every later
+    /// window was locked to. A blank or marker-only first window detects
+    /// something too, and reporting it would label and punctuate the
+    /// transcript in a language nobody spoke.
+    static func reportedLanguage(_ results: [TranscriptionResult]) -> String {
+        results.first(where: carriesSpeech)?.language ?? results.first?.language ?? ""
     }
 
     /// Five seconds of audio: enough speech for detection to mean something.

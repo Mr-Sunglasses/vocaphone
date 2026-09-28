@@ -156,6 +156,35 @@ struct WhisperTranscriptionTests {
         ).language == "en")
     }
 
+    /// A window that returned only a marker heard no speech, and must not
+    /// decide the language the dictation is decoded in.
+    @Test func aMarkerOnlyWindowDoesNotDecideTheLanguage() {
+        let automatic = WhisperTranscription.decodingOptions(
+            language: nil, translate: false, quality: .balanced, promptTokens: nil
+        )
+        let marker = [TranscriptionResult(
+            text: "[BLANK_AUDIO]", segments: [], language: "ja", timings: TranscriptionTimings()
+        )]
+        let after = WhisperTranscription.lockingDetectedLanguage(
+            automatic, after: marker, windowSamples: WhisperTranscription.minimumDetectionSamples
+        )
+        #expect(after.language == nil)
+        #expect(after.detectLanguage == true)
+    }
+
+    /// The reported language is the one that decided, not whatever a blank
+    /// first window happened to detect.
+    @Test func theReportedLanguageIsTheOneThatDecided() {
+        func result(_ text: String, _ language: String) -> TranscriptionResult {
+            TranscriptionResult(text: text, segments: [], language: language, timings: TranscriptionTimings())
+        }
+        #expect(WhisperTranscription.reportedLanguage(
+            [result(" ", "en"), result("[BLANK_AUDIO]", "ja"), result("namaste", "hi"), result("ji", "hi")]
+        ) == "hi")
+        #expect(WhisperTranscription.reportedLanguage([result(" ", "en")]) == "en")
+        #expect(WhisperTranscription.reportedLanguage([]) == "")
+    }
+
     /// A language the user chose is never replaced by a detected one.
     @Test func aChosenLanguageIsLeftAlone() {
         let german = WhisperTranscription.decodingOptions(
