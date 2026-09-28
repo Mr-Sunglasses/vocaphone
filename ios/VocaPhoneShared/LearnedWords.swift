@@ -104,7 +104,14 @@ final class LearnedWordStore: @unchecked Sendable {
 
     private let fileURL: URL?
     private var cached: LearnedWords
+    /// Guards `cached` and nothing else, so reading or changing the words
+    /// never waits behind a file write.
     private let queue = DispatchQueue(label: "com.vocahq.vocaphone.learned-words")
+    /// Where the file is written, behind the change and never in front of it.
+    private let writer = DispatchQueue(label: "com.vocahq.vocaphone.learned-words.writer", qos: .utility)
+    /// The newest words not yet on disk. A burst of learned words is written
+    /// once, as whatever the last of them left, rather than once per word.
+    private var pending: LearnedWords?
 
     /// `nil` container means no Full Access: everything still works, nothing
     /// survives the keyboard being torn down.
@@ -121,15 +128,51 @@ final class LearnedWordStore: @unchecked Sendable {
         queue.sync { cached }
     }
 
+    /// Applies `change` at once and writes the file behind it.
+    ///
+    /// The write used to happen inside the same `sync`, so the keyboard's main
+    /// thread encoded up to two thousand entries and wrote the file atomically
+    /// before the next keystroke — once for every new word typed. The change
+    /// is still immediate; the encoding and the write happen on their own
+    /// queue, and ``flush(timeout:)`` is for the moment the keyboard leaves
+    /// the screen.
     func update(_ change: @Sendable (inout LearnedWords) -> Void) {
-        queue.sync {
+        let needsWrite = queue.sync {
             change(&cached)
-            write(cached)
+            let idle = pending == nil
+            pending = cached
+            return idle
+        }
+        guard needsWrite else { return }
+        writer.async { [self] in
+            guard let words = queue.sync(execute: { () -> LearnedWords? in
+                defer { pending = nil }
+                return pending
+            }) else { return }
+            write(words)
         }
     }
 
+    /// Waits for queued writes to reach the file, for at most `timeout`.
+    @discardableResult
+    func flush(timeout: DispatchTimeInterval = .milliseconds(150)) -> Bool {
+        let done = DispatchSemaphore(value: 0)
+        writer.async { done.signal() }
+        return done.wait(timeout: .now() + timeout) == .success
+    }
+
+    /// Forgets every word and returns only once the empty list is on disk.
+    ///
+    /// Unlike a learned word, this is something the user asked for and was
+    /// told had happened. Queued like a word, a reset the app was suspended
+    /// before writing left the old file in place, and every word came back.
     func removeAll() {
-        update { $0.removeAll() }
+        queue.sync {
+            cached.removeAll()
+            pending = nil
+        }
+        // Behind any write already queued, so an older list cannot land after.
+        writer.sync { write(LearnedWords()) }
     }
 
     private func write(_ words: LearnedWords) {
