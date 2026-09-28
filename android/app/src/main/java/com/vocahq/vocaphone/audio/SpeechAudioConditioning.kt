@@ -108,10 +108,24 @@ object SpeechAudioConditioning {
             frames[frame] = loudest
         }
         if (frameCount <= MINIMUM_FRAMES) return frames.max()
+        val audible = frames.count { it >= SILENCE_PEAK }
         frames.sortDescending()
-        val skipped = maxOf(2, frameCount / 50)
-        return frames[minOf(skipped, frameCount - 1)]
+        return frames[minOf(setAside(audible), frameCount - 1)]
     }
+
+    /**
+     * How many of the loudest frames to set aside: 2% of the frames that carry
+     * any sound, at least two, and never more than ten (200 ms).
+     *
+     * Counted over the audible frames only. Counted over the whole recording,
+     * three seconds of quiet speech followed by five minutes of a recorder left
+     * running set aside six seconds of frames — every word — and the speech got
+     * no gain at all. A click is a frame or two; ten is room for a knock that
+     * rings.
+     */
+    fun setAside(audibleFrames: Int): Int = minOf(MAXIMUM_SET_ASIDE, maxOf(2, audibleFrames / 50))
+
+    private const val MAXIMUM_SET_ASIDE = 10
 
     /**
      * Leaves everything up to the target alone and bends what is above it

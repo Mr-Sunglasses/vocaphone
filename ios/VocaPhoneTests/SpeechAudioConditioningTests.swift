@@ -86,4 +86,18 @@ struct SpeechAudioConditioningTests {
         let chunk = tone(peak: 0.5, count: 3_200)
         #expect(peak(SpeechAudioConditioning.condition(chunk, peak: 0.1)) <= 1)
     }
+
+    /// Three seconds of quiet speech and then five minutes of a recorder left
+    /// running: the silence must not push the speech out of the level.
+    @Test func briefSpeechInALongRecordingStillSetsTheLevel() {
+        let recording = tone(peak: 0.05, count: 3 * 16_000) + [Float](repeating: 0, count: 300 * 16_000)
+        let conditioned = SpeechAudioConditioning.condition(recording)
+        #expect(abs(peak(Array(conditioned[0..<(3 * 16_000)])) - 0.4) < 0.02)
+    }
+
+    @Test func theSetAsideIsBounded() {
+        #expect(SpeechAudioConditioning.setAside(audibleFrames: 0) == 2)
+        #expect(SpeechAudioConditioning.setAside(audibleFrames: 250) == 5)
+        #expect(SpeechAudioConditioning.setAside(audibleFrames: 15_000) == 10)
+    }
 }

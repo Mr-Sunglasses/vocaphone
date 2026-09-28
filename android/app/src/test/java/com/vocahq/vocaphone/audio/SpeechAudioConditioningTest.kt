@@ -126,4 +126,20 @@ class SpeechAudioConditioningTest {
         val chunk = tone(peak = 0.5f, count = 3_200)
         assertTrue(peak(SpeechAudioConditioning.conditionStreaming(chunk, 0.1f)) <= 1f)
     }
+
+    @Test
+    fun `brief speech in a long recording still sets the level`() {
+        // Three seconds of quiet speech and then five minutes of a recorder
+        // left running: the silence must not push the speech out of the level.
+        val recording = tone(peak = 0.05f, count = 3 * 16_000) + FloatArray(300 * 16_000)
+        val conditioned = SpeechAudioConditioning.condition(recording)
+        assertEquals(0.4f, peak(conditioned.copyOfRange(0, 3 * 16_000)), 0.02f)
+    }
+
+    @Test
+    fun `the set aside is bounded`() {
+        assertEquals(2, SpeechAudioConditioning.setAside(0))
+        assertEquals(5, SpeechAudioConditioning.setAside(250))
+        assertEquals(10, SpeechAudioConditioning.setAside(15_000))
+    }
 }
