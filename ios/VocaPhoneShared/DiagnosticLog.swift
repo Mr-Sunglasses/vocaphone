@@ -484,15 +484,17 @@ enum DiagnosticLog {
                 FileManager.default.createFile(atPath: coordinatedURL.path, contents: nil)
             }
             guard let handle = try? FileHandle(forWritingTo: coordinatedURL) else { return }
+            let size: UInt64
             do {
                 try handle.seekToEnd()
                 try handle.write(contentsOf: line)
+                size = try handle.offset()
                 try handle.close()
             } catch {
                 try? handle.close()
                 return
             }
-            trimIfNeeded(coordinatedURL)
+            if size > UInt64(maximumFileSize) { trim(coordinatedURL) }
         }
     }
 
@@ -540,12 +542,21 @@ enum DiagnosticLog {
         }
     }
 
-    private static func trimIfNeeded(_ fileURL: URL) {
+    /// What a trim keeps: half the cap.
+    ///
+    /// Trimming only back to the cap meant the very next line crossed it
+    /// again, so once the log was full every event — including each keyboard
+    /// appearance — read the whole 200 KB file and rewrote it. Halving leaves
+    /// room for a few hundred lines before the next rewrite. The size comes
+    /// from the write offset, so an append that does not trim reads nothing.
+    static let trimmedFileSize = maximumFileSize / 2
+
+    private static func trim(_ fileURL: URL) {
         guard let data = try? Data(contentsOf: fileURL),
               data.count > maximumFileSize
         else { return }
 
-        let suffix = data.suffix(maximumFileSize)
+        let suffix = data.suffix(trimmedFileSize)
         guard let newline = suffix.firstIndex(of: 0x0A) else {
             try? Data(suffix).write(to: fileURL, options: .atomic)
             return
