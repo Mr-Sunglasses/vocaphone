@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -90,36 +91,26 @@ fun LocalModelPicker(
     compact: Boolean = false,
     guidanceLanguage: String = "",
     onGuidanceLanguage: (String) -> Unit = {},
+    languages: List<String> = emptyList(),
     /** The selection is one the retired-model migration made; see [RetiredModelNotice]. */
     selectionFromRetiredModel: Boolean = false,
 ) {
     val usable = remember(state.totalRamGB) {
         LocalModelCatalog.usableOnDevice(state.totalRamGB).sortedBy { it.sizeBytes }
     }
-    val profile = remember(state.totalRamGB) {
-        DeviceProfile.current(state.totalRamGB)
+    val profile = remember(state.totalRamGB, languages) {
+        DeviceProfile.current(totalRamGB = state.totalRamGB, languages = languages)
     }
     var guidancePriority by rememberSaveable { mutableStateOf(ModelGuidancePriority.BALANCED) }
     var guidanceOpen by rememberSaveable { mutableStateOf(false) }
     var guidanceLanguageSelection by rememberSaveable(guidanceLanguage, profile.language) {
         mutableStateOf(guidanceLanguage.ifBlank { TranscriptionLanguage.AUTOMATIC.wireValue })
     }
-    val selectedGuidanceLanguage = if (
-        guidanceLanguageSelection.isBlank() ||
-            guidanceLanguageSelection == TranscriptionLanguage.AUTOMATIC.wireValue
-    ) {
-        profile.language
-    } else {
-        guidanceLanguageSelection
-    }
-    val guidanceProfile = remember(profile, selectedGuidanceLanguage) {
-        profile.copy(language = selectedGuidanceLanguage)
-    }
-    val guidance = remember(guidanceProfile, guidancePriority) {
+    val guidance = remember(profile, guidanceLanguageSelection, guidancePriority) {
         ModelGuidance.recommend(
-            guidanceProfile,
+            profile,
             ModelGuidanceIntent(
-                language = guidanceProfile.language,
+                language = guidanceLanguageSelection,
                 priority = guidancePriority,
             ),
         )
@@ -128,11 +119,11 @@ fun LocalModelPicker(
     // concrete swap rather than a grid: the setup card stays a single answer,
     // but the fact that a 32 MB option exists no longer lives only behind a
     // sheet most people never open.
-    val lighter = remember(guidanceProfile) {
+    val lighter = remember(profile, guidanceLanguageSelection) {
         ModelGuidance.recommend(
-            guidanceProfile,
+            profile,
             ModelGuidanceIntent(
-                language = guidanceProfile.language,
+                language = guidanceLanguageSelection,
                 priority = ModelGuidancePriority.LIGHTER,
             ),
         ).model
@@ -149,9 +140,9 @@ fun LocalModelPicker(
         }
     // Settings keeps the richer role-based catalog. Setup gets one answer so
     // people do not have to compare several technical model names.
-    val picks = remember(profile, guidance.intent.language) {
+    val picks = remember(profile, guidance.intent.language, guidance.explicitLanguage) {
         LocalModelCatalog.recommendations(
-            profile.copy(language = guidance.intent.language),
+            if (guidance.explicitLanguage) profile.withExplicitLanguage(guidance.intent.language) else profile,
         )
     }
     val recommended = if (compact) guidance.model ?: picks.first().model else picks.first().model
@@ -165,6 +156,16 @@ fun LocalModelPicker(
     var inspecting by remember { mutableStateOf<LocalModelDescriptor?>(null) }
     var catalogOpen by remember { mutableStateOf(false) }
     val catalogSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Setup's first download, or any on mobile data, is confirmed. A stray tap
+    // used to start 661 MB with nothing in between.
+    var confirmingDownload by remember { mutableStateOf<LocalModelDescriptor?>(null) }
+    val guardedDownloadAndUse: (LocalModelDescriptor) -> Unit = { model ->
+        if (compact && (state.downloaded.isEmpty() || state.meteredNetwork)) {
+            confirmingDownload = model
+        } else {
+            onDownloadAndUse(model)
+        }
+    }
 
     val filtered = remember(usable, query, engineFilter, sizeFilter, languageFilter) {
         filterModelCatalog(usable, query, engineFilter, sizeFilter, languageFilter)
@@ -186,7 +187,10 @@ fun LocalModelPicker(
         engineFilter != ModelEngineFilter.ALL ||
         sizeFilter != ModelSizeFilter.ANY ||
         languageFilter != ModelLanguageFilter.ANY
-    val showAlternates = alternates.isNotEmpty() && !compact && !browsing
+    // Setup shows the alternates too. It used to draw only the lead pick, so
+    // a person whose language was covered by the second entry saw a screen
+    // that looked like it had one model on it.
+    val showAlternates = alternates.isNotEmpty() && !browsing
     val alternateIds = if (showAlternates) alternates.map { it.model.id }.toSet() else emptySet()
     val availableModels = filtered.filter {
         it.id !in state.downloaded &&
@@ -259,7 +263,7 @@ fun LocalModelPicker(
             recommended = sections.recommended,
         )
     ) {
-        ModelBusyBanner(state = state, onCancelDownload = onCancelDownload)
+        ModelDownloadCard(state = state, onCancelDownload = onCancelDownload)
     }
 
     val oversizedWarning = selectedModel != null &&
@@ -284,7 +288,7 @@ fun LocalModelPicker(
                 compact = compact,
                 showActions = !oversizedWarning,
                 onSelect = onSelect,
-                onDownloadAndUse = onDownloadAndUse,
+                onDownloadAndUse = guardedDownloadAndUse,
                 onCancelDownload = onCancelDownload,
                 onBrowse = if (compact) {
                     { catalogOpen = true }
@@ -295,9 +299,28 @@ fun LocalModelPicker(
                 guidanceDetail = guidance.downloadDetail.takeIf { compact },
                 warning = warning.takeIf { compact },
                 alternative = guidanceAlternative.takeIf { compact },
-                onUseAlternative = onDownloadAndUse,
+                onUseAlternative = guardedDownloadAndUse,
             )
         }
+    }
+
+    confirmingDownload?.let { model ->
+        AlertDialog(
+            onDismissRequest = { confirmingDownload = null },
+            title = { Text(SetupCopy.DOWNLOAD_CONFIRM_TITLE) },
+            text = {
+                Text(SetupCopy.downloadConfirmBody(model.displayName, model.sizeLabel, state.meteredNetwork))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmingDownload = null
+                    onDownloadAndUse(model)
+                }) { Text(SetupCopy.DOWNLOAD_CONFIRM) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDownload = null }) { Text("Cancel") }
+            },
+        )
     }
 
     if (compact) {
@@ -466,8 +489,16 @@ fun LocalModelPicker(
     }
 }
 
+/**
+ * The download in progress, with what is moving and how long is left.
+ *
+ * One composable for the picker, the last setup page, and the home screen, fed
+ * by the same [LocalModelState], so a person who finished setup while the model
+ * was still coming down sees the same numbers wherever they look — and the
+ * three places can never disagree about them.
+ */
 @Composable
-private fun ModelBusyBanner(state: LocalModelState, onCancelDownload: () -> Unit) {
+internal fun ModelDownloadCard(state: LocalModelState, onCancelDownload: () -> Unit) {
     FeaturedCard {
         when {
             state.preparing != null -> Row(
@@ -518,20 +549,8 @@ private fun ModelBusyBanner(state: LocalModelState, onCancelDownload: () -> Unit
  * is actually moving, and the estimate is dropped entirely until it has settled
  * rather than shown while it would still swing wildly.
  */
-private fun downloadProgressLine(state: LocalModelState): String {
-    // Read at each recomposition, which progress updates already drive often
-    // enough to keep the estimate current without a timer of its own.
-    val elapsed = if (state.startedAtMillis > 0) {
-        SystemClock.elapsedRealtime() - state.startedAtMillis
-    } else {
-        0L
-    }
-    return listOfNotNull(
-        "${state.progress}%",
-        downloadSizeProgress(state.downloadedBytes, state.totalBytes),
-        downloadTimeRemaining(state.downloadedBytes, state.totalBytes, elapsed),
-    ).joinToString(" · ")
-}
+private fun downloadProgressLine(state: LocalModelState): String =
+    com.vocahq.vocaphone.local.downloadProgressLine(state)
 
 /**
  * The one sentence a warning is worth. Written so it says what to do, not only

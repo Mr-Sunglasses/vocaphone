@@ -44,6 +44,8 @@ import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
+import com.vocahq.vocaphone.core.MissingPermission
+import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.core.TextInsertion
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
@@ -57,6 +59,7 @@ internal object DictateCopy {
     const val MODEL = "Model"
     const val GATEWAY = "Gateway"
     const val NO_MODEL = "No model"
+    const val DOWNLOADING = "Downloading…"
     val HINTS = listOf(
         "Words show up at the cursor",
         "Nothing here is uploaded",
@@ -73,6 +76,8 @@ fun DictateScreen(
     state: DictationState,
     settings: VocaPhoneSettings,
     setup: SetupStatus,
+    localModels: LocalModelState,
+    onCancelLocalModelDownload: () -> Unit,
     onStart: () -> Unit,
     onFinish: () -> Unit,
     onCancel: () -> Unit,
@@ -146,6 +151,11 @@ fun DictateScreen(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // Setup can finish while the model is still downloading, and
+                // this is where someone who left early sees where it got to.
+                if (settings.localTranscriptionEnabled && localModels.downloading != null) {
+                    ModelDownloadCard(state = localModels, onCancelDownload = onCancelLocalModelDownload)
+                }
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -163,7 +173,7 @@ fun DictateScreen(
                         contentDescription = "${DictateCopy.STYLE}, ${settings.style.displayName}",
                         onClick = onOpenStyle,
                     )
-                    val modelLabel = dictateModelChipLabel(settings)
+                    val modelLabel = dictateModelChipLabel(settings, localModels.downloading)
                     DictateAssistChip(
                         icon = if (settings.localTranscriptionEnabled) {
                             R.drawable.ic_models
@@ -226,7 +236,19 @@ fun DictateScreen(
                     status = setup,
                     onOpenGateway = onOpenGateway,
                     onRefreshSetup = onRefreshSetup,
+                    onDevice = settings.localTranscriptionEnabled,
+                    onOpenModel = onOpenModel,
                 )
+                // A model still downloading is not a setup step to repair —
+                // SetupRepair has nothing to show for it — so a tap on Dictate
+                // used to do nothing visible at all. Say the same thing the
+                // keyboard says.
+                if (state.phase == DictationPhase.PERMISSION_REPAIR && state.missingPermissions.any {
+                        it == MissingPermission.MODEL_DOWNLOADING || it == MissingPermission.LOCAL_MODEL_UNAVAILABLE
+                    }
+                ) {
+                    Notice { Text(state.repairHint) }
+                }
 
                 val showHint = showScratchpadHint(scratchpad.text, state.phase)
                 val fieldColors = TextFieldDefaults.colors(
@@ -369,9 +391,16 @@ private fun DictateAssistChip(
     )
 }
 
-internal fun dictateModelChipLabel(settings: VocaPhoneSettings): String =
+internal fun dictateModelChipLabel(
+    settings: VocaPhoneSettings,
+    downloading: String? = null,
+): String =
     if (settings.localTranscriptionEnabled) {
-        LocalModelCatalog.find(settings.localModelId)?.displayName ?: DictateCopy.NO_MODEL
+        LocalModelCatalog.find(settings.localModelId)?.displayName
+            // The id is written when the file lands, so while it is on its way
+            // the chip would otherwise say "No model" next to a progress bar.
+            ?: downloading?.let { DictateCopy.DOWNLOADING }
+            ?: DictateCopy.NO_MODEL
     } else {
         DictateCopy.GATEWAY
     }

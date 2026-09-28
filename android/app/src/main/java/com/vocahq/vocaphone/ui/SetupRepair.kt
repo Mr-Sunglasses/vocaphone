@@ -24,6 +24,9 @@ fun SetupRepair(
     onOpenGateway: () -> Unit,
     onRefreshSetup: () -> Unit,
     modifier: Modifier = Modifier,
+    /** True when the person chose on-device transcription; the source row then asks for a model, not a server. */
+    onDevice: Boolean = false,
+    onOpenModel: () -> Unit = onOpenGateway,
 ) {
     // Launcher must register unconditionally; early-return after the last
     // remaining step would otherwise skip remember* and crash composition.
@@ -91,15 +94,33 @@ fun SetupRepair(
                         compact = !spotlight,
                     )
 
-                    SetupStep.GATEWAY -> ChecklistRow(
-                        title = "Gateway",
-                        detail = "The self-hosted VocaPhone server that transcribes your speech.",
-                        satisfied = false,
-                        actionLabel = "Set up",
-                        onAction = onOpenGateway,
-                        actionColor = LocalContentColor.current,
-                        compact = !spotlight,
-                    )
+                    // The speech-source step reads differently depending on
+                    // which source was chosen. Setup can now finish while a
+                    // model is still downloading, so an interrupted download
+                    // lands here — and telling that person to set up a
+                    // self-hosted server would send them somewhere they never
+                    // chose to go.
+                    SetupStep.GATEWAY -> if (onDevice) {
+                        ChecklistRow(
+                            title = "On-device model",
+                            detail = "The download did not finish. Choose a model to dictate on this phone.",
+                            satisfied = false,
+                            actionLabel = "Choose model",
+                            onAction = onOpenModel,
+                            actionColor = LocalContentColor.current,
+                            compact = !spotlight,
+                        )
+                    } else {
+                        ChecklistRow(
+                            title = "Gateway",
+                            detail = "The self-hosted VocaPhone server that transcribes your speech.",
+                            satisfied = false,
+                            actionLabel = "Set up",
+                            onAction = onOpenGateway,
+                            actionColor = LocalContentColor.current,
+                            compact = !spotlight,
+                        )
+                    }
                 }
             }
         }

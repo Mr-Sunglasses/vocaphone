@@ -929,8 +929,7 @@ private fun DictationBar(
         state.phase == DictationPhase.LISTENING ->
             state.inputRouteLabel ?: "Tap the red button to finish"
         state.phase.isBusy -> "You can keep typing while VocaPhone works"
-        state.needsVoiceModel -> "Open VocaPhone to download a voice model"
-        state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone to finish setup"
+        state.phase == DictationPhase.PERMISSION_REPAIR -> state.repairHint
         state.phase == DictationPhase.FAILED -> "Tap the mic to try again"
         else -> "Ready"
     }
@@ -1166,8 +1165,7 @@ private fun VoiceShortcutListeningBar(
             state.partialTranscript.replace('\n', ' ').take(64)
         state.phase == DictationPhase.LISTENING ->
             state.inputRouteLabel ?: "Tap the red button to finish"
-        state.needsVoiceModel -> "Open VocaPhone to download a voice model"
-        state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone to finish setup"
+        state.phase == DictationPhase.PERMISSION_REPAIR -> state.repairHint
         state.phase == DictationPhase.FAILED -> "Tap the mic to try again"
         state.phase.isBusy -> ""
         else -> "Ready"
@@ -1794,7 +1792,7 @@ private fun MicButton(
         !enabled -> "Dictation unavailable"
         recording -> "Finish dictation. Long-press to discard without inserting"
         processing -> "Dictation in progress"
-        state.phase == DictationPhase.PERMISSION_REPAIR -> "Open VocaPhone"
+        state.phase == DictationPhase.PERMISSION_REPAIR -> state.repairHint
         else -> "Start dictation"
     }
     val container = when {

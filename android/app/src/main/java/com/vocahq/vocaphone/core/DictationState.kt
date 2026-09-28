@@ -40,11 +40,14 @@ enum class MissingPermission {
     MICROPHONE,
     NOTIFICATIONS,
     GATEWAY_NOT_CONFIGURED,
+    MODEL_DOWNLOADING,
+    MODEL_PREPARING,
 
     /**
-     * On-device transcription is on but the stored model is not in the catalog:
-     * a selection this build no longer ships, or one the launch migration has
-     * not reached yet. Either way the local route cannot run, and saying so
+     * On-device transcription is on but the stored model cannot run: it is not
+     * in the catalog (a selection this build no longer ships, or one the launch
+     * migration has not reached yet), or its files are not on this phone and no
+     * download of it is under way. Either way the local route cannot run, and saying so
      * before the microphone opens is the whole point of this state.
      */
     LOCAL_MODEL_UNAVAILABLE,
@@ -55,6 +58,8 @@ enum class MissingPermission {
             MICROPHONE -> "Microphone access"
             NOTIFICATIONS -> "Notifications"
             GATEWAY_NOT_CONFIGURED -> "Gateway address and token"
+            MODEL_DOWNLOADING -> "Model download"
+            MODEL_PREPARING -> "Model preparation"
             LOCAL_MODEL_UNAVAILABLE -> "Voice model"
         }
 }
@@ -73,6 +78,7 @@ data class DictationFailure(
 data class DictationState(
     val sessionId: UUID? = null,
     val phase: DictationPhase = DictationPhase.IDLE,
+    val modelDownloadProgress: Int? = null,
     val language: TranscriptionLanguage = TranscriptionLanguage.DEFAULT,
     val style: WritingStyle = WritingStyle.DEFAULT,
     val startedAtElapsedMillis: Long = 0L,
@@ -130,4 +136,13 @@ data class DictationState(
         /** A one-minute warning before the cap stops the recording for them. */
         const val RECORDING_WARNING_MILLIS = 4 * 60 * 1000L
     }
+
+    val repairHint: String
+        get() = when {
+            MissingPermission.MODEL_PREPARING in missingPermissions -> "Preparing model…"
+            MissingPermission.MODEL_DOWNLOADING in missingPermissions ->
+                modelDownloadProgress?.let { "Model downloading · $it%" } ?: "Model downloading"
+            MissingPermission.LOCAL_MODEL_UNAVAILABLE in missingPermissions -> "Open VocaPhone to download a voice model"
+            else -> "Open VocaPhone to finish setup"
+        }
 }

@@ -155,6 +155,9 @@ ci:
     ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
     git diff --exit-code -- app/schemas \
         || { echo "The checked-in Room schema is stale — commit app/schemas." >&2; exit 1; }
+
+    git diff --check "$(git merge-base origin/main HEAD)" \
+        || { echo "Whitespace errors in this branch — see git diff --check." >&2; exit 1; }
     python3 tools/check-page-alignment.py {{ apk }}
 
 # Deliberately not _adb: the point of this recipe is to work when nothing is
