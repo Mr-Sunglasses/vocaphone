@@ -53,7 +53,24 @@ struct PauseDetectorTests {
         var detector = PauseDetector()
         _ = feed(&detector, rms: 0.001, seconds: 1)
         _ = feed(&detector, rms: 0.02, seconds: 2)
-        #expect(feed(&detector, rms: 0.007, seconds: 3.2))
+        // Three seconds of pause, after 0.6 s to hear that the background is
+        // steady rather than softer speech.
+        #expect(!feed(&detector, rms: 0.007, seconds: 3.4))
+        #expect(feed(&detector, rms: 0.007, seconds: 0.4))
+    }
+
+    /// Someone carrying on more softly, at the same level steady background
+    /// would sit at: it rises and falls with each syllable, so it is not the
+    /// pause.
+    @Test func softerSpeechIsNotAPause() {
+        var detector = PauseDetector()
+        _ = feed(&detector, rms: 0.001, seconds: 1)
+        _ = feed(&detector, rms: 0.02, seconds: 2)
+        var fired = false
+        for step in 0..<120 {
+            fired = detector.observe(rms: step.isMultiple(of: 3) ? 0.002 : 0.007, seconds: 0.05) || fired
+        }
+        #expect(!fired)
     }
 
     /// A steady fan is the floor, not speech; speech over it still counts,

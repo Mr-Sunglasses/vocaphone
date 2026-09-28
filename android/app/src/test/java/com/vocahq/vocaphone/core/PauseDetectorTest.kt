@@ -53,7 +53,22 @@ class PauseDetectorTest {
         val detector = PauseDetector()
         detector.feed(0.001f, 1.0)
         detector.feed(0.02f, 2.0)
-        assertTrue(detector.feed(0.007f, 3.2))
+        // Three seconds of pause, after 0.6 s to hear that the background is
+        // steady rather than softer speech.
+        assertFalse(detector.feed(0.007f, 3.4))
+        assertTrue(detector.feed(0.007f, 0.4))
+    }
+
+    @Test
+    fun `softer speech is not a pause`() {
+        // At the level steady background would sit at, but rising and falling
+        // with each syllable.
+        val detector = PauseDetector()
+        detector.feed(0.001f, 1.0)
+        detector.feed(0.02f, 2.0)
+        var fired = false
+        repeat(60) { step -> fired = detector.observe(if (step % 3 == 0) 0.002f else 0.007f, 0.1) || fired }
+        assertFalse(fired)
     }
 
     @Test
