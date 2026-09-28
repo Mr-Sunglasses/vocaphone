@@ -189,6 +189,11 @@ enum WhisperTranscription {
             }
             let decoded = try await decode(samples, windowOptions)
             try Task.checkCancellation()
+            windowOptions = Self.lockingDetectedLanguage(
+                windowOptions,
+                after: decoded,
+                windowSamples: chunk.audioSamples.count
+            )
             if let emptyWindow,
                decoded.allSatisfy({ $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }),
                soundsLikeSpeech(chunk.audioSamples, in: recording)
@@ -201,8 +206,65 @@ enum WhisperTranscription {
             }
             results.append(contentsOf: decoded)
         }
+        // The language every window after the lock was decoded in is the
+        // recording's language. Earlier windows each reported their own
+        // guess — a blank one, a two-second fragment — and whichever came
+        // first would otherwise label and punctuate the transcript.
+        if options.language == nil, let locked = windowOptions.language {
+            for result in results { result.language = locked }
+        }
         return results
     }
+
+    /// Automatic language, decided once per recording.
+    ///
+    /// Each thirty-second window used to detect its own language, so a
+    /// dictation that mixes languages — Hindi with English words in it, say —
+    /// could come back in Devanagari for one window and Latin script for the
+    /// next, halfway through a sentence. whisper.cpp, which Android runs,
+    /// detects once on the first window and keeps it, and this now does the
+    /// same. The first window that produced words and carried at least
+    /// ``minimumDetectionSamples`` decides: a blank window or a two-second
+    /// fragment is a poor basis for the rest of the recording.
+    static func lockingDetectedLanguage(
+        _ options: DecodingOptions,
+        after decoded: [TranscriptionResult],
+        windowSamples: Int
+    ) -> DecodingOptions {
+        guard options.language == nil, options.detectLanguage == true,
+              windowSamples >= minimumDetectionSamples,
+              let detected = decoded.first(where: carriesSpeech)?.language,
+              !detected.isEmpty
+        else { return options }
+        var locked = options
+        locked.language = detected
+        locked.detectLanguage = false
+        return locked
+    }
+
+    /// Whether a result holds words rather than nothing or a marker.
+    ///
+    /// Judged after the sanitizer, the same way the finished transcript is:
+    /// `[BLANK_AUDIO]` or `(music)` is text to the decoder but no speech to
+    /// anyone, and a window of it must not decide what language the dictation
+    /// is in.
+    static func carriesSpeech(_ result: TranscriptionResult) -> Bool {
+        !TranscriptSanitizer.clean(result.text).isEmpty
+    }
+
+    /// The language to report for a finished Automatic recording.
+    ///
+    /// Once a window has locked the language, ``transcribe(samples:options:emptyWindow:decode:)``
+    /// has already set every result to it, so the first result answers. A
+    /// recording where no window qualified reports the first window with
+    /// words: a blank or marker-only first window detects something too, and
+    /// reporting it would label the transcript in a language nobody spoke.
+    static func reportedLanguage(_ results: [TranscriptionResult]) -> String {
+        results.first(where: carriesSpeech)?.language ?? results.first?.language ?? ""
+    }
+
+    /// Five seconds of audio: enough speech for detection to mean something.
+    static let minimumDetectionSamples = 5 * WhisperKit.sampleRate
 
     /// Whether a window carries at least half a second of sound well above its
     /// own quietest stretch.
