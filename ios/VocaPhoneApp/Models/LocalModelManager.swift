@@ -2033,15 +2033,25 @@ final class LocalModelManager {
         // Off the main actor: reading a long recording and levelling it is a
         // pass over millions of samples, and this runs while the finished
         // dictation's screen is on the way in.
-        let samples = try await Task.detached(priority: .userInitiated) {
+        // A detached task does not inherit cancellation, so the pipeline's is
+        // passed on: a dictation replaced mid-read stops reading.
+        let preparation = Task.detached(priority: .userInitiated) {
             let loaded = try Self.loadSamples(from: audioURL)
             guard !loaded.isEmpty else {
                 throw LocalModelManagerError.modelNotDownloaded("empty audio")
             }
+            try Task.checkCancellation()
             // Safe here and not on the incremental path: this is the whole
             // recording, so one gain covers all of it.
-            return SpeechAudioConditioning.condition(loaded)
-        }.value
+            let levelled = SpeechAudioConditioning.condition(loaded)
+            try Task.checkCancellation()
+            return levelled
+        }
+        let samples = try await withTaskCancellationHandler {
+            try await preparation.value
+        } onCancel: {
+            preparation.cancel()
+        }
 
         switch descriptor.engine {
         case .whisperKit:
