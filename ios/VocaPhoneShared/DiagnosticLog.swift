@@ -21,6 +21,10 @@ enum DiagnosticSource: String, Codable, Sendable {
 enum DiagnosticEvent: String, Codable, Sendable {
     case appStarted
     case keyboardShown
+    /// The keyboard left the screen at more than its share of its memory limit
+    /// and ended its own process, with the headroom it had left. The next field
+    /// gets a cold start instead of a kill mid-word.
+    case keyboardRecycled
     case sessionStateChanged
     case sessionExpired
     case quickDictationArmed
@@ -365,6 +369,17 @@ enum DiagnosticLog {
         writeQueue.async {
             append(entry, to: fileURL)
         }
+    }
+
+    /// Waits for the lines recorded so far to reach the file, for at most
+    /// `timeout`. For a process about to end: a diagnostic line is not worth
+    /// holding the main thread for, and a coordinated write can wait on the
+    /// other process indefinitely.
+    @discardableResult
+    static func flush(timeout: DispatchTimeInterval = .milliseconds(150)) -> Bool {
+        let done = DispatchSemaphore(value: 0)
+        writeQueue.async { done.signal() }
+        return done.wait(timeout: .now() + timeout) == .success
     }
 
     static func read() -> String {

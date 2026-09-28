@@ -20,6 +20,68 @@ enum KeyboardMemoryBudget {
         guard let availableMegabytes else { return true }
         return availableMegabytes >= 35
     }
+
+    /// What jetsam measures this process by, in whole megabytes.
+    static var footprintMegabytes: Int? {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(
+            MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size
+        )
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        guard result == KERN_SUCCESS else { return nil }
+        return Int(info.phys_footprint / (1024 * 1024))
+    }
+
+    /// The share of its limit past which a keyboard leaving the screen ends its
+    /// own process instead of waiting to be reused.
+    static let recycleShare = 60
+
+    /// Whether an off-screen keyboard should end its process rather than be
+    /// suspended and reused.
+    ///
+    /// Some of what this extension allocates is never given back while the
+    /// process lives: every emoji drawn at panel size leaves about 50 KB in Core
+    /// Text's glyph cache, and no public API empties it. iOS reuses a suspended
+    /// extension for the next field, so that cache carried over from one
+    /// session to the next until a keyboard in use went past its limit and was
+    /// killed under the user's fingers — measured on an iPhone 14 Pro at 77 MB,
+    /// after suspended snapshots at 52 to 64 MB. Ending the process while it is
+    /// off screen turns that into a cold start the next time it opens, which is
+    /// what a jetsam kill of a suspended keyboard already produces, minus the
+    /// kill in the middle of a word.
+    ///
+    /// The limit is the footprint plus what is left, so this follows whatever
+    /// the device allows rather than a number measured on one phone.
+    static func shouldRecycle(footprint: Int, available: Int) -> Bool {
+        let limit = footprint + available
+        guard limit > 0 else { return false }
+        return footprint * 100 >= limit * recycleShare
+    }
+}
+
+/// The decision a keyboard leaving the screen makes about its own process,
+/// with the readings passed in so every branch can be tested — the simulator
+/// has no memory limit to read.
+struct KeyboardRecycling {
+    var footprint: () -> Int? = { KeyboardMemoryBudget.footprintMegabytes }
+    var available: () -> Int? = { KeyboardMemoryBudget.availableMegabytes }
+
+    /// The headroom left when the process should end, or `nil` to keep it.
+    ///
+    /// Never while the keyboard is on screen or mid-insertion, and never on a
+    /// reading it could not take: an unknown limit is not a reason to exit.
+    func headroomIfRecycling(isVisible: Bool, isInserting: Bool) -> Int? {
+        guard !isVisible, !isInserting,
+              let footprint = footprint(),
+              let available = available(),
+              KeyboardMemoryBudget.shouldRecycle(footprint: footprint, available: available)
+        else { return nil }
+        return available
+    }
 }
 
 /// Turns keystrokes into a strip, without ever making a keystroke wait.

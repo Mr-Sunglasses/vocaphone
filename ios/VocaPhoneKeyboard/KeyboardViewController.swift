@@ -99,6 +99,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         palette: palette
     )
     private let dictationSurfaceState = DictationSurfaceState()
+    private let recycling = KeyboardRecycling()
     private var dictationSurfaceHosting: UIHostingController<DictationSurfaceView>?
     private let topBarContainer = UIView()
     private var keyboardHeightConstraint: NSLayoutConstraint?
@@ -384,6 +385,31 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // A prepared generator keeps the Taptic Engine powered for a second or
         // two, which a dismissed keyboard has no business spending.
         KeyboardHaptics.shared.release()
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        recycleIfBloated()
+    }
+
+    /// Ends this process while it is off screen if it has grown past its share
+    /// of the memory limit. See ``KeyboardMemoryBudget/shouldRecycle``.
+    ///
+    /// Everything a new instance needs survives it: the session and its
+    /// insertion target are in the App Group, and a recreated keyboard already
+    /// adopts them — that is the path every jetsam kill of this extension took.
+    private func recycleIfBloated() {
+        guard let available = recycling.headroomIfRecycling(
+            isVisible: isKeyboardVisible,
+            isInserting: isPerformingInsertion
+        ) else { return }
+        DiagnosticLog.record(.keyboardRecycled, metadata: .megabytesAvailable(available))
+        // Longer than a dismissal ever waits elsewhere, because the keyboard is
+        // already off screen and the line explains the next cold start. But
+        // staying alive past the threshold is what ends in a kill mid-word, so
+        // the process ends whether or not the line made it.
+        DiagnosticLog.flush(timeout: .milliseconds(500))
+        exit(0)
     }
 
     /// The containing app has no API for whether this keyboard is installed or

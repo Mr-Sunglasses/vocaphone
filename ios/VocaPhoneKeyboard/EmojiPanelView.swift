@@ -279,7 +279,7 @@ final class EmojiPanelView: UIView {
             guard let indexPath = collection.indexPathForItem(at: point),
                   indexPath.item < glyphs.count
             else { return }
-            let options = EmojiSkinTones.variants(of: glyphs[indexPath.item])
+            let options = catalog.toneVariants(of: glyphs[indexPath.item])
             guard options.count > 1 else { return }
             presentTones(options, over: indexPath)
         case .changed:
