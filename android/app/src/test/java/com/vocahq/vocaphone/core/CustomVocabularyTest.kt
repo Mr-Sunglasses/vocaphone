@@ -52,15 +52,15 @@ class CustomVocabularyTest {
     }
 
     @Test
-    fun `a non-whisper model gets a clear warning`() {
-        val note = CustomVocabulary.whisperOnlyWarning("Parakeet")
-        assertEquals("Parakeet is not Whisper. Custom words only apply to Whisper models.", note)
+    fun `a non-whisper model is told what the list still does`() {
+        val note = CustomVocabulary.spellingOnlyNote("Parakeet")
         assertEquals(
-            "Parakeet TDT 0.6B is not Whisper. Custom words only apply to Whisper models.",
-            CustomVocabulary.whisperOnlyWarning("Parakeet TDT 0.6B"),
+            "Parakeet cannot be nudged while it decodes, so only close matches are " +
+                "corrected. A word it hears as something else entirely stays as it heard it.",
+            note,
         )
-        assertEquals(null, CustomVocabulary.whisperOnlyWarning(null))
-        assertEquals(null, CustomVocabulary.whisperOnlyWarning(""))
+        assertEquals(null, CustomVocabulary.spellingOnlyNote(null))
+        assertEquals(null, CustomVocabulary.spellingOnlyNote(""))
     }
 
     @Test

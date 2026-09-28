@@ -30,6 +30,14 @@ object SnippetExpander {
     }
 
     /**
+     * Where the triggers [expand] would replace sit in [text], found by the same
+     * pattern in the same single pass. For an earlier stage that must leave
+     * them exactly as they are.
+     */
+    fun triggerRanges(text: String, snippets: List<Snippet>): List<IntRange> =
+        matchingExpansions(text, snippets).map { it.start until it.end }
+
+    /**
      * Matches snippet triggers before another text stage rewrites them, while
      * keeping the user's expansion opaque to that stage. The restored text is
      * exactly the literal expansion, as though [expand] had run last.

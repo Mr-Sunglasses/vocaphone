@@ -15,6 +15,7 @@ import com.vocahq.vocaphone.audio.MicrophoneInterruption
 import com.vocahq.vocaphone.audio.PcmConversion
 import com.vocahq.vocaphone.audio.SilentCapture
 import com.vocahq.vocaphone.audio.WavWriter
+import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
 import com.vocahq.vocaphone.core.DictationFailure
 import com.vocahq.vocaphone.core.DictationPhase
@@ -746,6 +747,8 @@ class DictationController(
                 numbersAsDigits = configuration.numbersAsDigits,
                 spokenEmoji = configuration.spokenEmoji,
                 snippets = configuration.snippets,
+                vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
+                isDictionaryWord = ::isEnglishWord,
             )
             if (transcript != null && cleaned.isEmpty()) {
                 wavFile.delete()
@@ -840,6 +843,8 @@ class DictationController(
                 numbersAsDigits = configuration.numbersAsDigits,
                 spokenEmoji = configuration.spokenEmoji,
                 snippets = configuration.snippets,
+                vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
+                isDictionaryWord = ::isEnglishWord,
             )
             if (transcript.isEmpty()) {
                 throw GatewayException(
@@ -948,7 +953,23 @@ class DictationController(
         numbersAsDigits = configuration.numbersAsDigits,
         spokenEmoji = configuration.spokenEmoji,
         snippets = configuration.snippets,
+        vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
+        isDictionaryWord = ::isEnglishWord,
     )
+
+    /**
+     * The keyboard's shipped word list, for vocabulary correction's one
+     * question: is this an ordinary word? Read once, on first use.
+     */
+    private val englishWords: Set<String> by lazy {
+        runCatching {
+            context.assets.open("en.txt").bufferedReader().useLines { lines ->
+                lines.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toHashSet()
+            }
+        }.getOrDefault(emptySet())
+    }
+
+    private fun isEnglishWord(word: String): Boolean = word in englishWords
 
     private suspend fun deliver(
         transcript: String,
