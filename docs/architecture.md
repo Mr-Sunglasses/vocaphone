@@ -59,8 +59,9 @@ session for the selected engine (`SherpaIncrementalSession` or
   cache keyed by their place in the recording, their language and the levelling
   gain; sherpa keeps the one result.
 - **At Finish, the trailing pause is trimmed**, but only where the detector
-  heard no speech *and* nothing in it is loud next to the speech before it. A
-  detector that heard no speech at all trims nothing. When nothing was said
+  heard no speech *and* nothing in it rises above the room's own noise floor for
+  150 ms or more, so a quiet last word the detector missed is kept. A detector
+  that heard no speech at all trims nothing. When nothing was said
   after the last early decode, the trimmed recording is exactly the audio that
   decode read, and its result is used as is: Finish decodes nothing. Anything
   else decodes again, so the early decode can make a dictation faster, never

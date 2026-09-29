@@ -218,13 +218,14 @@ final class SherpaIncrementalSession: @unchecked Sendable {
         // speech.
         let end = SpeechActivity.trimmedEnd(
             of: samples,
-            regions: SpeechActivity.regions(regions, from: offset),
-            loudestFrameSoFar: loudestFrame
+            regions: SpeechActivity.regions(regions, from: offset)
         ) ?? samples.count
         let tail = Array(samples[..<end])
         let gain = currentGain()
+        // The same audio at the same gain, or it is decoded again: a result
+        // for different model input is not this recording's result.
         if let early = earlyDecode, early.start == offset, early.end == offset + end,
-           abs(early.gain - gain) <= gain * 0.05
+           early.gain == gain
         {
             consume(tail, outcome: early.outcome)
             return result(reusedEarlyDecode: true, trimmed: samples.count - end)

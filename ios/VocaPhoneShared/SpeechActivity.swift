@@ -35,8 +35,9 @@ protocol SpeechActivityDetecting: AnyObject {
 /// - **Trimming the tail.** The pause after the last word, and whatever the
 ///   phone heard while the user reached for Finish, is audio a model is paid to
 ///   read and that Whisper, given nothing to hear, fills with "Thank you." It is
-///   only cut when the detector heard nothing there *and* nothing in it is loud
-///   next to the speech before it, so a last word the detector missed is kept.
+///   only cut when the detector heard nothing there *and* nothing in it rises
+///   above the room's own noise floor for as long as a word, so a last word the
+///   detector missed is kept however quietly it was said.
 enum SpeechActivity {
     static let sampleRate = SherpaLongAudio.sampleRate
 
@@ -61,16 +62,20 @@ enum SpeechActivity {
     /// Where a recording can end without losing anything anyone said, or `nil`
     /// to keep all of it.
     ///
+    /// The tail after the detector's last word is only cut when its level
+    /// shows it holds no speech — not merely no *loud* speech. A final word
+    /// said quieter than the rest, after a pause, can fall under the detector
+    /// and would also fall under any bar set against the speech before it, so
+    /// the bar is the room instead: the recording's own floor, the quietest
+    /// tenth of its 50 ms frames. Room tone holds its level to within a few
+    /// percent of that floor; a word, however quiet, rises well above it for
+    /// longer than a click does. Three frames standing out — 150 ms, shorter
+    /// than any word — keep the tail whole.
+    ///
     /// - Parameters:
     ///   - samples: the recording, or the part of it still to be decoded.
     ///   - regions: speech the detector found, relative to `samples`.
-    ///   - loudestFrameSoFar: the loudest 100 ms frame of anything that came
-    ///     before `samples`, as `SherpaLongAudio.loudestFrame` measures it.
-    static func trimmedEnd(
-        of samples: [Float],
-        regions: [SpeechRegion],
-        loudestFrameSoFar: Double = 0
-    ) -> Int? {
+    static func trimmedEnd(of samples: [Float], regions: [SpeechRegion]) -> Int? {
         // A detector that heard no speech anywhere is a detector that cannot be
         // trusted with this recording — a whisper, a far-off microphone — and
         // the whole thing goes to the model exactly as it did before.
@@ -78,15 +83,38 @@ enum SpeechActivity {
         let end = max(0, min(samples.count, lastEnd + tailPaddingSamples))
         // Less than a frame to gain is not worth a decision.
         guard samples.count - end >= sampleRate / 10 else { return nil }
-        let kept = SherpaLongAudio.loudestFrame(Array(samples[..<end]))
-        let tail = SherpaLongAudio.loudestFrame(Array(samples[end...]))
-        // Anything in the tail loud enough to be speech next to the speech that
-        // came before it stays, whatever the detector made of it.
-        guard !SherpaLongAudio.carriesSpeech(
-            loudestFrame: tail,
-            loudestFrameSoFar: max(kept, loudestFrameSoFar)
-        ) else { return nil }
+        let levels = frameLevels(samples)
+        guard !levels.isEmpty else { return nil }
+        let floor = levels.sorted()[levels.count / 10]
+        let threshold = max(floor * standOut, minimumStandOutLevel)
+        let tailLevels = levels[min(levels.count, end / frameSamples)...]
+        guard tailLevels.count { $0 >= threshold } < speechFrames else { return nil }
         return end
+    }
+
+    private static let frameSamples = sampleRate / 20
+    /// How far above the room's floor a frame has to be to be heard as more
+    /// than the room. `WhisperTranscription.soundsLikeSpeech` uses the same
+    /// measure: steady noise sits at about 1.06 times its floor, speech at 12
+    /// to 16 times.
+    private static let standOut: Float = 2.5
+    /// Keeps a recording of near digital silence, whose floor is zero, from
+    /// hearing every frame as standing out.
+    private static let minimumStandOutLevel: Float = 0.001
+    /// 150 ms of frames standing out.
+    private static let speechFrames = 3
+
+    private static func frameLevels(_ samples: [Float]) -> [Float] {
+        var levels: [Float] = []
+        levels.reserveCapacity(samples.count / frameSamples)
+        var start = 0
+        while start + frameSamples <= samples.count {
+            var sum: Float = 0
+            for sample in samples[start..<(start + frameSamples)] { sum += sample * sample }
+            levels.append((sum / Float(frameSamples)).squareRoot())
+            start += frameSamples
+        }
+        return levels
     }
 
     /// `regions`, moved to be relative to a buffer that begins `offset`

@@ -86,6 +86,44 @@ struct SpeechActivityTests {
         ) == nil)
     }
 
+    /// A final word far quieter than the speech before it, after a pause,
+    /// that the detector did not hear. Against the speech it is nothing;
+    /// against the room it is plainly a word.
+    @Test func aQuietFinalWordTheDetectorMissedIsKept() {
+        let recording = Self.tone(seconds: 3) + Self.room(seconds: 1)
+            + Self.tone(seconds: 0.4, amplitude: 0.012) + Self.room(seconds: 0.6)
+        #expect(SpeechActivity.trimmedEnd(
+            of: recording, regions: [SpeechRegion(start: 0, end: 3 * Self.rate)]
+        ) == nil)
+    }
+
+    /// The tap on Finish is shorter than any word, and does not stop the pause
+    /// before it from being trimmed.
+    @Test func aTapAtTheEndStillTrims() {
+        var recording = Self.tone(seconds: 3) + Self.room(seconds: 1.5)
+        for index in (recording.count - 800)..<recording.count { recording[index] += 0.6 }
+        #expect(SpeechActivity.trimmedEnd(
+            of: recording, regions: [SpeechRegion(start: 0, end: 3 * Self.rate)]
+        ) == 3 * Self.rate + SpeechActivity.tailPaddingSamples)
+    }
+
+    /// Through the session: the quiet word reaches the model.
+    @Test func aQuietFinalWordReachesTheSherpaModel() async {
+        let samples = Self.tone(seconds: 3) + Self.room(seconds: 1)
+            + Self.tone(seconds: 0.4, amplitude: 0.012) + Self.room(seconds: 0.6)
+        let decoded = Sizes()
+        let session = SherpaIncrementalSession(
+            chunks: Self.stream(samples),
+            detector: { ScriptedSpeechDetector([SpeechRegion(start: 0, end: 3 * Self.rate)]) }
+        ) { chunk in
+            decoded.record(chunk.count)
+            return .decoded(SherpaTranscript(text: "spoken"))
+        }
+        let result = await session.finish()
+        #expect(!result.reusedEarlyDecode)
+        #expect(decoded.values.last == samples.count)
+    }
+
     @Test func aTailTooShortToMatterIsLeftAlone() {
         let recording = Self.tone(seconds: 3) + Self.room(seconds: 0.45)
         #expect(SpeechActivity.trimmedEnd(
