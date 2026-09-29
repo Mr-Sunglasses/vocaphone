@@ -47,8 +47,8 @@ When work cannot finish in 100 ms, the state change still must happen within
   reach LISTENING or FINALIZING. Start has to wait on the foreground service,
   `AudioRecord.start()` and the cue. Finish has to wait on the capture drain
   and on closing a gateway stream. Either can take hundreds of milliseconds.
-- **iOS keyboard:** a tap plays `KeyboardHaptics.shared.action()` and writes the next
-  session state (`launchingApp`, `finalizing`) in the same handler. That
+- **iOS keyboard:** a tap plays `KeyboardHaptics.shared.action()` and writes the
+  next session state (`launchingApp`, `finalizing`) in the same handler. That
   state renders before any work starts.
 - **Anywhere else:** if an action waits on disk, the network, a model or
   another process, show a state that says so (pressed, spinner, "Finishing…")
@@ -93,6 +93,12 @@ Notes on accuracy:
   the app, so a span can start in one process and end in the other. The two
   processes append through separate queues, so entries are sorted by uptime
   within each boot before pairing.
+- "Stop" is the finish request, whoever sent it: a tap on Stop, the Live
+  Activity on iOS, stop after a pause, or the recording limit. The pipeline
+  after it is the same.
+- On iOS, Stop → inserted also counts any time spent away from the keyboard.
+  A dictation stopped in the app is inserted only when the keyboard comes
+  back, so read that p95 with care.
 - A span that crosses a cancel, a failure or a reboot is dropped, not counted.
 
 ## Baselines
@@ -100,9 +106,9 @@ Notes on accuracy:
 Measured values, not goals. Add a row whenever you measure; do not overwrite
 an old one. Compare a change against the same phone and engine.
 
-| Date | Phone | OS | Engine / model | Tap → listening | Stop → mic off | Stop → inserted | n |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| — | — | — | — | not yet measured | | | |
+| Date | Phone | OS | Engine / model | Tap → listening | Stop → mic off | Stop → transcript | Stop → inserted | n |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| — | — | — | — | not yet measured | | | | |
 
 ## Sources
 

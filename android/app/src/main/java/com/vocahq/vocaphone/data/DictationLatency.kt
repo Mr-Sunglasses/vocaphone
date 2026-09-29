@@ -4,10 +4,11 @@ package com.vocahq.vocaphone.data
  * Median and p95 of the dictation spans that [DiagnosticLog] already stamps.
  *
  * The log records when each stage happened; nothing turned that into the
- * number a latency budget is written in. Durations use the monotonic `up`
- * stamp, so a wall-clock change mid-dictation cannot bend them. This reads the log back, pairs each
+ * number a latency budget is written in. This reads the log back, pairs each
  * span's start with the first matching end inside the same dictation, and
- * reports how long they took. See docs/latency.md for the budgets.
+ * reports how long they took. Durations use the monotonic `up` stamp, so a
+ * wall-clock change mid-dictation cannot bend them. See docs/latency.md for
+ * the budgets.
  *
  * Input and output are both the log's closed vocabulary plus integers, so the
  * summary is as safe to paste publicly as the log it came from.

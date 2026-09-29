@@ -83,13 +83,8 @@ enum DiagnosticLatency {
         }
     }
 
-    /// A drop this large in uptime looks like a reboot. A delayed same-boot
-    /// flush is an uptime still at or after this boot's observed minimum
-    /// (`bootMinUptime`) with a wall time at or before this boot's latest.
-    /// Wall time moving forward is a new boot even when uptime is at or after
-    /// that minimum. An uptime below the minimum is a new boot, including a
-    /// clock-set-back reboot whose wall time falls inside the prior boot's
-    /// wall range.
+    /// An uptime drop larger than this is either a reboot or a write that was
+    /// held up in a suspended process; ``chronological(_:)`` tells them apart.
     static let rebootGap: UInt64 = 60_000
 
     /// The log in the order things happened rather than the order they were
@@ -98,13 +93,11 @@ enum DiagnosticLatency {
     /// The keyboard and the app each append through their own queue, so the
     /// app's `recording` can land in the file before the keyboard's earlier
     /// `launchingApp`. Uptime restarts at boot, so entries are sorted within
-    /// each boot, never across one. A write delayed past `rebootGap` stays in
-    /// the current boot when its uptime is still at or after this boot's
-    /// observed minimum (`bootMinUptime`) and its wall time is at or before
-    /// this boot's latest. Wall time moving forward starts a new boot even
-    /// when uptime is at or after that minimum. An uptime below the minimum
-    /// is a new boot, including a clock-set-back reboot whose wall time
-    /// falls inside the prior boot's wall range.
+    /// each boot, never across one. The log has no boot identifier, so after
+    /// an uptime drop past `rebootGap` an entry stays in the current boot only
+    /// when it looks like a delayed write: its uptime is at or after the
+    /// lowest this boot has seen, and its wall time has not moved past the
+    /// boot's latest. Anything else starts a new boot.
     static func chronological(_ entries: [DiagnosticEntry]) -> [DiagnosticEntry] {
         var boots: [[(offset: Int, at: UInt64, entry: DiagnosticEntry)]] = [[]]
         var latest: UInt64 = 0
@@ -113,9 +106,6 @@ enum DiagnosticLatency {
         for (offset, entry) in entries.enumerated() {
             guard let at = entry.uptimeMilliseconds else { continue }
             if at + rebootGap < latest {
-                // Delayed flush: at >= bootMinUptime and wall at or before
-                // latestTimestamp. Otherwise a reboot (wall forward, or
-                // uptime below bootMinUptime).
                 let wallMovedForward = latestTimestamp.map { entry.timestamp > $0 } == true
                 let delayedFlush =
                     bootMinUptime.map { at >= $0 } == true && !wallMovedForward
