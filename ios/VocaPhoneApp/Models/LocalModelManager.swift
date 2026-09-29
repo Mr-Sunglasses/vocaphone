@@ -428,7 +428,9 @@ final class LocalModelManager {
 
     /// Stat-only pass, safe to run on the main actor during launch.
     func refresh() {
-        RetiredLocalModels.migrateStoredSelection()
+        RetiredLocalModels.migrateStoredSelection(
+            languages: RetiredLocalModels.languagesForMigration()
+        )
         scheduleRetiredModelCleanup()
         var verified: Set<String> = []
         var needsDigestCheck: [LocalModelDescriptor] = []

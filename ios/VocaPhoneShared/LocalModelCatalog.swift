@@ -23,6 +23,10 @@ enum SherpaFamily: String, Codable, Sendable {
     /// NeMo, and its tokens have to be joined by the bridge: see
     /// `SherpaOnnxBridge.c`.
     case zipformerTransducer
+    /// Qwen3-ASR: an audio encoder feeding a Qwen3 LLM decoder, which reads a
+    /// Hugging Face tokenizer directory instead of a `tokens.txt`. Its
+    /// sherpa-onnx config has no language field, so it always detects.
+    case qwen3Asr
 
     /// Whether this family can safely use `modified_beam_search`.
     ///
@@ -351,6 +355,14 @@ enum LocalModelLanguages {
 
     static let senseVoice: Set<String> = ["zh", "en", "ja", "ko", "yue"]
 
+    /// Qwen3-ASR's 30 languages, less Macedonian, which the picker does not
+    /// offer. Filipino is the picker's `tl`.
+    static let qwen3: Set<String> = [
+        "zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th",
+        "vi", "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "tl", "fa",
+        "el", "hu", "ro"
+    ]
+
     /// Cantonese is the one language OpenAI added after Whisper v2.
     ///
     /// Every multilingual build before large-v3 stops at 99 language tokens, and
@@ -362,14 +374,6 @@ enum LocalModelLanguages {
     static let picker: Set<String> = Set(
         TranscriptionLanguage.allCases.filter { $0 != .automatic }.map(\.rawValue)
     )
-
-    /// Indic and nearby languages Dolphin covers well at first-run size.
-    static let dolphinStarters: Set<String> = [
-        "hi", "bn", "ta", "te", "gu", "pa", "mr", "as", "ne", "ur", "th", "vi", "id", "ms"
-    ]
-
-    /// Everything Dolphin transcribes that the picker also offers.
-    static let dolphin: Set<String> = dolphinStarters.union(senseVoice)
 }
 
 /// Every local model that fits on an iPhone, pinned file-by-file in the matching
@@ -513,20 +517,6 @@ enum LocalModelCatalog {
             languageCodesOverride: LocalModelLanguages.senseVoice
         ),
         .init(
-            id: "dolphin-small-ctc",
-            displayName: "Dolphin Small",
-            engine: .sherpaOnnx,
-            repository: "csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02",
-            revision: "c8b6689509acfcd744c04e5e169164f9ac4cae32",
-            sherpaFamily: .dolphinCtc,
-            sizeBytes: 250_163_616,
-            minimumRamGB: 3,
-            languages: "40 East Asian languages",
-            englishOnly: false,
-            languageCodesOverride: LocalModelLanguages.dolphin,
-            detectsLanguageAutomatically: true
-        ),
-        .init(
             id: "canary-180m-flash",
             displayName: "Canary 180M Flash",
             engine: .sherpaOnnx,
@@ -582,17 +572,26 @@ enum LocalModelCatalog {
             languageCodesOverride: ["ja"]
         ),
         .init(
-            id: "paraformer-zh-small",
-            displayName: "Paraformer Small Chinese",
+            id: "qwen3-asr-0.6b",
+            displayName: "Qwen3-ASR 0.6B",
             engine: .sherpaOnnx,
-            repository: "csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09",
-            revision: "63ddc3cd0f2810b68289a7b3876e62ef5d53d6df",
-            sherpaFamily: .paraformer,
-            sizeBytes: 81_904_027,
-            minimumRamGB: 2,
-            languages: "Mandarin · English",
+            // Offered, but not ranked first for any language: Qwen's own table
+            // puts this 0.6B build behind Whisper large-v3 on every
+            // multilingual set (Fleurs hi/id/ms/th/tr/vi… 10.37 against 6.85
+            // WER), and with no language field in its config it can mistake
+            // a short Thai phrase for Vietnamese. Its strength is Chinese,
+            // including the dialects, and a single model for 30 languages.
+            // About 2.2 GB peak RSS on macOS arm64, hence 6 GB.
+            // See docs/local-model-review.md.
+            repository: "csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
+            revision: "68818b2313fe77bd06f6a7c5068ff3ef59d02b8a",
+            sherpaFamily: .qwen3Asr,
+            sizeBytes: 987_015_347,
+            minimumRamGB: 6,
+            languages: "30 languages · auto-detect",
             englishOnly: false,
-            languageCodesOverride: ["zh", "en"]
+            languageCodesOverride: LocalModelLanguages.qwen3,
+            detectsLanguageAutomatically: true
         ),
         .init(
             id: "zipformer-ko",
@@ -684,7 +683,7 @@ enum LocalModelCatalog {
 
     /// `languages` is the enabled-keyboard list from `spokenLanguages`.
     /// Each non-English code gets its compact specialist (GigaAM for `ru`,
-    /// Paraformer for `zh`, …). A language that is not on a keyboard must not
+    /// SenseVoice for `zh`, …). A language that is not on a keyboard must not
     /// appear here — that is how Chinese stopped showing up on a Russian layout.
     static func recommendations(
         deviceMemoryGB: Int,
@@ -715,8 +714,9 @@ enum LocalModelCatalog {
         //
         // Only when that model is also the one the lead language would pick on
         // its own. Parakeet v3 covering English and Russian is a first-rate
-        // English model; Dolphin covering English and Hindi is not, and leading
-        // with it put an East Asian model above Parakeet on an English iPhone.
+        // English model; a model that merely lists English beside Hindi is not,
+        // and leading with one put an Asian-language model above Parakeet on an
+        // English iPhone.
         if needed.count > 1, let multilingual, multilingual.id == leadMultilingual?.id {
             add(.multilingual, multilingual)
         }
@@ -813,11 +813,9 @@ enum LocalModelCatalog {
             }
             .map(\.element)
         case .lighter:
-            // Smallest first, among models that are actually for this
-            // language. Paraformer lists English, but it is a Mandarin model,
-            // and the smallest English download should not be one.
+            // Smallest first, among models that cover this language.
             picks = fitting(deviceMemoryGB: deviceMemoryGB)
-                .filter { $0.covers(lead) && incidentalCoverage[$0.id]?.contains(lead) != true }
+                .filter { $0.covers(lead) }
                 .sorted { ($0.sizeBytes, $0.id) < ($1.sizeBytes, $1.id) }
                 .reduce(into: [LocalModelDescriptor]()) { kept, model in
                     // One build per family. Whisper Tiny and Whisper Tiny
@@ -831,7 +829,6 @@ enum LocalModelCatalog {
         case .multilingual:
             let candidates = manyLanguagesPreference.compactMap(descriptor(for:)).filter {
                 deviceMemoryGB >= $0.minimumRamGB && !$0.englishOnly && $0.covers(lead)
-                    && incidentalCoverage[$0.id]?.contains(lead) != true
             }
             let coversAll = candidates.filter { model in needed.allSatisfy { model.covers($0) } }
             let rest = candidates.filter { model in !coversAll.contains { $0.id == model.id } }
@@ -841,18 +838,12 @@ enum LocalModelCatalog {
         return chosen.isEmpty ? Array(base.prefix(limit)) : chosen
     }
 
-    /// A language a model transcribes on paper but was not built for.
-    private static let incidentalCoverage: [String: Set<String>] = [
-        "paraformer-zh-small": ["en"],
-        "dolphin-small-ctc": ["en"],
-    ]
-
     /// Several languages in one model, the accurate ones first.
     private static let manyLanguagesPreference = [
         "parakeet-tdt-0.6b-v3",
         "openai_whisper-large-v3-v20240930_626MB",
+        "qwen3-asr-0.6b",
         "canary-180m-flash",
-        "dolphin-small-ctc",
         "sense-voice",
         "openai_whisper-small_216MB",
         "openai_whisper-base",
@@ -893,16 +884,16 @@ enum LocalModelCatalog {
         case "ko":
             return ["sense-voice", "zipformer-ko"] + largeV3
         case "vi":
-            return ["zipformer-vi", "dolphin-small-ctc"] + largeV3
+            return ["zipformer-vi"] + largeV3
         case "de", "es", "fr":
             return ["parakeet-tdt-0.6b-v3", "canary-180m-flash"] + largeV3
         default:
             if LocalModelLanguages.parakeetV3.contains(code) {
                 return ["parakeet-tdt-0.6b-v3"] + largeV3
             }
-            if LocalModelLanguages.dolphinStarters.contains(code) {
-                return ["dolphin-small-ctc"] + largeV3
-            }
+            // Hindi, Bengali, Tamil, Thai, Indonesian and the rest of Asia
+            // have no specialist here, so Whisper leads. Dolphin Small used to,
+            // and was retired for how often it got these wrong.
             return largeV3
         }
     }
@@ -934,7 +925,7 @@ enum LocalModelCatalog {
         }
         // The phone's own language leads when it is also typed. It is still
         // not a keyboard on its own: a Chinese iPhone with Russian and English
-        // layouts gets neither Paraformer nor SenseVoice.
+        // layouts gets no Chinese model.
         if keyboardCodes.contains(deviceCode) {
             append(deviceCode)
         }
@@ -1040,18 +1031,9 @@ enum LocalModelCatalog {
         deviceMemoryGB: Int,
         language: String
     ) -> LocalModelDescriptor? {
-        // Not a model that only lists the language. Paraformer transcribes some
-        // English but is a Mandarin model, and with no Whisper Tiny on iOS it
-        // is also the smallest thing that "covers" English -- which put a
-        // Chinese model on an English iPhone as its smallest download.
         fitting(deviceMemoryGB: deviceMemoryGB)
-            .filter { $0.covers(language) && !isIncidental($0, for: language) }
+            .filter { $0.covers(language) }
             .min { $0.sizeBytes < $1.sizeBytes }
-    }
-
-    /// Whether `model` lists `language` without being built for it.
-    static func isIncidental(_ model: LocalModelDescriptor, for language: String) -> Bool {
-        incidentalCoverage[model.id]?.contains(language.lowercased()) == true
     }
 
     /// The compact specialist for `language`, or nil when the catalog has none
@@ -1099,8 +1081,10 @@ enum LocalModelCatalog {
     /// Multilingual models by breadth of coverage, widest first.
     private static let multilingualPreference = [
         "parakeet-tdt-0.6b-v3",
+        // Wider than Parakeet v3, but behind it on the European languages both
+        // cover, so second.
+        "qwen3-asr-0.6b",
         "canary-180m-flash",
-        "dolphin-small-ctc",
         "sense-voice",
         "openai_whisper-base"
     ]
@@ -1108,35 +1092,24 @@ enum LocalModelCatalog {
     /// The compact specialist each language gets at first run, where one exists.
     ///
     /// This is the first transcription most people ever see, so "compact" is a
-    /// tie-breaker here and never the whole argument. Two entries used to be
-    /// chosen on size alone and have moved:
+    /// tie-breaker here and never the whole argument.
     ///
-    /// - The Dolphin starters pointed at `dolphin-base-ctc`, which the Dolphin
-    ///   paper measures at 33.3% average WER against `dolphin-small-ctc`'s
-    ///   25.2%. Handing a Hindi or Bengali speaker the least accurate model in
-    ///   the catalog on first launch cost far more than the 146 MB it saved,
-    ///   and base is no longer in the catalog at all.
-    /// - Mandarin pointed at `paraformer-zh-small`, an 82 MB 2024 build, when
-    ///   SenseVoice is stronger on both Mandarin and Cantonese. Paraformer
-    ///   stays as the smallest download that covers Chinese -- that is the one
-    ///   role it wins -- but it is not what first run leads with.
-    ///
-    /// Mirrors `starterForLanguage` in `LocalModelCatalog.kt`.
+    /// Mirrors `starterForLanguage` in `LocalModelCatalog.kt`, except for the
+    /// Indic and South East Asian range: Android leaves those to its Whisper
+    /// scoring, which keeps its 874 MB large build off first run.
     private static let starterIDs: [String: String] = [
         "de": "canary-180m-flash", "es": "canary-180m-flash", "fr": "canary-180m-flash",
-        // SenseVoice rather than Paraformer for Cantonese: Paraformer is
-        // Mandarin and English only, and now that Cantonese is a row in the
-        // picker, leading with a model that cannot transcribe it is worse than
-        // having offered nothing.
         "zh": "sense-voice", "yue": "sense-voice", "ja": "sense-voice", "ko": "sense-voice",
         "ru": "giga-am-v3-ru",
-        // A Vietnamese specialist trained on 70,000 hours beats Dolphin's
-        // forty-language model on its one language, in a third of the size.
+        // A Vietnamese specialist trained on 70,000 hours, in 77 MB.
         "vi": "zipformer-vi"
     ].merging(
-        Dictionary(
-            uniqueKeysWithValues: LocalModelLanguages.dolphinStarters.map { ($0, "dolphin-small-ctc") }
-        ),
+        // No specialist here is good enough to lead for these, so Whisper's
+        // most accurate build does. Dolphin Small used to, and was retired for
+        // how often it got them wrong. A phone that cannot hold Large gets no
+        // starter, and the smaller Whisper builds answer instead.
+        ["hi", "bn", "ta", "te", "gu", "pa", "mr", "as", "ne", "ur", "th", "id", "ms"]
+            .map { ($0, "openai_whisper-large-v3-v20240930_626MB") },
         uniquingKeysWith: { existing, _ in existing }
     )
 }
@@ -1171,7 +1144,6 @@ enum ModelMaker: String, CaseIterable, Sendable {
     case huggingFace
     case alibaba
     case usefulSensors
-    case dataocean
     case sber
     case meta
     case nextGenKaldi
@@ -1183,7 +1155,6 @@ enum ModelMaker: String, CaseIterable, Sendable {
         case .huggingFace: "Hugging Face"
         case .alibaba: "Alibaba"
         case .usefulSensors: "Useful Sensors"
-        case .dataocean: "DataoceanAI"
         case .sber: "Sber"
         case .meta: "Meta"
         case .nextGenKaldi: "Next-gen Kaldi"
@@ -1197,8 +1168,7 @@ extension LocalModelDescriptor {
         if id.hasPrefix("omnilingual") { return .meta }
         if id.hasPrefix("openai_whisper") { return .openAI }
         if id.hasPrefix("moonshine") { return .usefulSensors }
-        if id.hasPrefix("sense-voice") || id.hasPrefix("paraformer") { return .alibaba }
-        if id.hasPrefix("dolphin") { return .dataocean }
+        if id.hasPrefix("sense-voice") || id.hasPrefix("qwen") { return .alibaba }
         if id.hasPrefix("giga-am") { return .sber }
         if id.hasPrefix("zipformer") { return .nextGenKaldi }
         return .nvidia

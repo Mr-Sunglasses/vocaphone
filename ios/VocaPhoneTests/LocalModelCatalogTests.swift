@@ -18,7 +18,7 @@ struct LocalModelCatalogTests {
 
     @Test func sherpaModelsAreAvailableAlongsideWhisperKit() {
         let sherpa = LocalModelCatalog.all.filter { $0.engine == .sherpaOnnx }
-        #expect(sherpa.count == 12)
+        #expect(sherpa.count == 11)
         #expect(sherpa.allSatisfy { $0.repository != nil && $0.revision != nil })
         #expect(sherpa.allSatisfy { $0.sherpaFamily != nil })
     }
@@ -38,7 +38,6 @@ struct LocalModelCatalogTests {
         let senseVoice = LocalModelCatalog.descriptor(for: "sense-voice")
         #expect(senseVoice?.detectsLanguageAutomatically == false)
         #expect(senseVoice?.languageCodes == ["zh", "en", "ja", "ko", "yue"])
-        #expect(LocalModelCatalog.descriptor(for: "dolphin-small-ctc")?.languageCodes.contains("hi") == true)
     }
 
     /// The point of declaring Parakeet's coverage: every one of its 25 languages
@@ -153,12 +152,11 @@ struct LocalModelCatalogTests {
         )
         #expect(spoken == ["en", "ru"])
         let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
-        #expect(!picks.contains { $0.model.id == "paraformer-zh-small" })
         #expect(!picks.contains { $0.model.id == "sense-voice" })
     }
 
     /// The phone region and preferred-language list are not keyboards. A
-    /// Chinese iPhone with a Russian layout must not get Paraformer.
+    /// Chinese iPhone with a Russian layout must not get a Chinese model.
     @Test func deviceLanguageDoesNotInventAKeyboard() {
         let spoken = LocalModelCatalog.spokenLanguages(
             device: "zh",
@@ -168,7 +166,6 @@ struct LocalModelCatalogTests {
         #expect(!spoken.contains("zh"))
         let picks = LocalModelCatalog.recommendations(deviceMemoryGB: 8, languages: spoken)
         #expect(picks.contains { $0.model.id == "giga-am-v3-ru" })
-        #expect(!picks.contains { $0.model.id == "paraformer-zh-small" })
         #expect(!picks.contains { $0.model.id == "sense-voice" })
     }
 
@@ -201,9 +198,9 @@ struct LocalModelCatalogTests {
         #expect(pick?.covers("ru") == true)
     }
 
-    /// An English iPhone that also types Hindi. Dolphin covers both, but it is
-    /// an East Asian model, and leading with it put it above Parakeet — the
-    /// best English model this phone can run — under FOR YOU.
+    /// An English iPhone that also types Hindi. A model covering both used to
+    /// lead, which put an Asian-language model above Parakeet — the best
+    /// English model this phone can run — under FOR YOU.
     @Test func anEnglishPhoneWithAnIndicKeyboardLeadsWithTheBestEnglishModel() {
         let spoken = LocalModelCatalog.spokenLanguages(
             device: "en",
@@ -248,8 +245,21 @@ struct LocalModelCatalogTests {
         )
         #expect(picks.count == 3)
         #expect(picks[0].model.id == "parakeet-tdt-0.6b-v2-en")
-        #expect(picks.contains { $0.model.id == "dolphin-small-ctc" })
-        #expect(!picks.contains { $0.model.id == "dolphin-base-ctc" })
+        #expect(picks.contains { $0.model.id == "openai_whisper-large-v3-v20240930_626MB" })
+    }
+
+    /// Dolphin Small was the Hindi starter until it was retired. Whisper's
+    /// most accurate build replaces it where it fits, and a phone that cannot
+    /// hold it still gets a Hindi model rather than an English one.
+    @Test func hindiLeadsWithWhisperLargeWhereItFits() {
+        #expect(
+            LocalModelCatalog.recommended(deviceMemoryGB: 6, language: "hi").id
+                == "openai_whisper-large-v3-v20240930_626MB"
+        )
+        #expect(LocalModelCatalog.recommended(deviceMemoryGB: 3, language: "hi").covers("hi"))
+        let choices = LocalModelCatalog.modelChoices(deviceMemoryGB: 6, languages: ["hi"])
+        #expect(choices.first?.model.id == "openai_whisper-large-v3-v20240930_626MB")
+        #expect(choices.first { $0.kind == .smaller }?.model.id == "openai_whisper-small_216MB")
     }
 
     /// The page leads with the chosen language's model. A Croatian speaker
@@ -339,8 +349,7 @@ struct LocalModelCatalogTests {
         #expect(english.first { $0.kind == .smaller }?.model.id == "parakeet-tdt-ctc-110m-en")
     }
 
-    /// Whisper Base is far weaker than "a few more mistakes" outside English,
-    /// and nothing smaller than Dolphin is worth offering for Hindi.
+    /// Whisper Base is far weaker than "a few more mistakes" outside English.
     @Test func hindiIsNotOfferedWhisperBaseAsTheSmallerChoice() {
         let choices = LocalModelCatalog.modelChoices(deviceMemoryGB: 6, languages: ["hi"])
         #expect(!choices.contains { $0.model.id == "openai_whisper-base" })
@@ -357,6 +366,20 @@ struct LocalModelCatalogTests {
         #expect(!picks.isEmpty)
     }
 
+    /// Qwen3-ASR is offered, but Whisper large-v3 beats it on every
+    /// multilingual set Qwen publishes, so it leads nowhere.
+    @Test func qwen3IsOfferedButNeverRankedFirst() {
+        let qwen = LocalModelCatalog.descriptor(for: "qwen3-asr-0.6b")
+        #expect(qwen?.sherpaFamily == .qwen3Asr)
+        #expect(qwen?.detectsLanguageAutomatically == true)
+        #expect(qwen?.languageCodes.isSubset(of: LocalModelLanguages.picker) == true)
+        for language in TranscriptionLanguage.allCases where language != .automatic {
+            #expect(LocalModelCatalog.accuracyRanking(for: language.rawValue).first != "qwen3-asr-0.6b")
+            let choices = LocalModelCatalog.modelChoices(deviceMemoryGB: 8, languages: [language.rawValue])
+            #expect(choices.first?.model.id != "qwen3-asr-0.6b", "\(language.rawValue)")
+        }
+    }
+
     @Test func everyFamilyHasItsMaker() {
         let maker = { (id: String) in LocalModelCatalog.descriptor(for: id)?.maker }
         #expect(maker("parakeet-tdt-0.6b-v2-en") == .nvidia)
@@ -365,8 +388,7 @@ struct LocalModelCatalogTests {
         #expect(maker("parakeet-tdt-ctc-110m-en") == .nvidia)
         #expect(maker("zipformer-vi") == .nextGenKaldi)
         #expect(maker("sense-voice") == .alibaba)
-        #expect(maker("paraformer-zh-small") == .alibaba)
-        #expect(maker("dolphin-small-ctc") == .dataocean)
+        #expect(maker("qwen3-asr-0.6b") == .alibaba)
         #expect(maker("giga-am-v3-ru") == .sber)
     }
 
@@ -388,8 +410,7 @@ struct LocalModelCatalogTests {
         )
         #expect(picks.count == 3)
         #expect(picks.map(\.model.sizeBytes) == picks.map(\.model.sizeBytes).sorted())
-        #expect(!picks.contains { $0.model.id == "paraformer-zh-small" })
-        #expect(!picks.contains { $0.model.maker == .dataocean })
+        #expect(picks.allSatisfy { $0.model.covers("en") })
     }
 
     @Test func theManyLanguagesChoiceNeverOffersAnEnglishOnlyModel() {

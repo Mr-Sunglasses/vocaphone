@@ -48,12 +48,38 @@ HF = "https://huggingface.co"
 # downloads none of it, and each catalog entry's `sizeBytes` is the sum of the
 # files it does download, so pinning any of it would both overstate the download
 # and turn an unrelated upstream edit into a failed integrity check.
+#
+# JSON is selective, not a global suffix. Qwen3-ASR (and future LLM-decoder
+# families) read a Hugging Face tokenizer directory in place of a token table
+# (`tokenizer/vocab.json`, `tokenizer/tokenizer_config.json`; `merges.txt` is
+# already covered by `.txt`). Pinning every `.json` would pull export configs
+# and tokenizer internals the phone never opens, inflate `sizeBytes`, and fail
+# integrity on an unrelated upstream edit. Match by basename so
+# `tokenizer/vocab.json` is taken and a repo-root `config.json` is not.
 RUNTIME_SUFFIXES = (".onnx", ".ort", ".txt")
+TOKENIZER_JSON_BASENAMES = frozenset(
+    {
+        "tokenizer_config.json",
+        "vocab.json",
+        "tokenizer.json",
+        "special_tokens_map.json",
+        "added_tokens.json",
+    }
+)
 
 # Sample audio ships beside the weights in every k2-fsa repo, and it carries its
 # own reference transcript -- a .txt the allowlist above would otherwise take
 # for a token table.
 SKIP_DIRECTORIES = ("test_wavs/",)
+
+
+def is_runtime_file(path: str) -> bool:
+    """Whether this blob is a graph, a token table, or a tokenizer JSON we open."""
+    if path.startswith(SKIP_DIRECTORIES):
+        return False
+    if path.endswith(RUNTIME_SUFFIXES):
+        return True
+    return path.rsplit("/", 1)[-1] in TOKENIZER_JSON_BASENAMES
 
 
 def _get(url: str) -> bytes:
@@ -117,12 +143,7 @@ def list_files(repo: str, revision: str, prefix: str, everything: bool) -> list[
         )
 
     if not everything:
-        blobs = [
-            e
-            for e in blobs
-            if e["path"].endswith(RUNTIME_SUFFIXES)
-            and not e["path"].startswith(SKIP_DIRECTORIES)
-        ]
+        blobs = [e for e in blobs if is_runtime_file(e["path"])]
     return sorted(blobs, key=lambda e: e["path"])
 
 

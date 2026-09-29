@@ -85,6 +85,25 @@ class ModelGuidanceTest {
         assertTrue("multilingual never differed from balanced anywhere", differed >= 10)
     }
 
+    /**
+     * Qwen3-ASR is kept off first run -- Whisper large-v3 beats it on every
+     * multilingual set Qwen publishes -- but asking for one model across
+     * languages, where the balanced pick is a five-language specialist, is what
+     * it is for.
+     */
+    @Test
+    fun qwen3IsTheManyLanguagesAnswerButNeverTheDefault() {
+        val japanese = ModelGuidance.recommend(
+            profile(8, language = "ja"),
+            ModelGuidanceIntent("ja", ModelGuidancePriority.MULTILINGUAL),
+        ).model
+        assertEquals("qwen3-asr-0.6b", japanese?.id)
+        TranscriptionLanguage.entries.forEach { language ->
+            val pick = LocalModelCatalog.recommended(profile(8, language = language.wireValue))
+            assertNotEquals(language.wireValue, "qwen3-asr-0.6b", pick.id)
+        }
+    }
+
     @Test
     fun multilingualCoversMoreThanOneLanguageAndStillTheRequestedOne() {
         allLanguages.forEach { language ->

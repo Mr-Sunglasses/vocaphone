@@ -31,11 +31,9 @@ class ModelTranslationSupportTest {
         // v3 is the one people expect to translate because it is multilingual.
         assertTrue(targets("parakeet-tdt-0.6b-v3").isEmpty())
         assertTrue(targets("parakeet-tdt-0.6b-v2-en").isEmpty())
-        assertTrue(targets("dolphin-small-ctc").isEmpty())
         assertTrue(targets("sense-voice").isEmpty())
         // An English-only model has nothing to translate from either way.
         assertTrue(targets("parakeet-tdt-ctc-110m-en").isEmpty())
-        assertTrue(targets("paraformer-zh-small").isEmpty())
     }
 
     @Test

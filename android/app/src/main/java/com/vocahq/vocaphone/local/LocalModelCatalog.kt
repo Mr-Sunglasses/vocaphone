@@ -75,6 +75,13 @@ enum class SherpaFamily(
      * [transcribesInCapitals].
      */
     ZIPFORMER_TRANSDUCER,
+
+    /**
+     * Qwen3-ASR: an audio encoder feeding a Qwen3 LLM decoder, which reads a
+     * Hugging Face tokenizer directory instead of a `tokens.txt`. Its config
+     * has no language field, so it always detects.
+     */
+    QWEN3_ASR,
     ;
 
     /**
@@ -430,7 +437,11 @@ object LocalModelCatalog {
     internal fun bestMultilingual(profile: DeviceProfile): LocalModelDescriptor? =
         MULTILINGUAL_PREFERENCE.firstNotNullOfOrNull { id ->
             find(id)?.takeIf { profile.fits(it) && it.coversAll(profile.languages) }
-        } ?: MULTILINGUAL_PREFERENCE.firstNotNullOfOrNull { id ->
+        } ?: whisper.filter { profile.fits(it) && !it.englishOnly && it.coversAll(profile.languages) }
+            // Before settling for a model that covers the first language only:
+            // Whisper is what covers English and Hindi together.
+            .maxByOrNull { scoreModel(it, profile) }
+            ?: MULTILINGUAL_PREFERENCE.firstNotNullOfOrNull { id ->
             find(id)?.takeIf { profile.fits(it) && it.coversLanguage(profile.language) }
         } ?: whisper.filter { profile.fits(it) && !it.englishOnly }
             .maxByOrNull { scoreModel(it, profile) }
@@ -551,34 +562,20 @@ object LocalModelCatalog {
      * other languages get a compact specialist.
      *
      * This is the first transcription most people ever see, so "compact" is a
-     * tie-breaker here and never the whole argument. Two entries used to be
-     * chosen on size alone and have moved:
-     *
-     *  - The Dolphin starters pointed at `dolphin-base-ctc`, which the Dolphin
-     *    paper measures at 33.3% average WER against `dolphin-small-ctc`'s
-     *    25.2%. Handing a Hindi or Bengali speaker the least accurate model in
-     *    the catalog on first launch cost far more than the 146 MB it saved,
-     *    and base is no longer in the catalog at all.
-     *  - Mandarin pointed at `paraformer-zh-small`, an 82 MB 2024 build, when
-     *    SenseVoice is stronger on both Mandarin and Cantonese. Paraformer
-     *    stays in the catalog as the smallest download that covers Chinese --
-     *    that is the one role it wins -- but it is not what first run leads
-     *    with.
+     * tie-breaker here and never the whole argument. The Indic and South East
+     * Asian range has no specialist good enough to lead any more -- Dolphin
+     * Small was retired for how often it got those languages wrong -- so they
+     * fall through to Whisper scoring, which also keeps the 874 MB large build
+     * off first run.
      */
     internal fun starterForLanguage(language: String): LocalModelDescriptor? {
         val id = when (language.lowercase(Locale.ROOT)) {
             "en" -> "parakeet-tdt-ctc-110m-en"
             "de", "es", "fr" -> "canary-180m-flash"
-            // SenseVoice rather than Paraformer for Cantonese: Paraformer is
-            // Mandarin and English only, and now that Cantonese is a row in the
-            // picker, leading with a model that cannot transcribe it is worse
-            // than having offered nothing.
             "zh", "yue", "ja", "ko" -> "sense-voice"
             "ru" -> "giga-am-v3-ru"
-            // A Vietnamese specialist trained on 70,000 hours beats Dolphin's
-            // forty-language model on its one language, in a third of the size.
+            // A Vietnamese specialist trained on 70,000 hours, in 77 MB.
             "vi" -> "zipformer-vi"
-            in DOLPHIN_STARTER_LANGUAGES -> "dolphin-small-ctc"
             else -> null
         }
         return id?.let { find(it) }
@@ -610,23 +607,31 @@ private val ENGLISH_PREFERENCE = listOf(
     "parakeet-tdt-ctc-110m-en",
 )
 
-/** Multilingual models by breadth of coverage, widest first. */
+/**
+ * Multilingual models by breadth of coverage, widest first.
+ *
+ * Qwen3-ASR is deliberately absent. It is wider than any of these, but Whisper
+ * large-v3 beats it on every multilingual benchmark Qwen publishes, and a 987 MB
+ * first-run download is the thing [recommendedWhisper] already refuses to lead
+ * with. It stays one tap away in the full list.
+ */
 private val MULTILINGUAL_PREFERENCE = listOf(
     "parakeet-tdt-0.6b-v3",
     "canary-180m-flash",
-    "dolphin-small-ctc",
     "sense-voice",
-)
-
-/** Indic and nearby languages Dolphin actually covers well at first-run size. */
-internal val DOLPHIN_STARTER_LANGUAGES = setOf(
-    "hi", "bn", "ta", "te", "gu", "pa", "mr", "as", "ne", "ur", "th", "vi", "id", "ms",
 )
 
 internal val SENSE_VOICE_LANGUAGES = setOf("zh", "en", "ja", "ko", "yue")
 
-/** Everything Dolphin transcribes that the picker also offers. */
-internal val DOLPHIN_LANGUAGES = DOLPHIN_STARTER_LANGUAGES + SENSE_VOICE_LANGUAGES
+/**
+ * Qwen3-ASR's 30 languages, less Macedonian, which the picker does not offer.
+ * Filipino is the picker's `tl`.
+ */
+internal val QWEN3_LANGUAGES = setOf(
+    "zh", "en", "yue", "ar", "de", "fr", "es", "pt", "id", "it", "ko", "ru", "th",
+    "vi", "ja", "tr", "hi", "ms", "nl", "sv", "da", "fi", "pl", "cs", "tl", "fa",
+    "el", "hu", "ro",
+)
 
 /** NVIDIA Parakeet TDT 0.6B v3: 25 European languages. */
 internal val PARAKEET_V3_LANGUAGES = setOf(

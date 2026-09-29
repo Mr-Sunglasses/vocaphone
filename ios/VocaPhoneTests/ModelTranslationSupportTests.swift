@@ -24,7 +24,6 @@ struct ModelTranslationSupportTests {
         // v3 is the one people expect to translate because it is multilingual.
         #expect(try targets("parakeet-tdt-0.6b-v3").isEmpty)
         #expect(try targets("sense-voice").isEmpty)
-        #expect(try targets("dolphin-small-ctc").isEmpty)
     }
 
     @Test func offIsAlwaysSelectableAndATargetOnlyWhereTrained() {

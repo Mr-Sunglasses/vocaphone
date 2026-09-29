@@ -1241,14 +1241,13 @@ struct ModelMakerTile: View {
         case .openAI: "MakerOpenAI"
         case .huggingFace: "MakerHuggingFace"
         case .alibaba: "MakerAlibaba"
-        case .usefulSensors, .dataocean, .sber, .meta, .nextGenKaldi: nil
+        case .usefulSensors, .sber, .meta, .nextGenKaldi: nil
         }
     }
 
     private var monogram: String {
         switch maker {
         case .usefulSensors: "US"
-        case .dataocean: "D"
         case .sber: "S"
         case .meta: "M"
         case .nextGenKaldi: "K2"
@@ -1263,7 +1262,6 @@ struct ModelMakerTile: View {
         case .huggingFace: Color(red: 1, green: 210 / 255, blue: 30 / 255)
         case .alibaba: Color(red: 1, green: 106 / 255, blue: 0)
         case .usefulSensors: Color(red: 91 / 255, green: 79 / 255, blue: 219 / 255)
-        case .dataocean: Color(red: 21 / 255, green: 101 / 255, blue: 192 / 255)
         case .sber: Color(red: 33 / 255, green: 160 / 255, blue: 56 / 255)
         case .meta: Color(red: 8 / 255, green: 102 / 255, blue: 255 / 255)
         case .nextGenKaldi: Color(red: 196 / 255, green: 60 / 255, blue: 44 / 255)

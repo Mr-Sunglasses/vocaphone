@@ -7,7 +7,7 @@ import org.junit.Test
 
 class ModelLanguageSupportTest {
 
-    private val dolphin = setOf("hi", "bn", "ta", "zh", "ja")
+    private val asian = setOf("hi", "bn", "ta", "zh", "ja")
     private val englishOnly = setOf("en")
 
     @Test
@@ -25,10 +25,10 @@ class ModelLanguageSupportTest {
      */
     @Test
     fun `a model offers exactly what it covers, detected or not`() {
-        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.AUTOMATIC, dolphin))
-        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.HINDI, dolphin))
-        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.TAMIL, dolphin))
-        assertFalse(ModelLanguageSupport.isSelectable(TranscriptionLanguage.FRENCH, dolphin))
+        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.AUTOMATIC, asian))
+        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.HINDI, asian))
+        assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.TAMIL, asian))
+        assertFalse(ModelLanguageSupport.isSelectable(TranscriptionLanguage.FRENCH, asian))
         assertTrue(ModelLanguageSupport.isSelectable(TranscriptionLanguage.ENGLISH, englishOnly))
         assertFalse(ModelLanguageSupport.isSelectable(TranscriptionLanguage.HINDI, englishOnly))
     }
@@ -56,7 +56,7 @@ class ModelLanguageSupportTest {
         // A selection the model covers is left alone.
         assertEquals(
             TranscriptionLanguage.HINDI,
-            ModelLanguageSupport.resolve(TranscriptionLanguage.HINDI, dolphin),
+            ModelLanguageSupport.resolve(TranscriptionLanguage.HINDI, asian),
         )
         assertEquals(
             TranscriptionLanguage.HINDI,
@@ -66,8 +66,8 @@ class ModelLanguageSupportTest {
 
     @Test
     fun `a coverage limit is spelled out whenever there is one`() {
-        val limited = ModelLanguageSupport.restriction(dolphin, false, canTranslate = false)
-        assertTrue(limited!!.contains("${dolphin.size} languages"))
+        val limited = ModelLanguageSupport.restriction(asian, false, canTranslate = false)
+        assertTrue(limited!!.contains("${asian.size} languages"))
         val oneLanguage = ModelLanguageSupport.restriction(setOf("en"), false, canTranslate = false)
         assertTrue(oneLanguage!!.contains("1 language."))
         // No coverage claim leaves nothing to say about coverage.
@@ -123,15 +123,15 @@ class ModelLanguageSupportTest {
      */
     @Test
     fun `an auto-detecting model says what picking a language does`() {
-        val detected = ModelLanguageSupport.restriction(dolphin, true, canTranslate = false)!!
-        assertTrue(detected.contains("${dolphin.size} languages"))
+        val detected = ModelLanguageSupport.restriction(asian, true, canTranslate = false)!!
+        assertTrue(detected.contains("${asian.size} languages"))
         assertTrue(detected.contains("does not pin the decoder"))
         assertTrue(detected.contains("punctuated"))
         // With no coverage claim there is still the detection half to explain.
         val unclaimed = ModelLanguageSupport.restriction(emptySet(), true, canTranslate = false)!!
         assertTrue(unclaimed.contains("does not pin the decoder"))
         assertTrue(
-            ModelLanguageSupport.restriction(dolphin, true, canTranslate = false, onDevice = true)!!
+            ModelLanguageSupport.restriction(asian, true, canTranslate = false, onDevice = true)!!
                 .contains("The on-device model"),
         )
     }

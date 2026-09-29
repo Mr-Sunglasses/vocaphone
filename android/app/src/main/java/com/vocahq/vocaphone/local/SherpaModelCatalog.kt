@@ -144,24 +144,6 @@ internal object SherpaModelCatalog {
             ),
         ),
         sherpa(
-            id = "dolphin-small-ctc",
-            languageCodes = DOLPHIN_LANGUAGES,
-            detectsLanguage = true,
-            displayName = "Dolphin Small",
-            repository = "csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02",
-            revision = "c8b6689509acfcd744c04e5e169164f9ac4cae32",
-            family = SherpaFamily.DOLPHIN_CTC,
-            sizeBytes = 250_163_616L,
-            minimumRamGB = 3,
-            languages = "40 East Asian languages",
-            files = listOf(
-                PinnedFile("model.int8.onnx", 249_658_954L,
-                    "c1afcb9265de0ebd853eb8f570b371f399a6f9b2b9af9a3cb17c2e509171e697"),
-                PinnedFile("tokens.txt", 504_662L,
-                    "c3788261a51df1899ea4b210b552cd42139204de72c0ad60f6cebb199078872e"),
-            ),
-        ),
-        sherpa(
             id = "canary-180m-flash",
             languageCodes = setOf("en", "de", "es", "fr"),
             displayName = "Canary 180M Flash",
@@ -235,20 +217,37 @@ internal object SherpaModelCatalog {
             ),
         ),
         sherpa(
-            id = "paraformer-zh-small",
-            languageCodes = setOf("zh", "en"),
-            displayName = "Paraformer Small Chinese",
-            repository = "csukuangfj/sherpa-onnx-paraformer-zh-small-2024-03-09",
-            revision = "63ddc3cd0f2810b68289a7b3876e62ef5d53d6df",
-            family = SherpaFamily.PARAFORMER,
-            sizeBytes = 81_904_027L,
-            minimumRamGB = 2,
-            languages = "Mandarin · English",
+            id = "qwen3-asr-0.6b",
+            languageCodes = QWEN3_LANGUAGES,
+            detectsLanguage = true,
+            displayName = "Qwen3-ASR 0.6B",
+            // Offered, but not ranked first for any language: Qwen's own table
+            // puts this 0.6B build behind Whisper large-v3 on every
+            // multilingual set (Fleurs hi/id/ms/th/tr/vi... 10.37 against 6.85
+            // WER), and with no language field in its config it can mistake a
+            // short Thai phrase for Vietnamese. Its strength is Chinese,
+            // including the dialects, and a single model for 30 languages.
+            // About 2.2 GB peak RSS on macOS arm64, hence 6 GB.
+            // See docs/local-model-review.md.
+            repository = "csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25",
+            revision = "68818b2313fe77bd06f6a7c5068ff3ef59d02b8a",
+            family = SherpaFamily.QWEN3_ASR,
+            sizeBytes = 987_015_347L,
+            minimumRamGB = 6,
+            languages = "30 languages · auto-detect",
             files = listOf(
-                PinnedFile("model.int8.onnx", 81_828_675L,
-                    "3ef6c19369b912f7caf3cef8e545c5ccd1a33d9d7ec792a46668dc41c4b229ec"),
-                PinnedFile("tokens.txt", 75_352L,
-                    "4b2d964e18b9cf139b473003b6698fb2ed9a2a5ec55b93daa677b28f578897aa"),
+                PinnedFile("conv_frontend.onnx", 44_148_281L,
+                    "d22dc4423e0940e49884e903d2ea2f7e5567c14fc1aed97e4e26d6b8f208ef9e"),
+                PinnedFile("decoder.int8.onnx", 755_914_231L,
+                    "4f6885be5959ae26af3089d38ee7972c5fafbeeb1cf8d5e76eab6d8b61ca5771"),
+                PinnedFile("encoder.int8.onnx", 182_491_662L,
+                    "60748d3e6744a57c9c91e1b17424a6c2990567e8adceb0783940c03ed98fa9d9"),
+                PinnedFile("tokenizer/merges.txt", 1_671_853L,
+                    "8831e4f1a044471340f7c0a83d7bd71306a5b867e95fd870f74d0c5308a904d5"),
+                PinnedFile("tokenizer/tokenizer_config.json", 12_487L,
+                    "4942d005604266809309cabc9f4e9cb89ce855d59b14681fdc0e1cc62ea26c4c"),
+                PinnedFile("tokenizer/vocab.json", 2_776_833L,
+                    "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910"),
             ),
         ),
         sherpa(

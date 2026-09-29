@@ -155,6 +155,20 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
         case VocaPhoneSherpaParaformer:
             config.model_config.paraformer.model = model1;
             break;
+        // An LLM decoder that reads a Hugging Face tokenizer directory rather
+        // than a token table. Upstream's default of 128 new tokens cuts a 16 s
+        // Hindi window at about half -- Devanagari costs several byte-level
+        // tokens per word -- so the budget is doubled. 256 new tokens still fit
+        // the 512-token context beside the longest window the app decodes.
+        // Left zero, the remaining fields take sherpa-onnx's defaults.
+        case VocaPhoneSherpaQwen3Asr:
+            config.feat_config.feature_dim = 128;
+            config.model_config.qwen3_asr.conv_frontend = model1;
+            config.model_config.qwen3_asr.encoder = model2;
+            config.model_config.qwen3_asr.decoder = model3;
+            config.model_config.qwen3_asr.tokenizer = model4;
+            config.model_config.qwen3_asr.max_new_tokens = 256;
+            break;
         default:
             return NULL;
     }

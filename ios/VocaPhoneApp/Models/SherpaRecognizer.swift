@@ -72,6 +72,12 @@ final class SherpaRecognizer: @unchecked Sendable {
         /// An icefall graph, whose file name carries its training checkpoint
         /// (`encoder-epoch-99-avg-1.int8.onnx`). Only the pinned files are ever
         /// downloaded, so the one file with this stem is the one to load.
+        /// The Hugging Face tokenizer an LLM decoder reads, as a directory.
+        func tokenizerDirectory() throws -> String {
+            _ = try path("tokenizer/vocab.json")
+            return directory.appendingPathComponent("tokenizer", isDirectory: true).path
+        }
+
         func icefallGraph(_ stem: String) throws -> String {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
             let candidates = names.filter { $0.hasPrefix(stem) && $0.hasSuffix(".onnx") }.sorted()
@@ -80,7 +86,8 @@ final class SherpaRecognizer: @unchecked Sendable {
             return try path(name)
         }
 
-        let tokens = try path("tokens.txt")
+        // Qwen3-ASR reads a tokenizer directory in place of a token table.
+        let tokens = try family == .qwen3Asr ? "" : path("tokens.txt")
         let models: [String]
         switch family {
         case .nemoTransducer:
@@ -103,6 +110,11 @@ final class SherpaRecognizer: @unchecked Sendable {
             models = try [path("encoder.int8.onnx"), path("decoder.int8.onnx"), "", ""]
         case .senseVoice, .dolphinCtc, .paraformer, .omnilingualCtc:
             models = try [path("model.int8.onnx"), "", "", ""]
+        case .qwen3Asr:
+            models = try [
+                path("conv_frontend.onnx"), path("encoder.int8.onnx"),
+                path("decoder.int8.onnx"), tokenizerDirectory()
+            ]
         case .nemoCtc:
             let name = FileManager.default.fileExists(
                 atPath: directory.appendingPathComponent("model.onnx").path
@@ -284,6 +296,7 @@ private extension SherpaFamily {
         case .moonshineV2: 7
         case .omnilingualCtc: 8
         case .zipformerTransducer: 9
+        case .qwen3Asr: 10
         }
     }
 }

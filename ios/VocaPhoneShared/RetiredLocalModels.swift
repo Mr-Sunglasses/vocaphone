@@ -77,7 +77,22 @@ enum RetiredLocalModels {
         for id in ["moonshine-tiny-en", "moonshine-base-en", "moonshine-v2-tiny-en", "moonshine-v2-base-en"] {
             table[id] = ["parakeet-tdt-ctc-110m-en"]
         }
-        table["dolphin-base-ctc"] = ["dolphin-small-ctc"]
+        // Both Dolphin builds prefer Whisper, then SenseVoice. Dolphin Small
+        // listed English but returned nothing for it, nor for German, and
+        // answered French in Persian script. Large v3 covers the languages
+        // Dolphin claimed, including Cantonese; Small does not cover Cantonese,
+        // so a phone that cannot hold Large steps to SenseVoice when that still
+        // covers what the user speaks.
+        for id in ["dolphin-base-ctc", "dolphin-small-ctc"] {
+            table[id] = [
+                "openai_whisper-large-v3-v20240930_626MB",
+                "openai_whisper-small_216MB",
+                "sense-voice"
+            ]
+        }
+        // SenseVoice is the stronger Mandarin model, also covers Cantonese,
+        // and needs the same memory.
+        table["paraformer-zh-small"] = ["sense-voice"]
         // Same weights family, new export: v3 with punctuation. The id changed
         // rather than the pins so an already-downloaded v2 directory is an
         // unknown model to be swept, not a SHA-256 mismatch on a known one.
@@ -114,9 +129,14 @@ enum RetiredLocalModels {
     /// reason `deleteRetiredModelFiles` deletes only named ids.
     static func replacement(
         for stored: String,
-        deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB
+        deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB,
+        primaryLanguage: String? = nil,
+        languages: [String] = []
     ) -> String? {
-        switch resolve(stored, deviceMemoryGB: deviceMemoryGB) {
+        switch resolve(
+            stored, deviceMemoryGB: deviceMemoryGB,
+            primaryLanguage: primaryLanguage, languages: languages
+        ) {
         case .unchanged: return stored
         case let .replaced(id): return id
         case .cleared: return nil
@@ -125,7 +145,7 @@ enum RetiredLocalModels {
 
     /// What to do with `stored` on this device.
     ///
-    /// `cleared` is the case worth being careful about. A 2 GB iPhone on
+    /// `cleared` is the case worth being careful about. A 1 GB iPhone on
     /// `dolphin-base-ctc` has nothing to move to -- every replacement needs more
     /// memory than it has -- and clearing the model alone would leave on-device
     /// transcription still switched on with nothing behind it. Every dictation
@@ -135,32 +155,89 @@ enum RetiredLocalModels {
     /// already does when it removes the model in use: the app stops claiming a
     /// route it cannot take, and setup says so before recording rather than
     /// after.
+    ///
+    /// `languages` is what the user actually speaks: empty means unknown, and
+    /// then the first fitting candidate wins, which is how English-only and
+    /// legacy migrations behave. When it is set, a fitting candidate that
+    /// covers every requested language is preferred, so Cantonese on a 3 GB
+    /// phone lands on SenseVoice instead of Whisper Small. If none of the
+    /// fitting candidates cover the languages, the first fitting one is kept
+    /// so the phone is not left without a model.
+    ///
+    /// `primaryLanguage` is the one the user chose to dictate in, nil for
+    /// Automatic, and it outranks the rest: the extra languages can only break
+    /// a tie between models that keep it. A Cantonese speaker who also has a
+    /// Hindi keyboard on a 3 GB phone still lands on SenseVoice, not on Whisper
+    /// Small, which has Hindi but not Cantonese. And when this ladder could
+    /// serve that language but nothing that fits does -- Hindi on a 2 GB phone,
+    /// where only SenseVoice fits -- the selection is cleared rather than
+    /// swapped for a model without it. A ladder that never covered the
+    /// language, such as Moonshine's English-only one under a stale German
+    /// setting, ignores it and behaves as before.
     static func resolve(
         _ stored: String,
-        deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB
+        deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB,
+        primaryLanguage: String? = nil,
+        languages: [String] = []
     ) -> Outcome {
         if LocalModelCatalog.descriptor(for: stored) != nil { return .unchanged }
         guard let candidates = replacements[stored] else { return .unchanged }
-        let fitting = candidates
-            .lazy
-            .compactMap(LocalModelCatalog.descriptor(for:))
-            .first { deviceMemoryGB >= $0.minimumRamGB }
-        return fitting.map { Outcome.replaced($0.id) } ?? .cleared
+        let ladder = candidates.compactMap(LocalModelCatalog.descriptor(for:))
+        var pool = ladder.filter { deviceMemoryGB >= $0.minimumRamGB }
+        if let primary = primaryLanguage.flatMap(LocalModelCatalog.normalizedLanguageCode),
+           ladder.contains(where: { $0.covers(primary) }) {
+            pool = pool.filter { $0.covers(primary) }
+        }
+        let covering = pool.filter { model in languages.allSatisfy { model.covers($0) } }
+        return (covering.first ?? pool.first).map { Outcome.replaced($0.id) } ?? .cleared
+    }
+
+    /// Languages the launch migration should try to keep covering.
+    ///
+    /// The stored transcription language, the last model-language claim, and
+    /// the phone's preferred languages, each run through the catalog's own
+    /// normaliser so `yue` stays `yue` and `auto` drops out.
+    static func languagesForMigration(
+        transcriptionLanguage: String = KeyboardPreferences.transcriptionLanguage.rawValue,
+        modelLanguages: Set<String> = KeyboardPreferences.modelLanguages,
+        preferredLanguages: [String] = Locale.preferredLanguages
+    ) -> [String] {
+        var seen = Set<String>()
+        var result: [String] = []
+        for raw in [transcriptionLanguage] + modelLanguages.sorted() + preferredLanguages {
+            guard let code = LocalModelCatalog.normalizedLanguageCode(raw) else { continue }
+            if seen.insert(code).inserted {
+                result.append(code)
+            }
+        }
+        return result
     }
 
     /// Rewrite the stored selection once, at launch, before anything reads it.
     ///
     /// Writing back rather than translating on every read keeps the history of
     /// the catalog out of the keyboard process, which shares this value and has
-    /// no reason to know it.
+    /// no reason to know it. `defaults` stays injectable so tests can drive the
+    /// write without touching the App Group.
     static func migrateStoredSelection(
         deviceMemoryGB: Int = LocalModelCatalog.deviceMemoryGB,
+        languages: [String] = [],
         defaults: UserDefaults? = UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
     ) {
         guard let defaults,
               let stored = defaults.string(forKey: LocalTranscriptionPreferences.modelKey)
         else { return }
-        switch resolve(stored, deviceMemoryGB: deviceMemoryGB) {
+        let chosen = defaults.string(forKey: KeyboardPreferences.transcriptionLanguageKey) ?? ""
+        let needed = languages.isEmpty
+            ? languagesForMigration(
+                transcriptionLanguage: chosen,
+                modelLanguages: Set(defaults.stringArray(forKey: KeyboardPreferences.modelLanguagesKey) ?? []),
+                preferredLanguages: []
+            )
+            : languages
+        switch resolve(
+            stored, deviceMemoryGB: deviceMemoryGB, primaryLanguage: chosen, languages: needed
+        ) {
         case .unchanged:
             break
         case let .replaced(id):

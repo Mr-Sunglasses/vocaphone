@@ -72,11 +72,11 @@ struct ModelPlainLanguage: Sendable, Equatable {
             summary: "Mandarin, Cantonese, Japanese, Korean and English in one fast model.",
             accuracy: 3, speed: 4
         ),
-        "dolphin-small-ctc": .init(
-            title: "Asian languages",
-            summary: "Hindi, Bengali, Tamil, Thai, Indonesian and many more, "
-                + "and tells them apart by itself.",
-            accuracy: 2, speed: 3
+        "qwen3-asr-0.6b": .init(
+            title: "30 languages and Chinese dialects",
+            summary: "One model for 30 languages and many Chinese dialects, and tells them apart "
+                + "by itself. Slower, and a large download.",
+            accuracy: 3, speed: 1
         ),
         "canary-180m-flash": .init(
             title: "English, German, Spanish, French",
@@ -92,11 +92,6 @@ struct ModelPlainLanguage: Sendable, Equatable {
             title: "Most accurate Japanese",
             summary: "Made for Japanese. A large download.",
             accuracy: 4, speed: 3
-        ),
-        "paraformer-zh-small": .init(
-            title: "Small Chinese",
-            summary: "A small Mandarin model that is quick to download.",
-            accuracy: 2, speed: 4
         ),
         "zipformer-ko": .init(
             title: "Small Korean",

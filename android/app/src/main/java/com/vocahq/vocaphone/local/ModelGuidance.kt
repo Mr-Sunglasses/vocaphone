@@ -104,14 +104,34 @@ object ModelGuidance {
                 candidates.minWith(compareBy<LocalModelDescriptor> { it.sizeBytes }
                     .thenBy { it.minimumRamGB }
                     .thenBy { it.id })
-            ModelGuidancePriority.MULTILINGUAL ->
-                LocalModelCatalog.bestMultilingual(rankingProfile)
+            ModelGuidancePriority.MULTILINGUAL -> {
+                val preferred = LocalModelCatalog.bestMultilingual(rankingProfile)
                     ?.takeIf { it in candidates }
-                    ?: candidates.maxWith(
-                        compareBy<LocalModelDescriptor> { languageBreadth(it) }
-                            .thenBy { it.sizeBytes }
-                            .thenByDescending { it.id },
-                    )
+                // Where the usual multilingual pick is the balanced one anyway
+                // -- SenseVoice for Japanese -- a wider sherpa model that fits
+                // is the different answer this option promises. That is where
+                // Qwen3-ASR, kept off first run, is offered. Whisper stays the
+                // fallback below rather than competing here, because its empty
+                // language list would outrank every model that names its own.
+                val wider = if (preferred == null || preferred.id == balanced.id) {
+                    candidates
+                        .filter {
+                            it.engine == LocalModelEngine.SHERPA_ONNX &&
+                                languageBreadth(it) > languageBreadth(balanced)
+                        }
+                        .maxWithOrNull(
+                            compareBy<LocalModelDescriptor> { languageBreadth(it) }
+                                .thenByDescending { it.sizeBytes },
+                        )
+                } else {
+                    null
+                }
+                wider ?: preferred ?: candidates.maxWith(
+                    compareBy<LocalModelDescriptor> { languageBreadth(it) }
+                        .thenBy { it.sizeBytes }
+                        .thenByDescending { it.id },
+                )
+            }
         }
 
         val languageName = guidanceLanguageName(language)

@@ -126,12 +126,11 @@ shows up as an actionable repair prompt rather than a silent failure.
    token, then **Test connection**, which reports reachability, token validity,
    the active engine, whether it is ready, and whether it supports streaming.
 
-The catalog carries 32 whisper.cpp GGML builds from Tiny through Large v3,
-including the q5 and q8 quantizations — a 574 MB Large v3 Turbo q5 is a far
-better use of a phone than a full Small — and 12 sherpa-onnx models across seven
-families (Moonshine, Parakeet TDT, SenseVoice, Dolphin, Canary, NeMo CTC and
-Paraformer) covering English, Chinese, Japanese, Russian and European sets that
-small whisper builds handle poorly. Only models this phone has the memory for are
+The catalog carries four whisper.cpp Q8_0 builds (Tiny, Base, Small and Large
+v3 Turbo) and 11 sherpa-onnx models (Parakeet TDT and CTC, SenseVoice, Canary,
+GigaAM, Omnilingual, Qwen3-ASR and the icefall Zipformers) covering English,
+Chinese, Japanese, Korean, Russian, Vietnamese and European sets that small
+whisper builds handle poorly. Only models this phone has the memory for are
 offered, and sherpa-onnx models need an Arm ABI because its JNI library ships
 prebuilt; whisper.cpp is compiled from source and runs on an x86_64 emulator too.
 

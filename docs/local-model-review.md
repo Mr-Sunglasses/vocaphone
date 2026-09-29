@@ -125,9 +125,73 @@ the less accurate model. Both builds are retired onto Parakeet 110M, which is
 now the English starter and the small English pick on both platforms. The
 Moonshine families stay in the bridges; only the catalog rows are gone.
 
-With Moonshine Tiny gone, the smallest iOS model that *lists* English is
-Paraformer, a Mandarin model. "Smallest download" now skips a model whose
-coverage of a language is only incidental, so English gets Parakeet 110M.
+With Moonshine Tiny gone, the smallest iOS model that *lists* English was
+Paraformer, a Mandarin model. "Smallest download" skipped a model whose
+coverage of a language is only incidental, so English got Parakeet 110M.
+Paraformer has since been retired; see below.
+
+## Retired: Dolphin Small and Paraformer Small Chinese
+
+Reviewed 2026-09-30, on both platforms (the sherpa catalogs must agree).
+
+**Dolphin Small** was retired after reports of poor transcripts. It listed English
+and the SenseVoice languages alongside its Indic and South East Asian range.
+Decoded with sherpa-onnx 1.13.8 on macOS arm64, it returned nothing for English
+(a synthesized sentence, the Qwen3-ASR `f1_noise` clip and a code-switched clip)
+or German, answered French in Persian script and Spanish as mixed-script noise,
+and dropped most of a Korean sentence. On synthesized Hindi, Thai, Indonesian,
+Malay and Vietnamese it was usable. Both Dolphin ids now retire onto Whisper
+Large v3 Turbo, then Whisper Small, then SenseVoice. Large v3 covers every
+language Dolphin did, but Small has no Cantonese, so the migration prefers a
+fitting replacement that still covers the user's languages. A 3 GB Cantonese
+speaker lands on SenseVoice; English on the same phone still gets Whisper
+Small. The language chosen for dictation outranks the phone and keyboard
+languages, and is never traded away: a replacement that fits but lacks it is
+skipped, and if nothing that fits has it (Hindi on a 2 GB phone) the selection
+is cleared, unless the ladder never covered that language at all. iOS now leads with Large v3 Turbo for the old Dolphin starter
+languages where it fits. Android leaves them to Whisper scoring, which keeps its
+874 MB large build off first run. Vietnamese keeps `zipformer-vi`.
+
+**Paraformer Small Chinese** only won "smallest Chinese download". SenseVoice is
+the stronger Mandarin model, also covers Cantonese, and needs the same 2 GB, so
+Paraformer retires onto it. With Paraformer and Dolphin gone, no catalog model
+lists a language it was not built for, so the "incidental coverage" exclusion
+from the smallest-download and many-languages picks is removed.
+
+The `dolphinCtc` / `paraformer` bridge families stay, as the Moonshine ones did.
+
+### Added as an option: Qwen3-ASR 0.6B
+
+`csukuangfj2/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25` runs on both pinned
+runtimes (sherpa-onnx 1.13.8) as a new `qwen3Asr` / `QWEN3_ASR` bridge family:
+a conv frontend, an encoder and a Qwen3 LLM decoder reading a Hugging Face
+tokenizer directory (`tokenizer/vocab.json`, `merges.txt`,
+`tokenizer_config.json`, all pinned) in place of `tokens.txt`. `pin_models.py`
+now pins `.json` files for it. 987 MB, minimum 6 GB.
+
+It is listed and selectable, but **not ranked first for any language** and not
+a first-run default:
+
+- Qwen's own table has the 0.6B model behind Whisper large-v3 on every
+  multilingual set: Fleurs (hi, id, ms, nl, pl, th, tr, vi) 10.37 against 6.85
+  WER, the 10 further Fleurs languages 21.80 against 8.16, CommonVoice 12.75
+  against 10.77.
+- The sherpa-onnx config has no language field. Two of five short synthesized
+  Thai commands came back as invented Vietnamese.
+- Upstream's default `max_new_tokens` of 128 cut a 16 s Hindi clip at about
+  half. The bridges set 256; the clip then decoded in full, in 7.1 s on an M1
+  Pro with two threads, inside the default 512-token context.
+- About 2.2 GB peak RSS on macOS arm64.
+
+It did well on the rest of the synthesized set: Hindi, Indonesian, Malay,
+Vietnamese, Mandarin, Arabic, German, French and the noisy English clip.
+Where it is offered: iOS lists it among the many-languages picks after Parakeet
+v3 and Whisper Large, and Android's "Works across languages" guidance picks it
+where the balanced model is a narrow specialist (SenseVoice for Japanese on an
+8 GB phone). Android keeps it out of `MULTILINGUAL_PREFERENCE`, as it keeps
+Whisper large off first run. Qwen3-ASR also accepts hotwords, which could carry
+the custom word list in a follow-up. Needs phone latency and memory
+measurement before any ranking changes.
 
 ## Other candidates
 

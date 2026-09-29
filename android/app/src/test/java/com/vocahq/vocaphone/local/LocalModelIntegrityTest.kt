@@ -141,9 +141,12 @@ class LocalModelIntegrityTest {
             }
             if (model.engine == LocalModelEngine.SHERPA_ONNX) {
                 assertTrue("${model.id} needs a family", model.sherpaFamily != null)
+                // Qwen3-ASR's LLM decoder reads a tokenizer directory instead.
+                val tokenTable =
+                    if (model.sherpaFamily == SherpaFamily.QWEN3_ASR) "tokenizer/vocab.json" else "tokens.txt"
                 assertTrue(
-                    "${model.id} needs tokens.txt",
-                    model.files.any { it.path == "tokens.txt" },
+                    "${model.id} needs $tokenTable",
+                    model.files.any { it.path == tokenTable },
                 )
             }
         }

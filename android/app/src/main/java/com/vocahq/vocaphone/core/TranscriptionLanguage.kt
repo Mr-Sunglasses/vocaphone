@@ -6,14 +6,14 @@ package com.vocahq.vocaphone.core
  *
  * The list is drawn from what the shipped models actually cover, not from
  * Whisper's full hundred: Parakeet TDT v3's 25 European languages, SenseVoice's
- * East Asian five, Dolphin's Indic and South East Asian range, and the widely
- * spoken languages Whisper handles well at phone-sized quantizations. A code
+ * East Asian five, the Indic and South East Asian range, and the widely spoken
+ * languages Whisper handles well at phone-sized quantizations. A code
  * here is meaningless unless some model can honour it, and the picker greys out
  * the ones the active model does not cover.
  *
- * Odia and Kashmiri are deliberately absent: only Dolphin covers them, and no
- * Whisper build can be pinned to either, so a row for them could never be
- * honoured by anything the user could switch to.
+ * Odia and Kashmiri are deliberately absent: no Whisper build can be pinned to
+ * either, so a row for them could never be honoured by anything the user could
+ * switch to.
  */
 enum class TranscriptionLanguage(val wireValue: String) {
     AUTOMATIC("auto"),

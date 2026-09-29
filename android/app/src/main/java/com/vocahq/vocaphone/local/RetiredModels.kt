@@ -61,7 +61,18 @@ object RetiredModels {
         // against 6.20); v1 was already behind v2.
         listOf("moonshine-tiny-en", "moonshine-base-en", "moonshine-v2-tiny-en", "moonshine-v2-base-en")
             .forEach { put(it, listOf("parakeet-tdt-ctc-110m-en")) }
-        put("dolphin-base-ctc", listOf("dolphin-small-ctc"))
+        // Both Dolphin builds prefer Whisper, then SenseVoice. Dolphin Small
+        // listed English but returned nothing for it, nor for German, and
+        // answered French in Persian script. Large v3 covers the languages
+        // Dolphin claimed, including Cantonese; Small does not cover Cantonese,
+        // so a phone that cannot hold Large steps to SenseVoice when that still
+        // covers what the user speaks. Whisper remains the fdroid path because
+        // SenseVoice needs sherpa.
+        listOf("dolphin-base-ctc", "dolphin-small-ctc")
+            .forEach { put(it, listOf("large-v3-turbo-q8_0", "small-q8_0", "sense-voice")) }
+        // SenseVoice is the stronger Mandarin model, also covers Cantonese,
+        // and needs the same memory.
+        put("paraformer-zh-small", listOf("sense-voice"))
         // Same weights family, new export: v3 with punctuation. The id changed
         // rather than the pins so an already-downloaded v2 directory is an
         // unknown model to be swept, not a SHA-256 mismatch on a known one.
@@ -96,29 +107,53 @@ object RetiredModels {
      * What to do with [stored] on this device.
      *
      * [Outcome.Cleared] is the case worth being careful about. A 2 GB phone on
-     * `dolphin-base-ctc` has nothing to move to -- every replacement needs more
-     * memory than it has -- and clearing the model alone would leave on-device
-     * transcription still switched on with nothing behind it. `deliverLocal`
-     * would then record the audio and fail at the end of every dictation with
-     * "Choose and download an on-device model first", forever. Turning the
-     * switch off with the selection sends the same person to
-     * `GATEWAY_NOT_CONFIGURED` setup *before* recording instead, which is the
-     * honest answer and the actionable one.
+     * `dolphin-base-ctc` with sherpa unavailable has nothing to move to --
+     * Whisper Large and Small need more memory, and SenseVoice is not on that
+     * build -- and clearing the model alone would leave on-device transcription
+     * still switched on with nothing behind it. `deliverLocal` would then
+     * record the audio and fail at the end of every dictation with "Choose and
+     * download an on-device model first", forever. Turning the switch off with
+     * the selection sends the same person to `GATEWAY_NOT_CONFIGURED` setup
+     * *before* recording instead, which is the honest answer and the
+     * actionable one.
+     *
+     * [languages] is what the user actually speaks: empty means unknown, and
+     * then the first fitting candidate wins, which is how English-only and
+     * legacy migrations behave. When it is set, a fitting candidate that
+     * covers every requested language is preferred, so Cantonese on a 3 GB
+     * phone lands on SenseVoice instead of Whisper Small. If none of the
+     * fitting candidates cover the languages, the first fitting one is kept
+     * so the phone is not left without a model.
+     *
+     * [primaryLanguage] is the one the user chose to dictate in, null for
+     * Automatic, and it outranks the rest: [languages] can only break a tie
+     * between models that keep it. A Cantonese speaker who also has a Hindi
+     * keyboard on a 3 GB phone still lands on SenseVoice, not on Whisper Small,
+     * which has Hindi but not Cantonese. And when this ladder could serve that
+     * language but nothing that fits does -- Hindi on a 2 GB phone, where only
+     * SenseVoice fits -- the selection is cleared rather than swapped for a
+     * model without it. A ladder that never covered the language, such as
+     * Moonshine's English-only one under a stale German setting, ignores it.
      */
     fun resolve(
         stored: String,
         totalRamGB: Long,
         sherpaAvailable: Boolean = LocalModelCatalog.sherpaAvailable,
+        languages: Collection<String> = emptyList(),
+        primaryLanguage: String? = null,
     ): Outcome {
         if (stored.isEmpty()) return Outcome.Unchanged
         if (LocalModelCatalog.find(stored) != null) return Outcome.Unchanged
         val candidates = replacements[stored] ?: return Outcome.Unchanged
-        val fitting = candidates.firstNotNullOfOrNull { id ->
-            LocalModelCatalog.find(id)
-                ?.takeIf { LocalModelCatalog.isUsableOnDevice(it, totalRamGB, sherpaAvailable) }
-                ?.id
+        val ladder = candidates.mapNotNull(LocalModelCatalog::find)
+        var pool = ladder.filter { LocalModelCatalog.isUsableOnDevice(it, totalRamGB, sherpaAvailable) }
+        val primary = catalogLanguageCode(primaryLanguage)
+        if (primary != null && ladder.any { it.coversLanguage(primary) }) {
+            pool = pool.filter { it.coversLanguage(primary) }
         }
-        return fitting?.let(Outcome::Replaced) ?: Outcome.Cleared
+        val covering = pool.filter { it.coversAll(languages.toList()) }
+        val chosen = covering.firstOrNull() ?: pool.firstOrNull()
+        return chosen?.id?.let(Outcome::Replaced) ?: Outcome.Cleared
     }
 
     /** Apply the launch decision through the settings store's atomic writes. */
@@ -126,9 +161,11 @@ object RetiredModels {
         stored: String,
         totalRamGB: Long,
         sherpaAvailable: Boolean = LocalModelCatalog.sherpaAvailable,
+        languages: Collection<String> = emptyList(),
+        primaryLanguage: String? = null,
         replace: suspend (String) -> Unit,
         clear: suspend () -> Unit,
-    ): Outcome = resolve(stored, totalRamGB, sherpaAvailable).also { outcome ->
+    ): Outcome = resolve(stored, totalRamGB, sherpaAvailable, languages, primaryLanguage).also { outcome ->
         when (outcome) {
             is Outcome.Unchanged -> Unit
             is Outcome.Replaced -> replace(outcome.id)
@@ -150,7 +187,8 @@ object RetiredModels {
         stored: String,
         totalRamGB: Long,
         sherpaAvailable: Boolean = LocalModelCatalog.sherpaAvailable,
-    ): String? = when (val outcome = resolve(stored, totalRamGB, sherpaAvailable)) {
+        languages: Collection<String> = emptyList(),
+    ): String? = when (val outcome = resolve(stored, totalRamGB, sherpaAvailable, languages)) {
         is Outcome.Unchanged -> stored
         is Outcome.Replaced -> outcome.id
         is Outcome.Cleared -> null

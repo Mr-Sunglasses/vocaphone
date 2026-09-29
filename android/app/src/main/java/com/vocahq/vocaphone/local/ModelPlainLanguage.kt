@@ -85,11 +85,11 @@ data class ModelPlainLanguage(
                 "Mandarin, Cantonese, Japanese, Korean and English in one fast model.",
                 accuracy = 3, speed = 4,
             ),
-            "dolphin-small-ctc" to ModelPlainLanguage(
-                "Asian languages",
-                "Hindi, Bengali, Tamil, Thai, Indonesian and many more, " +
-                    "and tells them apart by itself.",
-                accuracy = 2, speed = 3,
+            "qwen3-asr-0.6b" to ModelPlainLanguage(
+                "30 languages and Chinese dialects",
+                "One model for 30 languages and many Chinese dialects, and tells them apart " +
+                    "by itself. Slower, and a large download.",
+                accuracy = 3, speed = 1,
             ),
             "canary-180m-flash" to ModelPlainLanguage(
                 "English, German, Spanish, French",
@@ -105,11 +105,6 @@ data class ModelPlainLanguage(
                 "Most accurate Japanese",
                 "Made for Japanese. A large download.",
                 accuracy = 4, speed = 3,
-            ),
-            "paraformer-zh-small" to ModelPlainLanguage(
-                "Small Chinese",
-                "A small Mandarin model that is quick to download.",
-                accuracy = 2, speed = 4,
             ),
             "zipformer-ko" to ModelPlainLanguage(
                 "Small Korean",

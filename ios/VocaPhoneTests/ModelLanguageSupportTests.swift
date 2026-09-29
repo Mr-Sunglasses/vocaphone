@@ -9,16 +9,16 @@ struct ModelLanguageSupportTests {
         #expect(ModelLanguageSupport.transcriptLanguage(requested: "auto", reported: "") == "")
     }
 
-    private let dolphin: Set<String> = ["hi", "bn", "ta", "zh", "ja"]
+    private let asian: Set<String> = ["hi", "bn", "ta", "zh", "ja"]
     private let englishOnly: Set<String> = ["en"]
 
     /// Coverage is the only test. An auto-detecting model still knows exactly
     /// which languages it was trained on, and hiding them made a 25-language
     /// Parakeet look like it spoke none of them.
     @Test func aModelOffersExactlyWhatItCoversDetectedOrNot() {
-        #expect(ModelLanguageSupport.isSelectable(.automatic, modelLanguages: dolphin))
-        #expect(ModelLanguageSupport.isSelectable(.hindi, modelLanguages: dolphin))
-        #expect(!ModelLanguageSupport.isSelectable(.french, modelLanguages: dolphin))
+        #expect(ModelLanguageSupport.isSelectable(.automatic, modelLanguages: asian))
+        #expect(ModelLanguageSupport.isSelectable(.hindi, modelLanguages: asian))
+        #expect(!ModelLanguageSupport.isSelectable(.french, modelLanguages: asian))
         #expect(ModelLanguageSupport.isSelectable(.english, modelLanguages: englishOnly))
         #expect(!ModelLanguageSupport.isSelectable(.hindi, modelLanguages: englishOnly))
     }
@@ -38,7 +38,7 @@ struct ModelLanguageSupportTests {
     /// Sending "hi" anyway is exactly the failure this prevents.
     @Test func aStaleSelectionFallsBackToAutomatic() {
         #expect(ModelLanguageSupport.resolve(.hindi, modelLanguages: englishOnly) == .automatic)
-        #expect(ModelLanguageSupport.resolve(.hindi, modelLanguages: dolphin) == .hindi)
+        #expect(ModelLanguageSupport.resolve(.hindi, modelLanguages: asian) == .hindi)
         #expect(ModelLanguageSupport.resolve(.hindi, modelLanguages: []) == .hindi)
     }
 
@@ -48,9 +48,9 @@ struct ModelLanguageSupportTests {
         )
         #expect(unclaimed?.contains("covers") == false)
         let limited = ModelLanguageSupport.restriction(
-            modelLanguages: dolphin, detectsLanguageAutomatically: false, canTranslate: false
+            modelLanguages: asian, detectsLanguageAutomatically: false, canTranslate: false
         )
-        #expect(limited?.contains("\(dolphin.count) languages") == true)
+        #expect(limited?.contains("\(asian.count) languages") == true)
     }
 
     /// The picker used to say nothing at all for an unrestricted model, which is
@@ -107,9 +107,9 @@ struct ModelLanguageSupportTests {
     /// picker starts lying about what the model does.
     @Test func anAutoDetectingModelSaysWhatPickingALanguageDoes() {
         let detected = ModelLanguageSupport.restriction(
-            modelLanguages: dolphin, detectsLanguageAutomatically: true, canTranslate: false
+            modelLanguages: asian, detectsLanguageAutomatically: true, canTranslate: false
         )
-        #expect(detected?.contains("\(dolphin.count) languages") == true)
+        #expect(detected?.contains("\(asian.count) languages") == true)
         #expect(detected?.contains("does not pin the decoder") == true)
         #expect(detected?.contains("punctuated") == true)
         let unclaimed = ModelLanguageSupport.restriction(
@@ -117,7 +117,7 @@ struct ModelLanguageSupportTests {
         )
         #expect(unclaimed?.contains("does not pin the decoder") == true)
         let local = ModelLanguageSupport.restriction(
-            modelLanguages: dolphin,
+            modelLanguages: asian,
             detectsLanguageAutomatically: true,
             canTranslate: false,
             onDevice: true

@@ -14,11 +14,14 @@ import com.vocahq.vocaphone.data.UsageStatsRepository
 import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
 import com.vocahq.vocaphone.ime.VoiceShortcutIme
+import com.vocahq.vocaphone.local.DeviceProfile
 import com.vocahq.vocaphone.local.LocalModelManager
 import com.vocahq.vocaphone.local.RetiredModels
+import com.vocahq.vocaphone.local.catalogLanguageCode
 import com.vocahq.vocaphone.settings.SettingsRepository
 import com.vocahq.vocaphone.telemetry.Telemetry
 import com.vocahq.vocaphone.telemetry.TelemetryFlushScheduler
+import com.vocahq.vocaphone.ui.KeyboardInputLanguages
 import java.io.File
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -169,10 +172,18 @@ class AppContainer(context: Context) {
      * has no reason to know the catalog's history.
      */
     private suspend fun migrateRetiredModelSelection() {
-        val stored = settings.settings.first().localModelId
+        val snapshot = settings.settings.first()
+        val languages = buildList {
+            add(snapshot.language.wireValue)
+            addAll(snapshot.modelLanguages)
+            addAll(DeviceProfile.phoneLanguages())
+            addAll(KeyboardInputLanguages.enabled(appContext))
+        }.mapNotNull(::catalogLanguageCode).distinct()
         RetiredModels.migrate(
-            stored = stored,
+            stored = snapshot.localModelId,
             totalRamGB = localModels.totalRamGB(),
+            languages = languages,
+            primaryLanguage = snapshot.language.wireValue,
             replace = settings::replaceRetiredLocalModel,
             // No fitting replacement: turn the switch off with the selection.
             clear = settings::clearLocalModelSelection,

@@ -8,6 +8,7 @@ import com.k2fsa.sherpa.onnx.OfflineMoonshineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineNemoEncDecCtcModelConfig
 import com.k2fsa.sherpa.onnx.OfflineOmnilingualAsrCtcModelConfig
 import com.k2fsa.sherpa.onnx.OfflineParaformerModelConfig
+import com.k2fsa.sherpa.onnx.OfflineQwen3AsrModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
 import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
 import com.k2fsa.sherpa.onnx.OfflineSenseVoiceModelConfig
@@ -165,7 +166,8 @@ internal class SherpaRecognizer private constructor(
                     ?: "$stem.onnx",
             )
 
-            val tokens = path("tokens.txt")
+            // Qwen3-ASR reads a tokenizer directory in place of a token table.
+            val tokens = if (family == SherpaFamily.QWEN3_ASR) "" else path("tokens.txt")
             val modelConfig = when (family) {
                 SherpaFamily.NEMO_TRANSDUCER -> OfflineModelConfig(
                     transducer = OfflineTransducerModelConfig(
@@ -246,6 +248,20 @@ internal class SherpaRecognizer private constructor(
                 SherpaFamily.PARAFORMER -> OfflineModelConfig(
                     paraformer = OfflineParaformerModelConfig(model = path("model.int8.onnx")),
                 )
+
+                // Upstream's default of 128 new tokens cuts a 16 s Hindi window
+                // at about half -- Devanagari costs several byte-level tokens
+                // per word -- so the budget is doubled. 256 still fits the
+                // 512-token context beside the longest window the app decodes.
+                SherpaFamily.QWEN3_ASR -> OfflineModelConfig(
+                    qwen3Asr = OfflineQwen3AsrModelConfig(
+                        convFrontend = path("conv_frontend.onnx"),
+                        encoder = path("encoder.int8.onnx"),
+                        decoder = path("decoder.int8.onnx"),
+                        tokenizer = File(path("tokenizer/vocab.json")).parent,
+                        maxNewTokens = 256,
+                    ),
+                )
             }.copy(
                 tokens = tokens,
                 numThreads = threads,
@@ -260,7 +276,10 @@ internal class SherpaRecognizer private constructor(
                 OfflineRecognizer(
                     assetManager = null,
                     config = OfflineRecognizerConfig(
-                        featConfig = FeatureConfig(dither = family.featureDither),
+                        featConfig = FeatureConfig(
+                            featureDim = if (family == SherpaFamily.QWEN3_ASR) 128 else 80,
+                            dither = family.featureDither,
+                        ),
                         modelConfig = modelConfig,
                         decodingMethod = decodingMethod,
                         maxActivePaths = quality.sherpaMaxActivePaths,

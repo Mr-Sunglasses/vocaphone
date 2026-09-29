@@ -14,6 +14,9 @@ enum VocaPhoneSherpaFamily {
     VocaPhoneSherpaMoonshineV2 = 7,
     VocaPhoneSherpaOmnilingualCtc = 8,
     VocaPhoneSherpaZipformerTransducer = 9,
+    /// Qwen3-ASR: `model1` the conv frontend, `model2` the encoder, `model3`
+    /// the decoder and `model4` the tokenizer directory. No token table.
+    VocaPhoneSherpaQwen3Asr = 10,
 };
 
 /// `language` is the language being spoken, and `target_language` the one to

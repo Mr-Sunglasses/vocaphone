@@ -112,10 +112,6 @@ class DeviceProfileTest {
             "canary-180m-flash",
             LocalModelCatalog.recommended(profile(8, language = "fr")).id,
         )
-        // SenseVoice rather than the smaller Paraformer: first run leads with
-        // the more accurate model on Mandarin, and Paraformer cannot transcribe
-        // Cantonese at all. Paraformer keeps its place as the smallest download
-        // that covers Chinese.
         assertEquals(
             "sense-voice",
             LocalModelCatalog.recommended(profile(8, language = "zh")).id,
@@ -136,13 +132,11 @@ class DeviceProfileTest {
             "giga-am-v3-ru",
             LocalModelCatalog.recommended(profile(8, language = "ru")).id,
         )
-        // Dolphin Small, not Base: the paper puts Base at 33.3% average WER
-        // against Small's 25.2%, and this is the first transcription a Hindi
-        // speaker ever sees.
-        assertEquals(
-            "dolphin-small-ctc",
-            LocalModelCatalog.recommended(profile(8, language = "hi")).id,
-        )
+        // Hindi has no specialist since Dolphin Small was retired, so a
+        // Whisper build that covers it leads.
+        val hindi = LocalModelCatalog.recommended(profile(8, language = "hi"))
+        assertEquals(LocalModelEngine.WHISPER, hindi.engine)
+        assertTrue(hindi.coversLanguage("hi"))
         // Italian has no specialist in the catalog, so the widest multilingual
         // model that covers it leads instead of a small Whisper.
         val italian = LocalModelCatalog.recommended(profile(8, language = "it"))

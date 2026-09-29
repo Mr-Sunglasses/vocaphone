@@ -30,7 +30,7 @@ struct RetiredLocalModelsTests {
         defaults.set(true, forKey: LocalTranscriptionPreferences.enabledKey)
         defaults.set("dolphin-base-ctc", forKey: LocalTranscriptionPreferences.modelKey)
 
-        RetiredLocalModels.migrateStoredSelection(deviceMemoryGB: 2, defaults: defaults)
+        RetiredLocalModels.migrateStoredSelection(deviceMemoryGB: 1, defaults: defaults)
 
         #expect(!defaults.bool(forKey: LocalTranscriptionPreferences.enabledKey))
         #expect(defaults.string(forKey: LocalTranscriptionPreferences.modelKey) == nil)
@@ -148,9 +148,21 @@ struct RetiredLocalModelsTests {
             RetiredLocalModels.replacement(for: "fast-conformer-ctc-4-lang", deviceMemoryGB: 8)
                 == "canary-180m-flash"
         )
+        // Both Dolphin builds prefer Whisper Large, then Small, then SenseVoice.
+        // Empty languages keep the Whisper path, including Small on a 3 GB phone.
+        for id in ["dolphin-base-ctc", "dolphin-small-ctc"] {
+            #expect(
+                RetiredLocalModels.replacement(for: id, deviceMemoryGB: 8)
+                    == "openai_whisper-large-v3-v20240930_626MB"
+            )
+            #expect(
+                RetiredLocalModels.replacement(for: id, deviceMemoryGB: 3)
+                    == "openai_whisper-small_216MB"
+            )
+        }
         #expect(
-            RetiredLocalModels.replacement(for: "dolphin-base-ctc", deviceMemoryGB: 8)
-                == "dolphin-small-ctc"
+            RetiredLocalModels.replacement(for: "paraformer-zh-small", deviceMemoryGB: 2)
+                == "sense-voice"
         )
         // The Russian model kept its weights family and changed id, so that an
         // already-downloaded v2 is swept rather than failing its SHA-256 check.
@@ -160,17 +172,147 @@ struct RetiredLocalModelsTests {
         )
     }
 
-    /// The case a 2 GB iPhone on Dolphin Base lands in: every replacement wants
-    /// more memory than it has. Clearing the selection alone would leave
-    /// on-device transcription switched on with nothing behind it, and every
-    /// dictation would record the audio and then fail.
+    /// SenseVoice needs 2 GB, so a 2 GB iPhone can land there. The cleared
+    /// case is a device smaller than every remaining candidate.
     @Test func aRetiredModelWithNoReplacementThisDeviceCanRunClearsTheSelection() {
-        #expect(RetiredLocalModels.resolve("dolphin-base-ctc", deviceMemoryGB: 2) == .cleared)
-        #expect(RetiredLocalModels.replacement(for: "dolphin-base-ctc", deviceMemoryGB: 2) == nil)
-        // It fits on a 3 GB device, so nothing is cleared there.
+        #expect(RetiredLocalModels.resolve("dolphin-base-ctc", deviceMemoryGB: 1) == .cleared)
+        #expect(RetiredLocalModels.replacement(for: "dolphin-base-ctc", deviceMemoryGB: 1) == nil)
+        #expect(
+            RetiredLocalModels.resolve("dolphin-base-ctc", deviceMemoryGB: 2)
+                == .replaced("sense-voice")
+        )
+        // Empty languages on a 3 GB device still take Whisper Small.
         #expect(
             RetiredLocalModels.resolve("dolphin-base-ctc", deviceMemoryGB: 3)
-                == .replaced("dolphin-small-ctc")
+                == .replaced("openai_whisper-small_216MB")
+        )
+    }
+
+    /// Whisper Small cannot transcribe Cantonese, so a 3 GB Dolphin install
+    /// that was used for `yue` must not stay on Small. SenseVoice covers it
+    /// and fits. English, and a migration with no language information, still
+    /// prefer Small so SenseVoice does not steal those phones.
+    @Test func dolphinRetirementPrefersAFittingModelThatStillCoversTheLanguage() {
+        for id in ["dolphin-base-ctc", "dolphin-small-ctc"] {
+            #expect(
+                RetiredLocalModels.replacement(for: id, deviceMemoryGB: 3, languages: ["yue"])
+                    == "sense-voice",
+                "\(id)"
+            )
+            #expect(
+                RetiredLocalModels.replacement(for: id, deviceMemoryGB: 8, languages: ["yue"])
+                    == "openai_whisper-large-v3-v20240930_626MB",
+                "\(id)"
+            )
+            #expect(
+                RetiredLocalModels.replacement(for: id, deviceMemoryGB: 3, languages: ["en"])
+                    == "openai_whisper-small_216MB",
+                "\(id)"
+            )
+            #expect(
+                RetiredLocalModels.replacement(for: id, deviceMemoryGB: 3, languages: ["hi"])
+                    == "openai_whisper-small_216MB",
+                "\(id)"
+            )
+            #expect(
+                RetiredLocalModels.replacement(for: id, deviceMemoryGB: 3)
+                    == "openai_whisper-small_216MB",
+                "\(id)"
+            )
+            #expect(
+                RetiredLocalModels.replacement(for: id, deviceMemoryGB: 2, languages: ["yue"])
+                    == "sense-voice",
+                "\(id)"
+            )
+        }
+    }
+
+    /// The language someone chose to dictate in outranks the others the
+    /// migration collects, and is never traded for a model without it.
+    @Test func theChosenLanguageOutranksTheOthersAndIsNeverDropped() {
+        for id in ["dolphin-base-ctc", "dolphin-small-ctc"] {
+            // Cantonese chosen, Hindi also on the phone: nothing covers both,
+            // and Small would keep Hindi but lose Cantonese.
+            #expect(
+                RetiredLocalModels.replacement(
+                    for: id, deviceMemoryGB: 3, primaryLanguage: "yue", languages: ["yue", "hi"]
+                ) == "sense-voice",
+                "\(id)"
+            )
+            // The other way round, Small keeps the chosen Hindi.
+            #expect(
+                RetiredLocalModels.replacement(
+                    for: id, deviceMemoryGB: 3, primaryLanguage: "hi", languages: ["hi", "yue"]
+                ) == "openai_whisper-small_216MB",
+                "\(id)"
+            )
+        }
+        // Hindi chosen on a 2 GB phone: only SenseVoice fits, and it has no
+        // Hindi, so the route is cleared as it was before SenseVoice was a rung.
+        #expect(
+            RetiredLocalModels.resolve(
+                "dolphin-base-ctc", deviceMemoryGB: 2, primaryLanguage: "hi", languages: ["hi"]
+            ) == .cleared
+        )
+        // Automatic is not a chosen language.
+        #expect(
+            RetiredLocalModels.resolve("dolphin-base-ctc", deviceMemoryGB: 2, primaryLanguage: "auto")
+                == .replaced("sense-voice")
+        )
+        // A ladder that never covered the language ignores it: a stale German
+        // setting does not strand a Moonshine user.
+        #expect(
+            RetiredLocalModels.replacement(for: "moonshine-base-en", deviceMemoryGB: 2, primaryLanguage: "de")
+                == "parakeet-tdt-ctc-110m-en"
+        )
+    }
+
+    @Test func launchMigrationClearsAHindiDolphinThatNothingFittingCovers() throws {
+        let suite = "RetiredLocalModelsTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: LocalTranscriptionPreferences.enabledKey)
+        defaults.set("dolphin-base-ctc", forKey: LocalTranscriptionPreferences.modelKey)
+        defaults.set("hi", forKey: KeyboardPreferences.transcriptionLanguageKey)
+
+        RetiredLocalModels.migrateStoredSelection(deviceMemoryGB: 2, languages: ["hi", "en"], defaults: defaults)
+
+        #expect(!defaults.bool(forKey: LocalTranscriptionPreferences.enabledKey))
+        #expect(defaults.string(forKey: LocalTranscriptionPreferences.modelKey) == nil)
+    }
+
+    @Test func launchMigrationSendsCantoneseDolphinToSenseVoiceOnASmallPhone() throws {
+        let suite = "RetiredLocalModelsTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: LocalTranscriptionPreferences.enabledKey)
+        defaults.set("dolphin-small-ctc", forKey: LocalTranscriptionPreferences.modelKey)
+
+        defaults.set("yue", forKey: KeyboardPreferences.transcriptionLanguageKey)
+        RetiredLocalModels.migrateStoredSelection(deviceMemoryGB: 3, defaults: defaults)
+
+        #expect(defaults.bool(forKey: LocalTranscriptionPreferences.enabledKey))
+        #expect(defaults.string(forKey: LocalTranscriptionPreferences.modelKey) == "sense-voice")
+        #expect(
+            defaults.string(forKey: LocalTranscriptionPreferences.retiredModelReplacementKey)
+                == "sense-voice"
+        )
+    }
+
+    @Test func languagesForMigrationDropsAutomaticAndKeepsCantonese() {
+        #expect(
+            RetiredLocalModels.languagesForMigration(
+                transcriptionLanguage: "yue",
+                modelLanguages: ["auto", "en"],
+                preferredLanguages: ["en-US"]
+            ) == ["yue", "en"]
+        )
+        #expect(
+            RetiredLocalModels.languagesForMigration(
+                transcriptionLanguage: "auto",
+                modelLanguages: [],
+                preferredLanguages: []
+            ).isEmpty
         )
     }
 
@@ -196,7 +338,10 @@ struct RetiredLocalModelsTests {
     /// Every sherpa id is shared, so the sherpa half of them has to agree.
     @Test func theSherpaHalfOfTheTableCoversTheSameIDs() {
         let sherpaRetired = Set(
-            ["dolphin-base-ctc", "fast-conformer-ctc-4-lang", "giga-am-ctc-ru"]
+            [
+                "dolphin-base-ctc", "dolphin-small-ctc", "paraformer-zh-small",
+                "fast-conformer-ctc-4-lang", "giga-am-ctc-ru",
+            ]
         )
         #expect(sherpaRetired.isSubset(of: Set(RetiredLocalModels.replacements.keys)))
     }
