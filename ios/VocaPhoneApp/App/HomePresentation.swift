@@ -40,6 +40,10 @@ struct HomeSessionCard: Equatable {
     var isHidden = false
     /// A field to dictate into right here, the real thing rather than a test.
     var showsTryField = false
+    /// The keyboard is dictating into that field and has not inserted yet.
+    /// Dismissing it now drops the document proxy and loses the transcript,
+    /// so Done, Clear, Settings and scroll-to-dismiss all stand down.
+    var locksTryField = false
     /// A plain, non-destructive link under the card.
     var quietAction: Action?
 
@@ -55,6 +59,13 @@ struct HomeSessionCard: Equatable {
         var errorMessage: String?
         var canRetry = false
         var startedInApp = true
+        /// A keyboard dictation targeting Home's own text field. Keep that
+        /// field mounted while the session changes state so iOS can retain its
+        /// first responder and the keyboard can insert the finished text.
+        var isTryFieldSession = false
+        /// The try field has the keyboard. The instructions then describe the
+        /// keyboard in front of the user rather than how to raise it.
+        var isTryFieldFocused = false
         /// Whether all required setup steps are complete. Idle uses this; a
         /// finished transcript does not depend on today's setup state.
         var isReadyToDictate = true
@@ -63,6 +74,26 @@ struct HomeSessionCard: Equatable {
     }
 
     static func make(_ context: Context, now: Date = Date()) -> HomeSessionCard {
+        var card = derive(context, now: now)
+        card.locksTryField = card.showsTryField && context.isTryFieldSession
+            && awaitsInsertion(context.state)
+        return card
+    }
+
+    /// Every state from tapping Dictate until the text is in the field. A
+    /// field change is not one of them: insertion is parked there until the
+    /// user goes back to the field or chooses Insert here.
+    private static func awaitsInsertion(_ state: SessionState) -> Bool {
+        switch state {
+        case .launchingApp, .awaitingReturn, .recording, .finalizing,
+             .uploading, .transcribing, .readyToInsert, .inserting, .inserted:
+            true
+        default:
+            false
+        }
+    }
+
+    private static func derive(_ context: Context, now: Date) -> HomeSessionCard {
         switch context.state {
         case .launchingApp, .awaitingReturn:
             return starting(context)
@@ -103,8 +134,17 @@ struct HomeSessionCard: Equatable {
     // MARK: - States
 
     private static func resting(_ context: Context, now: Date) -> HomeSessionCard {
-        // A missing model is the setup checklist's to explain.
-        guard context.isReadyToDictate else {
+        // Unready setup stands down for the checklist. Keep the field only
+        // while this try-field session still needs it for insertion.
+        let isFinishingInsertion: Bool
+        switch context.state {
+        case .readyToInsert, .targetContextChanged, .inserting, .inserted:
+            isFinishingInsertion = true
+        default:
+            isFinishingInsertion = false
+        }
+        let keepFieldForActiveInsertion = context.isTryFieldSession && isFinishingInsertion
+        guard context.isReadyToDictate || keepFieldForActiveInsertion else {
             return HomeSessionCard(
                 status: .inactive,
                 title: "Microphone test",
@@ -113,26 +153,53 @@ struct HomeSessionCard: Equatable {
                 isHidden: true
             )
         }
+        // Parked on a field change still needs the field; insertion waits
+        // for the original field or Insert here.
+        let isParkedForFieldChange = context.state == .targetContextChanged
         let detail: String
-        if context.isQuickDictationReady, let expiresAt = context.quickDictationExpiresAt {
-            // Standby, not recording — and the wording has to make that
-            // unmistakable, because the iOS microphone indicator is lit either
-            // way. See `QuickDictationAvailability`.
-            let duration = context.quickDictationDuration ?? .tenMinutes
-            detail = "Quick Dictation is on standby "
-                + duration.standbyDescription(expiringAt: expiresAt)
-                + ". Nothing is being recorded."
+        let title: String
+        let status: VocaStatus
+        if context.isReadyToDictate {
+            status = .ready
+            title = "Try it here"
+            if context.isQuickDictationReady, let expiresAt = context.quickDictationExpiresAt {
+                // Standby, not recording — and the wording has to make that
+                // unmistakable, because the iOS microphone indicator is lit either
+                // way. See `QuickDictationAvailability`.
+                let duration = context.quickDictationDuration ?? .tenMinutes
+                detail = "Quick Dictation is on standby "
+                    + duration.standbyDescription(expiringAt: expiresAt)
+                    + ". Nothing is being recorded."
+            } else if context.isTryFieldFocused {
+                detail = "Tap Dictate on the vocaphone keyboard. If another keyboard is up, switch with the globe key."
+            } else {
+                detail = "Tap the field, switch to the vocaphone keyboard with the globe key, then tap Dictate."
+            }
+        } else if isParkedForFieldChange {
+            status = .working
+            title = "Waiting to insert"
+            detail = "Return to the keyboard. Go back to the original field, or choose Insert here."
+        } else if isFinishingInsertion {
+            status = .working
+            title = "Finishing dictation"
+            detail = "Keep the keyboard open while this dictation finishes."
         } else {
-            detail = "Tap the field, switch to the vocaphone keyboard with the globe key, then tap Dictate."
+            status = .inactive
+            title = "Dictation unavailable"
+            detail = "Fix the setup issue above before starting another dictation."
         }
         return HomeSessionCard(
-            status: .ready,
-            title: "Try it here",
+            status: status,
+            title: title,
             detail: detail,
             primary: nil,
             secondary: nil,
             showsTryField: true,
-            quietAction: Action(title: "Test the microphone only", action: .startTest)
+            // A microphone test takes the card over and drops the keyboard, so
+            // it waits until the field is let go.
+            quietAction: context.isReadyToDictate && !context.isTryFieldFocused
+                ? Action(title: "Test the microphone only", action: .startTest)
+                : nil
         )
     }
 
@@ -145,7 +212,8 @@ struct HomeSessionCard: Equatable {
             title: "Starting the microphone",
             detail: "The keyboard asked vocaphone to record. Speak once it says Listening.",
             primary: nil,
-            secondary: Action(title: "Cancel", action: .cancel)
+            secondary: Action(title: "Cancel", action: .cancel),
+            showsTryField: context.isTryFieldSession
         )
     }
 
@@ -153,12 +221,15 @@ struct HomeSessionCard: Equatable {
         HomeSessionCard(
             status: .recording,
             title: "Listening",
-            detail: context.startedInApp
+            detail: context.isTryFieldSession
+                ? "Tap Finish here or on the keyboard. The text goes into the field."
+                : context.startedInApp
                 ? "Tap Finish when you are done."
                 : "Recording continues while you return to the app you were typing in.",
             primary: Action(title: "Finish recording", action: .finish, symbol: "stop.fill"),
             secondary: Action(title: "Cancel", action: .cancel),
-            showsMeter: true
+            showsMeter: true,
+            showsTryField: context.isTryFieldSession
         )
     }
 
@@ -188,7 +259,8 @@ struct HomeSessionCard: Equatable {
                     ? "Your gateway is running its speech-to-text model on this recording."
                     : nil,
             primary: nil,
-            secondary: Action(title: "Cancel", action: .cancel)
+            secondary: Action(title: "Cancel", action: .cancel),
+            showsTryField: context.isTryFieldSession
         )
     }
 
@@ -235,7 +307,8 @@ struct HomeSessionCard: Equatable {
             primary: context.canRetry
                 ? Action(title: "Retry", action: .retry, symbol: "arrow.clockwise")
                 : Action(title: "Start microphone test", action: .startTest, symbol: "mic.fill"),
-            secondary: Action(title: "Discard recording", action: .cancel)
+            secondary: Action(title: "Discard recording", action: .cancel),
+            showsTryField: context.isTryFieldSession
         )
     }
 
@@ -252,7 +325,8 @@ struct HomeSessionCard: Equatable {
                 action: .startTest,
                 symbol: "mic.fill"
             ),
-            secondary: nil
+            secondary: nil,
+            showsTryField: context.isTryFieldSession
         )
     }
 }
