@@ -200,10 +200,11 @@ fun DictateScreen(
                                 progress = { state.level.coerceIn(0f, 1f) },
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                            // Time and microphone: what someone dictating can use.
+                            // Streaming versus batch upload is the engine's business.
                             Text(
                                 "${state.recordedMillis / 1000}s" +
-                                    (state.inputRouteLabel?.let { " · $it" } ?: "") +
-                                    (if (state.streaming) " · streaming" else " · batch upload"),
+                                    (state.inputRouteLabel?.let { " · $it" } ?: ""),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -344,12 +345,15 @@ private fun DictateActionRow(
             },
             trailingWeight = 2f,
         )
-        else -> PrimaryButton(
+        // Not ready: the repair card above lists each missing step with its
+        // own button, so a greyed-out Dictate beside it was a second answer
+        // that could not be pressed.
+        setup.isReadyToDictate -> PrimaryButton(
             text = DictateCopy.DICTATE,
             onClick = onStart,
-            enabled = setup.isReadyToDictate,
             modifier = Modifier.fillMaxWidth(),
         )
+        else -> Unit
     }
 }
 

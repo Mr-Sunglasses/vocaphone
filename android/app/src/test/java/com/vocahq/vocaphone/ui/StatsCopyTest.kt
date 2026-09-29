@@ -18,7 +18,7 @@ class StatsCopyTest {
      */
     @Test
     fun speedIsLabelledAsSpeakingSpeed() {
-        assertTrue(StatsCopy.SPEED_CAPTION.contains("Speaking Speed"))
+        assertTrue(StatsCopy.SPEED_CAPTION.contains("Speaking speed"))
     }
 
     @Test

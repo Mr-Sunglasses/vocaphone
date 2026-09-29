@@ -31,11 +31,12 @@ internal enum class OnboardingStage(
         "A keyboard that types what you say.",
         step = null,
     ),
-    SOURCE(
-        "Choose where speech becomes text",
-        "On this phone, or a gateway you run.",
-        step = null,
-    ),
+    /**
+     * Also where a gateway is chosen. There is no separate source page: the
+     * welcome already says speech stays on this phone unless you run a
+     * gateway, and asking again was a page nearly everyone answered the same
+     * way.
+     */
     MODEL(
         "Choose a model",
         "Matched to the languages and keyboards on this phone.",
@@ -86,20 +87,16 @@ internal enum class OnboardingStage(
 
     fun next(): OnboardingStage = entries[(ordinal + 1).coerceAtMost(entries.lastIndex)]
 
-    fun advance(status: SetupStatus, localTranscriptionEnabled: Boolean): OnboardingStage = when {
-        this == SOURCE -> if (localTranscriptionEnabled) MODEL else resume(MICROPHONE, status)
-        else -> resume(next(), status)
-    }
+    fun advance(status: SetupStatus): OnboardingStage = resume(next(), status)
 
     /** Thin top bar. Welcome is a sliver, each page fills it, the confirmation shares KEYBOARD's stop. */
     val progress: Float
         get() = when (this) {
-            WELCOME -> 1f / 7f
-            SOURCE -> 2f / 7f
-            MODEL -> 3f / 7f
-            MICROPHONE -> 4f / 7f
-            NOTIFICATIONS -> 5f / 7f
-            KEYBOARD, KEYBOARD_READY -> 6f / 7f
+            WELCOME -> 1f / 6f
+            MODEL -> 2f / 6f
+            MICROPHONE -> 3f / 6f
+            NOTIFICATIONS -> 4f / 6f
+            KEYBOARD, KEYBOARD_READY -> 5f / 6f
             READY -> 1f
         }
 
@@ -136,11 +133,14 @@ internal enum class OnboardingStage(
             entries.firstOrNull { it.step != null && !status.isSatisfied(it.step) } ?: READY
 
         /**
-         * Decode a saved page. Unknown values — a page a newer build retired —
-         * start over rather than crash; that is one screen of repetition
-         * against a stuck launch.
+         * Decode a saved page. The retired source page resumes on MODEL, where
+         * that choice is now made. Other unknown values — a page a newer build
+         * retired — start over rather than crash; that is one screen of
+         * repetition against a stuck launch.
          */
         fun persisted(raw: String?): OnboardingStage? =
-            raw?.takeIf { it.isNotBlank() }?.let { value -> entries.firstOrNull { it.name == value } }
+            raw?.takeIf { it.isNotBlank() }?.let { value ->
+                if (value == "SOURCE") MODEL else entries.firstOrNull { it.name == value }
+            }
     }
 }

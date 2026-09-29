@@ -62,37 +62,39 @@ class OnboardingStageTest {
     fun `after review the model page leads straight to the end`() {
         // The reported case: skip the model, meet everything else, come back
         // for the model — Continue must not replay three green pages.
-        assertEquals(OnboardingStage.READY, OnboardingStage.MODEL.advance(ready, true))
+        assertEquals(OnboardingStage.READY, OnboardingStage.MODEL.advance(ready))
     }
 
     @Test
     fun `continue stops at the next unmet requirement only`() {
-        assertEquals(OnboardingStage.MICROPHONE, OnboardingStage.MODEL.advance(ready.copy(microphone = false), true))
-        assertEquals(OnboardingStage.KEYBOARD, OnboardingStage.MODEL.advance(ready.copy(keyboard = false), true))
-        assertEquals(OnboardingStage.NOTIFICATIONS, OnboardingStage.MICROPHONE.advance(ready.copy(notifications = false), true))
+        assertEquals(OnboardingStage.MICROPHONE, OnboardingStage.MODEL.advance(ready.copy(microphone = false)))
+        assertEquals(OnboardingStage.KEYBOARD, OnboardingStage.MODEL.advance(ready.copy(keyboard = false)))
+        assertEquals(OnboardingStage.NOTIFICATIONS, OnboardingStage.MICROPHONE.advance(ready.copy(notifications = false)))
     }
 
     @Test
-    fun `the source page always shows the model page to a local user`() {
-        assertEquals(OnboardingStage.MODEL, OnboardingStage.SOURCE.advance(SetupStatus(), true))
-        assertEquals(OnboardingStage.MODEL, OnboardingStage.SOURCE.advance(ready, true))
-    }
-
-    @Test
-    fun `a gateway user skips the model page and any met requirement`() {
-        assertEquals(OnboardingStage.MICROPHONE, OnboardingStage.SOURCE.advance(SetupStatus(gatewayConfigured = true), false))
-        assertEquals(OnboardingStage.READY, OnboardingStage.SOURCE.advance(ready, false))
+    fun `a speech source already set up walks past the model page`() {
+        assertEquals(OnboardingStage.MICROPHONE, OnboardingStage.WELCOME.advance(SetupStatus(gatewayConfigured = true)))
+        assertEquals(OnboardingStage.READY, OnboardingStage.WELCOME.advance(ready))
     }
 
     @Test
     fun `continue never lands on the confirmation`() {
-        assertEquals(OnboardingStage.READY, OnboardingStage.KEYBOARD.advance(ready, true))
+        assertEquals(OnboardingStage.READY, OnboardingStage.KEYBOARD.advance(ready))
+    }
+
+    /** No source page: the welcome goes straight to Choose a model, where a gateway is offered too. */
+    @Test
+    fun `the welcome leads to the model page`() {
+        assertEquals(OnboardingStage.MODEL, OnboardingStage.WELCOME.advance(SetupStatus()))
+        assertEquals(OnboardingStage.MODEL, OnboardingStage.WELCOME.next())
+        assertEquals(OnboardingStage.WELCOME, OnboardingStage.MODEL.previous())
     }
 
     @Test
-    fun `the welcome always leads to the source choice`() {
-        assertEquals(OnboardingStage.SOURCE, OnboardingStage.WELCOME.advance(ready, true))
-        assertEquals(OnboardingStage.SOURCE, OnboardingStage.WELCOME.advance(SetupStatus(), false))
+    fun `a saved source page resumes on the model page`() {
+        assertEquals(OnboardingStage.MODEL, OnboardingStage.persisted("SOURCE"))
+        assertEquals(OnboardingStage.MODEL, OnboardingStage.resume(OnboardingStage.persisted("SOURCE"), SetupStatus()))
     }
 
     // --- what the split adds ------------------------------------------------
@@ -106,7 +108,6 @@ class OnboardingStageTest {
     @Test
     fun `a saved teaching or choice page is shown again as saved`() {
         assertEquals(OnboardingStage.WELCOME, OnboardingStage.resume(OnboardingStage.WELCOME, SetupStatus()))
-        assertEquals(OnboardingStage.SOURCE, OnboardingStage.resume(OnboardingStage.SOURCE, SetupStatus()))
     }
 
     @Test

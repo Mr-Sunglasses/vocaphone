@@ -3,7 +3,8 @@ package com.vocahq.vocaphone.ui
 import android.os.SystemClock
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -12,27 +13,34 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -40,14 +48,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.local.DeviceProfile
@@ -55,6 +62,7 @@ import com.vocahq.vocaphone.local.DownloadWarning
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelState
+import com.vocahq.vocaphone.local.ModelChoices
 import com.vocahq.vocaphone.local.ModelGuidance
 import com.vocahq.vocaphone.local.ModelGuidanceIntent
 import com.vocahq.vocaphone.local.ModelGuidancePriority
@@ -62,10 +70,11 @@ import com.vocahq.vocaphone.local.ModelGuidanceResult
 import com.vocahq.vocaphone.local.ModelPick
 import com.vocahq.vocaphone.local.ModelPlainLanguage
 import com.vocahq.vocaphone.local.byteLabel
-import com.vocahq.vocaphone.local.plain
+import com.vocahq.vocaphone.local.coversLanguage
 import com.vocahq.vocaphone.local.downloadSizeProgress
 import com.vocahq.vocaphone.local.downloadTimeRemaining
 import com.vocahq.vocaphone.local.downloadWarning
+import com.vocahq.vocaphone.local.plain
 import java.util.Locale
 
 internal const val MORE_MODELS_LABEL = SetupCopy.BROWSE_MODELS
@@ -101,8 +110,7 @@ fun LocalModelPicker(
     val profile = remember(state.totalRamGB, languages) {
         DeviceProfile.current(totalRamGB = state.totalRamGB, languages = languages)
     }
-    var guidancePriority by rememberSaveable { mutableStateOf(ModelGuidancePriority.BALANCED) }
-    var guidanceOpen by rememberSaveable { mutableStateOf(false) }
+    val guidancePriority = ModelGuidancePriority.BALANCED
     var guidanceLanguageSelection by rememberSaveable(guidanceLanguage, profile.language) {
         mutableStateOf(guidanceLanguage.ifBlank { TranscriptionLanguage.AUTOMATIC.wireValue })
     }
@@ -216,6 +224,80 @@ fun LocalModelPicker(
         return
     }
 
+    if (compact) {
+        var catalogPick by remember { mutableStateOf<Pair<String, Int>?>(null) }
+        val pickFromCatalog: (LocalModelDescriptor) -> Unit = { model ->
+            catalogPick = model.id to ((catalogPick?.second ?: 0) + 1)
+        }
+        SetupModelChoices(
+            state = state,
+            usable = usable,
+            profile = profile,
+            selectedModelId = selectedModelId,
+            guidanceLanguage = guidanceLanguage,
+            onGuidanceLanguage = onGuidanceLanguage,
+            onSelect = onSelect,
+            onDownloadAndUse = guardedDownloadAndUse,
+            onCancelDownload = onCancelDownload,
+            onOpenCatalog = { catalogOpen = true },
+            catalogPick = catalogPick,
+        )
+        CompactCatalogSheet(
+            open = catalogOpen,
+            onDismiss = { catalogOpen = false },
+            sheetState = catalogSheetState,
+            query = query,
+            onQuery = { query = it },
+            engineFilter = engineFilter,
+            onEngine = { engineFilter = it },
+            sizeFilter = sizeFilter,
+            onSize = { sizeFilter = it },
+            languageFilter = languageFilter,
+            onLanguage = { languageFilter = it },
+            available = filtered.filter { it.id !in state.downloaded },
+            filteredEmpty = filtered.isEmpty(),
+            state = state,
+            selectedModelId = selectedModelId,
+            onInspect = { inspecting = it },
+        )
+        confirmingDownload?.let { model ->
+            AlertDialog(
+                onDismissRequest = { confirmingDownload = null },
+                title = { Text(SetupCopy.DOWNLOAD_CONFIRM_TITLE) },
+                text = {
+                    Text(SetupCopy.downloadConfirmBody(model.displayName, model.sizeLabel, state.meteredNetwork))
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmingDownload = null
+                        onDownloadAndUse(model)
+                    }) { Text(SetupCopy.DOWNLOAD_CONFIRM) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { confirmingDownload = null }) { Text("Cancel") }
+                },
+            )
+        }
+        inspecting?.let { model ->
+            ModelDetailSheet(
+                model = model,
+                state = state,
+                selected = selectedModelId == model.id,
+                recommended = false,
+                busy = busy,
+                onSelect = { onSelect(it); pickFromCatalog(it) },
+                onDownloadAndUse = { guardedDownloadAndUse(it); pickFromCatalog(it) },
+                onCancelDownload = onCancelDownload,
+                onDelete = onDelete,
+                onDismiss = { inspecting = null },
+            )
+        }
+        state.message?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        return
+    }
+
     if (usingGateway) {
         Text(
             "Speech is going through your gateway. Using a model here switches to this phone.",
@@ -323,23 +405,6 @@ fun LocalModelPicker(
         )
     }
 
-    if (compact) {
-        SecondaryButton(
-            text = SetupCopy.HELP_ME_CHOOSE,
-            onClick = { guidanceOpen = true },
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        // Names the two answers the pick was made on. Without it the button
-        // reads as an unrelated second question rather than a way to change
-        // something the screen has already decided.
-        Text(
-            "Chosen for ${guidance.languageName} · ${guidancePriority.title}.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-
     if (showAlternates) {
         ModelSectionHeading("Also good on this phone")
         ModelPickGrid(
@@ -350,24 +415,7 @@ fun LocalModelPicker(
         )
     }
 
-    if (compact) {
-        if (sections.installed.isNotEmpty()) {
-            ModelSectionHeading("Installed")
-            ModelTileGrid(
-                models = sections.installed,
-                state = state,
-                selectedModelId = selectedModelId,
-                onInspect = { inspecting = it },
-            )
-        }
-        if (sections.recommended == null) {
-            SecondaryButton(
-                text = SetupCopy.BROWSE_MODELS,
-                onClick = { catalogOpen = true },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    } else {
+    run {
         ModelCatalogSearch(
             query = query,
             onQuery = { query = it },
@@ -393,75 +441,6 @@ fun LocalModelPicker(
             state = state,
             selectedModelId = selectedModelId,
             onInspect = { inspecting = it },
-        )
-    }
-
-    if (compact && catalogOpen) {
-        ModalBottomSheet(
-            onDismissRequest = { catalogOpen = false },
-            sheetState = catalogSheetState,
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp)
-                    .padding(bottom = 28.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(SetupCopy.BROWSE_SHEET_TITLE, style = MaterialTheme.typography.titleLarge)
-                Text(
-                    SetupCopy.BROWSE_SHEET_SUPPORTING,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                ModelCatalogSearch(
-                    query = query,
-                    onQuery = { query = it },
-                    engineFilter = engineFilter,
-                    onEngine = { engineFilter = it },
-                    sizeFilter = sizeFilter,
-                    onSize = { sizeFilter = it },
-                    languageFilter = languageFilter,
-                    onLanguage = { languageFilter = it },
-                )
-                AvailableModelCatalog(
-                    available = sections.catalog,
-                    filteredEmpty = filtered.isEmpty(),
-                    state = state,
-                    selectedModelId = selectedModelId,
-                    onInspect = { inspecting = it },
-                    elevated = true,
-                )
-            }
-        }
-    }
-
-    if (compact && guidanceOpen) {
-        ModelGuidanceSheet(
-            selected = guidancePriority,
-            selectedLanguage = guidanceLanguageSelection,
-            deviceLanguageName = deviceLanguageDisplayName(profile.language),
-            previewFor = { language, priority ->
-                val resolved = if (
-                    language.isBlank() || language == TranscriptionLanguage.AUTOMATIC.wireValue
-                ) {
-                    profile.language
-                } else {
-                    language
-                }
-                ModelGuidance.recommend(
-                    profile.copy(language = resolved),
-                    ModelGuidanceIntent(language = resolved, priority = priority),
-                )
-            },
-            onApply = { language, priority ->
-                guidanceLanguageSelection = language
-                guidancePriority = priority
-                onGuidanceLanguage(language)
-                guidanceOpen = false
-            },
-            onDismiss = { guidanceOpen = false },
         )
     }
 
@@ -513,7 +492,9 @@ internal fun ModelDownloadCard(state: LocalModelState, onCancelDownload: () -> U
                 )
             }
             state.downloading != null -> {
-                val name = LocalModelCatalog.find(state.downloading)?.displayName
+                // The plain name — "Small English" — the same words the model
+                // was chosen by, not "Parakeet TDT-CTC 110M English".
+                val name = LocalModelCatalog.find(state.downloading)?.plain?.title
                     ?: state.downloading
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -731,147 +712,6 @@ private fun CompactRecommendedActions(
         },
     )
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ModelGuidanceSheet(
-    selected: ModelGuidancePriority,
-    selectedLanguage: String,
-    deviceLanguageName: String,
-    previewFor: (String, ModelGuidancePriority) -> ModelGuidanceResult,
-    onApply: (String, ModelGuidancePriority) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var languageSelection by rememberSaveable(selectedLanguage) {
-        mutableStateOf(selectedLanguage.ifBlank { TranscriptionLanguage.AUTOMATIC.wireValue })
-    }
-    var prioritySelection by rememberSaveable(selected) { mutableStateOf(selected) }
-    // Only languages that survive TranscriptionLanguage.fromWire are offered:
-    // an unlisted code round-trips to AUTOMATIC, which silently discarded the
-    // choice the moment it was applied. "Use phone language" is the honest row
-    // for a locale the catalog has no entry for.
-    val languageOptions = remember {
-        buildList {
-            add(TranscriptionLanguage.AUTOMATIC.wireValue)
-            addAll(
-                TranscriptionLanguage.entries
-                    .filter { it != TranscriptionLanguage.AUTOMATIC }
-                    .map { it.wireValue },
-            )
-        }
-    }
-    val preview = previewFor(languageSelection, prioritySelection)
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                // Two questions, three options and a live preview do not fit a
-                // half-height sheet on a small phone, and the confirm button is
-                // the last thing in the column.
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(bottom = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text("Tell us about your dictation", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "Choose the language you speak most and what matters most for the download. " +
-                    "The match below updates as you choose.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text("Primary language", style = MaterialTheme.typography.titleMedium)
-            SettingDropdown(
-                options = languageOptions,
-                selected = languageSelection,
-                label = { guidanceLanguageLabel(it, deviceLanguageName) },
-                detail = { guidanceLanguageDetail(it, deviceLanguageName) },
-                onSelect = { languageSelection = it },
-            )
-            Text("What matters most?", style = MaterialTheme.typography.titleMedium)
-            ModelGuidancePriority.entries.forEach { priority ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (priority == prioritySelection) {
-                        PrimaryButton(
-                            text = priority.title,
-                            onClick = {
-                                prioritySelection = priority
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    } else {
-                        SecondaryButton(
-                            text = priority.title,
-                            onClick = {
-                                prioritySelection = priority
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    Text(
-                        priority.detail,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            // Two abstract questions with no visible consequence is what made
-            // this sheet hard to answer. The match recomputes as either answer
-            // changes, so the trade-off is read before it is committed.
-            Text("You would get", style = MaterialTheme.typography.titleMedium)
-            val previewModel = preview.model
-            if (previewModel == null) {
-                Text(
-                    preview.reason,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Text(previewModel.displayName, style = MaterialTheme.typography.titleSmall)
-                Text(
-                    preview.downloadDetail ?: previewModel.sizeLabel,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text(
-                    preview.reason,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            PrimaryButton(
-                text = "Use this match",
-                onClick = { onApply(languageSelection, prioritySelection) },
-                enabled = previewModel != null,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
-
-private fun guidanceLanguageLabel(code: String, deviceLanguageName: String): String {
-    if (code == TranscriptionLanguage.AUTOMATIC.wireValue) {
-        return "Use phone language ($deviceLanguageName)"
-    }
-    return TranscriptionLanguage.entries
-        .firstOrNull { it.wireValue == code }
-        ?.displayName
-        ?: deviceLanguageDisplayName(code)
-}
-
-private fun guidanceLanguageDetail(code: String, deviceLanguageName: String): String =
-    if (code == TranscriptionLanguage.AUTOMATIC.wireValue) {
-        "Currently detected as $deviceLanguageName."
-    } else {
-        "Prefer models that cover ${guidanceLanguageLabel(code, deviceLanguageName)}."
-    }
-
-private fun deviceLanguageDisplayName(code: String): String =
-    TranscriptionLanguage.entries
-        .firstOrNull { it.wireValue == code }
-        ?.displayName
-        ?: Locale.forLanguageTag(code).getDisplayLanguage(Locale.getDefault())
-            .ifBlank { code.uppercase(Locale.ROOT) }
 
 @Composable
 private fun ModelCatalogSearch(
@@ -1411,6 +1251,368 @@ private fun RatingDots(label: String, value: Int) {
                         if (index < value) colors.primary else colors.outlineVariant,
                         CircleShape,
                     ),
+            )
+        }
+    }
+}
+
+/**
+ * Setup's model page: one question — which language — and at most three rows
+ * named by what they trade, the best one already picked.
+ *
+ * It replaces a recommended card with ratings, an upstream name and a reason
+ * line, a "Use X instead" alternative, a "Choose language" sheet asking two
+ * questions, an "Also good on this phone" grid and an "Installed" grid. The
+ * rest of the catalog is one tap away, under All models.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SetupModelChoices(
+    state: LocalModelState,
+    usable: List<LocalModelDescriptor>,
+    profile: DeviceProfile,
+    selectedModelId: String,
+    guidanceLanguage: String,
+    onGuidanceLanguage: (String) -> Unit,
+    onSelect: (LocalModelDescriptor) -> Unit,
+    onDownloadAndUse: (LocalModelDescriptor) -> Unit,
+    onCancelDownload: () -> Unit,
+    onOpenCatalog: () -> Unit,
+    /** The model last used or started from All models, with a counter so a repeat still lands. */
+    catalogPick: Pair<String, Int>?,
+) {
+    var language by rememberSaveable(guidanceLanguage) {
+        mutableStateOf(guidanceLanguage.ifBlank { TranscriptionLanguage.AUTOMATIC.wireValue })
+    }
+    var choosingLanguage by remember { mutableStateOf(false) }
+    val choices = remember(profile, language) { ModelChoices.choices(profile, language) }
+    val guided = remember(profile, language) { ModelGuidance.recommend(profile, ModelGuidanceIntent(language)) }
+    val languageName = guided.languageName
+    // The choices, then anything else already here or on its way — but only
+    // models that hear the chosen language. A model got from All models has
+    // to show up on the page it was chosen for; an English-only one does not
+    // belong on a French page with a "Use this model" button under it.
+    val rows: List<Pair<LocalModelDescriptor, ModelChoices.Kind?>> =
+        remember(choices, usable, state.downloaded, state.downloading, guided.intent.language) {
+            val ids = choices.map { it.model.id }.toSet()
+            choices.map { it.model to it.kind } +
+                usable.filter {
+                    (it.id in state.downloaded || it.id == state.downloading) &&
+                        it.id !in ids &&
+                        it.coversLanguage(guided.intent.language)
+                }.map { it to null }
+        }
+    // Whatever is already in use or on its way wins over the suggestion, so
+    // coming back to the page does not offer a second download.
+    var picked by rememberSaveable(language) {
+        mutableStateOf(
+            rows.firstOrNull { it.first.id == selectedModelId && it.first.id in state.downloaded }?.first?.id
+                ?: rows.firstOrNull { it.first.id == state.downloading }?.first?.id
+                ?: rows.firstOrNull()?.first?.id,
+        )
+    }
+    // A model put in use, or started, from All models is this page's pick too;
+    // otherwise the radio would mark one model and offer to use another. Only
+    // that explicit action moves the pick — not a download finishing or a
+    // model being adopted, which would overwrite a row chosen since.
+    //
+    // Applied once, when its row exists: a download confirmed in a dialog
+    // only becomes a row after the tap that asked for it.
+    var appliedCatalogPick by remember { mutableStateOf<Pair<String, Int>?>(null) }
+    LaunchedEffect(catalogPick, rows) {
+        val pick = catalogPick ?: return@LaunchedEffect
+        if (pick != appliedCatalogPick && rows.any { it.first.id == pick.first }) {
+            picked = pick.first
+            appliedCatalogPick = pick
+        }
+    }
+    val pickedModel = rows.firstOrNull { it.first.id == picked }?.first
+    val busy = state.downloading != null || state.preparing != null
+
+    Surface(
+        onClick = { choosingLanguage = true },
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_language),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Text("I speak", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Text(languageName, style = MaterialTheme.typography.titleMedium)
+            Icon(
+                painter = painterResource(R.drawable.ic_chevron),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    if (choices.isEmpty()) {
+        Notice {
+            Text("No model on this phone understands $languageName yet.", style = MaterialTheme.typography.titleSmall)
+            Text("Pick another language, or skip for now.", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+
+    if (rows.isNotEmpty()) {
+        Surface(
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column {
+                rows.forEachIndexed { index, (model, kind) ->
+                    if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    SetupModelChoiceRow(
+                        model = model,
+                        kind = kind,
+                        languageName = languageName,
+                        best = choices.firstOrNull()?.model,
+                        state = state,
+                        selected = picked == model.id,
+                        onClick = { picked = model.id },
+                    )
+                }
+            }
+        }
+    }
+
+    if (state.downloading != null) {
+        ModelDownloadCard(state = state, onCancelDownload = onCancelDownload)
+    }
+
+    pickedModel?.let { model ->
+        when {
+            model.id !in state.downloaded && state.downloading != model.id -> PrimaryButton(
+                text = "Download · ${model.sizeLabel}",
+                onClick = { onDownloadAndUse(model) },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            model.id in state.downloaded && model.id != selectedModelId -> PrimaryButton(
+                text = "Use this model",
+                onClick = { onSelect(model) },
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            else -> Unit
+        }
+    }
+    TextButton(onClick = onOpenCatalog) { Text("See all ${usable.size} models") }
+
+    if (choosingLanguage) {
+        ModelLanguageSheet(
+            selected = language,
+            onPick = { code ->
+                language = code
+                onGuidanceLanguage(code)
+                choosingLanguage = false
+            },
+            onDismiss = { choosingLanguage = false },
+        )
+    }
+}
+
+@Composable
+private fun SetupModelChoiceRow(
+    model: LocalModelDescriptor,
+    kind: ModelChoices.Kind?,
+    languageName: String,
+    best: LocalModelDescriptor?,
+    state: LocalModelState,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val title = when (kind) {
+        ModelChoices.Kind.BEST -> "Best for $languageName"
+        ModelChoices.Kind.SMALLER -> "Smaller download"
+        ModelChoices.Kind.MORE_LANGUAGES -> "More languages"
+        null -> model.plain.title
+    }
+    val tradeOff = when (kind) {
+        // The balanced pick: accurate, and quick on this phone. Not always the
+        // single most accurate model — More languages can outrate it.
+        ModelChoices.Kind.BEST -> "The best fit for $languageName on this phone."
+        ModelChoices.Kind.SMALLER ->
+            if (best != null && model.plain.accuracy < best.plain.accuracy) {
+                "Quicker to download. Makes a few more mistakes."
+            } else {
+                "Quicker to download, and nearly as accurate."
+            }
+        ModelChoices.Kind.MORE_LANGUAGES ->
+            if (model.languageCodes.isEmpty()) {
+                "Understands about 100 languages, if you switch between them."
+            } else {
+                "Understands ${model.languageCodes.size} languages and tells them apart."
+            }
+        null -> model.plain.summary
+    }
+    val status = when {
+        state.downloading == model.id -> "Downloading · ${downloadProgressLine(state)}"
+        model.id in state.downloaded -> "On this phone · ${model.sizeLabel}"
+        kind == null -> model.sizeLabel
+        else -> "${model.sizeLabel} · ${model.plain.title}"
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RadioButton(selected = selected, onClick = null)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f, fill = false))
+                if (kind == ModelChoices.Kind.BEST) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                    ) {
+                        Text(
+                            "Recommended",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+            }
+            Text(tradeOff, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                status,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (state.downloading == model.id || model.id in state.downloaded) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Every language the models know, searchable. A dropdown of sixty entries was
+ * a list to scroll with nothing to type into.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ModelLanguageSheet(
+    selected: String,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var query by remember { mutableStateOf("") }
+    val options = remember {
+        TranscriptionLanguage.entries
+            .filter { it != TranscriptionLanguage.AUTOMATIC }
+            .sortedBy { it.displayName }
+    }
+    val matches = options.filter { query.isBlank() || it.displayName.contains(query.trim(), ignoreCase = true) }
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Language you speak", style = MaterialTheme.typography.titleLarge)
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                placeholder = { Text("Search languages") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 480.dp)) {
+                items(matches, key = { it.wireValue }) { option ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onPick(option.wireValue) }
+                            .padding(vertical = 14.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(option.displayName, modifier = Modifier.weight(1f))
+                        if (option.wireValue == selected) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_step_done),
+                                contentDescription = "Selected",
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** All models, from setup: the full catalog with its search and filters. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompactCatalogSheet(
+    open: Boolean,
+    onDismiss: () -> Unit,
+    sheetState: androidx.compose.material3.SheetState,
+    query: String,
+    onQuery: (String) -> Unit,
+    engineFilter: ModelEngineFilter,
+    onEngine: (ModelEngineFilter) -> Unit,
+    sizeFilter: ModelSizeFilter,
+    onSize: (ModelSizeFilter) -> Unit,
+    languageFilter: ModelLanguageFilter,
+    onLanguage: (ModelLanguageFilter) -> Unit,
+    available: List<LocalModelDescriptor>,
+    filteredEmpty: Boolean,
+    state: LocalModelState,
+    selectedModelId: String,
+    onInspect: (LocalModelDescriptor) -> Unit,
+) {
+    if (!open) return
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(SetupCopy.BROWSE_SHEET_TITLE, style = MaterialTheme.typography.titleLarge)
+            Text(
+                SetupCopy.BROWSE_SHEET_SUPPORTING,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            ModelCatalogSearch(
+                query = query,
+                onQuery = onQuery,
+                engineFilter = engineFilter,
+                onEngine = onEngine,
+                sizeFilter = sizeFilter,
+                onSize = onSize,
+                languageFilter = languageFilter,
+                onLanguage = onLanguage,
+            )
+            AvailableModelCatalog(
+                available = available,
+                filteredEmpty = filteredEmpty,
+                state = state,
+                selectedModelId = selectedModelId,
+                onInspect = onInspect,
+                elevated = true,
             )
         }
     }

@@ -85,11 +85,12 @@ class ReadyPageTest {
     fun `button label follows the presentation`() {
         assertEquals(SetupCopy.START, readyPageButtonLabel(ReadyPagePresentation.READY, null))
         assertEquals(SetupCopy.REVIEW, readyPageButtonLabel(ReadyPagePresentation.NEEDS_ATTENTION, null))
+        // While the model downloads the card carries the progress; the button
+        // only has to let someone leave, since the download carries on.
         assertEquals(
-            "Downloading · 8% · 57 MB of 661 MB · about 5 minutes left",
+            SetupCopy.WAITING_DONE,
             readyPageButtonLabel(ReadyPagePresentation.WAITING_FOR_MODEL, "8% · 57 MB of 661 MB · about 5 minutes left"),
         )
-        // The second between landing and adoption has no bytes to report.
-        assertEquals(SetupCopy.WAITING_PREPARING, readyPageButtonLabel(ReadyPagePresentation.WAITING_FOR_MODEL, null))
+        assertEquals(SetupCopy.WAITING_DONE, readyPageButtonLabel(ReadyPagePresentation.WAITING_FOR_MODEL, null))
     }
 }

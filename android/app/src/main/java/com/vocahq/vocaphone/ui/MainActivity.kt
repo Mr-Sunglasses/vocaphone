@@ -181,7 +181,9 @@ fun VocaPhoneApp(
         containerColor = if (showingMotionIntro) Color(0xFF111A15) else MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
-            if (!showingMotionIntro) {
+            // Setup pages carry their own back button, progress bar and title;
+            // a "Setup" app bar above them was a second header saying less.
+            if (!showingMotionIntro && !showSetup) {
             TopAppBar(
                 colors = if (selectingHistory) {
                     TopAppBarDefaults.topAppBarColors(

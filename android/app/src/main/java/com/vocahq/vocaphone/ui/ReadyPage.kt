@@ -69,6 +69,6 @@ internal fun readyPageButtonLabel(
     when (presentation) {
         ReadyPagePresentation.READY -> SetupCopy.START
         ReadyPagePresentation.NEEDS_ATTENTION -> attentionButton
-        ReadyPagePresentation.WAITING_FOR_MODEL ->
-            if (progressLine != null) "${SetupCopy.WAITING_DOWNLOADING} · $progressLine" else SetupCopy.WAITING_PREPARING
+        // The progress is on the card above; the button only has to leave.
+        ReadyPagePresentation.WAITING_FOR_MODEL -> SetupCopy.WAITING_DONE
     }
