@@ -19,6 +19,8 @@ struct KeyboardDefaultsTests {
         #expect(KeyboardDefaults.numbersAsDigits)
         #expect(KeyboardDefaults.spokenEmoji)
         #expect(KeyboardDefaults.repairSpeech)
+        // A preview the finished text can differ from: asked for, not assumed.
+        #expect(!KeyboardDefaults.liveWords)
     }
 
     /// A key nobody has written reads as the default, which is what a fresh
@@ -30,6 +32,7 @@ struct KeyboardDefaultsTests {
             KeyboardPreferences.swipeTypingKey,
             KeyboardPreferences.numbersAsDigitsKey,
             KeyboardPreferences.spokenEmojiKey,
+            KeyboardPreferences.liveWordsKey,
         ]
         let store = KeyboardPreferences.defaults
         let saved = keys.map { store?.object(forKey: $0) }
@@ -45,5 +48,6 @@ struct KeyboardDefaultsTests {
         #expect(KeyboardPreferences.swipeTypingEnabled == KeyboardDefaults.swipeTyping)
         #expect(KeyboardPreferences.numbersAsDigits == KeyboardDefaults.numbersAsDigits)
         #expect(KeyboardPreferences.spokenEmoji == KeyboardDefaults.spokenEmoji)
+        #expect(KeyboardPreferences.liveWords == KeyboardDefaults.liveWords)
     }
 }

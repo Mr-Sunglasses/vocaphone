@@ -66,6 +66,32 @@ struct SessionRecordTests {
         #expect(finalizing.meterLevel == 0)
     }
 
+    /// The words heard so far live only while the session records, and never
+    /// outlive the session they belong to.
+    @Test func liveTranscriptIsDroppedWhenRecordingEnds() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedStore(rootOverride: directory)
+        var record = SessionRecord()
+        try record.transition(to: .launchingApp)
+        try record.transition(to: .recording)
+        try store.save(record)
+        try store.saveLiveTranscript("so we should ship it", for: record.sessionID)
+        #expect(store.liveTranscript(for: record.sessionID) == "so we should ship it")
+
+        try record.transition(to: .finalizing)
+        try store.save(record)
+        #expect(store.liveTranscript(for: record.sessionID) == nil)
+
+        // A preview that lands after the keyboard's Finish is not kept.
+        try store.saveLiveTranscript("late", for: record.sessionID)
+        #expect(store.liveTranscript(for: record.sessionID) == nil)
+        try store.delete(record.sessionID)
+        #expect(store.liveTranscript(for: record.sessionID) == nil)
+        #expect(try store.recent().isEmpty)
+    }
+
     @Test func retryWithoutANewCaptureKeepsTheOriginalDuration() {
         var record = SessionRecord()
         record.recordedSeconds = 12.5

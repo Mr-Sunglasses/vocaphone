@@ -198,6 +198,20 @@ struct SpeechActivityTests {
         #expect(!result.droppedAudibleChunk)
     }
 
+    /// The pause's early decode is what the keyboard shows while the speaker
+    /// is still talking.
+    @Test func thePauseDecodeIsOfferedAsALivePreview() async {
+        let samples = Self.tone(seconds: 5) + Self.room(seconds: 2)
+        let previews = Texts()
+        let session = SherpaIncrementalSession(
+            chunks: Self.stream(samples),
+            detector: { ScriptedSpeechDetector([SpeechRegion(start: 0, end: 5 * Self.rate)]) },
+            onText: { previews.record($0) }
+        ) { _ in .decoded(SherpaTranscript(text: "spoken")) }
+        _ = await session.finish()
+        #expect(previews.values == ["spoken"])
+    }
+
     @Test func speechAfterThePauseIsDecodedAtFinish() async {
         let samples = Self.tone(seconds: 3) + Self.room(seconds: 1) + Self.tone(seconds: 2)
         let decodes = Sizes()
@@ -317,6 +331,23 @@ struct SpeechActivityTests {
         #expect(SherpaThreads.count(performanceCores: 1, processorCount: 4) == 2)
         // A system that will not say keeps the previous rule.
         #expect(SherpaThreads.count(performanceCores: nil, processorCount: 6) == 4)
+    }
+}
+
+private final class Texts: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [String] = []
+
+    func record(_ text: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        recorded.append(text)
+    }
+
+    var values: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
     }
 }
 

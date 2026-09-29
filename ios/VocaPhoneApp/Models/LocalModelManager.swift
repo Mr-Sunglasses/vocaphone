@@ -1214,9 +1214,12 @@ final class LocalModelManager {
     /// Prepares a Sherpa recognizer and starts consuming the lossless local
     /// capture queue immediately. WhisperKit keeps its finish-time path because
     /// its native decoder has a separate VAD/chunking implementation.
+    ///
+    /// `onText` hears the words decoded so far, as a preview while recording.
     func startSherpaIncrementalSession(
         chunks: AsyncStream<Data>,
-        language: String
+        language: String,
+        onText: (@Sendable (String) -> Void)? = nil
     ) async throws -> SherpaIncrementalSession? {
         guard let id = LocalTranscriptionPreferences.modelIdentifier,
               let descriptor = LocalModelCatalog.descriptor(for: id),
@@ -1242,9 +1245,12 @@ final class LocalModelManager {
             folder: folder,
             resolvedLanguage: resolvedLanguage
         )
-        return SherpaIncrementalSession(chunks: chunks, recognizer: recognizer) {
-            SileroSpeechDetector()
-        }
+        return SherpaIncrementalSession(
+            chunks: chunks,
+            recognizer: recognizer,
+            detector: { SileroSpeechDetector() },
+            onText: onText
+        )
     }
 
     /// Starts loading the selected Whisper model while the user is still
@@ -1256,9 +1262,13 @@ final class LocalModelManager {
     /// dictation spent a cold Core ML load *after* the user stopped talking.
     /// Now it overlaps the speech. A failure is left for the finish path, which
     /// loads again and reports it exactly as it always has.
+    ///
+    /// `onText` hears what each early decode made of the recording so far, as
+    /// a preview while recording.
     func startWhisperIncrementalSession(
         chunks: AsyncStream<Data>,
-        language: String
+        language: String,
+        onText: (@MainActor @Sendable (String) -> Void)? = nil
     ) -> WhisperIncrementalSession? {
         guard !isInert,
               let id = LocalTranscriptionPreferences.modelIdentifier,
@@ -1284,7 +1294,7 @@ final class LocalModelManager {
         return WhisperIncrementalSession(chunks: chunks) {
             SileroSpeechDetector()
         } decodeEarly: { [weak self] prefix in
-            await self?.decodeEarly(prefix, for: dictation)
+            await self?.decodeEarly(prefix, for: dictation, onText: onText)
         }
     }
 
@@ -1295,7 +1305,11 @@ final class LocalModelManager {
     /// started, and without a loaded model it does nothing — the finish path
     /// owns loading, retrying and reporting. A failure here only means Finish
     /// decodes that window itself.
-    private func decodeEarly(_ prefix: [Float], for dictation: WhisperDictation) async {
+    private func decodeEarly(
+        _ prefix: [Float],
+        for dictation: WhisperDictation,
+        onText: (@MainActor @Sendable (String) -> Void)? = nil
+    ) async {
         if whisperLoadModelID == dictation.modelID, let inFlight = whisperLoad {
             _ = try? await inFlight.value
         }
@@ -1306,7 +1320,7 @@ final class LocalModelManager {
             SpeechAudioConditioning.levelled(prefix)
         }.value
         guard !Task.isCancelled else { return }
-        _ = try? await WhisperTranscription.transcribe(
+        let results = try? await WhisperTranscription.transcribe(
             samples: levelled.samples,
             options: dictation.settings.decodingOptions(for: whisperKit),
             retries: dictation.settings.quality.whisperRetryCount,
@@ -1315,6 +1329,9 @@ final class LocalModelManager {
         ) { window, options in
             try await whisperKit.transcribe(audioArray: window, decodeOptions: options)
         }
+        guard let results, let onText, !Task.isCancelled, whisperDictation === dictation else { return }
+        let preview = TranscriptSanitizer.clean(results.map(\.text).joined(separator: " "))
+        if !preview.isEmpty { onText(preview) }
     }
 
     func download(_ descriptor: LocalModelDescriptor) async throws {

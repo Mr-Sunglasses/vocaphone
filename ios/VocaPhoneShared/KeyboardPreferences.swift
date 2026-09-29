@@ -55,6 +55,7 @@ enum KeyboardDefaults {
     static let numbersAsDigits = true
     static let spokenEmoji = true
     static let repairSpeech = true
+    static let liveWords = false
 }
 
 /// Presentation only. No style adds, removes or substitutes a word, and
@@ -567,6 +568,7 @@ enum KeyboardPreferences {
     static let numbersAsDigitsKey = "numbersAsDigitsEnabled"
     static let spokenEmojiKey = "spokenEmojiEnabled"
     static let repairSpeechKey = "speechRepairEnabled"
+    static let liveWordsKey = "liveWordsEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let translateToKey = "translateTo"
     static let microphonePreferenceKey = "microphonePreference"
@@ -864,6 +866,16 @@ enum KeyboardPreferences {
     /// Whether dictated number words are written as digits — "six pm" as
     /// "6 pm". On by default: typed text writes numbers as digits, and a lone
     /// "one", ordinals and spoken times are already left alone.
+    /// Whether the keyboard shows the words heard so far while recording on
+    /// this iPhone.
+    ///
+    /// Off by default: it is a preview the finished text can differ from, and
+    /// it puts words in the App Group before the dictation is over.
+    static var liveWords: Bool {
+        get { boolean(liveWordsKey, default: KeyboardDefaults.liveWords) }
+        set { defaults?.set(newValue, forKey: liveWordsKey) }
+    }
+
     static var numbersAsDigits: Bool {
         get { boolean(numbersAsDigitsKey, default: KeyboardDefaults.numbersAsDigits) }
         set { defaults?.set(newValue, forKey: numbersAsDigitsKey) }

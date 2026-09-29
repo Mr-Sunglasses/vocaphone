@@ -436,6 +436,10 @@ struct DictationSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var writingStyleRawValue = WritingStyle.casual.rawValue
     @AppStorage(
+        KeyboardPreferences.liveWordsKey,
+        store: KeyboardPreferences.defaults
+    ) private var liveWords = KeyboardDefaults.liveWords
+    @AppStorage(
         KeyboardPreferences.numbersAsDigitsKey,
         store: KeyboardPreferences.defaults
     ) private var numbersAsDigits = KeyboardDefaults.numbersAsDigits
@@ -576,6 +580,12 @@ struct DictationSettingsView: View {
             Toggle("Start and stop sounds", isOn: $recordingSoundsEnabled)
             Toggle(isOn: $stopAfterPause) {
                 SettingLabel("Stop after a pause", detail: "Finishes after three seconds of quiet.")
+            }
+            Toggle(isOn: $liveWords) {
+                SettingLabel(
+                    "Show words while speaking",
+                    detail: "The keyboard shows what it heard at each pause. On-device models only."
+                )
             }
         } header: {
             LearnMoreHeader(

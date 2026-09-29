@@ -299,6 +299,10 @@ struct LocalModelCatalogTests {
                 }
                 if let smaller = choices.first(where: { $0.kind == .smaller }) {
                     #expect(
+                        smaller.model.plain.accuracy >= LocalModelCatalog.minimumSmallerChoiceAccuracy,
+                        "\(smaller.model.id) for \(language)"
+                    )
+                    #expect(
                         Double(smaller.model.sizeBytes)
                             < Double(best.model.sizeBytes) * LocalModelCatalog.smallerChoiceShare
                     )
@@ -333,6 +337,13 @@ struct LocalModelCatalogTests {
         #expect(smaller?.id == "openai_whisper-small_216MB")
         let english = LocalModelCatalog.modelChoices(deviceMemoryGB: 6, languages: ["en"])
         #expect(english.first { $0.kind == .smaller }?.model.id == "parakeet-tdt-ctc-110m-en")
+    }
+
+    /// Whisper Base is far weaker than "a few more mistakes" outside English,
+    /// and nothing smaller than Dolphin is worth offering for Hindi.
+    @Test func hindiIsNotOfferedWhisperBaseAsTheSmallerChoice() {
+        let choices = LocalModelCatalog.modelChoices(deviceMemoryGB: 6, languages: ["hi"])
+        #expect(!choices.contains { $0.model.id == "openai_whisper-base" })
     }
 
     @Test func croatianIsOfferedTheEuropeanModelFirst() {

@@ -1009,18 +1009,26 @@ final class RecordingCoordinator {
                 // A failure keeps the intact WAV fallback — the finish path
                 // retries the same model in batch mode.
                 let language = record.language
+                let sessionID = record.sessionID
                 localSherpaSession = Task { [localModels] in
                     try? await localModels.startSherpaIncrementalSession(
                         chunks: chunks,
                         language: language
-                    )
+                    ) { [weak self] text in
+                        Task { @MainActor in
+                            self?.publishLiveTranscript(text, for: sessionID)
+                        }
+                    }
                 }
             }
             if localEngine == .whisperKit, let chunks = recorder.localPcmChunks {
+                let sessionID = record.sessionID
                 localWhisperSession = localModels.startWhisperIncrementalSession(
                     chunks: chunks,
                     language: record.language
-                )
+                ) { [weak self] text in
+                    self?.publishLiveTranscript(text, for: sessionID)
+                }
             }
             if let client = gatewayClient, let chunks = recorder.pcmChunks {
                 if GatewayStatusPreferences.shouldAttemptStreaming(for: client.baseURL) {
@@ -1585,6 +1593,21 @@ final class RecordingCoordinator {
         localSherpaSession = nil
         building.cancel()
         Task { await building.value?.cancel() }
+    }
+
+    /// Hands the keyboard the words heard so far, while the recording is
+    /// still going, when the user turned Show words while speaking on. Only
+    /// the on-device engines produce them — the early
+    /// decodes they already make at every pause — so this costs no extra
+    /// decoding. The store drops the text as soon as the session leaves
+    /// `recording`.
+    private func publishLiveTranscript(_ text: String, for sessionID: UUID) {
+        guard KeyboardPreferences.liveWords,
+              activeRecord?.sessionID == sessionID,
+              activeRecord?.state == .recording,
+              (try? store.load(sessionID))?.state == .recording
+        else { return }
+        try? store.saveLiveTranscript(text, for: sessionID)
     }
 
     private func persistMeter(_ levels: [Float]) {

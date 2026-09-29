@@ -27,6 +27,15 @@ the transcript is stored. Diagnostics record only a duration, a yes/no for
 whether the text was decoded before Finish, and how many milliseconds of
 trailing silence were left out.
 
+With **Show words while speaking** turned on (Settings › Dictation; off by
+default), while the recording is still going, the words those early decodes
+produced are written to a small file beside the session record in the App Group, so the
+keyboard can show them under the waveform. It is the same place, and the same
+kind of text, as the finished transcript: nothing new leaves the phone. The file
+is deleted as soon as the session leaves the recording state, and with the
+session itself. It is never logged, and it is never what gets inserted — the
+finished transcript is.
+
 The gateway host stores randomized audio names under its private data directory.
 On success, original and normalized audio are deleted by default. Failed and
 abandoned sessions remain for the retry window (24 hours by default), after

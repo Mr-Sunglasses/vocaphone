@@ -224,10 +224,20 @@ struct LocalModelPicker: View {
 
     /// "147 MB · Basic, most languages": one separator per line, so the
     /// name reads as one thing.
+    ///
+    /// The choice rows already say which one is best, so the line drops "Best"
+    /// from a plain title: a "More languages" row reading "Best, most
+    /// languages" under a "Best for Hindi" row claimed two bests. "Basic" and
+    /// "Good" stay — they are the cue that a wider row trades accuracy away.
     private func sizeAndName(_ model: LocalModelDescriptor, kind: ModelChoice.Kind?) -> String {
-        let name = model.plain.title.replacingOccurrences(of: " · ", with: ", ")
-        return kind == nil ? model.sizeLabel : "\(model.sizeLabel) · \(name)"
+        guard kind != nil else { return model.sizeLabel }
+        var parts = model.plain.title.components(separatedBy: " · ")
+        if parts.count > 1, Self.qualityWords.contains(parts[0]) { parts.removeFirst() }
+        let name = parts.joined(separator: ", ")
+        return "\(model.sizeLabel) · \(name.prefix(1).uppercased() + name.dropFirst())"
     }
+
+    private static let qualityWords: Set<String> = ["Best"]
 
     private func languagesFact(for model: LocalModelDescriptor) -> String {
         if model.languageCodes.count > 2 { return "\(model.languageCodes.count) languages" }
@@ -561,7 +571,9 @@ struct LocalModelPicker: View {
                   state(for: model) == .notDownloaded {
             // The docked button says Download; this says what that costs in
             // time, which is nothing: setup carries on while it arrives.
-            Text("It downloads while you finish setting up. You can switch models any time in Settings.")
+            // One sentence: the page's own subtitle already says a model can be
+            // switched later, and a second line ran under the docked button.
+            Text("It downloads while you finish setting up.")
                 .font(.footnote)
                 .foregroundStyle(Color.vocaSecondaryText)
                 .fixedSize(horizontal: false, vertical: true)

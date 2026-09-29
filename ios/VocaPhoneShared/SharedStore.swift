@@ -45,6 +45,7 @@ final class SharedStore: @unchecked Sendable {
         try data.write(to: url(for: record.sessionID, directory: directory), options: .atomic)
         if record.state != .recording {
             try? fileManager.removeItem(at: meterURL(for: record.sessionID, directory: directory))
+            try? fileManager.removeItem(at: liveTranscriptURL(for: record.sessionID, directory: directory))
         }
         notify(.sessionChanged)
         if rootOverride == nil {
@@ -71,6 +72,41 @@ final class SharedStore: @unchecked Sendable {
         }
     }
 
+    /// The words decoded so far in a recording that is still going, so the
+    /// keyboard can show the speaker that they are being heard.
+    ///
+    /// Kept beside the record rather than in it, for the reason the meter is:
+    /// the app writing a stale record to carry a sentence could overwrite the
+    /// keyboard's Finish or Cancel. It lives only while the session records —
+    /// saving the record in any other state deletes it — and it is written to
+    /// the App Group alone, the same place the finished transcript goes.
+    ///
+    /// Written first and checked after. The keyboard's Finish or Cancel saves
+    /// the record and *then* deletes this file, so a check made before the
+    /// write can pass just ahead of that save and leave the words behind with
+    /// nothing left to clean them up. Reading the state after the write closes
+    /// it: either this read sees the new state and deletes the file, or the
+    /// save comes later and its own delete does.
+    func saveLiveTranscript(_ text: String, for id: UUID) throws {
+        let directory = try sessionsDirectory()
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+        let fileURL = liveTranscriptURL(for: id, directory: directory)
+        try Data(text.utf8).write(to: fileURL, options: .atomic)
+        guard decodedRecord(at: url(for: id, directory: directory))?.state == .recording else {
+            try? fileManager.removeItem(at: fileURL)
+            return
+        }
+        notify(.sessionChanged)
+    }
+
+    func liveTranscript(for id: UUID) -> String? {
+        guard let directory = try? sessionsDirectory(),
+              let data = try? Data(contentsOf: liveTranscriptURL(for: id, directory: directory))
+        else { return nil }
+        let text = String(decoding: data, as: UTF8.self)
+        return text.isEmpty ? nil : text
+    }
+
     func load(_ id: UUID) throws -> SessionRecord? {
         let directory = try sessionsDirectory()
         let fileURL = url(for: id, directory: directory)
@@ -91,6 +127,7 @@ final class SharedStore: @unchecked Sendable {
         let directory = try sessionsDirectory()
         try? fileManager.removeItem(at: url(for: id, directory: directory))
         try? fileManager.removeItem(at: meterURL(for: id, directory: directory))
+        try? fileManager.removeItem(at: liveTranscriptURL(for: id, directory: directory))
         notify(.sessionChanged)
     }
 
@@ -128,6 +165,9 @@ final class SharedStore: @unchecked Sendable {
             try? fileManager.removeItem(at: url)
             try? fileManager.removeItem(
                 at: url.deletingPathExtension().appendingPathExtension("meter")
+            )
+            try? fileManager.removeItem(
+                at: url.deletingPathExtension().appendingPathExtension("live")
             )
             removed += 1
         }
@@ -200,6 +240,9 @@ final class SharedStore: @unchecked Sendable {
             try? fileManager.removeItem(at: url)
             try? fileManager.removeItem(
                 at: url.deletingPathExtension().appendingPathExtension("meter")
+            )
+            try? fileManager.removeItem(
+                at: url.deletingPathExtension().appendingPathExtension("live")
             )
             removed += 1
         }
@@ -336,6 +379,12 @@ final class SharedStore: @unchecked Sendable {
         directory
             .appendingPathComponent(id.uuidString.lowercased())
             .appendingPathExtension("meter")
+    }
+
+    private func liveTranscriptURL(for id: UUID, directory: URL) -> URL {
+        directory
+            .appendingPathComponent(id.uuidString.lowercased())
+            .appendingPathExtension("live")
     }
 
     private func quickDictationURL(root: URL) -> URL {

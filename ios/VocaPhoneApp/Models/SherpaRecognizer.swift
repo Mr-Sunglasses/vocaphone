@@ -295,8 +295,9 @@ extension SherpaIncrementalSession {
     convenience init(
         chunks: AsyncStream<Data>,
         recognizer: SherpaRecognizer,
-        detector: (@Sendable () -> SpeechActivityDetecting?)? = nil
+        detector: (@Sendable () -> SpeechActivityDetecting?)? = nil,
+        onText: (@Sendable (String) -> Void)? = nil
     ) {
-        self.init(chunks: chunks, detector: detector) { recognizer.transcribeChunk($0) }
+        self.init(chunks: chunks, detector: detector, onText: onText) { recognizer.transcribeChunk($0) }
     }
 }

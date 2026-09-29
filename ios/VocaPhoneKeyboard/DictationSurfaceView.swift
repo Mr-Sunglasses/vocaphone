@@ -137,6 +137,13 @@ final class DictationSurfaceState: ObservableObject {
         get { recoveryMessage ?? storedCenterMessage }
         set { change(&storedCenterMessage, to: newValue) }
     }
+    /// The words the app has decoded so far, while recording on this iPhone.
+    /// A preview for the speaker, never the text that is inserted.
+    private var storedLiveTranscript: String? = nil
+    var liveTranscript: String? {
+        get { storedLiveTranscript }
+        set { change(&storedLiveTranscript, to: newValue) }
+    }
     /// Recovery guidance survives polling until the session makes progress.
     /// Keep it separate from the model message that render refreshes each time.
     @Published private(set) var recoveryMessage: String?
@@ -661,23 +668,38 @@ struct DictationSurfaceView: View {
                         .frame(height: 48)
                     }
 
-                    ScrollView {
-                        Text(centerText)
+                    if isRecording, let live = state.liveTranscript {
+                        // The latest words, not the first: the line follows the
+                        // speaker, so it is cut at the front.
+                        Text(live)
                             .frame(maxWidth: .infinity)
                             .font(.system(size: 15, weight: .regular))
                             .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(2)
+                            .truncationMode(.head)
                             .padding(.horizontal, 24)
-                            .foregroundStyle(state.isDark ? Color(white: 0.65) : Color(white: 0.45))
-                            // A reserved line, so swapping one sentence for another
-                            // does not resize the block the waveform is sitting on.
-                            // "Automatic • Clean" and "Transcribing" are not the
-                            // same width, and without this the row re-centres
-                            // around the difference.
+                            .foregroundStyle(state.isDark ? Color(white: 0.8) : Color(white: 0.3))
                             .frame(minHeight: 20)
-                            .animation(nil, value: centerText)
+                            .accessibilityLabel("Heard so far: \(live)")
+                    } else {
+                        ScrollView {
+                            Text(centerText)
+                                .frame(maxWidth: .infinity)
+                                .font(.system(size: 15, weight: .regular))
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.horizontal, 24)
+                                .foregroundStyle(state.isDark ? Color(white: 0.65) : Color(white: 0.45))
+                                // A reserved line, so swapping one sentence for another
+                                // does not resize the block the waveform is sitting on.
+                                // "Automatic • Clean" and "Transcribing" are not the
+                                // same width, and without this the row re-centres
+                                // around the difference.
+                                .frame(minHeight: 20)
+                                .animation(nil, value: centerText)
+                        }
+                        .frame(maxHeight: hasMessage && !isWorking ? 140 : 40)
                     }
-                    .frame(maxHeight: hasMessage && !isWorking ? 140 : 40)
                 }
                 .transition(.asymmetric(
                     insertion: .scale(scale: 0.88).combined(with: .opacity),

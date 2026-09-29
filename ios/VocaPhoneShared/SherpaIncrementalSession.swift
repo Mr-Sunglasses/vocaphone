@@ -56,13 +56,19 @@ final class SherpaIncrementalSession: @unchecked Sendable {
     /// the real one. `detector` is made on the consuming task, which owns it;
     /// nil, or a factory that returns nil, decodes exactly as before: nothing
     /// early and nothing trimmed.
+    ///
+    /// `onText` hears the words decoded so far each time they change — a chunk
+    /// let go, or a pause decoded early — for the keyboard to show while the
+    /// speaker is still talking. It is a preview: the transcript is whatever
+    /// `finish` returns.
     init(
         chunks: AsyncStream<Data>,
         detector: (@Sendable () -> SpeechActivityDetecting?)? = nil,
+        onText: (@Sendable (String) -> Void)? = nil,
         decode: @escaping @Sendable ([Float]) -> SherpaDecodeOutcome
     ) {
         task = Task.detached(priority: .userInitiated) {
-            await Self.transcribe(chunks: chunks, detector: detector?(), decode: decode)
+            await Self.transcribe(chunks: chunks, detector: detector?(), onText: onText, decode: decode)
         }
     }
 
@@ -84,6 +90,7 @@ final class SherpaIncrementalSession: @unchecked Sendable {
     private static func transcribe(
         chunks: AsyncStream<Data>,
         detector: SpeechActivityDetecting?,
+        onText: (@Sendable (String) -> Void)? = nil,
         decode: @Sendable ([Float]) -> SherpaDecodeOutcome
     ) async -> SherpaIncrementalResult {
         var samples: [Float] = []
@@ -114,6 +121,16 @@ final class SherpaIncrementalSession: @unchecked Sendable {
         // Speech the detector has heard, in recording samples.
         var regions: [SpeechRegion] = []
         var earlyDecode: EarlyDecode?
+        var reported = ""
+
+        /// Tells `onText` about a preview that changed, and nothing else.
+        func report(_ preview: SherpaTranscript) {
+            guard let onText else { return }
+            let text = preview.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, text != reported else { return }
+            reported = text
+            onText(text)
+        }
 
         /// Skipped as silence, or decoded — levelled with `gain`.
         func decodeLevelled(_ chunk: [Float], gain: Float) -> SherpaDecodeOutcome? {
@@ -176,6 +193,9 @@ final class SherpaIncrementalSession: @unchecked Sendable {
             // the finish path decides that for itself.
             guard let outcome = decodeLevelled(chunk, gain: gain) else { return }
             earlyDecode = EarlyDecode(start: offset, end: end, gain: gain, outcome: outcome)
+            if case let .decoded(decoded) = outcome {
+                report(transcript.appending(decoded, deduplicateOverlap: overlapsPrevious))
+            }
         }
 
         func result(reusedEarlyDecode: Bool = false, trimmed: Int = 0) -> SherpaIncrementalResult {
@@ -207,6 +227,7 @@ final class SherpaIncrementalSession: @unchecked Sendable {
                 overlapsPrevious = split.nextStart < split.endExclusive
                 retainedHead = split.endExclusive - split.nextStart
                 earlyDecode = nil
+                report(transcript)
             }
             if !closed.isEmpty { decodeEarly() }
         }

@@ -1247,6 +1247,10 @@ extension LocalModelCatalog {
     /// one choice shown twice.
     static let smallerChoiceShare = 0.6
 
+    /// The lowest `ModelPlainLanguage.accuracy` a smaller choice may have: it
+    /// is offered as a trade, and a Basic model is not one.
+    static let minimumSmallerChoiceAccuracy = 2
+
     /// The rows on Choose model, best first, each model once. Empty when
     /// nothing this iPhone can run covers the language.
     static func modelChoices(
@@ -1285,9 +1289,14 @@ extension LocalModelCatalog {
         // The most accurate model that is a real saving, and only then the
         // plain smallest: a Japanese speaker is better served by SenseVoice at
         // 240 MB than by the 147 MB Whisper Base.
+        //
+        // Never a Basic model, though. Whisper Base was the smaller row for
+        // Hindi, sold as "a few more mistakes", when outside English it makes
+        // far more than a few. No smaller row is more honest than that one.
         let ceiling = Double(best.sizeBytes) * smallerChoiceShare
         let isSaving = { (model: LocalModelDescriptor) in
             model.id != best.id && Double(model.sizeBytes) < ceiling
+                && model.plain.accuracy >= minimumSmallerChoiceAccuracy
         }
         // Rated best first, then the smaller of two equals — across both
         // lists, so size never outranks accuracy: English gets the 131 MB

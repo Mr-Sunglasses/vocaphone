@@ -67,6 +67,13 @@ session for the selected engine (`SherpaIncrementalSession` or
   else decodes again, so the early decode can make a dictation faster, never
   different.
 
+Each early decode is also a preview. With Show words while speaking on (off by
+default), the app writes the text decoded so far to
+`<session>.live` beside the session record — kept apart from the record, like
+the meter, so a stale write from the app cannot overwrite the keyboard's Finish
+or Cancel — and the keyboard shows the latest words under the waveform while
+recording. Saving the record in any state but `recording` deletes the file.
+
 The WAV file is still written and stays authoritative: if the capture queue
 refused a chunk, the finish path decodes the file as before. Retries of a
 preserved recording also decode the file. `localTranscriptionTimed` in the

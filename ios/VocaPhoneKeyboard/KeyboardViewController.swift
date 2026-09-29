@@ -1570,6 +1570,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
         dictationSurfaceState.sessionID = record?.sessionID
         dictationSurfaceState.state = state
+        dictationSurfaceState.liveTranscript = state == .recording && KeyboardPreferences.liveWords
+            ? record.flatMap { store.liveTranscript(for: $0.sessionID) }
+            : nil
         dictationSurfaceState.isDark = prefersDarkAppearance
         dictationSurfaceState.typing.isDark = prefersDarkAppearance
         dictationSurfaceState.showsGlobeKey = needsInputModeSwitchKey
