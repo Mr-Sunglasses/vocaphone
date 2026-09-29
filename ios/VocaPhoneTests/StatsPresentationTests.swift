@@ -30,7 +30,7 @@ struct StatsPresentationTests {
 
     @Test func shareCopyNamesBothPrivateProcessingRoutes() {
         let message = StatsShareComposer.message(stats, now: now, handle: StatsShareComposer.xHandle)
-        #expect(message.contains("I’ve spoken 12,500 words with VocaPhone"))
+        #expect(message.contains("I’ve spoken 12,500 words with vocaphone"))
         #expect(message.contains("1 hour of talking"))
         #expect(message.contains("my phone or my own self-hosted gateway"))
         #expect(message.contains("My audio stays mine"))

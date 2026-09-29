@@ -86,7 +86,7 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
         case .raw:
             "Exactly what the model returned, with nothing changed."
         case .clean:
-            "Spacing tidied and a closing full stop. Random capitals from the model are flattened; names like VocaPhone stay."
+            "Spacing tidied and a closing full stop. Random capitals from the model are flattened; names like iPhone stay."
         case .formal:
             "Sentence capitalization and a closing full stop. Mid-sentence Title Case from the model is flattened."
         case .casual:
@@ -112,7 +112,7 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
     private var exampleSource: String {
         switch self {
         case .raw:
-            "ok so  this is VocaPhone. it is a Keyboard"
+            "ok so  this is vocaphone. it is a Keyboard"
         case .clean:
             "all done for today"
         case .formal:
@@ -299,10 +299,24 @@ enum MicrophonePreference: String, Codable, CaseIterable, Identifiable, Sendable
         }
     }
 
+    /// Only iOS 26 can ask AirPods for full-bandwidth recording, so only there
+    /// is it promised; older systems are told plainly what a headset costs.
+    static func automaticDetail(fullQualityAirPods: Bool) -> String {
+        let headsets = fullQualityAirPods
+            ? "AirPods that support it record at full quality; other headsets send "
+            : "A headset sends "
+        return "iOS chooses the input and may use a Bluetooth headset's microphone when "
+            + "connected. " + headsets + "telephone-quality audio, which on-device models "
+            + "transcribe less accurately than the iPhone's own microphone."
+    }
+
     var detail: String {
         switch self {
         case .automatic:
-            "iOS chooses the input and may use an AirPods microphone when connected."
+            Self.automaticDetail(fullQualityAirPods: {
+                if #available(iOS 26.0, *) { return true }
+                return false
+            }())
         case .iPhone:
             "Always request the microphone built into this iPhone."
         }
@@ -557,6 +571,7 @@ enum KeyboardPreferences {
     static let translateToKey = "translateTo"
     static let microphonePreferenceKey = "microphonePreference"
     static let recordingSoundsKey = "recordingSoundsEnabled"
+    static let stopAfterPauseKey = "stopAfterPause"
     static let containingAppForegroundKey = "containingAppForeground"
     static let setupCompletedKey = "setupCompleted"
     /// The exact first-run page to restore if iOS terminates the app while the
@@ -836,6 +851,14 @@ enum KeyboardPreferences {
     static var recordingSoundsEnabled: Bool {
         get { defaults?.bool(forKey: recordingSoundsKey) ?? false }
         set { defaults?.set(newValue, forKey: recordingSoundsKey) }
+    }
+
+    /// Whether a dictation finishes by itself after a pause in speech. Off by
+    /// default: people pause to think, and a recording that stops under them
+    /// is worse than one they stop themselves. See ``PauseDetector``.
+    static var stopAfterPause: Bool {
+        get { defaults?.bool(forKey: stopAfterPauseKey) ?? false }
+        set { defaults?.set(newValue, forKey: stopAfterPauseKey) }
     }
 
     /// Whether dictated number words are written as digits — "six pm" as

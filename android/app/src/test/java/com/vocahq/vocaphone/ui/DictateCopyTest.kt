@@ -65,4 +65,11 @@ class DictateCopyTest {
         assertFalse(showScratchpadHint("", DictationPhase.TRANSCRIBING))
         assertTrue(showScratchpadHint("", DictationPhase.FAILED))
     }
+
+    @Test
+    fun theModelChipSaysDownloadingWhileOneIsOnItsWay() {
+        val local = VocaPhoneSettings(localTranscriptionEnabled = true)
+        assertEquals(DictateCopy.DOWNLOADING, dictateModelChipLabel(local, downloading = "parakeet-tdt-0.6b-v2-en"))
+        assertEquals(DictateCopy.NO_MODEL, dictateModelChipLabel(local, downloading = null))
+    }
 }

@@ -20,12 +20,13 @@ struct GatewaySetupView: View {
         List {
             // Once a gateway has been paired, its current state is the first
             // thing worth reading; the address and token below it are
-            // maintenance. Before pairing there is no state to report, so the
-            // scanner leads instead.
+            // maintenance. Before there is an address there is nothing to
+            // report or test — "Not ready · Not tested" and a disabled Test
+            // button were a status and an action with no subject — so the
+            // scanner leads and Save and test is the one action.
             if !gatewayURL.isEmpty { statusSection }
             pairingSection
             addressSection
-            if gatewayURL.isEmpty { statusSection }
         }
         .navigationTitle("Gateway")
         .navigationBarTitleDisplayMode(.inline)
@@ -65,10 +66,15 @@ struct GatewaySetupView: View {
 
     private var addressSection: some View {
         Section {
+            // `verbatim`: a plain string title is a localized key, and its
+            // Markdown turned the example URLs into blue links that read as
+            // addresses already filled in.
             TextField(
-                "http://homelabone:8765 or https://dictation.example.com",
-                text: $gatewayURL
-            )
+                text: $gatewayURL,
+                prompt: Text(verbatim: "http://homelab.local:8765")
+            ) {
+                Text("Gateway address")
+            }
             .textInputAutocapitalization(.never)
             .keyboardType(.URL)
 
@@ -132,7 +138,7 @@ struct GatewaySetupView: View {
                     if isTestingGateway {
                         ProgressView().controlSize(.small)
                     }
-                    Text(isTestingGateway ? "Testing gateway…" : "Test again")
+                    Text(isTestingGateway ? "Testing gateway…" : hasBeenTested ? "Test again" : "Test connection")
                 }
             }
             .disabled(isTestingGateway || validatedGatewayURL == nil)
@@ -146,6 +152,8 @@ struct GatewaySetupView: View {
             )
         }
     }
+
+    private var hasBeenTested: Bool { healthMessage != "Not tested" }
 
     private var validatedGatewayURL: URL? {
         GatewayEndpoint.validatedURL(from: gatewayURL)

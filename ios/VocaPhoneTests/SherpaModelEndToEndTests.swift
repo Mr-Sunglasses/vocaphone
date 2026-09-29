@@ -26,6 +26,21 @@ struct SherpaModelEndToEndTests {
         #expect(missing.isEmpty, "\(scenario.name): missing \(missing) in “\(text)”")
     }
 
+    /// A dictation from a phone on the desk, ended by a tap on Stop that the
+    /// microphone hears as a knock. The loudest sample used to set the gain,
+    /// so the knock kept the speech at 0.015 and this model returned the last
+    /// sentence alone (two of seven markers). Levelled on the speech, it hears
+    /// every sentence.
+    @Test func aStopTapDoesNotSilenceQuietSpeech() throws {
+        let scenario = try #require(ModelEndToEnd.scenarios.first { $0.name == "continuous" })
+        let recording = ModelEndToEnd.quietWithStopTap(try ModelEndToEnd.samples(scenario))
+        let text = SherpaEndToEnd.finished(
+            try SherpaEndToEnd.wholeFile(SpeechAudioConditioning.condition(recording))
+        )
+        let missing = scenario.markers.filter { !text.lowercased().contains($0) }
+        #expect(missing.isEmpty, "quiet with a stop tap: missing \(missing) in “\(text)”")
+    }
+
     /// What a sherpa dictation actually does: decode while recording, a
     /// hundred milliseconds of capture at a time, then re-decode the file if
     /// the streaming pass came back empty or lost a chunk, as

@@ -70,8 +70,11 @@ struct TranscriptHistoryView: View {
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $filter.query, prompt: "Search transcripts")
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                filterMenu
+            // Nothing to filter until there is something to show.
+            if !records.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    filterMenu
+                }
             }
         }
         .task { await reload() }

@@ -147,6 +147,24 @@ final class SharedStore: @unchecked Sendable {
             }
     }
 
+    /// Filter session records before limiting the result. Failed or canceled
+    /// sessions can be newer than the transcripts Home needs to show.
+    func recentTranscripts(limit: Int) throws -> [SessionRecord] {
+        guard limit > 0 else { return [] }
+        let directory = try sessionsDirectory()
+        guard fileManager.fileExists(atPath: directory.path) else { return [] }
+        return Array(try sessionFilesByRecency(in: directory)
+            .lazy
+            .compactMap { url -> SessionRecord? in
+                guard var record = self.decodedRecord(at: url),
+                      !((record.transcript ?? "").isEmpty)
+                else { return nil }
+                self.applyMeter(to: &record, directory: directory)
+                return record
+            }
+            .prefix(limit))
+    }
+
     /// Returns the newest session without decoding the whole directory. The
     /// keyboard extension calls this from its main thread, so the cost has to
     /// stay flat as sessions accumulate rather than growing with the archive.

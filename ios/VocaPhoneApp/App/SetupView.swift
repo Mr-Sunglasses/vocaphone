@@ -94,6 +94,9 @@ struct SetupView: View {
         store: KeyboardPreferences.defaults
     ) private var keyboardSettingsRoundTripStarted = false
     @State private var isShowingGatewaySetup = false
+    /// The row picked on Choose model. The picker keeps it on the page; the
+    /// docked button downloads it or continues with it.
+    @State private var onboardingModelChoice: String?
     /// Answered here or with the switch in Settings › Privacy.
     @State private var hasAskedAboutReporting = UserDefaultsTelemetryPreferences().hasBeenAsked
     @State private var isShowingReportingPayload = false
@@ -165,16 +168,45 @@ struct SetupView: View {
 
     private var status: SetupStatus { coordinator.setupStatus }
 
-    /// The three onboarding cards, the same list `LocalModelPicker` draws.
+    /// The rows on Choose model, the same list `LocalModelPicker` draws.
     private var onboardingModelPicks: [LocalModelDescriptor] {
-        let languages = LocalModelPicker.recommendationLanguages(
+        LocalModelPicker.choices(
             preferred: KeyboardPreferences.transcriptionLanguage.rawValue
         )
-        return LocalModelCatalog.onboardingRecommendations(
-            deviceMemoryGB: LocalModelCatalog.deviceMemoryGB,
-            languages: languages
-        )
         .map(\.model)
+    }
+
+    /// What the docked button on Choose model acts on: the picked row, or the
+    /// best one before the picker has written a pick.
+    private var chosenOnboardingModel: LocalModelDescriptor? {
+        LocalModelCatalog.descriptor(for: onboardingModelChoice) ?? onboardingModelPicks.first
+    }
+
+    /// The chosen model is verified and on disk.
+    private var chosenModelIsReady: Bool {
+        guard let model = chosenOnboardingModel else { return false }
+        let models = coordinator.localModels
+        return models.isDownloaded(model.id) && !models.failedIntegrityModelIDs.contains(model.id)
+    }
+
+    /// The chosen model is downloading or waiting for a slot.
+    private var chosenModelIsArriving: Bool {
+        guard let model = chosenOnboardingModel else { return false }
+        return coordinator.localModels.isDownloading(model.id) || coordinator.localModels.isQueued(model.id)
+    }
+
+    /// Too big for what is free. The page says so under the list.
+    private var chosenModelLacksStorage: Bool {
+        guard let model = chosenOnboardingModel, !chosenModelIsReady, !chosenModelIsArriving else {
+            return false
+        }
+        let warning = DownloadReadiness.warning(
+            sizeBytes: model.sizeBytes,
+            freeBytes: coordinator.localModels.availableStorageBytes,
+            metered: false
+        )
+        if case .notEnoughStorage = warning { return true }
+        return false
     }
 
     /// Continue is available once a model is on disk *or* on its way.
@@ -184,7 +216,8 @@ struct SetupView: View {
     /// Continue must not do is leave with nothing coming at all — that is what
     /// Skip is for, and Skip says so by dropping Try dictating.
     private var isOnboardingModelActionDisabled: Bool {
-        onboardingReadyModels.isEmpty && !modelIsArriving
+        guard localTranscriptionEnabled else { return false }
+        return chosenOnboardingModel == nil || chosenModelLacksStorage
     }
 
     /// Every verified model on disk, not only the three cards: More models
@@ -755,7 +788,11 @@ struct SetupView: View {
     /// Skip on Choose model is the no-download answer. Get takes that away.
     private var showsSkip: Bool {
         guard !holdingKeyboardOff, readyFlash == .none else { return false }
-        return OnboardingPresentation.showsSkip(stage: stage, modelIsArriving: modelIsArriving)
+        return OnboardingPresentation.showsSkip(
+            stage: stage,
+            modelIsArriving: modelIsArriving,
+            localTranscriptionEnabled: localTranscriptionEnabled
+        )
     }
 
     @ViewBuilder private var backControl: some View {
@@ -826,10 +863,10 @@ struct SetupView: View {
         switch page {
         case .welcome:
             ("Dictate into any app", "A keyboard that types what you say.")
-        case .source:
-            ("Choose where speech becomes text", "On this iPhone, or a gateway you run.")
         case .model:
-            ("Choose model", "It turns your voice into text, offline on this iPhone. You can switch later.")
+            localTranscriptionEnabled
+                ? ("Choose model", "It turns your voice into text, offline on this iPhone. You can switch later.")
+                : ("Use your gateway", "Speech becomes text on a server you run. Audio goes only there.")
         case .microphone:
             ("Microphone for dictation", "So vocaphone can hear what you say.")
         case .keyboard:
@@ -879,9 +916,14 @@ struct SetupView: View {
         }
     }
 
-    /// App Store pattern: Get lives on the cards. The docked button is Continue.
+    /// One button for the whole page: it downloads the picked row and moves
+    /// on, or continues with it when it is already here or on its way. The
+    /// default path through Choose model is a single tap.
     private var onboardingModelAction: (title: String, perform: () -> Void) {
-        ("Continue", continueOnboardingModels)
+        if let model = chosenOnboardingModel, !chosenModelIsReady, !chosenModelIsArriving {
+            return ("Download · \(model.sizeLabel)", downloadChosenModelAndContinue)
+        }
+        return ("Continue", continueOnboardingModels)
     }
 
     /// Keep the next action in reach, including on small screens and at large text sizes.
@@ -894,11 +936,9 @@ struct SetupView: View {
         } else {
         switch page {
         case .welcome: ("Continue", advance)
-        case .source:
-            if localTranscriptionEnabled {
-                ("Next", advance)
-            } else if status.isSatisfied(.source) {
-                ("Next", advance)
+        case .model where !localTranscriptionEnabled:
+            if status.isSatisfied(.source) {
+                ("Continue", advance)
             } else {
                 ("Set up gateway", { isShowingGatewaySetup = true })
             }
@@ -932,7 +972,8 @@ struct SetupView: View {
         switch status.microphone {
         case .granted: return ("Continue", advance)
         case .undetermined:
-            return ("Continue", {
+            // Named for what it does: the next thing on screen is iOS asking.
+            return ("Allow microphone", {
                 coordinator.requestMicrophonePermission(armQuickDictationOnGrant: false)
             })
         case .denied: return ("Open Settings", openSystemSettings)
@@ -943,8 +984,6 @@ struct SetupView: View {
         switch page {
         case .welcome:
             welcomeStage
-        case .source:
-            sourceStage
         case .model:
             modelStage
         case .microphone:
@@ -1039,38 +1078,44 @@ struct SetupView: View {
         .sheet(isPresented: $isShowingReportingDetails) { UsageReportingDetailsSheet() }
     }
 
-    private var sourceStage: some View {
+    /// Choose model is also where the gateway lives. A page of its own asked
+    /// everyone a question the Welcome page had already answered — speech
+    /// stays on this iPhone unless you run a gateway — so the gateway is one
+    /// quiet link here, and the page becomes its setup when chosen.
+    @ViewBuilder private var modelStage: some View {
         VStack(alignment: .leading, spacing: VocaMetrics.grouping) {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                SourceChoiceCard(
-                    title: "Your phone",
-                    detail: "Audio and speech stay on this iPhone.",
-                    symbol: "iphone",
-                    isSelected: localTranscriptionEnabled
-                ) {
+            if localTranscriptionEnabled {
+                LocalModelPicker(
+                    manager: coordinator.localModels,
+                    onChange: { coordinator.refreshSetupStatus() },
+                    onboarding: true,
+                    guidanceLanguage: KeyboardPreferences.transcriptionLanguage.rawValue,
+                    selection: $onboardingModelChoice
+                )
+                Button("Use my own gateway instead") {
+                    localTranscriptionEnabled = false
+                    isShowingGatewaySetup = true
+                }
+                .font(.subheadline.weight(.semibold))
+                .tint(Color.brand)
+                .frame(minHeight: VocaMetrics.minimumTarget)
+                .padding(.horizontal, VocaMetrics.tight)
+            } else {
+                OnboardingBoardCard {
+                    OnboardingFeatureCopy(
+                        symbol: "server.rack",
+                        title: status.isSatisfied(.source) ? "Your gateway is ready" : "Pair your gateway",
+                        detail: status.source.readinessDetail
+                    )
+                }
+                Button("Use a model on this iPhone instead") {
                     localTranscriptionEnabled = true
                 }
-
-                SourceChoiceCard(
-                    title: "Gateway",
-                    detail: "Audio goes to a gateway you run.",
-                    symbol: "server.rack",
-                    isSelected: !localTranscriptionEnabled
-                ) {
-                    localTranscriptionEnabled = false
-                }
+                .font(.subheadline.weight(.semibold))
+                .tint(Color.brand)
+                .frame(minHeight: VocaMetrics.minimumTarget)
+                .padding(.horizontal, VocaMetrics.tight)
             }
-        }
-    }
-
-    private var modelStage: some View {
-        VStack(alignment: .leading, spacing: VocaMetrics.grouping) {
-            LocalModelPicker(
-                manager: coordinator.localModels,
-                onChange: { coordinator.refreshSetupStatus() },
-                onboarding: true,
-                guidanceLanguage: KeyboardPreferences.transcriptionLanguage.rawValue
-            )
         }
         .task { coordinator.refreshSetupStatus() }
     }
@@ -1621,10 +1666,7 @@ struct SetupView: View {
     /// One page forward. Never marks setup done, never opens home.
     private func skipForward() {
         guard showsSkip else { return }
-        guard var next = OnboardingPresentation.nextStage(after: stage) else { return }
-        if next == .model, !localTranscriptionEnabled {
-            next = .microphone
-        }
+        guard let next = OnboardingPresentation.nextStage(after: stage) else { return }
         practiceFocused = false
         keyboardProbeFocused = false
         moveToStage(next)
@@ -1638,7 +1680,6 @@ struct SetupView: View {
         keyboardProbeFocused = false
         guard let previous = OnboardingPresentation.previousNavigableStage(
             before: stage,
-            localTranscriptionEnabled: localTranscriptionEnabled,
             isKeyboardReady: status.isSatisfied(.keyboard),
             practiceBlockedUntilModel: practiceNeedsModel
         ) else { return }
@@ -1768,10 +1809,6 @@ struct SetupView: View {
         switch stage {
         case .welcome:
             break
-        case .source:
-            if !localTranscriptionEnabled {
-                guard status.isSatisfied(.source) else { return }
-            }
         case .model:
             // A model on its way counts. `isSatisfied(.source)` means "on
             // disk", which is exactly what is not true yet on the page whose
@@ -1791,9 +1828,6 @@ struct SetupView: View {
             return
         }
         guard var next = OnboardingPresentation.nextStage(after: stage) else { return }
-        if next == .model, !localTranscriptionEnabled {
-            next = .microphone
-        }
         if stage == .model {
             next = OnboardingPresentation.stageAfterOnboardingModelDownload(
                 status: status,
@@ -1809,7 +1843,11 @@ struct SetupView: View {
     private func continueOnboardingModels() {
         let ready = onboardingReadyModels
         let readyIDs = Set(ready.map(\.id))
-        guard let model = ready.first(where: { $0.id == LocalTranscriptionPreferences.modelIdentifier })
+        // The picked row wins when it is here: it is what the page showed as
+        // chosen when the button was tapped.
+        let chosen = chosenModelIsReady ? chosenOnboardingModel : nil
+        guard let model = chosen
+            ?? ready.first(where: { $0.id == LocalTranscriptionPreferences.modelIdentifier })
             ?? onboardingModelPicks.first(where: { readyIDs.contains($0.id) })
             ?? ready.first
         else {
@@ -1824,6 +1862,45 @@ struct SetupView: View {
         coordinator.refreshSetupStatus()
         advance()
         Task { await prepareOnboardingModelInBackground(model) }
+    }
+
+    /// Starts the picked model and leaves the page in the same tap. The
+    /// transfer outlives the page; adding the keyboard takes about as long as
+    /// the download does.
+    private func downloadChosenModelAndContinue() {
+        guard let model = chosenOnboardingModel else { return }
+        let models = coordinator.localModels
+        let inUseAtRequest = LocalTranscriptionPreferences.modelIdentifier
+        OnboardingDownloadRequests.latest = model.id
+        models.startDownload(model) {
+            defer { coordinator.refreshSetupStatus() }
+            guard models.isDownloaded(model.id),
+                  !models.failedIntegrityModelIDs.contains(model.id)
+            else { return }
+            // Read from storage, not from this page's state: the page is
+            // usually long gone by the time a download finishes.
+            let inUseNow = LocalTranscriptionPreferences.modelIdentifier
+            let adopts = OnboardingPresentation.adoptsOnboardingDownload(
+                modelID: model.id,
+                latestRequestID: OnboardingDownloadRequests.latest,
+                inUseAtRequest: inUseAtRequest,
+                inUseNow: inUseNow,
+                inUseNowIsUsable: inUseNow.map {
+                    models.isDownloaded($0) && !models.failedIntegrityModelIDs.contains($0)
+                } ?? false,
+                adoptedByEarlierDownload: OnboardingDownloadRequests.adopted
+            )
+            guard adopts else { return }
+            LocalTranscriptionPreferences.modelIdentifier = model.id
+            LocalTranscriptionPreferences.enabled = true
+            if OnboardingDownloadRequests.latest != model.id {
+                // In place only because nothing else was. A later pick that
+                // lands after it may still replace it.
+                OnboardingDownloadRequests.adopted = model.id
+            }
+        }
+        coordinator.refreshSetupStatus()
+        advance()
     }
 
     private func prepareOnboardingModelInBackground(_ model: LocalModelDescriptor) async {
@@ -2864,79 +2941,6 @@ private struct CompletionNotice: View {
     }
 }
 
-private struct SourceChoiceCard: View {
-    let title: String
-    let detail: String
-    let symbol: String
-    let isSelected: Bool
-    let action: () -> Void
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        Button(action: action) {
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                        HStack(alignment: .top, spacing: VocaMetrics.padding) {
-                            Image(systemName: symbol)
-                                .font(.title3)
-                                .foregroundStyle(isSelected ? Color.brand : Color.vocaSecondaryText)
-                            Spacer(minLength: 0)
-                            checkbox
-                        }
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(title)
-                                .font(.headline)
-                                .foregroundStyle(.primary)
-                            Text(detail)
-                                .font(.subheadline)
-                                .foregroundStyle(Color.vocaSecondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                } else {
-                    HStack(alignment: .top, spacing: VocaMetrics.padding) {
-                        Image(systemName: symbol)
-                            .font(.title3)
-                            .foregroundStyle(isSelected ? Color.brand : Color.vocaSecondaryText)
-                            .frame(width: 26)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(title)
-                                .font(.headline)
-                                .foregroundStyle(.primary)
-                            Text(detail)
-                                .font(.subheadline)
-                                .foregroundStyle(Color.vocaSecondaryText)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                        Spacer(minLength: 0)
-                        checkbox
-                    }
-                }
-            }
-            .padding(VocaMetrics.padding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                Color.vocaSurface,
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(isSelected ? Color.brand.opacity(0.5) : Color.clear, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-    }
-
-    private var checkbox: some View {
-        Image(systemName: isSelected ? "checkmark.square.fill" : "square")
-            .font(.title3)
-            .foregroundStyle(isSelected ? Color.brand : Color.vocaBorder)
-            .accessibilityHidden(true)
-    }
-}
-
 /// The one switch the repair page is about, and where to find it.
 ///
 /// This was a three-state checklist row. Two of the three states had no
@@ -3067,3 +3071,14 @@ private struct OnboardingWelcomeVisual: View {
     }
 }
 #endif
+
+/// Choose model's docked downloads, across the life of the process rather
+/// than of the page that started them. See
+/// `OnboardingPresentation.adoptsOnboardingDownload`.
+@MainActor
+enum OnboardingDownloadRequests {
+    /// The model the docked button asked for most recently.
+    static var latest: String?
+    /// A model an earlier download put in use only because nothing was.
+    static var adopted: String?
+}

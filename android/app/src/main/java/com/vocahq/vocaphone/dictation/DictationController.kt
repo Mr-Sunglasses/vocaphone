@@ -15,6 +15,7 @@ import com.vocahq.vocaphone.audio.MicrophoneInterruption
 import com.vocahq.vocaphone.audio.PcmConversion
 import com.vocahq.vocaphone.audio.SilentCapture
 import com.vocahq.vocaphone.audio.WavWriter
+import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
 import com.vocahq.vocaphone.core.DictationFailure
 import com.vocahq.vocaphone.core.DictationPhase
@@ -22,6 +23,7 @@ import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MissingPermission
 import com.vocahq.vocaphone.core.ModelLanguageSupport
+import com.vocahq.vocaphone.core.PauseDetector
 import com.vocahq.vocaphone.core.SnippetExpander
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.UsageStatsRepository
@@ -32,6 +34,7 @@ import com.vocahq.vocaphone.gateway.GatewayAudioStream
 import com.vocahq.vocaphone.gateway.GatewayStreamingPolicy
 import com.vocahq.vocaphone.gateway.StreamingUnavailableException
 import com.vocahq.vocaphone.local.LocalModelManager
+import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.local.LocalTranscription
 import com.vocahq.vocaphone.local.SherpaIncrementalSession
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
@@ -62,6 +65,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -198,6 +202,29 @@ class DictationController(
                 )
                 return@launch
             }
+            if (configuration.localTranscriptionEnabled) {
+                val models = localModels.state.value
+                val repair = modelRepair(
+                    configuredId = configuration.localModelId,
+                    configuredPresent = !localModelUnavailable(configuration),
+                    models = models,
+                )
+                if (repair != null) {
+                    diagnostics.recordError("setup", source.name)
+                    _state.value = DictationState(
+                        phase = DictationPhase.PERMISSION_REPAIR,
+                        missingPermissions = setOf(repair),
+                        modelDownloadProgress = models.progress.takeIf { repair == MissingPermission.MODEL_DOWNLOADING },
+                    )
+                    val target = models.pendingUse ?: models.downloading
+                    if (target != null &&
+                        (repair == MissingPermission.MODEL_DOWNLOADING || repair == MissingPermission.MODEL_PREPARING)
+                    ) {
+                        followDownload(target = target)
+                    }
+                    return@launch
+                }
+            }
             runDictation(source, configuration, token, UUID.randomUUID(), generation)
         }
     }
@@ -312,12 +339,6 @@ class DictationController(
         if (!configuration.isConfigured && !configuration.localTranscriptionEnabled) {
             add(MissingPermission.GATEWAY_NOT_CONFIGURED)
         }
-        // The only place that checks the stored model can actually run before
-        // the microphone opens. Without it a selection the catalog no longer
-        // has -- or, far more often, the replacement the retired-model
-        // migration moved it to, which is in the catalog but not on this
-        // phone yet -- records a full dictation and fails at delivery.
-        if (localModelUnavailable(configuration)) add(MissingPermission.LOCAL_MODEL_UNAVAILABLE)
     }
 
     private fun localModelUnavailable(configuration: VocaPhoneSettings): Boolean =
@@ -498,6 +519,7 @@ class DictationController(
         // Frames are drained off the capture thread: file writes and socket sends
         // must never stall the AudioRecord read loop.
         val heardSomething = AtomicBoolean(false)
+        val pauseDetector = if (configuration.stopAfterPause) PauseDetector() else null
         val drain = scope.launch(Dispatchers.IO) {
             for (frame in frames) {
                 writer.write(frame, frame.size)
@@ -509,6 +531,14 @@ class DictationController(
                     heardSomething.set(true)
                 }
                 val level = PcmConversion.level(frame, frame.size)
+                // Stop after a pause: the same finish a tap on Stop sends.
+                // `finish` completes a signal, so a second call is harmless.
+                if (pauseDetector?.observe(level, frame.size.toDouble() / CaptureFormat.SAMPLE_RATE) == true &&
+                    _state.value.phase == DictationPhase.LISTENING
+                ) {
+                    diagnostics.recordAction("stop_after_pause", source.name)
+                    finish()
+                }
                 _state.update { current ->
                     if (current.phase != DictationPhase.LISTENING) {
                         current
@@ -746,6 +776,8 @@ class DictationController(
                 numbersAsDigits = configuration.numbersAsDigits,
                 spokenEmoji = configuration.spokenEmoji,
                 snippets = configuration.snippets,
+                vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
+                isDictionaryWord = ::isEnglishWord,
             )
             if (transcript != null && cleaned.isEmpty()) {
                 wavFile.delete()
@@ -840,6 +872,8 @@ class DictationController(
                 numbersAsDigits = configuration.numbersAsDigits,
                 spokenEmoji = configuration.spokenEmoji,
                 snippets = configuration.snippets,
+                vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
+                isDictionaryWord = ::isEnglishWord,
             )
             if (transcript.isEmpty()) {
                 throw GatewayException(
@@ -948,7 +982,23 @@ class DictationController(
         numbersAsDigits = configuration.numbersAsDigits,
         spokenEmoji = configuration.spokenEmoji,
         snippets = configuration.snippets,
+        vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
+        isDictionaryWord = ::isEnglishWord,
     )
+
+    /**
+     * The keyboard's shipped word list, for vocabulary correction's one
+     * question: is this an ordinary word? Read once, on first use.
+     */
+    private val englishWords: Set<String> by lazy {
+        runCatching {
+            context.assets.open("en.txt").bufferedReader().useLines { lines ->
+                lines.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toHashSet()
+            }
+        }.getOrDefault(emptySet())
+    }
+
+    private fun isEnglishWord(word: String): Boolean = word in englishWords
 
     private suspend fun deliver(
         transcript: String,
@@ -1100,6 +1150,40 @@ class DictationController(
         _state.value = DictationState()
     }
 
+    private suspend fun followDownload(target: String) {
+        val outcome = localModels.state
+            .map { latest ->
+                downloadOutcome(latest, target).also {
+                    when (it) {
+                        DownloadOutcome.WAITING -> _state.update { state ->
+                            state.copy(
+                                missingPermissions = setOf(MissingPermission.MODEL_DOWNLOADING),
+                                modelDownloadProgress = latest.progress,
+                            )
+                        }
+                        DownloadOutcome.PREPARING -> _state.update { state ->
+                            state.copy(
+                                missingPermissions = setOf(MissingPermission.MODEL_PREPARING),
+                                modelDownloadProgress = null,
+                            )
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+            .first { it != DownloadOutcome.WAITING && it != DownloadOutcome.PREPARING }
+        when (outcome) {
+            DownloadOutcome.LANDED -> reset()
+            DownloadOutcome.DIED -> _state.update {
+                it.copy(
+                    missingPermissions = setOf(MissingPermission.LOCAL_MODEL_UNAVAILABLE),
+                    modelDownloadProgress = null,
+                )
+            }
+            DownloadOutcome.WAITING, DownloadOutcome.PREPARING -> Unit
+        }
+    }
+
     /**
      * How far the dictation got, from the error that ended it.
      *
@@ -1180,3 +1264,42 @@ class DictationController(
         const val STREAM_FRAME_BUFFER_CAPACITY = 96
     }
 }
+
+/**
+ * Whether the local route can run now, and if not, what the person is
+ * waiting for. This is the one place that checks the stored model before the
+ * microphone opens: without it a selection the catalog no longer has — or the
+ * replacement the retired-model migration moved it to, which is in the
+ * catalog but not on this phone yet — records a full dictation and fails at
+ * delivery. A download or adoption of the model under way is a wait, not a
+ * missing model, so it is checked before "unavailable".
+ *
+ * [configuredPresent] is a stat pass rather than [LocalModelState.downloaded],
+ * which may not be filled in yet right after launch.
+ */
+internal fun modelRepair(
+    configuredId: String,
+    configuredPresent: Boolean,
+    models: LocalModelState,
+): MissingPermission? {
+    val target = models.pendingUse ?: configuredId.takeIf { it.isNotEmpty() }
+    return when {
+        configuredPresent -> null
+        target != null && models.downloading == target -> MissingPermission.MODEL_DOWNLOADING
+        // On disk but the id is not persisted: adoption is loading it. A
+        // wait, never a pass — dictating now would read an empty id.
+        target != null && target in models.downloaded && models.pendingUse == target ->
+            MissingPermission.MODEL_PREPARING
+        else -> MissingPermission.LOCAL_MODEL_UNAVAILABLE
+    }
+}
+
+internal enum class DownloadOutcome { WAITING, PREPARING, LANDED, DIED }
+
+internal fun downloadOutcome(latest: LocalModelState, target: String): DownloadOutcome =
+    when {
+        target in latest.downloaded && latest.pendingUse != target -> DownloadOutcome.LANDED
+        target in latest.downloaded -> DownloadOutcome.PREPARING
+        latest.downloading == target -> DownloadOutcome.WAITING
+        else -> DownloadOutcome.DIED
+    }

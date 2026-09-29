@@ -15,6 +15,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Used only when the user taps Scan QR on the gateway screen. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature
@@ -70,6 +71,11 @@
             android:name=".dictation.DictationService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".local.ModelDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- The keyboard writes through InputConnection and never reads field text. -->
         <service

@@ -441,7 +441,7 @@ enum CompactDashboardPage: Int, CaseIterable, Identifiable, Sendable {
         case .words:
             let count = stats.totalDictations
             return "Across \(count.formatted()) completed \(count == 1 ? "dictation" : "dictations")"
-        case .sessions: return "Completed with VocaPhone"
+        case .sessions: return "Completed with vocaphone"
         case .streak:
             return "Best streak: \(stats.bestStreak) \(stats.bestStreak == 1 ? "day" : "days")"
         case .speed: return "Based on recorded speaking time"
@@ -860,7 +860,7 @@ struct DictationSurfaceView: View {
         }
         .buttonStyle(.plain)
         .modifier(GlassButtonModifier(id: "dashboardSettings", namespace: animationNamespace))
-        .accessibilityLabel("Open VocaPhone settings")
+        .accessibilityLabel("Open vocaphone settings")
     }
 
     private var compactVocaPhoneToggle: some View {
@@ -1097,7 +1097,7 @@ struct DictationSurfaceView: View {
         .modifier(GlassButtonModifier(id: "compactDisclosure", namespace: animationNamespace))
         .animation(nil, value: symbol)
         .accessibilityLabel(compactMenuAccessibilityLabel)
-        .accessibilityHint("Writing style, stats, and VocaPhone controls")
+        .accessibilityHint("Writing style, stats, and vocaphone controls")
     }
 
     /// More on the idle row, close on the dashboard, back on a picker.
@@ -1328,7 +1328,7 @@ struct DictationSurfaceView: View {
                     if unavailable > 0 {
                         Text(
                             "\(unavailable) more \(unavailable == 1 ? "language needs" : "languages need") "
-                                + "a multilingual model. Choose one in VocaPhone Settings."
+                                + "a multilingual model. Choose one in vocaphone Settings."
                         )
                         .font(.system(size: 13))
                         .foregroundStyle(controlForeground.opacity(0.55))
@@ -1764,9 +1764,9 @@ private struct CompactRunningSwitch: UIViewRepresentable {
 
     func makeUIView(context: Context) -> FrozenSwitchView {
         let view = FrozenSwitchView()
-        view.control.accessibilityLabel = "VocaPhone"
+        view.control.accessibilityLabel = "vocaphone"
         view.control.accessibilityHint =
-            "Opens or closes VocaPhone. Quick Dictation settings stay as they are."
+            "Opens or closes vocaphone. Quick Dictation settings stay as they are."
         view.control.addTarget(
             context.coordinator,
             action: #selector(Coordinator.changed(_:)),

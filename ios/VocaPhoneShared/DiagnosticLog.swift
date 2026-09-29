@@ -21,6 +21,10 @@ enum DiagnosticSource: String, Codable, Sendable {
 enum DiagnosticEvent: String, Codable, Sendable {
     case appStarted
     case keyboardShown
+    /// The keyboard left the screen at more than its share of its memory limit
+    /// and ended its own process, with the headroom it had left. The next field
+    /// gets a cold start instead of a kill mid-word.
+    case keyboardRecycled
     case sessionStateChanged
     case sessionExpired
     case quickDictationArmed
@@ -367,6 +371,17 @@ enum DiagnosticLog {
         }
     }
 
+    /// Waits for the lines recorded so far to reach the file, for at most
+    /// `timeout`. For a process about to end: a diagnostic line is not worth
+    /// holding the main thread for, and a coordinated write can wait on the
+    /// other process indefinitely.
+    @discardableResult
+    static func flush(timeout: DispatchTimeInterval = .milliseconds(150)) -> Bool {
+        let done = DispatchSemaphore(value: 0)
+        writeQueue.async { done.signal() }
+        return done.wait(timeout: .now() + timeout) == .success
+    }
+
     static func read() -> String {
         guard let fileURL else { return "" }
         return writeQueue.sync { coordinatedRead(from: fileURL) }
@@ -473,15 +488,17 @@ enum DiagnosticLog {
                 FileManager.default.createFile(atPath: coordinatedURL.path, contents: nil)
             }
             guard let handle = try? FileHandle(forWritingTo: coordinatedURL) else { return }
+            let size: UInt64
             do {
                 try handle.seekToEnd()
                 try handle.write(contentsOf: line)
+                size = try handle.offset()
                 try handle.close()
             } catch {
                 try? handle.close()
                 return
             }
-            trimIfNeeded(coordinatedURL)
+            if size > UInt64(maximumFileSize) { trim(coordinatedURL) }
         }
     }
 
@@ -535,12 +552,21 @@ enum DiagnosticLog {
         }
     }
 
-    private static func trimIfNeeded(_ fileURL: URL) {
+    /// What a trim keeps: half the cap.
+    ///
+    /// Trimming only back to the cap meant the very next line crossed it
+    /// again, so once the log was full every event — including each keyboard
+    /// appearance — read the whole 200 KB file and rewrote it. Halving leaves
+    /// room for a few hundred lines before the next rewrite. The size comes
+    /// from the write offset, so an append that does not trim reads nothing.
+    static let trimmedFileSize = maximumFileSize / 2
+
+    private static func trim(_ fileURL: URL) {
         guard let data = try? Data(contentsOf: fileURL),
               data.count > maximumFileSize
         else { return }
 
-        let suffix = data.suffix(maximumFileSize)
+        let suffix = data.suffix(trimmedFileSize)
         guard let newline = suffix.firstIndex(of: 0x0A) else {
             try? Data(suffix).write(to: fileURL, options: .atomic)
             return

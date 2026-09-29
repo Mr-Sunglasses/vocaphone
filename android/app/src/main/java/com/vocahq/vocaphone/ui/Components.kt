@@ -1,12 +1,13 @@
 package com.vocahq.vocaphone.ui
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,13 +15,17 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilledTonalButton
@@ -28,8 +33,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -41,7 +46,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.annotation.DrawableRes
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -254,13 +258,30 @@ fun Section(
     title: String,
     modifier: Modifier = Modifier,
     supporting: String? = null,
+    /** The full explanation, behind an ⓘ beside the title. */
+    learnMore: LearnMore? = null,
     content: @Composable () -> Unit,
 ) {
+    var showingLearnMore by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
+        if (learnMore == null) {
+            Text(title, style = MaterialTheme.typography.titleSmall)
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                IconButton(onClick = { showingLearnMore = true }) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_about),
+                        contentDescription = "About ${title.lowercase()}",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
+        }
         if (supporting != null) {
             Text(
                 supporting,
@@ -270,6 +291,26 @@ fun Section(
         }
         content()
     }
+    if (showingLearnMore && learnMore != null) {
+        LearnMoreDialog(learnMore, onDismiss = { showingLearnMore = false })
+    }
+}
+
+@Composable
+private fun LearnMoreDialog(learnMore: LearnMore, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(learnMore.title) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                learnMore.paragraphs.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+    )
 }
 
 /** The gap between [Section]s. */
@@ -368,14 +409,15 @@ fun SettingsMenuDivider() {
 fun SettingsMenuRow(
     title: String,
     supporting: String,
-    onClick: () -> Unit,
+    /** `null` for a row that only states something: no chevron, no ripple. */
+    onClick: (() -> Unit)?,
     @DrawableRes icon: Int,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onClick)
+            .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -394,12 +436,14 @@ fun SettingsMenuRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        Icon(
-            painter = painterResource(R.drawable.ic_chevron),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(24.dp),
-        )
+        if (onClick != null) {
+            Icon(
+                painter = painterResource(R.drawable.ic_chevron),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(24.dp),
+            )
+        }
     }
 }
 

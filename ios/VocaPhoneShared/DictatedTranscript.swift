@@ -17,16 +17,21 @@ import Foundation
 /// 3. Style — but only for transcripts produced on this device. A gateway has
 ///    already applied the writing style the session asked for, and applying it
 ///    twice is how "Hello." becomes "Hello.." on one route and not the other.
-/// 4. Spoken emoji. After styling, because the styler has to see "emoji" as
+/// 4. Custom vocabulary. After styling, so the user's own capitalization of
+///    a name is the last word on it rather than something sentence case
+///    overrides; before spoken emoji and digits, which could otherwise turn
+///    part of a term into a glyph. Every route, because only Whisper can be
+///    prompted with the list. Never for `raw`.
+/// 5. Spoken emoji. After styling, because the styler has to see "emoji" as
 ///    an ordinary word to capitalize and terminate around it; before digits,
 ///    because the table's keys are words — "hundred emoji" is 💯, and once
 ///    digit conversion has made it "100 emoji" there is no key left to find.
 ///    Applies whichever route produced the transcript: unlike styling, no
 ///    gateway has done it already.
-/// 5. Digits. After styling, never before: the styler capitalizes the first
+/// 6. Digits. After styling, never before: the styler capitalizes the first
 ///    letter of a sentence, so a sentence already reduced to "20 people came"
 ///    would have it look past the digits and capitalize "People".
-/// 6. Snippet expansion, last of all. A trigger's expansion is literal text
+/// 7. Snippet expansion, last of all. A trigger's expansion is literal text
 ///    the user wrote themselves — an email address, a signature — and must
 ///    not be run back through capitalization or digit conversion. Trigger
 ///    matching is case-insensitive, so it still fires however styling left
@@ -41,7 +46,8 @@ enum DictatedTranscript {
         numbersAsDigits: Bool,
         spokenEmoji: Bool,
         snippets: [Snippet] = SnippetStore.snippets,
-        snippetExpander: SnippetExpanding = SnippetExpander()
+        snippetExpander: SnippetExpanding = SnippetExpander(),
+        vocabulary: [String] = CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
     ) -> String {
         let cleaned = TranscriptSanitizer.clean(raw)
         let repaired = repairSpeech && style != .raw
@@ -52,9 +58,19 @@ enum DictatedTranscript {
             : TranscriptStyler.apply(repaired, style: style, language: language)
         // Never for `raw`, on the same grounds as repair: raw promises the
         // model's own output, and a glyph is not something the model said.
-        let emojified = spokenEmoji && style != .raw
-            ? SpokenEmoji.glyphs(in: styled, language: language)
+        let spelled = style != .raw
+            ? VocabularyCorrection.apply(
+                styled,
+                terms: vocabulary,
+                isDictionaryWord: EnglishWords.contains,
+                // A trigger corrected into a term would never expand. Found by
+                // the expander's own pattern, so exactly what it will match.
+                protectedRanges: SnippetExpander.triggerRanges(in: styled, using: snippets)
+            )
             : styled
+        let emojified = spokenEmoji && style != .raw
+            ? SpokenEmoji.glyphs(in: spelled, language: language)
+            : spelled
         let digited = numbersAsDigits ? SpokenNumbers.digits(in: emojified) : emojified
         return snippetExpander.expand(in: digited, using: snippets)
     }

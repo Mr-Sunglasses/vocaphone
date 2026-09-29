@@ -34,6 +34,14 @@ struct HomeSessionCard: Equatable {
     /// The finished transcript belongs on this card only while the app itself
     /// owns the result; a keyboard dictation delivers it into the host field.
     var showsTranscript = false
+    /// Resting before speech-to-text can run: the setup checklist is the whole
+    /// story, and a disabled "Microphone test" beside it was a button that
+    /// could not be pressed and did not say why.
+    var isHidden = false
+    /// A field to dictate into right here, the real thing rather than a test.
+    var showsTryField = false
+    /// A plain, non-destructive link under the card.
+    var quietAction: Action?
 
     /// Everything the card is derived from.
     struct Context: Equatable {
@@ -47,9 +55,9 @@ struct HomeSessionCard: Equatable {
         var errorMessage: String?
         var canRetry = false
         var startedInApp = true
-        /// Whether speech-to-text can actually run. Idle uses this; a finished
-        /// transcript does not — a result is still a result.
-        var isSourceReady = true
+        /// Whether all required setup steps are complete. Idle uses this; a
+        /// finished transcript does not depend on today's setup state.
+        var isReadyToDictate = true
         /// Debug: pin the session card on Transcript ready instead of Ready.
         var showTranscriptOnSession = false
     }
@@ -95,19 +103,14 @@ struct HomeSessionCard: Equatable {
     // MARK: - States
 
     private static func resting(_ context: Context, now: Date) -> HomeSessionCard {
-        let test = Action(
-            title: "Start microphone test",
-            action: .startTest,
-            symbol: "mic.fill"
-        )
-        // A missing model is the attention card. This one stays the session:
-        // don't claim Ready, and don't steal the headline with Not ready.
-        guard context.isSourceReady else {
+        // A missing model is the setup checklist's to explain.
+        guard context.isReadyToDictate else {
             return HomeSessionCard(
                 status: .inactive,
                 title: "Microphone test",
                 detail: nil,
-                primary: test
+                primary: nil,
+                isHidden: true
             )
         }
         let detail: String
@@ -120,15 +123,16 @@ struct HomeSessionCard: Equatable {
                 + duration.standbyDescription(expiringAt: expiresAt)
                 + ". Nothing is being recorded."
         } else {
-            detail = "Dictate from any app with the vocaphone keyboard. The first tap "
-                + "opens vocaphone to record; swipe back once it starts."
+            detail = "Tap the field, switch to the vocaphone keyboard with the globe key, then tap Dictate."
         }
         return HomeSessionCard(
             status: .ready,
-            title: "Ready to dictate",
+            title: "Try it here",
             detail: detail,
-            primary: test,
-            secondary: nil
+            primary: nil,
+            secondary: nil,
+            showsTryField: true,
+            quietAction: Action(title: "Test the microphone only", action: .startTest)
         )
     }
 
@@ -250,5 +254,146 @@ struct HomeSessionCard: Equatable {
             ),
             secondary: nil
         )
+    }
+}
+
+/// Home's setup card before dictation can work: every required step as a row,
+/// done or with its own button.
+///
+/// It replaces a card that said "vocaphone needs 3 more steps" and then named
+/// and offered a button for only the first of them. The title's count comes
+/// from the rows, so the two can never disagree.
+struct HomeSetupChecklist: Equatable {
+    enum ActionKind: Equatable {
+        /// Voice model settings: download a model or pair the gateway.
+        case voiceModel
+        /// The system prompt, which iOS shows only while access is undecided.
+        case allowMicrophone
+        /// iOS Settings, for what vocaphone cannot switch on itself.
+        case openSystemSettings
+    }
+
+    struct Action: Equatable {
+        let title: String
+        let kind: ActionKind
+    }
+
+    struct Row: Equatable, Identifiable {
+        let step: SetupStep
+        let title: String
+        /// What to do, or what is happening. `nil` once the step is done.
+        let detail: String?
+        let isDone: Bool
+        /// `nil` when done, or when something is already on its way.
+        let action: Action?
+
+        var id: SetupStep { step }
+    }
+
+    let title: String
+    let detail: String
+    let rows: [Row]
+
+    /// `nil` once dictation can work. Also `nil` when the only thing missing
+    /// is a model that is already downloading: the download card says that,
+    /// and a checklist over it read as if setup had been thrown away.
+    static func make(_ status: SetupStatus, isModelArriving: Bool) -> HomeSetupChecklist? {
+        let missing = status.blockingSteps
+        guard !missing.isEmpty else { return nil }
+        if missing == [.source], isModelArriving { return nil }
+
+        let rows = SetupStep.allCases.filter(\.isRequiredForDictation).map { step in
+            row(step, status: status, isModelArriving: isModelArriving)
+        }
+        let left = rows.filter { !$0.isDone }.count
+        return HomeSetupChecklist(
+            title: "Finish setting up",
+            detail: left == 1 ? "One step left before you can dictate." : "\(left) steps left before you can dictate.",
+            rows: rows
+        )
+    }
+
+    private static func row(
+        _ step: SetupStep,
+        status: SetupStatus,
+        isModelArriving: Bool
+    ) -> Row {
+        let done = status.isSatisfied(step)
+        switch step {
+        case .source:
+            let onDevice = status.source.selected == .onDevice
+            let title = onDevice ? "Voice model" : "Gateway"
+            guard !done else { return Row(step: step, title: title, detail: nil, isDone: true, action: nil) }
+            if onDevice, isModelArriving {
+                return Row(step: step, title: title, detail: "Downloading…", isDone: false, action: nil)
+            }
+            return Row(
+                step: step,
+                title: title,
+                detail: onDevice ? "Download one to dictate offline." : status.source.readinessDetail,
+                isDone: false,
+                action: Action(
+                    title: onDevice ? "Download" : status.source.recoveryActionTitle,
+                    kind: .voiceModel
+                )
+            )
+        case .microphone:
+            let title = "Microphone"
+            switch status.microphone {
+            case .granted:
+                return Row(step: step, title: title, detail: nil, isDone: true, action: nil)
+            case .undetermined:
+                return Row(
+                    step: step,
+                    title: title,
+                    detail: "Recording happens in this app.",
+                    isDone: false,
+                    action: Action(title: "Allow", kind: .allowMicrophone)
+                )
+            case .denied:
+                return Row(
+                    step: step,
+                    title: title,
+                    detail: "Turned off in iOS Settings.",
+                    isDone: false,
+                    action: Action(title: "Open Settings", kind: .openSystemSettings)
+                )
+            }
+        case .keyboard:
+            let title = "Keyboard"
+            let detail: String
+            switch status.keyboard {
+            case .ready:
+                return Row(step: step, title: title, detail: nil, isDone: true, action: nil)
+            case .notAdded:
+                detail = "Add vocaphone under Keyboards in iOS Settings."
+            case .addedButNeverRun, .seenWithoutFullAccess:
+                detail = "Turn on Allow Full Access."
+            case .silent:
+                detail = "Switch to it once to confirm it's still there."
+            }
+            return Row(
+                step: step,
+                title: title,
+                detail: detail,
+                isDone: false,
+                action: Action(title: "Open Settings", kind: .openSystemSettings)
+            )
+        case .firstDictation:
+            return Row(step: step, title: step.label, detail: nil, isDone: done, action: nil)
+        }
+    }
+}
+
+/// The one line of stats Home shows, or `nil` before there are any.
+enum HomeStatsLine {
+    static func make(_ stats: UsageStats, now: Date) -> String? {
+        guard stats.hasAny else { return nil }
+        let week = stats.lastSevenDays(endingAt: now).reduce(0) { $0 + $1.words }
+        let streak = stats.currentStreak(at: now)
+        let words = week > 0
+            ? "\(StatsFormat.words(week)) this week"
+            : "\(StatsFormat.words(stats.totalWords)) so far"
+        return streak > 0 ? "\(words) · \(StatsFormat.streak(streak)) streak" : words
     }
 }

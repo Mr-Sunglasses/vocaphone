@@ -345,6 +345,9 @@ enum AttentionCardPreview: String, CaseIterable, Identifiable {
     case noModel
     case microphoneOff
     case keyboardNeedsAccess
+    /// Everything done, so Home's ready layout can be seen on a simulator
+    /// that has no model or keyboard.
+    case ready
 
     static let storageKey = "debugAttentionCardPreview"
 
@@ -356,6 +359,7 @@ enum AttentionCardPreview: String, CaseIterable, Identifiable {
         case .noModel: "No model card"
         case .microphoneOff: "Open Settings card"
         case .keyboardNeedsAccess: "Keyboard Full Access card"
+        case .ready: "Everything ready"
         }
     }
 
@@ -392,6 +396,18 @@ enum AttentionCardPreview: String, CaseIterable, Identifiable {
                 ),
                 microphone: .granted,
                 keyboard: .seenWithoutFullAccess(lastSeenAt: Date()),
+                isKeyboardInstalled: true,
+                hasDictatedOnce: true
+            )
+        case .ready:
+            return SetupStatus(
+                source: TranscriptionSourceStatus(
+                    selected: .onDevice,
+                    onDeviceModelName: "Whisper Base",
+                    isOnDeviceReady: true
+                ),
+                microphone: .granted,
+                keyboard: readyKeyboard,
                 isKeyboardInstalled: true,
                 hasDictatedOnce: true
             )

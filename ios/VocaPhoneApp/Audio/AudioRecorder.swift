@@ -325,6 +325,14 @@ final class AudioRecorder: NSObject {
         ]
 #if compiler(>=6.2)
         categoryOptions.insert(.allowBluetoothHFP)
+        // HFP is the telephone profile: a narrowband signal the on-device
+        // models hear as a worse recording than the iPhone's own microphone.
+        // AirPods that support it record full-bandwidth audio with this option
+        // instead; anything else falls back to HFP as before. It is only
+        // valid with the default mode, which is the one this session uses.
+        if #available(iOS 26.0, *) {
+            categoryOptions.insert(.bluetoothHighQualityRecording)
+        }
 #else
         categoryOptions.insert(.allowBluetooth)
 #endif

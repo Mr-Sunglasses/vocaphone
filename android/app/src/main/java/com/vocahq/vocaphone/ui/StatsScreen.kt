@@ -45,7 +45,7 @@ internal object StatsCopy {
     const val RESET_TITLE = "Reset statistics?"
     const val RESET_BODY = "This permanently deletes your usage totals. Your transcripts are not affected."
     const val RESET_CONFIRM = "Reset"
-    const val SPEED_CAPTION = "Speaking Speed"
+    const val SPEED_CAPTION = "Speaking speed"
     const val TOTALS_TITLE = "Your voice, at a glance"
     const val ACTIVITY_TITLE = "Recent activity"
 
@@ -111,11 +111,14 @@ fun StatsPage(stats: UsageStats, nowMillis: Long, onReset: () -> Unit, modifier:
 
 @Composable
 private fun MetricGrid(stats: UsageStats, nowMillis: Long) {
+    // One accent for every metric. Teal and orange tiles made four numbers
+    // look like two products; the design standard keeps colour for state.
+    val accent = MaterialTheme.colorScheme.primary
     val cards = listOf(
-        Metric(R.drawable.ic_snippets, "Words", StatsFormat.count(stats.totalWords), "lifetime", Color(0xFF79D8BF)),
-        Metric(R.drawable.ic_dictation, "Sessions", StatsFormat.count(stats.totalTranscriptions), "dictations", Color(0xFF79D8BF)),
-        Metric(R.drawable.ic_history, "Time", StatsFormat.duration(stats.totalAudioMillis), "recorded", Color(0xFFFFAC5C)),
-        Metric(R.drawable.ic_stat_streak, "Streak", "${stats.currentStreakAt(nowMillis)}", "days · best ${stats.bestStreak}", Color(0xFFFFAC5C)),
+        Metric(R.drawable.ic_snippets, "Words", StatsFormat.count(stats.totalWords), "lifetime", accent),
+        Metric(R.drawable.ic_dictation, "Sessions", StatsFormat.count(stats.totalTranscriptions), "dictations", accent),
+        Metric(R.drawable.ic_history, "Time", StatsFormat.duration(stats.totalAudioMillis), "recorded", accent),
+        Metric(R.drawable.ic_stat_streak, "Streak", "${stats.currentStreakAt(nowMillis)}", "days · best ${stats.bestStreak}", accent),
     )
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val stacked = AdaptiveLayout.stackInfo(maxWidth.value, LocalDensity.current.fontScale)
@@ -147,10 +150,6 @@ private data class Metric(
 private fun StatsHero(stats: UsageStats, nowMillis: Long) {
     val streak = stats.currentStreakAt(nowMillis)
     FeaturedCard {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            MetricIcon(R.drawable.ic_stats, MaterialTheme.colorScheme.primary)
-            Text("DICTATION STATS", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-        }
         Text("Your voice, at a glance", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text("${StatsFormat.count(stats.totalWords)} words captured", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {

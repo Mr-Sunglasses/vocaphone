@@ -31,9 +31,6 @@ struct SettingsView: View {
         SnippetStore.key,
         store: SnippetStore.defaults
     ) private var snippetsData = Data()
-    /// Read once when the hub appears rather than folded here: folding is the
-    /// app's job, and the Stats screen is where it happens.
-    @State private var usageStats = UsageStats()
     #if DEBUG
     @AppStorage(AttentionCardPreview.storageKey)
     private var attentionPreviewRaw = AttentionCardPreview.off.rawValue
@@ -41,7 +38,10 @@ struct SettingsView: View {
 
     var body: some View {
         List {
-            Section {
+            // Grouped by what someone came to do: set up how they dictate,
+            // look after what they have made, or check what is kept. Stats
+            // is a report, not a setting; it is one line on Home.
+            Section("Dictation and keyboard") {
                 destination(
                     "Keyboard",
                     detail: keyboardHeight.displayName,
@@ -55,11 +55,13 @@ struct SettingsView: View {
                 ) { DictationSettingsView() }
 
                 destination(
-                    "Stats",
-                    detail: StatsCopy.menuDetail(usageStats, now: Date()),
-                    symbol: "chart.bar"
-                ) { StatsView() }
+                    "Voice model",
+                    detail: voiceModelDetail,
+                    symbol: "waveform"
+                ) { TranscriptionSettingsView() }
+            }
 
+            Section("Your content") {
                 destination(
                     "Snippets",
                     detail: snippetCountDetail,
@@ -67,11 +69,13 @@ struct SettingsView: View {
                 ) { SnippetsSettingsView() }
 
                 destination(
-                    "Transcription",
-                    detail: coordinator.setupStatus.source.title,
-                    symbol: "waveform"
-                ) { TranscriptionSettingsView() }
+                    "Transcripts",
+                    detail: nil,
+                    symbol: "clock.arrow.circlepath"
+                ) { TranscriptHistoryView() }
+            }
 
+            Section("Privacy and help") {
                 destination(
                     "Privacy and permissions",
                     detail: nil,
@@ -79,7 +83,7 @@ struct SettingsView: View {
                 ) { PrivacySettingsView() }
 
                 destination(
-                    "Diagnostics",
+                    "Help and diagnostics",
                     detail: nil,
                     symbol: "stethoscope"
                 ) { DiagnosticsSettingsView() }
@@ -90,7 +94,6 @@ struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .task { usageStats = UsageStatsStore.shared.current() }
     }
 
     #if DEBUG
@@ -135,6 +138,14 @@ struct SettingsView: View {
 
     /// A row that carries its current value, so the hub answers most questions
     /// without being opened.
+    /// The model's plain name, or where speech goes instead. Read beside
+    /// `setupStatus`, which changes whenever the model or source does.
+    private var voiceModelDetail: String {
+        guard coordinator.setupStatus.source.selected == .onDevice else { return "Your gateway" }
+        return LocalModelCatalog.descriptor(for: LocalTranscriptionPreferences.modelIdentifier)?
+            .plain.title ?? "Not chosen"
+    }
+
     private func destination(
         _ title: String,
         detail: String?,
@@ -214,6 +225,7 @@ struct KeyboardSettingsView: View {
     @State private var learnedStore = LearnedWordStore()
     @State private var learnedCount = 0
     @State private var isConfirmingLearnedReset = false
+    @State private var learnMore: LearnMoreTopic?
 
     private var selected: KeyboardHeightPreference {
         KeyboardHeightPreference(rawValue: keyboardHeightRawValue) ?? .standard
@@ -238,6 +250,7 @@ struct KeyboardSettingsView: View {
         .sheet(isPresented: $isChoosingLanguages) {
             KeyboardLanguagesSheet(enabledLayoutIDs: $enabledLayoutIDs)
         }
+        .sheet(item: $learnMore) { LearnMoreSheet(topic: $0) }
         .task { learnedCount = learnedStore.snapshot().count }
         .confirmationDialog(
             "Forget \(learnedCount) learned word\(learnedCount == 1 ? "" : "s")?",
@@ -335,49 +348,35 @@ struct KeyboardSettingsView: View {
         } header: {
             Text("Height")
         } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(selected.detail)
-                Text(
-                    "Landscape keeps its own compact layout, because a landscape "
-                        + "phone has no height to spare whichever size you pick."
-                )
-            }
+            Text(selected.detail)
         }
     }
 
     private var suggestionsSection: some View {
         Section {
-            Toggle("Suggestions", isOn: $suggestionsEnabled)
+            Toggle(isOn: $suggestionsEnabled) {
+                // The sentence users fear is "the keyboard now reads what you
+                // type", so the answer sits on the switch that turns it on.
+                SettingLabel("Suggestions", detail: "Worked out on this iPhone. Nothing you type leaves it.")
+            }
             Toggle("Autocorrect", isOn: $autocorrectEnabled)
                 .disabled(!suggestionsEnabled)
             Toggle("Predict the next word", isOn: $predictionEnabled)
                 .disabled(!suggestionsEnabled)
         } header: {
-            Text("Typing")
+            LearnMoreHeader(title: "Typing", topic: SettingsHelp.typing, presented: $learnMore)
         } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                // The sentence users fear is "the keyboard now reads what you
-                // type", so the answer sits next to the switch that turns it on.
-                Text(
-                    "Suggestions are worked out on this iPhone, by the same "
-                        + "dictionary iOS uses everywhere else, plus your own words. "
-                        + "Nothing you type is sent anywhere, logged, or included in "
-                        + "a diagnostics export — not even to your gateway."
-                )
-                Text(
-                    "Nothing is suggested in password, passcode or one-time-code "
-                        + "fields, and nothing is learned from them."
-                )
-                if !suggestionsEnabled {
-                    Text("Autocorrect and prediction need suggestions turned on.")
-                }
+            if !suggestionsEnabled {
+                Text("Autocorrect and prediction need suggestions turned on.")
             }
         }
     }
 
     private var learningSection: some View {
         Section {
-            Toggle("Learn as I type", isOn: $learnAsITypeEnabled)
+            Toggle(isOn: $learnAsITypeEnabled) {
+                SettingLabel("Learn as I type", detail: "Stops correcting words you keep typing.")
+            }
             Button(role: .destructive) {
                 isConfirmingLearnedReset = true
             } label: {
@@ -385,72 +384,32 @@ struct KeyboardSettingsView: View {
             }
             .disabled(learnedCount == 0)
         } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(
-                    "Words you type three times without undoing a correction, and "
-                        + "words you tap in the suggestion row, stop being corrected "
-                        + "away. They stay on this iPhone and are never added to the "
-                        + "system-wide dictionary other apps use."
-                )
-                if !learnedStore.isPersistent {
-                    Text(
-                        "Full Access is off, so learned words last only until the "
-                            + "keyboard closes."
-                    )
+            if !learnedStore.isPersistent {
+                Text("Full Access is off, so learned words last only until the keyboard closes.")
                     .foregroundStyle(Color.vocaWarning)
-                }
             }
         }
     }
 
     private var typingDetailSection: some View {
         Section {
-            Toggle("Smart punctuation", isOn: $smartPunctuationEnabled)
-            Toggle("Emoji suggestions", isOn: $emojiSuggestionsEnabled)
-            Toggle("Typing haptics", isOn: $typingHapticsEnabled)
-            Toggle("Swipe to type", isOn: $swipeTypingEnabled)
-            Toggle("Space bar cursor", isOn: $spacebarCursorEnabled)
-        } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(
-                    "Smart punctuation curls quotes, turns two hyphens into an em "
-                        + "dash and three dots into an ellipsis — except where the "
-                        + "field asks it not to, such as a code or address field."
-                )
-                Text(
-                    "Emoji suggestions offer one emoji beside the word candidates "
-                        + "when a word has an obvious one — “happy” offers 😊 "
-                        + "and “sad” offers 😢. Tap the emoji before adding a "
-                        + "space to replace the word. Words without an obvious "
-                        + "emoji get none."
-                )
-                Text(
-                    "Typing haptics are off by default. Keyboard clicks follow "
-                        + "the iPhone's Keyboard Clicks setting. When enabled, "
-                        + "custom haptics confirm committed typing and occasional "
-                        + "keyboard actions."
-                )
-                // Said plainly rather than leaving people to wonder why their
-                // keyboard is silent: the switch really does nothing without
-                // Full Access, whatever it is set to.
-                Text(
-                    "Typing haptics also need Full Access. Without it iOS gives "
-                        + "the keyboard no way to reach the Taptic Engine, and "
-                        + "this switch does nothing. Keyboard clicks are "
-                        + "unaffected."
-                )
-                Text(
-                    "Swipe to type is new and off by default. Slide from letter to "
-                        + "letter without lifting; alternatives appear in the "
-                        + "suggestion row."
-                )
-                // The hold is the whole rule, and it is what makes the two
-                // gestures on this one key tell themselves apart: a swipe never
-                // waits, a cursor drag always does.
-                if let spaceBarHelp {
-                    Text(spaceBarHelp)
-                }
+            Toggle(isOn: $smartPunctuationEnabled) {
+                SettingLabel("Smart punctuation", detail: "Curly quotes, — and ….")
             }
+            Toggle(isOn: $emojiSuggestionsEnabled) {
+                SettingLabel("Emoji suggestions", detail: "“happy” offers 😊.")
+            }
+            Toggle(isOn: $typingHapticsEnabled) {
+                SettingLabel("Typing haptics", detail: "Needs Full Access.")
+            }
+            Toggle(isOn: $swipeTypingEnabled) {
+                SettingLabel("Swipe to type", detail: "Slide from letter to letter.")
+            }
+            Toggle(isOn: $spacebarCursorEnabled) {
+                SettingLabel("Space bar cursor", detail: spaceBarHelp)
+            }
+        } header: {
+            LearnMoreHeader(title: "More", topic: SettingsHelp.typing, presented: $learnMore)
         }
     }
 
@@ -505,6 +464,10 @@ struct DictationSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var recordingSoundsEnabled = false
     @AppStorage(
+        KeyboardPreferences.stopAfterPauseKey,
+        store: KeyboardPreferences.defaults
+    ) private var stopAfterPause = false
+    @AppStorage(
         LocalTranscriptionPreferences.vocabularyKey,
         store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
     ) private var savedCustomVocabulary = ""
@@ -513,32 +476,61 @@ struct DictationSettingsView: View {
     /// reloading the draft there would throw away a half-typed word.
     @State private var hasLoadedVocabularyDraft = false
 
+    @State private var learnMore: LearnMoreTopic?
+
+    /// Four questions — how your words come out, which language, how
+    /// recording behaves, which words to spell your way — instead of ten
+    /// sections. Each control says what it does in one line; the rules and
+    /// exceptions are behind each section's ⓘ.
     var body: some View {
         List {
-            insertionSection
-            quickDictationSection
+            outputSection
             languageSection
-            writingStyleSection
-            cleanUpSection
-            numbersSection
-            spokenEmojiSection
-            microphoneSection
-            recordingFeedbackSection
+            recordingSection
             customWordsSection
         }
         .navigationTitle("Dictation")
         .navigationBarTitleDisplayMode(.inline)
+        // On the List: a presenter on a section is rebuilt with it.
+        .sheet(item: $learnMore) { LearnMoreSheet(topic: $0) }
     }
 
-    private var insertionSection: some View {
+    private var outputSection: some View {
         Section {
-            Toggle("Insert transcript automatically", isOn: $autoInsertTranscripts)
-        } footer: {
-            Text(
-                autoInsertTranscripts
-                    ? "The keyboard inserts text as soon as transcription finishes."
-                    : "The keyboard shows the transcript and waits for you to tap Insert."
-            )
+            Toggle(isOn: $autoInsertTranscripts) {
+                SettingLabel(
+                    "Insert automatically",
+                    detail: autoInsertTranscripts
+                        ? "Text goes in as soon as it's ready."
+                        : "The keyboard waits for you to tap Insert."
+                )
+            }
+            Picker(selection: $writingStyleRawValue) {
+                ForEach(WritingStyle.allCases) { style in
+                    Label(style.displayName, systemImage: style.symbolName)
+                        .tag(style.rawValue)
+                }
+            } label: {
+                Text("Writing style")
+            }
+            // The style shown working rather than described: the sample is
+            // the real styler's output for that style.
+            Text("“\(selectedWritingStyle.example)”")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityLabel("Sample: \(selectedWritingStyle.example)")
+            Toggle(isOn: $repairSpeech) {
+                SettingLabel("Clean up speech", detail: "Drops “um”, “uh” and false starts.")
+            }
+            Toggle(isOn: $numbersAsDigits) {
+                SettingLabel("Write numbers as digits", detail: "“six pm” becomes “6 pm”. English only.")
+            }
+            Toggle(isOn: $spokenEmoji) {
+                SettingLabel("Spoken emoji", detail: "“crying emoji” becomes 😭.")
+            }
+        } header: {
+            LearnMoreHeader(title: "Output", topic: SettingsHelp.output, presented: $learnMore)
         }
     }
 
@@ -546,12 +538,17 @@ struct DictationSettingsView: View {
         QuickDictationDuration(rawValue: quickDictationDurationRawValue) ?? .tenMinutes
     }
 
-    private var quickDictationSection: some View {
+    private var recordingSection: some View {
         Section {
-            Toggle("Keep Quick Dictation ready", isOn: $quickDictationEnabled)
-                .onChange(of: quickDictationEnabled) { _, enabled in
-                    coordinator.setQuickDictationEnabled(enabled)
-                }
+            Toggle(isOn: $quickDictationEnabled) {
+                SettingLabel(
+                    "Keep Quick Dictation ready",
+                    detail: "Dictate starts without opening vocaphone. The orange dot shows while it's on."
+                )
+            }
+            .onChange(of: quickDictationEnabled) { _, enabled in
+                coordinator.setQuickDictationEnabled(enabled)
+            }
             // Hidden rather than disabled when the feature is off: a greyed-out
             // duration for a window that will never open is noise.
             if quickDictationEnabled {
@@ -565,12 +562,26 @@ struct DictationSettingsView: View {
                     coordinator.setQuickDictationDuration(duration)
                 }
             }
-        } footer: {
-            Text(
-                quickDictationEnabled
-                    ? selectedQuickDictationDuration.settingsFooter
-                    : "The keyboard's first Dictate tap opens vocaphone to record, then "
-                        + "you swipe back. Turn this on to skip that trip."
+            Picker("Microphone", selection: $microphonePreferenceRawValue) {
+                ForEach(MicrophonePreference.allCases) { preference in
+                    Text(preference.displayName).tag(preference.rawValue)
+                }
+            }
+            .disabled(!coordinator.canChangeMicrophone)
+            .onChange(of: microphonePreferenceRawValue) { _, rawValue in
+                guard let preference = MicrophonePreference(rawValue: rawValue) else { return }
+                coordinator.setMicrophonePreference(preference)
+            }
+            LabeledContent("In use", value: coordinator.microphoneStatusLabel)
+            Toggle("Start and stop sounds", isOn: $recordingSoundsEnabled)
+            Toggle(isOn: $stopAfterPause) {
+                SettingLabel("Stop after a pause", detail: "Finishes after three seconds of quiet.")
+            }
+        } header: {
+            LearnMoreHeader(
+                title: "Recording",
+                topic: SettingsHelp.recording(quickDictation: selectedQuickDictationDuration.settingsFooter),
+                presented: $learnMore
             )
         }
     }
@@ -588,173 +599,64 @@ struct DictationSettingsView: View {
             // Kept next to Language and never hidden. A row that disappears for
             // most models would leave the question unanswered, and "Not
             // supported by this model" is exactly the answer people arrive
-            // looking for.
-            NavigationLink {
-                TranscriptionLanguageList(
-                    selection: $translateToRawValue,
-                    mode: .translation
-                )
-            } label: {
-                LabeledContent(
-                    "Translate to",
-                    value: ModelTranslationSupport.summary(
-                        storedTranslateTo,
-                        targets: KeyboardPreferences.activeModelTranslationTargets,
-                        onDevice: LocalTranscriptionPreferences.enabled,
-                        needsExplicitSource: KeyboardPreferences.activeModelTranslationNeedsSource,
-                        sourceIsAutomatic: KeyboardPreferences.effectiveTranscriptionLanguage
-                            == .automatic
+            // looking for. It only pushes when there is something to pick:
+            // a list with every row greyed out was a dead end.
+            if canTranslate {
+                NavigationLink {
+                    TranscriptionLanguageList(
+                        selection: $translateToRawValue,
+                        mode: .translation
                     )
-                )
+                } label: {
+                    translateToRow
+                }
+            } else {
+                translateToRow
             }
+        } header: {
+            Text("Language")
         } footer: {
-            Text(selectedLanguage.detail)
-        }
-    }
-
-    private var writingStyleSection: some View {
-        Section {
-            Picker("Writing style", selection: $writingStyleRawValue) {
-                ForEach(WritingStyle.allCases) { style in
-                    Label(style.displayName, systemImage: style.symbolName)
-                        .tag(style.rawValue)
+            VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                // Every line of `detail` is about a gateway's model; on this
+                // iPhone the language list itself shows what the model hears.
+                if !LocalTranscriptionPreferences.enabled {
+                    Text(selectedLanguage.detail)
+                }
+                if !canTranslate, let reason = translationRestriction {
+                    Text(reason)
                 }
             }
-        } footer: {
-            // The example earns its place in the footer by being the thing that
-            // actually shows what the style does.
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(selectedWritingStyle.detail)
-                Text("“\(selectedWritingStyle.example)”")
-                Text(
-                    "Styles only change formatting. Your words, times, links and "
-                        + "contractions are never altered by a style; words change "
-                        + "only through Clean up speech, Write numbers as digits "
-                        + "and Spoken emoji, all below."
-                )
-            }
         }
     }
 
-    /// The one switch in Dictation that changes words rather than formatting,
-    /// which is why it says so in the footer instead of leaving it to be
-    /// discovered.
-    private var cleanUpSection: some View {
-        Section {
-            Toggle("Clean up speech", isOn: $repairSpeech)
-        } header: {
-            Text("Clean up")
-        } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(
-                    "Hesitation sounds and false starts are dropped, and missing "
-                        + "sentence punctuation is filled in: “so um we should we "
-                        + "should ship it friday” becomes “So we should ship it Friday.”"
-                )
-                Text(
-                    "Only sounds with no meaning go — “um”, “uh”, “er”. Real words "
-                        + "stay, including “like”, “you know” and “I mean”, and so do "
-                        + "“mhm” and “uh-huh”, which are answers."
-                )
-                Text("Never applied to the Raw writing style.")
-            }
-        }
+    private var translationTargets: Set<String> {
+        KeyboardPreferences.activeModelTranslationTargets
     }
 
-    /// Number words to digits, for the people who dictate times, amounts and
-    /// quantities all day and reformat every one of them by hand.
-    private var numbersSection: some View {
-        Section {
-            Toggle("Write numbers as digits", isOn: $numbersAsDigits)
-        } header: {
-            Text("Numbers")
-        } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(
-                    "Numbers you say are written as digits: “six pm at the office” "
-                        + "becomes “6 pm at the office”, and “twenty three” becomes “23”."
-                )
-                // Said plainly, because the exceptions are what stop this from
-                // looking broken the first time it leaves a word alone.
-                Text(
-                    "A lone “one” stays a word unless a unit follows it, so “no one” "
-                        + "and “one of them” are left alone. Ordinals such as “first” "
-                        + "and spoken times such as “seven thirty” are never rewritten."
-                )
-                Text("English only. Transcripts in other languages are untouched.")
-            }
-        }
+    private var canTranslate: Bool {
+        ModelTranslationSupport.isSupported(translationTargets)
     }
 
-    /// Saying "crying emoji" and getting 😭. Off by default: the third switch
-    /// that changes words rather than formatting, and like Write numbers as
-    /// digits it has to be turned on — talking *about* an emoji should not
-    /// rewrite the sentence until the user asks for that.
-    private var spokenEmojiSection: some View {
-        Section {
-            Toggle("Spoken emoji", isOn: $spokenEmoji)
-        } header: {
-            Text("Emoji")
-        } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(
-                    "Say the emoji and then the word “emoji”: “crying emoji” "
-                        + "becomes 😭. The whole name has to match — a partial "
-                        + "suffix is left alone. The same names the keyboard "
-                        + "suggests while you type work here."
-                )
-                // The exception is the point: without it the feature would eat
-                // the word "emoji" out of ordinary sentences.
-                Text(
-                    "“Emoji” on its own is left alone, so “send me the emoji” is "
-                        + "still typed as you said it."
-                )
-                Text(
-                    "The emoji names are English. They still work in a transcript "
-                        + "in any other language — say the English name and the rest "
-                        + "of your sentence is untouched — but only by that name. "
-                        + "Never applied to the Raw writing style."
-                )
-            }
-        }
+    /// Why the row does not open, in one sentence. The full explanation is on
+    /// the list itself, which a model that can translate still pushes to.
+    private var translationRestriction: String? {
+        LocalTranscriptionPreferences.enabled
+            ? "This model can't translate. Canary and the multilingual Whisper models can."
+            : "Translation needs an on-device model."
     }
 
-    private var microphoneSection: some View {
-        Section {
-            Picker("Input selection", selection: $microphonePreferenceRawValue) {
-                ForEach(MicrophonePreference.allCases) { preference in
-                    Text(preference.displayName).tag(preference.rawValue)
-                }
-            }
-            .disabled(!coordinator.canChangeMicrophone)
-            .onChange(of: microphonePreferenceRawValue) { _, rawValue in
-                guard let preference = MicrophonePreference(rawValue: rawValue) else { return }
-                coordinator.setMicrophonePreference(preference)
-            }
-
-            LabeledContent("Input in use", value: coordinator.microphoneStatusLabel)
-        } header: {
-            Text("Microphone")
-        } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(selectedMicrophonePreference.detail)
-                Text(
-                    "Bluetooth input and output routes are linked by iOS, so choosing a "
-                        + "microphone can also change the playback route while recording."
-                )
-            }
-        }
-    }
-
-    private var recordingFeedbackSection: some View {
-        Section {
-            Toggle("Play recording start and stop sounds", isOn: $recordingSoundsEnabled)
-        } footer: {
-            Text(
-                "Short, quiet tones play outside the captured audio, so they are not "
-                    + "included in the transcript. Haptic feedback remains available."
+    private var translateToRow: some View {
+        LabeledContent(
+            "Translate to",
+            value: ModelTranslationSupport.summary(
+                storedTranslateTo,
+                targets: translationTargets,
+                onDevice: LocalTranscriptionPreferences.enabled,
+                needsExplicitSource: KeyboardPreferences.activeModelTranslationNeedsSource,
+                sourceIsAutomatic: KeyboardPreferences.effectiveTranscriptionLanguage
+                    == .automatic
             )
-        }
+        )
     }
 
     /// Saved on request rather than on every keystroke: the terms are parsed at
@@ -768,30 +670,15 @@ struct DictationSettingsView: View {
             Button("Save words") { savedCustomVocabulary = customVocabularyDraft }
                 .disabled(customVocabularyDraft == savedCustomVocabulary)
         } header: {
-            Text("Custom words")
+            LearnMoreHeader(title: "Custom words", topic: SettingsHelp.customWords, presented: $learnMore)
         } footer: {
             let terms = CustomVocabulary.terms(customVocabularyDraft)
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(
-                    "Names, places and jargon an on-device Whisper model is unlikely "
-                        + "to know. One per line, or separated by commas."
-                )
-                Text(
-                    terms.isEmpty
-                        ? "No custom words. Transcription is unchanged."
-                        : "\(terms.count) word\(terms.count == 1 ? "" : "s") will bias the "
-                            + "decoder. This nudges spelling rather than guaranteeing it, and "
-                            + "a very long list starts to crowd out the speech itself."
-                )
-                // Said plainly rather than letting the list quietly do nothing:
-                // only Whisper's decoder has somewhere to put a vocabulary.
-                if let unsupported = unsupportedVocabularyModel, !terms.isEmpty {
-                    Text(
-                        "\(unsupported) cannot use these words. Only Whisper models take a "
-                            + "vocabulary; the list is kept for when you switch back to one."
-                    )
-                    .foregroundStyle(Color.vocaError)
-                }
+            if terms.isEmpty {
+                Text("Names and jargon to spell your way, one per line.")
+            } else if let unsupported = unsupportedVocabularyModel {
+                Text("\(terms.count) word\(terms.count == 1 ? "" : "s"). \(unsupported) fixes only close matches.")
+            } else {
+                Text("\(terms.count) word\(terms.count == 1 ? "" : "s") will be spelled your way.")
             }
         }
         .onAppear {
@@ -842,9 +729,6 @@ struct DictationSettingsView: View {
         TranscriptionLanguage(rawValue: translateToRawValue) ?? ModelTranslationSupport.off
     }
 
-    private var selectedMicrophonePreference: MicrophonePreference {
-        MicrophonePreference(rawValue: microphonePreferenceRawValue) ?? .automatic
-    }
 }
 
 // MARK: - Transcription
@@ -893,8 +777,12 @@ struct TranscriptionSettingsView: View {
             } else {
                 gatewaySection
             }
+            Section {
+                NavigationLink("How it works") { HowItWorksView() }
+            }
         }
-        .navigationTitle("Transcription")
+        // What the page chooses, rather than the process it configures.
+        .navigationTitle("Voice model")
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: localTranscriptionEnabled) { _, _ in
             coordinator.refreshSetupStatus()
@@ -927,27 +815,13 @@ struct TranscriptionSettingsView: View {
         } header: {
             Text("Source")
         } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(source.boundaryDetail)
-                Text(source.alternativeSummary)
-            }
+            Text(source.boundaryDetail)
         }
     }
 
+    /// How models run and are checked lives on How it works; the model list's
+    /// own footer already says every one runs offline.
     @ViewBuilder private var onDeviceSections: some View {
-        Section {
-            EmptyView()
-        } header: {
-            Text("On-device models")
-        } footer: {
-            Text(
-                "Models run on this iPhone through WhisperKit/Core ML. Every file, "
-                    + "including the tokenizer, is pinned and checked with SHA-256 before "
-                    + "it can load, so transcription needs no network at all. The keyboard "
-                    + "extension never loads the model itself."
-            )
-        }
-
         LocalModelPicker(
             manager: coordinator.localModels,
             onChange: {
@@ -982,13 +856,7 @@ struct TranscriptionSettingsView: View {
         } header: {
             Text("Accuracy")
         } footer: {
-            VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                Text(selectedTranscriptionQuality.detail(for: selectedLocalEngine))
-                Text(
-                    "This governs models running on this iPhone. Transcription on "
-                        + "your gateway is unaffected."
-                )
-            }
+            Text(selectedTranscriptionQuality.detail(for: selectedLocalEngine))
         }
     }
 
@@ -1022,11 +890,7 @@ struct TranscriptionSettingsView: View {
         } header: {
             Text("Gateway")
         } footer: {
-            Text(
-                "The gateway is a server you run yourself — on your LAN, over Tailscale, "
-                    + "or on your own VPS. Choose its speech-to-text model in its own web "
-                    + "dashboard. The pairing token is never included in that link."
-            )
+            Text("A server you run yourself. Choose its model in its web dashboard.")
         }
     }
 
@@ -1085,7 +949,7 @@ struct PrivacySettingsView: View {
 
                 switch coordinator.microphoneAccess {
                 case .undetermined:
-                    Button("Continue") {
+                    Button("Allow microphone") {
                         coordinator.requestMicrophonePermission()
                     }
                 case .denied:
@@ -1115,11 +979,7 @@ struct PrivacySettingsView: View {
             } footer: {
                 VStack(alignment: .leading, spacing: VocaMetrics.related) {
                     Text(AppConfiguration.fullAccessSettingsPath)
-                    Text(
-                        "Full Access lets the keyboard read the shared session state this "
-                            + "app writes, and nothing else. It does not give the keyboard "
-                            + "the microphone, and it does not send what you type anywhere."
-                    )
+                    Text("Full Access lets the keyboard talk to this app. It can't use the microphone or send what you type.")
                 }
             }
 
@@ -1145,14 +1005,7 @@ struct PrivacySettingsView: View {
             } footer: {
                 VStack(alignment: .leading, spacing: VocaMetrics.related) {
                     Text(retention.detail)
-                    Text(
-                        "Audio is held on this iPhone until transcription succeeds, then "
-                            + "deleted. Your gateway deletes successfully transcribed audio "
-                            + "by default. Transcripts stay in the shared container on this "
-                            + "phone so the keyboard can insert them. No third-party "
-                            + "transcription or analytics service is used; usage reporting, "
-                            + "if you turn it on, goes to a server VocaHQ self-hosts."
-                    )
+                    Text("Audio is deleted once it's transcribed.")
                 }
             }
 
@@ -1167,14 +1020,13 @@ struct PrivacySettingsView: View {
                 Text("What the keyboard sees")
             } footer: {
                 // The sentence users fear, answered where the claim is made.
-                Text(
-                    "Completions, corrections and next-word suggestions are worked out "
-                        + "on this iPhone by the same dictionary iOS uses everywhere else, "
-                        + "plus your own words. Nothing you type is sent anywhere — not "
-                        + "even to your gateway — logged, or included in a diagnostics "
-                        + "export. Nothing is suggested or learned in password, passcode "
-                        + "or one-time-code fields."
-                )
+                Text("Nothing you type is sent anywhere, not even to your gateway.")
+            }
+
+            // The full technical account, for anyone who wants to check the
+            // one-line claims above.
+            Section {
+                NavigationLink("How it works") { HowItWorksView() }
             }
         }
         .navigationTitle("Privacy")
@@ -1221,6 +1073,10 @@ struct DiagnosticsSettingsView: View {
     var body: some View {
         List {
             Section {
+                NavigationLink("How it works") { HowItWorksView() }
+            }
+
+            Section {
                 LabeledContent("Version", value: Self.versionSummary)
             } header: {
                 Text("Build")
@@ -1236,11 +1092,11 @@ struct DiagnosticsSettingsView: View {
                 Text("Diagnostics")
             } footer: {
                 VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                    // What it holds, then what it never does — the second half
+                    // is the sentence someone sharing a log needs to see.
                     Text(
-                        "The bounded export contains up to seven days of build "
-                            + "information, app/keyboard source, state transitions, and "
-                            + "lifecycle errors only. It never contains transcripts, typed "
-                            + "text, audio, addresses, or credentials."
+                        "Up to seven days of app events and errors. Never transcripts, "
+                            + "typing, audio, addresses or credentials."
                     )
                     if let diagnosticsStatus { Text(diagnosticsStatus) }
                 }
@@ -1260,7 +1116,7 @@ struct DiagnosticsSettingsView: View {
                 Text("Clearing the diagnostic log cannot be undone. Transcripts are not affected.")
             }
         }
-        .navigationTitle("Diagnostics")
+        .navigationTitle("Help and diagnostics")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
             "Clear the diagnostic log?",
@@ -1468,25 +1324,47 @@ struct SnippetsSettingsView: View {
     @State private var snippets: [Snippet] = SnippetStore.snippets
     @State private var isAddingSnippet = false
     @State private var editing: Snippet?
+    @State private var starting: SnippetStarter?
+
+    /// The snippets nearly everyone ends up making, offered on an empty list
+    /// so the feature explains itself by being one tap from working.
+    private struct SnippetStarter: Identifiable {
+        let trigger: String
+        let example: String
+        var id: String { trigger }
+    }
+
+    private static let starters = [
+        SnippetStarter(trigger: "my email", example: "you@example.com"),
+        SnippetStarter(trigger: "my address", example: "1 Market Street, Springfield"),
+        SnippetStarter(trigger: "my phone number", example: "+1 555 0100"),
+    ]
 
     var body: some View {
         List {
-            Section {
-                if snippets.isEmpty {
-                    Text("No snippets yet.")
-                        .foregroundStyle(.secondary)
-                } else {
+            if snippets.isEmpty {
+                Section {
+                    ForEach(Self.starters) { starter in
+                        Button {
+                            starting = starter
+                        } label: {
+                            Label("“\(starter.trigger)”", systemImage: "plus.circle")
+                        }
+                    }
+                } header: {
+                    Text("Start with one")
+                } footer: {
+                    Text("Say “my email” while dictating and vocaphone types your address.")
+                }
+            } else {
+                Section {
                     ForEach(snippets) { snippet in
                         SnippetRow(snippet: snippet) { editing = snippet }
                     }
                     .onDelete(perform: delete)
+                } footer: {
+                    Text("Say a trigger while dictating and it is replaced by its text. Case does not matter.")
                 }
-            } footer: {
-                Text(
-                    "Say a trigger while dictating and vocaphone replaces it with the "
-                        + "expansion. Matching ignores case; the expansion is inserted "
-                        + "exactly as written, including its spacing."
-                )
             }
         }
         .navigationTitle("Snippets")
@@ -1502,6 +1380,17 @@ struct SnippetsSettingsView: View {
         }
         .sheet(isPresented: $isAddingSnippet) {
             SnippetEditorView(title: "Add Snippet", confirmation: "Add") { trigger, expansion in
+                snippets.append(Snippet(trigger: trigger, expansion: expansion))
+                persist()
+            }
+        }
+        .sheet(item: $starting) { starter in
+            SnippetEditorView(
+                title: "Add Snippet",
+                confirmation: "Add",
+                trigger: starter.trigger,
+                expansionPrompt: starter.example
+            ) { trigger, expansion in
                 snippets.append(Snippet(trigger: trigger, expansion: expansion))
                 persist()
             }
@@ -1569,18 +1458,22 @@ private struct SnippetEditorView: View {
     @State private var expansion: String
     let title: String
     let confirmation: String
+    let expansionPrompt: String
     let onSave: (String, String) -> Void
 
     init(
         title: String,
         confirmation: String,
         snippet: Snippet? = nil,
+        trigger: String? = nil,
+        expansionPrompt: String = "Text to insert",
         onSave: @escaping (String, String) -> Void
     ) {
         self.title = title
         self.confirmation = confirmation
+        self.expansionPrompt = expansionPrompt
         self.onSave = onSave
-        _trigger = State(initialValue: snippet?.trigger ?? "")
+        _trigger = State(initialValue: snippet?.trigger ?? trigger ?? "")
         _expansion = State(initialValue: snippet?.expansion ?? "")
     }
 
@@ -1597,7 +1490,9 @@ private struct SnippetEditorView: View {
                         .textInputAutocapitalization(.never)
                 }
                 Section("Expansion") {
-                    TextField("Text to insert", text: $expansion, axis: .vertical)
+                    TextField(text: $expansion, prompt: Text(verbatim: expansionPrompt), axis: .vertical) {
+                        Text("Text to insert")
+                    }
                         .lineLimit(3...6)
                 }
             }

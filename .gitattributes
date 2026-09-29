@@ -10,4 +10,8 @@
 *.md text eol=lf
 *.lock text eol=lf
 
+# Windows batch files (gradlew.bat) end lines with CRLF; that is not
+# trailing whitespace for `git diff --check`.
+*.bat whitespace=cr-at-eol
+
 *.xcuserstate binary

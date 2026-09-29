@@ -1406,6 +1406,16 @@ final class LocalModelManager {
         onCompletion: @escaping @MainActor () -> Void
     ) {
         let id = descriptor.id
+        // In flight from this call, not from the task's first turn. Choose
+        // model starts a download and leaves the page in the same tap, and
+        // the page after it asks whether a model is on its way.
+        if !isInert {
+            inFlightDownloads[id] = InFlightDownload(
+                fraction: 0,
+                totalBytes: descriptor.sizeBytes,
+                startedAt: Date()
+            )
+        }
         modelDownloadTasks[id] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
@@ -2030,11 +2040,28 @@ final class LocalModelManager {
         }
         if needsLoad { await Task.yield() }
 
-        let loaded = try Self.loadSamples(from: audioURL)
-        guard !loaded.isEmpty else { throw LocalModelManagerError.modelNotDownloaded("empty audio") }
-        // Safe here and not on the incremental path: this is the whole recording,
-        // so one gain covers all of it.
-        let samples = SpeechAudioConditioning.condition(loaded)
+        // Off the main actor: reading a long recording and levelling it is a
+        // pass over millions of samples, and this runs while the finished
+        // dictation's screen is on the way in.
+        // A detached task does not inherit cancellation, so the pipeline's is
+        // passed on: a dictation replaced mid-read stops reading.
+        let preparation = Task.detached(priority: .userInitiated) {
+            let loaded = try Self.loadSamples(from: audioURL)
+            guard !loaded.isEmpty else {
+                throw LocalModelManagerError.modelNotDownloaded("empty audio")
+            }
+            try Task.checkCancellation()
+            // Safe here and not on the incremental path: this is the whole
+            // recording, so one gain covers all of it.
+            let levelled = SpeechAudioConditioning.condition(loaded)
+            try Task.checkCancellation()
+            return levelled
+        }
+        let samples = try await withTaskCancellationHandler {
+            try await preparation.value
+        } onCancel: {
+            preparation.cancel()
+        }
 
         switch descriptor.engine {
         case .whisperKit:
@@ -2119,7 +2146,7 @@ final class LocalModelManager {
                 text: text,
                 language: ModelLanguageSupport.outputLanguage(
                     requested: resolvedLanguage,
-                    reported: results.first?.language ?? "",
+                    reported: WhisperTranscription.reportedLanguage(results),
                     translateTo: translateTo
                 )
             )
@@ -2487,7 +2514,7 @@ final class LocalModelManager {
 
     private func pathKey(for id: String) -> String { "localModelPath.\(id)" }
 
-    private static func loadSamples(from url: URL) throws -> [Float] {
+    nonisolated private static func loadSamples(from url: URL) throws -> [Float] {
         let file = try AVAudioFile(forReading: url)
         let format = AVAudioFormat(
             commonFormat: .pcmFormatFloat32,

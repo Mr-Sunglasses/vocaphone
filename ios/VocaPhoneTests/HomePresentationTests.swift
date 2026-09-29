@@ -11,7 +11,7 @@ struct HomePresentationTests {
         startedInApp: Bool = true,
         quickDictationReady: Bool = false,
         quickDictationDuration: QuickDictationDuration = .tenMinutes,
-        sourceReady: Bool = true,
+        readyToDictate: Bool = true,
         showTranscriptOnSession: Bool = false
     ) -> HomeSessionCard {
         HomeSessionCard.make(
@@ -28,7 +28,7 @@ struct HomePresentationTests {
                 errorMessage: errorMessage,
                 canRetry: canRetry,
                 startedInApp: startedInApp,
-                isSourceReady: sourceReady,
+                isReadyToDictate: readyToDictate,
                 showTranscriptOnSession: showTranscriptOnSession
             )
         )
@@ -144,36 +144,123 @@ struct HomePresentationTests {
         #expect(fromKeyboard.detail?.contains("Return to the keyboard") == true)
     }
 
-    @Test func anInAppResultDoesNotReplaceReadyToDictate() {
+    @Test func anInAppResultReturnsToTryItHere() {
         let inApp = Self.card(.readyToInsert, transcript: "Ship it", startedInApp: true)
-        #expect(inApp.title == "Ready to dictate")
+        #expect(inApp.title == "Try it here")
         #expect(!inApp.showsTranscript)
-        #expect(inApp.primary?.action == .startTest)
+        #expect(inApp.showsTryField)
     }
 
-    @Test func anIdleReadyCardLeadsWithWhatItCanDo() {
+    /// Ready leads with the real thing — a field to dictate into — and keeps
+    /// the microphone-only test as a quiet link, not a second button.
+    @Test func anIdleReadyCardLeadsWithAFieldToDictateInto() {
         let card = Self.card(.idle)
-        #expect(card.title == "Ready to dictate")
+        #expect(card.title == "Try it here")
         #expect(card.status == .ready)
-        #expect(card.primary?.action == .startTest)
+        #expect(card.showsTryField)
+        #expect(card.primary == nil)
+        #expect(card.quietAction?.action == .startTest)
+        #expect(!card.isHidden)
     }
 
-    /// The attention card names the hole. Idle must not claim Ready, and must
-    /// not become a second "not ready" headline. The test button stays.
-    @Test func anUnreadyIdleSessionDoesNotClaimReadyToDictate() {
-        let card = Self.card(.idle, sourceReady: false)
-        #expect(card.title != "Ready to dictate")
-        #expect(card.title != "Not ready to dictate")
-        #expect(card.primary?.action == .startTest)
+    /// The setup checklist names the hole. A disabled test button beside it
+    /// was dead UI, so the idle card stands down entirely.
+    @Test func anUnreadyIdleSessionStandsDown() {
+        let card = Self.card(.idle, readyToDictate: false)
+        #expect(card.isHidden)
+        #expect(card.primary == nil)
+        #expect(!card.showsTryField)
+    }
+
+    @Test func missingMicrophoneOrKeyboardDoesNotOfferDictation() {
+        for status in [
+            Self.status(microphone: .undetermined),
+            Self.status(microphone: .denied),
+            Self.status(keyboard: .notAdded),
+            Self.status(keyboard: .addedButNeverRun),
+        ] {
+            #expect(status.source.isReady)
+            #expect(!status.isReadyToDictate)
+            let card = Self.card(.idle, readyToDictate: status.isReadyToDictate)
+            #expect(card.isHidden)
+            #expect(!card.showsTryField)
+        }
     }
 
     /// After dictation the session card is the session again, not a second
-    /// transcript pane. The words belong on Latest transcript.
-    @Test func aFinishedInAppSessionReturnsToReadyToDictate() {
+    /// transcript pane. The words belong on Recent.
+    @Test func aFinishedInAppSessionReturnsToTryItHere() {
         let card = Self.card(.completed, transcript: "Ship it friday")
-        #expect(card.title == "Ready to dictate")
+        #expect(card.title == "Try it here")
         #expect(!card.showsTranscript)
-        #expect(card.primary?.action == .startTest)
+        #expect(card.showsTryField)
+    }
+
+    // MARK: - Setup checklist
+
+    private static func status(
+        source: Bool = true,
+        microphone: MicrophoneAccess = .granted,
+        keyboard: KeyboardSetupState = .ready(lastSeenAt: Date())
+    ) -> SetupStatus {
+        SetupStatus(
+            source: source
+                ? TranscriptionSourceStatus(selected: .onDevice, onDeviceModelName: "Whisper Base", isOnDeviceReady: true)
+                : TranscriptionSourceStatus(selected: .onDevice),
+            microphone: microphone,
+            keyboard: keyboard,
+            hasDictatedOnce: false
+        )
+    }
+
+    @Test func aReadyPhoneHasNoChecklist() {
+        #expect(HomeSetupChecklist.make(Self.status(), isModelArriving: false) == nil)
+    }
+
+    /// Every combination of the three required steps: the count in the title
+    /// matches the rows, and every row not done has its own button.
+    @Test func everyMissingStepHasItsOwnAction() {
+        for source in [true, false] {
+            for microphone in [MicrophoneAccess.granted, .undetermined, .denied] {
+                for keyboard in [KeyboardSetupState.ready(lastSeenAt: Date()), .notAdded, .addedButNeverRun] {
+                    let status = Self.status(source: source, microphone: microphone, keyboard: keyboard)
+                    let checklist = HomeSetupChecklist.make(status, isModelArriving: false)
+                    let missing = status.blockingSteps.count
+                    guard missing > 0 else {
+                        #expect(checklist == nil)
+                        continue
+                    }
+                    let rows = try! #require(checklist).rows
+                    #expect(rows.map(\.step) == [.source, .microphone, .keyboard])
+                    #expect(rows.filter { !$0.isDone }.count == missing)
+                    for row in rows {
+                        #expect(row.isDone == (row.action == nil))
+                    }
+                    #expect(checklist?.detail.contains(missing == 1 ? "One step" : "\(missing) steps") == true)
+                }
+            }
+        }
+    }
+
+    @Test func anUndecidedMicrophoneIsAskedForInApp() {
+        let rows = HomeSetupChecklist.make(Self.status(microphone: .undetermined), isModelArriving: false)?.rows
+        #expect(rows?.first { $0.step == .microphone }?.action?.kind == .allowMicrophone)
+        let denied = HomeSetupChecklist.make(Self.status(microphone: .denied), isModelArriving: false)?.rows
+        #expect(denied?.first { $0.step == .microphone }?.action?.kind == .openSystemSettings)
+    }
+
+    /// A model on its way is the download card's to show.
+    @Test func aDownloadingModelIsNotAChecklist() {
+        #expect(HomeSetupChecklist.make(Self.status(source: false), isModelArriving: true) == nil)
+        let both = HomeSetupChecklist.make(Self.status(source: false, microphone: .undetermined), isModelArriving: true)
+        let source = both?.rows.first { $0.step == .source }
+        #expect(source?.detail == "Downloading…")
+        #expect(source?.action == nil)
+        #expect(source?.isDone == false)
+    }
+
+    @Test func theStatsLineWaitsForAStat() {
+        #expect(HomeStatsLine.make(UsageStats(), now: Date()) == nil)
     }
 
     @Test func pinningTheSessionOnATranscriptShowsTranscriptReady() {

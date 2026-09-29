@@ -119,6 +119,7 @@ fun VocaPhoneApp(
     val testing by viewModel.testing.collectAsStateWithLifecycle()
     val microphone by viewModel.microphone.collectAsStateWithLifecycle()
     val localModels by viewModel.localModels.collectAsStateWithLifecycle()
+    val deviceLanguages by viewModel.deviceLanguages.collectAsStateWithLifecycle()
     val usageStats by viewModel.usageStats.collectAsStateWithLifecycle()
     val tonePreviewListening by viewModel.tonePreviewListening.collectAsStateWithLifecycle()
 
@@ -180,7 +181,9 @@ fun VocaPhoneApp(
         containerColor = if (showingMotionIntro) Color(0xFF111A15) else MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
-            if (!showingMotionIntro) {
+            // Setup pages carry their own back button, progress bar and title;
+            // a "Setup" app bar above them was a second header saying less.
+            if (!showingMotionIntro && !showSetup) {
             TopAppBar(
                 colors = if (selectingHistory) {
                     TopAppBarDefaults.topAppBarColors(
@@ -327,6 +330,7 @@ fun VocaPhoneApp(
                 status = setup,
                 settings = settings,
                 localModels = localModels,
+                deviceLanguages = deviceLanguages,
                 onOpenGateway = { showingGateway = true },
                 onLanguage = viewModel::setLanguage,
                 onLocalTranscriptionEnabled = viewModel::setLocalTranscriptionEnabled,
@@ -346,8 +350,8 @@ fun VocaPhoneApp(
                 telemetryPendingCount = viewModel::telemetryPendingCount,
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 onFinish = { viewModel.setOnboardingComplete(true) },
+                onStageChange = viewModel::setOnboardingStage,
                 onIntroSeen = viewModel::setOnboardingIntroSeen,
-                onWelcomeSeen = viewModel::setOnboardingWelcomeSeen,
                 onRefreshSetup = viewModel::refreshSetup,
                 onWarmLocalModel = viewModel::warmSelectedLocalModel,
                 modifier = content,
@@ -357,6 +361,8 @@ fun VocaPhoneApp(
                 state = dictation,
                 settings = settings,
                 setup = setup,
+                localModels = localModels,
+                onCancelLocalModelDownload = viewModel::cancelLocalModelDownload,
                 onStart = viewModel::startInAppDictation,
                 onFinish = viewModel::finishDictation,
                 onCancel = viewModel::cancelDictation,
@@ -417,6 +423,7 @@ fun VocaPhoneApp(
                 onNumbersAsDigits = { viewModel.setNumbersAsDigits(it) },
                 onSpokenEmoji = { viewModel.setSpokenEmoji(it) },
                 onDictationTone = { viewModel.setDictationTone(it) },
+                onStopAfterPause = { viewModel.setStopAfterPause(it) },
                 onPreviewDictationTone = { viewModel.toggleDictationTonePreview(it) },
                 tonePreviewListening = tonePreviewListening,
                 onMicrophone = { viewModel.setMicrophone(it) },
@@ -442,6 +449,7 @@ fun VocaPhoneApp(
                 onClipboardChip = { viewModel.setClipboardChipEnabled(it) },
                 onClipboardHistory = { viewModel.setClipboardHistoryEnabled(it) },
                 localModels = localModels,
+                deviceLanguages = deviceLanguages,
                 onLocalTranscriptionEnabled = viewModel::setLocalTranscriptionEnabled,
                 onLocalModel = viewModel::setLocalModel,
                 onDownloadLocalModel = viewModel::downloadLocalModel,

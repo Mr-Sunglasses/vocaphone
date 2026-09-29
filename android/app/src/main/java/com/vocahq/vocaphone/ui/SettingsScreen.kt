@@ -73,7 +73,7 @@ import kotlinx.coroutines.delay
 
 enum class SettingsPage(val title: String) {
     HOME("Settings"),
-    MODELS("Models"),
+    MODELS("Voice model"),
     KEYBOARD("Keyboard"),
     DICTATION("Dictation"),
     SNIPPETS("Snippets"),
@@ -108,6 +108,7 @@ fun SettingsScreen(
     onNumbersAsDigits: (Boolean) -> Unit,
     onSpokenEmoji: (Boolean) -> Unit,
     onDictationTone: (DictationTone) -> Unit,
+    onStopAfterPause: (Boolean) -> Unit,
     onPreviewDictationTone: (DictationTone) -> Unit,
     tonePreviewListening: Boolean,
     onMicrophone: (MicrophonePreference) -> Unit,
@@ -133,6 +134,7 @@ fun SettingsScreen(
     onClipboardChip: (Boolean) -> Unit,
     onClipboardHistory: (Boolean) -> Unit,
     localModels: LocalModelState,
+    deviceLanguages: List<String> = emptyList(),
     onLocalTranscriptionEnabled: (Boolean) -> Unit,
     onLocalModel: (LocalModelDescriptor) -> Unit,
     onDownloadLocalModel: (LocalModelDescriptor) -> Unit,
@@ -240,7 +242,7 @@ fun SettingsScreen(
                     onOpenGateway = onOpenGateway,
                     onLocalTranscriptionEnabled = onLocalTranscriptionEnabled,
                 )
-                SettingsMenuGroup {
+                SettingsLabeledGroup("Dictation and keyboard") {
                     SettingsMenuRow(
                         title = "Language",
                         supporting = settings.effectiveLanguage.displayName,
@@ -251,7 +253,9 @@ fun SettingsScreen(
                     // Kept next to Language and never hidden. A row that
                     // disappears for most models would leave the question
                     // unanswered, and "not supported by this model" is exactly
-                    // the answer people arrive looking for.
+                    // the answer people arrive looking for. It opens only when
+                    // there is something to pick: a sheet with every language
+                    // greyed out was a dead end.
                     SettingsMenuRow(
                         title = "Translate to",
                         supporting = ModelTranslationSupport.summary(
@@ -263,11 +267,12 @@ fun SettingsScreen(
                                 TranscriptionLanguage.AUTOMATIC,
                         ),
                         icon = R.drawable.ic_language,
-                        onClick = { pickingTranslation = true },
+                        onClick = { pickingTranslation = true }
+                            .takeIf { ModelTranslationSupport.isSupported(settings.activeModelTranslationTargets) },
                     )
                     SettingsMenuDivider()
                     SettingsMenuRow(
-                        title = "Models",
+                        title = "Voice model",
                         supporting = when {
                             !settings.localTranscriptionEnabled ->
                                 "Off while you use a gateway"
@@ -305,7 +310,10 @@ fun SettingsScreen(
                         icon = R.drawable.ic_dictation,
                         onClick = { onPageChange(SettingsPage.DICTATION) },
                     )
-                    SettingsMenuDivider()
+                }
+                // Grouped by what someone came to do: set up how they dictate,
+                // look after what they have made, or find out about the app.
+                SettingsLabeledGroup("Your content") {
                     SettingsMenuRow(
                         title = "Snippets",
                         supporting = when (val count = settings.snippets.size) {
@@ -323,7 +331,8 @@ fun SettingsScreen(
                         icon = R.drawable.ic_stats,
                         onClick = { onPageChange(SettingsPage.STATS) },
                     )
-                    SettingsMenuDivider()
+                }
+                SettingsLabeledGroup("About") {
                     SettingsMenuRow(
                         title = "About",
                         supporting = "VocaPhone ${appInfo.versionName}",
@@ -361,6 +370,7 @@ fun SettingsScreen(
                     onCancelDownload = onCancelLocalModelDownload,
                     onDelete = onDeleteLocalModel,
                     guidanceLanguage = settings.language.wireValue,
+                    languages = deviceLanguages,
                     onGuidanceLanguage = { onLanguage(TranscriptionLanguage.fromWire(it)) },
                 )
             }
@@ -370,12 +380,12 @@ fun SettingsScreen(
                 Section("Appearance") {
                     SettingToggle(
                         title = "Dynamic color",
-                        detail = "Follow the system wallpaper colors. Off keeps the Voca teal.",
+                        detail = "Follow the wallpaper colors.",
                         checked = settings.dynamicColorEnabled,
                         onCheckedChange = onDynamicColor,
                     )
                 }
-                Section("Layout") {
+                Section("Layout", learnMore = SettingsHelp.keyboardLayout) {
                     SettingToggle(
                         title = "Number row",
                         detail = "Show 1-0 above the letter keys.",
@@ -396,26 +406,17 @@ fun SettingsScreen(
                         label = { it.displayName },
                         onSelect = onSplitKeyboard,
                     )
-                    Text(
-                        "Auto splits when the keyboard is at least 600 dp wide, " +
-                            "like a tablet or an unfolded foldable. " +
-                            "A phone-sized portrait keyboard stays in one piece.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
-                Section("Typing") {
+                Section("Typing", learnMore = SettingsHelp.typing) {
                     SettingToggle(
                         title = "Suggestions",
-                        detail = "Local English word completions and next-word guesses. " +
-                            "Reads a short window of text around the cursor. Off in passwords.",
+                        detail = "Worked out on this phone. Off in passwords.",
                         checked = settings.suggestionsEnabled,
                         onCheckedChange = onSuggestions,
                     )
                     SettingToggle(
                         title = "Corrections",
-                        detail = "Offer nearby dictionary words in the toolbar. " +
-                            "Tap a word, or a swipe alternative, to replace it.",
+                        detail = "Nearby words in the toolbar.",
                         checked = settings.correctionsEnabled,
                         onCheckedChange = onCorrections,
                     )
@@ -427,22 +428,19 @@ fun SettingsScreen(
                     )
                     SettingToggle(
                         title = "Hold for digits and symbols",
-                        detail = "Show a punctuation or digit on each letter key. " +
-                            "Hold the key to type it; slide for accents. Off by default " +
-                            "so a hold on E still types è.",
+                        detail = "Hold a letter for its symbol. Slide for accents.",
                         checked = settings.longPressSymbolsEnabled,
                         onCheckedChange = onLongPressSymbols,
                     )
                     SettingToggle(
                         title = "Text emoticons",
-                        detail = "Add an ASCII category to the emoji panel, like :) and ¯\\_(ツ)_/¯.",
+                        detail = "Adds :) and friends to the emoji panel.",
                         checked = settings.asciiEmojiEnabled,
                         onCheckedChange = onAsciiEmoji,
                     )
                     SettingToggle(
                         title = "Swipe typing",
-                        detail = "Glide across letter keys to enter a word. " +
-                            "English only; there is no language pack to download.",
+                        detail = "Glide across letters. English only.",
                         checked = settings.swipeTypingEnabled,
                         onCheckedChange = onSwipeTyping,
                     )
@@ -451,19 +449,16 @@ fun SettingsScreen(
                     words = settings.personalDictionary,
                     onSave = onPersonalDictionary,
                 )
-                Section("Clipboard") {
+                Section("Clipboard", learnMore = SettingsHelp.clipboard) {
                     SettingToggle(
                         title = "Clipboard chip",
-                        detail = "Clipboard icon plus a preview of the current clip. " +
-                            "Tap to paste. Tap the × to dismiss it.",
+                        detail = "Paste the current clip in one tap.",
                         checked = settings.clipboardChipEnabled,
                         onCheckedChange = onClipboardChip,
                     )
                     SettingToggle(
                         title = "Clipboard history",
-                        detail = "Save recent text and images on this phone. Open them " +
-                            "from the keyboard menu, where you can paste or delete them. " +
-                            "Off in passwords.",
+                        detail = "Recent clips, kept on this phone. Off in passwords.",
                         checked = settings.clipboardHistoryEnabled,
                         onCheckedChange = onClipboardHistory,
                     )
@@ -480,7 +475,10 @@ fun SettingsScreen(
             }
 
             SettingsPage.DICTATION -> {
-                Section(title = "Writing style") {
+                // How your words come out, how recording behaves, what is
+                // kept, and which words to spell your way — instead of eleven
+                // sections. One line per control; the rules are behind each ⓘ.
+                Section(title = "Output", learnMore = SettingsHelp.output) {
                     SettingDropdown(
                         options = WritingStyle.entries,
                         selected = settings.style,
@@ -493,68 +491,26 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
-                Section(
-                    title = "Clean up",
-                    // This switch changes spoken filler words rather than just
-                    // transcript formatting, so make that explicit here.
-                    supporting = "Changes your words, not only formatting. " +
-                        "Never applied to the Raw writing style.",
-                ) {
                     SettingToggle(
                         title = "Clean up speech",
-                        detail = "Drops hesitation sounds and false starts, and fills in " +
-                            "missing sentence punctuation: \"so um we should we should ship " +
-                            "it friday\" becomes \"So we should ship it Friday.\" Only sounds " +
-                            "with no meaning go — \"um\", \"uh\", \"er\". Real words stay, " +
-                            "including \"like\" and \"you know\", and so do \"mhm\" and " +
-                            "\"uh-huh\", which are answers.",
+                        detail = "Drops \u201Cum\u201D, \u201Cuh\u201D and false starts.",
                         checked = settings.repairSpeech,
                         onCheckedChange = onRepairSpeech,
                     )
-                }
-                Section(
-                    title = "Numbers",
-                    supporting = "English only. Ordinals and spoken times stay as words.",
-                ) {
                     SettingToggle(
                         title = "Write numbers as digits",
-                        detail = "Writes “six pm” as “6 pm” and “twenty three” as “23”. " +
-                            "A lone “one” stays a word unless a unit follows it.",
+                        detail = "\u201Csix pm\u201D becomes \u201C6 pm\u201D. English only.",
                         checked = settings.numbersAsDigits,
                         onCheckedChange = onNumbersAsDigits,
                     )
-                }
-                Section(
-                    title = "Emoji",
-                    // The third switch that changes words rather than
-                    // formatting. Off by default, matching Write numbers as
-                    // digits: talking *about* an emoji should not rewrite the
-                    // sentence until the user opts in.
-                    supporting = "The emoji names are English, and work by that name " +
-                        "in a transcript in any language. Never applied to the Raw " +
-                        "writing style.",
-                ) {
                     SettingToggle(
                         title = "Spoken emoji",
-                        detail = "Say the emoji and then the word \u201Cemoji\u201D: " +
-                            "\u201Ccrying emoji\u201D becomes 😭. The whole name has to " +
-                            "match — a partial suffix is left alone. The same names " +
-                            "the keyboard suggests while you type work here. " +
-                            "\u201CEmoji\u201D on its own is left alone, so " +
-                            "\u201Csend me the emoji\u201D is still typed as you said it.",
+                        detail = "\u201Ccrying emoji\u201D becomes 😭.",
                         checked = settings.spokenEmoji,
                         onCheckedChange = onSpokenEmoji,
                     )
                 }
-                Section(
-                    title = "Dictation tone",
-                    supporting = if (settings.dictationTone.playsCues) {
-                        "Start and stop cues when dictation turns on and off."
-                    } else {
-                        "Off plays nothing."
-                    },
-                ) {
+                Section(title = "Recording", learnMore = SettingsHelp.recording) {
                     SettingDropdown(
                         options = DictationTone.entries,
                         selected = settings.dictationTone,
@@ -566,9 +522,23 @@ fun SettingsScreen(
                         TonePreviewMeter(active = true)
                     }
                     SecondaryButton(
-                        text = if (tonePreviewListening) "Stop preview" else "Preview",
+                        text = if (tonePreviewListening) "Stop preview" else "Preview tone",
                         onClick = { onPreviewDictationTone(settings.dictationTone) },
                         enabled = settings.dictationTone.playsCues,
+                    )
+                    SettingToggle(
+                        title = "Stop after a pause",
+                        detail = "Finishes after three seconds of quiet.",
+                        checked = settings.stopAfterPause,
+                        onCheckedChange = onStopAfterPause,
+                    )
+                    Text("Keep model loaded", style = MaterialTheme.typography.bodyMedium)
+                    SettingDropdown(
+                        options = ModelIdleTimeout.entries,
+                        selected = settings.modelIdleTimeout,
+                        label = { it.displayName },
+                        detail = { it.detail },
+                        onSelect = onModelIdleTimeout,
                     )
                 }
                 MicrophoneSection(
@@ -577,39 +547,15 @@ fun SettingsScreen(
                     onSelect = onMicrophone,
                 )
                 Section(
-                    title = "Keep model loaded",
-                    supporting = "After you stop dictating, how long the on-device model " +
-                        "stays in RAM. Unloading saves battery; keeping it makes the next " +
-                        "dictation start faster.",
-                ) {
-                    SettingDropdown(
-                        options = ModelIdleTimeout.entries,
-                        selected = settings.modelIdleTimeout,
-                        label = { it.displayName },
-                        detail = { it.detail },
-                        onSelect = onModelIdleTimeout,
-                    )
-                    Text(
-                        settings.modelIdleTimeout.detail,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Section(
-                    title = "Audio and transcript retention",
-                    supporting = "Successful dictations delete their audio immediately. A " +
-                        "failed one keeps it only this long, so Retry still works.",
+                    title = "Keep failed audio",
+                    supporting = "So Retry still works. Successful dictations delete it at once.",
+                    learnMore = SettingsHelp.kept,
                 ) {
                     ChipChoiceRow(
                         options = AudioRetention.entries,
                         selected = settings.audioRetention,
                         label = { it.displayName },
                         onSelect = onAudioRetention,
-                    )
-                    Text(
-                        settings.audioRetention.detail,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 // Next to audio retention rather than under About: both answer
@@ -644,7 +590,7 @@ fun SettingsScreen(
                 )
                 SettingsMenuGroup {
                     SettingsMenuRow(
-                        title = "Models",
+                        title = "Voice model",
                         supporting = when {
                             !settings.localTranscriptionEnabled ->
                                 "Off while you use a gateway"
@@ -886,20 +832,24 @@ private fun SnippetsSection(
     onDelete: (id: String) -> Unit,
 ) {
     var adding by remember { mutableStateOf(false) }
+    var starting by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<Snippet?>(null) }
     var pendingDelete by remember { mutableStateOf<Snippet?>(null) }
 
     Section(
         title = "Your snippets",
-        supporting = "A short trigger that expands to longer text when dictation " +
-            "finishes. Matching ignores case, so \"brb\" and \"BRB\" both work.",
+        supporting = if (snippets.isEmpty()) {
+            "Say \u201Cmy email\u201D while dictating and VocaPhone types your address."
+        } else {
+            "Say a trigger while dictating and it is replaced by its text. Case does not matter."
+        },
     ) {
         if (snippets.isEmpty()) {
-            Text(
-                "No snippets yet.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            // The snippets nearly everyone ends up making, one tap from
+            // working, so the feature explains itself.
+            SNIPPET_STARTERS.forEach { trigger ->
+                TextButton(onClick = { starting = trigger }) { Text("+ \u201C$trigger\u201D") }
+            }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 snippets.forEach { snippet ->
@@ -912,6 +862,19 @@ private fun SnippetsSection(
             }
         }
         SecondaryButton(text = "Add snippet", onClick = { adding = true })
+    }
+
+    starting?.let { trigger ->
+        SnippetEditorDialog(
+            title = "Add snippet",
+            initialTrigger = trigger,
+            initialExpansion = "",
+            onDismiss = { starting = null },
+            onSave = { savedTrigger, expansion ->
+                onAdd(savedTrigger, expansion)
+                starting = null
+            },
+        )
     }
 
     if (adding) {
@@ -960,6 +923,22 @@ private fun SnippetsSection(
         )
     }
 }
+
+/** A group of Settings rows under a small heading. */
+@Composable
+private fun SettingsLabeledGroup(label: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+        SettingsMenuGroup { content() }
+    }
+}
+
+private val SNIPPET_STARTERS = listOf("my email", "my address", "my phone number")
 
 @Composable
 private fun SnippetRow(
@@ -1037,9 +1016,9 @@ private fun SnippetEditorDialog(
 }
 
 /**
- * Always shown. Whisper can use the list. Other on-device engines cannot, so
- * the field disables and the warning stays visible instead of hiding the
- * section.
+ * Always shown and always editable. Every route spells close matches the
+ * user's way; only Whisper is also nudged toward the words while decoding, and
+ * a note says so for any other model.
  */
 @Composable
 private fun CustomVocabularySection(
@@ -1053,38 +1032,35 @@ private fun CustomVocabularySection(
     var draft by remember(vocabulary) { mutableStateOf(vocabulary) }
     val source = if (synced) personalDictionary else draft
     val terms = remember(source) { CustomVocabulary.terms(source) }
-    val whisperWarning = CustomVocabulary.whisperOnlyWarning(unsupportedModel)
-    val whisperOnly = whisperWarning != null
+    val spellingOnly = CustomVocabulary.spellingOnlyNote(unsupportedModel)
 
     Section(
         title = "Custom words and phrases",
-        supporting = "Names, places, and jargon an on-device Whisper model is " +
-            "unlikely to know. One per line, or separated by commas.",
+        supporting = "Names and jargon to spell your way, one per line.",
+        learnMore = SettingsHelp.customWords,
     ) {
         // Switch, not a checkbox: Material 3 uses switches for independent
         // on/off settings. A checkbox is for picking items from a list.
         SettingToggle(
             title = "Use personal dictionary",
-            detail = "Whisper sees the same names as the suggestion strip. " +
+            detail = "Dictation uses the same names as the suggestion strip. " +
                 "Turn this off to keep a separate list.",
             checked = synced,
             onCheckedChange = onSyncedChange,
         )
-        if (whisperWarning != null) {
-            Notice(tone = NoticeTone.Warning) {
-                Text(whisperWarning, style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "This list is kept for when you switch back to a Whisper model.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+        if (spellingOnly != null) {
+            Text(
+                spellingOnly,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (synced) {
             Text(
                 when (terms.size) {
                     0 -> "No words in the personal dictionary. Transcription is unchanged."
-                    1 -> "1 word from the personal dictionary will bias Whisper."
-                    else -> "${terms.size} words from the personal dictionary will bias Whisper."
+                    1 -> "1 word from the personal dictionary will be spelled your way."
+                    else -> "${terms.size} words from the personal dictionary will be spelled your way."
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1099,29 +1075,24 @@ private fun CustomVocabularySection(
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !whisperOnly,
                 label = { Text("Words and phrases") },
                 placeholder = { Text("Kanishk\nVocaHQ\nTailscale") },
                 minLines = 3,
                 maxLines = 6,
             )
-            if (!whisperOnly) {
-                Text(
-                    if (terms.isEmpty()) {
-                        "No custom words. Transcription is unchanged."
-                    } else {
-                        "${terms.size} word${if (terms.size == 1) "" else "s"} will bias the decoder. " +
-                            "This nudges spelling rather than guaranteeing it, and a very long " +
-                            "list starts to crowd out the speech itself."
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                if (terms.isEmpty()) {
+                    "No custom words. Transcription is unchanged."
+                } else {
+                    "${terms.size} word${if (terms.size == 1) "" else "s"} will be spelled your way."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             SecondaryButton(
                 text = "Save words",
                 onClick = { onSave(draft) },
-                enabled = !whisperOnly && draft != vocabulary,
+                enabled = draft != vocabulary,
             )
         }
     }

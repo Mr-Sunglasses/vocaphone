@@ -138,3 +138,16 @@ fun Context.isOnMeteredNetwork(): Boolean = runCatching {
 fun availableStorageBytes(directory: File): Long = runCatching {
     StatFs(directory.absolutePath).availableBytes
 }.getOrDefault(0L)
+
+fun downloadProgressLine(state: LocalModelState): String {
+    val elapsed = if (state.startedAtMillis > 0) {
+        android.os.SystemClock.elapsedRealtime() - state.startedAtMillis
+    } else {
+        0L
+    }
+    return listOfNotNull(
+        "${state.progress}%",
+        downloadSizeProgress(state.downloadedBytes, state.totalBytes),
+        downloadTimeRemaining(state.downloadedBytes, state.totalBytes, elapsed),
+    ).joinToString(" · ")
+}

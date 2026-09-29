@@ -17,7 +17,7 @@ checklist. Re-check any row you've touched since.
 | App icon (1024×1024, light/dark/tinted, no alpha on the base image) | present | `ios/VocaPhoneApp/Assets.xcassets/AppIcon.appiconset` |
 | Privacy manifests (App, Keyboard, Live Activity) | present | `PrivacyInfo.xcprivacy` in each target directory |
 | Export compliance answered in the plist | `ITSAppUsesNonExemptEncryption = false` | `ios/VocaPhoneApp/Info.plist` — true because the app only uses HTTPS/Keychain, no custom or non-exempt cryptography |
-| Marketing version / build number | `1.0` / `21` | `ios/project.yml` (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`) |
+| Marketing version / build number | Check the intended release commit | `ios/project.yml` (`MARKETING_VERSION`, `CURRENT_PROJECT_VERSION`) |
 | App Group entitlement present on all three targets | app, keyboard, Live Activity all declare `group.com.vocahq` | `ios/VocaPhone*/*.entitlements` |
 
 Before archiving, always run:
@@ -51,9 +51,8 @@ revert — decide which before archiving.
    - No tracking (matches `NSPrivacyTracking = false` in the privacy
      manifests).
 3. **Age rating**: answer the questionnaire; nothing in the app needs an
-   18+ rating on content grounds, but consider the setup burden (the app is
-   non-functional without a gateway the tester runs themselves) when writing
-   TestFlight's "What to Test" notes — see §5.
+   18+ rating on content grounds. Explain the on-device model download and
+   optional self-hosted gateway in TestFlight's "What to Test" notes — see §5.
 4. Publish a **privacy policy URL**. [privacy.md](privacy.md) is thorough and
    ready to publish (GitHub Pages on this repo, or any static host); App Store
    Connect requires a live URL, not a repo-relative link.
@@ -146,23 +145,15 @@ right first track: it skips Beta App Review entirely, so a build is available
 to testers as soon as processing finishes.
 
 **External testing** (public link or up to 10,000 testers) requires Beta App
-Review — a real reviewer installs and runs the build. This app cannot be
-meaningfully reviewed without a reachable gateway: VocaPhone needs a
-self-hosted transcription backend the reviewer doesn't have. Do not move to
-an external group until either:
+Review. The reviewer can use on-device transcription after downloading a model;
+no gateway is required. If asking the reviewer to test the optional gateway,
+provide a reachable review setup and instructions in App Review Information.
 
-- a demo gateway is stood up specifically for review (rate-limited,
-  review-only token), or
-- the TestFlight build notes make unmistakably clear how a reviewer without a
-  gateway should evaluate the app (what still works with no configured
-  backend, and what doesn't).
-
-For an internal build, fill in **Test Information → What to Test** with the
-gateway prerequisite up front, e.g.: *"This app requires a self-hosted
-transcription gateway; see [repository README] before installing. Without one
-configured, Settings → Transcription → On this iPhone still works end to
-end."* — assuming the on-device model path is functional without a gateway;
-confirm that's still true before writing it.
+For **Test Information → What to Test**, describe the on-device path plainly:
+*"Open VocaPhone, choose On this iPhone, download a speech-to-text model, and
+complete keyboard setup. Dictation then runs on the iPhone. A self-hosted
+gateway is optional."* Confirm this sequence on the candidate TestFlight build
+before submitting it for external testing.
 
 ## 6. After the first build lands
 
