@@ -73,6 +73,7 @@ final class RecordingCoordinator {
     private var cancellationMonitorTask: Task<Void, Never>?
     private var quickDictationWatcherTask: Task<Void, Never>?
     private var startingSessionID: UUID?
+    private var transcriptDeletionTask: Task<Int, Error>?
     private var gatewayClient: GatewayClient?
     private var lastMicrophoneName: String?
     private var audioSessionAvailable = true
@@ -95,6 +96,11 @@ final class RecordingCoordinator {
         if isPreviewFixture { return previewIsRecording }
 #endif
         return activeRecord?.state == .recording && recorder.isRecording
+    }
+    var canDeleteAllTranscripts: Bool {
+        transcriptDeletionTask == nil && startingSessionID == nil
+            && !recorder.isRecording && pipelineTask == nil
+            && activeRecord?.state.hasActiveWriter != true
     }
     var hasError: Bool { activeRecord?.error != nil }
     var transcript: String? { activeRecord?.transcript }
@@ -337,24 +343,50 @@ final class RecordingCoordinator {
     /// If it is the session currently on screen, the home card lets go of it
     /// too — a card describing a transcript that no longer exists is worse than
     /// an empty one.
-    func deleteTranscript(_ id: UUID) async {
+    func deleteTranscript(_ id: UUID) async throws {
         guard !isInert else { return }
-        await Task.detached(priority: .userInitiated) {
-            try? SharedStore.shared.delete(id)
-        }.value
+        do {
+            try await Task.detached(priority: .userInitiated) {
+                try SharedStore.shared.delete(id)
+            }.value
+        } catch {
+            await clearActiveRecordIfMissing(id)
+            throw error
+        }
         if activeRecord?.sessionID == id {
             activeRecord = nil
             message = nil
         }
     }
 
-    func deleteAllTranscripts() async {
+    func deleteAllTranscripts() async throws {
         guard !isInert else { return }
-        await Task.detached(priority: .userInitiated) {
-            try? SharedStore.shared.deleteAllSessions()
+        guard canDeleteAllTranscripts else { throw SharedStoreError.sessionInProgress }
+        let deletion = Task.detached(priority: .userInitiated) {
+            try SharedStore.shared.deleteAllSessions()
+        }
+        transcriptDeletionTask = deletion
+        defer { transcriptDeletionTask = nil }
+        do {
+            try await deletion.value
+        } catch {
+            if let id = activeRecord?.sessionID { await clearActiveRecordIfMissing(id) }
+            throw error
+        }
+        if let id = activeRecord?.sessionID { await clearActiveRecordIfMissing(id) }
+    }
+
+    /// A bulk removal can partly succeed. Do not leave Home showing a
+    /// transcript whose record was removed before a different file failed.
+    private func clearActiveRecordIfMissing(_ id: UUID) async {
+        guard activeRecord?.sessionID == id else { return }
+        let exists = await Task.detached(priority: .utility) {
+            (try? SharedStore.shared.load(id)) != nil
         }.value
-        activeRecord = nil
-        message = nil
+        if !exists {
+            activeRecord = nil
+            message = nil
+        }
     }
 
     nonisolated func loadRecentTranscripts(limit: Int = 50) async -> [SessionRecord] {
@@ -748,6 +780,10 @@ final class RecordingCoordinator {
 
     func startInAppTest() {
         guard !isInert else { return }
+        guard transcriptDeletionTask == nil else {
+            message = "Wait for transcript deletion to finish before recording."
+            return
+        }
         guard !recorder.isRecording else { return }
         var record = SessionRecord(
             state: .idle,
@@ -821,12 +857,29 @@ final class RecordingCoordinator {
         let store = SharedStore.shared
         let retention = LocalTranscriptionPreferences.transcriptRetention.maximumAge
         Task.detached(priority: .utility) {
-            try? store.pruneSessions()
+            var transcriptCleanupFailed = false
+            do {
+                try store.pruneSessions()
+            } catch {
+                transcriptCleanupFailed = true
+            }
             try? store.pruneOrphanedAudio()
             // The retention the user chose, which is a promise rather than a
             // storage bound — it deletes finished transcripts however few there
             // are.
-            try? store.pruneTranscripts(olderThan: retention)
+            do {
+                try store.pruneTranscripts(olderThan: retention)
+            } catch {
+                transcriptCleanupFailed = true
+            }
+            do {
+                try store.pruneOrphanedSessionSidecars()
+            } catch {
+                transcriptCleanupFailed = true
+            }
+            if transcriptCleanupFailed {
+                DiagnosticLog.record(.operationFailed, metadata: .error(.transcriptCleanupFailed))
+            }
         }
     }
 
@@ -901,6 +954,9 @@ final class RecordingCoordinator {
     }
 
     private func startSession(id: UUID) async {
+        // A keyboard request arriving during Delete all waits rather than
+        // starting a writer in the middle of the directory sweep.
+        if let transcriptDeletionTask { _ = try? await transcriptDeletionTask.value }
         guard startingSessionID == nil || startingSessionID == id else { return }
         guard startingSessionID != id else { return }
         // A dictation is starting; the model it may need must not be dropped

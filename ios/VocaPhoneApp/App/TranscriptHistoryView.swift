@@ -12,7 +12,7 @@ struct TranscriptHistoryView: View {
     @State private var records: [SessionRecord] = []
     @State private var filter = TranscriptHistoryModel.Filter()
     @State private var copiedID: UUID?
-    @State private var pendingDeletion: SessionRecord?
+    @State private var deletionError: String?
 
     init() {}
 
@@ -50,14 +50,21 @@ struct TranscriptHistoryView: View {
                     ForEach(section.records) { record in
                         NavigationLink {
                             TranscriptDetailView(record: record) {
-                                Task { await delete(record) }
+                                try await delete(record)
                             }
                         } label: {
                             row(for: record)
                         }
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
-                                Task { await delete(record) }
+                                Task {
+                                    do {
+                                        try await delete(record)
+                                    } catch {
+                                        await reload()
+                                        deletionError = "Some transcript files could not be removed. Try again."
+                                    }
+                                }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -79,6 +86,17 @@ struct TranscriptHistoryView: View {
         }
         .task { await reload() }
         .refreshable { await reload() }
+        .alert(
+            "Could not delete transcript",
+            isPresented: Binding(
+                get: { deletionError != nil },
+                set: { if !$0 { deletionError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { deletionError = nil }
+        } message: {
+            Text(deletionError ?? "")
+        }
     }
 
     /// Route and style, the two facts every row already shows. A filter over
@@ -143,8 +161,8 @@ struct TranscriptHistoryView: View {
         .padding(.vertical, VocaMetrics.tight)
     }
 
-    private func delete(_ record: SessionRecord) async {
-        await coordinator.deleteTranscript(record.sessionID)
+    private func delete(_ record: SessionRecord) async throws {
+        try await coordinator.deleteTranscript(record.sessionID)
         await reload()
     }
 
@@ -160,11 +178,13 @@ struct TranscriptHistoryView: View {
 /// to it in one place.
 struct TranscriptDetailView: View {
     let record: SessionRecord
-    let delete: () -> Void
+    let delete: () async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var didCopy = false
     @State private var isConfirmingDelete = false
+    @State private var isDeleting = false
+    @State private var deletionError: String?
 
     var body: some View {
         ScrollView {
@@ -211,6 +231,7 @@ struct TranscriptDetailView: View {
                         isConfirmingDelete = true
                     }
                     .font(.subheadline)
+                    .disabled(isDeleting)
                 }
             }
             .padding(.horizontal, VocaMetrics.padding)
@@ -225,12 +246,31 @@ struct TranscriptDetailView: View {
             titleVisibility: .visible
         ) {
             Button("Delete", role: .destructive) {
-                delete()
-                dismiss()
+                isDeleting = true
+                Task {
+                    do {
+                        try await delete()
+                        dismiss()
+                    } catch {
+                        deletionError = "Some transcript files could not be removed. Try again."
+                        isDeleting = false
+                    }
+                }
             }
             Button("Keep", role: .cancel) {}
         } message: {
             Text("It is removed from this iPhone and cannot be recovered.")
+        }
+        .alert(
+            "Could not delete transcript",
+            isPresented: Binding(
+                get: { deletionError != nil },
+                set: { if !$0 { deletionError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { deletionError = nil }
+        } message: {
+            Text(deletionError ?? "")
         }
     }
 

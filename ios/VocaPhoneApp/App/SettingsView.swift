@@ -942,6 +942,8 @@ struct PrivacySettingsView: View {
         store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
     ) private var retentionRawValue = TranscriptRetention.default.rawValue
     @State private var isConfirmingDeleteAll = false
+    @State private var isDeletingAll = false
+    @State private var deleteAllError: String?
 
     private var retention: TranscriptRetention {
         TranscriptRetention.fromStored(retentionRawValue)
@@ -1010,12 +1012,16 @@ struct PrivacySettingsView: View {
                 } label: {
                     Label("Delete all transcripts", systemImage: "trash")
                 }
+                .disabled(isDeletingAll || !coordinator.canDeleteAllTranscripts)
             } header: {
                 Text("What is kept")
             } footer: {
                 VStack(alignment: .leading, spacing: VocaMetrics.related) {
                     Text(retention.detail)
                     Text("Audio is deleted once it's transcribed.")
+                    if !coordinator.canDeleteAllTranscripts && !isDeletingAll {
+                        Text("Finish the current dictation before deleting transcripts.")
+                    }
                 }
             }
 
@@ -1047,7 +1053,17 @@ struct PrivacySettingsView: View {
             titleVisibility: .visible
         ) {
             Button("Delete all", role: .destructive) {
-                Task { await coordinator.deleteAllTranscripts() }
+                isDeletingAll = true
+                Task {
+                    defer { isDeletingAll = false }
+                    do {
+                        try await coordinator.deleteAllTranscripts()
+                    } catch SharedStoreError.sessionInProgress {
+                        deleteAllError = "Finish the current dictation, then try again."
+                    } catch {
+                        deleteAllError = "Some transcript files could not be removed. Try again."
+                    }
+                }
             }
             Button("Keep", role: .cancel) {}
         } message: {
@@ -1055,6 +1071,17 @@ struct PrivacySettingsView: View {
                 "Every transcript is removed from this iPhone and cannot be "
                     + "recovered. Your settings and downloaded models are not affected."
             )
+        }
+        .alert(
+            "Could not delete all transcripts",
+            isPresented: Binding(
+                get: { deleteAllError != nil },
+                set: { if !$0 { deleteAllError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { deleteAllError = nil }
+        } message: {
+            Text(deleteAllError ?? "")
         }
     }
 

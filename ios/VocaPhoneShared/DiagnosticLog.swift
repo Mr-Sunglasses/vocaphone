@@ -126,6 +126,7 @@ enum DiagnosticErrorCode: String, Codable, Sendable {
     case recordingStartFailed
     case serverUnavailable
     case transcriptionFailed
+    case transcriptCleanupFailed
     case uploadFailed
 }
 

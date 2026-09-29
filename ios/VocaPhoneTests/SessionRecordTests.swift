@@ -41,6 +41,222 @@ struct SessionRecordTests {
         #expect(try store.load(record.sessionID) == record)
     }
 
+    @Test func failedTranscriptDeletionKeepsTheRecordAndThrows() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileManager = FailingRemovalFileManager()
+        let store = SharedStore(fileManager: fileManager, rootOverride: root)
+        let record = SessionRecord()
+        try store.save(record)
+        fileManager.blockedNames = [record.sessionID.uuidString.lowercased() + ".json"]
+
+        #expect(throws: CocoaError.self) { try store.delete(record.sessionID) }
+        #expect(try store.load(record.sessionID) != nil)
+
+        fileManager.blockedNames = []
+        try store.delete(record.sessionID)
+        #expect(try store.load(record.sessionID) == nil)
+    }
+
+    @Test func bulkDeletionReportsFilesItCouldNotRemove() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileManager = FailingRemovalFileManager()
+        let store = SharedStore(fileManager: fileManager, rootOverride: root)
+        let kept = SessionRecord()
+        let removed = SessionRecord()
+        try store.save(kept)
+        try store.save(removed)
+        let liveName = kept.sessionID.uuidString.lowercased() + ".live"
+        let live = root.appendingPathComponent("sessions/\(liveName)")
+        try Data("private words".utf8).write(to: live)
+        fileManager.blockedNames = [liveName]
+
+        #expect(throws: CocoaError.self) { try store.deleteAllSessions() }
+        #expect(try store.load(kept.sessionID) != nil)
+        #expect(try store.load(removed.sessionID) == nil)
+        #expect(FileManager.default.fileExists(atPath: live.path))
+
+        fileManager.blockedNames = []
+        #expect(try store.deleteAllSessions() == 2)
+        #expect(try store.load(kept.sessionID) == nil)
+        #expect(!FileManager.default.fileExists(atPath: live.path))
+    }
+
+    @Test func partialTranscriptDeletionCanBeRetried() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileManager = FailingRemovalFileManager()
+        let store = SharedStore(fileManager: fileManager, rootOverride: root)
+        let record = SessionRecord(state: .completed)
+        try store.save(record)
+        try store.saveMeter(MeterSample(sequence: 1, levels: [0.5]), for: record.sessionID)
+        let meterName = record.sessionID.uuidString.lowercased() + ".meter"
+        fileManager.blockedNames = [meterName]
+
+        #expect(throws: CocoaError.self) { try store.delete(record.sessionID) }
+        #expect(try store.load(record.sessionID) != nil)
+        #expect(FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("sessions/\(meterName)").path
+        ))
+
+        fileManager.blockedNames = []
+        try store.delete(record.sessionID)
+        #expect(try store.load(record.sessionID) == nil)
+        #expect(!FileManager.default.fileExists(
+            atPath: root.appendingPathComponent("sessions/\(meterName)").path
+        ))
+    }
+
+    @Test func activeRecordingCannotBeDeletedOrStrandedByDeleteAll() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = SharedStore(rootOverride: root)
+        let active = SessionRecord(state: .recording)
+        let finished = SessionRecord(state: .completed)
+        try store.save(active)
+        try store.save(finished)
+        try store.saveLiveTranscript("private words", for: active.sessionID)
+
+        #expect(throws: SharedStoreError.self) { try store.delete(active.sessionID) }
+        #expect(throws: SharedStoreError.self) { try store.deleteAllSessions() }
+        #expect(try store.load(active.sessionID) != nil)
+        #expect(try store.load(finished.sessionID) != nil)
+        #expect(store.liveTranscript(for: active.sessionID) == "private words")
+
+        var stopped = active
+        try stopped.transition(to: .finalizing)
+        try stopped.transition(to: .transcriptionFailedPermanent)
+        try store.save(stopped)
+        #expect(try store.deleteAllSessions() == 2)
+        #expect(try store.load(active.sessionID) == nil)
+        #expect(try store.load(finished.sessionID) == nil)
+        #expect(store.liveTranscript(for: active.sessionID) == nil)
+    }
+
+    @Test func storagePruningLeavesAnActiveRecordingAndItsWordsAlone() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = SharedStore(rootOverride: root)
+        let active = SessionRecord(state: .recording)
+        try store.save(active)
+        try store.saveLiveTranscript("private words", for: active.sessionID)
+
+        #expect(try store.pruneSessions(keeping: 0) == 0)
+        #expect(try store.load(active.sessionID) != nil)
+        #expect(store.liveTranscript(for: active.sessionID) == "private words")
+    }
+
+    @Test func retentionKeepsRecordUntilPrivateLiveSidecarIsGone() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileManager = FailingRemovalFileManager()
+        let store = SharedStore(fileManager: fileManager, rootOverride: root)
+        let record = SessionRecord(state: .completed, now: Date(timeIntervalSince1970: 100))
+        try store.save(record)
+        let liveName = record.sessionID.uuidString.lowercased() + ".live"
+        let live = root.appendingPathComponent("sessions/\(liveName)")
+        try Data("private words".utf8).write(to: live)
+        fileManager.blockedNames = [liveName]
+        let now = Date(timeIntervalSince1970: 100 + 3 * 86_400)
+
+        #expect(throws: CocoaError.self) {
+            try store.pruneTranscripts(olderThan: 86_400, now: now)
+        }
+        #expect(try store.load(record.sessionID) != nil)
+        #expect(FileManager.default.fileExists(atPath: live.path))
+
+        fileManager.blockedNames = []
+        #expect(try store.pruneTranscripts(olderThan: 86_400, now: now) == 1)
+        #expect(try store.load(record.sessionID) == nil)
+        #expect(!FileManager.default.fileExists(atPath: live.path))
+    }
+
+    @Test func storagePruningKeepsRecordUntilLiveSidecarIsGone() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileManager = FailingRemovalFileManager()
+        let store = SharedStore(fileManager: fileManager, rootOverride: root)
+        let record = SessionRecord(state: .completed, now: Date(timeIntervalSince1970: 100))
+        try store.save(record)
+        let liveName = record.sessionID.uuidString.lowercased() + ".live"
+        let live = root.appendingPathComponent("sessions/\(liveName)")
+        try Data("private words".utf8).write(to: live)
+        fileManager.blockedNames = [liveName]
+
+        #expect(throws: CocoaError.self) {
+            try store.pruneSessions(keeping: 0)
+        }
+        #expect(try store.load(record.sessionID) != nil)
+
+        fileManager.blockedNames = []
+        #expect(try store.pruneSessions(keeping: 0) == 1)
+        #expect(try store.load(record.sessionID) == nil)
+        #expect(!FileManager.default.fileExists(atPath: live.path))
+    }
+
+    @Test func oldOrphanedLiveSidecarsAreRecoveredWithoutTouchingFreshOnes() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = SharedStore(rootOverride: root)
+        let active = SessionRecord(state: .recording)
+        try store.save(active)
+        let sessions = root.appendingPathComponent("sessions", isDirectory: true)
+        let oldOrphan = sessions.appendingPathComponent("old.live")
+        let freshOrphan = sessions.appendingPathComponent("fresh.live")
+        let activeLive = sessions.appendingPathComponent(active.sessionID.uuidString.lowercased() + ".live")
+        for file in [oldOrphan, freshOrphan, activeLive] {
+            try Data("private words".utf8).write(to: file)
+        }
+        let now = Date(timeIntervalSince1970: 10_000)
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-7_200)],
+            ofItemAtPath: oldOrphan.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-7_200)],
+            ofItemAtPath: activeLive.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: now.addingTimeInterval(-60)],
+            ofItemAtPath: freshOrphan.path
+        )
+
+        #expect(try store.pruneOrphanedSessionSidecars(now: now) == 1)
+        #expect(!FileManager.default.fileExists(atPath: oldOrphan.path))
+        #expect(FileManager.default.fileExists(atPath: freshOrphan.path))
+        #expect(FileManager.default.fileExists(atPath: activeLive.path))
+    }
+
+    @Test func transcriptRetentionDoesNotCountFailedRemoval() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileManager = FailingRemovalFileManager()
+        let store = SharedStore(fileManager: fileManager, rootOverride: root)
+        let record = SessionRecord(state: .completed, now: Date(timeIntervalSince1970: 100))
+        try store.save(record)
+        fileManager.blockedNames = [record.sessionID.uuidString.lowercased() + ".json"]
+        let now = Date(timeIntervalSince1970: 100 + 3 * 86_400)
+
+        #expect(throws: CocoaError.self) {
+            try store.pruneTranscripts(olderThan: 86_400, now: now)
+        }
+        #expect(try store.load(record.sessionID) != nil)
+
+        fileManager.blockedNames = []
+        #expect(try store.pruneTranscripts(olderThan: 86_400, now: now) == 1)
+        #expect(try store.load(record.sessionID) == nil)
+    }
+
     @Test func meterUpdatesCannotOverwriteAKeyboardStateTransition() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -87,6 +303,8 @@ struct SessionRecordTests {
         // A preview that lands after the keyboard's Finish is not kept.
         try store.saveLiveTranscript("late", for: record.sessionID)
         #expect(store.liveTranscript(for: record.sessionID) == nil)
+        try record.transition(to: .transcriptionFailedPermanent)
+        try store.save(record)
         try store.delete(record.sessionID)
         #expect(store.liveTranscript(for: record.sessionID) == nil)
         #expect(try store.recent().isEmpty)
@@ -452,6 +670,7 @@ struct SessionRecordTests {
         return try (0..<count).map { index in
             var record = SessionRecord()
             try record.transition(to: .launchingApp)
+            try record.transition(to: .canceled)
             try store.save(record)
             let file = sessions
                 .appendingPathComponent(record.sessionID.uuidString.lowercased())
@@ -587,5 +806,16 @@ struct SessionRecordTests {
         #expect(GatewayEndpoint.validatedURL(from: "ftp://homelabone/model") == nil)
         #expect(GatewayEndpoint.validatedURL(from: "https://user:password@example.com") == nil)
         #expect(GatewayEndpoint.validatedURL(from: "https://example.com?token=secret") == nil)
+    }
+}
+
+private final class FailingRemovalFileManager: FileManager, @unchecked Sendable {
+    var blockedNames: Set<String> = []
+
+    override func removeItem(at URL: URL) throws {
+        if blockedNames.contains(URL.lastPathComponent) {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        try super.removeItem(at: URL)
     }
 }
