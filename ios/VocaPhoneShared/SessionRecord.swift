@@ -57,6 +57,18 @@ enum SessionState: String, Codable, CaseIterable, Sendable {
             false
         }
     }
+
+    /// States that can still write a session record or its live sidecars.
+    /// Deletion must not race one of these writers and claim the files are gone.
+    var hasActiveWriter: Bool {
+        switch self {
+        case .launchingApp, .awaitingReturn, .recording, .finalizing,
+             .uploading, .transcribing, .inserting:
+            true
+        default:
+            false
+        }
+    }
 }
 
 /// Where a session's speech-to-text actually runs.

@@ -101,6 +101,8 @@ final class LocalModelManager {
     /// corrupted or tampered-with model is a different problem from a download
     /// that never happened, and it needs a different sentence.
     private(set) var failedIntegrityModelIDs: Set<String> = []
+    /// Keep the row visible and non-interactive while its files are removed.
+    private(set) var deletingModelIDs: Set<String> = []
     /// Whisper models whose transfer is finished and verified and which are
     /// being compiled for this iPhone's Neural Engine before the download is
     /// reported done. See `specializeAfterDownload`.
@@ -1077,7 +1079,9 @@ final class LocalModelManager {
         }
     }
 
-    func isDownloaded(_ id: String) -> Bool { downloadedModelIDs.contains(id) }
+    func isDownloaded(_ id: String) -> Bool {
+        downloadedModelIDs.contains(id) && !deletingModelIDs.contains(id)
+    }
 
     /// Removes a model's files and reports the outcome, so the picker's Delete
     /// button does not have to decide what a failure means.
@@ -1086,17 +1090,61 @@ final class LocalModelManager {
     /// leave the app claiming an on-device route it can no longer take, which is
     /// exactly the kind of false readiness the source card exists to prevent —
     /// ``delete(_:)`` already clears it.
-    func deleteReportingResult(_ descriptor: LocalModelDescriptor) {
-        guard !isInert else { return }
+    /// Begin synchronously so Home can refresh its readiness before file work
+    /// starts and while the selected model is unavailable.
+    func beginDeletion(_ descriptor: LocalModelDescriptor) -> Bool {
+        guard !isInert, !deletingModelIDs.contains(descriptor.id) else { return false }
+        deletingModelIDs.insert(descriptor.id)
+        return true
+    }
+
+    @discardableResult
+    func deleteReportingResult(_ descriptor: LocalModelDescriptor) async -> Bool {
+        guard deletingModelIDs.contains(descriptor.id) else { return false }
+        defer { deletingModelIDs.remove(descriptor.id) }
         do {
-            try delete(descriptor)
+            try await delete(descriptor)
             failedIntegrityModelIDs.remove(descriptor.id)
             verifyingModelIDs.remove(descriptor.id)
             message = "\(descriptor.displayName) was removed from this iPhone."
             hasError = false
+            return true
         } catch {
+            reconcileAfterFailedDeletion(descriptor)
             message = "\(descriptor.displayName) could not be removed."
             hasError = true
+            DiagnosticLog.record(.operationFailed, metadata: .error(.localModelCleanupFailed))
+            return false
+        }
+    }
+
+    /// A failed remove may have already deleted some weights. Only a fully
+    /// verified folder remains usable; a partial folder stays visible for
+    /// Retry/Delete without claiming the selected route is ready.
+    private func reconcileAfterFailedDeletion(_ descriptor: LocalModelDescriptor) {
+        let id = descriptor.id
+        switch inspect(descriptor) {
+        case .verified:
+            downloadedModelIDs.insert(id)
+            failedIntegrityModelIDs.remove(id)
+        case .presentButUnverified:
+            downloadedModelIDs.remove(id)
+            failedIntegrityModelIDs.remove(id)
+            verifyingModelIDs.insert(id)
+            Task { await verifyInBackground([descriptor]) }
+        case .missing:
+            downloadedModelIDs.remove(id)
+            verifyingModelIDs.remove(id)
+            if modelDirectory(for: id) == nil {
+                failedIntegrityModelIDs.remove(id)
+                removePersistedPath(for: id)
+            } else {
+                failedIntegrityModelIDs.insert(id)
+            }
+        }
+        if !downloadedModelIDs.contains(id), LocalTranscriptionPreferences.modelIdentifier == id {
+            LocalTranscriptionPreferences.modelIdentifier = nil
+            LocalTranscriptionPreferences.enabled = false
         }
     }
 
@@ -1122,6 +1170,9 @@ final class LocalModelManager {
         // Give SwiftUI a turn to render the loading state before synchronous
         // Sherpa initialization or the first Core ML load begins.
         await Task.yield()
+        guard isDownloaded(descriptor.id) else {
+            throw LocalModelManagerError.modelNotDownloaded(descriptor.id)
+        }
 
         switch descriptor.engine {
         case .whisperKit:
@@ -2062,18 +2113,27 @@ final class LocalModelManager {
         return true
     }
 
-    func delete(_ descriptor: LocalModelDescriptor) throws {
+    func delete(_ descriptor: LocalModelDescriptor) async throws {
         guard let folder = modelDirectory(for: descriptor.id) else {
             throw LocalModelManagerError.noModelContainer
         }
+        // An engine task belongs to the manager, not the picker task the view
+        // cancels. Join it before releasing weights or touching its files.
+        await waitForEngineLoads()
         if loadedModelID == descriptor.id {
+            whisperDictation = nil
             whisperKit = nil
             sherpaRecognizer = nil
             loadedModelID = nil
             loadedLanguage = nil
+            loadedTranslateTo = ""
             loadedQuality = nil
         }
-        try? FileManager.default.removeItem(at: folder)
+        // Removing a large model can take time. Keep the UI responsive and do
+        // not clear the installed/selected state until the folder is gone.
+        try await Task.detached(priority: .utility) {
+            try LocalModelFileRemoval.remove(at: folder)
+        }.value
         downloadedModelIDs.remove(descriptor.id)
         removePersistedPath(for: descriptor.id)
         forgetWhisperKitSpecialization(for: descriptor.id)
@@ -2321,6 +2381,9 @@ final class LocalModelManager {
             try await inFlight.value
         }
         await waitForEngineLoads()
+        guard isDownloaded(descriptor.id) else {
+            throw LocalModelManagerError.modelNotDownloaded(descriptor.id)
+        }
         if loadedModelID == descriptor.id, let whisperKit { return whisperKit }
 
         // Both engines released before the new one is built, for the same
@@ -2526,6 +2589,9 @@ final class LocalModelManager {
         // exactly how that used to happen. A Whisper load or compile counts
         // too: it is the same memory.
         await waitForEngineLoads()
+        guard isDownloaded(descriptor.id) else {
+            throw LocalModelManagerError.modelNotDownloaded(descriptor.id)
+        }
 
         if let sherpaRecognizer,
            loadedModelID == descriptor.id,

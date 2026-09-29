@@ -187,6 +187,7 @@ targets:
       # checks it shares them with.
       - path: VocaPhoneApp/Models/LocalModelIntegrity.swift
       - path: VocaPhoneApp/Models/RetiredModelFileCleanup.swift
+      - path: VocaPhoneApp/Models/LocalModelFileRemoval.swift
       # Key geometry is worth regression tests; the controller itself needs a
       # host extension and stays out of the test target.
       - path: VocaPhoneKeyboard/KeyLayout.swift
