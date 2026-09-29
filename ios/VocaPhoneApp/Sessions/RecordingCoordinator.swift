@@ -85,6 +85,9 @@ final class RecordingCoordinator {
     /// to build the first time in a process, and nothing before the transcript
     /// needs it. Awaited once, at finish.
     private var localSherpaSession: Task<SherpaIncrementalSession?, Never>?
+    /// The Whisper counterpart: it loads the model and decodes during pauses
+    /// while the user is still speaking. See `WhisperIncrementalSession`.
+    private var localWhisperSession: WhisperIncrementalSession?
     let localModels: LocalModelManager
 
     var isRecording: Bool {
@@ -980,10 +983,12 @@ final class RecordingCoordinator {
                 return
             }
             record = latestRecord
-            let shouldUseSherpaIncremental = LocalTranscriptionPreferences.enabled
-                && LocalTranscriptionPreferences.modelIdentifier.flatMap {
-                    LocalModelCatalog.descriptor(for: $0)?.engine == .sherpaOnnx
-                } == true
+            let localEngine = LocalTranscriptionPreferences.enabled
+                ? LocalTranscriptionPreferences.modelIdentifier.flatMap {
+                    LocalModelCatalog.descriptor(for: $0)?.engine
+                }
+                : nil
+            let shouldUseSherpaIncremental = localEngine == .sherpaOnnx
             // Stamped here, not at claim: permission prompts and a first
             // on-device model load sit between the two and can take seconds,
             // which would inflate every duration bucket by however long the
@@ -992,7 +997,7 @@ final class RecordingCoordinator {
             let audioURL = try recorder.start(
                 sessionID: record.sessionID,
                 directory: directory,
-                includeLocalModelChunks: shouldUseSherpaIncremental
+                includeLocalModelChunks: localEngine != nil
             )
             if shouldUseSherpaIncremental, let chunks = recorder.localPcmChunks {
                 // Started, not awaited. Capture is already running and the
@@ -1010,6 +1015,12 @@ final class RecordingCoordinator {
                         language: language
                     )
                 }
+            }
+            if localEngine == .whisperKit, let chunks = recorder.localPcmChunks {
+                localWhisperSession = localModels.startWhisperIncrementalSession(
+                    chunks: chunks,
+                    language: record.language
+                )
             }
             if let client = gatewayClient, let chunks = recorder.pcmChunks {
                 if GatewayStatusPreferences.shouldAttemptStreaming(for: client.baseURL) {
@@ -1187,6 +1198,7 @@ final class RecordingCoordinator {
             clearQuickDictationReadiness(deactivateAudioSession: true)
         }
         guard let output, FileManager.default.fileExists(atPath: output.path) else {
+            discardIncrementalSession()
             await fail(
                 &record,
                 state: .uploadFailedRecoverable,
@@ -1202,6 +1214,7 @@ final class RecordingCoordinator {
         // nothing they can act on.
         if wasRecording, recorder.lastPeakLevel <= CaptureFormat.silenceThreshold {
             await streamingBridge.cancel()
+            discardIncrementalSession()
             try? FileManager.default.removeItem(at: output)
             await fail(
                 &record,
@@ -1389,10 +1402,13 @@ final class RecordingCoordinator {
             try store.save(record)
             activeRecord = record
 
+            let started = ContinuousClock.now
             // The only place the graph is waited for. By now the user has
             // spoken, which is usually longer than it took to build.
             let incremental = await localSherpaSession?.value
             localSherpaSession = nil
+            let whisperSession = localWhisperSession
+            localWhisperSession = nil
             // A chunk the queue refused never reached the decoder, so the
             // session cannot know it is short. Only the recorder can say.
             let droppedLocalChunks = recorder.didDropLocalChunks
@@ -1401,7 +1417,9 @@ final class RecordingCoordinator {
                 let incrementalResult = await incremental.finish()
                 let partial = LocalModelManager.LocalTranscription(
                     text: incrementalResult.transcript.text,
-                    language: incrementalResult.transcript.language
+                    language: incrementalResult.transcript.language,
+                    decodedEarly: incrementalResult.reusedEarlyDecode,
+                    trimmedMilliseconds: incrementalResult.trimmedMilliseconds
                 )
                 // A whole-file retry for an empty result, and equally for one
                 // that lost a chunk: the attention families answer a long
@@ -1418,7 +1436,7 @@ final class RecordingCoordinator {
                             audioURL: audioURL,
                             language: record.language
                         )
-                        transcribed = incrementalResult.supersededBy(wholeFile.text)
+                                transcribed = incrementalResult.supersededBy(wholeFile.text)
                             ? wholeFile
                             : partial
                     } catch {
@@ -1435,11 +1453,22 @@ final class RecordingCoordinator {
                     transcribed = partial
                 }
             } else {
+                // Its capture is only the recording if none of it was refused.
+                if droppedLocalChunks { await whisperSession?.cancel() }
                 transcribed = try await localModels.transcribe(
                     audioURL: audioURL,
-                    language: record.language
+                    language: record.language,
+                    whisperSession: droppedLocalChunks ? nil : whisperSession
                 )
             }
+            DiagnosticLog.record(
+                .localTranscriptionTimed,
+                metadata: .localTranscriptionTimed(
+                    milliseconds: Int((ContinuousClock.now - started) / .milliseconds(1)),
+                    decodedEarly: transcribed.decodedEarly,
+                    trimmedMilliseconds: transcribed.trimmedMilliseconds
+                )
+            )
             let text = transcribed.text
             // The styles punctuate by script, so the language has to be the one
             // the finished text is written in. With Automatic selected the
@@ -1548,6 +1577,10 @@ final class RecordingCoordinator {
 
     /// Drops the incremental engine whether it finished building or not.
     private func discardIncrementalSession() {
+        if let whisper = localWhisperSession {
+            localWhisperSession = nil
+            Task { await whisper.cancel() }
+        }
         guard let building = localSherpaSession else { return }
         localSherpaSession = nil
         building.cancel()

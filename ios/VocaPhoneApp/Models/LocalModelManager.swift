@@ -150,6 +150,9 @@ final class LocalModelManager {
     /// start.
     private var whisperLoad: Task<Void, Error>?
     private var whisperLoadModelID: String?
+    /// The Whisper dictation being recorded: what it will be decoded with, and
+    /// the windows decoded during its pauses. See `WhisperIncrementalSession`.
+    @ObservationIgnored private var whisperDictation: WhisperDictation?
     /// Download ownership belongs to the manager rather than the picker view.
     /// SwiftUI is free to recreate either onboarding or Settings while a model
     /// is downloading; a view-local task handle made their Cancel buttons lose
@@ -1239,7 +1242,79 @@ final class LocalModelManager {
             folder: folder,
             resolvedLanguage: resolvedLanguage
         )
-        return SherpaIncrementalSession(chunks: chunks, recognizer: recognizer)
+        return SherpaIncrementalSession(chunks: chunks, recognizer: recognizer) {
+            SileroSpeechDetector()
+        }
+    }
+
+    /// Starts loading the selected Whisper model while the user is still
+    /// speaking, and listens for the pauses to decode early in.
+    ///
+    /// The load used to wait for Finish. Sherpa has always loaded here, at the
+    /// start of the recording, and Whisper had no reason not to: after the
+    /// model was dropped — ten idle minutes, a memory warning — the first
+    /// dictation spent a cold Core ML load *after* the user stopped talking.
+    /// Now it overlaps the speech. A failure is left for the finish path, which
+    /// loads again and reports it exactly as it always has.
+    func startWhisperIncrementalSession(
+        chunks: AsyncStream<Data>,
+        language: String
+    ) -> WhisperIncrementalSession? {
+        guard !isInert,
+              let id = LocalTranscriptionPreferences.modelIdentifier,
+              let descriptor = LocalModelCatalog.descriptor(for: id),
+              descriptor.engine == .whisperKit,
+              let folder = modelDirectory(for: id), isDownloaded(id),
+              let tokenizerRepository = descriptor.tokenizerRepository,
+              let tokenizerFolder = tokenizerDirectory(for: tokenizerRepository)
+        else { return nil }
+        let dictation = WhisperDictation(
+            modelID: id,
+            settings: WhisperDictationSettings.current(for: descriptor, language: language)
+        )
+        whisperDictation = dictation
+        Task { [weak self] in
+            guard let self else { return }
+            guard (try? LocalModelIntegrity.verifySizes(in: folder, files: LocalModelIntegrity.files(for: id))) != nil
+            else { return }
+            _ = try? await self.ensureWhisperKit(
+                descriptor: descriptor, folder: folder, tokenizerFolder: tokenizerFolder
+            )
+        }
+        return WhisperIncrementalSession(chunks: chunks) {
+            SileroSpeechDetector()
+        } decodeEarly: { [weak self] prefix in
+            await self?.decodeEarly(prefix, for: dictation)
+        }
+    }
+
+    /// Decodes the recording so far into `dictation`'s cache, while the
+    /// speaker pauses.
+    ///
+    /// Never loads or rebuilds anything: it waits for the load the dictation
+    /// started, and without a loaded model it does nothing — the finish path
+    /// owns loading, retrying and reporting. A failure here only means Finish
+    /// decodes that window itself.
+    private func decodeEarly(_ prefix: [Float], for dictation: WhisperDictation) async {
+        if whisperLoadModelID == dictation.modelID, let inFlight = whisperLoad {
+            _ = try? await inFlight.value
+        }
+        guard !Task.isCancelled, whisperDictation === dictation,
+              loadedModelID == dictation.modelID, let whisperKit
+        else { return }
+        let levelled = await Task.detached(priority: .userInitiated) {
+            SpeechAudioConditioning.levelled(prefix)
+        }.value
+        guard !Task.isCancelled else { return }
+        _ = try? await WhisperTranscription.transcribe(
+            samples: levelled.samples,
+            options: dictation.settings.decodingOptions(for: whisperKit),
+            retries: dictation.settings.quality.whisperRetryCount,
+            cache: dictation.cache,
+            levelling: WhisperWindowCache.Levelling(levelled)
+        ) { window, options in
+            try await whisperKit.transcribe(audioArray: window, decodeOptions: options)
+        }
     }
 
     func download(_ descriptor: LocalModelDescriptor) async throws {
@@ -1957,6 +2032,7 @@ final class LocalModelManager {
     /// window to go quiet and answers memory warnings with this.
     @discardableResult
     func releaseLoadedEngines() -> Bool {
+        whisperDictation = nil
         guard whisperKit != nil || sherpaRecognizer != nil else { return false }
         whisperKit = nil
         sherpaRecognizer = nil
@@ -2001,9 +2077,23 @@ final class LocalModelManager {
     struct LocalTranscription: Sendable {
         let text: String
         let language: String
+        /// Whether every window came from a decode made during a pause, so
+        /// Finish decoded nothing.
+        var decodedEarly = false
+        /// Milliseconds of trailing non-speech left out of the decode.
+        var trimmedMilliseconds = 0
     }
 
-    func transcribe(audioURL: URL, language: String) async throws -> LocalTranscription {
+    /// `whisperSession` is the dictation's own capture, used in place of the
+    /// file when the selected model is Whisper — the caller passes it only
+    /// when the capture queue lost nothing.
+    func transcribe(
+        audioURL: URL,
+        language: String,
+        whisperSession: WhisperIncrementalSession? = nil
+    ) async throws -> LocalTranscription {
+        let dictation = whisperDictation
+        whisperDictation = nil
         guard let id = LocalTranscriptionPreferences.modelIdentifier,
               let descriptor = LocalModelCatalog.descriptor(for: id)
         else { throw LocalModelManagerError.modelNotDownloaded("none") }
@@ -2045,23 +2135,28 @@ final class LocalModelManager {
         // dictation's screen is on the way in.
         // A detached task does not inherit cancellation, so the pipeline's is
         // passed on: a dictation replaced mid-read stops reading.
+        // The dictation's own capture, cut after its last word, is exactly the
+        // audio its early decodes read — which is what lets Finish reuse them.
+        let streamed = descriptor.engine == .whisperKit ? await whisperSession?.finish() : nil
         let preparation = Task.detached(priority: .userInitiated) {
-            let loaded = try Self.loadSamples(from: audioURL)
+            let loaded = try streamed.map(\.samples) ?? Self.loadSamples(from: audioURL)
             guard !loaded.isEmpty else {
                 throw LocalModelManagerError.modelNotDownloaded("empty audio")
             }
             try Task.checkCancellation()
             // Safe here and not on the incremental path: this is the whole
             // recording, so one gain covers all of it.
-            let levelled = SpeechAudioConditioning.condition(loaded)
+            let levelled = SpeechAudioConditioning.levelled(loaded)
             try Task.checkCancellation()
             return levelled
         }
-        let samples = try await withTaskCancellationHandler {
+        let levelled = try await withTaskCancellationHandler {
             try await preparation.value
         } onCancel: {
             preparation.cancel()
         }
+        let samples = levelled.samples
+        let trimmedMilliseconds = (streamed?.trimmedSamples ?? 0) * 1_000 / WhisperKit.sampleRate
 
         switch descriptor.engine {
         case .whisperKit:
@@ -2076,17 +2171,22 @@ final class LocalModelManager {
                 in: tokenizerFolder,
                 files: LocalModelIntegrity.tokenizer(for: tokenizerRepository).files
             )
-            let requested = resolvedLanguage == "auto" ? nil : resolvedLanguage
-            let quality = LocalTranscriptionPreferences.quality
-            let promptText = CustomVocabulary.whisperPrompt(
-                LocalTranscriptionPreferences.customVocabulary
-            )
-            // Whisper's translate task has exactly one trained target, English,
-            // and `translationTarget` can only ever be "en" for a Whisper
-            // model. Asking it for another target is not a smaller version of
-            // the same feature; it is nothing at all.
+            let settings = WhisperDictationSettings.current(for: descriptor, language: language)
+            // Windows decoded during the dictation's pauses, if they were
+            // decoded on these same terms. A setting changed mid-recording
+            // means decoding again rather than trusting what was.
+            let cache = dictation.flatMap {
+                $0.modelID == id && $0.settings == settings && streamed != nil ? $0.cache : nil
+            }
+            let hitsBefore = cache?.hits ?? 0
+            var windowCount = 0
             let translateTo = descriptor.resolvedTranslationTarget
-            let results = try await WhisperTranscription.transcribe(samples: samples) {
+            let results = try await WhisperTranscription.transcribe(
+                samples: samples,
+                retries: settings.quality.whisperRetryCount,
+                cache: cache,
+                levelling: WhisperWindowCache.Levelling(levelled)
+            ) {
                 do {
                     return try await self.ensureWhisperKit(
                         descriptor: descriptor,
@@ -2098,17 +2198,7 @@ final class LocalModelManager {
                     throw error
                 }
             } options: { whisperKit in
-                // Tokenized here rather than stored, because the tokens only mean
-                // anything against the tokenizer of the model that is loaded.
-                let promptTokens = promptText.isEmpty
-                    ? nil
-                    : whisperKit.tokenizer?.encode(text: promptText)
-                return WhisperTranscription.decodingOptions(
-                    language: requested,
-                    translate: !translateTo.isEmpty,
-                    quality: quality,
-                    promptTokens: promptTokens
-                )
+                settings.decodingOptions(for: whisperKit)
             } discard: { _ in
                 DiagnosticLog.record(.localEngineRetried)
                 // Rebuilt from nothing, and prewarmed: the failed attempt may be
@@ -2125,6 +2215,7 @@ final class LocalModelManager {
                     )
                 )
             } decode: { whisperKit, window, options in
+                windowCount += 1
                 do {
                     return try await whisperKit.transcribe(audioArray: window, decodeOptions: options)
                 } catch {
@@ -2148,7 +2239,9 @@ final class LocalModelManager {
                     requested: resolvedLanguage,
                     reported: WhisperTranscription.reportedLanguage(results),
                     translateTo: translateTo
-                )
+                ),
+                decodedEarly: windowCount == 0 && (cache?.hits ?? 0) > hitsBefore,
+                trimmedMilliseconds: trimmedMilliseconds
             )
 
         case .sherpaOnnx:
@@ -2440,7 +2533,7 @@ final class LocalModelManager {
         // Off the main actor: `SherpaRecognizer.create` is synchronous and
         // reads hundreds of megabytes from disk, so running it here froze the
         // interface that had just published "Loading…".
-        let threads = max(2, min(ProcessInfo.processInfo.processorCount - 2, 4))
+        let threads = SherpaThreads.count
         // Published inside the task, not after this caller resumes. A load
         // waiting in `waitForEngineLoads` can resume first, and it must find
         // this recognizer already in place — to release it — rather than start
@@ -2451,9 +2544,7 @@ final class LocalModelManager {
                     model: descriptor,
                     directory: folder,
                     language: resolvedLanguage,
-                    // ONNX Runtime's CPU pool benefits from a bounded number of
-                    // workers on iPhone; using every logical core throttles long
-                    // recordings and competes with audio/UI work.
+                    // One worker per performance core. See `SherpaThreads`.
                     threads: threads,
                     quality: quality,
                     translateTo: translateTo

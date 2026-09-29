@@ -15,6 +15,13 @@ struct SherpaIncrementalResult: Sendable, Equatable {
     /// caller re-decodes the file rather than shipping the hole.
     let droppedAudibleChunk: Bool
 
+    /// Whether the last stretch of the recording was decoded before Finish,
+    /// during the pause at its end, rather than after it.
+    var reusedEarlyDecode = false
+
+    /// Milliseconds of trailing non-speech left out of the decode.
+    var trimmedMilliseconds = 0
+
     static let empty = SherpaIncrementalResult(transcript: .empty, droppedAudibleChunk: false)
 
     /// Whether a whole-file re-decode is worth taking over this result.
@@ -33,18 +40,29 @@ struct SherpaIncrementalResult: Sendable, Equatable {
 /// Consumes captured PCM while the microphone is still running. The WAV file
 /// remains authoritative, but Sherpa's expensive offline work is spread over
 /// the recording instead of making the user wait for the whole file at finish.
+///
+/// Two things run on the way. Every twelve seconds the first ten are decoded
+/// and let go, which is what bounds a long dictation's wait. And whenever the
+/// speaker pauses, the audio not yet decoded is decoded *then*, ahead of
+/// Finish: if nothing more is said before the recording ends, that answer is
+/// the transcript's last stretch and Finish has nothing left to wait for. A
+/// dictation is almost always under twelve seconds, so without the second one
+/// the whole of it was decoded after Finish.
 final class SherpaIncrementalSession: @unchecked Sendable {
     private let task: Task<SherpaIncrementalResult, Never>
 
     /// `decode` is handed one complete chunk at a time and must be safe to call
     /// off the main actor; the recognizer overload in the app target supplies
-    /// the real one.
+    /// the real one. `detector` is made on the consuming task, which owns it;
+    /// nil, or a factory that returns nil, decodes exactly as before: nothing
+    /// early and nothing trimmed.
     init(
         chunks: AsyncStream<Data>,
+        detector: (@Sendable () -> SpeechActivityDetecting?)? = nil,
         decode: @escaping @Sendable ([Float]) -> SherpaDecodeOutcome
     ) {
         task = Task.detached(priority: .userInitiated) {
-            await Self.transcribe(chunks: chunks, decode: decode)
+            await Self.transcribe(chunks: chunks, detector: detector?(), decode: decode)
         }
     }
 
@@ -52,24 +70,38 @@ final class SherpaIncrementalSession: @unchecked Sendable {
 
     func cancel() { task.cancel() }
 
+    /// A decode of the audio not yet committed, made during a pause.
+    private struct EarlyDecode {
+        /// Where the decoded audio started and ended, in recording samples.
+        let start: Int
+        let end: Int
+        /// The gain it was levelled with. A louder passage after it moves the
+        /// gain, and audio levelled differently is not the audio decoded.
+        let gain: Float
+        let outcome: SherpaDecodeOutcome
+    }
+
     private static func transcribe(
         chunks: AsyncStream<Data>,
+        detector: SpeechActivityDetecting?,
         decode: @Sendable ([Float]) -> SherpaDecodeOutcome
     ) async -> SherpaIncrementalResult {
         var samples: [Float] = []
         samples.reserveCapacity(
             SherpaLongAudio.streamingWindowSeconds * SherpaLongAudio.sampleRate
         )
+        // Where `samples` begins in the recording.
+        var offset = 0
         var transcript = SherpaTranscript.empty
         var overlapsPrevious = false
         var droppedAudibleChunk = false
         // The gain a chunk is levelled with has to come from more than the chunk
         // itself: one gain per chunk moves the level at every boundary, and a
         // chunk that is all pause would be amplified into noise the model
-        // transcribes as words. The peak over everything captured so far is the
+        // transcribes as words. The level of everything captured so far is the
         // closest a streaming chunk gets to the single gain the whole-file path
-        // applies, and it only ever grows, so the gain only ever settles.
-        var peak: Float = 0
+        // applies — measured the same way, so a click is not the level.
+        var level = SpeechAudioConditioning.RunningLevel()
         // The loudest frame of everything decoded so far, which is what a later
         // chunk's level is judged against. Read before this chunk contributes
         // to it, so a pause is compared with the speech around it and never
@@ -79,18 +111,25 @@ final class SherpaIncrementalSession: @unchecked Sendable {
         // decoded. Everything a window can lose sits after it, so it is what
         // the emptiness of its answer is judged on.
         var retainedHead = 0
+        // Speech the detector has heard, in recording samples.
+        var regions: [SpeechRegion] = []
+        var earlyDecode: EarlyDecode?
 
-        func consume(_ chunk: [Float]) {
+        /// Skipped as silence, or decoded — levelled with `gain`.
+        func decodeLevelled(_ chunk: [Float], gain: Float) -> SherpaDecodeOutcome? {
             // Silence is judged on the capture as it arrived. The levelling
             // below multiplies a quiet recording by as much as eight, and a
             // floor meant for microphone levels reads amplified room tone as
             // speech — which buys a decode, the two more the empty-chunk
             // recovery adds on top, and then the whole-file re-run the flag
             // asks the caller for. All to transcribe a pause.
-            let level = SherpaLongAudio.loudestFrame(chunk)
-            guard !SherpaLongAudio.isEffectivelySilent(loudestFrame: level) else { return }
-            let levelled = SpeechAudioConditioning.condition(chunk, peak: peak)
-            let outcome = decode(levelled)
+            guard !SherpaLongAudio.isEffectivelySilent(chunk) else { return nil }
+            return decode(SpeechAudioConditioning.condition(chunk, gain: gain))
+        }
+
+        func consume(_ chunk: [Float], outcome: SherpaDecodeOutcome?) {
+            guard let outcome else { return }
+            let chunkLevel = SherpaLongAudio.loudestFrame(chunk)
             // The engine failing to answer is not the model answering nothing.
             // Either way the seconds are missing from the transcript, so the
             // whole-file pass has to run — but it is recorded as a loss without
@@ -118,36 +157,80 @@ final class SherpaIncrementalSession: @unchecked Sendable {
             {
                 droppedAudibleChunk = true
             }
-            loudestFrame = max(loudestFrame, level)
+            loudestFrame = max(loudestFrame, chunkLevel)
             transcript = transcript.appending(decoded, deduplicateOverlap: overlapsPrevious)
         }
 
-        func result() -> SherpaIncrementalResult {
-            SherpaIncrementalResult(
+        /// The gain the level of everything captured so far calls for.
+        func currentGain() -> Float { SpeechAudioConditioning.gain(forLevel: level.level) }
+
+        /// Decodes what is not yet committed, up to just past the last word
+        /// heard, while the speaker is quiet.
+        func decodeEarly() {
+            guard let lastEnd = regions.last?.end else { return }
+            let end = min(lastEnd + SpeechActivity.tailPaddingSamples, offset + samples.count)
+            guard end > offset, earlyDecode?.end != end || earlyDecode?.start != offset else { return }
+            let gain = currentGain()
+            let chunk = Array(samples[..<(end - offset)])
+            // A pause with nothing decodable before it is not worth a result;
+            // the finish path decides that for itself.
+            guard let outcome = decodeLevelled(chunk, gain: gain) else { return }
+            earlyDecode = EarlyDecode(start: offset, end: end, gain: gain, outcome: outcome)
+        }
+
+        func result(reusedEarlyDecode: Bool = false, trimmed: Int = 0) -> SherpaIncrementalResult {
+            var result = SherpaIncrementalResult(
                 transcript: SherpaTranscript(
                     text: transcript.text.trimmingCharacters(in: .whitespacesAndNewlines),
                     language: transcript.language
                 ),
                 droppedAudibleChunk: droppedAudibleChunk
             )
+            result.reusedEarlyDecode = reusedEarlyDecode
+            result.trimmedMilliseconds = trimmed * 1_000 / SherpaLongAudio.sampleRate
+            return result
         }
 
         for await data in chunks {
             guard !Task.isCancelled else { return result() }
             let incoming = Self.floatSamples(in: data)
-            peak = incoming.reduce(peak) { max($0, abs($1)) }
+            level.append(incoming)
             samples.append(contentsOf: incoming)
+            let closed = detector?.accept(incoming) ?? []
+            regions += closed
 
             while let split = SherpaLongAudio.nextStreamingSplit(samples) {
-                consume(Array(samples[..<split.endExclusive]))
+                let chunk = Array(samples[..<split.endExclusive])
+                consume(chunk, outcome: decodeLevelled(chunk, gain: currentGain()))
                 samples.removeFirst(split.nextStart)
+                offset += split.nextStart
                 overlapsPrevious = split.nextStart < split.endExclusive
                 retainedHead = split.endExclusive - split.nextStart
+                earlyDecode = nil
             }
+            if !closed.isEmpty { decodeEarly() }
         }
 
-        if !samples.isEmpty { consume(samples) }
-        return result()
+        guard !samples.isEmpty else { return result() }
+        regions += detector?.finish() ?? []
+        // The pause after the last word, and the tap on Finish, are not worth
+        // a model's time, and are left out only where nothing in them could be
+        // speech.
+        let end = SpeechActivity.trimmedEnd(
+            of: samples,
+            regions: SpeechActivity.regions(regions, from: offset),
+            loudestFrameSoFar: loudestFrame
+        ) ?? samples.count
+        let tail = Array(samples[..<end])
+        let gain = currentGain()
+        if let early = earlyDecode, early.start == offset, early.end == offset + end,
+           abs(early.gain - gain) <= gain * 0.05
+        {
+            consume(tail, outcome: early.outcome)
+            return result(reusedEarlyDecode: true, trimmed: samples.count - end)
+        }
+        consume(tail, outcome: decodeLevelled(tail, gain: gain))
+        return result(trimmed: samples.count - end)
     }
 
     private static func floatSamples(in data: Data) -> [Float] {

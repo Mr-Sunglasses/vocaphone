@@ -74,3 +74,40 @@ int VocaPhoneSherpaDecode(
 );
 
 void VocaPhoneSherpaDestroy(VocaPhoneSherpaRecognizer recognizer);
+
+typedef void *VocaPhoneSpeechDetector;
+
+/// A Silero voice activity detector over 16 kHz mono audio.
+///
+/// `min_silence_seconds` is how long a pause has to last before the speech
+/// before it is reported as a finished region, and `min_speech_seconds` how
+/// long a sound has to last to count as speech at all. Returns NULL when the
+/// model cannot be loaded.
+VocaPhoneSpeechDetector VocaPhoneSpeechDetectorCreate(
+    const char *model,
+    float threshold,
+    float min_silence_seconds,
+    float min_speech_seconds,
+    float max_speech_seconds
+);
+
+/// Feeds the next `count` samples, in recording order.
+void VocaPhoneSpeechDetectorAccept(
+    VocaPhoneSpeechDetector detector,
+    const float *samples,
+    int32_t count
+);
+
+/// Closes a region still open at the end of the audio.
+void VocaPhoneSpeechDetectorFlush(VocaPhoneSpeechDetector detector);
+
+/// Takes the oldest finished speech region, as sample indices counted from the
+/// first sample the detector was given. Returns 1 with `start` and `end` set,
+/// or 0 when there is none waiting.
+int VocaPhoneSpeechDetectorNext(
+    VocaPhoneSpeechDetector detector,
+    int32_t *start,
+    int32_t *end
+);
+
+void VocaPhoneSpeechDetectorDestroy(VocaPhoneSpeechDetector detector);

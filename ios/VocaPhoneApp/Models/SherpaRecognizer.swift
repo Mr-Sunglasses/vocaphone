@@ -292,7 +292,11 @@ extension SherpaIncrementalSession {
     /// The session lives in the shared target and takes a decode closure so it
     /// can be tested without the native engine; this is the one call site that
     /// has a real recognizer to give it.
-    convenience init(chunks: AsyncStream<Data>, recognizer: SherpaRecognizer) {
-        self.init(chunks: chunks) { recognizer.transcribeChunk($0) }
+    convenience init(
+        chunks: AsyncStream<Data>,
+        recognizer: SherpaRecognizer,
+        detector: (@Sendable () -> SpeechActivityDetecting?)? = nil
+    ) {
+        self.init(chunks: chunks, detector: detector) { recognizer.transcribeChunk($0) }
     }
 }

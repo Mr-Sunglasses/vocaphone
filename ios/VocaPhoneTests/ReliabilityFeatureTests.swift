@@ -467,6 +467,20 @@ struct ReliabilityFeatureTests {
         #expect(decoded.metadata == .emptyWindow(index: 0, count: 2, milliseconds: 29_500))
     }
 
+    @Test func transcriptionTimingRecordsNumbersAndAFlagOnly() throws {
+        let metadata = DiagnosticMetadata.localTranscriptionTimed(
+            milliseconds: 42, decodedEarly: true, trimmedMilliseconds: 1_600
+        )
+        let entry = DiagnosticEntry(source: .tests, event: .localTranscriptionTimed, metadata: metadata)
+        let encoded = String(decoding: try JSONEncoder().encode(entry), as: UTF8.self)
+        #expect(encoded.contains(#""event":"localTranscriptionTimed""#))
+        #expect(encoded.contains(#""milliseconds":42"#))
+        #expect(encoded.contains(#""decodedEarly":true"#))
+        #expect(encoded.contains(#""trimmedMilliseconds":1600"#))
+        let decoded = try JSONDecoder().decode(DiagnosticEntry.self, from: Data(encoded.utf8))
+        #expect(decoded.metadata == metadata)
+    }
+
     @Test func sherpaDecodeFailureRecordsTheNativeStatus() {
         let named = DiagnosticMetadata.sherpaDecodeFailure(
             .outputTruncated, appInForeground: false, megabytesAvailable: 300

@@ -32,7 +32,8 @@ enum TranscriptionQuality: String, Codable, CaseIterable, Identifiable, Sendable
     /// `greedy_search`, see `SherpaFamily.supportsBeamSearch` — so nothing here
     /// may promise that it does. What is left is re-decoding, and that is where
     /// the two engines part company: Whisper re-runs a degenerate window at a
-    /// raised temperature and the count comes from this setting, while sherpa's
+    /// raised temperature, keeps the better answer, and the count comes from
+    /// this setting, while sherpa's
     /// empty-result recovery is a fixed ladder that does not consult it. Saying
     /// otherwise for sherpa describes a control that currently does nothing.
     func detail(for engine: LocalModelEngine) -> String {
@@ -45,8 +46,8 @@ enum TranscriptionQuality: String, Codable, CaseIterable, Identifiable, Sendable
     private var whisperKitDetail: String {
         switch self {
         case .fast: "Quickest result. Skips the retries that rescue a hard passage."
-        case .balanced: "Retries a window that comes back empty or looks wrong."
-        case .accurate: "Retries hardest before giving up. Noticeably slower on older iPhones."
+        case .balanced: "Tries a passage again when it looks wrong, and keeps the better result."
+        case .accurate: "Tries hardest before settling. Noticeably slower on older iPhones."
         }
     }
 
@@ -55,28 +56,20 @@ enum TranscriptionQuality: String, Codable, CaseIterable, Identifiable, Sendable
             + "not change its result. It applies to Whisper models."
     }
 
-    /// How many times a window whose result looks degenerate — too repetitive,
-    /// or too unlikely — is decoded again at a raised temperature.
+    /// How many more times a window whose result looks degenerate — too
+    /// repetitive, or too unlikely — is decoded, at a raised temperature, with
+    /// the best of the attempts kept.
     ///
     /// This is what catches Whisper's repetition loops, and it costs nothing on
     /// the windows that decode cleanly the first time, which is nearly all of
     /// them. WhisperKit has no beam search, so on this platform it is the whole
-    /// of the Whisper trade-off rather than half of it.
-    var whisperKitTemperatureFallbackCount: Int {
+    /// of the Whisper trade-off rather than half of it. See
+    /// `WhisperTranscription.decodeBest`.
+    var whisperRetryCount: Int {
         switch self {
         case .fast: 0
         case .balanced: 1
         case .accurate: 2
-        }
-    }
-
-    /// Reaches Whisper's useful temperature range in the bounded pass count
-    /// above instead of spending four to six full decoder runs stepping by 0.2.
-    var whisperKitTemperatureIncrement: Float {
-        switch self {
-        case .fast: 0
-        case .balanced: 1
-        case .accurate: 0.5
         }
     }
 

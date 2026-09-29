@@ -49,6 +49,26 @@ struct LocalModelEndToEndTests {
         #expect(empty.isEmpty, "empty windows starting at \(empty)")
     }
 
+    /// A dictation streamed through the voice activity detector the app
+    /// uses: whatever it trims, every sentence must survive.
+    @Test(arguments: ModelEndToEnd.scenarios)
+    func streamingDictationKeepsEverySentence(_ scenario: ModelEndToEnd.Scenario) async throws {
+        let dictation = try await ModelEndToEnd.dictateStreaming(scenario)
+        let missing = scenario.markers.filter { !dictation.text.lowercased().contains($0) }
+        #expect(missing.isEmpty, "\(scenario.name), streamed: missing \(missing) in “\(dictation.text)”")
+    }
+
+    /// The pause before Finish is when Whisper decodes the dictation, so
+    /// Finish decodes nothing.
+    @Test func aDictationEndingInAPauseIsDecodedBeforeFinish() async throws {
+        let scenario = try #require(ModelEndToEnd.scenarios.first { $0.name == "trailing_pause" })
+        let dictation = try await ModelEndToEnd.dictateStreaming(scenario)
+        let missing = scenario.markers.filter { !dictation.text.lowercased().contains($0) }
+        #expect(missing.isEmpty, "trailing pause: missing \(missing) in “\(dictation.text)”")
+        #expect(dictation.windowsDecodedAtFinish == 0)
+        #expect(dictation.trimmedSamples > 16_000 * 3 / 2)
+    }
+
     /// Custom vocabulary reaches Whisper as prompt tokens, which is the path
     /// WhisperKit fixed an empty-transcript bug on in 1.1.0.
     @Test func customVocabularyDoesNotEmptyTheTranscript() async throws {
@@ -133,7 +153,11 @@ enum ModelEndToEnd {
         let options = WhisperTranscription.decodingOptions(
             language: nil, translate: false, quality: .balanced, promptTokens: nil
         )
-        return try await WhisperTranscription.transcribe(samples: samples, options: options) {
+        return try await WhisperTranscription.transcribe(
+            samples: samples,
+            options: options,
+            retries: TranscriptionQuality.balanced.whisperRetryCount
+        ) {
             try await engine.transcribe(audioArray: $0, decodeOptions: $1)
         }
         .map(\.text).joined(separator: " ")
@@ -144,15 +168,27 @@ enum ModelEndToEnd {
     /// finished recording, then what the keyboard is handed to type.
     static func dictate(_ scenario: Scenario, vocabulary: String? = nil) async throws -> String {
         let samples = SpeechAudioConditioning.condition(try Self.samples(scenario))
-        let prompt = CustomVocabulary.whisperPrompt(vocabulary)
-        let results = try await WhisperTranscription.transcribe(samples: samples) {
+        let results = try await WhisperTranscription.transcribe(
+            samples: samples,
+            retries: TranscriptionQuality.balanced.whisperRetryCount
+        ) {
             try await loadedEngine()
         } options: { engine in
-            WhisperTranscription.decodingOptions(
+            // The budgeted prompt `WhisperDictationSettings` builds.
+            var promptTokens: [Int]?
+            if let tokenizer = engine.tokenizer {
+                let special = tokenizer.specialTokens.specialTokenBegin
+                let encode = { (text: String) in tokenizer.encode(text: text).filter { $0 < special } }
+                let prompt = CustomVocabulary.whisperPrompt(
+                    vocabulary, maximumTokens: CustomVocabulary.whisperKitPromptTokens
+                ) { encode($0).count }
+                promptTokens = prompt.isEmpty ? nil : encode(prompt)
+            }
+            return WhisperTranscription.decodingOptions(
                 language: nil,
                 translate: false,
                 quality: .balanced,
-                promptTokens: prompt.isEmpty ? nil : engine.tokenizer?.encode(text: prompt)
+                promptTokens: promptTokens
             )
         } discard: { _ in
             engine = nil
@@ -174,6 +210,69 @@ enum ModelEndToEnd {
             spokenEmoji: true,
             snippets: []
         )
+    }
+
+    /// What a Whisper dictation does on the phone: the capture streamed to a
+    /// `WhisperIncrementalSession` a hundred milliseconds at a time, decoded
+    /// early at each pause into the dictation's cache, then, at Finish, the
+    /// trimmed recording levelled and decoded with that cache — as
+    /// `LocalModelManager.transcribe` does.
+    static func dictateStreaming(
+        _ scenario: Scenario
+    ) async throws -> (text: String, windowsDecodedAtFinish: Int, trimmedSamples: Int) {
+        let captured = try samples(scenario)
+        // Main-actor only, as in the app, where the early decode hops there.
+        nonisolated(unsafe) let engine = try await loadedEngine()
+        let options = WhisperTranscription.decodingOptions(
+            language: nil, translate: false, quality: .balanced, promptTokens: nil
+        )
+        let cache = WhisperWindowCache()
+        let (chunks, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
+        let session = WhisperIncrementalSession(chunks: chunks) {
+            SileroSpeechDetector(model: SileroSpeechDetector.repositoryModel)
+        } decodeEarly: { prefix in
+            let levelled = SpeechAudioConditioning.levelled(prefix)
+            _ = try? await WhisperTranscription.transcribe(
+                samples: levelled.samples,
+                options: options,
+                retries: 1,
+                cache: cache,
+                levelling: WhisperWindowCache.Levelling(levelled)
+            ) {
+                try await engine.transcribe(audioArray: $0, decodeOptions: $1)
+            }
+        }
+        for start in stride(from: 0, to: captured.count, by: 1_600) {
+            let chunk = Array(captured[start..<min(captured.count, start + 1_600)])
+            continuation.yield(chunk.withUnsafeBufferPointer { Data(buffer: $0) })
+        }
+        continuation.finish()
+        let audio = await session.finish()
+
+        let levelled = SpeechAudioConditioning.levelled(audio.samples)
+        var decodedAtFinish = 0
+        let results = try await WhisperTranscription.transcribe(
+            samples: levelled.samples,
+            options: options,
+            retries: 1,
+            cache: cache,
+            levelling: WhisperWindowCache.Levelling(levelled)
+        ) {
+            decodedAtFinish += 1
+            return try await engine.transcribe(audioArray: $0, decodeOptions: $1)
+        }
+        let text = results.map(\.text).joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let finished = DictatedTranscript.finished(
+            text,
+            style: .casual,
+            language: "en",
+            repairSpeech: true,
+            numbersAsDigits: true,
+            spokenEmoji: true,
+            snippets: []
+        )
+        return (finished, decodedAtFinish, audio.trimmedSamples)
     }
 
     private static func loadSamples(_ url: URL) throws -> [Float] {

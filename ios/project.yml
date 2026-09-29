@@ -94,6 +94,10 @@ targets:
     resources:
       - VocaPhoneApp/Models/local_model_pins.json
       - VocaPhoneApp/Models/sherpa_model_pins.json
+      # Silero VAD (MIT), 644 KB. Bundled rather than downloaded because every
+      # on-device route uses it, whichever model was downloaded. See
+      # `SileroSpeechDetector`.
+      - VocaPhoneApp/Models/silero_vad.onnx
       - VocaPhoneApp/PrivacyInfo.xcprivacy
       - VocaPhoneApp/Settings.bundle
       - VocaPhoneApp/Media/SetupKeyboard.mp4
@@ -175,6 +179,10 @@ targets:
       - path: VocaPhoneApp/Models/WhisperTranscription.swift
       - path: VocaPhoneApp/Models/SherpaRecognizer.swift
       - path: VocaPhoneApp/Models/SherpaOnnxBridge.c
+      # The real voice activity detector, and the Whisper session that listens
+      # to it, so pause detection and trimming are tested on actual audio.
+      - path: VocaPhoneApp/Models/SileroSpeechDetector.swift
+      - path: VocaPhoneApp/Models/WhisperIncrementalSession.swift
       # The errors SherpaRecognizer throws are declared beside the integrity
       # checks it shares them with.
       - path: VocaPhoneApp/Models/LocalModelIntegrity.swift

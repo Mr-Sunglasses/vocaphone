@@ -22,7 +22,9 @@ struct WhisperTranscriptionTests {
         #expect(options.logProbThreshold != nil)
         #expect(options.compressionRatioThreshold != nil)
         #expect(options.noSpeechThreshold != nil)
-        #expect(options.temperatureFallbackCount == quality.whisperKitTemperatureFallbackCount)
+        // WhisperKit's fallback keeps its last attempt; the window loop's
+        // keeps the best, so WhisperKit's is off at every setting.
+        #expect(options.temperatureFallbackCount == 0)
     }
 
     @Test func automaticLanguageAsksForDetection() {
@@ -480,5 +482,195 @@ struct WhisperTranscriptionTests {
         }
         #expect(loads == 1)
         #expect(discards == 0)
+    }
+
+    // MARK: - Retries keep the best attempt
+
+    private static func attempt(
+        _ text: String,
+        logProb: Float,
+        compression: Float = 1.5,
+        noSpeech: Float = 0.01,
+        language: String = "en"
+    ) -> [TranscriptionResult] {
+        let segment = TranscriptionSegment(
+            text: text,
+            tokens: Array(repeating: 1, count: 10),
+            avgLogprob: logProb,
+            compressionRatio: compression,
+            noSpeechProb: noSpeech
+        )
+        return [TranscriptionResult(text: text, segments: [segment], language: language, timings: TranscriptionTimings())]
+    }
+
+    private static let options = WhisperTranscription.decodingOptions(
+        language: nil, translate: false, quality: .balanced, promptTokens: nil
+    )
+
+    /// WhisperKit's own fallback returned its last attempt whatever it said.
+    @Test func aWorseRetryNeverReplacesTheFirstAnswer() async throws {
+        var calls = 0
+        let kept = try await WhisperTranscription.decodeBest([0], options: Self.options, retries: 1) { _, _ in
+            calls += 1
+            return calls == 1
+                ? Self.attempt("the model's best guess", logProb: -1.2)
+                : Self.attempt("a random sample", logProb: -1.9)
+        }
+        #expect(calls == 2)
+        #expect(kept.first?.text == "the model's best guess")
+    }
+
+    @Test func aRepetitionLoopIsReplacedByAnAnswerThatIsNotOne() async throws {
+        var calls = 0
+        let kept = try await WhisperTranscription.decodeBest([0], options: Self.options, retries: 2) { _, _ in
+            calls += 1
+            return calls == 1
+                ? Self.attempt("so so so so so so so so", logProb: -0.1, compression: 4)
+                : Self.attempt("so I said", logProb: -0.6)
+        }
+        // The second answer was good enough to stop at.
+        #expect(calls == 2)
+        #expect(kept.first?.text == "so I said")
+    }
+
+    @Test func anEmptyRetryNeverReplacesWords() async throws {
+        var calls = 0
+        let kept = try await WhisperTranscription.decodeBest([0], options: Self.options, retries: 1) { _, _ in
+            calls += 1
+            return calls == 1 ? Self.attempt("hard to hear", logProb: -1.4) : []
+        }
+        #expect(kept.first?.text == "hard to hear")
+    }
+
+    /// A retry samples, and used to detect the language again with the same
+    /// sampler — a Hindi window could come back as Urdu.
+    @Test func aRetryKeepsTheLanguageTheFirstAttemptHeard() async throws {
+        var retries: [DecodingOptions] = []
+        _ = try await WhisperTranscription.decodeBest([0], options: Self.options, retries: 1) { _, options in
+            if options.temperature > 0 { retries.append(options) }
+            return Self.attempt("namaste", logProb: -1.5, language: "hi")
+        }
+        #expect(retries.count == 1)
+        #expect(retries.first?.language == "hi")
+        #expect(retries.first?.detectLanguage == false)
+        #expect(retries.first?.temperature == WhisperTranscription.retryTemperature)
+    }
+
+    @Test func aCleanOrSilentWindowIsNeverRetried() async throws {
+        for first in [
+            Self.attempt("all good", logProb: -0.3),
+            Self.attempt("thank you", logProb: -1.6, noSpeech: 0.9),
+            [],
+        ] {
+            var calls = 0
+            _ = try await WhisperTranscription.decodeBest([0], options: Self.options, retries: 2) { _, _ in
+                calls += 1
+                return first
+            }
+            #expect(calls == 1)
+        }
+    }
+
+    @Test func fastNeverRetries() async throws {
+        var calls = 0
+        _ = try await WhisperTranscription.decodeBest([0], options: Self.options, retries: 0) { _, _ in
+            calls += 1
+            return Self.attempt("loop loop loop loop", logProb: -0.1, compression: 5)
+        }
+        #expect(calls == 1)
+    }
+
+    // MARK: - A bounded token budget
+
+    @Test func aWindowMayNotRunToTheWholeContextOnAFewSecondsOfAudio() {
+        #expect(WhisperTranscription.sampleLength(forWindowSamples: 16_000) == 64)
+        #expect(WhisperTranscription.sampleLength(forWindowSamples: 3 * 16_000) == 90)
+        #expect(WhisperTranscription.sampleLength(forWindowSamples: 30 * 16_000) == Constants.maxTokenContext)
+    }
+
+    @Test func theBudgetReachesTheDecoder() async throws {
+        var budgets: [Int] = []
+        _ = try await WhisperTranscription.transcribe(
+            samples: [Float](repeating: 0.2, count: 3 * 16_000),
+            options: DecodingOptions()
+        ) { _, options in
+            budgets.append(options.sampleLength)
+            return []
+        }
+        #expect(budgets == [90])
+    }
+
+    // MARK: - Windows decoded early
+
+    @Test func aWindowDecodedEarlyIsNotDecodedAgain() async throws {
+        let cache = WhisperWindowCache()
+        let samples = Self.speechLike(seconds: 8)
+        var decodes = 0
+        let early = try await WhisperTranscription.transcribe(
+            samples: samples, options: DecodingOptions(), cache: cache
+        ) { _, _ in
+            decodes += 1
+            return Self.said("early")
+        }
+        let atFinish = try await WhisperTranscription.transcribe(
+            samples: samples, options: DecodingOptions(), cache: cache
+        ) { _, _ in
+            decodes += 1
+            return Self.said("again")
+        }
+        #expect(decodes == 1)
+        #expect(early.first?.text == "early")
+        #expect(atFinish.first?.text == "early")
+        #expect(cache.hits == 1)
+    }
+
+    /// A louder passage later in the dictation changes the gain, and the same
+    /// stretch levelled differently is different audio.
+    @Test func aWindowLevelledDifferentlyIsDecodedAgain() async throws {
+        let cache = WhisperWindowCache()
+        let samples = Self.speechLike(seconds: 8)
+        var decodes = 0
+        for gain: Float in [2, 3] {
+            _ = try await WhisperTranscription.transcribe(
+                samples: samples,
+                options: DecodingOptions(),
+                cache: cache,
+                levelling: WhisperWindowCache.Levelling(gain: gain, offset: 0)
+            ) { _, _ in
+                decodes += 1
+                return Self.said("words")
+            }
+        }
+        #expect(decodes == 2)
+        #expect(cache.hits == 0)
+    }
+
+    /// Only the windows that changed are decoded: a dictation that ran on past
+    /// its early decode keeps its finished first window.
+    @Test func aLongerRecordingReusesOnlyTheWindowsItShares() async throws {
+        let cache = WhisperWindowCache()
+        let first = Self.speechLike(seconds: 40)
+        let longer = first + Self.speechLike(seconds: 10)
+        var decoded: [Int] = []
+        _ = try await WhisperTranscription.transcribe(samples: first, options: DecodingOptions(), cache: cache) { window, _ in
+            decoded.append(window.count)
+            return Self.said("words")
+        }
+        let earlyWindows = decoded.count
+        var windowsOfLonger = 0
+        _ = try await WhisperTranscription.transcribe(samples: longer, options: DecodingOptions()) { _, _ in
+            windowsOfLonger += 1
+            return Self.said("words")
+        }
+        decoded = []
+        _ = try await WhisperTranscription.transcribe(samples: longer, options: DecodingOptions(), cache: cache) { window, _ in
+            decoded.append(window.count)
+            return Self.said("words")
+        }
+        #expect(earlyWindows == 2)
+        // The first window is the same thirty seconds either way; the second
+        // grew, so it is decoded again.
+        #expect(cache.hits == 1)
+        #expect(decoded.count == windowsOfLonger - 1)
     }
 }

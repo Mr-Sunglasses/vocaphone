@@ -40,6 +40,8 @@ memory check.
 | 6 | Background finish | Start, switch to Safari, speak 40 s, Finish from the keyboard | Full text inserted back into the right field |
 | 7 | Interruption | Take a call or invoke Siri mid-dictation | Audio before the interruption is kept and transcribed |
 | 8 | Memory | The largest model you ship (Large v3) on the oldest phone, a 60 s dictation | No crash, no `JetsamEvent` for VocaPhoneApp (see below) |
+| 9 | Pause, then Finish | Dictate one sentence, stay quiet for a second, then tap Finish | Full text, inserted almost at once. `localTranscriptionTimed` shows `decodedEarly: true` and a `trimmedMilliseconds` near the pause |
+| 10 | Finish mid-word | Tap Finish while still saying the last word | The last word is typed. `decodedEarly: false` is expected here |
 
 ## Android
 
@@ -71,8 +73,16 @@ localWindowEmpty                  once #331 merges: a window that held speech
                                   decoded to nothing
 localEngineRetried                the first attempt failed; operationFailed just before it
                                   carries errorDomain / errorNumber
+localTranscriptionTimed           milliseconds from transcribing to text,
+                                  decodedEarly (the words were decoded during
+                                  the pause before Finish), trimmedMilliseconds
 transcriptReady / readyToInsert   done
 ```
+
+- **The wait** is `localTranscriptionTimed.milliseconds`. It includes a cold
+  load only when one was still running at Finish; the load now starts with the
+  recording. `decodedEarly: true` with a wait of a few tens of milliseconds is
+  the path working as designed.
 
 - **Decode time** is `readyToInsert` minus `localEngineLoaded`, or minus
   `transcribing` when nothing was loaded. With the same model and settings it

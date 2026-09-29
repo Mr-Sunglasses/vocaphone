@@ -48,8 +48,13 @@ enum WhisperTranscription {
             task: translate ? .translate : .transcribe,
             language: language,
             temperature: 0,
-            temperatureIncrementOnFallback: quality.whisperKitTemperatureIncrement,
-            temperatureFallbackCount: quality.whisperKitTemperatureFallbackCount,
+            // Never WhisperKit's own fallback: it keeps its *last* attempt,
+            // not its best, so a hard window came back as whatever one sample
+            // at a raised temperature happened to say. The window loop retries
+            // instead, `quality.whisperRetryCount` times, and keeps the best.
+            // See `decodeBest`.
+            temperatureIncrementOnFallback: 0,
+            temperatureFallbackCount: 0,
             usePrefillPrompt: true,
             // WhisperKit derives this from `usePrefillPrompt`, so leaving it
             // unset with prefill on resolves it to false — and a nil language
@@ -99,6 +104,9 @@ enum WhisperTranscription {
     /// with it — is the same.
     static func transcribe<Engine>(
         samples: [Float],
+        retries: Int = 0,
+        cache: WhisperWindowCache? = nil,
+        levelling: WhisperWindowCache.Levelling = .unlevelled,
         // Main-actor closures, like this type: the engine is not Sendable and
         // never leaves the actor that loaded it.
         load: @MainActor () async throws -> Engine,
@@ -130,6 +138,9 @@ enum WhisperTranscription {
         return try await transcribe(
             samples: samples,
             options: options(engine!),
+            retries: retries,
+            cache: cache,
+            levelling: levelling,
             emptyWindow: emptyWindow
         ) { window, windowOptions in
             let failure: Error
@@ -160,9 +171,17 @@ enum WhisperTranscription {
 
     /// `emptyWindow` is told about every window that sounds like speech and
     /// decoded to nothing. It changes nothing about the result.
+    ///
+    /// `cache` holds windows decoded earlier — during a pause in the same
+    /// dictation — and a window found there is not decoded again. `levelling`
+    /// is how `samples` were levelled, which is part of what makes two windows
+    /// over the same stretch of a recording the same audio.
     static func transcribe(
         samples: [Float],
         options: DecodingOptions,
+        retries: Int = 0,
+        cache: WhisperWindowCache? = nil,
+        levelling: WhisperWindowCache.Levelling = .unlevelled,
         emptyWindow: ((EmptyWindow) -> Void)? = nil,
         decode: ([Float], DecodingOptions) async throws -> [TranscriptionResult]
     ) async throws -> [TranscriptionResult] {
@@ -187,7 +206,21 @@ enum WhisperTranscription {
             if samples.count < minimumSamples {
                 samples += [Float](repeating: 0, count: minimumSamples - samples.count)
             }
-            let decoded = try await decode(samples, windowOptions)
+            var bounded = windowOptions
+            bounded.sampleLength = sampleLength(forWindowSamples: chunk.audioSamples.count)
+            let key = WhisperWindowCache.Key(
+                start: chunk.seekOffsetIndex,
+                count: chunk.audioSamples.count,
+                language: windowOptions.language,
+                levelling: levelling
+            )
+            let decoded: [TranscriptionResult]
+            if let cached = cache?.results(for: key) {
+                decoded = cached
+            } else {
+                decoded = try await decodeBest(samples, options: bounded, retries: retries, decode: decode)
+                cache?.store(decoded, for: key)
+            }
             try Task.checkCancellation()
             windowOptions = Self.lockingDetectedLanguage(
                 windowOptions,
@@ -214,6 +247,109 @@ enum WhisperTranscription {
             for result in results { result.language = locked }
         }
         return results
+    }
+
+    /// The temperature a retry samples at.
+    ///
+    /// 1.0 and nothing lower, because it is the only temperature whose scores
+    /// can be compared with the first attempt's. WhisperKit reports each
+    /// sampled token's log-probability from the softmax *after* dividing by the
+    /// temperature, so a retry at 0.5 scores itself on a sharpened
+    /// distribution and always looks more confident than it was. At 1.0 the
+    /// two are measured on the same scale, and choosing between them means
+    /// something.
+    static let retryTemperature: Float = 1
+
+    /// Decodes a window, and while the answer looks broken — a repetition
+    /// loop, or text the model itself found unlikely — decodes it again up to
+    /// `retries` times, keeping the best answer rather than the last.
+    ///
+    /// WhisperKit's own fallback keeps the last. On a hard window — an accent,
+    /// a noisy room, Hindi with English in it — the first, greedy answer is
+    /// usually the model's best guess, and one sample at a raised temperature
+    /// replaced it whatever it said. It also re-detected the language with that
+    /// sampler, so a retry could switch a Hindi window to Urdu. A retry here is
+    /// pinned to the language the first attempt heard.
+    static func decodeBest(
+        _ samples: [Float],
+        options: DecodingOptions,
+        retries: Int,
+        decode: ([Float], DecodingOptions) async throws -> [TranscriptionResult]
+    ) async throws -> [TranscriptionResult] {
+        var best = try await decode(samples, options)
+        var bestQuality = WindowQuality(best, options: options)
+        guard retries > 0, bestQuality.needsRetry else { return best }
+
+        var retry = options
+        retry.temperature = retryTemperature
+        retry.temperatureFallbackCount = 0
+        if retry.language == nil, let heard = best.first?.language, !heard.isEmpty {
+            retry.language = heard
+            retry.detectLanguage = false
+        }
+        for _ in 0..<retries {
+            try Task.checkCancellation()
+            let candidate = try await decode(samples, retry)
+            let quality = WindowQuality(candidate, options: options)
+            if bestQuality < quality {
+                best = candidate
+                bestQuality = quality
+            }
+            if !bestQuality.needsRetry { break }
+        }
+        return best
+    }
+
+    /// How good a decoded window looks, by the tests Whisper itself uses to
+    /// decide a window failed, ordered so the better answer compares greater.
+    struct WindowQuality: Comparable {
+        let hasText: Bool
+        let repetitive: Bool
+        let averageLogProb: Float
+        let needsRetry: Bool
+
+        init(_ results: [TranscriptionResult], options: DecodingOptions) {
+            let segments = results.flatMap(\.segments)
+            let hasText = results.contains { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            let tokens = segments.reduce(0) { $0 + max(1, $1.tokens.count) }
+            let averageLogProb = tokens == 0 ? 0 : segments.reduce(Float(0)) {
+                $0 + $1.avgLogprob * Float(max(1, $1.tokens.count))
+            } / Float(tokens)
+            let repetitive = options.compressionRatioThreshold.map { threshold in
+                segments.contains { $0.compressionRatio > threshold }
+            } ?? false
+            let unlikely = options.logProbThreshold.map { averageLogProb < $0 } ?? false
+            self.hasText = hasText
+            self.averageLogProb = averageLogProb
+            self.repetitive = repetitive
+            // Whisper's own exception: a window the model is sure holds no
+            // speech is silence, and sampling it again only invites words.
+            let silent = options.noSpeechThreshold.map { threshold in
+                !segments.isEmpty && segments.allSatisfy { $0.noSpeechProb > threshold }
+            } ?? false
+            needsRetry = hasText && !silent && (repetitive || unlikely)
+        }
+
+        static func < (lhs: WindowQuality, rhs: WindowQuality) -> Bool {
+            if lhs.hasText != rhs.hasText { return !lhs.hasText }
+            if lhs.repetitive != rhs.repetitive { return lhs.repetitive }
+            return lhs.averageLogProb < rhs.averageLogProb
+        }
+    }
+
+    /// The most tokens one window may produce: thirty a second of its audio,
+    /// and never fewer than 64.
+    ///
+    /// Whisper stops at its end-of-text token, so for a window that decodes
+    /// cleanly this is never reached. It is for the one that does not: a
+    /// repetition loop runs to the model's whole 224-token context, one decoder
+    /// pass a token, before the compression check can call it — seconds, on a
+    /// three-second dictation. Thirty a second is several times the densest
+    /// speech in the most token-hungry script Whisper writes — Devanagari
+    /// costs one token for every character or two.
+    static func sampleLength(forWindowSamples samples: Int) -> Int {
+        let seconds = Double(samples) / Double(WhisperKit.sampleRate)
+        return min(Constants.maxTokenContext, max(64, Int((seconds * 30).rounded(.up))))
     }
 
     /// Automatic language, decided once per recording.
@@ -320,5 +456,54 @@ enum WhisperTranscription {
     private static func loudFrameCount(_ levels: [Float], floor: Float) -> Int {
         let threshold = max(0.01, floor * 2.5)
         return levels.filter { $0 >= threshold }.count
+    }
+}
+
+/// Windows of one dictation already decoded, so a window decoded while the
+/// speaker paused is not decoded again at Finish.
+///
+/// Keyed by everything that makes two windows the same decode: where the
+/// window sits in the recording, how long it is, the language it was decoded
+/// in, and how the recording was levelled — a louder sentence later in the
+/// dictation changes the gain, and a window levelled differently is different
+/// audio. Anything that does not match exactly is decoded again, so the cache
+/// can make a dictation faster and never different.
+@MainActor
+final class WhisperWindowCache {
+    struct Levelling: Hashable, Sendable {
+        let gain: Float
+        let offset: Float
+
+        static let unlevelled = Levelling(gain: 1, offset: 0)
+
+        init(gain: Float, offset: Float) {
+            self.gain = gain
+            self.offset = offset
+        }
+
+        init(_ levelled: SpeechAudioConditioning.Levelled) {
+            self.init(gain: levelled.gain, offset: levelled.offset)
+        }
+    }
+
+    struct Key: Hashable {
+        let start: Int
+        let count: Int
+        let language: String?
+        let levelling: Levelling
+    }
+
+    private var entries: [Key: [TranscriptionResult]] = [:]
+    /// Windows answered from the cache rather than decoded.
+    private(set) var hits = 0
+
+    func results(for key: Key) -> [TranscriptionResult]? {
+        guard let results = entries[key] else { return nil }
+        hits += 1
+        return results
+    }
+
+    func store(_ results: [TranscriptionResult], for key: Key) {
+        entries[key] = results
     }
 }
