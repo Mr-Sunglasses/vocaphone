@@ -41,6 +41,38 @@ transcript; the existing failure state retains the recording for retry. See
 [the model review](local-model-review.md) for the pinned-runtime behavior and
 verification limits.
 
+### On-device work during the recording (iOS)
+
+An on-device dictation does most of its decoding before Finish. While the
+microphone is open, the app streams the capture, in memory, to a per-dictation
+session for the selected engine (`SherpaIncrementalSession` or
+`WhisperIncrementalSession`):
+
+- **The model loads when recording starts**, for Whisper as it always has for
+  sherpa, so a cold load overlaps the speech instead of following it.
+- **A voice activity detector marks the pauses.** Silero VAD (MIT, 644 KB,
+  `ios/VocaPhoneApp/Models/silero_vad.onnx`) runs through the sherpa-onnx
+  runtime the app already links. It ships in the app bundle, so it works with
+  every downloaded model, and it runs on the capture in memory only.
+- **Each pause starts an early decode** of everything not yet committed, up to
+  0.4 s after the last word. Whisper's decoded windows go into a per-dictation
+  cache keyed by their place in the recording, their language and the levelling
+  gain; sherpa keeps the one result.
+- **At Finish, the trailing pause is trimmed**, but only where the detector
+  heard no speech *and* nothing in it rises above the room's own noise floor for
+  150 ms or more, so a quiet last word the detector missed is kept. A detector
+  that heard no speech at all trims nothing. When nothing was said
+  after the last early decode, the trimmed recording is exactly the audio that
+  decode read, and its result is used as is: Finish decodes nothing. Anything
+  else decodes again, so the early decode can make a dictation faster, never
+  different.
+
+The WAV file is still written and stays authoritative: if the capture queue
+refused a chunk, the finish path decodes the file as before. Retries of a
+preserved recording also decode the file. `localTranscriptionTimed` in the
+diagnostics export records the wait, whether it was decoded early, and how much
+was trimmed.
+
 1. The keyboard creates a UUID session and atomically writes `launchingApp`.
 2. If a nonexpired Quick Dictation marker exists, the already-running app sees
    the request while its background input is active. Otherwise the keyboard

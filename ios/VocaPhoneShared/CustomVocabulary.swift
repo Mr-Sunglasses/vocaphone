@@ -49,14 +49,43 @@ enum CustomVocabulary {
     /// name is worse than no name, because it biases toward a spelling nobody
     /// wants.
     static func whisperPrompt(_ raw: String?) -> String {
+        whisperPrompt(raw, maximumTokens: nil) { _ in 0 }
+    }
+
+    /// The prompt WhisperKit is given: the same list, cut to `maximumTokens`
+    /// as `tokenCount` counts them.
+    ///
+    /// Characters are the wrong unit on this platform. WhisperKit's decoder has
+    /// a 224-token context shared between the prompt and the transcript, keeps
+    /// only the *last* 111 prompt tokens, and feeds every one of them through
+    /// the decoder a token at a time before the first word of the window, on
+    /// every window and every retry. Names are expensive: a 560-character list
+    /// was 206 tokens, so the first half of it — the terms the user wrote
+    /// first — was silently dropped while the rest cost 111 decoder passes and
+    /// half the room the transcript had. Cutting here, at a term boundary and
+    /// from the end, keeps the terms the user put first and pays for a few
+    /// dozen passes instead. `VocabularyCorrection` still applies the whole
+    /// list to the text afterwards, on every route.
+    static func whisperPrompt(
+        _ raw: String?,
+        maximumTokens: Int?,
+        tokenCount: (String) -> Int
+    ) -> String {
         let terms = terms(raw)
         guard !terms.isEmpty else { return "" }
         var prompt = ""
         for term in terms {
             let separator = prompt.isEmpty ? "" : ", "
-            if prompt.count + separator.count + term.count > maximumPromptCharacters { break }
-            prompt += separator + term
+            let candidate = prompt + separator + term
+            if candidate.count > maximumPromptCharacters { break }
+            if let maximumTokens, tokenCount(candidate + ".") > maximumTokens { break }
+            prompt = candidate
         }
         return prompt.isEmpty ? "" : prompt + "."
     }
+
+    /// The prompt budget on iOS, in tokens: room for a dozen or so names, and
+    /// a fraction of a second of decoder passes rather than the better part of
+    /// two seconds.
+    static let whisperKitPromptTokens = 48
 }

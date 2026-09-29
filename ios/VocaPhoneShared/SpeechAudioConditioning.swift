@@ -35,17 +35,36 @@ enum SpeechAudioConditioning {
     /// a time would apply a different gain to each — jarring across a chunk
     /// boundary, and outright wrong for a chunk that happens to be a pause.
     static func condition(_ samples: [Float]) -> [Float] {
-        guard !samples.isEmpty else { return samples }
+        levelled(samples).samples
+    }
+
+    /// A levelled recording, and the two numbers that made it what it is.
+    struct Levelled: Sendable {
+        let samples: [Float]
+        /// What every sample was multiplied by: 1 for a recording left alone.
+        let gain: Float
+        /// The DC offset taken out first, or 0.
+        let offset: Float
+    }
+
+    /// ``condition(_:)``, saying what it did. Two recordings levelled with the
+    /// same gain and offset are, sample for sample, the same audio — which is
+    /// what lets a window decoded early be used again at Finish.
+    static func levelled(_ samples: [Float]) -> Levelled {
+        guard !samples.isEmpty else { return Levelled(samples: samples, gain: 1, offset: 0) }
         var samples = samples
 
         // A DC offset costs a model headroom and shifts every frame's energy
         // without carrying any of the speech. Some phone inputs have a real one.
-        let offset = Float(samples.reduce(0.0) { $0 + Double($1) } / Double(samples.count))
+        var offset = Float(samples.reduce(0.0) { $0 + Double($1) } / Double(samples.count))
         if abs(offset) > 1e-4 {
             for index in samples.indices { samples[index] -= offset }
+        } else {
+            offset = 0
         }
 
-        return condition(samples, peak: speechLevel(samples))
+        let gain = gain(forLevel: speechLevel(samples))
+        return Levelled(samples: condition(samples, gain: gain), gain: gain, offset: offset)
     }
 
     /// The level a recording's gain is derived from: its loudest 20 ms frames,
@@ -60,20 +79,62 @@ enum SpeechAudioConditioning {
     /// out of the decision; real speech keeps nearly all of its level, and the
     /// limiter in ``limited(_:)`` rounds off the peaks that sit above it.
     static func speechLevel(_ samples: [Float]) -> Float {
-        let frame = 320
-        var frames: [Float] = []
-        frames.reserveCapacity(samples.count / frame + 1)
-        var start = 0
-        while start < samples.count {
-            let end = min(start + frame, samples.count)
-            var loudest: Float = 0
-            for index in start..<end { loudest = max(loudest, abs(samples[index])) }
-            frames.append(loudest)
-            start = end
-        }
-        guard frames.count > minimumFrames else { return frames.max() ?? 0 }
-        frames.sort(by: >)
+        var level = RunningLevel()
+        level.append(samples)
+        return level.level
+    }
+
+    /// The level of each 20 ms frame, taken from frame maxima.
+    static func speechLevel(frameMaxima: [Float]) -> Float {
+        guard frameMaxima.count > minimumFrames else { return frameMaxima.max() ?? 0 }
+        let frames = frameMaxima.sorted(by: >)
         return frames[min(setAside(audibleFrames: frames.count { $0 >= silencePeak }), frames.count - 1)]
+    }
+
+    /// ``speechLevel(_:)`` of everything appended so far, for audio that
+    /// arrives a piece at a time.
+    ///
+    /// The streaming path used to level each chunk by the single loudest sample
+    /// captured so far — exactly the measure ``speechLevel(_:)`` replaced on
+    /// the whole-file path, because the loudest sample of a dictation is so
+    /// often the finger that started it or a knock on the desk. One of those
+    /// left every later chunk of quiet speech unlevelled. This keeps the frame
+    /// maxima instead — fifty numbers a second — so a chunk is levelled by the
+    /// same rule the whole recording would be.
+    struct RunningLevel: Sendable {
+        static let frameSamples = 320
+
+        private(set) var frameMaxima: [Float] = []
+        private var partial: Float = 0
+        private var partialCount = 0
+
+        init() {}
+
+        mutating func append(_ samples: [Float]) {
+            for sample in samples {
+                partial = max(partial, abs(sample))
+                partialCount += 1
+                if partialCount == Self.frameSamples {
+                    frameMaxima.append(partial)
+                    partial = 0
+                    partialCount = 0
+                }
+            }
+        }
+
+        /// The level of everything appended, the frame still filling included.
+        var level: Float {
+            guard partialCount > 0 else { return SpeechAudioConditioning.speechLevel(frameMaxima: frameMaxima) }
+            return SpeechAudioConditioning.speechLevel(frameMaxima: frameMaxima + [partial])
+        }
+    }
+
+    /// The gain ``condition(_:peak:)`` applies for a given level: 1 when it
+    /// leaves the audio alone, which it does for silence as much as for audio
+    /// already loud enough.
+    static func gain(forLevel level: Float) -> Float {
+        guard level >= silencePeak else { return 1 }
+        return max(1, min(targetPeak / level, maximumGain))
     }
 
     /// How many of the loudest frames to set aside: enough for a knock or a
@@ -101,19 +162,22 @@ enum SpeechAudioConditioning {
     /// Levels `samples` with a gain derived from `peak` rather than from the
     /// slice itself.
     ///
-    /// This is how a streaming chunk gets levelled: it passes the peak of every
-    /// sample captured so far, which is the closest one chunk can come to the
-    /// single gain `condition` applies over a whole recording. Passing the
-    /// slice's own peak would be exactly the per-chunk gain the note above
-    /// warns against. The DC offset is not touched here — measuring it needs
+    /// This is how a streaming chunk gets levelled: it passes the
+    /// ``RunningLevel`` of everything captured so far, which is the closest one
+    /// chunk can come to the single gain `condition` applies over a whole
+    /// recording. Passing the slice's own level would be exactly the per-chunk
+    /// gain the note above warns against. The DC offset is not touched here — measuring it needs
     /// the whole recording, so it stays on the whole-file path.
     static func condition(_ samples: [Float], peak: Float) -> [Float] {
-        guard !samples.isEmpty, peak >= silencePeak else { return samples }
+        condition(samples, gain: gain(forLevel: peak))
+    }
 
+    /// Applies a gain ``gain(forLevel:)`` already chose, so audio levelled twice
+    /// with the same gain is the same audio.
+    static func condition(_ samples: [Float], gain: Float) -> [Float] {
         // Already loud enough. Attenuating a hot recording cannot undo whatever
         // clipping it arrived with, and quiet is the problem worth solving.
-        let gain = min(targetPeak / peak, maximumGain)
-        guard gain > 1 else { return samples }
+        guard !samples.isEmpty, gain > 1 else { return samples }
 
         var samples = samples
         for index in samples.indices { samples[index] = limited(samples[index] * gain) }

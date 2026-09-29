@@ -174,6 +174,9 @@ def main() -> None:
         "continuous": (noisy(continuous), first_markers),
         "short_phrase": (room(RATE // 2) + noisy(short) + room(RATE // 2), SHORT[1]),
         "leading_silence": (room(3 * RATE) + noisy(short), SHORT[1]),
+        # The pause before a thumb reaches Finish: what the app decodes early
+        # in, and trims before the model reads it.
+        "trailing_pause": (room(RATE // 2) + noisy(short) + room(5 * RATE // 2), SHORT[1]),
     }
 
     manifest = []

@@ -53,6 +53,18 @@ struct SherpaModelEndToEndTests {
         #expect(missing.isEmpty, "\(scenario.name), streamed: missing \(missing) in “\(finished)”")
     }
 
+    /// The pause before Finish is when the last stretch is decoded, so Finish
+    /// finds it done — and trimming that pause off loses no word.
+    @Test func aDictationEndingInAPauseIsDecodedBeforeFinish() async throws {
+        let scenario = try #require(ModelEndToEnd.scenarios.first { $0.name == "trailing_pause" })
+        let (text, streamed) = try await SherpaEndToEnd.dictation(try ModelEndToEnd.samples(scenario))
+        let finished = SherpaEndToEnd.finished(text)
+        let missing = scenario.markers.filter { !finished.lowercased().contains($0) }
+        #expect(missing.isEmpty, "trailing pause: missing \(missing) in “\(finished)”")
+        #expect(streamed.reusedEarlyDecode)
+        #expect(streamed.trimmedMilliseconds > 1_500)
+    }
+
     /// The recorder's own queue refusing chunks: seconds that never reach the
     /// streaming decoder, which it cannot know are missing. The recorder says
     /// so instead (`didDropLocalChunks`), and the finish path must then take
@@ -120,7 +132,7 @@ enum SherpaEndToEnd {
             model: descriptor,
             directory: try #require(directory),
             language: "en",
-            threads: max(2, min(ProcessInfo.processInfo.processorCount - 2, 4)),
+            threads: SherpaThreads.count,
             quality: family.effectiveQuality(.balanced)
         )
         loaded = recognizer
@@ -133,8 +145,19 @@ enum SherpaEndToEnd {
     /// the same whole-file decision `RecordingCoordinator.finalizeLocally`
     /// makes, against the intact capture.
     static func dictate(_ captured: [Float], streamLosing lost: Range<Int>? = nil) async throws -> String {
+        try await dictation(captured, streamLosing: lost).text
+    }
+
+    /// `dictate`, and what the streaming pass reported about itself.
+    static func dictation(
+        _ captured: [Float],
+        streamLosing lost: Range<Int>? = nil
+    ) async throws -> (text: String, streamed: SherpaIncrementalResult) {
         let (chunks, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .unbounded)
-        let session = SherpaIncrementalSession(chunks: chunks, recognizer: try recognizer())
+        // The detector the app gives every sherpa dictation.
+        let session = SherpaIncrementalSession(chunks: chunks, recognizer: try recognizer()) {
+            SileroSpeechDetector(model: SileroSpeechDetector.repositoryModel)
+        }
         for start in stride(from: 0, to: captured.count, by: 1_600) {
             if let lost, lost.contains(start) { continue }
             let chunk = Array(captured[start..<min(captured.count, start + 1_600)])
@@ -149,7 +172,7 @@ enum SherpaEndToEnd {
             let wholeFile = try wholeFile(SpeechAudioConditioning.condition(captured))
             if streamed.supersededBy(wholeFile) { text = wholeFile }
         }
-        return text
+        return (text, streamed)
     }
 
     /// Text, or a thrown failure when the native engine itself refused.

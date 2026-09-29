@@ -228,3 +228,75 @@ void VocaPhoneSherpaDestroy(VocaPhoneSherpaRecognizer recognizer) {
     }
     free(context);
 }
+
+VocaPhoneSpeechDetector VocaPhoneSpeechDetectorCreate(
+    const char *model,
+    float threshold,
+    float min_silence_seconds,
+    float min_speech_seconds,
+    float max_speech_seconds
+) {
+    if (model == NULL || model[0] == '\0') return NULL;
+    SherpaOnnxVadModelConfig config;
+    memset(&config, 0, sizeof(config));
+    config.silero_vad.model = model;
+    config.silero_vad.threshold = threshold;
+    config.silero_vad.min_silence_duration = min_silence_seconds;
+    config.silero_vad.min_speech_duration = min_speech_seconds;
+    config.silero_vad.max_speech_duration = max_speech_seconds;
+    config.silero_vad.window_size = 512;
+    config.sample_rate = 16000;
+    // One thread: the detector runs beside the capture pipeline and, during a
+    // dictation, beside a speech model, and a 32 ms window is a tiny graph.
+    config.num_threads = 1;
+    config.provider = "cpu";
+    config.debug = 0;
+    // The detector keeps audio it has not yet closed a region over. Two minutes
+    // is the longest recording the app makes.
+    const SherpaOnnxVoiceActivityDetector *detector =
+        SherpaOnnxCreateVoiceActivityDetector(&config, 150.0f);
+    return (VocaPhoneSpeechDetector)detector;
+}
+
+void VocaPhoneSpeechDetectorAccept(
+    VocaPhoneSpeechDetector detector,
+    const float *samples,
+    int32_t count
+) {
+    if (detector == NULL || samples == NULL || count <= 0) return;
+    SherpaOnnxVoiceActivityDetectorAcceptWaveform(
+        (const SherpaOnnxVoiceActivityDetector *)detector, samples, count);
+}
+
+void VocaPhoneSpeechDetectorFlush(VocaPhoneSpeechDetector detector) {
+    if (detector == NULL) return;
+    SherpaOnnxVoiceActivityDetectorFlush(
+        (const SherpaOnnxVoiceActivityDetector *)detector);
+}
+
+int VocaPhoneSpeechDetectorNext(
+    VocaPhoneSpeechDetector detector,
+    int32_t *start,
+    int32_t *end
+) {
+    const SherpaOnnxVoiceActivityDetector *native =
+        (const SherpaOnnxVoiceActivityDetector *)detector;
+    if (native == NULL || start == NULL || end == NULL) return 0;
+    if (SherpaOnnxVoiceActivityDetectorEmpty(native)) return 0;
+    const SherpaOnnxSpeechSegment *segment =
+        SherpaOnnxVoiceActivityDetectorFront(native);
+    int found = segment != NULL;
+    if (found) {
+        *start = segment->start;
+        *end = segment->start + segment->n;
+        SherpaOnnxDestroySpeechSegment(segment);
+    }
+    SherpaOnnxVoiceActivityDetectorPop(native);
+    return found;
+}
+
+void VocaPhoneSpeechDetectorDestroy(VocaPhoneSpeechDetector detector) {
+    if (detector == NULL) return;
+    SherpaOnnxDestroyVoiceActivityDetector(
+        (const SherpaOnnxVoiceActivityDetector *)detector);
+}

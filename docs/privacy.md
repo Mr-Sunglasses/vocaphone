@@ -18,6 +18,15 @@ is saved for transcription. The user can turn Quick Dictation off in the app,
 or pause the current window from the Live Activity without changing the
 setting.
 
+With on-device transcription, the dictation's own audio is also passed, in
+memory, to a voice activity detector bundled in the app (Silero VAD) and to the
+selected model while the user is still speaking, so the transcript is ready
+sooner. That audio is the same dictation audio already being recorded; it goes
+nowhere else, is not kept after the dictation, and nothing it produces beyond
+the transcript is stored. Diagnostics record only a duration, a yes/no for
+whether the text was decoded before Finish, and how many milliseconds of
+trailing silence were left out.
+
 The gateway host stores randomized audio names under its private data directory.
 On success, original and normalized audio are deleted by default. Failed and
 abandoned sessions remain for the retry window (24 hours by default), after

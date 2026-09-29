@@ -44,6 +44,11 @@ enum DiagnosticEvent: String, Codable, Sendable {
     /// failed and the rest of the transcript went in, so without this line a
     /// dictation missing half its words looks like one that worked.
     case localWindowEmpty
+    /// An on-device transcription finished: how long the user waited from
+    /// the start of transcribing to the text, whether the words had already
+    /// been decoded during the pause before Finish, and how much trailing
+    /// non-speech was left out. The number every speed change is judged by.
+    case localTranscriptionTimed
     case stopQuickDictationRequested
     case audioInterruptionBegan
     case audioInterruptionEnded
@@ -191,6 +196,11 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
     /// Which decoding window of how many, counted from zero.
     let windowIndex: Int?
     let windowCount: Int?
+    /// Whether a transcript was decoded during the pause before Finish rather
+    /// than after it.
+    let decodedEarly: Bool?
+    /// Trailing non-speech left out of a decode, in whole milliseconds.
+    let trimmedMilliseconds: Int?
 
     static let empty = DiagnosticMetadata()
 
@@ -208,7 +218,9 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
         appInForeground: Bool? = nil,
         milliseconds: Int? = nil,
         windowIndex: Int? = nil,
-        windowCount: Int? = nil
+        windowCount: Int? = nil,
+        decodedEarly: Bool? = nil,
+        trimmedMilliseconds: Int? = nil
     ) {
         self.state = state
         self.reason = reason
@@ -224,6 +236,8 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
         self.milliseconds = milliseconds
         self.windowIndex = windowIndex
         self.windowCount = windowCount
+        self.decodedEarly = decodedEarly
+        self.trimmedMilliseconds = trimmedMilliseconds
     }
 
     static func state(_ state: SessionState) -> DiagnosticMetadata {
@@ -294,6 +308,18 @@ struct DiagnosticMetadata: Codable, Equatable, Sendable {
 
     static func emptyWindow(index: Int, count: Int, milliseconds: Int) -> DiagnosticMetadata {
         DiagnosticMetadata(milliseconds: milliseconds, windowIndex: index, windowCount: count)
+    }
+
+    static func localTranscriptionTimed(
+        milliseconds: Int,
+        decodedEarly: Bool,
+        trimmedMilliseconds: Int
+    ) -> DiagnosticMetadata {
+        DiagnosticMetadata(
+            milliseconds: milliseconds,
+            decodedEarly: decodedEarly,
+            trimmedMilliseconds: trimmedMilliseconds
+        )
     }
 
     static func localEngineLoaded(
