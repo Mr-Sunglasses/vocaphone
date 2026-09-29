@@ -208,6 +208,33 @@ struct SessionRecordTests {
         #expect(try store.mostRecent()?.sessionID == identifiers.last)
     }
 
+    @Test func recentTranscriptsSkipsNewerSessionsWithoutWordsBeforeLimiting() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedStore(rootOverride: directory)
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        var expected: [UUID] = []
+        for index in 0..<6 {
+            var record = SessionRecord(now: base.addingTimeInterval(Double(index)))
+            if index < 3 {
+                record.transcript = "Transcript \(index)"
+                expected.append(record.sessionID)
+            }
+            try store.save(record)
+            let file = directory.appendingPathComponent("sessions", isDirectory: true)
+                .appendingPathComponent(record.sessionID.uuidString.lowercased())
+                .appendingPathExtension("json")
+            try FileManager.default.setAttributes(
+                [.modificationDate: base.addingTimeInterval(Double(index))],
+                ofItemAtPath: file.path
+            )
+        }
+
+        #expect(try store.recentTranscripts(limit: 3).map(\.sessionID) == expected.reversed())
+        #expect(try store.recentTranscripts(limit: 0).isEmpty)
+    }
+
     @Test func pruningKeepsOnlyTheNewestSessions() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -468,7 +495,7 @@ struct SessionRecordTests {
             #expect(!style.example.isEmpty)
             #expect(!style.symbolName.isEmpty)
         }
-        #expect(WritingStyle.raw.example == "ok so  this is VocaPhone. it is a Keyboard")
+        #expect(WritingStyle.raw.example == "ok so  this is vocaphone. it is a Keyboard")
         #expect(WritingStyle.clean.example == "all done for today.")
         #expect(WritingStyle.formal.example == "Please send the report today.")
         #expect(WritingStyle.casual.example == "I'll be there in ten")

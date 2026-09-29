@@ -40,8 +40,11 @@ struct OnboardingPresentationTests {
         )
     }
 
-    @Test func aSavedHandoffPageMovesOnToSource() {
-        #expect(OnboardingStage.persisted(from: "handoff") == .source)
+    /// Two pages that no longer exist: the handoff lesson and the
+    /// phone-or-gateway page. Both resume on Choose model, which now asks it.
+    @Test func retiredPagesResumeOnChooseModel() {
+        #expect(OnboardingStage.persisted(from: "handoff") == .model)
+        #expect(OnboardingStage.persisted(from: "source") == .model)
         #expect(OnboardingStage.persisted(from: nil) == .welcome)
         #expect(OnboardingStage.persisted(from: "model") == .model)
     }
@@ -99,23 +102,21 @@ struct OnboardingPresentationTests {
         #expect(
             OnboardingPresentation.previousNavigableStage(
                 before: .practice,
-                localTranscriptionEnabled: true,
                 isKeyboardReady: true
             ) == .keyboard
         )
         #expect(
             OnboardingPresentation.previousNavigableStage(
                 before: .practice,
-                localTranscriptionEnabled: true,
                 isKeyboardReady: false
             ) == .keyboardSwitch
         )
+        // A gateway user sets it up on Choose model too, so Back lands there.
         #expect(
             OnboardingPresentation.previousNavigableStage(
                 before: .microphone,
-                localTranscriptionEnabled: false,
                 isKeyboardReady: false
-            ) == .source
+            ) == .model
         )
     }
 
@@ -127,20 +128,19 @@ struct OnboardingPresentationTests {
         #expect(
             OnboardingPresentation.previousNavigableStage(
                 before: .microphone,
-                localTranscriptionEnabled: true,
                 isKeyboardReady: false,
                 practiceBlockedUntilModel: true
             ) == .model
         )
     }
 
-    @Test func welcomeSkipsTheHandoffLesson() {
-        #expect(OnboardingPresentation.nextStage(after: .welcome) == .source)
-        #expect(OnboardingPresentation.previousStage(before: .source) == .welcome)
-        #expect(OnboardingPresentation.nextStage(after: .source) == .model)
+    /// Welcome, Choose model, Microphone, Set up keyboard, Enable keyboard,
+    /// Try dictating: six pages for an on-device setup, down from seven.
+    @Test func welcomeGoesStraightToChooseModel() {
+        #expect(OnboardingPresentation.nextStage(after: .welcome) == .model)
+        #expect(OnboardingPresentation.previousStage(before: .model) == .welcome)
         #expect(OnboardingPresentation.nextStage(after: .model) == .microphone)
         #expect(!OnboardingStage.welcome.allowsSkip)
-        #expect(!OnboardingStage.source.allowsSkip)
         #expect(OnboardingStage.model.allowsSkip)
         #expect(!OnboardingStage.microphone.allowsSkip)
         #expect(!OnboardingStage.keyboard.allowsSkip)
@@ -669,7 +669,6 @@ struct OnboardingPresentationTests {
         #expect(
             OnboardingPresentation.previousNavigableStage(
                 before: .practice,
-                localTranscriptionEnabled: true,
                 isKeyboardReady: false,
                 practiceBlockedUntilModel: true
             ) == .keyboard
@@ -740,7 +739,6 @@ struct OnboardingPresentationTests {
         #expect(
             OnboardingPresentation.previousNavigableStage(
                 before: .complete,
-                localTranscriptionEnabled: true,
                 isKeyboardReady: true,
                 practiceBlockedUntilModel: true
             ) == .keyboard
@@ -748,7 +746,6 @@ struct OnboardingPresentationTests {
         #expect(
             OnboardingPresentation.previousNavigableStage(
                 before: .microphone,
-                localTranscriptionEnabled: true,
                 isKeyboardReady: false,
                 practiceBlockedUntilModel: true
             ) == .model
@@ -852,10 +849,21 @@ struct OnboardingPresentationTests {
     }
 
     @Test func skipOnChooseModelGoesAwayOnceADownloadStarts() {
-        #expect(OnboardingPresentation.showsSkip(stage: .model, modelIsArriving: false))
-        #expect(!OnboardingPresentation.showsSkip(stage: .model, modelIsArriving: true))
-        #expect(OnboardingPresentation.showsSkip(stage: .practice, modelIsArriving: true))
-        #expect(!OnboardingPresentation.showsSkip(stage: .welcome, modelIsArriving: false))
+        #expect(OnboardingPresentation.showsSkip(
+            stage: .model, modelIsArriving: false, localTranscriptionEnabled: true
+        ))
+        #expect(!OnboardingPresentation.showsSkip(
+            stage: .model, modelIsArriving: true, localTranscriptionEnabled: true
+        ))
+        #expect(!OnboardingPresentation.showsSkip(
+            stage: .model, modelIsArriving: false, localTranscriptionEnabled: false
+        ))
+        #expect(OnboardingPresentation.showsSkip(
+            stage: .practice, modelIsArriving: true, localTranscriptionEnabled: false
+        ))
+        #expect(!OnboardingPresentation.showsSkip(
+            stage: .welcome, modelIsArriving: false, localTranscriptionEnabled: true
+        ))
     }
 
     @Test func usageReportingIsAskedOnceAndOnlyWhenSetupCanFinish() {
@@ -909,7 +917,7 @@ struct OnboardingPresentationTests {
     }
 
     @Test func theChromeBarFillsWithoutJumpingSidewaysForAState() {
-        #expect(OnboardingStage.welcome.chromeProgress < OnboardingStage.source.chromeProgress)
+        #expect(OnboardingStage.welcome.chromeProgress < OnboardingStage.model.chromeProgress)
         #expect(OnboardingStage.keyboard.chromeProgress == OnboardingStage.keyboardSwitch.chromeProgress)
         #expect(OnboardingStage.practice.chromeProgress == 1)
     }
@@ -968,5 +976,28 @@ struct OnboardingPresentationTests {
             inUseAtRequest: nil, inUseNow: "C", inUseNowIsUsable: true,
             adoptedByEarlierDownload: nil
         ))
+    }
+
+    /// Back walks the pages in reverse, one at a time, and never leaves the
+    /// order Continue walks forward.
+    @Test func backFromEveryPageIsThePageBefore() {
+        let walked = OnboardingStage.pageOrder.filter { $0 != .usageReporting && $0 != .complete }
+        for (index, stage) in walked.enumerated() {
+            let previous = OnboardingPresentation.previousStage(before: stage)
+            #expect(previous == (index == 0 ? nil : walked[index - 1]), "\(stage)")
+            if let next = OnboardingPresentation.nextStage(after: stage), next != .complete {
+                #expect(OnboardingPresentation.previousStage(before: next) == stage, "\(stage)")
+            }
+        }
+    }
+
+    /// A gateway that is not paired yet is fixed on Choose model, the page
+    /// that now hosts it.
+    @Test func anUnpairedGatewayResumesOnChooseModel() {
+        var status = SetupStatus()
+        status.source = TranscriptionSourceStatus(selected: .gateway)
+        #expect(
+            OnboardingPresentation.resumeStage(status: status, hasCompletedKeyboardPractice: false) == .model
+        )
     }
 }

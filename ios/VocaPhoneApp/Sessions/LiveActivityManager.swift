@@ -541,7 +541,7 @@ final class LiveActivityManager: @unchecked Sendable {
         )
         let content = ActivityContent(
             state: VocaPhoneActivityAttributes.ContentState(
-                status: "VocaPhone closed",
+                status: "vocaphone closed",
                 canFinish: false,
                 phase: .finished
             ),

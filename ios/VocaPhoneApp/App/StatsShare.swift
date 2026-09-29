@@ -16,7 +16,7 @@ struct StatsShareCard: View {
             HStack(spacing: 20) {
                 BrandMark(size: 72)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("VocaPhone")
+                    Text("vocaphone")
                         .font(.system(size: 34, weight: .bold, design: .rounded))
                     Text("My voice, in numbers")
                         .font(.system(size: 22, weight: .medium))
@@ -175,7 +175,7 @@ private final class StatsCardActivityItem: NSObject, UIActivityItemSource {
 
     func activityViewControllerLinkMetadata(_: UIActivityViewController) -> LPLinkMetadata? {
         let metadata = LPLinkMetadata()
-        metadata.title = "My VocaPhone stats"
+        metadata.title = "My vocaphone stats"
         metadata.imageProvider = NSItemProvider(object: card)
         metadata.iconProvider = NSItemProvider(object: card)
         return metadata

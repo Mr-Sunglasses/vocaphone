@@ -359,8 +359,7 @@ final class RecordingCoordinator {
         if let previewTranscripts { return Array(previewTranscripts.prefix(limit)) }
 #endif
         return await Task.detached(priority: .userInitiated) {
-            ((try? SharedStore.shared.recent(limit: limit)) ?? [])
-                .filter { !($0.transcript ?? "").isEmpty }
+            (try? SharedStore.shared.recentTranscripts(limit: limit)) ?? []
         }.value
     }
     var microphoneStatusLabel: String {

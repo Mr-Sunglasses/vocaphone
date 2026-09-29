@@ -20,17 +20,22 @@ struct StatsView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: VocaMetrics.grouping) {
-                hero
-                statGrid
-                recentActivityCard
-                if stats.hasAny { shareCard }
-                privacyNote
+                // Before the first dictation there is nothing to count, and a
+                // grid of zeros — "0 days, Best 0 days" — read as a failure.
+                // One card says what will appear and how to make it happen.
                 if stats.hasAny {
+                    hero
+                    statGrid
+                    recentActivityCard
+                    shareCard
+                    privacyNote
                     VocaDestructiveButton(title: "Reset statistics") {
                         confirmingReset = true
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, VocaMetrics.related)
+                } else {
+                    emptyState
                 }
             }
             .padding(.horizontal, VocaMetrics.padding)
@@ -60,50 +65,52 @@ struct StatsView: View {
         }
     }
 
+    private var emptyState: some View {
+        VocaCard(padding: VocaMetrics.grouping) {
+            VStack(alignment: .leading, spacing: VocaMetrics.related + 2) {
+                Image(systemName: "chart.bar")
+                    .font(.title2)
+                    .foregroundStyle(Color.brand)
+                    .accessibilityHidden(true)
+                Text("Your stats start with your first dictation")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Color.vocaPrimaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(
+                    "Dictate with the vocaphone keyboard in any app. Only dictations you "
+                        + "insert are counted, and the numbers stay on this iPhone."
+                )
+                .font(.subheadline)
+                .foregroundStyle(Color.vocaSecondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Speed and streak, the two numbers people come back for. A heading
+    /// rather than a slogan: the design standard asks for sentence case and
+    /// no decoration.
     private var hero: some View {
         VocaCard(padding: VocaMetrics.grouping) {
             VStack(alignment: .leading, spacing: VocaMetrics.padding) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: VocaMetrics.tight) {
-                        Text("YOUR VOICE, IN NUMBERS")
-                            .font(.caption.weight(.bold))
-                            .tracking(1.3)
-                            .foregroundStyle(Color.brand)
-                        Text(stats.hasAny ? "Keep the momentum" : "Start your story")
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(Color.vocaPrimaryText)
+                Text("Speaking speed")
+                    .font(.headline)
+                    .foregroundStyle(Color.vocaPrimaryText)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: VocaMetrics.related) {
+                        speedValue
+                        Spacer()
+                        streakPill
                     }
-                    Spacer()
-                    Image(systemName: stats.hasAny ? "waveform.circle.fill" : "sparkles")
-                        .font(.system(size: 38))
-                        .foregroundStyle(Color.brand)
-                        .accessibilityHidden(true)
-                }
-
-                if stats.hasAny {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .firstTextBaseline, spacing: VocaMetrics.related) {
-                            speedValue
-                            Spacer()
-                            streakPill
-                        }
-                        VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                            speedValue
-                            streakPill
-                        }
+                    VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                        speedValue
+                        streakPill
                     }
-                    Text(StatsCopy.speedCaption)
-                        .font(.subheadline)
-                        .foregroundStyle(Color.vocaSecondaryText)
-                } else {
-                    Text("Complete a dictation from the VocaPhone keyboard and your private progress will appear here.")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.vocaSecondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Label("Only inserted dictations count", systemImage: "checkmark.seal.fill")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.brand)
                 }
+                Text(StatsCopy.speedCaption)
+                    .font(.subheadline)
+                    .foregroundStyle(Color.vocaSecondaryText)
             }
         }
     }
@@ -130,7 +137,7 @@ struct StatsView: View {
         let streak = stats.currentStreak(at: now)
         return Label(StatsFormat.streak(streak), systemImage: "flame.fill")
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(streak > 0 ? Color.vocaStatSymbol(.streak) : Color.vocaSecondaryText)
+            .foregroundStyle(streak > 0 ? Color.brand : Color.vocaSecondaryText)
             .padding(.horizontal, 12)
             .frame(minHeight: VocaMetrics.minimumTarget)
             .background(Color.vocaRecessedSurface, in: Capsule())
@@ -141,9 +148,9 @@ struct StatsView: View {
         VStack(alignment: .leading, spacing: VocaMetrics.related) {
             VocaSectionHeader(title: "Lifetime")
             LazyVGrid(columns: statColumns, spacing: VocaMetrics.related) {
-                statCard("text.alignleft", .words, StatsFormat.count(stats.totalWords), "Words")
-                statCard("waveform", .dictations, StatsFormat.count(stats.totalDictations), "Sessions")
-                statCard("clock", .time, StatsFormat.duration(stats.totalSeconds), "Voice time")
+                statCard("text.alignleft", StatsFormat.count(stats.totalWords), "Words")
+                statCard("waveform", StatsFormat.count(stats.totalDictations), "Sessions")
+                statCard("clock", StatsFormat.duration(stats.totalSeconds), "Voice time")
                 streakCard
             }
         }
@@ -157,13 +164,12 @@ struct StatsView: View {
 
     private func statCard(
         _ symbol: String,
-        _ tint: SemanticPalette.StatTint,
         _ value: String,
         _ label: String
     ) -> some View {
         VocaCard {
             VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                StatChip(symbol: symbol, tint: tint)
+                StatChip(symbol: symbol)
                 Text(value)
                     .font(.system(.title2, design: .rounded).weight(.bold))
                     .foregroundStyle(Color.vocaPrimaryText)
@@ -184,7 +190,7 @@ struct StatsView: View {
         let streak = stats.currentStreak(at: now)
         return VocaCard {
             VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                StatChip(symbol: "flame.fill", tint: .streak)
+                StatChip(symbol: "flame.fill")
                 Text(StatsFormat.streak(streak))
                     .font(.system(.title2, design: .rounded).weight(.bold))
                     .foregroundStyle(Color.vocaPrimaryText)
@@ -211,7 +217,7 @@ struct StatsView: View {
             VocaCard {
                 VStack(alignment: .leading, spacing: VocaMetrics.padding) {
                     HStack(spacing: VocaMetrics.related) {
-                        StatChip(symbol: "chart.bar.fill", tint: .speed, size: 34)
+                        StatChip(symbol: "chart.bar.fill", size: 34)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(StatsFormat.words(weeklyWords))
                                 .font(.headline)
@@ -223,18 +229,11 @@ struct StatsView: View {
                         Spacer()
                     }
                     activityChart(days)
-                    if stats.hasAny {
-                        Divider()
-                        VStack(spacing: VocaMetrics.related + 2) {
-                            ForEach(days.reversed().filter { $0.dictations > 0 }) { day in
-                                activityRow(day)
-                            }
+                    Divider()
+                    VStack(spacing: VocaMetrics.related + 2) {
+                        ForEach(days.reversed().filter { $0.dictations > 0 }) { day in
+                            activityRow(day)
                         }
-                    } else {
-                        Text("Your daily words and sessions will build a seven-day view here.")
-                            .font(.subheadline)
-                            .foregroundStyle(Color.vocaSecondaryText)
-                            .frame(maxWidth: .infinity, alignment: .center)
                     }
                 }
             }
@@ -309,7 +308,7 @@ struct StatsView: View {
         VocaCard {
             VStack(alignment: .leading, spacing: VocaMetrics.padding) {
                 HStack(alignment: .top, spacing: VocaMetrics.related) {
-                    StatChip(symbol: "doc.on.clipboard", tint: .words)
+                    StatChip(symbol: "doc.on.clipboard")
                     VStack(alignment: .leading, spacing: 2) {
                         Text(StatsCopy.shareTitle)
                             .font(.headline)
@@ -471,18 +470,19 @@ struct StatsView: View {
     }
 }
 
+/// One accent for every stat. Blue, purple and red tiles made five numbers
+/// look like five products; the design standard keeps colour for state.
 struct StatChip: View {
     let symbol: String
-    let tint: SemanticPalette.StatTint
     var size: CGFloat = 30
 
     var body: some View {
         Image(systemName: symbol)
             .font(.system(size: size * 0.5, weight: .medium))
-            .foregroundStyle(Color.vocaStatSymbol(tint))
+            .foregroundStyle(Color.brand)
             .frame(width: size, height: size)
             .background(
-                Color.vocaStatChip(tint),
+                Color.brand.opacity(0.12),
                 in: RoundedRectangle(cornerRadius: 8, style: .continuous)
             )
             .accessibilityHidden(true)

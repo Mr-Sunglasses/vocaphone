@@ -86,7 +86,7 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
         case .raw:
             "Exactly what the model returned, with nothing changed."
         case .clean:
-            "Spacing tidied and a closing full stop. Random capitals from the model are flattened; names like VocaPhone stay."
+            "Spacing tidied and a closing full stop. Random capitals from the model are flattened; names like iPhone stay."
         case .formal:
             "Sentence capitalization and a closing full stop. Mid-sentence Title Case from the model is flattened."
         case .casual:
@@ -112,7 +112,7 @@ enum WritingStyle: String, Codable, CaseIterable, Identifiable, Sendable {
     private var exampleSource: String {
         switch self {
         case .raw:
-            "ok so  this is VocaPhone. it is a Keyboard"
+            "ok so  this is vocaphone. it is a Keyboard"
         case .clean:
             "all done for today"
         case .formal:

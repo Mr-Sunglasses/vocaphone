@@ -228,9 +228,9 @@ enum LocalModelManagerError: LocalizedError, Equatable {
         case let .modelNotDownloaded(id):
             if let model = LocalModelCatalog.descriptor(for: id) {
                 "Download the “\(model.plain.title)” voice model (\(model.sizeLabel)) in "
-                    + "VocaPhone before dictating on this iPhone."
+                    + "vocaphone before dictating on this iPhone."
             } else {
-                "Choose and download a voice model in VocaPhone before dictating on this iPhone."
+                "Choose and download a voice model in vocaphone before dictating on this iPhone."
             }
         case .engineDecodeFailed:
             "The on-device model could not run. The recording is preserved; try again."

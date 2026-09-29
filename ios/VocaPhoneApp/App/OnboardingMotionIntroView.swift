@@ -48,7 +48,7 @@ struct OnboardingMotionIntroView: View {
                     .foregroundStyle(mint)
             }
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("VocaPhone")
+            .accessibilityLabel("vocaphone")
 
             VStack(alignment: .leading, spacing: 0) {
                 Text("Your words,")
@@ -107,7 +107,7 @@ struct OnboardingMotionIntroView: View {
                 .frame(maxWidth: .infinity)
                 .background(mint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
-            .accessibilityHint("Opens the introduction to how VocaPhone works")
+            .accessibilityHint("Opens the introduction to how vocaphone works")
 
             HStack(spacing: 6) {
                 Capsule().fill(mint).frame(width: 17, height: 5)

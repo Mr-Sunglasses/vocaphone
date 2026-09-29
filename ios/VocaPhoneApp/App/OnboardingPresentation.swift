@@ -4,8 +4,10 @@ import Foundation
 /// `SetupStep`: Welcome teaches the product but is not an operational requirement.
 enum OnboardingStage: String, CaseIterable, Identifiable, Hashable, Sendable {
     case welcome
-    case source
-    /// On-device model download. Gateway users skip this page in `SetupView`.
+    /// Choose model, which is also where a gateway is chosen and paired. There
+    /// is no separate source page: Welcome already says speech stays on this
+    /// iPhone unless you run a gateway, and asking again was a page most
+    /// people answered the same way.
     case model
     case microphone
     case keyboard
@@ -23,14 +25,16 @@ enum OnboardingStage: String, CaseIterable, Identifiable, Hashable, Sendable {
 
     /// Left-to-right order of the first-run pages.
     static let pageOrder: [OnboardingStage] = [
-        .welcome, .source, .model, .microphone, .keyboard, .keyboardSwitch, .practice,
+        .welcome, .model, .microphone, .keyboard, .keyboardSwitch, .practice,
         .usageReporting, .complete,
     ]
 
-    /// Decode a saved page. `handoff` was a teaching screen that no longer exists.
+    /// Decode a saved page. `handoff` was a teaching screen and `source` the
+    /// phone-or-gateway page; both now land on Choose model, where that choice
+    /// is made.
     static func persisted(from raw: String?) -> OnboardingStage {
         guard let raw, !raw.isEmpty else { return .welcome }
-        if raw == "handoff" { return .source }
+        if raw == "handoff" || raw == "source" { return .model }
         return OnboardingStage(rawValue: raw) ?? .welcome
     }
 
@@ -39,11 +43,10 @@ enum OnboardingStage: String, CaseIterable, Identifiable, Hashable, Sendable {
     /// bar does not jump sideways for a page that is a state, not a new room.
     var chromeProgress: Double {
         switch self {
-        case .welcome: 1.0 / 6.0
-        case .source: 2.0 / 6.0
-        case .model: 3.0 / 6.0
-        case .microphone: 4.0 / 6.0
-        case .keyboard, .keyboardSwitch: 5.0 / 6.0
+        case .welcome: 1.0 / 5.0
+        case .model: 2.0 / 5.0
+        case .microphone: 3.0 / 5.0
+        case .keyboard, .keyboardSwitch: 4.0 / 5.0
         case .practice, .usageReporting, .complete: 1
         }
     }
@@ -101,9 +104,8 @@ enum OnboardingPresentation {
     ) -> OnboardingStage {
         let skippedModel = practiceIsBlockedUntilModelDownload(status: status)
         if !status.isSatisfied(.source), !(allowSkippedModel && skippedModel) {
-            // On-device still needs a model; sending them to source would
-            // re-ask a choice they already made.
-            return status.source.selected == .onDevice ? .model : .source
+            // Choose model is where both a model and a gateway are set up.
+            return .model
         }
         if !status.isSatisfied(.microphone) { return .microphone }
         if !status.isSatisfied(.keyboard) { return .keyboard }
@@ -132,11 +134,6 @@ enum OnboardingPresentation {
             // Stay. Settings may have granted the mic; Continue is on the page.
             // A skipped model is not a reason to rewind here.
             return .microphone
-        case .source:
-            return resumeStage(
-                status: status,
-                hasCompletedKeyboardPractice: hasCompletedKeyboardPractice
-            )
         case .complete:
             return resumeStage(
                 status: status,
@@ -321,8 +318,7 @@ enum OnboardingPresentation {
     static func previousStage(before stage: OnboardingStage) -> OnboardingStage? {
         switch stage {
         case .welcome: nil
-        case .source: .welcome
-        case .model: .source
+        case .model: .welcome
         case .microphone: .model
         case .keyboard: .microphone
         case .keyboardSwitch: .keyboard
@@ -337,18 +333,12 @@ enum OnboardingPresentation {
     /// Try dictating must land on Set up keyboard instead of that waiting page.
     static func previousNavigableStage(
         before stage: OnboardingStage,
-        localTranscriptionEnabled: Bool,
         isKeyboardReady: Bool,
         practiceBlockedUntilModel: Bool = false
     ) -> OnboardingStage? {
+        // Choose model is every user's page — a gateway is set up there too —
+        // so Back from Microphone always lands on it.
         guard var previous = previousStage(before: stage) else { return nil }
-        // A gateway user has no Choose model page at all. An on-device user
-        // without a model very much does — that is the room Back is for, and
-        // skipping it because the download is missing sent them one page past
-        // the only page that could fix it.
-        if previous == .model, !localTranscriptionEnabled {
-            previous = .source
-        }
         // Enable keyboard auto-advances once vocaphone is the IME. Landing
         // there after a skipped model bounced straight back.
         if stage == .complete || stage == .usageReporting, practiceBlockedUntilModel {
@@ -374,8 +364,7 @@ enum OnboardingPresentation {
 
     static func nextStage(after stage: OnboardingStage) -> OnboardingStage? {
         switch stage {
-        case .welcome: .source
-        case .source: .model
+        case .welcome: .model
         case .model: .microphone
         case .microphone: .keyboard
         case .keyboard: .keyboardSwitch
@@ -411,13 +400,18 @@ enum OnboardingPresentation {
         !hasBeenAsked && canFinishSetup(status: status)
     }
 
-    /// Skip on Choose model is the "no download" answer. Once Get has started
-    /// a transfer, that answer is gone — Continue (or waiting later) is.
+    /// Skip on Choose model is the on-device "no download" answer. A gateway
+    /// must be paired before setup can advance. Once Get starts a download,
+    /// Continue (or waiting later) is the on-device path.
     /// Try dictating still offers Skip: that one is about insert proof, not
     /// the download.
-    static func showsSkip(stage: OnboardingStage, modelIsArriving: Bool) -> Bool {
+    static func showsSkip(
+        stage: OnboardingStage,
+        modelIsArriving: Bool,
+        localTranscriptionEnabled: Bool
+    ) -> Bool {
         guard stage.allowsSkip else { return false }
-        if stage == .model, modelIsArriving { return false }
+        if stage == .model, modelIsArriving || !localTranscriptionEnabled { return false }
         return true
     }
 
@@ -432,7 +426,7 @@ enum OnboardingPresentation {
     static func warmsSelectedModel(on stage: OnboardingStage) -> Bool {
         switch stage {
         case .microphone, .keyboard, .keyboardSwitch, .practice: true
-        case .welcome, .source, .model, .usageReporting, .complete: false
+        case .welcome, .model, .usageReporting, .complete: false
         }
     }
 

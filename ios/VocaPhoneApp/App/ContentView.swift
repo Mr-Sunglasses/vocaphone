@@ -28,7 +28,12 @@ struct ContentView: View {
         KeyboardPreferences.quickDictationRecoveryOfferKey,
         store: KeyboardPreferences.defaults
     ) private var quickDictationOfferPending = false
-    @State private var isShowingSourceDetail = false
+    @State private var recentTranscripts: [SessionRecord] = []
+    @State private var recentReloadGeneration = 0
+    @State private var copiedTranscriptID: UUID?
+    @State private var usageStats = UsageStats()
+    @State private var tryText = ""
+    @FocusState private var isTryFieldFocused: Bool
     @FocusState private var diagFocused: Bool
     @Binding private var isShowingSettings: Bool
     @Binding private var isShowingQuickDictationReturnGuide: Bool
@@ -91,24 +96,26 @@ struct ContentView: View {
     private var home: some View {
         NavigationStack {
             ScrollView {
+                // Before setup: one checklist. After: somewhere to dictate,
+                // what was dictated, and one line of how it is going. Which
+                // engine runs is a setting, not a task, so it lives there.
                 VStack(alignment: .leading, spacing: VocaMetrics.grouping) {
-                    attentionCard
+                    setupChecklistCard
                     modelDownloadCard
                     quickDictationOfferCard
                     sessionCard
-                    sourceRow
-                    transcriptCard
+                    recentCard
+                    statsLine
                 }
                 .padding(.horizontal, VocaMetrics.padding)
                 .padding(.vertical, VocaMetrics.grouping)
             }
             .background(Color.vocaCanvas)
             .navigationTitle("vocaphone")
+            .onAppear { Task { await reloadRecent() } }
+            // No logo in the bar: in a circle beside Settings it read as a
+            // button that did nothing, and the title already names the app.
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    BrandMark(size: 24)
-                        .accessibilityHidden(true)
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
                         SettingsView()
@@ -119,6 +126,11 @@ struct ContentView: View {
                 }
             }
             .onChange(of: scenePhase) { previousPhase, currentPhase in
+                if currentPhase != .active {
+                    // Drop the keyboard before iOS Settings can unload the
+                    // extension under a live first responder.
+                    isTryFieldFocused = false
+                }
                 if currentPhase == .background {
                     // The guide has done its job once the user swipes back. Do
                     // not leave it covering Home on a later ordinary launch.
@@ -137,10 +149,17 @@ struct ContentView: View {
             .onChange(of: selectedModelID) { _, _ in
                 coordinator.refreshSetupStatus()
             }
+            .task(id: recentReloadKey) { await reloadRecent() }
+            .task(id: scenePhase) {
+                guard scenePhase == .active else { return }
+                await reloadRecent()
+            }
             .navigationDestination(isPresented: $isShowingTranscriptionSettingsFromAttention) {
                 TranscriptionSettingsView()
             }
-            .sheet(isPresented: $isShowingSettings) {
+            .sheet(isPresented: $isShowingSettings, onDismiss: {
+                Task { await reloadRecent() }
+            }) {
                 NavigationStack {
                     SettingsView()
                 }
@@ -180,34 +199,59 @@ struct ContentView: View {
     }
 
     /// Only what actually stops dictation working reaches the top of the home
-    /// screen. The truth is re-derived from the system every time rather than
-    /// trusted from a one-time "setup completed" flag.
-    @ViewBuilder private var attentionCard: some View {
-        if let headline = attentionStatus.attentionHeadline {
-            // The download card already says the model is arriving. "Download
-            // a model" on top of it reads as if setup was thrown away.
-            if isModelDownloadInFlight, attentionStatus.blockingSteps.first == .source {
-                EmptyView()
-            } else {
+    /// screen, re-derived from the system every time rather than trusted from a
+    /// one-time "setup completed" flag — as one row per step, each with its
+    /// own button, not a count with a button for the first.
+    @ViewBuilder private var setupChecklistCard: some View {
+        if let checklist = HomeSetupChecklist.make(attentionStatus, isModelArriving: isModelDownloadInFlight) {
             VocaCard {
                 VStack(alignment: .leading, spacing: VocaMetrics.padding) {
-                    VocaStatusLine(
-                        status: .attention,
-                        title: headline,
-                        detail: attentionStatus.attentionDetail
-                    )
-                    if let actionTitle = attentionStatus.attentionActionTitle {
-                        VocaPrimaryButton(title: actionTitle) {
-                            if attentionStatus.attentionOpensSystemSettings {
-                                coordinator.openSystemSettings()
-                            } else {
-                                isShowingTranscriptionSettingsFromAttention = true
-                            }
-                        }
+                    VocaStatusLine(status: .attention, title: checklist.title, detail: checklist.detail)
+                    ForEach(checklist.rows) { row in
+                        checklistRow(row)
                     }
                 }
             }
+        }
+    }
+
+    private func checklistRow(_ row: HomeSetupChecklist.Row) -> some View {
+        HStack(alignment: .center, spacing: VocaMetrics.related + 4) {
+            Image(systemName: row.isDone ? "checkmark.circle.fill" : "circle")
+                .font(.title3)
+                .foregroundStyle(row.isDone ? Color.brand : Color.vocaSecondaryText)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(row.isDone ? Color.vocaSecondaryText : Color.vocaPrimaryText)
+                if let detail = row.detail {
+                    Text(detail)
+                        .font(.footnote)
+                        .foregroundStyle(Color.vocaSecondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let action = row.action {
+                Button(action.title) { perform(action.kind) }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(Color.brand)
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityValue(row.isDone ? "Done" : "Not done")
+    }
+
+    private func perform(_ kind: HomeSetupChecklist.ActionKind) {
+        switch kind {
+        case .voiceModel:
+            isShowingTranscriptionSettingsFromAttention = true
+        case .allowMicrophone:
+            coordinator.requestMicrophonePermission()
+        case .openSystemSettings:
+            coordinator.openSystemSettings()
         }
     }
 
@@ -312,7 +356,7 @@ struct ContentView: View {
                 // dictated from another app offer itself for copying here as
                 // though this screen owned it.
                 startedInApp: coordinator.activeRecord.map(Self.startedInApp) ?? true,
-                isSourceReady: coordinator.setupStatus.source.isReady
+                isReadyToDictate: attentionStatus.isReadyToDictate
             )
         )
     }
@@ -324,9 +368,10 @@ struct ContentView: View {
         record.sourceDocumentID == "in-app-test" || record.startedInContainingApp == true
     }
 
-    private var sessionCard: some View {
+    @ViewBuilder private var sessionCard: some View {
         let model = card
-        return VocaCard(padding: VocaMetrics.grouping) {
+        if !model.isHidden {
+        VocaCard(padding: VocaMetrics.grouping) {
             VStack(alignment: .leading, spacing: VocaMetrics.padding - 2) {
                 VocaStatusLine(
                     status: model.status,
@@ -367,17 +412,48 @@ struct ContentView: View {
                         .disabled(isDisabled(primary.action))
                     }
                 }
+                if model.showsTryField {
+                    tryField
+                }
                 if let secondary = model.secondary {
                     Button(secondary.title, role: .destructive) { perform(secondary.action) }
                         .frame(maxWidth: .infinity)
                         .font(.subheadline)
                 }
+                if let quiet = model.quietAction {
+                    Button(quiet.title) { perform(quiet.action) }
+                        .font(.subheadline.weight(.semibold))
+                        .disabled(isDisabled(quiet.action))
+                }
             }
+        }
         }
     }
 
+    /// The real thing, on Home: a field that raises whichever keyboard is
+    /// current, where the vocaphone keyboard's Dictate works like in any app.
+    /// The words stay here; nothing is sent anywhere until Dictate is tapped.
+    private var tryField: some View {
+        TextField("Tap here, then Dictate", text: $tryText, axis: .vertical)
+            .lineLimit(2...6)
+            .focused($isTryFieldFocused)
+            .padding(VocaMetrics.related + 4)
+            .background(
+                Color.vocaRecessedSurface,
+                in: RoundedRectangle(cornerRadius: VocaMetrics.fieldRadius, style: .continuous)
+            )
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Button("Clear") { tryText = "" }
+                        .disabled(tryText.isEmpty)
+                    Spacer()
+                    Button("Done") { isTryFieldFocused = false }
+                }
+            }
+    }
+
     private func isDisabled(_ action: HomeSessionAction) -> Bool {
-        action == .startTest && !coordinator.setupStatus.source.isReady
+        action == .startTest && !attentionStatus.source.isReady
     }
 
     private func perform(_ action: HomeSessionAction) {
@@ -395,65 +471,36 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Processing source
+    // MARK: - Recent
 
-    /// One row, not a card.
-    ///
-    /// Which route is selected matters at setup time and after a failure. The
-    /// rest of the time it is a fact about the app, not a task — and a permanent
-    /// card for it competed with the session for attention it did not need.
-    private var sourceRow: some View {
-        let source = coordinator.setupStatus.source
-        return VocaCard {
-            VStack(alignment: .leading, spacing: VocaMetrics.related + 4) {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isShowingSourceDetail.toggle()
-                    }
-                } label: {
-                    HStack(spacing: VocaMetrics.related) {
-                        Image(systemName: source.symbolName)
-                            .foregroundStyle(source.isReady ? Color.brand : Color.vocaWarning)
-                            .accessibilityHidden(true)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Speech to text")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                            Text(source.title)
+    /// The last three transcripts, tap to copy. Words are the product, so
+    /// they sit on Home rather than one screen away.
+    @ViewBuilder private var recentCard: some View {
+        if attentionStatus.isReadyToDictate || !recentTranscripts.isEmpty {
+            VocaCard {
+                VStack(alignment: .leading, spacing: VocaMetrics.related + 4) {
+                    HStack {
+                        VocaSectionHeader(title: "Recent")
+                        Spacer()
+                        if !recentTranscripts.isEmpty {
+                            NavigationLink("See all") {
+                                TranscriptHistoryView()
+                                    .onDisappear { Task { await reloadRecent() } }
+                            }
                                 .font(.subheadline.weight(.semibold))
                         }
-                        Spacer()
-                        Image(systemName: isShowingSourceDetail ? "chevron.up" : "chevron.down")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .accessibilityHidden(true)
                     }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Speech to text: \(source.title)")
-                .accessibilityHint(isShowingSourceDetail ? "Hides the details." : "Shows the details.")
-
-                if isShowingSourceDetail || !source.isReady {
-                    VStack(alignment: .leading, spacing: VocaMetrics.related) {
-                        Text(source.readinessDetail)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        Text(source.boundaryDetail)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                        NavigationLink {
-                            TranscriptionSettingsView()
-                        } label: {
-                            Label(
-                                source.isReady
-                                    ? "Change transcription source"
-                                    : source.recoveryActionTitle,
-                                systemImage: "arrow.forward"
-                            )
-                            .font(.subheadline.weight(.semibold))
+                    if recentTranscripts.isEmpty {
+                        Text(
+                            hasDictatedOnce
+                                ? "Dictations you finish will appear here."
+                                : "Your dictations will appear here."
+                        )
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(recentTranscripts) { record in
+                            recentRow(record)
                         }
                     }
                 }
@@ -461,41 +508,79 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - Transcripts
-
-    /// Two cards showing the same words is the bug the dashboard rewrite was
-    /// meant to remove, so this one stands down whenever the session card is
-    /// already showing the latest transcript.
-    @ViewBuilder private var transcriptCard: some View {
-        if !card.showsTranscript {
-            VocaCard {
-                VStack(alignment: .leading, spacing: VocaMetrics.related + 4) {
-                    VocaSectionHeader(title: "Latest transcript")
-                    if let transcript = coordinator.transcript, !transcript.isEmpty {
-                        Text(transcript)
-                            .font(.body)
-                            .textSelection(.enabled)
-                            .lineLimit(4)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } else {
-                        Text(
-                            hasDictatedOnce
-                                ? "Dictations you finish will appear here."
-                                : "Nothing yet. Tap Dictate in the keyboard from any app."
-                        )
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                    NavigationLink {
-                        TranscriptHistoryView()
-                    } label: {
-                        Label("All transcripts", systemImage: "clock.arrow.circlepath")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                }
+    private func recentRow(_ record: SessionRecord) -> some View {
+        Button {
+            UIPasteboard.general.string = record.transcript
+            copiedTranscriptID = record.id
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                if copiedTranscriptID == record.id { copiedTranscriptID = nil }
             }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: VocaMetrics.related) {
+                Text(record.transcript ?? "")
+                    .font(.body)
+                    .foregroundStyle(Color.vocaPrimaryText)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: copiedTranscriptID == record.id ? "checkmark" : "doc.on.doc")
+                    .font(.footnote)
+                    .foregroundStyle(copiedTranscriptID == record.id ? Color.brand : Color.vocaSecondaryText)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityHint(copiedTranscriptID == record.id ? "Copied" : "Copies this transcript")
+    }
+
+    /// Reread whenever a session changes state, which is when a new transcript
+    /// can have landed. Returning from History, Stats, or Settings also rereads
+    /// because those screens can delete transcripts or reset statistics.
+    private var recentReloadKey: String {
+        "\(coordinator.activeRecord?.id.uuidString ?? "")|\(coordinator.activeRecord?.state.rawValue ?? "")|\(coordinator.transcript ?? "")"
+    }
+
+    /// Stats are folded from the same finished sessions, so they move together.
+    private func reloadRecent() async {
+        recentReloadGeneration += 1
+        let generation = recentReloadGeneration
+        let records = await coordinator.loadRecentTranscripts(limit: 3)
+        guard generation == recentReloadGeneration else { return }
+        recentTranscripts = records
+        usageStats = UsageStatsStore.shared.current()
+    }
+
+    // MARK: - Stats
+
+    /// Keep Stats reachable before the first dictation and after a reset.
+    private var statsLine: some View {
+        NavigationLink {
+            StatsView()
+                .onDisappear { Task { await reloadRecent() } }
+        } label: {
+            HStack(spacing: VocaMetrics.related) {
+                Image(systemName: "chart.bar")
+                    .foregroundStyle(Color.brand)
+                    .accessibilityHidden(true)
+                Text(HomeStatsLine.make(usageStats, now: Date()) ?? "Stats")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.vocaPrimaryText)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.vocaSecondaryText)
+            }
+            .padding(.horizontal, VocaMetrics.padding)
+            .frame(minHeight: VocaMetrics.minimumTarget + VocaMetrics.related)
+            .background(
+                Color.vocaSurface,
+                in: RoundedRectangle(cornerRadius: VocaMetrics.cardRadius, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens your stats")
     }
 
     private var keyboardHandoffRecord: SessionRecord? {
@@ -540,8 +625,8 @@ private struct QuickDictationReturnGuide: View {
             status(
                 title: "Getting Quick Dictation ready",
                 detail: isTakingLong
-                    ? (coordinator.message ?? "VocaPhone could not get the microphone yet.")
-                    : "Keep VocaPhone open for a moment.",
+                    ? (coordinator.message ?? "vocaphone could not get the microphone yet.")
+                    : "Keep vocaphone open for a moment.",
                 showsProgress: true
             ) {
                 EmptyView()
