@@ -10,6 +10,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -38,7 +39,9 @@ class GatewayRecordingUploadTest {
         Receiver().use { server ->
             val upload = GatewayRecordingUpload(client, request(server.port))
             try {
-                assertEquals(DictationState.MAXIMUM_RECORDING_MILLIS + 60_000, deadline.get())
+                assertEquals(DictationState.MAXIMUM_RECORDING_MILLIS +
+                    TimeUnit.SECONDS.toMillis(GatewayClient.UPLOAD_TIMEOUT_SECONDS +
+                        GatewayClient.FINISH_TIMEOUT_SECONDS), deadline.get())
                 upload.sendFrames(shortArrayOf(1, 2, 3))
                 assertEquals("uploaded", upload.finish().state)
             } finally { upload.cancel() }
@@ -66,12 +69,22 @@ class GatewayRecordingUploadTest {
 
     @Test fun `cancelling finish aborts the HTTP request`() = runBlocking {
         Receiver(holdResponse = true).use { server ->
-            val upload = GatewayRecordingUpload(OkHttpClient(), request(server.port))
+            val notifications = AtomicInteger()
+            val bodySent = CountDownLatch(1)
+            val upload = GatewayRecordingUpload(OkHttpClient(), request(server.port), onUploadFinished = {
+                notifications.incrementAndGet()
+                bodySent.countDown()
+            })
             upload.sendFrames(shortArrayOf(0, 1, 2))
+            assertEquals(0, notifications.get())
             val finishing = async(Dispatchers.IO) { upload.finish() }
             assertTrue(server.eofReceived.await(5, TimeUnit.SECONDS))
+            assertTrue(bodySent.await(5, TimeUnit.SECONDS))
+            assertEquals(1, notifications.get())
+            assertFalse(finishing.isCompleted)
             finishing.cancelAndJoin()
             assertTrue(finishing.isCancelled)
+            assertEquals(1, notifications.get())
         }
     }
 

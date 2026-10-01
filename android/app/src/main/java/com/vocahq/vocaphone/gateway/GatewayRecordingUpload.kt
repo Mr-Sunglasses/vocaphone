@@ -24,6 +24,7 @@ import okio.Pipe
 /** A bounded, one-shot WAV PUT. EOF, rather than the RIFF length, ends capture. */
 class GatewayRecordingUpload internal constructor(
     client: OkHttpClient, request: Request, writeTimeoutMillis: Long = 8_000,
+    onUploadFinished: () -> Unit = {},
 ) {
     private val pipe = Pipe(65_536)
     private val completed = CompletableDeferred<GatewaySession>()
@@ -48,13 +49,18 @@ class GatewayRecordingUpload internal constructor(
                         sink.flush()
                     }
                 }
+                sink.flush()
+                onUploadFinished()
             }
         }
         call = client.newBuilder()
             // The request is open for the whole capture, then drains at Finish.
-            // A fixed 150 s deadline expired halfway through a valid 5 min take.
-            .callTimeout(DictationState.MAXIMUM_RECORDING_MILLIS + 60_000, TimeUnit.MILLISECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
+            // EOF may now return a transcript, so allow the ordinary /finish
+            // response budget in addition to the full supported capture window.
+            .callTimeout(DictationState.MAXIMUM_RECORDING_MILLIS +
+                TimeUnit.SECONDS.toMillis(GatewayClient.UPLOAD_TIMEOUT_SECONDS +
+                    GatewayClient.FINISH_TIMEOUT_SECONDS), TimeUnit.MILLISECONDS)
+            .readTimeout(GatewayClient.FINISH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(writeTimeoutMillis, TimeUnit.MILLISECONDS)
             .retryOnConnectionFailure(false)
             .followRedirects(false)

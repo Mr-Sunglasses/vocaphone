@@ -17,9 +17,11 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okio.BufferedSink
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -66,31 +68,47 @@ class GatewayClient(
         GatewaySession.from(execute(request, timeoutSeconds = 15).asJsonObject())
     }
 
-    suspend fun uploadAudio(sessionId: UUID, wavFile: File): GatewaySession =
+    suspend fun uploadAudio(
+        sessionId: UUID, wavFile: File, finishOnUpload: Boolean = false,
+        onUploadFinished: () -> Unit = {},
+    ): GatewaySession =
         withContext(Dispatchers.IO) {
             // Streamed from disk: holding the recording in memory would double it
             // exactly when the network is already struggling.
             uploadPreparer(wavFile).use { upload ->
                 currentCoroutineContext().ensureActive()
+                val fileBody = upload.file.asRequestBody(upload.contentType)
+                val body = object : RequestBody() {
+                    override fun contentType() = fileBody.contentType()
+                    override fun contentLength() = fileBody.contentLength()
+                    override fun writeTo(sink: BufferedSink) {
+                        fileBody.writeTo(sink)
+                        sink.flush()
+                        onUploadFinished()
+                    }
+                }
                 val request = Request.Builder()
-                    .url(endpoint("v1", "sessions", sessionId.toString(), "audio"))
-                    .put(upload.file.asRequestBody(upload.contentType))
+                    .url(audioEndpoint(sessionId, finishOnUpload))
+                    .put(body)
                     .build()
-                GatewaySession.from(execute(request, timeoutSeconds = 60).asJsonObject())
+                GatewaySession.from(execute(request,
+                    timeoutSeconds = UPLOAD_TIMEOUT_SECONDS + if (finishOnUpload) FINISH_TIMEOUT_SECONDS else 0,
+                ).asJsonObject())
             }
         }
 
     suspend fun startRecordingUpload(
         sessionId: UUID, language: String, style: String,
+        onUploadFinished: () -> Unit = {},
     ): GatewayRecordingUpload {
         if (!health().engineReady) throw GatewayException.fromStatus(503, "engine_not_ready")
         createSession(sessionId, language, style)
         currentCoroutineContext().ensureActive()
         val request = Request.Builder()
-            .url(endpoint("v1", "sessions", sessionId.toString(), "audio"))
+            .url(audioEndpoint(sessionId, finishOnUpload = true))
             .header("Authorization", "Bearer $token")
             .build()
-        return GatewayRecordingUpload(httpClient, request)
+        return GatewayRecordingUpload(httpClient, request, onUploadFinished = onUploadFinished)
     }
 
     suspend fun finish(sessionId: UUID): GatewaySession = withContext(Dispatchers.IO) {
@@ -100,7 +118,16 @@ class GatewayClient(
             .build()
         // One-shot local engines can spend several minutes loading or compiling
         // a newly selected model before their first transcription completes.
-        GatewaySession.from(execute(request, timeoutSeconds = 540).asJsonObject())
+        GatewaySession.from(execute(request, timeoutSeconds = FINISH_TIMEOUT_SECONDS).asJsonObject())
+    }
+
+    /** Old gateways ignore the optional query and still require one /finish. */
+    suspend fun finishUploaded(sessionId: UUID, uploaded: GatewaySession): GatewaySession =
+        if (uploaded.state == "completed") uploaded else finish(sessionId)
+
+    private fun audioEndpoint(sessionId: UUID, finishOnUpload: Boolean): HttpUrl {
+        val url = endpoint("v1", "sessions", sessionId.toString(), "audio")
+        return if (finishOnUpload) url.newBuilder().addQueryParameter("finish", "true").build() else url
     }
 
     suspend fun delete(sessionId: UUID) = withContext(Dispatchers.IO) {
@@ -180,6 +207,8 @@ class GatewayClient(
     private fun Response.asJsonObject(): JSONObject = JSONObject(asString())
 
     companion object {
+        internal const val FINISH_TIMEOUT_SECONDS = 540L
+        internal const val UPLOAD_TIMEOUT_SECONDS = 60L
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
         val WAV_MEDIA_TYPE = "audio/wav".toMediaType()
         private val EMPTY_BODY = ByteArray(0).toRequestBody(null)

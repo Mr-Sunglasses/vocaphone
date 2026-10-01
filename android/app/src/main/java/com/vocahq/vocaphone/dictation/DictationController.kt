@@ -579,6 +579,7 @@ class DictationController(
                         style = configuration.style.wireValue,
                         sampleRate = CaptureFormat.SAMPLE_RATE,
                         attemptStreaming = shouldAttemptStreaming,
+                        onUploadFinished = { markGatewayTranscribing(sessionId, source, generation) },
                     )
                     candidate = opened
                     if (!currentCoroutineContext().isActive ||
@@ -763,10 +764,8 @@ class DictationController(
                 if (!stream.incremental) {
                     _state.update { it.copy(phase = DictationPhase.UPLOADING) }
                     stream.finishUpload()
-                    diagnostics.recordTiming("upload_completed", source.name)
-                    _state.update { it.copy(phase = DictationPhase.TRANSCRIBING) }
                 }
-                diagnostics.recordTiming("transcription_started", source.name)
+                if (stream.incremental) diagnostics.recordTiming("transcription_started", source.name)
                 stream.finish()
             } catch (error: CancellationException) {
                 throw error
@@ -876,6 +875,18 @@ class DictationController(
         } ?: false
     }
 
+    private fun markGatewayTranscribing(sessionId: UUID, source: DictationSource, generation: Int) {
+        while (this.generation.get() == generation) {
+            val current = _state.value
+            if (current.sessionId != sessionId || current.phase != DictationPhase.UPLOADING) return
+            if (_state.compareAndSet(current, current.copy(phase = DictationPhase.TRANSCRIBING))) {
+                diagnostics.recordTiming("upload_completed", source.name)
+                diagnostics.recordTiming("transcription_started", source.name)
+                return
+            }
+        }
+    }
+
     private suspend fun deliverBatch(
         client: GatewayClient,
         sessionId: UUID,
@@ -890,11 +901,9 @@ class DictationController(
             _state.update { it.copy(phase = DictationPhase.UPLOADING) }
             client.createSession(sessionId, language, style)
             diagnostics.recordTiming("upload_started", source.name)
-            client.uploadAudio(sessionId, wavFile)
-            diagnostics.recordTiming("upload_completed", source.name)
-            _state.update { it.copy(phase = DictationPhase.TRANSCRIBING) }
-            diagnostics.recordTiming("transcription_started", source.name)
-            val session = client.finish(sessionId)
+            val uploaded = client.uploadAudio(sessionId, wavFile, finishOnUpload = true,
+                onUploadFinished = { markGatewayTranscribing(sessionId, source, generation) })
+            val session = client.finishUploaded(sessionId, uploaded)
             // Marker-only output means the model heard nothing worth writing.
             val transcript = DictatedTranscript.finished(
                 session.transcript,

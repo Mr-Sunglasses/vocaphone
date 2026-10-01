@@ -33,6 +33,26 @@ class GatewayRecordingTransportTest {
         batchSequence(attemptStreaming = true)
     }
 
+    @Test fun `combined live upload returns the transcript without a finish POST`() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            server.enqueue(MockResponse(body = """{"status":"ok","engine_ready":true}"""))
+            server.enqueue(MockResponse(body = session("created")))
+            server.enqueue(MockResponse(body = session("completed", "Hello there")))
+            val transport = GatewayClient(server.url("/").toString(), "test-token")
+                .openRecordingTransport(sessionId, "en", "formal", 16_000, attemptStreaming = false)
+            try {
+                transport.sendFrames(shortArrayOf(1, -1))
+                transport.finishUpload()
+                assertEquals("Hello there", transport.finish())
+                val requests = List(3) { server.takeRequest(5, TimeUnit.SECONDS)!! }
+                assertEquals("true", requests.last().url.queryParameter("finish"))
+                assertEquals("PUT", requests.last().method)
+                assertEquals(3, server.requestCount)
+            } finally { transport.cancel() }
+        }
+    }
+
     private suspend fun batchSequence(attemptStreaming: Boolean) {
         MockWebServer().use { server ->
             server.start()
@@ -62,6 +82,7 @@ class GatewayRecordingTransportTest {
                 val upload = server.takeRequest(5, TimeUnit.SECONDS)!!
                 assertEquals("PUT", upload.method)
                 assertEquals("/v1/sessions/$sessionId/audio", upload.url.encodedPath)
+                assertEquals("true", upload.url.queryParameter("finish"))
                 assertEquals("Bearer test-token", upload.headers["Authorization"])
                 assertEquals("audio/wav", upload.headers["Content-Type"])
                 assertArrayEquals(GatewayRecordingUpload.wavHeader() + byteArrayOf(1, 0, -1, -1, 2, 0, -2, -1), upload.body!!.toByteArray())
