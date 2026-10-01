@@ -1,11 +1,72 @@
 import Foundation
 import os
 
+/// URLSession reports bytes sent before the server's response. Live bodies
+/// supply their final size at EOF; file uploads supply it in the delegate call.
+final class GatewayUploadProgress: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    private struct State {
+        var sent: Int64 = 0
+        var expected: Int64?
+        var cancelled = false
+        var notification: Task<Void, Never>?
+    }
+    private let state = OSAllocatedUnfairLock(initialState: State())
+    private let onUploadFinished: @Sendable () async -> Void
+
+    init(onUploadFinished: @escaping @Sendable () async -> Void) {
+        self.onUploadFinished = onUploadFinished
+    }
+
+    func bodyClosed(bytes: Int64) {
+        state.withLock { $0.expected = bytes }
+        notifyIfSent()
+    }
+
+    func sent(bytes: Int64, expected: Int64 = NSURLSessionTransferSizeUnknown) {
+        state.withLock {
+            $0.sent = bytes
+            if expected > 0 { $0.expected = expected }
+        }
+        notifyIfSent()
+    }
+
+    private func notifyIfSent() {
+        state.withLock { current in
+            guard !current.cancelled, current.notification == nil,
+                  let expected = current.expected, expected > 0,
+                  current.sent >= expected else { return }
+            current.notification = Task {
+                guard !Task.isCancelled else { return }
+                await onUploadFinished()
+            }
+        }
+    }
+
+    func waitForNotification() async {
+        await state.withLock { $0.notification }?.value
+    }
+
+    func cancel() {
+        state.withLock {
+            $0.cancelled = true
+            $0.notification?.cancel()
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64, totalBytesExpectedToSend: Int64
+    ) {
+        sent(bytes: totalBytesSent, expected: totalBytesExpectedToSend)
+    }
+}
+
 /// Sends a WAV body of initially unknown length to the existing session PUT.
 /// The transport buffer is bounded; a stalled link fails back to the local WAV.
 final class GatewayRecordingUpload: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private struct State {
         var bodyOffered = false
+        var bytesWritten: Int64 = 0
         var cancelled = false
         var data = Data()
         var result: Result<GatewaySession, any Error>?
@@ -18,18 +79,23 @@ final class GatewayRecordingUpload: NSObject, URLSessionDataDelegate, @unchecked
     private let writer = DispatchQueue(label: "com.vocahq.vocaphone.recording-upload", qos: .userInitiated)
     private var session: URLSession!
     private var task: URLSessionUploadTask!
+    private let progress: GatewayUploadProgress
 
-    init(request: URLRequest, configuration: URLSessionConfiguration) throws {
+    init(
+        request: URLRequest, configuration: URLSessionConfiguration,
+        onUploadFinished: @escaping @Sendable () async -> Void = {}
+    ) throws {
         var read: InputStream?
         var write: OutputStream?
         Stream.getBoundStreams(withBufferSize: 65_536, inputStream: &read, outputStream: &write)
         guard let read, let write else { throw GatewayError.invalidResponse }
         input = read
         output = write
+        progress = GatewayUploadProgress(onUploadFinished: onUploadFinished)
         super.init()
         // Covers the bounded recording plus setup/drain time. Individual writes
         // have a shorter deadline so Finish cannot wait on a stalled producer.
-        configuration.timeoutIntervalForResource = 150
+        configuration.timeoutIntervalForResource = AppConfiguration.maximumRecordingSeconds + GatewayClient.uploadTimeout + GatewayClient.finishTimeout
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
         task = session.uploadTask(withStreamedRequest: request)
         writer.sync { output.open() }
@@ -46,10 +112,13 @@ final class GatewayRecordingUpload: NSObject, URLSessionDataDelegate, @unchecked
 
     func finish() async throws -> GatewaySession {
         try Task.checkCancellation()
-        return try await withTaskCancellationHandler {
+        let result = try await withTaskCancellationHandler {
             // All sends are awaited before Finish; closing on the same queue
             // makes EOF follow the last sample, without padding the recording.
-            writer.async { self.output.close() }
+            writer.async {
+                self.output.close()
+                self.progress.bodyClosed(bytes: self.state.withLock { $0.bytesWritten })
+            }
             return try await withCheckedThrowingContinuation { continuation in
                 let completed = state.withLock { current -> Result<GatewaySession, any Error>? in
                     if let result = current.result { return result }
@@ -61,9 +130,13 @@ final class GatewayRecordingUpload: NSObject, URLSessionDataDelegate, @unchecked
         } onCancel: {
             self.cancel()
         }
+        await progress.waitForNotification()
+        try Task.checkCancellation()
+        return result
     }
 
     func cancel() {
+        progress.cancel()
         state.withLock { $0.cancelled = true }
         complete(.failure(CancellationError()))
         task.cancel()
@@ -78,6 +151,7 @@ final class GatewayRecordingUpload: NSObject, URLSessionDataDelegate, @unchecked
                 writer.async {
                     do {
                         try self.writeSynchronously(data)
+                        self.state.withLock { $0.bytesWritten += Int64(data.count) }
                         continuation.resume()
                     } catch {
                         continuation.resume(throwing: error)
@@ -163,6 +237,14 @@ final class GatewayRecordingUpload: NSObject, URLSessionDataDelegate, @unchecked
             return waiter
         }
         waiter?.resume(with: result)
+    }
+
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
+        totalBytesSent: Int64, totalBytesExpectedToSend: Int64
+    ) {
+        // A live request's expected length remains unknown until we close it.
+        progress.sent(bytes: totalBytesSent)
     }
 
     func urlSession(

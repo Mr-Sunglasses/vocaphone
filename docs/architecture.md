@@ -128,8 +128,10 @@ was trimmed.
    at most 64 KiB and the capture queue holds roughly five seconds. No audio
    transport opens on an on-device route.
 6. Finish changes shared state to `finalizing`.
-7. Finish closes capture, drains accepted chunks in order, closes the upload,
-   and requests normal batch transcription. Whisper therefore receives most
+7. Finish closes capture, drains accepted chunks in order, and closes the upload.
+   With `?finish=true`, a supporting gateway returns the completed batch
+   transcript in that same response. Older gateways return `uploaded`, so the
+   client calls `/finish` once without sending the audio again. Whisper receives most
    audio before Finish without needing incremental decoding. A dropped chunk,
    stalled writer, disconnect, unsupported proxy, or incomplete negotiation
    abandons this path and uses the complete local file instead.
@@ -139,6 +141,13 @@ was trimmed.
    falls back to WAV. The temporary copy is deleted after the upload attempt,
    while the session WAV remains available for retry. The gateway already
    accepts M4A and normalizes it through FFmpeg before inference.
+   Complete-file fallback and retries request the same combined finalization.
+   Upload progress switches the session and Live Activity to Transcribing when
+   the body is fully sent, before waiting for the transcript. Diagnostics use
+   that same boundary. Response timeouts allow both upload and transcription
+   budgets, while the live request's total deadline also covers capture.
+   Bounded buffering and the
+   eight-second write deadline remain in place.
 8. The app writes `readyToInsert` and deletes its audio only after success.
 9. The keyboard verifies its session context, persists `inserting`, calls
    `insertText`, then persists `inserted` and `completed`.

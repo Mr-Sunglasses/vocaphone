@@ -1,8 +1,36 @@
 import AVFAudio
 import Foundation
 import Testing
+import os
 
 struct GatewayUploadClientTests {
+    @Test(arguments: [true, false])
+    func completeFileUploadUsesOneRequestOrTheLegacyFinish(combined: Bool) async throws {
+        let directory = try makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try makeRecording(in: directory)
+        let original = try Data(contentsOf: source)
+        let scratch = directory.appendingPathComponent("scratch")
+        let id = UUID()
+        let completed = "{\"session_id\":\"\(id)\",\"job_id\":\"test\",\"state\":\"completed\",\"transcript\":\"Hello there\"}"
+        let uploaded = "{\"session_id\":\"\(id)\",\"job_id\":\"test\",\"state\":\"uploaded\"}"
+        let server = try GatewayRecordingUploadTests.UploadServer(responses: combined ? [completed] : [uploaded, completed])
+        let port = try await server.start()
+        defer { server.cancel() }
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let client = makeClient(port: port, session: session, scratch: scratch)
+        let response = try await client.uploadAudio(sessionID: id, fileURL: source, finishOnUpload: true)
+        #expect(try await client.finishUploaded(sessionID: id, uploaded: response).transcript == "Hello there")
+        let requests = server.requests.withLock { $0 }
+        #expect(requests.count == (combined ? 1 : 2))
+        #expect(requests[0].lowercased().contains("/audio?finish=true"))
+        #expect(requests[0].lowercased().contains("content-type: audio/mp4"))
+        if !combined { #expect(requests[1].hasPrefix("POST ")) }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: scratch.path).isEmpty)
+        #expect(try Data(contentsOf: source) == original)
+    }
+
     @Test func clientUploadsDecodableAACAndRemovesItsTemporaryCopy() async throws {
         let directory = try makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -65,15 +93,20 @@ struct GatewayUploadClientTests {
         let session = URLSession(configuration: .ephemeral)
         defer { session.invalidateAndCancel() }
         let client = makeClient(port: port, session: session, scratch: scratch)
-        let uploading = Task { try await client.uploadAudio(sessionID: UUID(), fileURL: source) }
+        let notifications = OSAllocatedUnfairLock(initialState: 0)
+        let uploading = Task {
+            try await client.uploadAudio(sessionID: UUID(), fileURL: source, finishOnUpload: true,
+                                         onUploadFinished: { notifications.withLock { $0 += 1 } })
+        }
         let deadline = ContinuousClock.now + .seconds(5)
-        while !server.finished.withLock({ $0 }) {
+        while !server.finished.withLock({ $0 }) || notifications.withLock({ $0 }) != 1 {
             guard ContinuousClock.now < deadline else {
                 uploading.cancel()
                 throw URLError(.timedOut)
             }
             try await Task.sleep(for: .milliseconds(5))
         }
+        #expect(notifications.withLock { $0 } == 1)
         #expect(!(try FileManager.default.contentsOfDirectory(atPath: scratch.path)).isEmpty)
         uploading.cancel()
         do {
@@ -84,6 +117,7 @@ struct GatewayUploadClientTests {
         }
         #expect(try FileManager.default.contentsOfDirectory(atPath: scratch.path).isEmpty)
         #expect(try Data(contentsOf: source) == original)
+        #expect(notifications.withLock { $0 } == 1)
     }
 
     private func makeClient(port: UInt16, session: URLSession, scratch: URL) -> GatewayClient {

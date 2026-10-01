@@ -17,7 +17,10 @@ larger, the app sends the WAV. On-device transcription uses the WAV.
 For gateway models that do not decode incrementally (including Whisper), the
 iPhone sends mono 16 kHz, 16-bit PCM through a bounded HTTP/HTTPS upload while
 the dictation is being recorded. The gateway receives it as a streaming WAV
-and transcribes only after Finish closes the upload. Session setup overlaps
+and transcribes only after Finish closes the upload. A supporting gateway
+returns the transcript in the upload response; an older gateway receives a
+separate Finish request with the same session ID, without another audio upload.
+Session setup overlaps
 recording. Failed connections, stalled transfers, or dropped chunks abandon
 this upload and use the complete local WAV for the compressed batch fallback.
 Only audio from the explicit dictation is sent, never Quick Dictation standby

@@ -1093,10 +1093,13 @@ final class RecordingCoordinator {
                 let style = record.style
                 let sampleRate = Int(recorder.transcriptionSampleRate)
                 let attemptStream = GatewayStatusPreferences.shouldAttemptStreaming(for: client.baseURL)
-                await streamingBridge.start(chunks: chunks) {
+                await streamingBridge.start(chunks: chunks) { [weak self] in
                     try await client.recordingTransport(
                         sessionID: sessionID, language: language, style: style,
-                        sampleRate: sampleRate, attemptTranscriptionStream: attemptStream
+                        sampleRate: sampleRate, attemptTranscriptionStream: attemptStream,
+                        onUploadFinished: { [weak self] in
+                            await self?.gatewayUploadBodyFinished(sessionID: sessionID)
+                        }
                     )
                 }
             }
@@ -1220,6 +1223,22 @@ final class RecordingCoordinator {
                 guard !Task.isCancelled else { return }
                 await self.handleSharedStateSignal()
             }
+        }
+    }
+
+    private func gatewayUploadBodyFinished(sessionID: UUID) {
+        guard !Task.isCancelled, var record = activeRecord, record.sessionID == sessionID,
+              record.state == .uploading else { return }
+        do {
+            try record.transition(to: .transcribing)
+            try store.save(record)
+            activeRecord = record
+            DiagnosticLog.record(.uploadCompleted)
+            DiagnosticLog.record(.transcriptionStarted)
+            message = "Transcribing on your gateway…"
+            liveActivity.update(status: "Transcribing on your gateway", canFinish: false)
+        } catch {
+            DiagnosticLog.record(.operationFailed)
         }
     }
 
@@ -1380,17 +1399,20 @@ final class RecordingCoordinator {
                 style: record.style
             )
             record.serverJobID = created.jobID
+            try store.save(record)
+            activeRecord = record
             DiagnosticLog.record(.uploadStarted)
-            _ = try await client.uploadAudio(sessionID: record.sessionID, fileURL: output)
-            DiagnosticLog.record(.uploadCompleted)
+            let sessionID = record.sessionID
+            let uploaded = try await client.uploadAudio(
+                sessionID: sessionID, fileURL: output, finishOnUpload: true,
+                onUploadFinished: { [weak self] in
+                    await self?.gatewayUploadBodyFinished(sessionID: sessionID)
+                }
+            )
             try record.transition(to: .transcribing)
             try store.save(record)
             activeRecord = record
-            message = "Transcribing on your gateway…"
-            liveActivity.update(status: "Transcribing on your gateway", canFinish: false)
-
-            DiagnosticLog.record(.transcriptionStarted)
-            let finished = try await client.finish(sessionID: record.sessionID)
+            let finished = try await client.finishUploaded(sessionID: record.sessionID, uploaded: uploaded)
             guard let transcript = finished.transcript, !transcript.isEmpty else {
                 throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
             }
