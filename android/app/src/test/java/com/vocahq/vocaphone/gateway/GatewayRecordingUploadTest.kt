@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.gateway
 
+import com.vocahq.vocaphone.core.DictationState
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
@@ -8,6 +9,7 @@ import java.net.Socket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
@@ -15,6 +17,8 @@ import kotlinx.coroutines.runBlocking
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
+import okhttp3.Call
+import okhttp3.EventListener
 import okhttp3.Request
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -24,6 +28,23 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 class GatewayRecordingUploadTest {
+    @Test fun `call deadline covers maximum recording and bounded finish time`() = runBlocking {
+        val deadline = AtomicLong()
+        val client = OkHttpClient.Builder().eventListener(object : EventListener() {
+            override fun callStart(call: Call) {
+                deadline.set(TimeUnit.NANOSECONDS.toMillis(call.timeout().timeoutNanos()))
+            }
+        }).build()
+        Receiver().use { server ->
+            val upload = GatewayRecordingUpload(client, request(server.port))
+            try {
+                assertEquals(DictationState.MAXIMUM_RECORDING_MILLIS + 60_000, deadline.get())
+                upload.sendFrames(shortArrayOf(1, 2, 3))
+                assertEquals("uploaded", upload.finish().state)
+            } finally { upload.cancel() }
+        }
+    }
+
     @Test fun `audio arrives before EOF with exact PCM16 bytes in order`() = runBlocking {
         Receiver().use { server ->
             val upload = GatewayRecordingUpload(OkHttpClient(), request(server.port))

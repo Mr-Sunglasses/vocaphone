@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.gateway
 
 import com.vocahq.vocaphone.audio.CaptureFormat
 import com.vocahq.vocaphone.audio.WavWriter
+import com.vocahq.vocaphone.core.DictationState
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -50,7 +51,9 @@ class GatewayRecordingUpload internal constructor(
             }
         }
         call = client.newBuilder()
-            .callTimeout(150, TimeUnit.SECONDS)
+            // The request is open for the whole capture, then drains at Finish.
+            // A fixed 150 s deadline expired halfway through a valid 5 min take.
+            .callTimeout(DictationState.MAXIMUM_RECORDING_MILLIS + 60_000, TimeUnit.MILLISECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(writeTimeoutMillis, TimeUnit.MILLISECONDS)
             .retryOnConnectionFailure(false)
