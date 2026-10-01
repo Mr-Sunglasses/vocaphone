@@ -111,8 +111,9 @@ struct TypingPrivacyTests {
         #expect(first.isPersistent)
         first.update { $0.learn("persistent") }
         // The write is queued behind the change; a new process sees it once it
-        // has landed.
-        first.flush()
+        // has landed. The keyboard's 150 ms dismissal budget is not a reliable
+        // disk-write deadline on a busy CI simulator.
+        try #require(first.flush(timeout: .seconds(5)))
 
         let second = LearnedWordStore(containerURL: directory)
         #expect(second.snapshot().contains("persistent"))
@@ -131,7 +132,7 @@ struct TypingPrivacyTests {
             store.update { $0.learn(word) }
             #expect(store.snapshot().contains(word))
         }
-        #expect(store.flush())
+        try #require(store.flush(timeout: .seconds(5)))
         let reopened = LearnedWordStore(containerURL: directory).snapshot()
         for word in ["alpha", "bravo", "charlie", "delta"] { #expect(reopened.contains(word)) }
     }

@@ -91,13 +91,27 @@ was trimmed.
    recording, and writes `recording` plus bounded meter updates. The audio graph
    is not rebuilt between dictations.
 4. The user manually returns to the original app.
-5. Finish changes shared state to `finalizing`.
-6. The app negotiates streaming support on the authenticated WebSocket itself,
-   avoiding a separate health round trip. With a ready Moonshine engine, copied
-   float32 buffers reach the streaming endpoint while the app still writes the
-   complete WAV. Batch-only engines receive a structured unsupported response.
-7. The app stops recording and uses the stream result when available. Otherwise
-   it creates the idempotent session and runs the normal upload/batch flow.
+5. While recording on a gateway route, the app negotiates incremental decoding
+   on the authenticated WebSocket, unless cached model capabilities rule it
+   out. A ready streaming model receives float32 buffers. With a batch-only
+   model or failed WebSocket negotiation, the app checks readiness, creates the
+   idempotent session, and opens a streamed HTTP PUT to the existing audio
+   endpoint. The body is a mono 16 kHz PCM16 WAV with unknown-size RIFF/data
+   headers; EOF determines its actual length. URLSession's bound stream holds
+   at most 64 KiB and the capture queue holds roughly five seconds. No audio
+   transport opens on an on-device route.
+6. Finish changes shared state to `finalizing`.
+7. Finish closes capture, drains accepted chunks in order, closes the upload,
+   and requests normal batch transcription. Whisper therefore receives most
+   audio before Finish without needing incremental decoding. A dropped chunk,
+   stalled writer, disconnect, unsupported proxy, or incomplete negotiation
+   abandons this path and uses the complete local file instead.
+   For this fallback, the iPhone encodes its mono 16 kHz WAV to a temporary
+   48 kbps AAC/M4A on a worker task. It sends the smaller file with the matching
+   content type; failed encoding or container overhead on a short recording
+   falls back to WAV. The temporary copy is deleted after the upload attempt,
+   while the session WAV remains available for retry. The gateway already
+   accepts M4A and normalizes it through FFmpeg before inference.
 8. The app writes `readyToInsert` and deletes its audio only after success.
 9. The keyboard verifies its session context, persists `inserting`, calls
    `insertText`, then persists `inserted` and `completed`.

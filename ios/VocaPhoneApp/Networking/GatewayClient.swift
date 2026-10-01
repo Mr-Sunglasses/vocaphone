@@ -105,11 +105,16 @@ struct GatewayClient: Sendable {
     let baseURL: URL
     private let token: String
     private let session: URLSession
+    private let uploadTemporaryRoot: URL
 
-    init(baseURL: URL, token: String, session: URLSession = .shared) {
+    init(
+        baseURL: URL, token: String, session: URLSession = .shared,
+        uploadTemporaryRoot: URL = FileManager.default.temporaryDirectory
+    ) {
         self.baseURL = baseURL
         self.token = token
         self.session = session
+        self.uploadTemporaryRoot = uploadTemporaryRoot
     }
 
     func health() async throws -> GatewayHealth {
@@ -137,14 +142,17 @@ struct GatewayClient: Sendable {
     }
 
     func uploadAudio(sessionID: UUID, fileURL: URL) async throws -> GatewaySession {
+        let upload = try await GatewayUploadAudio.prepare(sourceURL: fileURL, temporaryRoot: uploadTemporaryRoot)
+        defer { upload.removeTemporaryFile() }
+        try Task.checkCancellation()
         var request = URLRequest(url: endpoint("v1/sessions/\(sessionID.uuidString.lowercased())/audio"))
         request.httpMethod = "PUT"
         request.timeoutInterval = 30
-        request.setValue(contentType(for: fileURL), forHTTPHeaderField: "Content-Type")
+        request.setValue(contentType(for: upload.fileURL), forHTTPHeaderField: "Content-Type")
         // Streamed from disk rather than assigned to `httpBody`, which would
         // hold the entire recording in memory and then let URLSession copy it
         // again — on the path taken precisely when the network is struggling.
-        return try await perform(request, as: GatewaySession.self, uploading: fileURL)
+        return try await perform(request, as: GatewaySession.self, uploading: upload.fileURL)
     }
 
     func finish(sessionID: UUID) async throws -> GatewaySession {
@@ -154,6 +162,29 @@ struct GatewayClient: Sendable {
         // a newly selected model before their first transcription completes.
         request.timeoutInterval = 540
         return try await perform(request, as: GatewaySession.self)
+    }
+
+    func startRecordingUpload(
+        sessionID: UUID, language: String, style: String
+    ) async throws -> GatewayRecordingUpload {
+        guard try await health().engineReady else {
+            throw GatewayError.api(status: 503, code: "engine_not_ready")
+        }
+        _ = try await createSession(id: sessionID, language: language, style: style)
+        try Task.checkCancellation()
+        var request = URLRequest(url: endpoint("v1/sessions/\(sessionID.uuidString.lowercased())/audio"))
+        request.httpMethod = "PUT"
+        request.timeoutInterval = 30
+        request.setValue("audio/wav", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let upload = try GatewayRecordingUpload(request: request, configuration: session.configuration)
+        do {
+            try await upload.sendHeader()
+            return upload
+        } catch {
+            upload.cancel()
+            throw error
+        }
     }
 
     func delete(sessionID: UUID) async throws {
@@ -181,8 +212,17 @@ struct GatewayClient: Sendable {
             sampleRate: sampleRate,
             session: session
         )
-        try await stream.connect()
-        return stream
+        do {
+            try await withTaskCancellationHandler {
+                try await stream.connect()
+            } onCancel: {
+                stream.cancel()
+            }
+            return stream
+        } catch {
+            stream.cancel()
+            throw error
+        }
     }
 
     private func endpoint(_ path: String) -> URL {
@@ -221,6 +261,10 @@ struct GatewayClient: Sendable {
         } else {
             try await session.data(for: request)
         }
+        return try Self.decode(data, response: response, as: type)
+    }
+
+    static func decode<T: Decodable>(_ data: Data, response: URLResponse?, as type: T.Type) throws -> T {
         guard let http = response as? HTTPURLResponse else { throw GatewayError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             let body = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
@@ -269,6 +313,7 @@ final class GatewayAudioStream: @unchecked Sendable {
     }
 
     func finish() async throws -> String {
+        DiagnosticLog.record(.transcriptionStarted)
         let finish = try JSONSerialization.data(withJSONObject: ["type": "finish"])
         try await task.send(.string(String(decoding: finish, as: UTF8.self)))
         while true {

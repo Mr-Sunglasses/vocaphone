@@ -1086,18 +1086,18 @@ final class RecordingCoordinator {
                     self?.publishLiveTranscript(text, for: sessionID)
                 }
             }
-            if let client = gatewayClient, let chunks = recorder.pcmChunks {
-                if GatewayStatusPreferences.shouldAttemptStreaming(for: client.baseURL) {
-                    await streamingBridge.start(
-                        client: client,
-                        sessionID: record.sessionID,
-                        language: record.language,
-                        style: record.style,
-                        sampleRate: Int(recorder.transcriptionSampleRate),
-                        chunks: chunks
+            if !LocalTranscriptionPreferences.enabled,
+               let client = gatewayClient, let chunks = recorder.pcmChunks {
+                let sessionID = record.sessionID
+                let language = record.language
+                let style = record.style
+                let sampleRate = Int(recorder.transcriptionSampleRate)
+                let attemptStream = GatewayStatusPreferences.shouldAttemptStreaming(for: client.baseURL)
+                await streamingBridge.start(chunks: chunks) {
+                    try await client.recordingTransport(
+                        sessionID: sessionID, language: language, style: style,
+                        sampleRate: sampleRate, attemptTranscriptionStream: attemptStream
                     )
-                } else {
-                    await streamingBridge.skipUnsupportedModel()
                 }
             }
             if record.state == .launchingApp {
@@ -1350,7 +1350,7 @@ final class RecordingCoordinator {
                 activeRecord = record
                 DiagnosticLog.record(.transcriptReady)
                 UserDefaults.standard.set(
-                    "Gateway and streaming model are ready.",
+                    "Gateway and speech-to-text model are ready.",
                     forKey: GatewayStatusPreferences.healthMessageKey
                 )
                 try? FileManager.default.removeItem(at: output)
@@ -2131,141 +2131,5 @@ final class RecordingCoordinator {
 #if DEBUG
         print("[QuickDictation] \(value)")
 #endif
-    }
-}
-
-/// Forwards captured audio to the gateway over a WebSocket.
-///
-/// The capture pipeline already emits chunks in order on a single queue, so a
-/// lone consumer task preserves ordering without a reordering buffer. Memory is
-/// bounded by the `AsyncStream` the recorder hands over: when the link cannot
-/// keep up, chunks are dropped and the recorder reports it, and the caller
-/// falls back to uploading the intact file rather than the stream growing
-/// without limit.
-private actor StreamingAudioBridge {
-    private var stream: GatewayAudioStream?
-    private var pump: Task<Void, Never>?
-    private var failed = false
-    private var ready = false
-    private var fallbackRecorded = false
-
-    func start(
-        client: GatewayClient,
-        sessionID: UUID,
-        language: String,
-        style: String,
-        sampleRate: Int,
-        chunks: AsyncStream<Data>
-    ) {
-        cancel()
-        failed = false
-        DiagnosticLog.record(.streamHandshakeStarted)
-        pump = Task { [weak self] in
-            let opened: GatewayAudioStream
-            do {
-                opened = try await client.startAudioStream(
-                    sessionID: sessionID,
-                    language: language,
-                    style: style,
-                    sampleRate: sampleRate
-                )
-            } catch {
-                guard !Task.isCancelled else { return }
-                await self?.recordFallbackIfNeeded()
-                return
-            }
-            guard !Task.isCancelled else {
-                opened.cancel()
-                return
-            }
-            await self?.attach(opened)
-            DiagnosticLog.record(.streamReady)
-            for await chunk in chunks {
-                guard !Task.isCancelled else { break }
-                await self?.deliver(chunk)
-            }
-        }
-    }
-
-    func skipUnsupportedModel() {
-        cancel()
-        recordFallbackIfNeeded()
-    }
-
-    /// Returns a transcript only when the whole recording reached the gateway.
-    /// Any loss makes the stream untrustworthy, so the caller uploads instead.
-    func finish(droppedChunks: Int) async -> String? {
-        guard droppedChunks == 0 else {
-            cancelPendingNegotiation()
-            recordFallbackIfNeeded()
-            return nil
-        }
-        guard ready else {
-            cancelPendingNegotiation()
-            recordFallbackIfNeeded()
-            return nil
-        }
-        // The recorder finished the chunk stream before calling this, so the
-        // pump terminates once it has drained what is still buffered.
-        await pump?.value
-        pump = nil
-        guard !failed, let stream else {
-            stream?.cancel()
-            self.stream = nil
-            ready = false
-            recordFallbackIfNeeded()
-            return nil
-        }
-        self.stream = nil
-        ready = false
-        do {
-            DiagnosticLog.record(.transcriptionStarted)
-            return try await stream.finish()
-        } catch {
-            stream.cancel()
-            recordFallbackIfNeeded()
-            return nil
-        }
-    }
-
-    func cancel() {
-        pump?.cancel()
-        pump = nil
-        stream?.cancel()
-        stream = nil
-        failed = false
-        ready = false
-        fallbackRecorded = false
-    }
-
-    private func cancelPendingNegotiation() {
-        pump?.cancel()
-        pump = nil
-        stream?.cancel()
-        stream = nil
-        failed = false
-        ready = false
-    }
-
-    private func attach(_ opened: GatewayAudioStream) {
-        stream = opened
-        ready = true
-    }
-
-    private func recordFallbackIfNeeded() {
-        guard !fallbackRecorded else { return }
-        fallbackRecorded = true
-        DiagnosticLog.record(.batchFallback)
-    }
-
-    private func deliver(_ chunk: Data) async {
-        guard !failed, let stream else { return }
-        do {
-            try await stream.send(chunk)
-        } catch {
-            failed = true
-            stream.cancel()
-            self.stream = nil
-        }
     }
 }
