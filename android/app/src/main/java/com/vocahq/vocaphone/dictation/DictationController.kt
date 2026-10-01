@@ -890,11 +890,11 @@ class DictationController(
             _state.update { it.copy(phase = DictationPhase.UPLOADING) }
             client.createSession(sessionId, language, style)
             diagnostics.recordTiming("upload_started", source.name)
-            client.uploadAudio(sessionId, wavFile)
+            val uploaded = client.uploadAudio(sessionId, wavFile, finishOnUpload = true)
             diagnostics.recordTiming("upload_completed", source.name)
             _state.update { it.copy(phase = DictationPhase.TRANSCRIBING) }
             diagnostics.recordTiming("transcription_started", source.name)
-            val session = client.finish(sessionId)
+            val session = client.finishUploaded(sessionId, uploaded)
             // Marker-only output means the model heard nothing worth writing.
             val transcript = DictatedTranscript.finished(
                 session.transcript,

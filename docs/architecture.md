@@ -44,10 +44,12 @@ socket negotiates incremental transcription. Unsupported or failed negotiation
 opens a streamed HTTP PUT to the existing session audio endpoint after readiness
 and session creation, while capture continues.
 
-The HTTP body uses unknown-size RIFF/data fields and closes at Finish. FFmpeg
-normalizes the actual bytes through EOF, then the client requests normal batch
-transcription. This overlaps upload with speech for Whisper without changing
-the gateway engine or API. A 64 KiB pipe and the existing 96-frame capture queue
+The HTTP body uses unknown-size RIFF/data fields and closes at Finish. The
+client requests `?finish=true` so a supporting gateway normalizes the actual
+bytes through EOF and returns the batch transcript in the upload response,
+removing the separate Finish round trip. An older gateway returns `uploaded`;
+the client then calls `/finish` once without replaying the audio. This overlaps
+upload with speech for Whisper. A 64 KiB pipe and the existing 96-frame capture queue
 (roughly ten seconds) bound transport memory. A stalled writer fails within
 eight seconds; dropped frames, an incomplete handshake, or a failed transport
 use the complete local file. Cancel stops the dictation's upload child and
@@ -61,6 +63,11 @@ unavailable codecs, disk errors, or container overhead retain the original
 upload. Temporary copies live in the app's private cache and are removed after
 success, failure, or cancellation. The recoverable WAV is deleted only after
 the existing successful transcript flow.
+
+Complete-file fallback and retry uploads request the same combined finalization
+and accept the older response too. The HTTP response timeout includes the normal
+transcription budget; the live call deadline covers the full capture window
+plus that budget. Bounded buffering and eight-second write deadlines still apply.
 
 On-device WhisperKit transcription uses sequential VAD windows of at most
 30 seconds. VocaPhone propagates a failed window rather than accepting a partial

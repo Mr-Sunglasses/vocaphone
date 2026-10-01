@@ -37,14 +37,16 @@ private class UploadTransport(
     private val sessionId: UUID,
 ) : GatewayRecordingTransport {
     override val incremental = false
+    private var uploaded: GatewaySession? = null
     override suspend fun sendFrames(samples: ShortArray): Boolean {
         upload.sendFrames(samples)
         return true
     }
 
-    override suspend fun finishUpload() { upload.finish() }
+    override suspend fun finishUpload() { if (uploaded == null) uploaded = upload.finish() }
     override suspend fun finish(): String {
-        val result = client.finish(sessionId)
+        finishUpload()
+        val result = client.finishUploaded(sessionId, checkNotNull(uploaded))
         return result.transcript?.takeIf { it.isNotBlank() } ?: throw GatewayException.emptyTranscript()
     }
 

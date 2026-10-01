@@ -38,7 +38,8 @@ class GatewayRecordingUploadTest {
         Receiver().use { server ->
             val upload = GatewayRecordingUpload(client, request(server.port))
             try {
-                assertEquals(DictationState.MAXIMUM_RECORDING_MILLIS + 60_000, deadline.get())
+                assertEquals(DictationState.MAXIMUM_RECORDING_MILLIS +
+                    TimeUnit.SECONDS.toMillis(GatewayClient.FINISH_TIMEOUT_SECONDS), deadline.get())
                 upload.sendFrames(shortArrayOf(1, 2, 3))
                 assertEquals("uploaded", upload.finish().state)
             } finally { upload.cancel() }

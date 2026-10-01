@@ -27,6 +27,31 @@ class GatewayUploadClientTest {
         uploadPreparer = { GatewayUploadAudio.prepare(it, scratch, GatewayUploadAudioTest.fakeEncoder) },
     )
 
+    @Test fun `combined file upload handles newer and older gateways without audio replay`() = runBlocking {
+        for (combined in listOf(true, false)) {
+            MockWebServer().use { server ->
+                server.start()
+                val completed = """{"session_id":"$sessionId","job_id":"test","state":"completed","transcript":"Hello there"}"""
+                server.enqueue(MockResponse(body = if (combined) completed else uploaded))
+                if (!combined) server.enqueue(MockResponse(body = completed))
+                val source = GatewayUploadAudioTest.recording(folder.root)
+                val scratch = folder.newFolder()
+                val client = client(server, scratch)
+                val result = client.uploadAudio(sessionId, source, finishOnUpload = true)
+                assertEquals("Hello there", client.finishUploaded(sessionId, result).transcript)
+                val upload = server.takeRequest(5, TimeUnit.SECONDS)!!
+                assertEquals("true", upload.url.queryParameter("finish"))
+                assertEquals("audio/mp4", upload.headers["Content-Type"])
+                assertArrayEquals(GatewayUploadAudioTest.encodedBytes, upload.body!!.toByteArray())
+                if (!combined) {
+                    assertEquals("/v1/sessions/$sessionId/finish", server.takeRequest().url.encodedPath)
+                }
+                assertEquals(if (combined) 1 else 2, server.requestCount)
+                assertTrue(scratch.listFiles()!!.isEmpty())
+            }
+        }
+    }
+
     @Test fun `actual encoded bytes reach HTTP and success removes the copy`() = runBlocking {
         MockWebServer().use { server ->
             server.start()

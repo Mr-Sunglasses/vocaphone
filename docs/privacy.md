@@ -57,7 +57,9 @@ An explicit Android dictation writes a recoverable mono 16 kHz WAV in private
 app storage. On a gateway route, a bounded background consumer also sends that
 dictation's PCM16 audio to the configured bearer-authenticated HTTP/HTTPS
 endpoint during recording. Batch models receive a streaming WAV; they
-transcribe after Finish closes the upload. Models with incremental support
+transcribe after Finish closes the upload. A supporting gateway returns that
+transcript in the upload response; an older gateway receives a separate Finish
+request using the same session ID, without a second audio upload. Models with incremental support
 retain their authenticated WebSocket path. On-device dictation sends no audio
 to the gateway, even when gateway settings remain configured.
 
