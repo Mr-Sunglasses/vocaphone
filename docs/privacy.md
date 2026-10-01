@@ -8,6 +8,21 @@ bearer-authenticated gateway over HTTP or HTTPS, and deletes the iPhone copy
 after a transcript is safely stored. HTTPS or an encrypted private network is
 recommended so the recording and token are protected in transit.
 
+For iPhone completed-file uploads and retries, the app prepares a temporary
+mono 16 kHz AAC/M4A copy at 48 kbps to reduce transfer size. The recoverable WAV
+stays on the phone until success. The temporary copy is removed when the upload ends,
+including on failure or cancellation; if encoding fails or the copy would be
+larger, the app sends the WAV. On-device transcription uses the WAV.
+
+For gateway models that do not decode incrementally (including Whisper), the
+iPhone sends mono 16 kHz, 16-bit PCM through a bounded HTTP/HTTPS upload while
+the dictation is being recorded. The gateway receives it as a streaming WAV
+and transcribes only after Finish closes the upload. Session setup overlaps
+recording. Failed connections, stalled transfers, or dropped chunks abandon
+this upload and use the complete local WAV for the compressed batch fallback.
+Only audio from the explicit dictation is sent, never Quick Dictation standby
+buffers. The existing gateway authentication, limits, and retention still apply.
+
 When Quick Dictation is enabled, the containing app may keep microphone input
 active so later keyboard actions do not need another app handoff. The window is
 the user's choice — 10 minutes by default, 20 minutes, or until vocaphone is

@@ -245,6 +245,11 @@ targets:
       - path: VocaPhoneKeyboard/TypingStripView.swift
       # The realtime capture path is the highest-risk code in the app.
       - path: VocaPhoneApp/Audio/AudioCapturePipeline.swift
+      # Exercise the actual AAC upload preparation and HTTP content type.
+      - path: VocaPhoneApp/Networking/GatewayUploadAudio.swift
+      - path: VocaPhoneApp/Networking/GatewayClient.swift
+      - path: VocaPhoneApp/Networking/GatewayRecordingUpload.swift
+      - path: VocaPhoneApp/Networking/StreamingAudioBridge.swift
       # Whether a speech model may be loaded before anyone asked for it: a
       # wrong answer on a short phone is an out-of-memory kill during setup.
       - path: VocaPhoneApp/Models/EngineWarmPolicy.swift
