@@ -4,15 +4,19 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
@@ -27,6 +31,7 @@ class GatewayClient(
     baseUrl: String,
     private val token: String,
     private val httpClient: OkHttpClient = defaultClient(),
+    private val uploadPreparer: suspend (File) -> GatewayUploadAudio = { GatewayUploadAudio.prepare(it) },
 ) {
     val baseUrl: HttpUrl = requireNotNull(baseUrl.toHttpUrlOrNull()) {
         "The gateway address is not a valid URL."
@@ -65,13 +70,28 @@ class GatewayClient(
         withContext(Dispatchers.IO) {
             // Streamed from disk: holding the recording in memory would double it
             // exactly when the network is already struggling.
-            val body: RequestBody = wavFile.asRequestBody(WAV_MEDIA_TYPE)
-            val request = Request.Builder()
-                .url(endpoint("v1", "sessions", sessionId.toString(), "audio"))
-                .put(body)
-                .build()
-            GatewaySession.from(execute(request, timeoutSeconds = 60).asJsonObject())
+            uploadPreparer(wavFile).use { upload ->
+                currentCoroutineContext().ensureActive()
+                val request = Request.Builder()
+                    .url(endpoint("v1", "sessions", sessionId.toString(), "audio"))
+                    .put(upload.file.asRequestBody(upload.contentType))
+                    .build()
+                GatewaySession.from(execute(request, timeoutSeconds = 60).asJsonObject())
+            }
         }
+
+    suspend fun startRecordingUpload(
+        sessionId: UUID, language: String, style: String,
+    ): GatewayRecordingUpload {
+        if (!health().engineReady) throw GatewayException.fromStatus(503, "engine_not_ready")
+        createSession(sessionId, language, style)
+        currentCoroutineContext().ensureActive()
+        val request = Request.Builder()
+            .url(endpoint("v1", "sessions", sessionId.toString(), "audio"))
+            .header("Authorization", "Bearer $token")
+            .build()
+        return GatewayRecordingUpload(httpClient, request)
+    }
 
     suspend fun finish(sessionId: UUID): GatewaySession = withContext(Dispatchers.IO) {
         val request = Request.Builder()
@@ -123,7 +143,7 @@ class GatewayClient(
 
     private fun webSocketEndpoint(): HttpUrl = endpoint("v1", "stream")
 
-    private fun execute(
+    private suspend fun execute(
         request: Request,
         timeoutSeconds: Long,
         authenticated: Boolean = true,
@@ -139,18 +159,19 @@ class GatewayClient(
             .build()
             .newCall(authorized)
 
-        val response = try {
-            call.execute()
-        } catch (error: IOException) {
-            throw GatewayException.unreachable(error)
+        val response = suspendCancellableCoroutine { continuation ->
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    continuation.resumeWithException(GatewayException.unreachable(e))
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    continuation.resume(response) { _, cancelledResponse, _ -> cancelledResponse.close() }
+                }
+            })
         }
-        if (!response.isSuccessful) {
-            val code = runCatching {
-                JSONObject(response.body.string()).getJSONObject("error").optString("code")
-            }.getOrNull()?.takeIf { it.isNotEmpty() }
-            response.close()
-            throw GatewayException.fromStatus(response.code, code)
-        }
+        ensureSuccessful(response)
         return response
     }
 
@@ -162,6 +183,24 @@ class GatewayClient(
         val JSON_MEDIA_TYPE = "application/json".toMediaType()
         val WAV_MEDIA_TYPE = "audio/wav".toMediaType()
         private val EMPTY_BODY = ByteArray(0).toRequestBody(null)
+
+        internal fun decodeSession(response: Response): GatewaySession = response.use {
+            ensureSuccessful(it)
+            // Bound the response too: a proxy error page must not grow memory
+            // without limit while the audio transport itself stays bounded.
+            val body = it.peekBody(1_048_577)
+            if (body.contentLength() > 1_048_576) throw GatewayException.unreachable()
+            GatewaySession.from(JSONObject(body.string()))
+        }
+
+        private fun ensureSuccessful(response: Response) {
+            if (response.isSuccessful) return
+            val code = runCatching {
+                JSONObject(response.peekBody(1_048_576).string()).getJSONObject("error").optString("code")
+            }.getOrNull()?.takeIf { it.isNotEmpty() }
+            response.close()
+            throw GatewayException.fromStatus(response.code, code)
+        }
 
         fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
             .connectTimeout(8, TimeUnit.SECONDS)

@@ -8,6 +8,9 @@ package com.vocahq.vocaphone.gateway
 object GatewayStreamingPolicy {
     const val CAPABILITY_FRESHNESS_MILLIS = 5 * 60 * 1000L
 
+    fun shouldSendGatewayAudio(localTranscriptionEnabled: Boolean, gatewayConfigured: Boolean): Boolean =
+        !localTranscriptionEnabled && gatewayConfigured
+
     fun shouldAttemptStreaming(
         supported: Boolean,
         checkedAtMillis: Long?,

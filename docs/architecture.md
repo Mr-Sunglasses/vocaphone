@@ -35,6 +35,33 @@ the gateway wire format changed.
 
 ## Recorded request flow
 
+### Gateway work during recording (Android)
+
+On a gateway route, Android keeps writing the authoritative mono 16 kHz PCM16
+WAV while a separate IO consumer sends captured frames. A recently checked
+batch-only model skips WebSocket negotiation; otherwise the authenticated
+socket negotiates incremental transcription. Unsupported or failed negotiation
+opens a streamed HTTP PUT to the existing session audio endpoint after readiness
+and session creation, while capture continues.
+
+The HTTP body uses unknown-size RIFF/data fields and closes at Finish. FFmpeg
+normalizes the actual bytes through EOF, then the client requests normal batch
+transcription. This overlaps upload with speech for Whisper without changing
+the gateway engine or API. A 64 KiB pipe and the existing 96-frame capture queue
+(roughly ten seconds) bound transport memory. A stalled writer fails within
+eight seconds; dropped frames, an incomplete handshake, or a failed transport
+use the complete local file. Cancel stops the dictation's upload child and
+aborts the HTTP/socket request. On-device dictation opens no audio transport.
+
+Completed-file uploads and retries encode the capture WAV to temporary mono
+16 kHz AAC/M4A at 48 kbps with Android's MediaCodec and MediaMuxer on an IO
+worker. The encoder drains its end-of-stream packets before the file is used.
+Only a smaller, nonempty copy is uploaded with `audio/mp4`; unsupported WAVs,
+unavailable codecs, disk errors, or container overhead retain the original
+upload. Temporary copies live in the app's private cache and are removed after
+success, failure, or cancellation. The recoverable WAV is deleted only after
+the existing successful transcript flow.
+
 On-device WhisperKit transcription uses sequential VAD windows of at most
 30 seconds. VocaPhone propagates a failed window rather than accepting a partial
 transcript; the existing failure state retains the recording for retry. See

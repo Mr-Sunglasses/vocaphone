@@ -6,6 +6,13 @@ import org.junit.Test
 
 class GatewayStreamingPolicyTest {
     @Test
+    fun `on-device dictation never opens a gateway audio transport`() {
+        assertFalse(GatewayStreamingPolicy.shouldSendGatewayAudio(localTranscriptionEnabled = true, gatewayConfigured = true))
+        assertFalse(GatewayStreamingPolicy.shouldSendGatewayAudio(localTranscriptionEnabled = false, gatewayConfigured = false))
+        assertTrue(GatewayStreamingPolicy.shouldSendGatewayAudio(localTranscriptionEnabled = false, gatewayConfigured = true))
+    }
+
+    @Test
     fun `fresh batch capability skips streaming negotiation`() {
         assertFalse(
             GatewayStreamingPolicy.shouldAttemptStreaming(

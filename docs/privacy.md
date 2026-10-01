@@ -36,6 +36,25 @@ is deleted as soon as the session leaves the recording state, and with the
 session itself. It is never logged, and it is never what gets inserted — the
 finished transcript is.
 
+### Android gateway audio
+
+An explicit Android dictation writes a recoverable mono 16 kHz WAV in private
+app storage. On a gateway route, a bounded background consumer also sends that
+dictation's PCM16 audio to the configured bearer-authenticated HTTP/HTTPS
+endpoint during recording. Batch models receive a streaming WAV; they
+transcribe after Finish closes the upload. Models with incremental support
+retain their authenticated WebSocket path. On-device dictation sends no audio
+to the gateway, even when gateway settings remain configured.
+
+If this live transport fails or drops frames, the complete WAV remains the
+fallback. Completed-file uploads and retries prepare a temporary mono 16 kHz
+AAC/M4A at 48 kbps in private app cache and send it only when it is smaller.
+An encoding failure or unfamiliar format sends the original file. Temporary
+copies are removed after success, failure, and cancellation; the recoverable
+WAV follows the existing success/retry lifecycle. Audio conversion happens
+off the microphone and UI threads. Existing gateway authentication, upload
+limits, and retention apply to both paths.
+
 The gateway host stores randomized audio names under its private data directory.
 On success, original and normalized audio are deleted by default. Failed and
 abandoned sessions remain for the retry window (24 hours by default), after

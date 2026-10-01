@@ -101,6 +101,7 @@ class LocalEngineEndToEndTest {
                             threads,
                             audio,
                             "en",
+                            false,
                             0,
                             1f,
                             audioContext,
