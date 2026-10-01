@@ -30,9 +30,11 @@ import com.vocahq.vocaphone.data.UsageStatsRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.gateway.GatewayClient
 import com.vocahq.vocaphone.gateway.GatewayException
-import com.vocahq.vocaphone.gateway.GatewayAudioStream
+import com.vocahq.vocaphone.gateway.GatewayRecordingTransport
 import com.vocahq.vocaphone.gateway.GatewayStreamingPolicy
+import com.vocahq.vocaphone.gateway.GatewayUploadAudio
 import com.vocahq.vocaphone.gateway.StreamingUnavailableException
+import com.vocahq.vocaphone.gateway.openRecordingTransport
 import com.vocahq.vocaphone.local.LocalModelManager
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.local.LocalTranscription
@@ -238,6 +240,9 @@ class DictationController(
         diagnostics.recordAction("cancel", activeSource?.name)
         cancelRequested = true
         finishSignal.complete(Unit)
+        // Stop a blocked upload/setup child immediately. Keep the recording
+        // parent alive long enough to close and discard its local WAV below.
+        pipeline?.children?.forEach { it.cancel() }
         capture?.stop()
         if (_state.value.phase != DictationPhase.LISTENING) {
             pipeline?.cancel()
@@ -316,7 +321,7 @@ class DictationController(
             } else {
                 val token = settings.token() ?: return@launch
                 deliverBatch(
-                    client = GatewayClient(configuration.gatewayUrl, token),
+                    client = gatewayClient(configuration.gatewayUrl, token),
                     sessionId = UUID.fromString(sessionId),
                     wavFile = audio,
                     language = record.language,
@@ -362,7 +367,7 @@ class DictationController(
     ) {
         audioDirectory.mkdirs()
         val wavFile = File(audioDirectory, "$sessionId.wav")
-        val client = token?.let { GatewayClient(configuration.gatewayUrl, it) }
+        val client = token?.let { gatewayClient(configuration.gatewayUrl, it) }
         val sessionFinishSignal = finishSignal
         val frames = Channel<ShortArray>(capacity = FILE_FRAME_BUFFER_CAPACITY)
         val selectedLocalModelID = configuration.localModelId.takeIf { it.isNotEmpty() }
@@ -380,6 +385,8 @@ class DictationController(
                 )
             }
         }
+        var streamPump: Job? = null
+        val streamReference = AtomicReference<GatewayRecordingTransport?>()
         try {
         val incrementalSession = if (configuration.localTranscriptionEnabled) {
             selectedLocalModelID?.let { modelID ->
@@ -399,18 +406,21 @@ class DictationController(
         if (incrementalSession != null) {
             diagnostics.recordTiming("local_incremental_started", source.name)
         }
-        val shouldAttemptStreaming = client != null && GatewayStreamingPolicy.shouldAttemptStreaming(
+        val gatewayAudio = GatewayStreamingPolicy.shouldSendGatewayAudio(
+            localTranscriptionEnabled = configuration.localTranscriptionEnabled,
+            gatewayConfigured = client != null,
+        )
+        val shouldAttemptStreaming = gatewayAudio && GatewayStreamingPolicy.shouldAttemptStreaming(
             supported = configuration.lastStreamingSupported,
             checkedAtMillis = configuration.lastEngineCheckedAtMillis,
         )
-        val streamFrames = if (shouldAttemptStreaming) {
+        val streamFrames = if (gatewayAudio) {
             Channel<ShortArray>(capacity = STREAM_FRAME_BUFFER_CAPACITY)
         } else {
             null
         }
         val writer = WavWriter(wavFile)
         val captureError = AtomicReference<Throwable?>()
-        val streamReference = AtomicReference<GatewayAudioStream?>()
         val streamAcceptingFrames = AtomicBoolean(streamFrames != null)
         val droppedStreamFrames = AtomicInteger()
         val batchFallbackRecorded = AtomicBoolean()
@@ -555,53 +565,57 @@ class DictationController(
             }
         }
 
-        val streamPump = streamFrames?.let { channel ->
-            scope.launch(Dispatchers.IO) {
-                val candidate = client!!.openStream(
-                    sessionId = sessionId,
-                    language = configuration.effectiveLanguage.wireValue,
-                    style = configuration.style.wireValue,
-                    sampleRate = CaptureFormat.SAMPLE_RATE,
-                )
+        streamPump = streamFrames?.let { channel ->
+            // A child of this dictation, not the service's long-lived scope:
+            // cancelling finalization must close the active HTTP/socket call.
+            CoroutineScope(currentCoroutineContext()).launch(Dispatchers.IO) {
+                var candidate: GatewayRecordingTransport? = null
                 var ready = false
                 try {
                     diagnostics.recordTiming("stream_handshake_started", source.name)
-                    candidate.connect()
-                    if (!currentCoroutineContext().isActive) return@launch
+                    val opened = client!!.openRecordingTransport(
+                        sessionId = sessionId,
+                        language = configuration.effectiveLanguage.wireValue,
+                        style = configuration.style.wireValue,
+                        sampleRate = CaptureFormat.SAMPLE_RATE,
+                        attemptStreaming = shouldAttemptStreaming,
+                    )
+                    candidate = opened
+                    if (!currentCoroutineContext().isActive ||
+                        this@DictationController.generation.get() != generation
+                    ) return@launch
                     ready = true
-                    streamReference.set(candidate)
-                    diagnostics.recordTiming("stream_ready", source.name)
-                    _state.update { it.copy(streaming = true) }
+                    streamReference.set(opened)
+                    diagnostics.recordTiming(if (opened.incremental) "stream_ready" else "upload_started", source.name)
+                    _state.update {
+                        if (it.sessionId == sessionId) it.copy(streaming = opened.incremental) else it
+                    }
 
-                    var scratch = ByteArray(0)
                     for (frame in channel) {
-                        if (scratch.size < frame.size * 4) scratch = ByteArray(frame.size * 4)
-                        PcmConversion.pcm16ToFloat32LittleEndian(frame, frame.size, scratch)
-                        if (!candidate.sendFrames(scratch, frame.size * 4)) {
+                        if (!opened.sendFrames(frame)) {
+                            ready = false
                             droppedStreamFrames.incrementAndGet()
                             streamAcceptingFrames.set(false)
                             break
                         }
                     }
-                } catch (_: StreamingUnavailableException) {
-                    streamAcceptingFrames.set(false)
-                    channel.cancel()
-                    recordBatchFallback()
-                } catch (_: GatewayException) {
-                    // Streaming is an optimization. The complete WAV remains the
-                    // authoritative retry path for reachability and auth errors.
+                } catch (error: CancellationException) {
+                    ready = false
+                    throw error
+                } catch (_: Exception) {
+                    ready = false
                     streamAcceptingFrames.set(false)
                     channel.cancel()
                     recordBatchFallback()
                 } finally {
                     if (!ready || !currentCoroutineContext().isActive) {
-                        candidate.cancel()
+                        candidate?.cancel()
                         streamReference.compareAndSet(candidate, null)
                     }
                 }
             }
         }
-        if (streamFrames == null) recordBatchFallback()
+        if (gatewayAudio && streamFrames == null) recordBatchFallback()
 
         awaitFinish(sessionFinishSignal)
         recorder.stop()
@@ -746,17 +760,28 @@ class DictationController(
         if (stream != null && droppedStreamFrames.get() == 0) {
             _state.update { it.copy(phase = DictationPhase.TRANSCRIBING) }
             val transcript = try {
+                if (!stream.incremental) {
+                    _state.update { it.copy(phase = DictationPhase.UPLOADING) }
+                    stream.finishUpload()
+                    diagnostics.recordTiming("upload_completed", source.name)
+                    _state.update { it.copy(phase = DictationPhase.TRANSCRIBING) }
+                }
                 diagnostics.recordTiming("transcription_started", source.name)
                 stream.finish()
+            } catch (error: CancellationException) {
+                throw error
             } catch (_: StreamingUnavailableException) {
                 recordBatchFallback()
                 null
             } catch (error: GatewayException) {
-                if (!error.recoverable) {
+                if (stream.incremental && !error.recoverable) {
                     wavFile.delete()
                     fail(sessionId, error, wavFile = null, configuration = configuration, generation = generation)
                     return
                 }
+                recordBatchFallback()
+                null
+            } catch (_: Exception) {
                 recordBatchFallback()
                 null
             }
@@ -791,6 +816,7 @@ class DictationController(
             }
             // The stream failed after audio was captured; the complete WAV on disk
             // is exactly what the batch endpoints need.
+            stream.cancel()
         } else {
             stream?.cancel()
             recordBatchFallback()
@@ -807,11 +833,18 @@ class DictationController(
             generation,
         )
         } finally {
+            streamPump?.cancel()
+            streamReference.getAndSet(null)?.cancel()
             if (configuration.localTranscriptionEnabled && selectedLocalModelID != null) {
                 localModels.endUse(settings.current().modelIdleTimeout.delayMs)
             }
         }
     }
+
+    private fun gatewayClient(url: String, token: String) = GatewayClient(
+        url, token,
+        uploadPreparer = { GatewayUploadAudio.prepare(it, File(context.cacheDir, "gateway-uploads")) },
+    )
 
     /**
      * Recording follows the user across apps until they press Finish, warning a
