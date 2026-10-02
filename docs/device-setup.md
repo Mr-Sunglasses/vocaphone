@@ -260,6 +260,10 @@ OS, build SHA and exact sequence in the release PR.
   Playback should retain its quality. Explicit Bluetooth headset remains
   available; test that playback returns to normal after Finish, Cancel, a
   failed start, and leaving/reopening the app.
+- While the selected model is downloading or preparing, tap the keyboard mic.
+  The microphone-service notification must clear while model progress continues.
+  Once the model is ready, a new dictation must retain the notification through
+  recording, inference and delivery.
 - Start and immediately finish a dictation. The UI and ongoing notification
   must clear without another tap. During a longer on-device transcription the
   notification must remain until inference and delivery finish.

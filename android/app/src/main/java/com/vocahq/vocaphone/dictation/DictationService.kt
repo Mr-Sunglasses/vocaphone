@@ -142,11 +142,12 @@ class DictationService : Service() {
         observer?.cancel()
         val controller = VocaPhoneApplication.container(this).dictation
         val lifetime = controller.activeJob
+        val startupRepair = controller.startupRepair
         // Assign before starting: a synchronously finished pipeline must still
         // clear the observer and notification rather than leave a completed job.
         val next = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                monitorDictation(lifetime, controller.state) { status ->
+                monitorDictation(lifetime, controller.state, startupRepair) { status ->
                     notificationManager().notify(NOTIFICATION_ID, notification(status))
                 }
             } finally {

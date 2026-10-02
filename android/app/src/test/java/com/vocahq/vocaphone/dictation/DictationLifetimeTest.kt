@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.dictation
 
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
+import com.vocahq.vocaphone.core.MissingPermission
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -33,7 +34,7 @@ class DictationLifetimeTest {
         val lifetime = CompletableDeferred<Unit>()
         val states = MutableStateFlow(DictationState(phase = DictationPhase.TRANSCRIBING))
         val statuses = mutableListOf<String>()
-        val observer = launch { monitorDictation(lifetime, states, statuses::add) }
+        val observer = launch { monitorDictation(lifetime, states, publish = statuses::add) }
         runCurrent()
         assertFalse(observer.isCompleted)
         states.value = states.value.copy(recordedMillis = 100)
@@ -50,8 +51,8 @@ class DictationLifetimeTest {
     fun `already completed and missing pipelines need no status observer`() = runTest {
         val states = MutableStateFlow(DictationState())
         val statuses = mutableListOf<String>()
-        monitorDictation(null, states, statuses::add)
-        monitorDictation(CompletableDeferred(Unit), states, statuses::add)
+        monitorDictation(null, states, publish = statuses::add)
+        monitorDictation(CompletableDeferred(Unit), states, publish = statuses::add)
         assertTrue(statuses.isEmpty())
     }
 
@@ -60,7 +61,7 @@ class DictationLifetimeTest {
         val lifetime = CompletableDeferred<Unit>()
         val states = MutableStateFlow(DictationState(phase = DictationPhase.LISTENING))
         val statuses = mutableListOf<String>()
-        val observer = launch { monitorDictation(lifetime, states, statuses::add) }
+        val observer = launch { monitorDictation(lifetime, states, publish = statuses::add) }
         runCurrent()
         observer.cancel()
         runCurrent()
@@ -68,6 +69,79 @@ class DictationLifetimeTest {
         runCurrent()
         assertEquals(listOf("Listening"), statuses)
         assertFalse(lifetime.isCancelled)
+        lifetime.complete(Unit)
+    }
+    @Test
+    fun `download and preparation repairs release service while progress job stays active`() = runTest {
+        for (missing in listOf(MissingPermission.MODEL_DOWNLOADING, MissingPermission.MODEL_PREPARING)) {
+            val lifetime = CompletableDeferred<Unit>()
+            val startupRepair = CompletableDeferred<Unit>()
+            val states = MutableStateFlow(DictationState())
+            val statuses = mutableListOf<String>()
+            val observer = launch { monitorDictation(lifetime, states, startupRepair, statuses::add) }
+            runCurrent()
+            states.value = DictationState(
+                phase = DictationPhase.PERMISSION_REPAIR,
+                missingPermissions = setOf(missing),
+            )
+            startupRepair.complete(Unit)
+            runCurrent()
+            assertTrue(observer.isCompleted)
+            assertTrue(lifetime.isActive)
+            val published = statuses.toList()
+            states.value = states.value.copy(modelDownloadProgress = 80)
+            runCurrent()
+            assertEquals(published, statuses)
+            lifetime.complete(Unit)
+        }
+    }
+
+    @Test
+    fun `repair resolved before service subscribes needs no notification observer`() = runTest {
+        val lifetime = CompletableDeferred<Unit>()
+        val startupRepair = CompletableDeferred(Unit)
+        val states = MutableStateFlow(DictationState(phase = DictationPhase.PERMISSION_REPAIR))
+        val statuses = mutableListOf<String>()
+        monitorDictation(lifetime, states, startupRepair, statuses::add)
+        assertTrue(statuses.isEmpty())
+        assertTrue(lifetime.isActive)
+        lifetime.complete(Unit)
+    }
+
+    @Test
+    fun `stale repair state does not release a new attempt before inference completes`() = runTest {
+        val lifetime = CompletableDeferred<Unit>()
+        val startupRepair = CompletableDeferred<Unit>()
+        val states = MutableStateFlow(DictationState(phase = DictationPhase.PERMISSION_REPAIR))
+        val observer = launch { monitorDictation(lifetime, states, startupRepair) {} }
+        runCurrent()
+        assertFalse(observer.isCompleted)
+        states.value = DictationState(phase = DictationPhase.TRANSCRIBING)
+        runCurrent()
+        assertFalse(observer.isCompleted)
+        lifetime.complete(Unit)
+        runCurrent()
+        assertTrue(observer.isCompleted)
+        assertFalse(startupRepair.isCancelled)
+    }
+
+    @Test
+    fun `equal repair snapshots still release because startup outcome is explicit`() = runTest {
+        val state = DictationState(
+            phase = DictationPhase.PERMISSION_REPAIR,
+            missingPermissions = setOf(MissingPermission.MODEL_DOWNLOADING),
+        )
+        val states = MutableStateFlow(state)
+        val lifetime = CompletableDeferred<Unit>()
+        val startupRepair = CompletableDeferred<Unit>()
+        val observer = launch { monitorDictation(lifetime, states, startupRepair) {} }
+        runCurrent()
+        // StateFlow suppresses the equal state, but the current attempt resolves.
+        states.value = state.copy()
+        startupRepair.complete(Unit)
+        runCurrent()
+        assertTrue(observer.isCompleted)
+        assertTrue(lifetime.isActive)
         lifetime.complete(Unit)
     }
 }

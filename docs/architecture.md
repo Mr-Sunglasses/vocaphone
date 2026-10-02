@@ -251,7 +251,11 @@ The recording foreground service observes status for display and waits for the
 controller's exact dictation job to complete. This keeps it alive through model
 loading, inference and insertion, while ensuring a short capture or cancelled
 startup removes the notification even when `StateFlow` skips intermediate
-phases. The observer also removes the notification on failure or cancellation.
+phases. A per-start repair signal releases the microphone service when startup
+requires permissions, gateway setup or a model download/preparation; the model
+progress job can continue without the recording notification. The signal is
+separate from UI state so a previous attempt's repair cannot stop a new recording.
+The observer also removes the notification on failure or cancellation.
 
 Automatic microphone routing avoids selecting a Bluetooth communication device:
 it asks for the phone microphone when a Bluetooth headset is attached. Only an
