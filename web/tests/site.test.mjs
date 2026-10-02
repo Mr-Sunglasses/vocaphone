@@ -224,7 +224,6 @@ test("availability and install paths are honest", () => {
   // that the App Store, which VocaPhone is not on, is not implied.
   assert.match(html, /href="https:\/\/testflight\.apple\.com\/join\/wd85wQ3W"/);
   assert.match(html, /There is\s+no App Store release yet/);
-  assert.match(html, /v0\.2\.1/);
   assert.match(html, /io\.github\.mrsunglasses\.localflow/);
   assert.match(html, /href="\/iphone\/"/);
   assert.match(html, /SHA256SUMS\.txt/);
@@ -278,6 +277,8 @@ test("availability and install paths are honest", () => {
   assert.ok(faq.includes(PLAY_LISTING), "FAQ is missing the Google Play link");
 
   const androidCard = androidInstallBlock(html);
+  assert.match(androidCard, /<b>Latest<\/b><span>v0\.2\.2<\/span>/);
+  assert.match(androidCard, /sideload v0\.2\.2/);
   const playHrefAt = androidCard.indexOf(PLAY_LISTING);
   const tagHrefAt = androidCard.indexOf(ANDROID_TAG);
   const checksumAt = androidCard.indexOf("SHA256SUMS.txt");
