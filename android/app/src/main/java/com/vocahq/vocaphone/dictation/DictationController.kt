@@ -231,6 +231,9 @@ class DictationController(
         }
     }
 
+    /** Exact pipeline lifetime; phase updates can be conflated before the service sees them. */
+    internal val activeJob: Job? get() = pipeline
+
     fun finish() {
         finishSignal.complete(Unit)
         diagnostics.recordTiming("finish_requested", activeSource?.name)

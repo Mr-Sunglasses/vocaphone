@@ -127,7 +127,7 @@ class AboutCopyTest {
         assertFalse(ABOUT_FAMILY_NOTE.contains("on the way", ignoreCase = true))
         assertFalse(ABOUT_FAMILY_NOTE.contains("coming", ignoreCase = true))
         assertTrue(ABOUT_FEEDBACK_NOTE.contains("GitHub issue"))
-        assertTrue(ABOUT_PRIVACY_NOTE.contains("does not read the field"))
+        assertTrue(ABOUT_PRIVACY_NOTE.contains("Dictation reads one character on each side"))
         assertTrue(ABOUT_PRIVACY_NOTE.contains("32 characters"))
         assertTrue(ABOUT_PRIVACY_NOTE.contains("gateway you set up"))
         assertTrue(ABOUT_PRIVACY_NOTE.contains("no cloud transcription"))

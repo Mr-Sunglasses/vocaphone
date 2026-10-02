@@ -188,8 +188,11 @@ The iOS keyboard completes, corrects and predicts entirely on the device.
 
 ## Android keyboard
 
-The Android IME inserts through `InputConnection`. Dictation does not read the
-field. With Suggestions enabled, the keyboard may call `getTextBeforeCursor(32)`
+The Android IME inserts through `InputConnection`. When inserting a finished
+dictation, it reads at most one character before and after the cursor or selected
+range to add spacing between adjacent words. That context stays in memory,
+is never logged, and is not sent to the gateway. With Suggestions enabled, the
+keyboard may call `getTextBeforeCursor(32)`
 and `getTextAfterCursor(32)` in non-password fields so next-word guesses and
 corrections have a token. That window stays in memory, is never logged, and is
 not sent to the gateway. Swipe typing matches the finger path against the same

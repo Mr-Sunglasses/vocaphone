@@ -36,9 +36,18 @@ object ImeSetup {
                 Settings.Secure.getString(
                     context.contentResolver,
                     Settings.Secure.DEFAULT_INPUT_METHOD,
-                ) == component.flattenToString()
+                ).let { id -> matchesComponent(id, component.packageName, component.className) }
             },
         )
+    }
+
+    // InputMethodInfo stores the short component form on Android 13. Accept
+    // either serialization without making setup depend on the ROM's spelling.
+    internal fun matchesComponent(id: String?, packageName: String, className: String): Boolean {
+        val parts = id?.split('/', limit = 2) ?: return false
+        if (parts.size != 2 || parts[0] != packageName) return false
+        val service = if (parts[1].startsWith(".")) packageName + parts[1] else parts[1]
+        return service == className
     }
 
     /**

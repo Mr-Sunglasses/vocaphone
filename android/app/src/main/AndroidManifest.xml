@@ -77,7 +77,7 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
-        <!-- The keyboard writes through InputConnection and never reads field text. -->
+        <!-- InputConnection insertion uses bounded, on-device cursor context for spacing. -->
         <service
             android:name=".ime.VocaPhoneInputMethodService"
             android:exported="true"

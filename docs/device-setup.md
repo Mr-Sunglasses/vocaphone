@@ -243,3 +243,27 @@ Run these checks on a physical iPhone after changing audio or App Group code:
   timestamps, build information, process source, finite state/lifecycle events,
   and errors—never dictated or typed text, audio, gateway addresses, tokens, or
   microphone names. Clear diagnostics and confirm a new export has no old rows.
+
+## Android 0.2.2 release checks
+
+Use a physical Android 13+ device with the full flavor. Record the device,
+OS, build SHA and exact sequence in the release PR.
+
+- On Android 13, enable VocaPhone and select it in the system picker. Setup
+  must show the keyboard ready, then advance to microphone/model setup.
+- In a text field, dictate after a sentence-ending dot with no existing space,
+  and replace a selected word between other words. Check leading and trailing
+  spacing, existing whitespace, and adjacent punctuation.
+- With a Bluetooth headset connected and Microphone set to Automatic, repeat
+  Start/Finish and Start/Cancel, including immediate taps. Automatic now uses
+  the phone microphone when Bluetooth is attached, avoiding headset call mode.
+  Playback should retain its quality. Explicit Bluetooth headset remains
+  available; test that playback returns to normal after Finish, Cancel, a
+  failed start, and leaving/reopening the app.
+- Start and immediately finish a dictation. The UI and ongoing notification
+  must clear without another tap. During a longer on-device transcription the
+  notification must remain until inference and delivery finish.
+
+The HeliBoard voice-bar placement report (#270) has a separate open PR (#284).
+Check its current status and test that handoff before claiming that report is
+resolved in this release.

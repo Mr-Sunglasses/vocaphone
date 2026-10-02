@@ -96,21 +96,22 @@ class InputDevicesTest {
     }
 
     @Test
-    fun `automatic prefers bluetooth when a headset type is present`() {
+    fun `automatic avoids bluetooth call mode while explicit bluetooth remains available`() {
         assertEquals(
-            MicrophonePreference.BLUETOOTH,
+            MicrophonePreference.PHONE,
             InputDevices.preferredCategory(
                 MicrophonePreference.AUTOMATIC,
                 listOf(AudioDeviceInfo.TYPE_BUILTIN_MIC, AudioDeviceInfo.TYPE_BLUETOOTH_SCO),
             ),
         )
-        assertEquals(
-            MicrophonePreference.BLUETOOTH,
-            InputDevices.preferredCategory(
-                MicrophonePreference.AUTOMATIC,
-                listOf(AudioDeviceInfo.TYPE_BLE_HEADSET),
-            ),
-        )
+        assertNull(InputDevices.preferredCategory(
+            MicrophonePreference.AUTOMATIC,
+            listOf(AudioDeviceInfo.TYPE_BLE_HEADSET),
+        ))
+        assertTrue(InputDevices.requestsCommunicationRoute(MicrophonePreference.BLUETOOTH))
+        MicrophonePreference.entries.filterNot { it == MicrophonePreference.BLUETOOTH }.forEach {
+            org.junit.Assert.assertFalse(InputDevices.requestsCommunicationRoute(it))
+        }
     }
 
     @Test

@@ -81,8 +81,9 @@ val ABOUT_CONTACT_LINKS = listOf(
 )
 
 const val ABOUT_PRIVACY_NOTE =
-    "The keyboard types through Android's text connection. Dictation does not " +
-        "read the field. With Suggestions on, the keyboard looks at about 32 " +
+    "The keyboard types through Android's text connection. Dictation reads one " +
+        "character on each side of the cursor to add spaces, only on this phone. " +
+        "With Suggestions on, the keyboard looks at about 32 " +
         "characters around the cursor on this phone.\n\n" +
         "Audio goes to a model on this phone or to the gateway you set up. " +
         "There is no cloud transcription. Usage reporting is off unless you " +

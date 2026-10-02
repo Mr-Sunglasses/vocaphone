@@ -439,7 +439,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
             }
 
-            if (runCatching { connection.commitText(cleaned, 1) }.getOrDefault(false)) {
+            if (commitDictation(connection, cleaned)) {
                 syncShiftFromCursor()
                 refreshEditorText()
                 InsertionReport(InsertionOutcome.INSERTED)
