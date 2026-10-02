@@ -112,9 +112,11 @@
             <div>
               <h3>What the keyboard can see</h3>
               <p>
-                The keyboard writes through InputConnection and does not read
-                the field for dictation. Camera is requested only for Scan QR
-                pairing. The microphone is used only while a dictation is
+                The keyboard writes through InputConnection. To space a finished
+                dictation, it reads at most one adjacent character on each side
+                of the cursor or selected text. That context stays on the phone
+                and is never logged or sent to the gateway. Camera is requested
+                only for Scan QR pairing. The microphone is used only while a dictation is
                 running.
               </p>
             </div>

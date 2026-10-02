@@ -16,17 +16,14 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.R
-import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.ui.MainActivity
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Holds a foreground service for the whole dictation and shows the ongoing
@@ -144,25 +141,21 @@ class DictationService : Service() {
     private fun observeUntilIdle() {
         observer?.cancel()
         val controller = VocaPhoneApplication.container(this).dictation
-        observer = scope.launch {
-            // Capture starts a moment after `start` returns, so the service must
-            // wait for the microphone to actually be held before it treats an idle
-            // state as the end of the dictation. The timeout is the last resort;
-            // a start that resolves without ever recording says so, and waiting
-            // it out held a microphone foreground service — an ongoing "VocaPhone
-            // is recording" notification and the system's microphone indicator —
-            // for ten seconds over a dictation that never began. Tapping the mic
-            // before the gateway is configured did exactly that.
-            val settled = withTimeoutOrNull(START_TIMEOUT_MILLIS) {
-                controller.state.first { DictationStartWatch.hasSettled(it.phase) }
+        val lifetime = controller.activeJob
+        val startupRepair = controller.startupRepair
+        // Assign before starting: a synchronously finished pipeline must still
+        // clear the observer and notification rather than leave a completed job.
+        val next = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                monitorDictation(lifetime, controller.state, startupRepair) { status ->
+                    notificationManager().notify(NOTIFICATION_ID, notification(status))
+                }
+            } finally {
+                if (observer === coroutineContext[Job]) stopForegroundAndSelf()
             }
-            if (settled?.phase?.holdsMicrophone == true) {
-                controller.state
-                    .onEach { notificationManager().notify(NOTIFICATION_ID, notification(it.statusText)) }
-                    .first { it.phase.isTerminal }
-            }
-            stopForegroundAndSelf()
         }
+        observer = next
+        next.start()
     }
 
     private fun stopForegroundAndSelf() {
@@ -253,9 +246,6 @@ class DictationService : Service() {
         private const val CHANNEL_ID = "vocaphone.recording"
         private const val NOTIFICATION_ID = 4101
 
-        /** How long the service waits for capture to begin before giving up. */
-        private const val START_TIMEOUT_MILLIS = 10_000L
-
         /**
          * Starts recording. Newer Android versions refuse some background service
          * starts even when Android rejects a background launch, so the documented
@@ -303,24 +293,6 @@ internal object MicrophoneForegroundPromote {
 
     fun shouldLaunchVisibleActivity(failedTries: Int): Boolean =
         failedTries == LAUNCH_ACTIVITY_AFTER
-}
-
-/**
- * Whether a start attempt has resolved, either way.
- *
- * [DictationService] starts before capture begins, so it needs to recognise the
- * outcomes that never reach the microphone at all — otherwise the only thing
- * that ends the wait is a timeout the user spends looking at a notification.
- */
-internal object DictationStartWatch {
-    fun hasSettled(phase: DictationPhase): Boolean = when (phase) {
-        // Capture is running, which is what the service exists to cover.
-        DictationPhase.LISTENING, DictationPhase.FINALIZING -> true
-        // Resolved without ever recording: a permission to repair, or a
-        // microphone that could not be opened.
-        DictationPhase.PERMISSION_REPAIR, DictationPhase.FAILED -> true
-        else -> false
-    }
 }
 
 /**

@@ -53,16 +53,18 @@ object InputDevices {
 
     /**
      * Which category Automatic should ask for, given the types attached now.
-     * Bluetooth headset, HFP, or SCO wins. Built-in only when none of those
-     * are present. Explicit Phone / Headset choices are left alone.
+     * Automatic keeps Bluetooth playback out of call mode by using the built-in
+     * microphone when a headset is connected. Other inputs keep Android's routing.
+     * Bluetooth microphone capture remains an explicit choice.
      */
     fun preferredCategory(
         preference: MicrophonePreference,
         attachedTypes: Collection<Int>,
     ): MicrophonePreference? {
         if (preference == MicrophonePreference.AUTOMATIC) {
-            return MicrophonePreference.BLUETOOTH.takeIf {
-                attachedTypes.any { it in deviceTypes(MicrophonePreference.BLUETOOTH) }
+            return MicrophonePreference.PHONE.takeIf {
+                attachedTypes.any { it in deviceTypes(MicrophonePreference.BLUETOOTH) } &&
+                    attachedTypes.any { it in deviceTypes(MicrophonePreference.PHONE) }
             }
         }
         return preference.takeIf { attachedTypes.any { type -> type in deviceTypes(it) } }
@@ -70,11 +72,16 @@ object InputDevices {
 
     /** The attached input matching [preference], or null when none is. */
     fun match(manager: AudioManager, preference: MicrophonePreference): AudioDeviceInfo? {
-        val attached = manager.getDevices(AudioManager.GET_DEVICES_INPUTS).map { it.type }
+        val inputs = manager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+        val attached = inputs.map { it.type } + if (preference == MicrophonePreference.AUTOMATIC) {
+            manager.availableCommunicationDevices.map { it.type }
+        } else {
+            emptyList()
+        }
         val resolved = preferredCategory(preference, attached) ?: return null
         val types = deviceTypes(resolved)
         if (types.isEmpty()) return null
-        return manager.getDevices(AudioManager.GET_DEVICES_INPUTS).firstOrNull { it.type in types }
+        return inputs.firstOrNull { it.type in types }
     }
 
     /**
@@ -87,18 +94,12 @@ object InputDevices {
         preference: MicrophonePreference,
     ): AudioDeviceInfo? {
         val types = deviceTypes(MicrophonePreference.BLUETOOTH)
-        val communicationTypes = manager.availableCommunicationDevices.map { it.type }
-        val attached = manager.getDevices(AudioManager.GET_DEVICES_INPUTS).map { it.type } +
-            communicationTypes
-        val wantBluetooth = when (preference) {
-            MicrophonePreference.BLUETOOTH -> true
-            MicrophonePreference.AUTOMATIC ->
-                preferredCategory(preference, attached) == MicrophonePreference.BLUETOOTH
-            else -> false
-        }
-        if (!wantBluetooth) return null
+        if (!requestsCommunicationRoute(preference)) return null
         return manager.availableCommunicationDevices.firstOrNull { it.type in types }
     }
+
+    internal fun requestsCommunicationRoute(preference: MicrophonePreference): Boolean =
+        preference == MicrophonePreference.BLUETOOTH
 
     /** The user-facing name of a route, for the "Input in use" line. */
     fun describe(device: AudioDeviceInfo): String {

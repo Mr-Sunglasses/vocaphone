@@ -1,10 +1,23 @@
 package com.vocahq.vocaphone.ui
 
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ImeSetupTest {
+    @Test
+    fun shortAndFullComponentIdsSelectTheSameKeyboard() {
+        val pkg = "com.vocahq.vocaphone"
+        val service = "$pkg.ime.VocaPhoneInputMethodService"
+        assertTrue(ImeSetup.matchesComponent("$pkg/.ime.VocaPhoneInputMethodService", pkg, service))
+        assertTrue(ImeSetup.matchesComponent("$pkg/$service", pkg, service))
+        assertFalse(ImeSetup.matchesComponent("other.package/$service", pkg, service))
+        assertFalse(ImeSetup.matchesComponent("$pkg/.ime.OtherService", pkg, service))
+        assertFalse(ImeSetup.matchesComponent(null, pkg, service))
+        assertFalse(ImeSetup.matchesComponent("", pkg, service))
+    }
+
 
     /**
      * Guided setup's keyboard step is two separate system changes, and each one

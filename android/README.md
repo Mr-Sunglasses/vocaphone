@@ -5,8 +5,9 @@ optional [VocaGateway](https://github.com/VocaHQ/vocagateway) for shared or
 larger compute — the same product as the iPhone app. VocaPhone appears as a
 normal Android input method: Gboard, Samsung Keyboard and other keyboards remain
 available, while VocaPhone can be selected whenever you want to dictate into an
-editable field. It inserts through Android's `InputConnection` and does not read
-the field.
+editable field. It inserts through Android's `InputConnection`, reading at most
+one adjacent character on each side to space a finished dictation correctly.
+This context stays on the phone.
 
 Android 13+ is on
 [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone).
@@ -179,6 +180,10 @@ nothing from either path is logged.
 phone, wired headset, Bluetooth headset, or USB microphone. Options with no
 matching hardware connected stay visible but greyed out, and the row locks while
 a dictation is running — the input is chosen when the recorder is built.
+
+Automatic uses the phone microphone when a Bluetooth headset is connected,
+keeping headset playback out of call mode. Other inputs follow Android's routing.
+Choose Bluetooth headset explicitly to record through its microphone.
 
 A category is stored rather than a device id, because Android issues a fresh id
 on every reconnect. Selecting a Bluetooth headset puts it into call mode, which

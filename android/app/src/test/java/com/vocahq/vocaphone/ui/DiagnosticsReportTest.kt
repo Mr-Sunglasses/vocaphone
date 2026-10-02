@@ -214,7 +214,7 @@ class DiagnosticsReportTest {
     @Test
     fun `privacy note keeps the real limits and skips em dashes`() {
         assertTrue(ABOUT_PRIVACY_NOTE.contains("32 characters"))
-        assertTrue(ABOUT_PRIVACY_NOTE.contains("does not read the field"))
+        assertTrue(ABOUT_PRIVACY_NOTE.contains("Dictation reads one character on each side"))
         assertTrue(ABOUT_PRIVACY_NOTE.contains("no cloud transcription"))
         assertFalse(ABOUT_PRIVACY_NOTE.contains("—"))
         assertFalse(ABOUT_PRIVACY_NOTE.contains("–"))

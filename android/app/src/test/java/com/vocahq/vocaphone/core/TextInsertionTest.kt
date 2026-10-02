@@ -5,6 +5,15 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 class TextInsertionTest {
+    @Test
+    fun `keyboard correction separates words and sentences at both cursor boundaries`() {
+        assertEquals(" corrected", TextInsertion.preparedTranscript("corrected", ".", ""))
+        assertEquals(" corrected ", TextInsertion.preparedTranscript("corrected", "d", "n"))
+        assertEquals("corrected", TextInsertion.preparedTranscript("corrected", " ", ","))
+        assertEquals("corrected", TextInsertion.preparedTranscript("corrected", "", "\n"))
+        assertEquals(", now", TextInsertion.preparedTranscript(", now", "d", ""))
+    }
+
 
     @Test
     fun `a field showing its placeholder is treated as empty`() {

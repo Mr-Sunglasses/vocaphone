@@ -238,6 +238,30 @@ the same directory through `sourceSets` in `app/build.gradle.kts`. Two
 hand-maintained copies would drift, and nothing would notice until the
 platforms started suggesting different words.
 
+## Android dictation insertion and service lifetime
+
+The Android keyboard inserts a finished transcript through the current
+`InputConnection`. It reads at most one character before and after the cursor
+or selected range, then uses the shared spacing rule before `commitText`.
+These reads happen once per dictation, outside the typing hot path. Context is
+used only in memory; unavailable context does not prevent insertion, and
+password/sensitive fields remain excluded.
+
+The recording foreground service observes status for display and waits for the
+controller's exact dictation job to complete. This keeps it alive through model
+loading, inference and insertion, while ensuring a short capture or cancelled
+startup removes the notification even when `StateFlow` skips intermediate
+phases. A per-start repair signal releases the microphone service when startup
+requires permissions, gateway setup or a model download/preparation; the model
+progress job can continue without the recording notification. The signal is
+separate from UI state so a previous attempt's repair cannot stop a new recording.
+The observer also removes the notification on failure or cancellation.
+
+Automatic microphone routing avoids selecting a Bluetooth communication device:
+it asks for the phone microphone when a Bluetooth headset is attached. Only an
+explicit Bluetooth headset selection enters call mode. Failed or cancelled
+capture startup releases audio focus and any communication route it acquired.
+
 ## Preview harness (iOS)
 
 Every user-visible state has a `#Preview`, and every preview is built from

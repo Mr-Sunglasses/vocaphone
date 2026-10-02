@@ -56,6 +56,7 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
@@ -123,6 +124,7 @@ class DictationController(
     var imeInserter: TranscriptInserter? = null
 
     private var pipeline: Job? = null
+    private var startupRepairSignal: CompletableDeferred<Unit>? = null
     private var capture: AudioCapture? = null
 
     @Volatile
@@ -183,6 +185,8 @@ class DictationController(
         finishSignal = CompletableDeferred()
         cancelRequested = false
         val generation = nextGeneration()
+        val repairSignal = CompletableDeferred<Unit>()
+        startupRepairSignal = repairSignal
         pipeline = scope.launch {
             awaitSettingsMigration()
             val configuration = settings.current()
@@ -193,6 +197,7 @@ class DictationController(
                     phase = DictationPhase.PERMISSION_REPAIR,
                     missingPermissions = missing,
                 )
+                repairSignal.complete(Unit)
                 return@launch
             }
             val token = if (configuration.localTranscriptionEnabled) null else settings.token()
@@ -202,6 +207,7 @@ class DictationController(
                     phase = DictationPhase.PERMISSION_REPAIR,
                     missingPermissions = setOf(MissingPermission.GATEWAY_NOT_CONFIGURED),
                 )
+                repairSignal.complete(Unit)
                 return@launch
             }
             if (configuration.localTranscriptionEnabled) {
@@ -218,6 +224,9 @@ class DictationController(
                         missingPermissions = setOf(repair),
                         modelDownloadProgress = models.progress.takeIf { repair == MissingPermission.MODEL_DOWNLOADING },
                     )
+                    // No recording will start in this attempt. Model progress
+                    // keeps the pipeline alive, but needs no microphone service.
+                    repairSignal.complete(Unit)
                     val target = models.pendingUse ?: models.downloading
                     if (target != null &&
                         (repair == MissingPermission.MODEL_DOWNLOADING || repair == MissingPermission.MODEL_PREPARING)
@@ -230,6 +239,12 @@ class DictationController(
             runDictation(source, configuration, token, UUID.randomUUID(), generation)
         }
     }
+
+    /** Exact pipeline lifetime; phase updates can be conflated before the service sees them. */
+    internal val activeJob: Job? get() = pipeline
+
+    /** Attempt-specific: unlike state, this cannot contain a prior start's repair. */
+    internal val startupRepair: Deferred<Unit>? get() = startupRepairSignal
 
     fun finish() {
         finishSignal.complete(Unit)
@@ -253,6 +268,7 @@ class DictationController(
     /** Re-sends audio that was preserved for a recoverable failure. */
     fun retry(sessionId: String) {
         if (pipeline?.isActive == true) return
+        startupRepairSignal = null
         // Nothing is recorded on this path, so the previous capture's length is
         // not this dictation's.
         lastRecordingMillis = null

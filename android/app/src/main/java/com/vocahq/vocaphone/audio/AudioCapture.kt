@@ -99,42 +99,52 @@ class AudioCapture(
         if (!running.compareAndSet(false, true)) return true
         reported.set(null)
 
-        val minimum = AudioRecord.getMinBufferSize(
-            CaptureFormat.SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-        )
-        if (minimum <= 0) {
+        var started = false
+        try {
+            val minimum = AudioRecord.getMinBufferSize(
+                CaptureFormat.SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+            )
+            if (minimum <= 0) {
+                running.set(false)
+                onError(IllegalStateException("This device cannot record 16 kHz mono audio."))
+                return false
+            }
+            // Comfortably above the platform minimum so a scheduling hiccup does not
+            // overrun the buffer and drop the middle of a sentence.
+            val bufferBytes = maxOf(minimum * 4, frameSamples * CaptureFormat.BYTES_PER_SAMPLE * 8)
+
+            // Focus is how a call announces itself mid-dictation, not permission to
+            // record. Refusing to start without it would fail dictations that would
+            // have worked, so a refusal is noted and capture is attempted anyway.
+            requestAudioFocus()
+
+            // Another app letting go of the microphone — a call ending, a screen
+            // recorder handing it back — is not instantaneous, and Android reports
+            // that gap as an ordinary failure. Retrying across it turns a lost
+            // dictation into a slightly delayed one.
+            repeat(START_ATTEMPTS) { attempt ->
+                if (attempt > 0) delay(START_RETRY_MILLIS)
+                // `stop` during the wait means the dictation is already over; a
+                // later attempt would open a recorder nothing would ever close.
+                if (!running.get()) return false
+                if (openRecorder(bufferBytes)) {
+                    started = true
+                    return true
+                }
+            }
+
             running.set(false)
-            onError(IllegalStateException("This device cannot record 16 kHz mono audio."))
+            releaseCommunicationDevice()
+            abandonAudioFocus()
+            onError(unavailableMicrophone())
             return false
+        } finally {
+            // Cancellation during a retry, or a platform exception, must return
+            // focus and the Bluetooth route just like an ordinary failed start.
+            if (!started) stop()
         }
-        // Comfortably above the platform minimum so a scheduling hiccup does not
-        // overrun the buffer and drop the middle of a sentence.
-        val bufferBytes = maxOf(minimum * 4, frameSamples * CaptureFormat.BYTES_PER_SAMPLE * 8)
-
-        // Focus is how a call announces itself mid-dictation, not permission to
-        // record. Refusing to start without it would fail dictations that would
-        // have worked, so a refusal is noted and capture is attempted anyway.
-        requestAudioFocus()
-
-        // Another app letting go of the microphone — a call ending, a screen
-        // recorder handing it back — is not instantaneous, and Android reports
-        // that gap as an ordinary failure. Retrying across it turns a lost
-        // dictation into a slightly delayed one.
-        repeat(START_ATTEMPTS) { attempt ->
-            if (attempt > 0) delay(START_RETRY_MILLIS)
-            // `stop` during the wait means the dictation is already over; a
-            // later attempt would open a recorder nothing would ever close.
-            if (!running.get()) return false
-            if (openRecorder(bufferBytes)) return true
-        }
-
-        running.set(false)
-        releaseCommunicationDevice()
-        abandonAudioFocus()
-        onError(unavailableMicrophone())
-        return false
     }
 
     @Synchronized
@@ -184,6 +194,7 @@ class AudioCapture(
     @Synchronized
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     private fun openRecorder(bufferBytes: Int): Boolean {
+        if (!running.get()) return false
         val recorder = try {
             AudioRecord(
                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
