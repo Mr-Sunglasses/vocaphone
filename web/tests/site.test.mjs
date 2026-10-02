@@ -38,7 +38,7 @@ function androidInstallBlock(source) {
 const PLAY_LISTING =
   "https://play.google.com/store/apps/details?id=com.vocahq.vocaphone";
 const ANDROID_TAG =
-  "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.1";
+  "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.2";
 
 function htmlBlock(source, pattern, label) {
   const match = source.match(pattern);
