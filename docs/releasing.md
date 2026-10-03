@@ -59,6 +59,22 @@ Closed testing, open testing, and production stay Console clicks. The public
 listing is
 [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone).
 
+Add the matching `fastlane/metadata/android/en-US/changelogs/<versionCode>.txt`
+with the version bump. The tag workflow publishes install instructions and a
+generated PR list; it does not automatically include release-note documents in
+`docs/`. After the GitHub Release exists, copy the reviewed human-readable notes
+(for example, [Android 0.2.2](android-0.2.2-release-notes.md)) into its description,
+preserving the install and artifact-verification instructions. A prepared file
+containing that complete description can be published with:
+
+```sh
+gh release edit android/v0.2.2 --repo VocaHQ/vocaphone --notes-file <prepared-notes-file>
+```
+
+Keep the website's concrete sideload tag and visible version labels on the
+currently published release during preparation. Update the links, labels, and
+site tests together in a follow-up PR after the new APK is available.
+
 ## iOS only
 
 ```sh
