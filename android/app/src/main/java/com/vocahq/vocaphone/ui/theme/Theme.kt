@@ -2,6 +2,7 @@ package com.vocahq.vocaphone.ui.theme
 
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -26,7 +27,7 @@ import androidx.compose.ui.platform.LocalContext
  * it draws the *unfinished* half of the setup checklist — the icons that most
  * need to be seen were the ones that could not be.
  */
-private val VocaPhoneLightColors = lightColorScheme(
+internal val VocaPhoneLightColors = lightColorScheme(
     primary = Color(0xFF0F6B57),
     onPrimary = Color(0xFFFFFFFF),
     primaryContainer = Color(0xFFD5E9E1),
@@ -104,14 +105,60 @@ internal val VocaPhoneDarkColors = darkColorScheme(
 )
 
 /**
+ * The companion app's surfaces: warm paper in light, charcoal in dark, with
+ * settings groups and cards one step *lighter* than the page — the same
+ * canvas/surface pair the iOS app uses (`SemanticPalette.swift`), so the two
+ * apps read as one family.
+ *
+ * Only the app takes these. The keyboard keeps [VocaPhoneLightColors] and
+ * [VocaPhoneDarkColors] as they are: its key fills were tuned against them, and
+ * a page colour has no business moving a key.
+ */
+internal fun ColorScheme.withAppSurfaces(dark: Boolean): ColorScheme = if (dark) {
+    copy(
+        background = Color(0xFF1B1C1B),
+        surface = Color(0xFF1B1C1B),
+        surfaceContainerLowest = Color(0xFF151615),
+        // Groups, cards and sheets: lifted off the page, as on iOS.
+        surfaceContainerLow = Color(0xFF262826),
+        surfaceContainer = Color(0xFF232523),
+        surfaceContainerHigh = Color(0xFF30332F),
+        surfaceContainerHighest = Color(0xFF3A3E39),
+        outlineVariant = Color(0xFF3A3D3A),
+    )
+} else {
+    copy(
+        background = AppCanvasLight,
+        surface = AppCanvasLight,
+        surfaceBright = AppCanvasLight,
+        surfaceContainerLowest = AppSurfaceLight,
+        surfaceContainerLow = AppSurfaceLight,
+        surfaceContainer = Color(0xFFEFEBE1),
+        // Dialogs: light paper over the scrim, not a darker beige than the page.
+        surfaceContainerHigh = Color(0xFFFAF7F0),
+        surfaceContainerHighest = Color(0xFFE2DCCD),
+        surfaceVariant = Color(0xFFEBE5D8),
+        surfaceDim = Color(0xFFE2DCCD),
+        onSurface = Color(0xFF14231C),
+        onSurfaceVariant = Color(0xFF5C6660),
+        outlineVariant = Color(0xFFDDD8CB),
+    )
+}
+
+internal val AppCanvasLight = Color(0xFFF4F1E8)
+internal val AppSurfaceLight = Color(0xFFFFFDF7)
+
+/**
  * Brand teal by default. [dynamicColor] opts into Material You wallpaper colors
  * on API 31+; otherwise the fixed palette is kept so the IME and companion
- * stay on Voca teal.
+ * stay on Voca teal. [appSurfaces] is for the companion app only; see
+ * [withAppSurfaces].
  */
 @Composable
 fun VocaPhoneTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
+    appSurfaces: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     val colors = when {
@@ -121,6 +168,8 @@ fun VocaPhoneTheme(
         }
         darkTheme -> VocaPhoneDarkColors
         else -> VocaPhoneLightColors
+    }.let { scheme ->
+        if (appSurfaces && !dynamicColor) scheme.withAppSurfaces(darkTheme) else scheme
     }
     MaterialTheme(colorScheme = colors, content = content)
 }

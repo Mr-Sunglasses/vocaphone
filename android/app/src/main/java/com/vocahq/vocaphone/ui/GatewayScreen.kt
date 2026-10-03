@@ -12,15 +12,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -59,6 +59,7 @@ fun GatewayScreen(
     var url by remember(settings.gatewayUrl) { mutableStateOf(settings.gatewayUrl) }
     var token by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    var confirmingRemove by remember { mutableStateOf(false) }
 
     val submit = {
         focusManager.clearFocus()
@@ -91,6 +92,9 @@ fun GatewayScreen(
         }
     }
 
+    val dirty = url.trim() != settings.gatewayUrl || token.isNotBlank()
+    val canSave = url.isNotBlank() && (token.isNotBlank() || settings.hasToken)
+
     Column(
         modifier = modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -101,169 +105,179 @@ fun GatewayScreen(
                 .widthIn(max = AppContentMaxWidth)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(SectionSpacing),
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(GroupSpacing),
         ) {
-            Section(
-                title = "Scan pairing QR",
-                supporting = "On the gateway host, open the WebUI Overview and scan the " +
-                    "pairing QR. That fills the address and bearer token without typing.",
-            ) {
-                PrimaryButton(
-                    text = "Scan QR code",
-                    onClick = {
-                        scanLauncher.launch(
-                            android.content.Intent(context, QrPairingActivity::class.java),
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-
-            Section(
-                title = "Gateway address",
-                supporting = "A private LAN or Tailscale host may use http://. Anything " +
-                    "reachable from the internet must use https://. Or scan the WebUI QR above.",
-            ) {
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = {
-                        url = it
-                        error = null
-                    },
-                    label = { Text("Address") },
-                    placeholder = { Text("http://homelabone.local:8765") },
-                    singleLine = true,
-                    isError = error != null,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Uri,
-                        imeAction = ImeAction.Next,
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = token,
-                    onValueChange = {
-                        token = it
-                        error = null
-                    },
-                    label = { Text(if (settings.hasToken) "Replace bearer token" else "Bearer token") },
-                    supportingText = {
-                        Text(
-                            if (settings.hasToken) {
-                                "A token is stored, encrypted by the Android Keystore. " +
-                                    "Leave blank to keep it."
-                            } else {
-                                "Printed by your gateway on first run at ~/.config/vocaphone/token."
-                            }
-                        )
-                    },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Done,
-                    ),
-                    // The keyboard's Done key saves, so finishing the token is not a
-                    // dead end that leaves the user hunting for a button.
-                    keyboardActions = KeyboardActions(onDone = { submit() }),
-                    modifier = Modifier.fillMaxWidth(),
-                )
-
-                if (url.isNotBlank() && GatewayEndpoint.isCleartext(url.trim())) {
-                    Text(
-                        "This gateway is unencrypted. Your token and transcripts travel " +
-                            "in the clear over this network — only use it on a network you trust.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-                error?.let {
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                }
-
-                // Saving is confirmed by the footer, which reports the connection
-                // test it kicks off rather than just that bytes hit the disk.
-                ResponsiveActionRow(
-                    leading = { item -> PrimaryButton(
-                        text = "Save",
-                        onClick = submit,
-                        enabled = url.isNotBlank() && (token.isNotBlank() || settings.hasToken),
-                        modifier = item,
-                    ) },
-                    trailing = { item -> SecondaryButton(
-                        text = "Test connection",
-                        onClick = onTest,
-                        enabled = settings.isConfigured,
-                        loading = testing,
-                        modifier = item,
-                    ) },
-                )
-            }
-
-            connection?.let { report ->
-                Section(title = "Connection") {
-                    StatusLine("Reachable", report.reachable)
-                    StatusLine("Token accepted", report.tokenValid)
-                    StatusLine("Engine ready", report.engineReady)
-                    Text(
-                        "Engine: ${report.engine.ifEmpty { "unknown" }}",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        "Streaming: " + when (report.streamingSupported) {
-                            true -> "supported by the active engine"
-                            false -> "not supported — batch upload will be used"
-                            null -> "not reported by this gateway"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(report.message, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-
-            TextButton(onClick = { context.openHttpUrl(GATEWAY_GUIDE_URL) }) {
-                Text("How to run a gateway")
-            }
-
             if (settings.isConfigured) {
-                DestructiveTextButton(
-                    text = "Remove gateway and delete stored token",
-                    onClick = onClear,
+                GatewayStatusGroup(
+                    testing = testing,
+                    connection = connection,
+                    onTest = onTest,
                 )
+            }
+
+            SettingsGroup(
+                title = "Address",
+                footer = "Scan the QR code on your gateway's page to fill in both.",
+            ) {
+                SettingsGroupContent {
+                    OutlinedTextField(
+                        value = url,
+                        onValueChange = {
+                            url = it
+                            error = null
+                        },
+                        label = { Text("Gateway address") },
+                        placeholder = { Text("http://my-gateway.local:8765") },
+                        singleLine = true,
+                        isError = error != null,
+                        trailingIcon = {
+                            IconButton(
+                                onClick = {
+                                    scanLauncher.launch(
+                                        android.content.Intent(context, QrPairingActivity::class.java),
+                                    )
+                                },
+                            ) {
+                                Icon(
+                                    painterResource(R.drawable.ic_qr_scan),
+                                    contentDescription = "Scan pairing QR code",
+                                )
+                            }
+                        },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Next,
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = token,
+                        onValueChange = {
+                            token = it
+                            error = null
+                        },
+                        label = { Text(if (settings.hasToken) "Token (saved)" else "Token") },
+                        supportingText = {
+                            Text(
+                                if (settings.hasToken) {
+                                    "Leave blank to keep the saved token."
+                                } else {
+                                    "Your gateway prints it the first time it starts."
+                                },
+                            )
+                        },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Password,
+                            imeAction = ImeAction.Done,
+                        ),
+                        // The keyboard's Done key saves, so finishing the token is not a
+                        // dead end that leaves the user hunting for a button.
+                        keyboardActions = KeyboardActions(onDone = { if (canSave) submit() }),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (url.isNotBlank() && GatewayEndpoint.isCleartext(url.trim())) {
+                        Text(
+                            "Unencrypted. Use it only on a network you trust.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    error?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
+            SettingsGroup {
+                if (settings.isConfigured) {
+                    SettingsActionRow(
+                        title = "Open web dashboard",
+                        external = true,
+                        onClick = { context.openHttpUrl(settings.gatewayUrl) },
+                    )
+                    SettingsDivider()
+                }
+                SettingsActionRow(
+                    title = "How to run a gateway",
+                    external = true,
+                    onClick = { context.openHttpUrl(GATEWAY_GUIDE_URL) },
+                )
+                if (settings.isConfigured) {
+                    SettingsDivider()
+                    SettingsActionRow(
+                        title = "Remove gateway",
+                        supporting = "Deletes the saved address and token.",
+                        destructive = true,
+                        onClick = { confirmingRemove = true },
+                    )
+                }
             }
         }
 
-        GatewayNextStepBar(
-            configured = settings.isConfigured,
-            inOnboarding = inOnboarding,
-            testing = testing,
-            connection = connection,
-            onDone = onDone,
-            modifier = Modifier.widthIn(max = AppContentMaxWidth),
+        // One primary action at a time: Save while there is something to
+        // save, then the way back into setup. Outside setup the app bar's
+        // back arrow is the way out, so no button is needed.
+        val primary: Pair<String, () -> Unit>? = when {
+            dirty -> "Save" to { submit() }
+            inOnboarding && settings.isConfigured -> "Continue setup" to onDone
+            else -> null
+        }
+        if (primary != null) {
+            PrimaryButton(
+                text = primary.first,
+                onClick = primary.second,
+                enabled = primary.first != "Save" || canSave,
+                modifier = Modifier
+                    .widthIn(max = AppContentMaxWidth)
+                    .fillMaxWidth()
+                    .padding(16.dp),
+            )
+        } else if (inOnboarding) {
+            TextButton(onClick = onDone, modifier = Modifier.padding(16.dp)) {
+                Text("Back to setup")
+            }
+        }
+    }
+
+    if (confirmingRemove) {
+        AlertDialog(
+            onDismissRequest = { confirmingRemove = false },
+            title = { Text("Remove gateway?") },
+            text = { Text("The address and token are deleted from this phone. Dictation needs a model on this phone or a gateway to work.") },
+            confirmButton = {
+                DestructiveTextButton(
+                    text = "Remove",
+                    onClick = {
+                        confirmingRemove = false
+                        onClear()
+                    },
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingRemove = false }) { Text("Cancel") }
+            },
         )
     }
 }
 
-/** What the footer says, so the wording and its icon cannot drift apart. */
-private enum class NextStep { PENDING, CHECKING, WARNING, READY }
+/** What the status row says, so the wording and its icon cannot drift apart. */
+private enum class NextStep { CHECKING, WARNING, READY }
 
 /**
- * Pinned below the form so this screen always states what happens next. Saving a
- * token used to leave the user on a page whose only exit was the system back
- * gesture, with nothing on screen saying setup was waiting behind it.
+ * Where the saved gateway stands, at the top of the page: one line with an
+ * icon, the facts behind it, and the test that refreshes them. This used to be
+ * a bar pinned over the bottom of the form.
  */
 @Composable
-private fun GatewayNextStepBar(
-    configured: Boolean,
-    inOnboarding: Boolean,
+private fun GatewayStatusGroup(
     testing: Boolean,
     connection: ConnectionReport?,
-    onDone: () -> Unit,
-    modifier: Modifier = Modifier,
+    onTest: () -> Unit,
 ) {
     val step = when {
-        !configured -> NextStep.PENDING
         testing -> NextStep.CHECKING
         connection == null -> NextStep.READY
         !connection.reachable || !connection.tokenValid -> NextStep.WARNING
@@ -271,55 +285,50 @@ private fun GatewayNextStepBar(
         else -> NextStep.READY
     }
     val hint = when {
-        !configured && inOnboarding -> "Nothing saved yet — setup is waiting behind this screen."
-        !configured -> "Nothing saved yet."
         testing -> "Checking your gateway…"
-        connection == null -> "Address and token saved on this device."
+        connection == null -> "Saved on this phone."
         !connection.reachable || !connection.tokenValid -> connection.message
         !connection.engineReady -> "Connected. Load a model on the gateway when you get a chance."
         else -> "Connected and ready."
     }
-
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = 12.dp,
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+    SettingsGroup(title = "Status") {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                NextStepIndicator(step)
-                Text(
-                    hint,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (step == NextStep.WARNING) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+            NextStepIndicator(step)
+            Text(
+                hint,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (step == NextStep.WARNING) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                modifier = Modifier.weight(1f),
+            )
+        }
+        if (connection != null && !testing) {
+            SettingsDivider()
+            Column(Modifier.padding(vertical = 8.dp)) {
+                SettingsInfoRow("Engine", connection.engine.ifEmpty { "Unknown" })
+                SettingsInfoRow(
+                    "Live text",
+                    when (connection.streamingSupported) {
+                        true -> "Yes"
+                        false -> "No, sent when you stop"
+                        null -> "Not reported"
                     },
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            if (configured) {
-                PrimaryButton(
-                    text = if (inOnboarding) "Continue setup" else "Done",
-                    onClick = onDone,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            } else {
-                SecondaryButton(
-                    text = if (inOnboarding) "Back to setup" else "Back",
-                    onClick = onDone,
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
+        SettingsDivider()
+        SettingsActionRow(
+            title = if (testing) "Testing…" else "Test connection",
+            enabled = !testing,
+            onClick = onTest,
+        )
     }
 }
 
@@ -333,23 +342,13 @@ private fun NextStepIndicator(step: NextStep, modifier: Modifier = Modifier) {
         return
     }
     val (icon, tint) = when (step) {
-        NextStep.READY -> R.drawable.ic_step_done to MaterialTheme.colorScheme.primary
         NextStep.WARNING -> R.drawable.ic_warning to MaterialTheme.colorScheme.error
-        else -> R.drawable.ic_step_pending to MaterialTheme.colorScheme.outline
+        else -> R.drawable.ic_step_done to MaterialTheme.colorScheme.primary
     }
     Icon(
         painter = painterResource(icon),
         contentDescription = null,
         tint = tint,
         modifier = modifier.size(20.dp),
-    )
-}
-
-@Composable
-private fun StatusLine(label: String, satisfied: Boolean) {
-    Text(
-        text = "${if (satisfied) "✓" else "✗"}  $label",
-        style = MaterialTheme.typography.bodyMedium,
-        color = if (satisfied) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
     )
 }

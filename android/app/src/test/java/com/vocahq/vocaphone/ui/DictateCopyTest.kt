@@ -50,15 +50,9 @@ class DictateCopyTest {
 
     @Test
     fun scratchpadHintLeavesOnceThereIsTextOrARecording() {
-        assertEquals(
-            listOf(
-                "Words show up at the cursor",
-                "Nothing here is uploaded",
-                "Hold the mic on the keyboard to cancel while it's listening or transcribing",
-                "The Dictate button doesn't cancel",
-            ),
-            DictateCopy.HINTS,
-        )
+        assertEquals("Tap Dictate and start talking.", DictateCopy.HINT)
+        // Gateway users upload audio, so the hint must not promise otherwise.
+        assertFalse(DictateCopy.HINT.contains("uploaded"))
         assertTrue(showScratchpadHint("", DictationPhase.IDLE))
         assertFalse(showScratchpadHint("hello", DictationPhase.IDLE))
         assertFalse(showScratchpadHint("", DictationPhase.LISTENING))

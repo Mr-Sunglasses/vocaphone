@@ -52,7 +52,8 @@ internal object StatsCopy {
     fun menuSupporting(stats: UsageStats, nowMillis: Long): String = if (!stats.hasAny) {
         "Words, speaking speed and streaks"
     } else {
-        "${StatsFormat.count(stats.totalWords)} words · ${StatsFormat.streak(stats.currentStreakAt(nowMillis))} streak"
+        "${if (stats.totalWords == 1L) "1 word" else "${StatsFormat.count(stats.totalWords)} words"} · " +
+            "${StatsFormat.streak(stats.currentStreakAt(nowMillis))} streak"
     }
 }
 
@@ -64,7 +65,7 @@ fun StatsPage(stats: UsageStats, nowMillis: Long, onReset: () -> Unit, modifier:
         EmptyState(StatsCopy.EMPTY, modifier = modifier.fillMaxWidth())
         return
     }
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         StatsHero(stats, nowMillis)
         MetricGrid(stats, nowMillis)
         ActivityCard(stats, nowMillis)
@@ -118,21 +119,18 @@ private fun MetricGrid(stats: UsageStats, nowMillis: Long) {
         Metric(R.drawable.ic_snippets, "Words", StatsFormat.count(stats.totalWords), "lifetime", accent),
         Metric(R.drawable.ic_dictation, "Sessions", StatsFormat.count(stats.totalTranscriptions), "dictations", accent),
         Metric(R.drawable.ic_history, "Time", StatsFormat.duration(stats.totalAudioMillis), "recorded", accent),
-        Metric(R.drawable.ic_stat_streak, "Streak", "${stats.currentStreakAt(nowMillis)}", "days · best ${stats.bestStreak}", accent),
     )
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val stacked = AdaptiveLayout.stackInfo(maxWidth.value, LocalDensity.current.fontScale)
+        // Three tiles in a row; the streak lives in the hero above them, so
+        // no number appears twice on the page.
         if (stacked) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 cards.forEach { metric -> MetricCard(metric, Modifier.fillMaxWidth()) }
             }
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                cards.chunked(2).forEach { row ->
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        row.forEach { metric -> MetricCard(metric, Modifier.weight(1f)) }
-                    }
-                }
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                cards.forEach { metric -> MetricCard(metric, Modifier.weight(1f)) }
             }
         }
     }
@@ -151,12 +149,11 @@ private fun StatsHero(stats: UsageStats, nowMillis: Long) {
     val streak = stats.currentStreakAt(nowMillis)
     FeaturedCard {
         Text("Your voice, at a glance", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        Text("${StatsFormat.count(stats.totalWords)} words captured", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(StatsFormat.wordsPerMinute(stats.averageWordsPerMinute), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
             Text("WPM", modifier = Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("·", modifier = Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.primary)
-            Text("$streak-day streak", modifier = Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("$streak-day streak · best ${stats.bestStreak}", modifier = Modifier.padding(bottom = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(StatsCopy.SPEED_CAPTION, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -169,11 +166,17 @@ private fun MetricCard(metric: Metric, modifier: Modifier) {
             contentDescription = "${metric.label}, ${metric.value}, ${metric.caption}"
         },
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricIcon(metric.icon, metric.accent)
-            Text(metric.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Text(metric.value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // Icon above the label: three tiles share a row now, and a label
+        // beside the icon broke mid-word on a phone-width screen.
+        MetricIcon(metric.icon, metric.accent)
+        Text(
+            metric.label,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(metric.value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(metric.caption, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -238,7 +241,6 @@ private fun ShareCard(onCopy: () -> Unit, onShareX: () -> Unit, onShareSheet: ()
                 }
             }
         }
-        Text("X opens with your post and card ready. Share sends the card to any app and copies the post text, in case that app leaves it out.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
