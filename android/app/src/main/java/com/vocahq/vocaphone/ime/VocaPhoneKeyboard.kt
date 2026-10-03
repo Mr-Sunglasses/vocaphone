@@ -10,6 +10,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,6 +36,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,6 +44,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -59,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -71,6 +75,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -706,6 +711,7 @@ internal fun VocaPhoneKeyboard(
                             category = emojiCategory,
                             split = splitKeys,
                             spacerFraction = spacerFraction,
+                            numberRow = settings.numberRowEnabled,
                             onEmoji = onEmojiStable,
                             onKey = onKeyStable,
                             onKeyHold = onKeyHoldStable,
@@ -738,7 +744,10 @@ internal fun VocaPhoneKeyboard(
                             layer = keyboardState.layer,
                             returnKey = editor.returnKey,
                             keyHeight = fittedKeyHeight,
-                            numberKeyHints = settings.numberKeyHintsEnabled,
+                            // On ?123 the symbols these hint at are the row
+                            // right underneath, so the marks are only noise.
+                            numberKeyHints = settings.numberKeyHintsEnabled &&
+                                keyboardState.layer == KeyboardLayer.LETTERS,
                             longPressSymbols = settings.longPressSymbolsEnabled,
                             numberRow = settings.numberRowEnabled,
                             split = splitKeys,
@@ -942,26 +951,30 @@ private fun DictationBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        // Bare icon until the menu is open: a filled disc on both ends of the
+        // strip framed the suggestions like a toolbar rather than a keyboard.
         Box(
             modifier = Modifier
                 .size(ToolbarControlSize)
                 .clip(CircleShape)
                 .background(
                     if (menuOpen) {
-                        MaterialTheme.colorScheme.surfaceContainerHighest
-                    } else {
                         MaterialTheme.colorScheme.surfaceContainerHigh
+                    } else {
+                        Color.Transparent
                     },
                 )
                 .semantics {
                     role = Role.Button
                     contentDescription = "Keyboard menu"
+                    if (!menuEnabled) disabled()
                 }
                 .pointerInput(menuEnabled, menuOpen) {
+                    if (!menuEnabled) return@pointerInput
                     detectTapGestures(
                         onTap = {
                             view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            if (menuEnabled) onMenuTap()
+                            onMenuTap()
                         },
                     )
                 },
@@ -970,8 +983,10 @@ private fun DictationBar(
             Icon(
                 painter = painterResource(R.drawable.ic_keyboard_menu),
                 contentDescription = null,
-                modifier = Modifier.size(22.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                    alpha = if (menuEnabled) 1f else 0.38f,
+                ),
             )
         }
 
@@ -995,7 +1010,7 @@ private fun DictationBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                !idle || !editor.dictationAllowed -> {
+                !idle -> {
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -1065,6 +1080,19 @@ private fun DictationBar(
                         )
                     }
                 }
+                // Last, not first. This note used to take the whole strip in
+                // every field without dictation, which hid the emoji tabs
+                // (no way to change category) and the clipboard chip in
+                // number fields, where pasting a copied code is the point.
+                !editor.dictationAllowed -> Text(
+                    text = if (editor.sensitive) "Private field · dictation off" else "Typing only",
+                    modifier = Modifier.weight(1f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
                 else -> Spacer(Modifier.weight(1f))
             }
         }
@@ -1288,8 +1316,10 @@ private fun ToolbarMenuPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            // Two rows of four: what the keyboard changes in place, then where
+            // in the app to go. About is one tap further, under Settings.
             listOf(
                 listOf(
                     MenuTile("Language", R.drawable.ic_language, onLanguage),
@@ -1299,15 +1329,12 @@ private fun ToolbarMenuPanel(
                         R.drawable.ic_clipboard,
                         if (clipboardOn) onClipboard else ({ onOpenSettings("keyboard") }),
                     ),
+                    MenuTile("Models", R.drawable.ic_models) { onOpenSettings("models") },
                 ),
                 listOf(
-                    MenuTile("Models", R.drawable.ic_models) { onOpenSettings("models") },
                     MenuTile("Keyboard", R.drawable.ic_keyboard) { onOpenSettings("keyboard") },
                     MenuTile("Dictation", R.drawable.ic_dictation) { onOpenSettings("dictation") },
-                ),
-                listOf(
                     MenuTile("Speech", R.drawable.ic_connection) { onOpenSettings("connection") },
-                    MenuTile("About", R.drawable.ic_about) { onOpenSettings("about") },
                     MenuTile("Settings", R.drawable.ic_settings) { onOpenSettings("") },
                 ),
             ).forEach { row ->
@@ -1315,7 +1342,7 @@ private fun ToolbarMenuPanel(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     row.forEach { tile ->
                         ToolbarMenuTile(title = tile.title, icon = tile.icon, onClick = tile.onClick)
@@ -1342,8 +1369,8 @@ private fun RowScope.ToolbarMenuTile(
         modifier = Modifier
             .weight(1f)
             .fillMaxHeight(),
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shape = RoundedCornerShape(16.dp),
+        color = Color.Transparent,
         onClick = onClick,
     ) {
         Column(
@@ -1351,18 +1378,32 @@ private fun RowScope.ToolbarMenuTile(
                 .fillMaxSize()
                 .padding(horizontal = 4.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterVertically),
         ) {
-            Icon(
-                painter = painterResource(icon),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp),
-            )
+            // The label is measured first and the disc takes what is left, up
+            // to 48 dp. A fixed 48 dp disc clipped the label in Compact
+            // without a number row once the font scale went up.
+            Box(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .sizeIn(maxWidth = 48.dp, maxHeight = 48.dp)
+                    .aspectRatio(1f, matchHeightConstraintsFirst = true)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(icon),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.fillMaxSize(0.46f),
+                )
+            }
             Text(
                 title,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontWeight = FontWeight.Medium,
-                fontSize = 11.sp,
+                fontSize = 12.sp,
                 lineHeight = 14.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -1698,8 +1739,9 @@ private fun PreferencePanelShell(
             .fillMaxWidth()
             .height(height)
             .padding(horizontal = 4.dp),
-        shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        // No card behind the panel: the rows and tiles inside carry their own
+        // fill, and a second surface around them was one layer too many.
+        color = Color.Transparent,
     ) {
         Column(
             modifier = Modifier.padding(4.dp),
@@ -1715,7 +1757,6 @@ private fun ToolbarCloseButton(onClick: () -> Unit) {
         modifier = Modifier
             .size(ToolbarControlSize)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .semantics {
                 role = Role.Button
                 contentDescription = "Close"
@@ -1899,7 +1940,8 @@ private fun ClipboardChipButton(
             .height(ClipboardChipHeight)
             .widthIn(min = ClipboardChipMinWidth, max = ClipboardChipMaxWidth),
         shape = RoundedCornerShape(percent = 50),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1966,24 +2008,32 @@ private fun ClipboardChipButton(
     }
 }
 
+/**
+ * Candidates as plain words with hairline dividers, the way a system keyboard
+ * draws them. Each one used to sit in its own filled pill, which on a strip
+ * already flanked by two round buttons read as a row of buttons, not a word
+ * list.
+ */
 @Composable
 private fun RowScope.SuggestionStripRow(
     suggestions: List<SuggestionItem>,
     onSuggestion: (SuggestionItem) -> Unit,
 ) {
     if (suggestions.size <= 3) {
-        suggestions.forEach { item ->
-            SuggestionChip(
-                label = if (item.savesWord) "+ ${item.text}" else item.text,
-                emoji = item.isEmoji,
-                onClick = { onSuggestion(item) },
-                modifier = Modifier.weight(1f),
-                contentDescription = if (item.savesWord) {
-                    "Add ${item.text} to dictionary"
-                } else {
-                    item.text
-                },
-            )
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            suggestions.forEachIndexed { index, item ->
+                if (index > 0) StripDivider()
+                SuggestionChip(
+                    item = item,
+                    onClick = { onSuggestion(item) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         return
     }
@@ -2010,19 +2060,13 @@ private fun RowScope.SuggestionStripRow(
                 .fillMaxHeight()
                 .horizontalScroll(scroll),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            suggestions.forEach { item ->
+            suggestions.forEachIndexed { index, item ->
+                if (index > 0) StripDivider()
                 SuggestionChip(
-                    label = if (item.savesWord) "+ ${item.text}" else item.text,
-                    emoji = item.isEmoji,
+                    item = item,
                     onClick = { onSuggestion(item) },
-                    modifier = Modifier.widthIn(min = if (item.isEmoji) 44.dp else 68.dp),
-                    contentDescription = if (item.savesWord) {
-                        "Add ${item.text} to dictionary"
-                    } else {
-                        item.text
-                    },
+                    modifier = Modifier.widthIn(min = if (item.isEmoji) 44.dp else 72.dp),
                 )
             }
         }
@@ -2030,28 +2074,47 @@ private fun RowScope.SuggestionStripRow(
 }
 
 @Composable
+private fun StripDivider() {
+    Box(
+        Modifier
+            .width(1.dp)
+            .height(18.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant),
+    )
+}
+
+@Composable
 private fun SuggestionChip(
-    label: String,
+    item: SuggestionItem,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    emoji: Boolean = false,
-    contentDescription: String = label,
 ) {
     Surface(
         modifier = modifier
-            .height(32.dp)
+            .height(40.dp)
             .semantics {
                 role = Role.Button
-                this.contentDescription = contentDescription
+                contentDescription = if (item.savesWord) {
+                    "Add ${item.text} to dictionary"
+                } else {
+                    item.text
+                }
             },
         shape = RoundedCornerShape(10.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        color = Color.Transparent,
+        // Adding to the dictionary is an action, not a word: say so in colour
+        // rather than with a filled chip.
+        contentColor = if (item.savesWord) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurface
+        },
         onClick = onClick,
     ) {
-        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 10.dp)) {
             Text(
-                text = label,
-                fontSize = if (emoji) 18.sp else 14.sp,
+                text = if (item.savesWord) "+ ${item.text}" else item.text,
+                fontSize = if (item.isEmoji) 20.sp else 15.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -2066,20 +2129,28 @@ private fun ClipboardThumb(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val bitmap = remember(relativePath) {
-        val file = File(context.filesDir, relativePath)
-        if (!file.exists()) {
-            null
-        } else {
-            BitmapFactory.decodeFile(
-                file.absolutePath,
-                BitmapFactory.Options().apply { inSampleSize = 8 },
-            )
+    // Read and decoded off the IME thread. This was a `remember` block, so a
+    // screenshot on the clipboard put a file read and a JPEG/PNG decode inside
+    // the frame that brought the keyboard up.
+    val bitmap by produceState<ImageBitmap?>(null, relativePath) {
+        // produceState keeps its value across a key change, so without this
+        // a new clip shows the previous image until its own has decoded.
+        value = null
+        value = withContext(Dispatchers.IO) {
+            val file = File(context.filesDir, relativePath)
+            if (!file.exists()) {
+                null
+            } else {
+                BitmapFactory.decodeFile(
+                    file.absolutePath,
+                    BitmapFactory.Options().apply { inSampleSize = 8 },
+                )?.asImageBitmap()
+            }
         }
     }
-    if (bitmap != null) {
+    bitmap?.let { decoded ->
         Image(
-            bitmap = bitmap.asImageBitmap(),
+            bitmap = decoded,
             contentDescription = null,
             modifier = modifier,
             contentScale = ContentScale.Crop,
@@ -2099,6 +2170,7 @@ private fun EmojiLayer(
     category: EmojiCategory,
     split: Boolean = false,
     spacerFraction: Float = SplitKeyboardLayout.MIN_SPACER_FRACTION,
+    numberRow: Boolean = false,
     onEmoji: (String) -> Unit,
     onKey: (KeyboardKey) -> Unit,
     onKeyHold: (KeyboardKey, Long) -> Unit = { _, _ -> },
@@ -2106,7 +2178,11 @@ private fun EmojiLayer(
     onPreview: (KeyPreview?) -> Unit = {},
     onLongPressVariant: (String) -> Unit = {},
 ) {
-    val bottomRow = KeyboardLayouts.rows(KeyboardLayer.EMOJI, editor)
+    // Keyed like the letter rows (android/AGENTS.md), so a layout that one day
+    // reads another input here cannot serve a stale row.
+    val bottomRow = remember(layer, editor.returnKey, editor.leadingPunctuation, numberRow) {
+        KeyboardLayouts.rows(KeyboardLayer.EMOJI, editor, numberRow = numberRow)
+    }
     val glyphs = when (category) {
         EmojiCategory.RECENTS -> recents
         EmojiCategory.ASCII -> EmojiCatalog.asciiEmoticons
@@ -2160,9 +2236,9 @@ private fun EmojiCategoryRow(
             Surface(
                 shape = RoundedCornerShape(8.dp),
                 color = if (category == selected) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
                     MaterialTheme.colorScheme.surfaceContainerHigh
+                } else {
+                    Color.Transparent
                 },
                 onClick = { onSelect(category) },
             ) {
@@ -2851,19 +2927,28 @@ private fun KeyContent(
         KeyboardKeyType.SPACE -> {
             // Unlabeled, same as the system space bar.
         }
-        KeyboardKeyType.LAYER_SWITCH -> KeyLabel(displayLabel, tint, utility = true)
+        // Drawn like the other function keys. The label was a ☺ character,
+        // which most fonts render as a full-colour emoji: the one coloured
+        // glyph on the keyboard, and not the colour of the keys around it.
+        KeyboardKeyType.LAYER_SWITCH -> if (key.targetLayer == KeyboardLayer.EMOJI) {
+            KeyboardIcon(Glyph.EMOJI, tint)
+        } else {
+            KeyLabel(displayLabel, tint, utility = true)
+        }
         KeyboardKeyType.CHARACTER -> {
             if (hint == null) {
                 KeyLabel(displayLabel, tint, utility = false)
             } else {
                 Box(Modifier.fillMaxWidth().fillMaxHeight()) {
+                    // Fixed size, not scaled with the font: at a large font
+                    // the mark grew into the label it annotates.
                     Text(
                         text = hint,
                         color = tint.copy(alpha = 0.38f),
-                        fontSize = 10.sp,
+                        fontSize = with(LocalDensity.current) { 10.dp.toSp() },
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(top = 2.dp, end = 4.dp),
+                            .padding(top = 2.dp, end = 3.dp),
                     )
                     Box(Modifier.align(Alignment.Center)) {
                         KeyLabel(displayLabel, tint, utility = false)
@@ -2897,6 +2982,7 @@ private enum class Glyph {
     PREVIOUS,
     DONE,
     CLIPBOARD,
+    EMOJI,
 }
 
 @Composable
@@ -3013,6 +3099,20 @@ private fun KeyboardIcon(
                 )
                 drawLine(tint, Offset(w * 0.34f, h * 0.48f), Offset(w * 0.66f, h * 0.48f), stroke.width)
                 drawLine(tint, Offset(w * 0.34f, h * 0.64f), Offset(w * 0.58f, h * 0.64f), stroke.width)
+            }
+            Glyph.EMOJI -> {
+                drawCircle(tint, radius = w * 0.38f, style = stroke)
+                drawCircle(tint, radius = w * 0.045f, center = Offset(w * 0.37f, h * 0.41f))
+                drawCircle(tint, radius = w * 0.045f, center = Offset(w * 0.63f, h * 0.41f))
+                drawArc(
+                    color = tint,
+                    startAngle = 25f,
+                    sweepAngle = 130f,
+                    useCenter = false,
+                    topLeft = Offset(w * 0.32f, h * 0.36f),
+                    size = Size(w * 0.36f, h * 0.3f),
+                    style = stroke,
+                )
             }
         }
     }

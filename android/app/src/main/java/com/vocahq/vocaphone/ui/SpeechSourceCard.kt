@@ -7,11 +7,14 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
-private val SpeechModes = listOf("On this phone", "Gateway")
+// Short enough for one line at a large font. "On this phone" wrapped at 1.5x,
+// and the taller half pushed the two segments out of line.
+private val SpeechModes = listOf("This phone", "Gateway")
 
 /**
  * Where speech is transcribed: this phone, or a gateway.
@@ -50,7 +53,9 @@ fun SpeechSourceGroup(
                             index = index,
                             count = SpeechModes.size,
                         ),
-                        label = { Text(label) },
+                        label = {
+                            Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        },
                     )
                 }
             }

@@ -7,6 +7,9 @@ import android.provider.Settings
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.graphics.drawable.toDrawable
@@ -62,7 +65,7 @@ abstract class LifecycleInputMethodService : InputMethodService(),
             setBackgroundColor(surfaceColor)
             // Pad before the first measure so the IME window height includes it.
             setPadding(0, 0, 0, navigationBarBottomInsetPx(this))
-            setContent { KeyboardContent() }
+            setContent { KeyboardFontScale { KeyboardContent() } }
             ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
                 val bottom = navigationBarBottomInsetPx(view, insets)
                 if (view.paddingBottom != bottom) {
@@ -169,4 +172,25 @@ abstract class LifecycleInputMethodService : InputMethodService(),
         const val GESTURE_NAVIGATION_MODE = 2
         const val GESTURE_NAV_FALLBACK_DP = 48
     }
+}
+
+/**
+ * Largest font scale the keyboard follows. Keys, the strip and the menu are
+ * sized in dp and cannot grow with the text, so at the 1.5x and 2x system
+ * settings `?123` cut down to `?`, number hints ran into their digits, and
+ * menu labels ellipsized. System keyboards do the same thing: they follow a
+ * larger font a little way, then stop.
+ */
+internal const val MAX_KEYBOARD_FONT_SCALE = 1.3f
+
+@Composable
+internal fun KeyboardFontScale(content: @Composable () -> Unit) {
+    val density = LocalDensity.current
+    val capped = density.fontScale.coerceAtMost(MAX_KEYBOARD_FONT_SCALE)
+    // Always provided, so a font-scale change does not swap the tree and drop
+    // the keyboard's remembered state.
+    CompositionLocalProvider(
+        LocalDensity provides Density(density.density, capped),
+        content = content,
+    )
 }

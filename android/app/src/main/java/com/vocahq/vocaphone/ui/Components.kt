@@ -4,6 +4,7 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -55,6 +56,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -322,29 +324,70 @@ fun ChecklistRow(
      */
     compact: Boolean = false,
 ) {
-    // Always a single row: label takes the leftover width and wraps, the short
-    // action (Grant, Open, Set up) stays vertically centered. Stacking under
-    // 400dp looked broken on every handset and still looked wrong on a foldable
-    // cover screen; weight + wrap scales from a tiny phone to an open foldable.
-    Row(
+    // Beside the text when the action is short enough, under it when it is
+    // not. This was a Row with the text on weight(1f), and Compose measures
+    // the weighted child last: at a 1.5x font "Enable keyboard" took nearly
+    // the whole width first and the explanation was set one letter per line.
+    // Stacking every row under 400 dp looked broken on ordinary handsets, so
+    // the switch is made on the action's own width, not the screen's.
+    val showAction = !satisfied && !compact
+    Layout(
         modifier = modifier.fillMaxWidth().padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        ChecklistContent(
-            title = title,
-            detail = detail,
-            satisfied = satisfied,
-            compact = compact,
-            modifier = Modifier.weight(1f),
-        )
-        if (!satisfied && !compact) {
-            TextButton(
-                onClick = onAction,
-                colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
-            ) { Text(actionLabel) }
+        content = {
+            ChecklistContent(
+                title = title,
+                detail = detail,
+                satisfied = satisfied,
+                compact = compact,
+            )
+            if (showAction) {
+                TextButton(
+                    onClick = onAction,
+                    colors = ButtonDefaults.textButtonColors(contentColor = actionColor),
+                ) { Text(actionLabel) }
+            }
+        },
+    ) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val loose = constraints.copy(minWidth = 0, minHeight = 0)
+        val content = measurables[0]
+        val action = measurables.getOrNull(1)
+        if (action == null) {
+            val placed = content.measure(loose.copy(minWidth = width))
+            return@Layout layout(width, placed.height) { placed.placeRelative(0, 0) }
+        }
+        if (action.maxIntrinsicWidth(constraints.maxHeight) <= width * ChecklistActionShare) {
+            val button = action.measure(loose)
+            val text = content.measure(
+                loose.copy(minWidth = width - button.width, maxWidth = width - button.width),
+            )
+            val height = maxOf(text.height, button.height)
+            layout(width, height) {
+                // placeRelative mirrors in RTL: action on the left, text on the right.
+                text.placeRelative(0, (height - text.height) / 2)
+                button.placeRelative(width - button.width, (height - button.height) / 2)
+            }
+        } else {
+            // Under the title, its label lined up with the title's first letter.
+            val textStart = (ChecklistIconSize + ChecklistIconGap).roundToPx()
+            val buttonInset = ButtonDefaults.TextButtonContentPadding
+                .calculateStartPadding(layoutDirection)
+                .roundToPx()
+            val buttonX = (textStart - buttonInset).coerceAtLeast(0)
+            val text = content.measure(loose.copy(minWidth = width, maxWidth = width))
+            val button = action.measure(loose.copy(maxWidth = width - buttonX))
+            layout(width, text.height + button.height) {
+                text.placeRelative(0, 0)
+                button.placeRelative(buttonX, text.height)
+            }
         }
     }
 }
+
+/** Widest the action may be and still sit beside the text. */
+private const val ChecklistActionShare = 0.4f
+private val ChecklistIconSize = 24.dp
+private val ChecklistIconGap = 12.dp
 
 @Composable
 private fun ChecklistContent(
@@ -365,9 +408,9 @@ private fun ChecklistContent(
             } else {
                 MaterialTheme.colorScheme.outline
             },
-            modifier = Modifier.size(24.dp),
+            modifier = Modifier.size(ChecklistIconSize),
         )
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(ChecklistIconGap))
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             if (!compact && detail.isNotEmpty()) {

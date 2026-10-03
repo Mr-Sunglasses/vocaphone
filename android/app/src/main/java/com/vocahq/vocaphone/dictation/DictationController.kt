@@ -163,6 +163,9 @@ class DictationController(
     @Volatile
     private var lastRecordingMillis: Long? = null
 
+    /** Last speech-source settings seen; see the collector in `init`. */
+    private var repairInputs: RepairInputs? = null
+
     init {
         scope.launch {
             state
@@ -170,6 +173,27 @@ class DictationController(
                 .distinctUntilChanged()
                 .collect { phase ->
                     diagnostics.recordState(phase.name, activeSource?.name)
+                }
+        }
+        // A repair state is an answer about the settings it was worked out
+        // from, and nothing else ever cleared it: the keyboard mic opens the
+        // app while one is showing, it does not try again. So someone who hit
+        // "Voice model needed" on this phone, then switched to their gateway,
+        // was still told to download a model, and every tap of the mic sent
+        // them to Models. Drop the repair -- and any download it is following
+        // -- once the speech source it was about has changed; the next tap
+        // checks again against what is set now.
+        scope.launch {
+            settings.settings
+                .map(::RepairInputs)
+                .distinctUntilChanged()
+                .collect { inputs ->
+                    val stale = repairOutlived(_state.value.phase, repairInputs, inputs)
+                    repairInputs = inputs
+                    if (stale) {
+                        pipeline?.cancel()
+                        reset()
+                    }
                 }
         }
     }
@@ -1361,3 +1385,23 @@ internal fun downloadOutcome(latest: LocalModelState, target: String): DownloadO
         latest.downloading == target -> DownloadOutcome.WAITING
         else -> DownloadOutcome.DIED
     }
+
+/**
+ * The settings a repair state is about: where speech goes, which model, and
+ * whether a gateway is set up. A change to any of them makes a repair stale.
+ */
+internal data class RepairInputs(
+    val localTranscription: Boolean,
+    val localModelId: String,
+    val gatewayConfigured: Boolean,
+) {
+    constructor(settings: VocaPhoneSettings) : this(
+        localTranscription = settings.localTranscriptionEnabled,
+        localModelId = settings.localModelId,
+        gatewayConfigured = settings.isConfigured,
+    )
+}
+
+/** Whether a showing repair was worked out from settings that have since changed. */
+internal fun repairOutlived(phase: DictationPhase, before: RepairInputs?, now: RepairInputs): Boolean =
+    phase == DictationPhase.PERMISSION_REPAIR && before != null && before != now
