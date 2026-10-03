@@ -46,9 +46,9 @@ enum class TranscriptionQuality(val storedValue: String) {
 
     private val whisperDetail: String
         get() = when (this) {
-            FAST -> "Quickest result. Skips the retries that rescue a hard passage."
-            BALANCED -> "Beam search where it is cheap, and a retry when a window looks wrong."
-            ACCURATE -> "Wider search for difficult speech. Can be 2-3x slower on older phones."
+            FAST -> "Quickest. Can miss a hard passage."
+            BALANCED -> "Fewer mistakes for a short extra wait."
+            ACCURATE -> "Best for hard speech. Can be 2-3x slower on older phones."
         }
 
     /**

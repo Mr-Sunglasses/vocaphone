@@ -358,7 +358,7 @@ bucketed duration.
 
 ### Checking it rather than trusting it
 
-Settings → Usage reporting → "See exactly what's sent" renders the literal JSON
+Settings → Privacy → Usage reporting → "See exactly what's sent" renders the literal JSON
 that the next flush would POST, `systemProps` included — not a summary of it. If
 a field is ever added to the payload, it appears on that screen without anyone
 having to remember to describe it.

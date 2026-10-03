@@ -12,19 +12,27 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -41,26 +49,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.CustomVocabulary
-import com.vocahq.vocaphone.ime.PersonalDictionary
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelTranslationSupport
 import com.vocahq.vocaphone.core.Snippet
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.TranscriptionQuality
-import com.vocahq.vocaphone.core.WritingStyle
-import com.vocahq.vocaphone.local.LocalModelCatalog
-import com.vocahq.vocaphone.local.LocalModelEngine
-import com.vocahq.vocaphone.local.LocalModelDescriptor
-import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.core.UsageStats
+import com.vocahq.vocaphone.core.WritingStyle
+import com.vocahq.vocaphone.ime.PersonalDictionary
+import com.vocahq.vocaphone.local.LocalModelCatalog
+import com.vocahq.vocaphone.local.LocalModelDescriptor
+import com.vocahq.vocaphone.local.LocalModelEngine
+import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
 import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
@@ -77,8 +87,11 @@ enum class SettingsPage(val title: String) {
     KEYBOARD("Keyboard"),
     DICTATION("Dictation"),
     SNIPPETS("Snippets"),
+    DICTIONARY("Personal dictionary"),
     CONNECTION("Speech"),
     STATS("Stats"),
+    PRIVACY("Privacy"),
+    HELP("Help and diagnostics"),
     ABOUT("About"),
     ;
 
@@ -88,8 +101,11 @@ enum class SettingsPage(val title: String) {
             "keyboard" -> KEYBOARD
             "dictation" -> DICTATION
             "snippets" -> SNIPPETS
+            "dictionary" -> DICTIONARY
             "connection" -> CONNECTION
             "stats" -> STATS
+            "privacy" -> PRIVACY
+            "help" -> HELP
             "about" -> ABOUT
             else -> HOME
         }
@@ -150,6 +166,8 @@ fun SettingsScreen(
     telemetryDeliveryStatus: () -> String,
     usageStats: UsageStats,
     onResetUsageStats: () -> Unit,
+    historyCount: Int,
+    onDeleteAllHistory: () -> Unit,
     page: SettingsPage,
     onPageChange: (SettingsPage) -> Unit,
     openLanguagePicker: Boolean = false,
@@ -198,12 +216,16 @@ fun SettingsScreen(
     }
 
     val statsNow = remember(usageStats, clockTick) { System.currentTimeMillis() }
-    val pageScrollState = rememberScrollState()
+    // The list keeps its place while a sub-page is open, so Back returns to
+    // the row that was tapped. Each sub-page starts at its top.
+    val homeScrollState = rememberScrollState()
+    val subPageScrollState = rememberScrollState()
+    val pageScrollState = if (page == SettingsPage.HOME) homeScrollState else subPageScrollState
 
     // Each destination is its own page even though they share this container.
     // Carrying the Settings list position into Stats can open halfway through
     // the hero card, which makes the page look broken on first entry.
-    LaunchedEffect(page) { pageScrollState.scrollTo(0) }
+    LaunchedEffect(page) { if (page != SettingsPage.HOME) subPageScrollState.scrollTo(0) }
 
     // Bumping the tick recomputes statsNow, which is this effect's own key, so
     // each firing schedules the next one.
@@ -224,6 +246,7 @@ fun SettingsScreen(
         }
     }
 
+
     BackHandler(enabled = page != SettingsPage.HOME) { onPageChange(SettingsPage.HOME) }
 
     Column(
@@ -232,108 +255,86 @@ fun SettingsScreen(
             .wrapContentWidth(Alignment.CenterHorizontally)
             .widthIn(max = AppContentMaxWidth)
             .verticalScroll(pageScrollState)
-            .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(SectionSpacing),
+            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(GroupSpacing),
     ) {
         when (page) {
             SettingsPage.HOME -> {
-                SpeechSourceCard(
+                SpeechSourceGroup(
                     settings = settings,
                     onOpenGateway = onOpenGateway,
+                    onOpenModels = { onPageChange(SettingsPage.MODELS) },
                     onLocalTranscriptionEnabled = onLocalTranscriptionEnabled,
                 )
-                SettingsLabeledGroup("Dictation and keyboard") {
-                    SettingsMenuRow(
+                SettingsGroup(title = "Dictation and keyboard") {
+                    SettingsNavRow(
                         title = "Language",
                         supporting = settings.effectiveLanguage.displayName,
                         icon = R.drawable.ic_language,
                         onClick = { pickingLanguage = true },
                     )
-                    SettingsMenuDivider()
-                    // Kept next to Language and never hidden. A row that
-                    // disappears for most models would leave the question
-                    // unanswered, and "not supported by this model" is exactly
-                    // the answer people arrive looking for. It opens only when
-                    // there is something to pick: a sheet with every language
-                    // greyed out was a dead end.
-                    SettingsMenuRow(
-                        title = "Translate to",
-                        supporting = ModelTranslationSupport.summary(
-                            settings.translateTo,
-                            settings.activeModelTranslationTargets,
-                            onDevice = settings.localTranscriptionEnabled,
-                            needsExplicitSource = localModel?.translationNeedsExplicitSource == true,
-                            sourceIsAutomatic = settings.effectiveLanguage ==
-                                TranscriptionLanguage.AUTOMATIC,
-                        ),
-                        icon = R.drawable.ic_language,
-                        onClick = { pickingTranslation = true }
-                            .takeIf { ModelTranslationSupport.isSupported(settings.activeModelTranslationTargets) },
-                    )
-                    SettingsMenuDivider()
-                    SettingsMenuRow(
-                        title = "Voice model",
-                        supporting = when {
-                            !settings.localTranscriptionEnabled ->
-                                "Off while you use a gateway"
-                            localModel != null -> localModel.displayName
-                            else -> "Download a model for this phone"
-                        },
-                        icon = R.drawable.ic_models,
-                        onClick = { onPageChange(SettingsPage.MODELS) },
-                    )
-                    SettingsMenuDivider()
-                    SettingsMenuRow(
-                        title = "Keyboard",
-                        supporting = buildString {
-                            append(
-                                when {
-                                    setup.ime.selected -> "Selected"
-                                    setup.ime.enabled -> "Enabled"
-                                    else -> "Not enabled"
-                                },
-                            )
-                            append(" · ")
-                            append(settings.keyboardHeight.displayName)
-                            if (settings.numberRowEnabled) append(" · number row")
-                            if (settings.splitKeyboard != SplitKeyboard.AUTO) {
-                                append(" · split ${settings.splitKeyboard.displayName.lowercase()}")
-                            }
-                        },
-                        icon = R.drawable.ic_keyboard,
-                        onClick = { onPageChange(SettingsPage.KEYBOARD) },
-                    )
-                    SettingsMenuDivider()
-                    SettingsMenuRow(
+                    SettingsDivider(inset = true)
+                    SettingsNavRow(
                         title = "Dictation",
-                        supporting = "${settings.style.displayName} · ${settings.dictationTone.displayName} · ${settings.microphone.displayName}",
+                        supporting = settings.style.displayName,
                         icon = R.drawable.ic_dictation,
                         onClick = { onPageChange(SettingsPage.DICTATION) },
                     )
+                    SettingsDivider(inset = true)
+                    SettingsNavRow(
+                        title = "Keyboard",
+                        supporting = keyboardRowSummary(setup.ime),
+                        icon = R.drawable.ic_keyboard,
+                        onClick = { onPageChange(SettingsPage.KEYBOARD) },
+                    )
                 }
-                // Grouped by what someone came to do: set up how they dictate,
-                // look after what they have made, or find out about the app.
-                SettingsLabeledGroup("Your content") {
-                    SettingsMenuRow(
+                SettingsGroup(title = "Your content") {
+                    SettingsNavRow(
                         title = "Snippets",
-                        supporting = when (val count = settings.snippets.size) {
-                            0 -> "Expand a short phrase into longer text"
-                            1 -> "1 snippet"
-                            else -> "$count snippets"
-                        },
+                        supporting = countLabel(settings.snippets.size, "snippet"),
                         icon = R.drawable.ic_snippets,
                         onClick = { onPageChange(SettingsPage.SNIPPETS) },
                     )
-                    SettingsMenuDivider()
-                    SettingsMenuRow(
+                    SettingsDivider(inset = true)
+                    SettingsNavRow(
+                        title = "Personal dictionary",
+                        supporting = countLabel(PersonalDictionary.terms(settings.personalDictionary).size, "word"),
+                        icon = R.drawable.ic_dictionary,
+                        onClick = { onPageChange(SettingsPage.DICTIONARY) },
+                    )
+                    SettingsDivider(inset = true)
+                    SettingsNavRow(
                         title = "Stats",
                         supporting = StatsCopy.menuSupporting(usageStats, statsNow),
                         icon = R.drawable.ic_stats,
                         onClick = { onPageChange(SettingsPage.STATS) },
                     )
                 }
-                SettingsLabeledGroup("About") {
-                    SettingsMenuRow(
+                // The keyboard and this app both follow it, so it is not a
+                // keyboard setting even though the keyboard is where it shows.
+                SettingsGroup(title = "Appearance") {
+                    SettingsSwitchRow(
+                        title = "Use wallpaper colors",
+                        supporting = "For the keyboard and this app.",
+                        icon = R.drawable.ic_palette,
+                        checked = settings.dynamicColorEnabled,
+                        onCheckedChange = onDynamicColor,
+                    )
+                }
+                SettingsGroup(title = "Privacy and help") {
+                    SettingsNavRow(
+                        title = "Privacy",
+                        icon = R.drawable.ic_lock,
+                        onClick = { onPageChange(SettingsPage.PRIVACY) },
+                    )
+                    SettingsDivider(inset = true)
+                    SettingsNavRow(
+                        title = "Help and diagnostics",
+                        icon = R.drawable.ic_help,
+                        onClick = { onPageChange(SettingsPage.HELP) },
+                    )
+                    SettingsDivider(inset = true)
+                    SettingsNavRow(
                         title = "About",
                         supporting = "VocaPhone ${appInfo.versionName}",
                         icon = R.drawable.ic_about,
@@ -343,22 +344,6 @@ fun SettingsScreen(
             }
 
             SettingsPage.MODELS -> {
-                Section(
-                    title = "Accuracy",
-                    supporting = "${
-                        settings.transcriptionQuality.detail(
-                            localModel?.engine ?: LocalModelEngine.WHISPER,
-                        )
-                    }\n" +
-                        "Applies to models running on this phone. The gateway decides for itself.",
-                ) {
-                    ChipChoiceRow(
-                        options = TranscriptionQuality.entries,
-                        selected = settings.transcriptionQuality,
-                        label = { it.displayName },
-                        onSelect = onTranscriptionQuality,
-                    )
-                }
                 LocalModelPicker(
                     state = localModels,
                     selectedModelId = settings.localModelId,
@@ -373,92 +358,109 @@ fun SettingsScreen(
                     languages = deviceLanguages,
                     onGuidanceLanguage = { onLanguage(TranscriptionLanguage.fromWire(it)) },
                 )
+                // Only where it changes anything: a Whisper model on this
+                // phone. Sherpa models run one decoding mode, and a gateway
+                // picks its own.
+                if (settings.localTranscriptionEnabled && localModel?.engine == LocalModelEngine.WHISPER) {
+                    SettingsGroup(
+                        title = "Advanced",
+                        footer = settings.transcriptionQuality.detail(localModel.engine),
+                    ) {
+                        SettingsChoiceRow(
+                            title = "Accuracy",
+                            options = TranscriptionQuality.entries,
+                            selected = settings.transcriptionQuality,
+                            label = { it.displayName },
+                            detail = { it.detail(localModel.engine) },
+                            onSelect = onTranscriptionQuality,
+                        )
+                    }
+                }
             }
 
             SettingsPage.KEYBOARD -> {
-                ImeSetupCard(setup.ime)
-                Section("Appearance") {
-                    SettingToggle(
-                        title = "Dynamic color",
-                        detail = "Follow the wallpaper colors.",
-                        checked = settings.dynamicColorEnabled,
-                        onCheckedChange = onDynamicColor,
-                    )
-                }
-                Section("Layout", learnMore = SettingsHelp.keyboardLayout) {
-                    SettingToggle(
+                if (SetupCopy.keyboardAction(setup.ime) != null) ImeSetupCard(setup.ime)
+                SettingsGroup(
+                    title = "Layout",
+                    footer = "Split turns on by itself on wide screens, like an unfolded foldable.",
+                ) {
+                    SettingsSwitchRow(
                         title = "Number row",
-                        detail = "Show 1-0 above the letter keys.",
+                        supporting = "1 to 0 above the letters.",
                         checked = settings.numberRowEnabled,
                         onCheckedChange = onNumberRow,
                     )
-                    Text("Height", style = MaterialTheme.typography.bodyMedium)
-                    ChipChoiceRow(
+                    SettingsDivider()
+                    SettingsChoiceRow(
+                        title = "Height",
                         options = KeyboardHeight.entries,
                         selected = settings.keyboardHeight,
                         label = { it.displayName },
                         onSelect = onKeyboardHeight,
                     )
-                    Text("Split keyboard", style = MaterialTheme.typography.bodyMedium)
-                    ChipChoiceRow(
+                    SettingsDivider()
+                    SettingsChoiceRow(
+                        title = "Split keyboard",
                         options = SplitKeyboard.entries,
                         selected = settings.splitKeyboard,
                         label = { it.displayName },
                         onSelect = onSplitKeyboard,
                     )
                 }
-                Section("Typing", learnMore = SettingsHelp.typing) {
-                    SettingToggle(
+                SettingsGroup(title = "Typing", learnMore = SettingsHelp.typing) {
+                    SettingsSwitchRow(
                         title = "Suggestions",
-                        detail = "Worked out on this phone. Off in passwords.",
+                        supporting = "Worked out on this phone. Off in passwords.",
                         checked = settings.suggestionsEnabled,
                         onCheckedChange = onSuggestions,
                     )
-                    SettingToggle(
+                    SettingsDivider()
+                    SettingsSwitchRow(
                         title = "Corrections",
-                        detail = "Nearby words in the toolbar.",
+                        supporting = "Nearby words in the toolbar.",
                         checked = settings.correctionsEnabled,
                         onCheckedChange = onCorrections,
                     )
-                    SettingToggle(
-                        title = "Number key hints",
-                        detail = "Show the long-press symbol on 1-0 in a lighter color.",
-                        checked = settings.numberKeyHintsEnabled,
-                        onCheckedChange = onNumberKeyHints,
-                    )
-                    SettingToggle(
-                        title = "Hold for digits and symbols",
-                        detail = "Hold a letter for its symbol. Slide for accents.",
-                        checked = settings.longPressSymbolsEnabled,
-                        onCheckedChange = onLongPressSymbols,
-                    )
-                    SettingToggle(
-                        title = "Text emoticons",
-                        detail = "Adds :) and friends to the emoji panel.",
-                        checked = settings.asciiEmojiEnabled,
-                        onCheckedChange = onAsciiEmoji,
-                    )
-                    SettingToggle(
+                    SettingsDivider()
+                    SettingsSwitchRow(
                         title = "Swipe typing",
-                        detail = "Glide across letters. English only.",
+                        supporting = "Glide across letters. English only.",
                         checked = settings.swipeTypingEnabled,
                         onCheckedChange = onSwipeTyping,
                     )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Hold for digits and symbols",
+                        supporting = "Slide for accents.",
+                        checked = settings.longPressSymbolsEnabled,
+                        onCheckedChange = onLongPressSymbols,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Number key hints",
+                        supporting = "Show the symbol on 1 to 0.",
+                        checked = settings.numberKeyHintsEnabled,
+                        onCheckedChange = onNumberKeyHints,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Text emoticons",
+                        supporting = "Adds :) and friends to the emoji panel.",
+                        checked = settings.asciiEmojiEnabled,
+                        onCheckedChange = onAsciiEmoji,
+                    )
                 }
-                PersonalDictionarySection(
-                    words = settings.personalDictionary,
-                    onSave = onPersonalDictionary,
-                )
-                Section("Clipboard", learnMore = SettingsHelp.clipboard) {
-                    SettingToggle(
+                SettingsGroup(title = "Clipboard", learnMore = SettingsHelp.clipboard) {
+                    SettingsSwitchRow(
                         title = "Clipboard chip",
-                        detail = "Paste the current clip in one tap.",
+                        supporting = "Paste the current clip in one tap.",
                         checked = settings.clipboardChipEnabled,
                         onCheckedChange = onClipboardChip,
                     )
-                    SettingToggle(
+                    SettingsDivider()
+                    SettingsSwitchRow(
                         title = "Clipboard history",
-                        detail = "Recent clips, kept on this phone. Off in passwords.",
+                        supporting = "Kept on this phone. Off in passwords.",
                         checked = settings.clipboardHistoryEnabled,
                         onCheckedChange = onClipboardHistory,
                     )
@@ -474,144 +476,151 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsPage.DICTATION -> {
-                // How your words come out, how recording behaves, what is
-                // kept, and which words to spell your way — instead of eleven
-                // sections. One line per control; the rules are behind each ⓘ.
-                Section(title = "Output", learnMore = SettingsHelp.output) {
-                    SettingDropdown(
-                        options = WritingStyle.entries,
-                        selected = settings.style,
-                        label = { it.displayName },
-                        detail = { it.detail },
-                        onSelect = onStyle,
-                    )
-                    Text(
-                        settings.style.example,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    SettingToggle(
-                        title = "Clean up speech",
-                        detail = "Drops \u201Cum\u201D, \u201Cuh\u201D and false starts.",
-                        checked = settings.repairSpeech,
-                        onCheckedChange = onRepairSpeech,
-                    )
-                    SettingToggle(
-                        title = "Write numbers as digits",
-                        detail = "\u201Csix pm\u201D becomes \u201C6 pm\u201D. English only.",
-                        checked = settings.numbersAsDigits,
-                        onCheckedChange = onNumbersAsDigits,
-                    )
-                    SettingToggle(
-                        title = "Spoken emoji",
-                        detail = "\u201Ccrying emoji\u201D becomes 😭.",
-                        checked = settings.spokenEmoji,
-                        onCheckedChange = onSpokenEmoji,
-                    )
-                }
-                Section(title = "Recording", learnMore = SettingsHelp.recording) {
-                    SettingDropdown(
-                        options = DictationTone.entries,
-                        selected = settings.dictationTone,
-                        label = { it.displayName },
-                        detail = { it.detail },
-                        onSelect = onDictationTone,
-                    )
-                    if (tonePreviewListening) {
-                        TonePreviewMeter(active = true)
-                    }
-                    SecondaryButton(
-                        text = if (tonePreviewListening) "Stop preview" else "Preview tone",
-                        onClick = { onPreviewDictationTone(settings.dictationTone) },
-                        enabled = settings.dictationTone.playsCues,
-                    )
-                    SettingToggle(
-                        title = "Stop after a pause",
-                        detail = "Finishes after three seconds of quiet.",
-                        checked = settings.stopAfterPause,
-                        onCheckedChange = onStopAfterPause,
-                    )
-                    Text("Keep model loaded", style = MaterialTheme.typography.bodyMedium)
-                    SettingDropdown(
-                        options = ModelIdleTimeout.entries,
-                        selected = settings.modelIdleTimeout,
-                        label = { it.displayName },
-                        detail = { it.detail },
-                        onSelect = onModelIdleTimeout,
-                    )
-                }
-                MicrophoneSection(
-                    selected = settings.microphone,
-                    status = microphone,
-                    onSelect = onMicrophone,
-                )
-                Section(
-                    title = "Keep failed audio",
-                    supporting = "So Retry still works. Successful dictations delete it at once.",
-                    learnMore = SettingsHelp.kept,
-                ) {
-                    ChipChoiceRow(
-                        options = AudioRetention.entries,
-                        selected = settings.audioRetention,
-                        label = { it.displayName },
-                        onSelect = onAudioRetention,
-                    )
-                }
-                // Next to audio retention rather than under About: both answer
-                // "what does this app keep or send", which is the question
-                // someone is holding when they come looking for either.
-                UsageReportingSection(
-                    enabled = settings.telemetryEnabled,
-                    onEnabled = onTelemetryEnabled,
-                    inspect = telemetryInspect,
-                    pendingCount = telemetryPendingCount,
-                    deliveryStatus = telemetryDeliveryStatus,
-                )
-                CustomVocabularySection(
+            SettingsPage.DICTIONARY -> {
+                PersonalDictionaryPage(
+                    words = settings.personalDictionary,
+                    onSave = onPersonalDictionary,
                     vocabulary = settings.customVocabulary,
-                    personalDictionary = settings.personalDictionary,
                     synced = settings.syncWhisperDictionary,
                     onSyncedChange = onSyncWhisperDictionary,
-                    onSave = onCustomVocabulary,
+                    onSaveVocabulary = onCustomVocabulary,
                     unsupportedModel = localModel
                         ?.takeIf { settings.localTranscriptionEnabled && !it.supportsCustomVocabulary }
                         ?.displayName,
                 )
             }
 
-            SettingsPage.CONNECTION -> {
-                SpeechSourceCard(
-                    settings = settings,
-                    onOpenGateway = onOpenGateway,
-                    onLocalTranscriptionEnabled = onLocalTranscriptionEnabled,
-                    showTitle = false,
-                    showGatewayActions = false,
-                )
-                SettingsMenuGroup {
-                    SettingsMenuRow(
-                        title = "Voice model",
-                        supporting = when {
-                            !settings.localTranscriptionEnabled ->
-                                "Off while you use a gateway"
-                            localModel != null -> localModel.displayName
-                            else -> "Download a model for this phone"
-                        },
-                        icon = R.drawable.ic_models,
-                        onClick = { onPageChange(SettingsPage.MODELS) },
+            SettingsPage.DICTATION -> {
+                val translationSupported =
+                    ModelTranslationSupport.isSupported(settings.activeModelTranslationTargets)
+                SettingsGroup(title = "Output", learnMore = SettingsHelp.output) {
+                    SettingsChoiceRow(
+                        title = "Writing style",
+                        options = WritingStyle.entries,
+                        selected = settings.style,
+                        label = { it.displayName },
+                        detail = { it.detail },
+                        supporting = "${settings.style.displayName} · “${settings.style.example}”",
+                        onSelect = onStyle,
                     )
-                    SettingsMenuDivider()
-                    SettingsMenuRow(
-                        title = "Gateway",
-                        supporting = if (settings.isConfigured) {
-                            "Saved. Opens the address and token."
-                        } else {
-                            "Not set up"
-                        },
-                        icon = R.drawable.ic_connection,
-                        onClick = onOpenGateway,
+                    SettingsDivider()
+                    // Never hidden: "this model can't translate" is exactly the
+                    // answer people come here for. It opens only when there is
+                    // something to pick.
+                    SettingsNavRow(
+                        title = "Translate to",
+                        supporting = ModelTranslationSupport.summary(
+                            settings.translateTo,
+                            settings.activeModelTranslationTargets,
+                            onDevice = settings.localTranscriptionEnabled,
+                            needsExplicitSource = localModel?.translationNeedsExplicitSource == true,
+                            sourceIsAutomatic = settings.effectiveLanguage ==
+                                TranscriptionLanguage.AUTOMATIC,
+                        ),
+                        onClick = { pickingTranslation = true }.takeIf { translationSupported },
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Clean up speech",
+                        supporting = "Drops “um”, “uh” and false starts.",
+                        checked = settings.repairSpeech,
+                        onCheckedChange = onRepairSpeech,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Write numbers as digits",
+                        supporting = "“six pm” becomes “6 pm”. English only.",
+                        checked = settings.numbersAsDigits,
+                        onCheckedChange = onNumbersAsDigits,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Spoken emoji",
+                        supporting = "“crying emoji” becomes 😭.",
+                        checked = settings.spokenEmoji,
+                        onCheckedChange = onSpokenEmoji,
                     )
                 }
+                SettingsGroup(
+                    title = "Recording",
+                    footer = microphoneFooter(settings.microphone, microphone),
+                    learnMore = SettingsHelp.recording,
+                ) {
+                    SettingsChoiceRow(
+                        title = "Start and stop sound",
+                        options = DictationTone.entries,
+                        selected = settings.dictationTone,
+                        label = { it.displayName },
+                        detail = { it.detail },
+                        onSelect = onDictationTone,
+                        trailing = if (settings.dictationTone.playsCues) {
+                            {
+                                TextButton(onClick = { onPreviewDictationTone(settings.dictationTone) }) {
+                                    Text(if (tonePreviewListening) "Stop" else "Preview")
+                                }
+                            }
+                        } else {
+                            null
+                        },
+                    )
+                    if (tonePreviewListening) {
+                        SettingsGroupContent { TonePreviewMeter(active = true) }
+                    }
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Stop after a pause",
+                        supporting = "Finishes after three seconds of quiet.",
+                        checked = settings.stopAfterPause,
+                        onCheckedChange = onStopAfterPause,
+                    )
+                    SettingsDivider()
+                    SettingsChoiceRow(
+                        title = "Microphone",
+                        options = MicrophonePreference.entries,
+                        selected = settings.microphone,
+                        label = { it.displayName },
+                        supporting = microphoneSummary(settings.microphone, microphone),
+                        detail = { if (it in microphone.available) it.detail else it.unavailableDetail },
+                        onSelect = onMicrophone,
+                        enabled = microphone.changeable,
+                        optionEnabled = { it in microphone.available || it == settings.microphone },
+                    )
+                    // Only a model on this phone is loaded into memory.
+                    if (settings.localTranscriptionEnabled) {
+                        SettingsDivider()
+                        SettingsChoiceRow(
+                            title = "Keep model loaded",
+                            options = ModelIdleTimeout.entries,
+                            selected = settings.modelIdleTimeout,
+                            label = { it.displayName },
+                            detail = { it.detail },
+                            onSelect = onModelIdleTimeout,
+                        )
+                    }
+                }
+            }
+
+            SettingsPage.PRIVACY -> {
+                PrivacyPage(
+                    audioRetention = settings.audioRetention,
+                    onAudioRetention = onAudioRetention,
+                    historyCount = historyCount,
+                    onDeleteAllHistory = onDeleteAllHistory,
+                    telemetryEnabled = settings.telemetryEnabled,
+                    onTelemetryEnabled = onTelemetryEnabled,
+                    telemetryInspect = telemetryInspect,
+                    telemetryPendingCount = telemetryPendingCount,
+                    telemetryDeliveryStatus = telemetryDeliveryStatus,
+                )
+            }
+
+            SettingsPage.CONNECTION -> {
+                SpeechSourceGroup(
+                    settings = settings,
+                    onOpenGateway = onOpenGateway,
+                    onOpenModels = { onPageChange(SettingsPage.MODELS) },
+                    onLocalTranscriptionEnabled = onLocalTranscriptionEnabled,
+                )
             }
 
             SettingsPage.STATS -> {
@@ -622,8 +631,8 @@ fun SettingsScreen(
                 )
             }
 
-            SettingsPage.ABOUT -> {
-                AboutPage(
+            SettingsPage.HELP -> {
+                HelpPage(
                     appInfo = appInfo,
                     settings = settings,
                     setup = setup,
@@ -632,6 +641,10 @@ fun SettingsScreen(
                     diagnosticEvents = diagnosticEvents,
                     onClearDiagnosticEvents = onClearDiagnosticEvents,
                 )
+            }
+
+            SettingsPage.ABOUT -> {
+                AboutPage(appInfo = appInfo)
             }
         }
     }
@@ -665,134 +678,204 @@ fun SettingsScreen(
 }
 
 /**
- * Which microphone dictation asks for. Options the hardware cannot satisfy stay
- * visible but greyed, and the whole row locks while a dictation is running: the
- * input is chosen when the recorder is built, so a mid-recording change would be
- * a promise the current dictation cannot keep.
+ * The dictation word list as the user wrote it, one entry per line or comma.
+ *
+ * Not [CustomVocabulary.terms]: that one trims each entry to the decoder's
+ * limit, and saving its output back would permanently shorten a long phrase
+ * whenever any other word was added or removed. The limit still applies
+ * where the list is used.
+ */
+internal fun editableVocabulary(raw: String): List<String> {
+    val seen = mutableSetOf<String>()
+    return raw.split('\n', ',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() && seen.add(it.lowercase()) }
+}
+
+/** "3 snippets", "1 word", "None yet". */
+internal fun countLabel(count: Int, noun: String): String = when (count) {
+    0 -> "None yet"
+    1 -> "1 $noun"
+    else -> "$count ${noun}s"
+}
+
+/** One state, in words, rather than "Selected · Default · number row". */
+internal fun keyboardRowSummary(ime: ImeSetupStatus): String = when {
+    ime.selected -> "On"
+    ime.enabled -> "Turned on, not selected"
+    else -> "Not turned on"
+}
+
+/** The microphone row's second line: the choice, and what is in use while it is. */
+private fun microphoneSummary(selected: MicrophonePreference, status: MicrophoneStatus): String {
+    val choice = if (selected in status.available) selected.displayName else selected.unavailableDetail
+    return if (status.recording || status.route != null) {
+        "$choice · ${status.inUseLabel(selected)}"
+    } else {
+        choice
+    }
+}
+
+private fun microphoneFooter(selected: MicrophonePreference, status: MicrophoneStatus): String = when {
+    !status.changeable -> "Finish the current dictation before changing microphones."
+    selected == MicrophonePreference.AUTOMATIC -> "Android picks the microphone unless you choose one."
+    else -> "Android has the final say on which microphone records."
+}
+
+/**
+ * What the app keeps and what it sends, in one place: failed audio, history,
+ * and usage reporting. They used to be split between Dictation and About, and
+ * this is the question someone holds when they come looking for any of them.
  */
 @Composable
-private fun MicrophoneSection(
-    selected: MicrophonePreference,
-    status: MicrophoneStatus,
-    onSelect: (MicrophonePreference) -> Unit,
+private fun PrivacyPage(
+    audioRetention: AudioRetention,
+    onAudioRetention: (AudioRetention) -> Unit,
+    historyCount: Int,
+    onDeleteAllHistory: () -> Unit,
+    telemetryEnabled: Boolean,
+    onTelemetryEnabled: (Boolean) -> Unit,
+    telemetryInspect: () -> TelemetryInspectPayload,
+    telemetryPendingCount: () -> Int,
+    telemetryDeliveryStatus: () -> String,
 ) {
-    val attached = selected in status.available
-    Section(
-        title = "Microphone",
-        supporting = if (attached) selected.detail else selected.unavailableDetail,
+    var confirmingDelete by remember { mutableStateOf(false) }
+    SettingsGroup(
+        title = "On this phone",
+        footer = "Successful dictations delete their audio at once. A failed one keeps it so Retry works.",
+        learnMore = SettingsHelp.kept,
     ) {
-        SettingDropdown(
-            options = MicrophonePreference.entries,
-            selected = selected,
+        SettingsChoiceRow(
+            title = "Keep failed audio",
+            options = AudioRetention.entries,
+            selected = audioRetention,
             label = { it.displayName },
-            detail = { if (it in status.available) it.detail else it.unavailableDetail },
-            onSelect = onSelect,
-            enabled = status.changeable,
-            optionEnabled = { it in status.available || it == selected },
+            onSelect = onAudioRetention,
         )
-
-        if (status.recording || status.route != null) {
-            InfoRow("Input in use", status.inUseLabel(selected))
+        SettingsDivider()
+        SettingsActionRow(
+            title = "Delete all history",
+            supporting = countLabel(historyCount, "dictation"),
+            destructive = true,
+            enabled = historyCount > 0,
+            onClick = { confirmingDelete = true },
+        )
+    }
+    UsageReportingSection(
+        enabled = telemetryEnabled,
+        onEnabled = onTelemetryEnabled,
+        inspect = telemetryInspect,
+        pendingCount = telemetryPendingCount,
+        deliveryStatus = telemetryDeliveryStatus,
+    )
+    SettingsGroup(title = "How your data moves") {
+        SettingsGroupContent {
+            Text(
+                ABOUT_PRIVACY_NOTE,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-
-        Text(
-            if (!status.changeable) {
-                "Finish the current dictation before changing microphones."
-            } else {
-                "Unavailable options have no matching mic. " +
-                    "Android has the final say on routing."
+    }
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text("Delete all history?") },
+            text = {
+                Text("This removes every dictation from this phone. Usage totals are kept; reset them in Stats.")
             },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            confirmButton = {
+                DestructiveTextButton(
+                    text = "Delete all",
+                    onClick = {
+                        onDeleteAllHistory()
+                        confirmingDelete = false
+                    },
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = false }) { Text("Cancel") }
+            },
         )
     }
 }
 
+/**
+ * One list for both places a name gets spelled your way: the suggestion strip
+ * and dictation. They used to be two editors on two pages, the Dictation one
+ * pointing at the Keyboard one.
+ */
 @Composable
-private fun PersonalDictionarySection(
+private fun PersonalDictionaryPage(
     words: String,
     onSave: (String) -> Unit,
+    vocabulary: String,
+    synced: Boolean,
+    onSyncedChange: (Boolean) -> Unit,
+    onSaveVocabulary: (String) -> Unit,
+    unsupportedModel: String?,
 ) {
-    var draft by remember(words) { mutableStateOf(PersonalDictionary.normalize(words)) }
-    var lastCleared by remember { mutableStateOf<String?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
-    val terms = remember(draft) { PersonalDictionary.terms(draft) }
-    val canUndo = lastCleared != null && words.isBlank()
-    val canClear = words.isNotBlank()
-    Section(
-        title = "Personal dictionary",
-        supporting = "Names and jargon the English list misses. " +
-            "Separate with commas. Off in passwords. " +
-            "Whisper uses this list too unless you turn that off under Dictation.",
+    val terms = PersonalDictionary.terms(words)
+    SettingsGroup(
+        title = "Words",
+        footer = "Names and jargon the keyboard should know. Letters only. Off in passwords.",
     ) {
-        OutlinedTextField(
-            value = draft,
-            onValueChange = { draft = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Grafana, GraphQL, Kubernetes, Docker") },
-            minLines = 3,
-            maxLines = 8,
-        )
-        Text(
-            when (terms.size) {
-                0 -> "None saved."
-                1 -> "1 word."
-                else -> "${terms.size} words."
+        WordListEditor(
+            words = terms,
+            placeholder = "Add a word, like Kubernetes",
+            validate = { candidate ->
+                if (PersonalDictionary.isSavable(candidate)) null else "Letters only, at least 3."
             },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            onAdd = { added -> onSave(added.fold(words) { acc, word -> PersonalDictionary.add(acc, word) }) },
+            onRemove = { removed ->
+                onSave(terms.filterNot { it.equals(removed, ignoreCase = true) }.joinToString(", "))
+            },
         )
-        val saveWords: @Composable (Modifier) -> Unit = { item ->
-            SecondaryButton(
-                text = "Save words",
-                onClick = {
-                    lastCleared = null
-                    onSave(draft)
-                },
-                enabled = PersonalDictionary.normalize(draft) != PersonalDictionary.normalize(words),
-                modifier = item,
+        if (terms.isNotEmpty()) {
+            SettingsDivider()
+            SettingsActionRow(
+                title = "Clear all",
+                destructive = true,
+                onClick = { confirmClear = true },
             )
         }
-        when {
-            canUndo -> ResponsiveActionRow(
-                leading = saveWords,
-                trailing = { item ->
-                    SecondaryButton(
-                        text = "Undo",
-                        onClick = {
-                            val restored = lastCleared ?: return@SecondaryButton
-                            lastCleared = null
-                            draft = restored
-                            onSave(restored)
-                        },
-                        modifier = item,
-                    )
+    }
+    val dictationTerms = editableVocabulary(vocabulary)
+    SettingsGroup(
+        title = "Dictation",
+        footer = CustomVocabulary.spellingOnlyNote(unsupportedModel),
+        learnMore = SettingsHelp.customWords,
+    ) {
+        SettingsSwitchRow(
+            title = "Use these words for dictation",
+            supporting = "Spells them your way in transcripts.",
+            checked = synced,
+            onCheckedChange = onSyncedChange,
+        )
+        if (!synced) {
+            SettingsDivider()
+            WordListEditor(
+                words = dictationTerms,
+                placeholder = "Add a word or phrase",
+                validate = { null },
+                onAdd = { added -> onSaveVocabulary(editableVocabulary((dictationTerms + added).joinToString("\n")).joinToString("\n")) },
+                onRemove = { removed ->
+                    onSaveVocabulary(dictationTerms.filterNot { it == removed }.joinToString("\n"))
                 },
             )
-            canClear -> ResponsiveActionRow(
-                leading = saveWords,
-                trailing = { item ->
-                    DestructiveTextButton(
-                        text = "Clear",
-                        onClick = { confirmClear = true },
-                        modifier = item,
-                    )
-                },
-            )
-            else -> saveWords(Modifier.fillMaxWidth())
         }
     }
     if (confirmClear) {
-        val count = PersonalDictionary.terms(words).size
         AlertDialog(
             onDismissRequest = { confirmClear = false },
             title = { Text("Clear personal dictionary?") },
             text = {
                 Text(
-                    if (count == 1) {
+                    if (terms.size == 1) {
                         "This removes 1 word from this phone."
                     } else {
-                        "This removes $count words from this phone."
+                        "This removes ${terms.size} words from this phone."
                     },
                 )
             },
@@ -800,19 +883,86 @@ private fun PersonalDictionarySection(
                 DestructiveTextButton(
                     text = "Clear",
                     onClick = {
-                        lastCleared = words
                         confirmClear = false
-                        draft = ""
                         onSave("")
                     },
                 )
             },
             dismissButton = {
-                TextButton(onClick = { confirmClear = false }) {
-                    Text("Cancel")
+                TextButton(onClick = { confirmClear = false }) { Text("Cancel") }
+            },
+        )
+    }
+}
+
+/**
+ * Words as chips you can remove, and one field to add more. Commas add several
+ * at once, so a pasted list still works.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WordListEditor(
+    words: List<String>,
+    placeholder: String,
+    validate: (String) -> String?,
+    onAdd: (List<String>) -> Unit,
+    onRemove: (String) -> Unit,
+) {
+    var draft by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    fun submit() {
+        val candidates = draft.split(',', '\n').map { it.trim() }.filter { it.isNotEmpty() }
+        if (candidates.isEmpty()) return
+        val firstError = candidates.firstNotNullOfOrNull(validate)
+        if (firstError != null) {
+            error = firstError
+            return
+        }
+        onAdd(candidates)
+        draft = ""
+        error = null
+    }
+    SettingsGroupContent {
+        OutlinedTextField(
+            value = draft,
+            onValueChange = {
+                draft = it
+                error = null
+            },
+            modifier = Modifier.fillMaxWidth(),
+            placeholder = { Text(placeholder) },
+            singleLine = true,
+            isError = error != null,
+            supportingText = error?.let { message -> { Text(message) } },
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { submit() }),
+            trailingIcon = {
+                IconButton(onClick = { submit() }, enabled = draft.isNotBlank()) {
+                    Icon(painterResource(R.drawable.ic_add), contentDescription = "Add")
                 }
             },
         )
+        if (words.isNotEmpty()) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                words.forEach { word ->
+                    InputChip(
+                        selected = false,
+                        onClick = { onRemove(word) },
+                        label = { Text(word) },
+                        trailingIcon = {
+                            Icon(
+                                painterResource(R.drawable.ic_cancel),
+                                contentDescription = "Remove $word",
+                                modifier = Modifier.size(InputChipDefaults.IconSize),
+                            )
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -836,32 +986,39 @@ private fun SnippetsSection(
     var editing by remember { mutableStateOf<Snippet?>(null) }
     var pendingDelete by remember { mutableStateOf<Snippet?>(null) }
 
-    Section(
-        title = "Your snippets",
-        supporting = if (snippets.isEmpty()) {
-            "Say \u201Cmy email\u201D while dictating and VocaPhone types your address."
+    SettingsGroup(
+        footer = if (snippets.isEmpty()) {
+            "Say “my email” while dictating and VocaPhone types your address."
         } else {
-            "Say a trigger while dictating and it is replaced by its text. Case does not matter."
+            "Say a trigger while dictating and it is replaced by its text."
         },
     ) {
         if (snippets.isEmpty()) {
             // The snippets nearly everyone ends up making, one tap from
             // working, so the feature explains itself.
             SNIPPET_STARTERS.forEach { trigger ->
-                TextButton(onClick = { starting = trigger }) { Text("+ \u201C$trigger\u201D") }
+                SettingsActionRow(
+                    title = "“$trigger”",
+                    icon = R.drawable.ic_add,
+                    onClick = { starting = trigger },
+                )
+                SettingsDivider(inset = true)
             }
         } else {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                snippets.forEach { snippet ->
-                    SnippetRow(
-                        snippet = snippet,
-                        onEdit = { editing = snippet },
-                        onDelete = { pendingDelete = snippet },
-                    )
-                }
+            snippets.forEach { snippet ->
+                SnippetRow(
+                    snippet = snippet,
+                    onEdit = { editing = snippet },
+                    onDelete = { pendingDelete = snippet },
+                )
+                SettingsDivider()
             }
         }
-        SecondaryButton(text = "Add snippet", onClick = { adding = true })
+        SettingsActionRow(
+            title = "Add snippet",
+            icon = R.drawable.ic_add,
+            onClick = { adding = true },
+        )
     }
 
     starting?.let { trigger ->
@@ -924,20 +1081,6 @@ private fun SnippetsSection(
     }
 }
 
-/** A group of Settings rows under a small heading. */
-@Composable
-private fun SettingsLabeledGroup(label: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 4.dp),
-        )
-        SettingsMenuGroup { content() }
-    }
-}
-
 private val SNIPPET_STARTERS = listOf("my email", "my address", "my phone number")
 
 @Composable
@@ -946,24 +1089,20 @@ private fun SnippetRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(role = Role.Button, onClick = onEdit)
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(snippet.trigger, style = MaterialTheme.typography.titleSmall)
-            Text(
-                snippet.expansion,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        SettingsTapRow(
+            title = snippet.trigger,
+            supporting = snippet.expansion,
+            onClick = onEdit,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = onDelete, modifier = Modifier.padding(end = 4.dp)) {
+            Icon(
+                painterResource(R.drawable.ic_delete),
+                contentDescription = "Delete ${snippet.trigger}",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        DestructiveTextButton(text = "Delete", onClick = onDelete)
     }
 }
 
@@ -1013,89 +1152,6 @@ private fun SnippetEditorDialog(
             TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
-}
-
-/**
- * Always shown and always editable. Every route spells close matches the
- * user's way; only Whisper is also nudged toward the words while decoding, and
- * a note says so for any other model.
- */
-@Composable
-private fun CustomVocabularySection(
-    vocabulary: String,
-    personalDictionary: String,
-    synced: Boolean,
-    onSyncedChange: (Boolean) -> Unit,
-    onSave: (String) -> Unit,
-    unsupportedModel: String?,
-) {
-    var draft by remember(vocabulary) { mutableStateOf(vocabulary) }
-    val source = if (synced) personalDictionary else draft
-    val terms = remember(source) { CustomVocabulary.terms(source) }
-    val spellingOnly = CustomVocabulary.spellingOnlyNote(unsupportedModel)
-
-    Section(
-        title = "Custom words and phrases",
-        supporting = "Names and jargon to spell your way, one per line.",
-        learnMore = SettingsHelp.customWords,
-    ) {
-        // Switch, not a checkbox: Material 3 uses switches for independent
-        // on/off settings. A checkbox is for picking items from a list.
-        SettingToggle(
-            title = "Use personal dictionary",
-            detail = "Dictation uses the same names as the suggestion strip. " +
-                "Turn this off to keep a separate list.",
-            checked = synced,
-            onCheckedChange = onSyncedChange,
-        )
-        if (spellingOnly != null) {
-            Text(
-                spellingOnly,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (synced) {
-            Text(
-                when (terms.size) {
-                    0 -> "No words in the personal dictionary. Transcription is unchanged."
-                    1 -> "1 word from the personal dictionary will be spelled your way."
-                    else -> "${terms.size} words from the personal dictionary will be spelled your way."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                "Edit them under Keyboard → Personal dictionary.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Words and phrases") },
-                placeholder = { Text("Kanishk\nVocaHQ\nTailscale") },
-                minLines = 3,
-                maxLines = 6,
-            )
-            Text(
-                if (terms.isEmpty()) {
-                    "No custom words. Transcription is unchanged."
-                } else {
-                    "${terms.size} word${if (terms.size == 1) "" else "s"} will be spelled your way."
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            SecondaryButton(
-                text = "Save words",
-                onClick = { onSave(draft) },
-                enabled = draft != vocabulary,
-            )
-        }
-    }
 }
 
 @Composable

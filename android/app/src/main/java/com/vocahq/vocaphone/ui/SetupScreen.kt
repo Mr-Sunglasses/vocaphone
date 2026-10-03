@@ -180,9 +180,23 @@ fun SetupScreen(
     }
     val context = LocalContext.current
     val activity = context.findActivity()
-    val requestPermission = rememberLauncherForActivityResult(
+    val requestNotifications = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { onRefreshSetup() }
+    // Notifications are asked for straight after the microphone, from the
+    // same page, so most people never see a page of their own for them: the
+    // stage machine walks past a step that is already satisfied. Someone who
+    // says no still gets the Notifications page and its explanation.
+    var chainNotifications by remember { mutableStateOf(false) }
+    val requestPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        onRefreshSetup()
+        if (chainNotifications && granted && !status.notifications) {
+            requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        chainNotifications = false
+    }
     val askUsageReporting = BuildConfig.TELEMETRY && !settings.telemetryAsked
     var askingUsageReporting by remember { mutableStateOf(false) }
     val recentlyReady = rememberRecentlyReadySteps(status)
@@ -426,7 +440,10 @@ fun SetupScreen(
                         nextStep = step,
                         recentlyReady = recentlyReady,
                         activity = activity,
-                        requestPermission = requestPermission::launch,
+                        requestPermission = { permission ->
+                            chainNotifications = stage == OnboardingStage.MICROPHONE
+                            requestPermission.launch(permission)
+                        },
                         prominentAction = true,
                     )
                     Notice {
@@ -436,7 +453,7 @@ fun SetupScreen(
                         )
                         Text(
                             if (stage == OnboardingStage.MICROPHONE)
-                                "Recording starts when you tap the microphone. You can finish or cancel from the keyboard."
+                                "Recording starts when you tap the microphone. A notification shows while it records, so Android asks about that next."
                             else "The recording notification lets you see when the microphone is active and cancel recording outside the keyboard.",
                         )
                     }

@@ -181,24 +181,12 @@ fun LocalModelPicker(
     val recommendedVisible = if (compact) {
         guidance.model != null && usable.any { it.id == recommended.id }
     } else {
-        filtered.any { it.id == recommended.id }
+        usable.any { it.id == recommended.id }
     }
-    val installedModels = if (compact) {
-        pickerInstalledModels(usable, state.downloaded)
-    } else {
-        pickerInstalledModels(filtered, state.downloaded)
-    }
-    // Searching or filtering is a request for the catalog, not for advice: the
-    // picks would otherwise sit above results they contradict, and they are
-    // taken out of those results below only while they are on screen.
-    val browsing = query.isNotBlank() ||
-        engineFilter != ModelEngineFilter.ALL ||
-        sizeFilter != ModelSizeFilter.ANY ||
-        languageFilter != ModelLanguageFilter.ANY
-    // Setup shows the alternates too. It used to draw only the lead pick, so
-    // a person whose language was covered by the second entry saw a screen
-    // that looked like it had one model on it.
-    val showAlternates = alternates.isNotEmpty() && !browsing
+    val installedModels = pickerInstalledModels(usable, state.downloaded)
+    // Search and filters live in the catalog sheet on both pages now, so the
+    // advice on the page never sits above results that contradict it.
+    val showAlternates = alternates.isNotEmpty()
     val alternateIds = if (showAlternates) alternates.map { it.model.id }.toSet() else emptySet()
     val availableModels = filtered.filter {
         it.id !in state.downloaded &&
@@ -332,10 +320,14 @@ fun LocalModelPicker(
     }
 
     if (!compact && selectedModel != null) {
-        Text(
-            "In use · ${selectedModel.plain.title} · ${selectedModel.sizeLabel}",
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        SettingsGroup(title = "In use") {
+            SettingsNavRow(
+                title = selectedModel.displayName,
+                supporting = "${selectedModel.plain.title} · ${selectedModel.sizeLabel}",
+                icon = R.drawable.ic_models,
+                onClick = { inspecting = selectedModel },
+            )
+        }
     }
 
     if (
@@ -405,44 +397,63 @@ fun LocalModelPicker(
         )
     }
 
-    if (showAlternates) {
-        ModelSectionHeading("Also good on this phone")
-        ModelPickGrid(
-            picks = alternates,
-            state = state,
-            selectedModelId = selectedModelId,
-            onInspect = { inspecting = it },
-        )
-    }
-
-    run {
-        ModelCatalogSearch(
-            query = query,
-            onQuery = { query = it },
-            engineFilter = engineFilter,
-            onEngine = { engineFilter = it },
-            sizeFilter = sizeFilter,
-            onSize = { sizeFilter = it },
-            languageFilter = languageFilter,
-            onLanguage = { languageFilter = it },
-        )
-        if (sections.installed.isNotEmpty()) {
-            ModelSectionHeading("Installed")
-            ModelTileGrid(
-                models = sections.installed,
+    // The model in use is already the first thing on the page; listing it
+    // again under the picks and under Installed said the same thing three times.
+    val otherPicks = alternates.filter { it.model.id != selectedModelId }
+    if (showAlternates && otherPicks.isNotEmpty()) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SettingsGroupHeader("Also good on this phone")
+            ModelPickGrid(
+                picks = otherPicks,
                 state = state,
                 selectedModelId = selectedModelId,
                 onInspect = { inspecting = it },
             )
         }
-        AvailableModelCatalog(
-            available = sections.catalog,
-            filteredEmpty = filtered.isEmpty(),
-            state = state,
-            selectedModelId = selectedModelId,
-            onInspect = { inspecting = it },
+    }
+
+    val otherInstalled = sections.installed.filter { it.id != selectedModelId }
+    if (otherInstalled.isNotEmpty()) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SettingsGroupHeader(if (selectedModel != null) "Also on this phone" else "On this phone")
+            ModelTileGrid(
+                models = otherInstalled,
+                state = state,
+                selectedModelId = selectedModelId,
+                onInspect = { inspecting = it },
+            )
+        }
+    }
+    // The full catalog, with its search and filters, is one tap away rather
+    // than a third list on the page: what most people need is above.
+    SettingsGroup {
+        SettingsNavRow(
+            title = "See all ${usable.size} models",
+            supporting = "Search by name, language or size.",
+            icon = R.drawable.ic_search,
+            onClick = { catalogOpen = true },
         )
     }
+    CompactCatalogSheet(
+        open = catalogOpen,
+        onDismiss = { catalogOpen = false },
+        sheetState = catalogSheetState,
+        query = query,
+        onQuery = { query = it },
+        engineFilter = engineFilter,
+        onEngine = { engineFilter = it },
+        sizeFilter = sizeFilter,
+        onSize = { sizeFilter = it },
+        languageFilter = languageFilter,
+        onLanguage = { languageFilter = it },
+        // Every model, installed ones included, so "See all N" finds N and
+        // an installed model can still be searched for and opened.
+        available = filtered,
+        filteredEmpty = filtered.isEmpty(),
+        state = state,
+        selectedModelId = selectedModelId,
+        onInspect = { inspecting = it },
+    )
 
     state.message?.let {
         Text(
@@ -936,7 +947,7 @@ private fun ModelTile(
         color = when {
             selected -> colors.primaryContainer
             slow -> colors.tertiaryContainer
-            elevated -> colors.surfaceContainerHigh
+            elevated -> colors.surfaceContainerHighest
             else -> colors.surfaceContainerLow
         },
         shape = MaterialTheme.shapes.large,

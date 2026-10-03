@@ -1,19 +1,13 @@
 package com.vocahq.vocaphone.ui
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
+import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 
@@ -23,29 +17,20 @@ private val SpeechModes = listOf("On this phone", "Gateway")
  * Where speech is transcribed: this phone, or a gateway.
  *
  * These are opposing modes, so the control is a single-select segmented row,
- * not a switch and not a pair of cards.
+ * not a switch and not a pair of cards. Under it is one row for the side in
+ * use — the model, or the gateway — which opens that side's page. The gateway
+ * address, engine, dashboard and how-to links used to be laid loose under the
+ * switch; they live on the gateway page now.
  */
 @Composable
-fun SpeechSourceCard(
+fun SpeechSourceGroup(
     settings: VocaPhoneSettings,
     onOpenGateway: () -> Unit,
+    onOpenModels: () -> Unit,
     onLocalTranscriptionEnabled: (Boolean) -> Unit,
-    onOpenModels: (() -> Unit)? = null,
-    compact: Boolean = false,
-    showTitle: Boolean = !compact,
-    showGatewayActions: Boolean = !compact,
 ) {
-    val context = LocalContext.current
     val localModel = LocalModelCatalog.find(settings.localModelId)
-    val copy = speechSourceCopy(
-        localEnabled = settings.localTranscriptionEnabled,
-        localModelName = localModel?.displayName,
-        gatewayConfigured = settings.isConfigured,
-        gatewayUrl = settings.gatewayUrl,
-        lastEngine = settings.lastEngine,
-        lastEngineReady = settings.lastEngineReady,
-    )
-    val localOn = copy.localSelected
+    val localOn = settings.localTranscriptionEnabled
 
     fun pick(wantLocal: Boolean) {
         val choice = speechSourceSelection(wantLocal, settings.isConfigured)
@@ -53,107 +38,52 @@ fun SpeechSourceCard(
         if (choice.openGateway) onOpenGateway()
     }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        if (showTitle) {
-            Text("Speech", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "Transcribe on this phone, or send audio to a gateway you run.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-            SpeechModes.forEachIndexed { index, label ->
-                val wantLocal = index == 0
-                SegmentedButton(
-                    selected = wantLocal == localOn,
-                    onClick = { pick(wantLocal) },
-                    shape = SegmentedButtonDefaults.itemShape(
-                        index = index,
-                        count = SpeechModes.size,
-                    ),
-                    label = { Text(label) },
-                )
-            }
-        }
-        val statusLine = when {
-            compact && localOn && localModel == null -> null
-            localOn -> copy.localDetail
-            else -> copy.gatewayDetail
-        }
-        if (statusLine != null) {
-            Text(
-                statusLine,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        if (compact) {
-            if (!localOn) {
-                TextButton(
-                    onClick = onOpenGateway,
-                    contentPadding = PaddingValues(0.dp),
-                ) {
-                    Text(if (settings.isConfigured) "Gateway settings" else "Set up a gateway")
+    SettingsGroup(title = "Speech") {
+        SettingsGroupContent {
+            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                SpeechModes.forEachIndexed { index, label ->
+                    val wantLocal = index == 0
+                    SegmentedButton(
+                        selected = wantLocal == localOn,
+                        onClick = { pick(wantLocal) },
+                        shape = SegmentedButtonDefaults.itemShape(
+                            index = index,
+                            count = SpeechModes.size,
+                        ),
+                        label = { Text(label) },
+                    )
                 }
             }
-            return@Column
         }
+        SettingsDivider()
         if (localOn) {
-            if (localModel != null) {
-                Text(localModel.catalogMeta(), style = MaterialTheme.typography.bodySmall)
-            }
-            if (onOpenModels != null) {
-                TextButton(
-                    onClick = onOpenModels,
-                    contentPadding = PaddingValues(0.dp),
-                ) {
-                    Text(if (localModel == null) "Download a model" else "Change model")
-                }
-            }
-            Text(
-                copy.inactiveHint,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            SettingsNavRow(
+                title = "Voice model",
+                supporting = localModel?.displayName ?: "Choose a model",
+                icon = R.drawable.ic_models,
+                onClick = onOpenModels,
             )
         } else {
-            Text(
-                copy.inactiveHint,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            SettingsNavRow(
+                title = "Gateway",
+                supporting = gatewayRowSummary(
+                    configured = settings.isConfigured,
+                    url = settings.gatewayUrl,
+                    lastEngine = settings.lastEngine,
+                ),
+                icon = R.drawable.ic_connection,
+                onClick = onOpenGateway,
             )
-            if (settings.isConfigured) {
-                Text(
-                    copy.engineLabel,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                if (showGatewayActions) {
-                    TextButton(
-                        onClick = { context.openHttpUrl(settings.gatewayUrl) },
-                        contentPadding = PaddingValues(0.dp),
-                    ) {
-                        Text("Open web dashboard")
-                    }
-                }
-            }
-            if (showGatewayActions) {
-                TextButton(
-                    onClick = onOpenGateway,
-                    contentPadding = PaddingValues(0.dp),
-                ) {
-                    Text(if (settings.isConfigured) "Gateway settings" else "Set up a gateway")
-                }
-                TextButton(
-                    onClick = { context.openHttpUrl(GATEWAY_GUIDE_URL) },
-                    contentPadding = PaddingValues(0.dp),
-                ) {
-                    Text("How to run a gateway")
-                }
-            }
         }
     }
+}
+
+/** "prod.example.com · faster-whisper:large-v3", or "Not set up". */
+internal fun gatewayRowSummary(configured: Boolean, url: String, lastEngine: String): String {
+    if (!configured) return "Not set up"
+    val host = url.trim()
+        .substringAfter("://")
+        .substringBefore('/')
+        .ifEmpty { url.trim() }
+    return if (lastEngine.isEmpty()) host else "$host · $lastEngine"
 }

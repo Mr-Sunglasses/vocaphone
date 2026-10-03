@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -21,8 +20,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -63,7 +61,7 @@ class MainActivity : ComponentActivity() {
             val launchIntent by launchIntents.collectAsStateWithLifecycle()
             val appViewModel: VocaPhoneViewModel = viewModel()
             val settings by appViewModel.settings.collectAsStateWithLifecycle()
-            VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled) {
+            VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled, appSurfaces = true) {
                 VocaPhoneApp(viewModel = appViewModel, launchIntent = launchIntent)
             }
         }
@@ -82,13 +80,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Dictate is home; History and Settings open from its app bar and come back
+ * with the back arrow, as on iOS. A three-tab bar spent 80 dp on every screen
+ * for two pages most people open now and then.
+ */
 private enum class Destination(val label: String, @param:DrawableRes val icon: Int) {
     DICTATE("Dictate", R.drawable.ic_dictation),
     HISTORY("History", R.drawable.ic_history),
     SETTINGS("Settings", R.drawable.ic_settings),
 }
 
-/** Main destinations share the mark. Nested pages keep a plain title. */
+/** Home carries the mark. Every other page keeps a plain title. */
 @Composable
 private fun BrandedAppBarTitle(text: String) {
     Row(
@@ -148,8 +151,9 @@ fun VocaPhoneApp(
             .collect { viewModel.refreshSetup() }
     }
 
-    var destination by remember { mutableStateOf(Destination.DICTATE) }
-    var settingsPage by remember { mutableStateOf(SettingsPage.HOME) }
+    // Saveable, so a theme or rotation change does not throw the user back home.
+    var destination by rememberSaveable { mutableStateOf(Destination.DICTATE) }
+    var settingsPage by rememberSaveable { mutableStateOf(SettingsPage.HOME) }
     var showingGateway by remember { mutableStateOf(false) }
     var openLanguagePicker by remember { mutableStateOf(false) }
     var historySelection by remember { mutableStateOf(emptySet<String>()) }
@@ -175,7 +179,6 @@ fun VocaPhoneApp(
 
     val showSetup = !settings.onboardingComplete && !showingGateway
     val showingMotionIntro = showSetup && setup.isLoaded && !settings.onboardingIntroSeen
-    val imeVisible = WindowInsets.isImeVisible
 
     Scaffold(
         containerColor = if (showingMotionIntro) Color(0xFF111A15) else MaterialTheme.colorScheme.background,
@@ -206,12 +209,7 @@ fun VocaPhoneApp(
                             destination == Destination.SETTINGS -> settingsPage.title
                             else -> destination.label
                         }
-                        val branded = when {
-                            showingGateway -> false
-                            showSetup -> true
-                            destination != Destination.SETTINGS -> true
-                            else -> settingsPage == SettingsPage.HOME
-                        }
+                        val branded = !showingGateway && destination == Destination.DICTATE
                         if (branded) {
                             BrandedAppBarTitle(titleText)
                         } else {
@@ -239,6 +237,14 @@ fun VocaPhoneApp(
                         }
                         destination == Destination.SETTINGS && settingsPage != SettingsPage.HOME -> {
                             IconButton(onClick = { settingsPage = SettingsPage.HOME }) {
+                                Icon(
+                                    painterResource(R.drawable.ic_back),
+                                    contentDescription = "Back",
+                                )
+                            }
+                        }
+                        destination != Destination.DICTATE -> {
+                            IconButton(onClick = { destination = Destination.DICTATE }) {
                                 Icon(
                                     painterResource(R.drawable.ic_back),
                                     contentDescription = "Back",
@@ -283,29 +289,20 @@ fun VocaPhoneApp(
                         TextButton(onClick = { historySelecting = true }) {
                             Text("Select")
                         }
+                    } else if (!showSetup && !showingGateway && destination == Destination.DICTATE) {
+                        listOf(Destination.HISTORY, Destination.SETTINGS).forEach { entry ->
+                            IconButton(
+                                onClick = {
+                                    if (entry == Destination.SETTINGS) settingsPage = SettingsPage.HOME
+                                    destination = entry
+                                },
+                            ) {
+                                Icon(painterResource(entry.icon), contentDescription = entry.label)
+                            }
+                        }
                     }
                 },
             )
-            }
-        },
-        bottomBar = {
-            if (!showSetup && !showingGateway && !imeVisible) {
-                NavigationBar {
-                    Destination.entries.forEach { entry ->
-                        NavigationBarItem(
-                            selected = destination == entry,
-                            onClick = {
-                                if (destination == Destination.SETTINGS && entry == Destination.SETTINGS) {
-                                    settingsPage = SettingsPage.HOME
-                                }
-                                if (entry != Destination.HISTORY) exitHistorySelection()
-                                destination = entry
-                            },
-                            icon = { Icon(painterResource(entry.icon), contentDescription = entry.label) },
-                            label = { Text(entry.label) },
-                        )
-                    }
-                }
             }
         },
     ) { padding ->
@@ -402,6 +399,7 @@ fun VocaPhoneApp(
                 selectedIds = historySelection,
                 selecting = historySelecting,
                 onRetry = viewModel::retry,
+                onDelete = { id -> viewModel.deleteRecords(setOf(id)) },
                 onToggleSelect = { id ->
                     historySelection = toggleHistorySelection(historySelection, id)
                 },
@@ -471,6 +469,8 @@ fun VocaPhoneApp(
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
                 usageStats = usageStats,
                 onResetUsageStats = { viewModel.resetUsageStats() },
+                historyCount = history.size,
+                onDeleteAllHistory = { viewModel.deleteAllHistory() },
                 page = settingsPage,
                 onPageChange = { settingsPage = it },
                 openLanguagePicker = openLanguagePicker,
@@ -521,6 +521,14 @@ fun VocaPhoneApp(
             },
         )
     }
+
+    // Back from History or the Settings list returns home. A Settings
+    // sub-page handles its own back (to the list) in SettingsScreen.
+    BackHandler(
+        enabled = !showSetup && !showingGateway && !selectingHistory &&
+            destination != Destination.DICTATE &&
+            (destination != Destination.SETTINGS || settingsPage == SettingsPage.HOME),
+    ) { destination = Destination.DICTATE }
 
     BackHandler(enabled = selectingHistory) { exitHistorySelection() }
 

@@ -1,10 +1,17 @@
 package com.vocahq.vocaphone.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import androidx.annotation.DrawableRes
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -60,17 +68,21 @@ internal object DictateCopy {
     const val GATEWAY = "Gateway"
     const val NO_MODEL = "No model"
     const val DOWNLOADING = "Downloading…"
-    val HINTS = listOf(
-        "Words show up at the cursor",
-        "Nothing here is uploaded",
-        "Hold the mic on the keyboard to cancel while it's listening or transcribing",
-        "The Dictate button doesn't cancel",
-    )
+    const val COPY = "Copy"
+    const val SHARE = "Share"
+    const val SPEECH = "Speech"
+
+    /**
+     * One line. It used to be four rules, two of them about cancelling, and
+     * "Nothing here is uploaded" was false for anyone using a gateway.
+     */
+    const val HINT = "Tap Dictate and start talking."
 }
 
 /**
  * In-app dictation. The transcript lands in a scratchpad the user can edit.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DictateScreen(
     state: DictationState,
@@ -95,6 +107,8 @@ fun DictateScreen(
     modifier: Modifier = Modifier,
 ) {
     var scratchpad by remember { mutableStateOf(TextFieldValue()) }
+    val context = LocalContext.current
+    val imeVisible = WindowInsets.isImeVisible
 
     // A finished in-app dictation is spliced at the scratchpad cursor.
     LaunchedEffect(state.transcript, state.phase) {
@@ -181,7 +195,12 @@ fun DictateScreen(
                             R.drawable.ic_connection
                         },
                         label = compactModelChipLabel(modelLabel),
-                        contentDescription = "${DictateCopy.MODEL}, $modelLabel",
+                        // "Gateway" names where speech goes, not a model.
+                        contentDescription = if (settings.localTranscriptionEnabled) {
+                            "${DictateCopy.MODEL}, $modelLabel"
+                        } else {
+                            "${DictateCopy.SPEECH}, $modelLabel"
+                        },
                         onClick = onOpenModel,
                     )
                 }
@@ -253,9 +272,11 @@ fun DictateScreen(
 
                 val showHint = showScratchpadHint(scratchpad.text, state.phase)
                 val fieldColors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    // The card behind the field draws the fill, so the actions
+                    // row can share it without sitting on top of the text.
+                    focusedContainerColor = Color.Transparent,
+                    unfocusedContainerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent,
                     focusedIndicatorColor = Color.Transparent,
                     unfocusedIndicatorColor = Color.Transparent,
                     disabledIndicatorColor = Color.Transparent,
@@ -267,15 +288,18 @@ fun DictateScreen(
                         MaterialTheme.colorScheme.primary
                     },
                 )
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(scratchpadHeight),
+                        .height(scratchpadHeight)
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow, MaterialTheme.shapes.large),
                 ) {
                     TextField(
                         value = scratchpad,
                         onValueChange = { scratchpad = it },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
                         placeholder = if (showHint) {
                             { ScratchpadHint() }
                         } else {
@@ -284,17 +308,26 @@ fun DictateScreen(
                         shape = MaterialTheme.shapes.large,
                         colors = fieldColors,
                     )
+                    // The pad is for getting text somewhere else, so Copy and
+                    // Share sit with it; Clear is the quiet third. A row of
+                    // its own under the text, so the buttons never cover the
+                    // last lines or the cursor.
                     if (scratchpad.text.isNotEmpty()) {
-                        FilledTonalIconButton(
-                            onClick = { scratchpad = TextFieldValue() },
+                        Row(
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 12.dp),
+                                .align(Alignment.End)
+                                .padding(end = 8.dp, bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_delete),
-                                contentDescription = DictateCopy.CLEAR,
-                            )
+                            ScratchpadAction(R.drawable.ic_copy, DictateCopy.COPY) {
+                                context.copyScratchpad(scratchpad.text)
+                            }
+                            ScratchpadAction(R.drawable.ic_share, DictateCopy.SHARE) {
+                                context.shareScratchpad(scratchpad.text)
+                            }
+                            ScratchpadAction(R.drawable.ic_delete, DictateCopy.CLEAR) {
+                                scratchpad = TextFieldValue()
+                            }
                         }
                     }
                 }
@@ -304,6 +337,7 @@ fun DictateScreen(
         DictateActionRow(
             state = state,
             setup = setup,
+            imeVisible = imeVisible,
             onStart = onStart,
             onFinish = onFinish,
             onCancel = onCancel,
@@ -317,6 +351,7 @@ fun DictateScreen(
 private fun DictateActionRow(
     state: DictationState,
     setup: SetupStatus,
+    imeVisible: Boolean,
     onStart: () -> Unit,
     onFinish: () -> Unit,
     onCancel: () -> Unit,
@@ -348,6 +383,9 @@ private fun DictateActionRow(
         // Not ready: the repair card above lists each missing step with its
         // own button, so a greyed-out Dictate beside it was a second answer
         // that could not be pressed.
+        // With the pad focused, the VocaPhone keyboard's own mic sits right
+        // under this button; two mics on one screen is one too many.
+        imeVisible -> Unit
         setup.isReadyToDictate -> PrimaryButton(
             text = DictateCopy.DICTATE,
             onClick = onStart,
@@ -384,11 +422,10 @@ private fun DictateAssistChip(
         },
         border = AssistChipDefaults.assistChipBorder(
             enabled = true,
-            borderColor = Color.Transparent,
-            disabledBorderColor = Color.Transparent,
+            borderColor = MaterialTheme.colorScheme.outlineVariant,
         ),
         colors = AssistChipDefaults.assistChipColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
             labelColor = MaterialTheme.colorScheme.onSurface,
             leadingIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
         ),
@@ -423,19 +460,25 @@ internal fun showScratchpadHint(text: String, phase: DictationPhase): Boolean =
 
 @Composable
 private fun ScratchpadHint() {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        DictateCopy.HINTS.forEach { line ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text("•", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    line,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
+    Text(DictateCopy.HINT, style = MaterialTheme.typography.bodyLarge)
+}
+
+@Composable
+private fun ScratchpadAction(@DrawableRes icon: Int, label: String, onClick: () -> Unit) {
+    FilledTonalIconButton(onClick = onClick) {
+        Icon(painter = painterResource(icon), contentDescription = label)
     }
+}
+
+private fun Context.copyScratchpad(text: String) {
+    val clipboard = getSystemService(ClipboardManager::class.java) ?: return
+    clipboard.setPrimaryClip(ClipData.newPlainText("VocaPhone dictation", text))
+}
+
+private fun Context.shareScratchpad(text: String) {
+    val send = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, text)
+    }
+    runCatching { startActivity(Intent.createChooser(send, null)) }
 }

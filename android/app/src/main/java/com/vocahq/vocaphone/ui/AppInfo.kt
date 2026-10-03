@@ -34,7 +34,11 @@ const val ABOUT_REPORT_BUG = "Report a bug or idea"
 const val ABOUT_COPY_DIAGNOSTICS = "Copy diagnostics"
 const val ABOUT_CLEAR_EVENT_LOG = "Clear event log"
 
-const val ABOUT_TAGLINE = "A keyboard you talk to. Transcription stays on this phone."
+/**
+ * Where speech goes depends on the Speech setting, so the tagline makes no
+ * claim about it: "stays on this phone" was shown to gateway users too.
+ */
+const val ABOUT_TAGLINE = "A keyboard you talk to."
 
 const val ABOUT_STATUS = "On Google Play. Android 13 and newer."
 
@@ -44,9 +48,7 @@ const val ABOUT_ON_DEVICE =
 
 const val ABOUT_FAMILY_NOTE =
     "VocaPhone is one of the VocaHQ apps. VocaLinux and VocaMac are available now, " +
-        "and VocaWin is in beta. This APK is " +
-        "the Android app on Google Play. iOS 17+ is a source build in the same repo. " +
-        "VocaGateway is Early."
+        "VocaWin is in beta, and VocaGateway runs speech on a computer you own."
 
 const val ABOUT_FEEDBACK_NOTE =
     "Bugs, feedback, and feature ideas open a new GitHub issue. You pick the " +
@@ -87,7 +89,7 @@ const val ABOUT_PRIVACY_NOTE =
         "characters around the cursor on this phone.\n\n" +
         "Audio goes to a model on this phone or to the gateway you set up. " +
         "There is no cloud transcription. Usage reporting is off unless you " +
-        "turn it on under Dictation, and then it sends counters only."
+        "turn it on, and then it sends counters only."
 
 const val ABOUT_DIAGNOSTICS_NOTE =
     "The copied report has the app version, setup state, and the hardware " +

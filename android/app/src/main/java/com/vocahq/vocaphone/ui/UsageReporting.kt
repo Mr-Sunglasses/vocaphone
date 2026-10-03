@@ -82,7 +82,7 @@ object UsageReportingCopy {
 
     const val SEE_WHAT_IS_SENT = "See exactly what's sent"
 
-    const val CHANGE_LATER = "You can change this any time in Settings, Usage reporting."
+    const val CHANGE_LATER = "You can change this any time in Settings, Privacy."
 
     const val SAMPLE_LABEL =
         "Nothing has been sent yet. This is the shape of a typical event, not a real one."
@@ -198,20 +198,22 @@ fun UsageReportingSection(
     if (!BuildConfig.TELEMETRY) return
     var showingPayload by remember { mutableStateOf(false) }
 
-    Section(
+    SettingsGroup(
         title = UsageReportingCopy.SETTINGS_TITLE,
-        supporting = UsageReportingCopy.SETTINGS_SUMMARY,
+        footer = UsageReportingCopy.SETTINGS_SUMMARY,
         modifier = modifier,
     ) {
-        SettingToggle(
+        SettingsSwitchRow(
             title = "Send anonymous usage data",
-            detail = if (enabled) "On. Reporting to VocaHQ." else "Off. Nothing is sent.",
+            supporting = if (enabled) "On. Reporting to VocaHQ." else "Off. Nothing is sent.",
             checked = enabled,
             onCheckedChange = onEnabled,
         )
-        TextButton(onClick = { showingPayload = true }) {
-            Text(UsageReportingCopy.SEE_WHAT_IS_SENT)
-        }
+        SettingsDivider()
+        SettingsActionRow(
+            title = UsageReportingCopy.SEE_WHAT_IS_SENT,
+            onClick = { showingPayload = true },
+        )
     }
     if (showingPayload) {
         UsagePayloadSheet(
@@ -301,7 +303,7 @@ fun PendingPayloadView(
             )
         }
         Surface(
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = MaterialTheme.colorScheme.surfaceContainerHighest,
             shape = MaterialTheme.shapes.medium,
             modifier = Modifier.fillMaxWidth(),
         ) {
