@@ -194,11 +194,10 @@ struct ContentView: View {
             }
         }
         .overlay {
-            if let record = keyboardHandoffRecord,
-               let presentation = KeyboardHandoffPresentation.make(record)
-            {
-                KeyboardHandoffView(record: record, presentation: presentation)
-            } else if isShowingQuickDictationReturnGuide {
+            // The hand-off itself is drawn once, by the overlay on `body`, which
+            // covers home as well. Drawing it here too stacked two copies, each
+            // running its own animation and its own arrival haptic.
+            if keyboardHandoffRecord == nil, isShowingQuickDictationReturnGuide {
                 QuickDictationReturnGuide(reduceMotion: reduceMotion) {
                     isShowingQuickDictationReturnGuide = false
                 }

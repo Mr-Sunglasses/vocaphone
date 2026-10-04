@@ -73,6 +73,9 @@ final class RecordingCoordinator {
     private var cancellationMonitorTask: Task<Void, Never>?
     private var quickDictationWatcherTask: Task<Void, Never>?
     private var startingSessionID: UUID?
+    /// Prepared when a keyboard request is claimed, so the buzz that confirms
+    /// recording lands on time instead of after the Taptic Engine wakes.
+    @ObservationIgnored private var recordingStartFeedback: UINotificationFeedbackGenerator?
     private var transcriptDeletionTask: Task<Int, Error>?
     private var gatewayClient: GatewayClient?
     private var lastMicrophoneName: String?
@@ -963,7 +966,10 @@ final class RecordingCoordinator {
         // out from under it by a release scheduled after the last one.
         localEngineReleaseTask?.cancel()
         startingSessionID = id
-        defer { startingSessionID = nil }
+        defer {
+            startingSessionID = nil
+            recordingStartFeedback = nil
+        }
 
         do {
             guard var record = try store.load(id) else {
@@ -971,6 +977,15 @@ final class RecordingCoordinator {
                 return
             }
             guard [.launchingApp, .awaitingReturn].contains(record.state) else { return }
+            if record.sourceDocumentID != "in-app-test" {
+                if record.startedInContainingApp == true {
+                    DiagnosticLog.record(.handoffTreatedAsInApp)
+                } else {
+                    let feedback = UINotificationFeedbackGenerator()
+                    feedback.prepare()
+                    recordingStartFeedback = feedback
+                }
+            }
             // Claim the request before anything slow, so the keyboard's launch
             // fallback knows this app has it. Warming the microphone can take
             // seconds — a first on-device model load, another app releasing the
@@ -1115,7 +1130,16 @@ final class RecordingCoordinator {
                 ? "Recording. Tap Finish on the keyboard when you are done."
                 : "Recording. Swipe back to the app where you want to type."
             if record.sourceDocumentID != "in-app-test" {
-                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                // Only while vocaphone is on screen: iOS plays no haptic for an
+                // app in the background, so after a quick swipe back this was
+                // dropped — silently, which is what made the buzz feel random.
+                // The swipe-back screen now taps on arrival instead, which is
+                // always on screen; this one adds "recording" for whoever stayed.
+                if UIApplication.shared.applicationState == .active {
+                    (recordingStartFeedback ?? UINotificationFeedbackGenerator())
+                        .notificationOccurred(.success)
+                }
+                recordingStartFeedback = nil
                 liveActivity.start(sessionID: record.sessionID)
             } else {
                 // The microphone test stays entirely inside the app and never

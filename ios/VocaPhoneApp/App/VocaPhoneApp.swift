@@ -102,7 +102,13 @@ struct VocaPhoneApp: App {
                     DiagnosticLog.mirrorForDeviceTransfer()
                     DiagnosticLog.mirrorKeyboardTraceForDeviceTransfer()
 #endif
-                    KeyboardPreferences.containingAppIsForeground = true
+                    // What is true, not what is hoped. `onAppear` also runs
+                    // for a launch iOS makes in the background, and a flag
+                    // written "on screen" there stays that way until the next
+                    // activation — marking every dictation from another app as
+                    // vocaphone's own, which skips the swipe-back screen.
+                    KeyboardPreferences.containingAppIsForeground =
+                        UIApplication.shared.applicationState == .active
                     KeyboardPreferences.migrateTypingHapticsIfNeeded()
                     KeyboardPreferences.markQuickDictationRecoveryOfferIfNeeded()
                     Telemetry.shared.appFirstOpen()
@@ -116,6 +122,14 @@ struct VocaPhoneApp: App {
                     // no equivalent: its typing strip reads the same table
                     // long before anyone dictates.
                     Task.detached(priority: .utility) { EmojiTable.warmUp() }
+                }
+                // The heartbeat behind `containingAppIsForeground`. See
+                // `containingAppIsVerifiablyForeground`.
+                .task(id: scenePhase == .active) {
+                    while scenePhase == .active, !Task.isCancelled {
+                        KeyboardPreferences.stampContainingAppForeground()
+                        try? await Task.sleep(for: .seconds(2))
+                    }
                 }
                 .onChange(of: scenePhase) { _, phase in
 #if DEBUG

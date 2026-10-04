@@ -463,6 +463,7 @@
 		EBD16FB95C5B654BE5B5CA2F /* GatewayUploadClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F1000488FD3C508B0D2D8B0 /* GatewayUploadClientTests.swift */; };
 		ECAABA45F8C1DBD7328EDDC5 /* ModelPlainLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC6BFCD9D1ED528959C2647 /* ModelPlainLanguage.swift */; };
 		ED04BFBB1AB30BB6226D77B3 /* TranscriptRepair.swift in Sources */ = {isa = PBXBuildFile; fileRef = 991F9CD996B90A4DF553DBE5 /* TranscriptRepair.swift */; };
+		EE7376517BE7F3DD451BB213 /* HandoffForegroundTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35552C81906176B144789351 /* HandoffForegroundTests.swift */; };
 		EE7A49C4F95388AF42E1B30C /* SemanticPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF6C44F954E7A62974C66109 /* SemanticPalette.swift */; };
 		EF4B66CAC02A63D743384B49 /* DownloadReadiness.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF56F0E966D9AECA1DCFF65E /* DownloadReadiness.swift */; };
 		EF977715FB417ABD32BB2E7A /* KeyPreviewRenderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CC84644E8CF9B1E83696D3 /* KeyPreviewRenderTests.swift */; };
@@ -590,6 +591,7 @@
 		346B6558EE5557A35C916067 /* SetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SetupView.swift; sourceTree = "<group>"; };
 		348E2313B75BA61D777FA18B /* EmojiPanelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmojiPanelView.swift; sourceTree = "<group>"; };
 		3498C523755A678225152570 /* DarwinNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DarwinNotifications.swift; sourceTree = "<group>"; };
+		35552C81906176B144789351 /* HandoffForegroundTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandoffForegroundTests.swift; sourceTree = "<group>"; };
 		36767643E0E4AA29BBB3D4FD /* SessionRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRecord.swift; sourceTree = "<group>"; };
 		368212E101C41FA795B7FD65 /* TelemetryQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryQueue.swift; sourceTree = "<group>"; };
 		36B96ADF2831E766F13F9565 /* VocaPhoneKeyboard-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "VocaPhoneKeyboard-Bridging-Header.h"; sourceTree = "<group>"; };
@@ -1104,6 +1106,7 @@
 				BCED57ED884B29F0570DE4B3 /* GatewayRecordingUploadTests.swift */,
 				0D81A0D2EC42372D38309B87 /* GatewayUploadAudioTests.swift */,
 				3F1000488FD3C508B0D2D8B0 /* GatewayUploadClientTests.swift */,
+				35552C81906176B144789351 /* HandoffForegroundTests.swift */,
 				F72772F0CCE3BA274182C5F4 /* HomePresentationTests.swift */,
 				7A53786C8D2346452C69A748 /* InsertionTargetTests.swift */,
 				EF0326EF6FB3E96C942C6065 /* KeyAlternativesTests.swift */,
@@ -1761,6 +1764,7 @@
 				F31EB984D3652741FBCB3EB8 /* GatewayUploadAudio.swift in Sources */,
 				B5FA8DD887B05636E0BFEAA8 /* GatewayUploadAudioTests.swift in Sources */,
 				EBD16FB95C5B654BE5B5CA2F /* GatewayUploadClientTests.swift in Sources */,
+				EE7376517BE7F3DD451BB213 /* HandoffForegroundTests.swift in Sources */,
 				12F5617A0ECD4D904FC8FEA6 /* HomePresentation.swift in Sources */,
 				162E1C513A0E6585E3445812 /* HomePresentationTests.swift in Sources */,
 				2912856F09ED7566DB955AF9 /* InsertionTargetTests.swift in Sources */,

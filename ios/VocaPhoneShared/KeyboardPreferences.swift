@@ -579,6 +579,7 @@ enum KeyboardPreferences {
     static let recordingSoundsKey = "recordingSoundsEnabled"
     static let stopAfterPauseKey = "stopAfterPause"
     static let containingAppForegroundKey = "containingAppForeground"
+    static let containingAppForegroundHeartbeatKey = "containingAppForegroundHeartbeat"
     static let setupCompletedKey = "setupCompleted"
     /// The exact first-run page to restore if iOS terminates the app while the
     /// user is in Settings. Setup is mandatory, so a relaunch must continue the
@@ -1139,9 +1140,51 @@ enum KeyboardPreferences {
     /// Maintained by the containing app across foreground transitions. A custom
     /// keyboard only runs inside the frontmost app, so finding vocaphone in the
     /// foreground tells the keyboard that vocaphone is its own host.
+    ///
+    /// Not to be trusted on its own for that, though: a crash or a jetsam kill
+    /// while on screen leaves it saying "on screen" with nobody left to clear
+    /// it. The keyboard asks ``containingAppIsVerifiablyForeground(now:)``.
     static var containingAppIsForeground: Bool {
         get { defaults?.bool(forKey: containingAppForegroundKey) ?? false }
-        set { defaults?.set(newValue, forKey: containingAppForegroundKey) }
+        set {
+            defaults?.set(newValue, forKey: containingAppForegroundKey)
+            if newValue { stampContainingAppForeground() }
+        }
+    }
+
+    /// How long a foreground stamp vouches for the flag. Three missed beats of
+    /// the app's two-second heartbeat.
+    static let containingAppForegroundHeartbeatMaximumAge: TimeInterval = 6
+
+    /// Written by the containing app every couple of seconds while on screen.
+    static func stampContainingAppForeground(at date: Date = Date()) {
+        defaults?.set(date.timeIntervalSince1970, forKey: containingAppForegroundHeartbeatKey)
+    }
+
+    static var containingAppForegroundHeartbeat: Date? {
+        guard let seconds = defaults?.object(forKey: containingAppForegroundHeartbeatKey) as? Double
+        else { return nil }
+        return Date(timeIntervalSince1970: seconds)
+    }
+
+    /// Whether vocaphone is on screen *and* has said so recently.
+    ///
+    /// The keyboard stamps this answer on every dictation, and "yes" is the one
+    /// answer that skips the swipe-back screen — so a flag left behind by a
+    /// process that died on screen used to hide that screen from every
+    /// dictation after it, until vocaphone happened to be opened again.
+    static func containingAppIsVerifiablyForeground(now: Date = Date()) -> Bool {
+        isVerifiablyForeground(
+            flag: containingAppIsForeground,
+            heartbeat: containingAppForegroundHeartbeat,
+            now: now
+        )
+    }
+
+    static func isVerifiablyForeground(flag: Bool, heartbeat: Date?, now: Date) -> Bool {
+        guard flag, let heartbeat else { return false }
+        let age = now.timeIntervalSince(heartbeat)
+        return age >= -1 && age <= containingAppForegroundHeartbeatMaximumAge
     }
 
     /// Set only after every required setup proof and the real keyboard practice

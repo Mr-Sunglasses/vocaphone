@@ -1149,7 +1149,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Dictating into vocaphone's own field means there is nowhere to swipe
         // back to; the app needs to know so it does not cover that field with
         // hand-off instructions.
-        record.startedInContainingApp = KeyboardPreferences.containingAppIsForeground
+        let inApp = KeyboardPreferences.containingAppIsVerifiablyForeground()
+        if !inApp, KeyboardPreferences.containingAppIsForeground {
+            DiagnosticLog.record(.handoffForegroundFlagStale)
+        }
+        record.startedInContainingApp = inApp
         let availability = try? store.loadQuickDictationAvailability()
         record.prefersQuickDictation = availability?.isReady() == true
         do {

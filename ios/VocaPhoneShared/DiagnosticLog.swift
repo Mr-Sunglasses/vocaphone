@@ -74,6 +74,14 @@ enum DiagnosticEvent: String, Codable, Sendable {
     /// document identifier. Without this line there is nothing to look at.
     case insertionSkipped
     case operationFailed
+    /// The keyboard found the "vocaphone is on screen" flag set with no recent
+    /// heartbeat behind it — left by a crash or a kill — and ignored it, so
+    /// the dictation still gets its swipe-back screen.
+    case handoffForegroundFlagStale
+    /// vocaphone claimed a keyboard request marked as dictation into its own
+    /// field, so no swipe-back screen was shown. Logged so a missing screen can
+    /// be told apart from one that was never asked for.
+    case handoffTreatedAsInApp
 }
 
 enum DiagnosticReason: String, Codable, Sendable {
