@@ -236,6 +236,7 @@ struct KeyboardSettingsView: View {
             previewSection
             languagesSection
             heightSection
+            feedbackSection
             suggestionsSection
             learningSection
             typingDetailSection
@@ -352,6 +353,22 @@ struct KeyboardSettingsView: View {
         }
     }
 
+    /// Its own section, near the top, under the name iOS gives the same switch
+    /// in Settings → General → Keyboard → Keyboard Feedback. Filed as the third
+    /// row of "More" it was a switch a tester looked for and did not find.
+    private var feedbackSection: some View {
+        Section {
+            Toggle(isOn: $typingHapticsEnabled) {
+                SettingLabel("Haptic feedback", detail: "A light tap as each key types.")
+            }
+        } header: {
+            Text("Feedback")
+        } footer: {
+            Text("Off by default, like the iPhone keyboard. Needs Full Access. "
+                + "Key clicks follow the iPhone's own Sound setting.")
+        }
+    }
+
     private var suggestionsSection: some View {
         Section {
             Toggle(isOn: $suggestionsEnabled) {
@@ -398,9 +415,6 @@ struct KeyboardSettingsView: View {
             }
             Toggle(isOn: $emojiSuggestionsEnabled) {
                 SettingLabel("Emoji suggestions", detail: "“happy” offers 😊.")
-            }
-            Toggle(isOn: $typingHapticsEnabled) {
-                SettingLabel("Typing haptics", detail: "Needs Full Access.")
             }
             Toggle(isOn: $swipeTypingEnabled) {
                 SettingLabel("Swipe to type", detail: "Slide from letter to letter.")

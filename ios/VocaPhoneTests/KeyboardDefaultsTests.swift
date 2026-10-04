@@ -6,20 +6,21 @@ import Testing
 @MainActor
 struct KeyboardDefaultsTests {
     @Test func typingAndDictationSwitchesStartOn() {
-        // The one exception: the suggestion row starts off.
-        #expect(!KeyboardDefaults.typingSuggestions)
+        #expect(KeyboardDefaults.typingSuggestions)
         #expect(KeyboardDefaults.autocorrect)
         #expect(KeyboardDefaults.nextWordPrediction)
         #expect(KeyboardDefaults.learnAsIType)
         #expect(KeyboardDefaults.smartPunctuation)
         #expect(KeyboardDefaults.emojiSuggestions)
-        #expect(KeyboardDefaults.typingHaptics)
         #expect(KeyboardDefaults.swipeTyping)
         #expect(KeyboardDefaults.spacebarCursor)
         #expect(KeyboardDefaults.numbersAsDigits)
         #expect(KeyboardDefaults.spokenEmoji)
         #expect(KeyboardDefaults.repairSpeech)
-        // A preview the finished text can differ from: asked for, not assumed.
+        // The exceptions. A buzz on every key is off, as the system
+        // keyboard's own Haptic switch ships off; and a preview the finished
+        // text can differ from is asked for, not assumed.
+        #expect(!KeyboardDefaults.typingHaptics)
         #expect(!KeyboardDefaults.liveWords)
     }
 

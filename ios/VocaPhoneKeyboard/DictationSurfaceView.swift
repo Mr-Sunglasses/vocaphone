@@ -460,6 +460,13 @@ enum CompactDashboardPage: Int, CaseIterable, Identifiable, Sendable {
 final class MeterState: ObservableObject {
     /// The last few seconds of measured levels, oldest first.
     @Published private(set) var levels: [Float] = []
+    /// Every level appended since the last ``clear()``, trimmed or not. The
+    /// bars play levels back one at a time, and this is how they tell the
+    /// levels they have already played from the ones that just arrived.
+    private(set) var appendedCount = 0
+    /// Bumped by ``clear()``, so the bars start a new session from nothing
+    /// rather than easing out of the last one.
+    private(set) var epoch = 0
 
     /// Enough for the bars on screen and a little history: a keyboard that has
     /// been recording for a minute must not be carrying a minute of numbers.
@@ -469,6 +476,7 @@ final class MeterState: ObservableObject {
         guard !newLevels.isEmpty else { return }
         var next = levels + newLevels
         if next.count > Self.capacity { next.removeFirst(next.count - Self.capacity) }
+        appendedCount += newLevels.count
         levels = next
     }
 
@@ -483,6 +491,8 @@ final class MeterState: ObservableObject {
     /// Starts again from nothing. Only a new session does this.
     func clear() {
         guard !levels.isEmpty else { return }
+        appendedCount = 0
+        epoch += 1
         levels = []
     }
 }
@@ -1928,42 +1938,42 @@ private struct GlassButtonModifier: ViewModifier {
     }
 }
 
-// MARK: - Live Waveform (9 Bars)
+// MARK: - Live Waveform
 
-/// Nine bars that breathe with the microphone.
+/// Fifteen bars that breathe with the microphone.
 ///
-/// **This is decoration, and deliberately so.** ``derivedHeights`` multiplies
-/// every level by a fixed envelope — 0.45 at the ends, 1.0 in the middle — so
-/// the row is always a spindle whatever is said into it. Speak at one steady
-/// volume and the outer bars still cannot rise past 45%: that shape is drawn,
-/// not measured.
+/// **The shape is decoration, and deliberately so.** Every level is multiplied
+/// by a fixed envelope — 0.45 at the ends, 1.0 in the middle — so the row is
+/// always a spindle whatever is said into it. A shaped ribbon that is obviously
+/// an ornament is honest in a way a fake meter is not; the line it must not
+/// cross is inventing audio. Every bar's height still comes from a level the
+/// microphone measured.
 ///
-/// It is left in on purpose. A shaped ribbon that is obviously an ornament is
-/// honest in a way a fake meter is not — Voicenotes ships the same thing, and
-/// nobody is misled, because nobody reads it as an instrument. The line it must
-/// not cross is *pretending*: the previous waveform invented three bars out of
-/// every four and presented them as the voice, and that is what read as slop.
-///
-/// The measurement it decorates is real and lives elsewhere: `AudioCapture-
-/// Pipeline` splits each quarter-second buffer into five, so twenty true levels
-/// a second reach this view, and the bars only move when audio does. Remove the
-/// envelope and this becomes a meter; keep it and it stays an ornament driven
-/// by real sound. Both are defensible. Silently drifting between them is not.
+/// **The motion is what makes it read as a voice.** Levels reach the keyboard
+/// in bursts — five at a time, four times a second, on the session poll — and
+/// the bars used to jump by five places on each burst and then stand still.
+/// That stop-start rhythm is what a tester called mechanical. ``MeterPlayback``
+/// releases the levels one at a time at the rate they were measured, and each
+/// bar follows its level with a quick rise and a slower fall, the way a needle
+/// does, drawn every frame rather than four times a second.
 struct LiveWaveformBars: View {
     @ObservedObject var state: MeterState
-    /// Recording is over: the bars keep their shape and stop reading levels.
-    /// Whether the recording is over. The bars stop moving with it, which they
-    /// do by themselves once no more levels arrive — this is what stops the
-    /// spring from animating the last arrival after the fact.
+    /// Whether the recording is over. The bars stop taking new levels and hold
+    /// the shape the voice left them in.
     let isHeld: Bool
     let tint: Color
 
-    private static let barCount = 15
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// A reference, not a value: the playback advances inside `Canvas`'s draw,
+    /// where writing to SwiftUI state would ask for another render.
+    @State private var playback = MeterPlayback.Box(barCount: Self.barCount)
+
+    static let barCount = 15
     private static let barWidth: CGFloat = 5
     private static let barSpacing: CGFloat = 5
-    private static let cornerRadius: CGFloat = 2.5
     private static let minHeight: CGFloat = 8
     private static let maxHeight: CGFloat = 46
+    private static let width = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing
 
     init(state: MeterState, isHeld: Bool, tint: Color) {
         self.state = state
@@ -1972,46 +1982,157 @@ struct LiveWaveformBars: View {
     }
 
     var body: some View {
-        // Once, not once per bar. `derivedHeights` allocates, sines and powers
-        // its way along the whole row; asking each of the fifteen bars for its
-        // own height ran all of that fifteen times a frame, and once more for
-        // the animation to compare against.
-        let heights = derivedHeights
-        return HStack(spacing: Self.barSpacing) {
-            ForEach(Array(heights.enumerated()), id: \.offset) { _, height in
-                RoundedRectangle(cornerRadius: Self.cornerRadius)
-                    .fill(tint)
-                    .frame(width: Self.barWidth, height: height)
+        // Reduce Motion keeps the bars still between bursts — they update when
+        // levels arrive, without easing — so it needs no clock of its own.
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: isHeld || reduceMotion)) { context in
+            Canvas { graphics, size in
+                let fractions = playback.value.advance(
+                    to: context.date.timeIntervalSinceReferenceDate,
+                    levels: state.levels,
+                    appendedCount: state.appendedCount,
+                    epoch: state.epoch,
+                    isHeld: isHeld,
+                    reduceMotion: reduceMotion
+                )
+                for (index, fraction) in fractions.enumerated() {
+                    let height = Self.minHeight + (Self.maxHeight - Self.minHeight) * fraction
+                    let bar = CGRect(
+                        x: CGFloat(index) * (Self.barWidth + Self.barSpacing),
+                        y: (size.height - height) / 2,
+                        width: Self.barWidth,
+                        height: height
+                    )
+                    graphics.fill(Capsule().path(in: bar), with: .color(tint))
+                }
             }
         }
-        .animation(isHeld ? nil : .spring(response: 0.18, dampingFraction: 0.75), value: heights)
+        .frame(width: Self.width, height: Self.maxHeight)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Turns bursts of measured levels into a steady stream, and a stream into
+/// motion. Pure, so the rhythm can be tested without a display.
+struct MeterPlayback {
+    /// Twenty levels a second, the rate ``AudioCapturePipeline`` measures them.
+    static let releaseInterval: TimeInterval = 1.0 / 20
+    /// The most the bars may trail the voice, in levels. Past this a stalled
+    /// poll has left a backlog, and catching up beats showing old audio.
+    static let maximumBacklog = 8
+    /// How fast a bar rises to a louder level and falls from it. Rising fast
+    /// keeps a syllable's onset on the beat; falling slowly is what joins one
+    /// level to the next instead of stepping between them.
+    static let riseTime: TimeInterval = 0.045
+    static let fallTime: TimeInterval = 0.14
+
+    final class Box {
+        var value: MeterPlayback
+        init(barCount: Int) { value = MeterPlayback(barCount: barCount) }
     }
 
-    private var derivedHeights: [CGFloat] {
-        // The envelope, stretched across however many bars there are rather
-        // than written out by hand: adding bars used to mean editing a literal
-        // and getting the shape subtly wrong.
-        let weights: [CGFloat] = (0..<Self.barCount).map { index in
-            let position = CGFloat(index) / CGFloat(max(Self.barCount - 1, 1))
+    let barCount: Int
+    /// What each bar is drawing, as a share of its range, leading bar first.
+    private(set) var display: [CGFloat]
+    /// The levels the bars are heading for, oldest first.
+    private(set) var released: [CGFloat]
+    private(set) var queue: [CGFloat] = []
+    private var consumed = 0
+    private var epoch: Int?
+    private var lastTime: TimeInterval?
+    private var releaseClock: TimeInterval = 0
+    private let envelope: [CGFloat]
+
+    init(barCount: Int) {
+        self.barCount = barCount
+        display = Array(repeating: 0, count: barCount)
+        released = Array(repeating: 0, count: barCount)
+        envelope = (0..<barCount).map { index in
+            let position = CGFloat(index) / CGFloat(max(barCount - 1, 1))
             return 0.45 + 0.55 * sin(position * .pi)
         }
-        // Held means the recording is over and the bars stop *reading* new
-        // levels — not that there are none. Handing this an empty array flattened
-        // the whole waveform to its minimum the instant somebody stopped
-        // speaking, which is the opposite of keeping the shape it ended on.
-        let recent = Array(state.levels.suffix(Self.barCount))
-        let baseLevel: CGFloat = recent.isEmpty ? 0 : CGFloat(recent.reduce(0, +) / Float(recent.count))
-
-        return (0..<Self.barCount).map { i in
-            let sample = i < recent.count ? CGFloat(Array(recent)[i]) : baseLevel
-            // Speech at a normal distance sits low in the 0-1 range, so a
-            // straight mapping leaves the row nearly flat until somebody
-            // shouts. The curve lifts the quiet end and leaves the loud end
-            // where it is.
-            let effective = pow(max(sample, baseLevel * 0.7), 0.55)
-            let rawHeight = Self.minHeight + (Self.maxHeight - Self.minHeight) * effective * weights[i]
-            return min(max(rawHeight, Self.minHeight), Self.maxHeight)
-        }
     }
 
+    /// Moves the bars on to `now` and returns each bar's height as a share of
+    /// its range.
+    mutating func advance(
+        to now: TimeInterval,
+        levels: [Float],
+        appendedCount: Int,
+        epoch: Int,
+        isHeld: Bool,
+        reduceMotion: Bool
+    ) -> [CGFloat] {
+        if self.epoch != epoch || appendedCount < consumed {
+            // A new session, or a keyboard that has just appeared over one
+            // already running: start from the latest levels, not by replaying
+            // three seconds of somebody's sentence.
+            self.epoch = epoch
+            let recent = levels.suffix(barCount).map { CGFloat($0) }
+            released = Array(repeating: 0, count: barCount - recent.count) + recent
+            display = shaped(released)
+            queue = []
+            consumed = appendedCount
+            // Primed, so the first level of the next burst plays on arrival.
+            releaseClock = Self.releaseInterval
+        }
+
+        let unseen = appendedCount - consumed
+        consumed = appendedCount
+        if unseen > 0 {
+            queue.append(contentsOf: levels.suffix(min(unseen, levels.count)).map { CGFloat($0) })
+        }
+        let elapsed = lastTime.map { min(max(now - $0, 0), 0.1) } ?? 0
+        lastTime = now
+
+        if isHeld || reduceMotion {
+            // Held: the recording is over, and the shape it holds has to be its
+            // ending — so every level already measured lands now, rather than
+            // being dropped and leaving the bars frozen on an earlier syllable.
+            // Reduce Motion: no motion of its own, so each level lands at once.
+            while !queue.isEmpty { release(queue.removeFirst()) }
+            display = shaped(released)
+            return display
+        } else {
+            // Trimmed only while playing live. A held row shows every level it
+            // was given, so its ending is continuous rather than the last few
+            // levels spliced onto older ones.
+            if queue.count > Self.maximumBacklog {
+                queue.removeFirst(queue.count - Self.maximumBacklog)
+            }
+            // Slightly faster than real time while behind, so a late burst is
+            // absorbed over a beat rather than leaving the bars a burst behind.
+            let interval = queue.count > 5 ? Self.releaseInterval * 0.8 : Self.releaseInterval
+            releaseClock += elapsed
+            while releaseClock >= interval, !queue.isEmpty {
+                releaseClock -= interval
+                release(queue.removeFirst())
+            }
+            // Waiting on the next burst: the first level of it plays the moment
+            // it arrives instead of a whole interval later, and idle time is
+            // not banked into a sprint through it.
+            if queue.isEmpty { releaseClock = min(releaseClock, interval) }
+        }
+
+        let targets = shaped(released)
+        for index in display.indices {
+            let target = targets[index]
+            let time = target > display[index] ? Self.riseTime : Self.fallTime
+            display[index] += (target - display[index]) * CGFloat(1 - exp(-elapsed / time))
+        }
+        return display
+    }
+
+    private mutating func release(_ level: CGFloat) {
+        released.removeFirst()
+        released.append(min(max(level, 0), 1))
+    }
+
+    /// Speech at a normal distance sits low in the 0-1 range, so a straight
+    /// mapping leaves the row nearly flat until somebody shouts. The curve lifts
+    /// the quiet end and leaves the loud end where it is.
+    private func shaped(_ levels: [CGFloat]) -> [CGFloat] {
+        levels.enumerated().map { index, level in
+            min(pow(level, 0.55) * envelope[index], 1)
+        }
+    }
 }

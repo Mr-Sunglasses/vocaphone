@@ -238,13 +238,14 @@ enum SettingsHelp {
                     + "word has an obvious one — “happy” offers 😊 and “sad” offers "
                     + "😢. Tap the emoji before adding a space to replace the word. "
                     + "Words without an obvious emoji get none.",
-                "Typing haptics are off by default. Keyboard clicks follow the "
-                    + "iPhone's Keyboard Clicks setting. When enabled, custom haptics "
-                    + "confirm committed typing and occasional keyboard actions.",
-                "Typing haptics also need Full Access. Without it iOS gives the "
+                "Haptic feedback is off by default, as it is on the iPhone keyboard. "
+                    + "Key clicks follow the iPhone's Keyboard Clicks setting. When "
+                    + "enabled, a light tap confirms each key that types and the "
+                    + "occasional keyboard action.",
+                "Haptic feedback also needs Full Access. Without it iOS gives the "
                     + "keyboard no way to reach the Taptic Engine, and the switch does "
                     + "nothing. Keyboard clicks are unaffected.",
-                "Swipe to type is new and off by default. Slide from letter to letter "
+                "Swipe to type is on by default. Slide from letter to letter "
                     + "without lifting; alternatives appear in the suggestion row.",
                 "Space bar cursor: hold the space bar, then slide to move the cursor. "
                     + "With two keyboard languages, a swipe across it switches "

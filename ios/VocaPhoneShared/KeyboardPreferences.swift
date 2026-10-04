@@ -41,15 +41,19 @@ enum TypingHapticStyle: String, CaseIterable, Identifiable, Sendable {
 /// keyboard that behaves as on is a switch that lies. `KeyboardDefaultsTests`
 /// pins the values.
 enum KeyboardDefaults {
-    /// Off: the row above the keys starts empty. Autocorrect and prediction
-    /// keep their own switches on, and wake up with it.
-    static let typingSuggestions = false
+    /// On, like the system keyboard. Autocorrect only runs while the row is
+    /// showing — it is where a correction is announced before it lands — so a
+    /// row that starts off is an autocorrect that starts off, and a tester's
+    /// every typo stayed in the text.
+    static let typingSuggestions = true
     static let autocorrect = true
     static let nextWordPrediction = true
     static let learnAsIType = true
     static let smartPunctuation = true
     static let emojiSuggestions = true
-    static let typingHaptics = true
+    /// Off, like the system keyboard's own Haptic switch, which iOS ships off.
+    /// A keyboard cannot read that switch, so it matches its default instead.
+    static let typingHaptics = false
     static let swipeTyping = true
     static let spacebarCursor = true
     static let numbersAsDigits = true
@@ -742,8 +746,8 @@ enum KeyboardPreferences {
         set { defaults?.set(newValue, forKey: emojiSuggestionsKey) }
     }
 
-    /// Per-key haptics, on by default: the system keyboard taps back, and a
-    /// keyboard that does not feels dead under the thumb. They still need Full
+    /// Per-key haptics, off by default like the system keyboard's own Haptic
+    /// switch — see ``KeyboardDefaults/typingHaptics``. They also need Full
     /// Access; without it the standard input click is what iOS Keyboard Clicks
     /// gives.
     static var typingHapticsEnabled: Bool {

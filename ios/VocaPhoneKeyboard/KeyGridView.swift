@@ -107,8 +107,26 @@ final class KeyGridView: UIView {
     }
 
     var plane: KeyPlane = .letters {
-        didSet { if plane != oldValue { activatePlane() } }
+        didSet {
+            guard plane != oldValue else { return }
+            typedOnCurrentPlane = false
+            activatePlane()
+        }
     }
+
+    /// The plane this field opens on. Only a field that opens on letters falls
+    /// back to them after a space: a `.numbersAndPunctuation` field asked for
+    /// the numbers, and sending it to letters would undo what it asked for.
+    var homePlane: KeyPlane = .letters
+
+    /// Whether anything has been typed since the plane last changed. A space
+    /// tapped straight after `123` is a space on purpose, and stays there.
+    private var typedOnCurrentPlane = false
+    /// Where a finished batch of touches should leave the grid. Applied after
+    /// the batch, for the same reason as a slide's restored plane. Only ever
+    /// set, never cleared, within a batch: a digit lifting in the same event as
+    /// the space before it must not cancel that space's return to letters.
+    private var pendingPlaneReturn: KeyPlane?
 
     /// Which letters are under the fingers. Changing it swaps the three letter
     /// rows and leaves every other plane alone — the numbers and the symbols
@@ -1203,7 +1221,37 @@ final class KeyGridView: UIView {
             // from; lifting on the plane key itself commits nothing and stays.
             if didCommit, let origin = item.planeToRestore { planeToRestore = origin }
         }
-        if let planeToRestore { plane = planeToRestore }
+        endBatch(restoring: planeToRestore)
+    }
+
+    /// Settles the plane once every touch in a batch has been read. Not private,
+    /// so a test can lift two fingers together without a real `UITouch`.
+    func endBatch(restoring planeToRestore: KeyPlane? = nil) {
+        // The space's return outranks a slide's restore: a slide off the
+        // symbols key that types a digit while another finger types a space
+        // would otherwise put the next word on the symbols plane.
+        if let target = pendingPlaneReturn ?? planeToRestore { plane = target }
+        pendingPlaneReturn = nil
+    }
+
+    /// The plane the system keyboard falls back to after `text` is typed on
+    /// `plane`, or `nil` to stay.
+    ///
+    /// iOS treats the numbers and symbols planes as a detour from letters: a
+    /// space after "5" or "$20" returns to letters, and so does an apostrophe,
+    /// because "don't" is the only reason to fetch one. Staying put left the
+    /// next word typed as `-/:;()` by anyone whose hands expect the system's
+    /// behaviour.
+    static func planeAfterCommit(
+        text: String,
+        plane: KeyPlane,
+        homePlane: KeyPlane,
+        typedOnPlane: Bool
+    ) -> KeyPlane? {
+        guard homePlane == .letters, plane == .numbers || plane == .symbols else { return nil }
+        if text == " " { return typedOnPlane ? .letters : nil }
+        if text == "'" || text == "\u{2019}" { return .letters }
+        return nil
     }
 
     /// Whether lifting a spacebar finger types a space.
@@ -1235,11 +1283,18 @@ final class KeyGridView: UIView {
             // Also what ends a slide off Shift: one capital, then back to
             // lowercase. A locked Shift is a deliberate state and outranks it.
             if shiftState == .on { shiftState = .off }
+            if let next = Self.planeAfterCommit(
+                text: text, plane: plane, homePlane: homePlane, typedOnPlane: typedOnCurrentPlane
+            ) { pendingPlaneReturn = next }
+            typedOnCurrentPlane = true
             return true
         case .space:
             recordTyping(isLetter: false)
             feedback.textCommitted()
             delegate?.keyGrid(self, didProduce: .space)
+            if let next = Self.planeAfterCommit(
+                text: " ", plane: plane, homePlane: homePlane, typedOnPlane: typedOnCurrentPlane
+            ) { pendingPlaneReturn = next }
             return true
         case .newline:
             // A field that asked for `enablesReturnKeyAutomatically` has said

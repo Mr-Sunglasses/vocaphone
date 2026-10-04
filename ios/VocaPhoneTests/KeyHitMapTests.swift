@@ -389,6 +389,40 @@ struct KeyHitMapTests {
         #expect(grid.shiftState == .locked)
     }
 
+    /// Two fingers lifting together — a space, then a digit in the same event —
+    /// still leave the numbers plane. The digit must not cancel the space.
+    @Test func aSpaceLiftingWithADigitStillReturnsToLetters() throws {
+        let delegate = KeyGridDelegateSpy()
+        let grid = Self.makeGrid(feedback: KeyboardFeedbackSpy(), delegate: delegate)
+        grid.plane = .numbers
+
+        let five = try #require(grid.keyViews.first { $0.spec.cap == KeyCap.character("5") })
+        let space = try #require(grid.keyViews.first { $0.spec.cap == KeyCap.space })
+        #expect(grid.completeKeyInteraction(five, shouldCommit: true))
+        grid.endBatch()
+        #expect(grid.plane == .numbers)
+
+        #expect(grid.completeKeyInteraction(space, shouldCommit: true))
+        let six = try #require(grid.keyViews.first { $0.spec.cap == KeyCap.character("6") })
+        #expect(grid.completeKeyInteraction(six, shouldCommit: true))
+        grid.endBatch()
+        #expect(grid.plane == .letters)
+    }
+
+    /// A slide off the symbols key that types a digit, lifting with a space:
+    /// the space's return to letters wins over the slide's restore.
+    @Test func aSpaceOutranksASlidesRestore() throws {
+        let grid = Self.makeGrid(feedback: KeyboardFeedbackSpy(), delegate: KeyGridDelegateSpy())
+        grid.plane = .numbers
+        let five = try #require(grid.keyViews.first { $0.spec.cap == KeyCap.character("5") })
+        #expect(grid.completeKeyInteraction(five, shouldCommit: true))
+        grid.endBatch()
+        let space = try #require(grid.keyViews.first { $0.spec.cap == KeyCap.space })
+        #expect(grid.completeKeyInteraction(space, shouldCommit: true))
+        grid.endBatch(restoring: .symbols)
+        #expect(grid.plane == .letters)
+    }
+
     private static func makeGrid(
         feedback: KeyboardFeedbackSpy,
         delegate: KeyGridDelegateSpy

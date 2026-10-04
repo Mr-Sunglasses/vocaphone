@@ -2131,7 +2131,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // The plane belongs to the field, not to wherever the last one left it.
         // A phone-number field has to arrive on its keypad, and it has nowhere
         // else to go once it is there.
-        keyGrid.plane = Self.initialPlane(for: keyboardType)
+        keyGrid.homePlane = Self.initialPlane(for: keyboardType)
+        keyGrid.plane = keyGrid.homePlane
         updateReturnKeyEnablement()
         applyTheme()
         // A returning keyboard may already be at the end of "happy". Restore
