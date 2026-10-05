@@ -11,6 +11,8 @@ struct KeyboardHandoffView: View {
 
     let record: SessionRecord
     let presentation: KeyboardHandoffPresentation
+    /// Whether the Settings sheet is drawn over this screen.
+    var isCovered = false
     /// Bumped each time the swipe-back screen is actually seen: on appearing
     /// while vocaphone is on screen, and on vocaphone coming on screen with it.
     @State private var arrivals = 0
@@ -37,7 +39,8 @@ struct KeyboardHandoffView: View {
         SwipeBackScreen(
             title: presentation.title,
             detail: presentation.detail,
-            reduceMotion: reduceMotion
+            reduceMotion: reduceMotion,
+            isCovered: isCovered
         )
         // Same picture from launching through recording. Without this the
         // state change remounts the animation, which is the hitch after the

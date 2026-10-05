@@ -1956,6 +1956,8 @@ private struct GlassButtonModifier: ViewModifier {
 /// releases the levels one at a time at the rate they were measured, and each
 /// bar follows its level with a quick rise and a slower fall, the way a needle
 /// does, drawn every frame rather than four times a second.
+///
+/// **The frames come from a clock this keyboard owns.** See ``LiveWaveformView``.
 struct LiveWaveformBars: View {
     @ObservedObject var state: MeterState
     /// Whether the recording is over. The bars stop taking new levels and hold
@@ -1964,16 +1966,8 @@ struct LiveWaveformBars: View {
     let tint: Color
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// A reference, not a value: the playback advances inside `Canvas`'s draw,
-    /// where writing to SwiftUI state would ask for another render.
-    @State private var playback = MeterPlayback.Box(barCount: Self.barCount)
 
     static let barCount = 15
-    private static let barWidth: CGFloat = 5
-    private static let barSpacing: CGFloat = 5
-    private static let minHeight: CGFloat = 8
-    private static let maxHeight: CGFloat = 46
-    private static let width = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing
 
     init(state: MeterState, isHeld: Bool, tint: Color) {
         self.state = state
@@ -1982,32 +1976,203 @@ struct LiveWaveformBars: View {
     }
 
     var body: some View {
-        // Reduce Motion keeps the bars still between bursts — they update when
-        // levels arrive, without easing — so it needs no clock of its own.
-        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: isHeld || reduceMotion)) { context in
-            Canvas { graphics, size in
-                let fractions = playback.value.advance(
-                    to: context.date.timeIntervalSinceReferenceDate,
-                    levels: state.levels,
-                    appendedCount: state.appendedCount,
-                    epoch: state.epoch,
-                    isHeld: isHeld,
-                    reduceMotion: reduceMotion
-                )
-                for (index, fraction) in fractions.enumerated() {
-                    let height = Self.minHeight + (Self.maxHeight - Self.minHeight) * fraction
-                    let bar = CGRect(
-                        x: CGFloat(index) * (Self.barWidth + Self.barSpacing),
-                        y: (size.height - height) / 2,
-                        width: Self.barWidth,
-                        height: height
-                    )
-                    graphics.fill(Capsule().path(in: bar), with: .color(tint))
-                }
-            }
-        }
-        .frame(width: Self.width, height: Self.maxHeight)
+        LiveWaveformRepresentable(
+            input: LiveWaveformView.Input(
+                levels: state.levels,
+                appendedCount: state.appendedCount,
+                epoch: state.epoch,
+                isHeld: isHeld,
+                reduceMotion: reduceMotion
+            ),
+            tint: UIColor(tint)
+        )
+        .frame(width: LiveWaveformView.width(barCount: Self.barCount), height: LiveWaveformView.maxHeight)
         .accessibilityHidden(true)
+    }
+}
+
+private struct LiveWaveformRepresentable: UIViewRepresentable {
+    let input: LiveWaveformView.Input
+    let tint: UIColor
+
+    func makeUIView(context: Context) -> LiveWaveformView {
+        LiveWaveformView(barCount: LiveWaveformBars.barCount)
+    }
+
+    func updateUIView(_ view: LiveWaveformView, context: Context) {
+        view.tint = tint
+        view.update(input)
+    }
+
+    static func dismantleUIView(_ view: LiveWaveformView, coordinator: ()) {
+        view.stopClock()
+    }
+}
+
+/// The bars themselves: one layer each, moved by a display link the view
+/// starts and stops itself.
+///
+/// They were a `Canvas` inside a `TimelineView`, and nothing but SwiftUI's
+/// clock moved them: a level arriving between ticks was queued for a frame
+/// that only that clock could draw. The clock is created stopped — the bars
+/// are held while the session starts — and a keyboard coming back from
+/// vocaphone sometimes showed the first burst and then stood still for the
+/// whole recording. Here the link runs whenever the view is in a window and
+/// playing, and levels that arrive when no frame has been drawn for a while
+/// land on the spot: late, if something stops the frames, but never frozen.
+final class LiveWaveformView: UIView {
+    struct Input: Equatable {
+        var levels: [Float]
+        var appendedCount: Int
+        var epoch: Int
+        var isHeld: Bool
+        var reduceMotion: Bool
+    }
+
+    static let barWidth: CGFloat = 5
+    static let barSpacing: CGFloat = 5
+    static let minHeight: CGFloat = 8
+    static let maxHeight: CGFloat = 46
+    /// How long without a frame before arriving levels stop waiting for one.
+    /// Several frames at the slowest rate the link may run, and less than the
+    /// quarter second between bursts, so a stopped clock costs one burst of
+    /// smoothness and not the waveform.
+    static let stalledClockInterval: CFTimeInterval = 0.2
+
+    static func width(barCount: Int) -> CGFloat {
+        CGFloat(barCount) * barWidth + CGFloat(max(barCount - 1, 0)) * barSpacing
+    }
+
+    var tint: UIColor = .clear {
+        didSet {
+            guard tint != oldValue else { return }
+            let color = tint.cgColor
+            for bar in bars { bar.backgroundColor = color }
+        }
+    }
+
+    /// Each bar's height as a share of its range, as last drawn.
+    private(set) var shown: [CGFloat]
+    private var playback: MeterPlayback
+    private var input = Input(levels: [], appendedCount: 0, epoch: 0, isHeld: true, reduceMotion: false)
+    private let bars: [CALayer]
+    private var displayLink: CADisplayLink?
+    private var lastFrameAt: CFTimeInterval = 0
+
+    init(barCount: Int) {
+        playback = MeterPlayback(barCount: barCount)
+        shown = Array(repeating: 0, count: barCount)
+        bars = (0..<barCount).map { _ in
+            let bar = CALayer()
+            bar.cornerRadius = Self.barWidth / 2
+            return bar
+        }
+        super.init(frame: CGRect(
+            x: 0, y: 0, width: Self.width(barCount: barCount), height: Self.maxHeight
+        ))
+        isOpaque = false
+        isUserInteractionEnabled = false
+        accessibilityElementsHidden = true
+        for bar in bars { layer.addSublayer(bar) }
+        place(shown)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// What SwiftUI knows: the levels so far, and whether to play them.
+    ///
+    /// `now` is a parameter so a test can stand in for the clock.
+    func update(_ input: Input, now: CFTimeInterval = CACurrentMediaTime()) {
+        self.input = input
+        updateClock(now: now)
+        if Self.landsOnArrival(clockIsRunning: displayLink != nil, lastFrameAt: lastFrameAt, now: now) {
+            render(at: now, landing: true)
+        }
+    }
+
+    /// Whether levels arriving `now` are drawn at once instead of by the next
+    /// frame. Waiting is only right when a frame is coming: without a running
+    /// link — held, Reduce Motion, not in a window — or with one that has
+    /// stopped delivering, they land now.
+    static func landsOnArrival(
+        clockIsRunning: Bool,
+        lastFrameAt: CFTimeInterval,
+        now: CFTimeInterval
+    ) -> Bool {
+        !clockIsRunning || now - lastFrameAt > stalledClockInterval
+    }
+
+    func stopClock() {
+        displayLink?.invalidate()
+        displayLink = nil
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateClock(now: CACurrentMediaTime())
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        place(shown)
+    }
+
+    /// A display link retains its target and the run loop retains the link,
+    /// so leaving the window, holding and dismantling all tear it down.
+    private func updateClock(now: CFTimeInterval) {
+        guard window != nil, !input.isHeld, !input.reduceMotion else {
+            stopClock()
+            return
+        }
+        guard displayLink == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(step))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 60, preferred: 60)
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+        // A fresh link has not had the chance to draw yet; give it one
+        // interval before an arriving burst decides it has stopped.
+        lastFrameAt = now
+    }
+
+    @objc private func step(_ link: CADisplayLink) {
+        lastFrameAt = CACurrentMediaTime()
+        render(at: link.targetTimestamp, landing: false)
+    }
+
+    private func render(at time: CFTimeInterval, landing: Bool) {
+        // Landing is the playback's Reduce Motion path: every level already
+        // measured is placed at once, with no easing towards it.
+        let fractions = playback.advance(
+            to: time,
+            levels: input.levels,
+            appendedCount: input.appendedCount,
+            epoch: input.epoch,
+            isHeld: input.isHeld,
+            reduceMotion: input.reduceMotion || landing
+        )
+        guard fractions != shown else { return }
+        shown = fractions
+        place(fractions)
+    }
+
+    private func place(_ fractions: [CGFloat]) {
+        let height = bounds.height > 0 ? bounds.height : Self.maxHeight
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for (index, bar) in bars.enumerated() {
+            let fraction = index < fractions.count ? fractions[index] : 0
+            let barHeight = Self.minHeight + (Self.maxHeight - Self.minHeight) * fraction
+            bar.frame = CGRect(
+                x: CGFloat(index) * (Self.barWidth + Self.barSpacing),
+                y: (height - barHeight) / 2,
+                width: Self.barWidth,
+                height: barHeight
+            )
+        }
+        CATransaction.commit()
     }
 }
 
@@ -2024,11 +2189,6 @@ struct MeterPlayback {
     /// level to the next instead of stepping between them.
     static let riseTime: TimeInterval = 0.045
     static let fallTime: TimeInterval = 0.14
-
-    final class Box {
-        var value: MeterPlayback
-        init(barCount: Int) { value = MeterPlayback(barCount: barCount) }
-    }
 
     let barCount: Int
     /// What each bar is drawing, as a share of its range, leading bar first.

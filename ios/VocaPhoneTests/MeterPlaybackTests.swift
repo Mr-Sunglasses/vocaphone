@@ -1,5 +1,6 @@
 import CoreGraphics
 import Testing
+import UIKit
 
 /// The waveform's rhythm. Levels arrive five at a time, four times a second;
 /// what a tester called mechanical was the bars moving on that beat.
@@ -99,5 +100,51 @@ struct MeterPlaybackTests {
         )
         #expect(playback.queue.isEmpty)
         #expect(shown[14] > 0.4)
+    }
+}
+
+/// The view that draws the bars. What matters is that it cannot freeze: the
+/// waveform that "did not load" was a row whose clock never started, drawing
+/// the first burst and nothing after it.
+@MainActor
+struct LiveWaveformViewTests {
+    private static let burst: [Float] = [0.2, 0.4, 0.6, 0.8, 1.0]
+
+    private static func input(levels: [Float], appended: Int, isHeld: Bool = false) -> LiveWaveformView.Input {
+        LiveWaveformView.Input(
+            levels: levels, appendedCount: appended, epoch: 0, isHeld: isHeld, reduceMotion: false
+        )
+    }
+
+    @Test func levelsMoveTheBarsWithNoClockRunning() {
+        // Not in a window, so no display link: the case a stopped clock leaves.
+        let view = LiveWaveformView(barCount: 15)
+        view.update(Self.input(levels: [], appended: 0), now: 0)
+        #expect(view.shown.allSatisfy { $0 == 0 })
+
+        view.update(Self.input(levels: Self.burst, appended: 5), now: 0.25)
+        #expect(view.shown[14] > 0.4)
+
+        let next = Self.burst + [0.1, 0.1, 0.1, 0.1, 0.1]
+        view.update(Self.input(levels: next, appended: 10), now: 0.5)
+        #expect(view.shown[14] < 0.2)
+    }
+
+    @Test func heldBarsKeepTheShapeTheyEndedOn() {
+        let view = LiveWaveformView(barCount: 15)
+        view.update(Self.input(levels: Self.burst, appended: 5, isHeld: true), now: 0)
+        let ending = view.shown
+        view.update(Self.input(levels: Self.burst, appended: 5, isHeld: true), now: 1)
+        #expect(view.shown == ending)
+        #expect(ending[14] > 0.4)
+    }
+
+    @Test func arrivingLevelsWaitOnlyForAClockThatIsTicking() {
+        // Running, and drew a moment ago: the next frame plays the burst.
+        #expect(!LiveWaveformView.landsOnArrival(clockIsRunning: true, lastFrameAt: 10, now: 10.02))
+        // Running, but no frame for longer than a burst takes to arrive.
+        #expect(LiveWaveformView.landsOnArrival(clockIsRunning: true, lastFrameAt: 10, now: 10.5))
+        // Not running at all.
+        #expect(LiveWaveformView.landsOnArrival(clockIsRunning: false, lastFrameAt: 10, now: 10))
     }
 }

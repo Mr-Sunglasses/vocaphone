@@ -14,6 +14,10 @@ struct SwipeBackScreen: View {
     var title = "Swipe back to your app"
     var detail = "Recording follows you there."
     let reduceMotion: Bool
+    /// Something is drawn over the screen — the Settings sheet the keyboard's
+    /// menu opens. The demo waits for it to go, like it waits for vocaphone to
+    /// come on screen.
+    var isCovered = false
 
     var body: some View {
         ZStack {
@@ -24,7 +28,7 @@ struct SwipeBackScreen: View {
                 VStack(spacing: VocaMetrics.section) {
                     Spacer(minLength: 0)
 
-                    SwipeBackPhone(reduceMotion: reduceMotion)
+                    SwipeBackPhone(reduceMotion: reduceMotion, isCovered: isCovered)
                         .frame(maxWidth: 340)
                         .frame(height: 330)
 
@@ -58,6 +62,8 @@ struct SwipeBackScreen: View {
 /// the middle of a phone reads as a drawing mistake.
 private struct SwipeBackPhone: View {
     let reduceMotion: Bool
+    let isCovered: Bool
+    @Environment(\.scenePhase) private var scenePhase
 
     /// 0 — vocaphone is on screen. 1 — the app the user came from is back, with
     /// the keyboard and the cursor still waiting in it.
@@ -125,7 +131,11 @@ private struct SwipeBackPhone: View {
             }
             .frame(width: width, height: proxy.size.height, alignment: .bottom)
         }
-        .task(id: reduceMotion) { await play() }
+        // Restarted when the screen can be seen — vocaphone on screen, nothing
+        // over it — so the first pass is one somebody sees. See `play()`.
+        .task(id: Playback(reduceMotion: reduceMotion, isVisible: isVisible)) {
+            await play()
+        }
         .accessibilityElement()
         .accessibilityLabel(
             "Animation. A finger swipes right along the bottom edge of a phone, "
@@ -192,12 +202,26 @@ private struct SwipeBackPhone: View {
             .opacity(touchOpacity)
     }
 
+    private struct Playback: Equatable {
+        let reduceMotion: Bool
+        let isVisible: Bool
+    }
+
+    private var isVisible: Bool { scenePhase == .active && !isCovered }
+
     private func play() async {
         guard !reduceMotion else {
             progress = 1
             touchOpacity = 0
             return
         }
+        // Only where it can be seen. The keyboard's request often reaches
+        // vocaphone while it is still coming up, or while a sheet is still
+        // over it, and the screen appears before anyone can see it: the first
+        // pass played to nobody, and the user arrived on a still picture — the
+        // gesture already over — until the loop came round again, by which
+        // time they had usually swiped back without it.
+        guard isVisible else { return }
 
         // The first pass starts with the screen. A lead-in is fine on the
         // repeats, when the user is watching a loop; on arrival it is dead time
