@@ -38,7 +38,7 @@ function androidInstallBlock(source) {
 const PLAY_LISTING =
   "https://play.google.com/store/apps/details?id=com.vocahq.vocaphone";
 const ANDROID_TAG =
-  "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.2";
+  "https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.3";
 
 function htmlBlock(source, pattern, label) {
   const match = source.match(pattern);
@@ -277,8 +277,8 @@ test("availability and install paths are honest", () => {
   assert.ok(faq.includes(PLAY_LISTING), "FAQ is missing the Google Play link");
 
   const androidCard = androidInstallBlock(html);
-  assert.match(androidCard, /<b>Latest<\/b><span>v0\.2\.2<\/span>/);
-  assert.match(androidCard, /sideload v0\.2\.2/);
+  assert.match(androidCard, /<b>Latest<\/b><span>v0\.2\.3<\/span>/);
+  assert.match(androidCard, /sideload v0\.2\.3/);
   const playHrefAt = androidCard.indexOf(PLAY_LISTING);
   const tagHrefAt = androidCard.indexOf(ANDROID_TAG);
   const checksumAt = androidCard.indexOf("SHA256SUMS.txt");

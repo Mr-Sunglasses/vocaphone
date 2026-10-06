@@ -41,7 +41,7 @@ copyleft that also covers modified versions offered as a network service.
 
 | Client | State |
 | --- | --- |
-| **Android** | On [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone) for Android 13+. [GitHub APK](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.1) if you prefer to sideload · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
+| **Android** | On [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone) for Android 13+. [GitHub APK](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.3) if you prefer to sideload · [vocaphone.vocahq.com](https://vocaphone.vocahq.com) |
 | **iOS** | Public TestFlight beta for iOS 17+ · [join](https://testflight.apple.com/join/wd85wQ3W) · or build from source (Mac, Xcode, signing team, physical iPhone) · [iPhone guide](https://vocaphone.vocahq.com/iphone/) |
 | **Gateway** | Optional. Self-host [VocaGateway](https://github.com/VocaHQ/vocagateway) on macOS/Linux or Docker when you want more models or shared compute |
 
@@ -106,7 +106,7 @@ microphone (and notifications if asked), then download an on-device
 speech-to-text model.
 
 Signed APKs are still on
-[GitHub Releases](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.1)
+[GitHub Releases](https://github.com/VocaHQ/vocaphone/releases/tag/android/v0.2.3)
 if you want to sideload.
 
 To build from source:
