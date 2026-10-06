@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.ui
 
+import com.vocahq.vocaphone.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -7,9 +8,25 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class OnboardingStageTest {
-    private val ready = SetupStatus(
-        microphone = true, notifications = true, keyboard = true, gatewayConfigured = true,
-    )
+    private val floating = BuildConfig.FLOATING_INPUT
+
+    /** A finished checklist for whichever input path this flavor ships. */
+    private val ready = if (floating) {
+        SetupStatus(
+            microphone = true, notifications = true, disclosureAccepted = true,
+            overlay = true, accessibility = true, gatewayConfigured = true,
+        )
+    } else {
+        SetupStatus(
+            microphone = true, notifications = true, keyboard = true, gatewayConfigured = true,
+        )
+    }
+
+    /** The input page this flavor lands a person on. */
+    private val inputStage =
+        if (floating) OnboardingStage.FLOATING_MIC else OnboardingStage.KEYBOARD
+
+    private val inputUnmet = if (floating) ready.copy(accessibility = false) else ready.copy(keyboard = false)
 
     // --- the rules the page used to be derived from, kept ------------------
 
@@ -18,13 +35,14 @@ class OnboardingStageTest {
         assertEquals(OnboardingStage.MODEL, OnboardingStage.firstUnmet(SetupStatus()))
         assertEquals(OnboardingStage.MICROPHONE, OnboardingStage.firstUnmet(SetupStatus(gatewayConfigured = true)))
         assertEquals(OnboardingStage.NOTIFICATIONS, OnboardingStage.firstUnmet(ready.copy(notifications = false)))
-        assertEquals(OnboardingStage.KEYBOARD, OnboardingStage.firstUnmet(ready.copy(keyboard = false)))
+        assertEquals(inputStage, OnboardingStage.firstUnmet(inputUnmet))
         assertEquals(OnboardingStage.READY, OnboardingStage.firstUnmet(ready))
     }
 
     @Test
     fun `enabled but unselected keyboard cannot advance`() {
         val status = ready.copy(keyboard = false, ime = ImeSetupStatus(enabled = true))
+        if (floating) return // the X build has no keyboard to select
         assertFalse(OnboardingStage.KEYBOARD.isSatisfied(status))
         assertEquals(OnboardingStage.KEYBOARD, OnboardingStage.firstUnmet(status))
     }
@@ -32,7 +50,7 @@ class OnboardingStageTest {
     @Test
     fun `revoking any requirement blocks completion and offers the right recovery page`() {
         val revoked = listOf(
-            ready.copy(keyboard = false) to OnboardingStage.KEYBOARD,
+            inputUnmet to inputStage,
             ready.copy(microphone = false) to OnboardingStage.MICROPHONE,
             ready.copy(notifications = false) to OnboardingStage.NOTIFICATIONS,
             ready.copy(gatewayConfigured = false) to OnboardingStage.MODEL,
@@ -48,11 +66,11 @@ class OnboardingStageTest {
     fun `back and forward preserve the ordered journey without granting readiness`() {
         assertEquals(OnboardingStage.WELCOME, OnboardingStage.WELCOME.previous())
         assertEquals(OnboardingStage.READY, OnboardingStage.READY.next())
-        OnboardingStage.entries
+        OnboardingStage.active()
             .filterNot { it == OnboardingStage.READY || it == OnboardingStage.KEYBOARD_READY || it == OnboardingStage.KEYBOARD }
             .forEach { page -> assertEquals(page, page.next().previous()) }
         // Pages that carry a requirement are not satisfied by an empty status.
-        OnboardingStage.entries.filter { it.step != null }
+        OnboardingStage.active().filter { it.steps.isNotEmpty() }
             .forEach { assertFalse(it.name, it.isSatisfied(SetupStatus())) }
     }
 
@@ -68,7 +86,7 @@ class OnboardingStageTest {
     @Test
     fun `continue stops at the next unmet requirement only`() {
         assertEquals(OnboardingStage.MICROPHONE, OnboardingStage.MODEL.advance(ready.copy(microphone = false)))
-        assertEquals(OnboardingStage.KEYBOARD, OnboardingStage.MODEL.advance(ready.copy(keyboard = false)))
+        assertEquals(inputStage, OnboardingStage.MODEL.advance(inputUnmet))
         assertEquals(OnboardingStage.NOTIFICATIONS, OnboardingStage.MICROPHONE.advance(ready.copy(notifications = false)))
     }
 
@@ -80,7 +98,7 @@ class OnboardingStageTest {
 
     @Test
     fun `continue never lands on the confirmation`() {
-        assertEquals(OnboardingStage.READY, OnboardingStage.KEYBOARD.advance(ready))
+        assertEquals(OnboardingStage.READY, inputStage.advance(ready))
     }
 
     /** No source page: the welcome goes straight to Choose a model, where a gateway is offered too. */
@@ -130,12 +148,14 @@ class OnboardingStageTest {
 
     @Test
     fun `the confirmation is never a landing page and back steps over it`() {
-        OnboardingStage.entries.forEach { saved ->
+        OnboardingStage.active().forEach { saved ->
             assertFalse(OnboardingStage.resume(saved, SetupStatus()) == OnboardingStage.KEYBOARD_READY)
             assertFalse(OnboardingStage.resume(saved, ready) == OnboardingStage.KEYBOARD_READY)
         }
-        assertEquals(OnboardingStage.KEYBOARD, OnboardingStage.READY.previous())
-        assertEquals(OnboardingStage.KEYBOARD, OnboardingStage.KEYBOARD_READY.previous())
+        assertEquals(inputStage, OnboardingStage.READY.previous())
+        if (!floating) {
+            assertEquals(OnboardingStage.KEYBOARD, OnboardingStage.KEYBOARD_READY.previous())
+        }
     }
 
     @Test

@@ -13,7 +13,8 @@ Android 13+ is on
 [Google Play](https://play.google.com/store/apps/details?id=com.vocahq.vocaphone).
 Signed APKs (and the full-flavor Play AAB) also ship from GitHub Releases.
 Maintainer Play steps: [docs/play-store.md](../docs/play-store.md).
-The shipped build does not request accessibility-service or overlay access.
+The shipped (full/fdroid) build does not request accessibility-service or
+overlay access; only the sideloaded `x` flavor does — see Build flavors.
 
 > Package name and application ID have been updated to `com.vocahq.vocaphone`;
 > `assembleFullDebug` writes `vocaphone-fullDebug.apk`.
@@ -53,17 +54,43 @@ stays at 36, which is what Play requires from 31 August 2026.
 
 ## Build flavors
 
-Every Gradle task name carries a flavor, because there are two:
+Every Gradle task name carries a flavor:
 
-| Flavor | Speech engines | Use it for |
-| --- | --- | --- |
-| `full` | whisper.cpp, plus sherpa-onnx via the prebuilt JNI libraries in `app/src/full/jniLibs` | Everyday development, GitHub beta releases, and the Play AAB |
-| `fdroid` | whisper.cpp only, compiled from `third_party/whisper.cpp` | F-Droid only (never upload this flavour to Play) |
+| Flavor | Primary input | Speech engines | Use it for |
+| --- | --- | --- | --- |
+| `full` | VocaPhone keyboard (IME) | whisper.cpp, plus sherpa-onnx via the prebuilt JNI libraries in `app/src/full/jniLibs` | Everyday development, GitHub beta releases, and the Play AAB |
+| `fdroid` | VocaPhone keyboard (IME) | whisper.cpp only, compiled from `third_party/whisper.cpp` | F-Droid only (never upload this flavour to Play) |
+| `x` | Floating mic bubble (overlay + accessibility) | same as `full` | Users who keep Gboard/SwiftKey/Samsung Keyboard and only want a floating dictate button |
 
 `full` is the default, so Android Studio selects it on import. The flavors differ
 only in whether the prebuilt sherpa-onnx libraries are present; shared code asks
 `LocalModelCatalog.sherpaAvailable` rather than assuming either way, and the
 sherpa models are hidden from the picker when the library is absent.
+
+### x: floating mic (VocaPhoneX)
+
+`x` is a sideload-only build (`applicationId` `com.vocahq.vocaphone.x`,
+label "VocaPhoneX") that ships the same backend — on-device model picker,
+gateway, language, style, snippets, history — but replaces the keyboard with a
+floating mic:
+
+- Focus an editable field in any app and a bubble appears on the screen edge.
+- Tap it to start dictating; tap again (or the ✓) to stop. The transcript is
+  written into the focused field through the accessibility service's
+  `ACTION_SET_TEXT`; the ✕ dismisses for the typing session (long-press
+  snoozes it). Hold the bubble to push-to-talk; drag to move it.
+- Required permissions are overlay ("display over other apps") and the
+  accessibility service, on top of the shared microphone one. Onboarding and
+  the setup checklist walk through both; Settings → Floating mic can open the
+  system pages again.
+- `BuildConfig.FLOATING_INPUT` gates every fork: the full/fdroid flavors still
+  behave exactly like the shipped build and never request overlay or
+  accessibility permissions.
+
+Build it with `./gradlew assembleXDebug`; the APK lands at
+`app/build/outputs/apk/x/debug/vocaphone-xDebug.apk`. The release workflow
+ships it as `vocaphone-x.apk` on the same `android/v*` tag as the keyboard
+APK.
 
 ## GitHub releases
 

@@ -72,6 +72,23 @@ android {
             isDefault = true
             buildConfigField("boolean", "SHERPA_ONNX", "true")
             buildConfigField("boolean", "TELEMETRY", "true")
+            buildConfigField("boolean", "FLOATING_INPUT", "false")
+            buildConfigField("String", "APTABASE_HOST", "\"$aptabaseHost\"")
+            buildConfigField("String", "APTABASE_KEY", "\"$aptabaseKey\"")
+        }
+        // The floating-mic variant: same dictation pipeline, same engines and
+        // same settings, but the VocaPhone keyboard is left out and text reaches
+        // other apps' fields through a display-over-other-apps bubble plus an
+        // accessibility service. It shares the prebuilt sherpa-onnx libraries
+        // from src/full/jniLibs, which the source set wiring below points at.
+        create("x") {
+            dimension = "distribution"
+            applicationIdSuffix = ".x"
+            // No versionNameSuffix: X ships on the same android/v* tag as the
+            // keyboard APK, so its versionName is the tag like every flavor.
+            buildConfigField("boolean", "SHERPA_ONNX", "true")
+            buildConfigField("boolean", "TELEMETRY", "true")
+            buildConfigField("boolean", "FLOATING_INPUT", "true")
             buildConfigField("String", "APTABASE_HOST", "\"$aptabaseHost\"")
             buildConfigField("String", "APTABASE_KEY", "\"$aptabaseKey\"")
         }
@@ -92,8 +109,17 @@ android {
             dimension = "distribution"
             buildConfigField("boolean", "SHERPA_ONNX", "false")
             buildConfigField("boolean", "TELEMETRY", "false")
+            buildConfigField("boolean", "FLOATING_INPUT", "false")
             buildConfigField("String", "APTABASE_HOST", "\"\"")
             buildConfigField("String", "APTABASE_KEY", "\"\"")
+        }
+    }
+
+    // x ships the same prebuilt sherpa-onnx JNI libraries as full, so its
+    // source set borrows full's jniLibs directory instead of keeping a copy.
+    sourceSets {
+        getByName("x") {
+            jniLibs.srcDir("src/full/jniLibs")
         }
     }
 

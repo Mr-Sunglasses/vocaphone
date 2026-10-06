@@ -105,6 +105,53 @@ class TextInsertionTest {
     }
 
     @Test
+    fun `a caret inside the span we just wrote is treated as the end`() {
+        // Tokenized fields (Messages' recipient line) republish a mid-field
+        // caret after our SET_TEXT; splicing there interleaves transcripts.
+        val existing = "Hello there. Hello there."
+        val lastInserted = " Hello there."
+        assertEquals(
+            existing.length to existing.length,
+            TextInsertion.trustedCaret(existing, 8, 8, lastInserted),
+        )
+    }
+
+    @Test
+    fun `a caret at the end is trusted even after our write`() {
+        val existing = "Hello there. Hello there."
+        assertEquals(
+            existing.length to existing.length,
+            TextInsertion.trustedCaret(existing, existing.length, existing.length, " Hello there."),
+        )
+    }
+
+    @Test
+    fun `a user range selection over our own text is always honored`() {
+        // Only a user can produce a range selection: dictating over it
+        // replaces the range, even while the field still ends with our write.
+        val existing = "Hello there. Hello there."
+        assertEquals(
+            5 to 12,
+            TextInsertion.trustedCaret(existing, 5, 12, " Hello there."),
+        )
+    }
+
+    @Test
+    fun `a real user caret is kept once the field stops ending with our text`() {
+        // The user typed or deleted after our insert: the tail no longer
+        // matches, so their mid-field caret is theirs, not bookkeeping.
+        val existing = "Hello there. Hello there.X"
+        assertEquals(
+            5 to 5,
+            TextInsertion.trustedCaret(existing, 5, 5, " Hello there."),
+        )
+        assertEquals(
+            5 to 5,
+            TextInsertion.trustedCaret(existing, 5, 5, null),
+        )
+    }
+
+    @Test
     fun `undo removes the exact transcript that was written`() {
         val plan = TextInsertion.plan("Hello world", 5, 5, "there")!!
         assertEquals(

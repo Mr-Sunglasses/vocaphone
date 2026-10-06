@@ -1,5 +1,7 @@
 package com.vocahq.vocaphone.ui
 
+import com.vocahq.vocaphone.BuildConfig
+
 /**
  * Where a person is in first-run setup.
  *
@@ -16,20 +18,29 @@ package com.vocahq.vocaphone.ui
  * before.
  *
  * Order follows iOS: the big decision first, the download started early so it
- * overlaps the slow system-settings steps, and the keyboard — the step people
- * most often stall on — last, where a stall costs the least.
+ * overlaps the slow system-settings steps, and the input setup — the step
+ * people most often stall on — last, where a stall costs the least. The X build
+ * builds swap the keyboard pages for a single floating-mic page that carries
+ * the disclosure, overlay, and accessibility requirements; [active] is the
+ * page list the navigation helpers walk.
  */
 internal enum class OnboardingStage(
     val title: String,
     val detail: String,
-    val step: SetupStep?,
+    val steps: List<SetupStep>,
     /** Skip is one page forward and leaves the requirement unmet. */
     val allowsSkip: Boolean = false,
+    /** Whether the page belongs to the keyboard build, the X build, or both. */
+    private val path: Path = Path.BOTH,
 ) {
     WELCOME(
         "Dictate into any app",
-        "A keyboard that types what you say.",
-        step = null,
+        if (BuildConfig.FLOATING_INPUT) {
+            "A floating mic that types what you say."
+        } else {
+            "A keyboard that types what you say."
+        },
+        steps = emptyList(),
     ),
     /**
      * Also where a gateway is chosen. There is no separate source page: the
@@ -40,67 +51,100 @@ internal enum class OnboardingStage(
     MODEL(
         "Choose a model",
         "Matched to the languages and keyboards on this phone.",
-        step = SetupStep.GATEWAY,
+        steps = listOf(SetupStep.GATEWAY),
         allowsSkip = true,
     ),
     MICROPHONE(
         "Let your voice do the typing",
         "Allow microphone access so VocaPhone can hear your dictation.",
-        step = SetupStep.MICROPHONE,
+        steps = listOf(SetupStep.MICROPHONE),
     ),
     NOTIFICATIONS(
         "Know when you're recording",
         "Allow notifications to keep recording controls within reach.",
-        step = SetupStep.NOTIFICATIONS,
+        steps = listOf(SetupStep.NOTIFICATIONS),
     ),
     KEYBOARD(
         "Make room for your voice",
         "Enable VocaPhone and choose it as your keyboard.",
-        step = SetupStep.KEYBOARD,
+        steps = listOf(SetupStep.KEYBOARD),
+        path = Path.IME,
     ),
     /** A confirmation, shown for a moment when the keyboard lands. Never a landing page. */
     KEYBOARD_READY(
         "Keyboard ready",
         "",
-        step = null,
+        steps = emptyList(),
+        path = Path.IME,
+    ),
+    /**
+     * The X build's one input page: the accessibility disclosure, the overlay
+     * permission, and the accessibility service all live together because
+     * they are one permission trip out to system settings.
+     */
+    FLOATING_MIC(
+        "Dictate over your favorite keyboard",
+        "Allow VocaPhone to float a mic over other apps and insert your words.",
+        steps = listOf(SetupStep.DISCLOSURE, SetupStep.OVERLAY, SetupStep.ACCESSIBILITY),
+        path = Path.FLOATING,
     ),
     READY(
         "You're ready to dictate",
-        "Your keyboard, permissions, and speech-to-text source are ready.",
-        step = null,
+        if (BuildConfig.FLOATING_INPUT) {
+            "Your mic, permissions, and speech-to-text source are ready."
+        } else {
+            "Your keyboard, permissions, and speech-to-text source are ready."
+        },
+        steps = emptyList(),
     ),
     ;
+
+    private enum class Path { BOTH, IME, FLOATING }
+
+    private val inActivePath: Boolean
+        get() = when (path) {
+            Path.BOTH -> true
+            Path.IME -> !BuildConfig.FLOATING_INPUT
+            Path.FLOATING -> BuildConfig.FLOATING_INPUT
+        }
 
     /** True when nothing on this page is still wanted. Teaching and choice pages always pass. */
     fun isSatisfied(status: SetupStatus): Boolean = when (this) {
         READY -> status.isReadyToDictate
-        else -> step?.let(status::isSatisfied) ?: true
+        else -> steps.all(status::isSatisfied)
     }
 
     fun previous(): OnboardingStage {
+        val stages = active()
+        var target = stages[(stages.indexOf(this) - 1).coerceAtLeast(0)]
         // The confirmation is skipped over in both directions: it is a state,
         // not a room, and Back from the page after it should not replay it.
-        var target = entries[(ordinal - 1).coerceAtLeast(0)]
         if (target == KEYBOARD_READY) target = KEYBOARD
         return target
     }
 
-    fun next(): OnboardingStage = entries[(ordinal + 1).coerceAtMost(entries.lastIndex)]
+    fun next(): OnboardingStage {
+        val stages = active()
+        return stages[(stages.indexOf(this) + 1).coerceAtMost(stages.lastIndex)]
+    }
 
     fun advance(status: SetupStatus): OnboardingStage = resume(next(), status)
 
-    /** Thin top bar. Welcome is a sliver, each page fills it, the confirmation shares KEYBOARD's stop. */
+    /** Thin top bar. Welcome is a sliver, each page fills it, the confirmation shares its parent's stop. */
     val progress: Float
         get() = when (this) {
             WELCOME -> 1f / 6f
             MODEL -> 2f / 6f
             MICROPHONE -> 3f / 6f
             NOTIFICATIONS -> 4f / 6f
-            KEYBOARD, KEYBOARD_READY -> 5f / 6f
+            KEYBOARD, KEYBOARD_READY, FLOATING_MIC -> 5f / 6f
             READY -> 1f
         }
 
     companion object {
+        /** The page sequence for this build — the keyboard pages or the floating-mic one. */
+        fun active(): List<OnboardingStage> = entries.filter { it.inActivePath }
+
         /**
          * Where to open on launch.
          *
@@ -112,13 +156,14 @@ internal enum class OnboardingStage(
          * allowed. The confirmation is never a landing page.
          */
         fun resume(persisted: OnboardingStage?, status: SetupStatus): OnboardingStage {
-            val start = persisted ?: return WELCOME
-            for (stage in entries.drop(start.ordinal)) {
+            val stages = active()
+            val start = persisted?.takeIf { it in stages } ?: return WELCOME
+            for (stage in stages.dropWhile { it != start }) {
                 when {
                     stage == READY -> return READY
                     stage == KEYBOARD_READY -> continue
-                    stage.step == null -> return stage
-                    !status.isSatisfied(stage.step) -> return stage
+                    stage.steps.isEmpty() -> return stage
+                    !stage.isSatisfied(status) -> return stage
                 }
             }
             return READY
@@ -130,13 +175,13 @@ internal enum class OnboardingStage(
          * requirement. This is the rule the page used to be derived from.
          */
         fun firstUnmet(status: SetupStatus): OnboardingStage =
-            entries.firstOrNull { it.step != null && !status.isSatisfied(it.step) } ?: READY
+            active().firstOrNull { it.steps.isNotEmpty() && !it.isSatisfied(status) } ?: READY
 
         /**
          * Decode a saved page. The retired source page resumes on MODEL, where
          * that choice is now made. Other unknown values — a page a newer build
-         * retired — start over rather than crash; that is one screen of
-         * repetition against a stuck launch.
+         * retired, or an IME page in a X build — start over rather than
+         * crash; that is one screen of repetition against a stuck launch.
          */
         fun persisted(raw: String?): OnboardingStage? =
             raw?.takeIf { it.isNotBlank() }?.let { value ->

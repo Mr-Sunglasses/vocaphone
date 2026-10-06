@@ -351,6 +351,7 @@ fun VocaPhoneApp(
                 onIntroSeen = viewModel::setOnboardingIntroSeen,
                 onRefreshSetup = viewModel::refreshSetup,
                 onWarmLocalModel = viewModel::warmSelectedLocalModel,
+                onAcceptDisclosure = { viewModel.setDisclosureAccepted(true) },
                 modifier = content,
             )
 
@@ -391,6 +392,7 @@ fun VocaPhoneApp(
                 telemetryInspect = viewModel::telemetryInspect,
                 telemetryPendingCount = viewModel::telemetryPendingCount,
                 telemetryDeliveryStatus = viewModel::telemetryDeliveryStatus,
+                onAcceptDisclosure = { viewModel.setDisclosureAccepted(true) },
                 modifier = content,
             )
 
@@ -471,6 +473,11 @@ fun VocaPhoneApp(
                 onResetUsageStats = { viewModel.resetUsageStats() },
                 historyCount = history.size,
                 onDeleteAllHistory = { viewModel.deleteAllHistory() },
+                installedApps = viewModel.installedApps.collectAsStateWithLifecycle().value,
+                onLoadInstalledApps = viewModel::loadInstalledApps,
+                onAutomaticInsertion = viewModel::setAutomaticInsertion,
+                onBubbleBehavior = viewModel::setBubbleBehavior,
+                onToggleExcludedApp = viewModel::toggleExcludedApp,
                 page = settingsPage,
                 onPageChange = { settingsPage = it },
                 openLanguagePicker = openLanguagePicker,

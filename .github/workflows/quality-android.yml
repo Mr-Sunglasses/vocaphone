@@ -51,8 +51,10 @@ jobs:
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
       - name: Check native model catalogs and pins
         run: python3 tools/model-pins/check_catalogs.py
-      - run: ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
-        working-directory: android
+      - working-directory: android
+        run: |
+          ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug \
+            assembleXDebug testXDebugUnitTest
       # The unit tests above stop short of native code, which is how a
       # whisper.cpp setting that dropped a sentence every thirty seconds went
       # unnoticed. This builds the pinned whisper.cpp and the app's JNI glue for
@@ -173,14 +175,16 @@ jobs:
 
       - name: Exercise release dependency inventory
         working-directory: android
-        run: ./gradlew --no-configuration-cache --init-script ../tools/android-sbom.init.gradle fullReleaseSbom fdroidReleaseSbom
+        run: ./gradlew --no-configuration-cache --init-script ../tools/android-sbom.init.gradle fullReleaseSbom fdroidReleaseSbom xReleaseSbom
 
       # A 4 KB-aligned library cannot be loaded at all on a 16 KB-page device,
       # and nothing else in the build says so: lint does not look, and the APK's
       # zip entries are page-aligned by AGP whatever the ELF segments say.
       - name: Fail if a 64-bit library is not 16 KB aligned
-        run: python3 tools/check-page-alignment.py app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
         working-directory: android
+        run: |
+          python3 tools/check-page-alignment.py app/build/outputs/apk/full/debug/vocaphone-fullDebug.apk
+          python3 tools/check-page-alignment.py app/build/outputs/apk/x/debug/vocaphone-xDebug.apk
 
       - name: Measure Android debug APK size
         id: size

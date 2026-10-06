@@ -39,6 +39,10 @@ enum class DictationPhase {
 enum class MissingPermission {
     MICROPHONE,
     NOTIFICATIONS,
+    /** X build only: the overlay permission that lets the bubble draw. */
+    OVERLAY,
+    /** X build only: the accessibility service that finds the field and inserts. */
+    ACCESSIBILITY,
     GATEWAY_NOT_CONFIGURED,
     MODEL_DOWNLOADING,
     MODEL_PREPARING,
@@ -57,6 +61,8 @@ enum class MissingPermission {
         get() = when (this) {
             MICROPHONE -> "Microphone access"
             NOTIFICATIONS -> "Notifications"
+            OVERLAY -> "Display over other apps"
+            ACCESSIBILITY -> "VocaPhone accessibility service"
             GATEWAY_NOT_CONFIGURED -> "Gateway address and token"
             MODEL_DOWNLOADING -> "Model download"
             MODEL_PREPARING -> "Model preparation"

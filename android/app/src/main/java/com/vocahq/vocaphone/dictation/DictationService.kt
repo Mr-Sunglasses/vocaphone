@@ -23,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -141,14 +142,34 @@ class DictationService : Service() {
     private fun observeUntilIdle() {
         observer?.cancel()
         val controller = VocaPhoneApplication.container(this).dictation
-        val lifetime = controller.activeJob
-        val startupRepair = controller.startupRepair
         // Assign before starting: a synchronously finished pipeline must still
         // clear the observer and notification rather than leave a completed job.
         val next = scope.launch(start = CoroutineStart.LAZY) {
             try {
-                monitorDictation(lifetime, controller.state, startupRepair) { status ->
-                    notificationManager().notify(NOTIFICATION_ID, notification(status))
+                while (true) {
+                    val version = controller.sessionVersion.value
+                    monitorDictation(
+                        controller.activeJob,
+                        controller.state,
+                        controller.startupRepair,
+                    ) { status ->
+                        notificationManager().notify(NOTIFICATION_ID, notification(status))
+                    }
+                    // A repair that resolved without recording (e.g. a model
+                    // download) means this attempt produces no audio: release
+                    // the mic service instead of showing "Listening" through
+                    // a download — but only when no queued session waits on
+                    // the pipeline, since the service stays the queued
+                    // attempt's only foreground lifetime.
+                    if (controller.repairSettledWithoutQueue()) break
+                    // A queued start claims the pipeline a beat after the old
+                    // one ends. Without re-observing here the service would
+                    // stop into that gap and leave the follow-up dictation
+                    // recording without its foreground lifetime or mic
+                    // notification. The version flow parks the wait until the
+                    // next claim, drain, or pipeline end — no spin.
+                    if (!controller.sessionInFlight()) break
+                    controller.sessionVersion.first { it != version }
                 }
             } finally {
                 if (observer === coroutineContext[Job]) stopForegroundAndSelf()

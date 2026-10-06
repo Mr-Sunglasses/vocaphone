@@ -1,14 +1,22 @@
 package com.vocahq.vocaphone.ui
 
+import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.local.LocalModelState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class ReadyPageTest {
     private val parakeet = "parakeet-tdt-0.6b-v2-en"
-    private val ready = SetupStatus(
-        microphone = true, notifications = true, keyboard = true, gatewayConfigured = true,
-    )
+    private val ready = if (BuildConfig.FLOATING_INPUT) {
+        SetupStatus(
+            microphone = true, notifications = true, disclosureAccepted = true,
+            overlay = true, accessibility = true, gatewayConfigured = true,
+        )
+    } else {
+        SetupStatus(
+            microphone = true, notifications = true, keyboard = true, gatewayConfigured = true,
+        )
+    }
     private val inFlight = LocalModelState(downloading = parakeet, pendingUse = parakeet, progress = 8)
     private val landedNotAdopted = LocalModelState(downloaded = setOf(parakeet), pendingUse = parakeet)
     private val adopted = LocalModelState(downloaded = setOf(parakeet))

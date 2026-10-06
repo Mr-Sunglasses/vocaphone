@@ -63,7 +63,11 @@ internal object SetupCopy {
     /** Vector mark. Adaptive mipmaps crash painterResource. */
     val LOGO = R.drawable.ic_vocaphone_logo
     const val TITLE = "Set up VocaPhone"
-    const val INTRO = "Turn on the keyboard, allow the microphone, then download a model."
+    val INTRO = if (BuildConfig.FLOATING_INPUT) {
+        "Allow overlay and accessibility, allow the microphone, then download a model."
+    } else {
+        "Turn on the keyboard, allow the microphone, then download a model."
+    }
     const val START = "Start dictating"
     const val REVIEW = "Review remaining setup"
     // The last page while a download-and-use is still in flight. The button
@@ -122,6 +126,9 @@ internal object SetupCopy {
         SetupStep.MICROPHONE -> "Microphone ready"
         SetupStep.NOTIFICATIONS -> "Notifications ready"
         SetupStep.KEYBOARD -> "Keyboard ready"
+        SetupStep.DISCLOSURE -> "Disclosure accepted"
+        SetupStep.OVERLAY -> "Overlay ready"
+        SetupStep.ACCESSIBILITY -> "Accessibility ready"
         SetupStep.GATEWAY -> "Speech source ready"
     }
 
@@ -129,7 +136,18 @@ internal object SetupCopy {
         SetupStep.MICROPHONE -> "Only while you dictate."
         SetupStep.NOTIFICATIONS -> "Shown while you record."
         SetupStep.KEYBOARD -> keyboardStatus(ImeSetupStatus())
+        SetupStep.DISCLOSURE -> "What the accessibility service does and does not read."
+        SetupStep.OVERLAY -> "Draws the floating mic above the app you are typing in."
+        SetupStep.ACCESSIBILITY -> "Finds the focused field and inserts your transcript."
         SetupStep.GATEWAY -> "The speech source that transcribes your speech."
+    }
+
+    /** The READY page's try-it card: keyboard up in the IME build, bubble in the X build. */
+    val READY_TRY_TITLE = if (BuildConfig.FLOATING_INPUT) "Try the floating mic" else "Try your keyboard"
+    val READY_TRY_BODY = if (BuildConfig.FLOATING_INPUT) {
+        "Tap the field below to bring up the bubble, then tap it and speak. Tap it again to finish and your words appear in the field."
+    } else {
+        "Tap the field below to bring up VocaPhone, then tap the microphone and speak. Finish recording and your words appear in the field."
     }
 }
 
@@ -160,6 +178,8 @@ fun SetupScreen(
     onRefreshSetup: () -> Unit,
     onWarmLocalModel: () -> Unit,
     modifier: Modifier = Modifier,
+    /** X build only: the prominent accessibility disclosure's "I understand" action. */
+    onAcceptDisclosure: () -> Unit = {},
 ) {
     // Resume from the first real read, not the ViewModel's startup placeholder.
     // Keep saved page state outside this branch until the read has completed.
@@ -430,6 +450,42 @@ fun SetupScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                OnboardingStage.FLOATING_MIC -> {
+                    AccessibilityDisclosure(
+                        accepted = status.disclosureAccepted,
+                        onAccept = onAcceptDisclosure,
+                    )
+                    ChecklistRow(
+                        title = SetupStep.OVERLAY.label,
+                        detail = if (status.overlay) {
+                            SetupCopy.stepReady(SetupStep.OVERLAY)
+                        } else {
+                            SetupCopy.permissionDetail(SetupStep.OVERLAY)
+                        },
+                        satisfied = status.overlay,
+                        actionLabel = "Open",
+                        onAction = { FloatingSetup.openOverlaySettings(context) },
+                        compact = status.overlay,
+                    )
+                    ChecklistRow(
+                        title = SetupStep.ACCESSIBILITY.label,
+                        detail = if (status.accessibility) {
+                            SetupCopy.stepReady(SetupStep.ACCESSIBILITY)
+                        } else {
+                            SetupCopy.permissionDetail(SetupStep.ACCESSIBILITY)
+                        },
+                        satisfied = status.accessibility,
+                        actionLabel = "Open",
+                        onAction = { FloatingSetup.openAccessibilitySettings(context) },
+                        compact = status.accessibility,
+                    )
+                    if (status.floating.restrictedSettingsGuidance) {
+                        RestrictedSettingsHelp(
+                            onOpenAccessibilitySettings = { FloatingSetup.openAccessibilitySettings(context) },
+                            onOpenAppInfo = { FloatingSetup.openAppSettings(context) },
+                        )
+                    }
+                }
                 OnboardingStage.MICROPHONE, OnboardingStage.NOTIFICATIONS -> {
                     val step = if (stage == OnboardingStage.MICROPHONE) SetupStep.MICROPHONE else SetupStep.NOTIFICATIONS
                     SetupPermissionRow(
@@ -474,8 +530,8 @@ fun SetupScreen(
                     // keyboard would only say "downloading" back.
                     if (readyPresentation == ReadyPagePresentation.READY) {
                         Notice {
-                            Text("Try your keyboard", style = MaterialTheme.typography.titleMedium)
-                            Text("Tap the field below to bring up VocaPhone, then tap the microphone and speak. Finish recording and your words appear in the field.")
+                            Text(SetupCopy.READY_TRY_TITLE, style = MaterialTheme.typography.titleMedium)
+                            Text(SetupCopy.READY_TRY_BODY)
                             // A sentence to read out, because "say a short
                             // sentence" leaves the user composing one on the
                             // spot at the first moment they use the product,
@@ -777,7 +833,7 @@ private fun KeyboardReadyMoment() {
 @Composable
 private fun ReadyChecklist(status: SetupStatus) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        listOf(SetupStep.MICROPHONE, SetupStep.NOTIFICATIONS, SetupStep.KEYBOARD).forEach { step ->
+        status.requiredSteps.filterNot { it == SetupStep.GATEWAY }.forEach { step ->
             val done = status.isSatisfied(step)
             ReadyChecklistRow(step.label, isDone = done, state = if (done) "Ready" else "Not set up")
         }
@@ -799,6 +855,112 @@ private fun ReadyChecklistRow(label: String, isDone: Boolean, state: String) {
             state,
             style = MaterialTheme.typography.labelLarge,
             color = if (isDone) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/**
+ * The prominent disclosure Play requires from a non-accessibility tool that uses
+ * `AccessibilityService`. It is deliberately separate from the checklist and
+ * states the limits, not just the purpose.
+ */
+@Composable
+fun AccessibilityDisclosure(
+    accepted: Boolean,
+    onAccept: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Notice(modifier = modifier) {
+        Text(
+            "How VocaPhone uses accessibility access",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            "VocaPhone turns on Android's accessibility service for two things:\n\n" +
+                "• To tell whether the text field you are focused on can be dictated " +
+                "into, so the floating mic appears only where it is useful.\n" +
+                "• To insert the transcript you asked for at your cursor, and to undo " +
+                "it if you change your mind.\n\n" +
+                "It reads the contents of a field only at the moment you insert into " +
+                "it, and only in memory. Field text is never stored, logged, or sent " +
+                "anywhere — not to the gateway, and not to us. The mic stays " +
+                "hidden in password and payment fields, on system permission " +
+                "screens, and in any app you exclude.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (accepted) {
+            Text(
+                "You accepted this on this device.",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        } else {
+            PrimaryButton("I understand", onClick = onAccept, modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
+
+/**
+ * Shown when the accessibility switch is likely greyed out because VocaPhone
+ * was installed outside an app store. The "Allow restricted settings" option
+ * stays hidden until the switch has actually been tried and blocked once, so
+ * that has to happen before App info's overflow menu is worth opening — the
+ * reverse order just lands on a menu with nothing useful in it.
+ */
+@Composable
+fun RestrictedSettingsHelp(
+    onOpenAccessibilitySettings: () -> Unit,
+    onOpenAppInfo: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Notice(modifier = modifier, tone = NoticeTone.Attention) {
+        Text(
+            "Can't turn the accessibility service on?",
+            style = MaterialTheme.typography.titleSmall,
+        )
+        Text(
+            "Android blocks apps installed outside an app store from using " +
+                "accessibility access, so the switch may be greyed out and " +
+                "labelled \"Restricted setting\". VocaPhone cannot lift that " +
+                "itself — only you can, and the fix only appears after you've " +
+                "been blocked once:\n\n" +
+                "1. Open Accessibility settings below and try turning " +
+                "VocaPhone on. It will refuse and show a \"Restricted " +
+                "setting\" message — that's expected, and it's what unlocks " +
+                "the next step.\n" +
+                "2. Open App info. Tap the ⋮ menu in the top-right corner and " +
+                "choose \"Allow restricted settings\". On some Samsung phones " +
+                "it appears as its own row on this page instead, without " +
+                "needing the menu.\n" +
+                "3. Confirm with your PIN, pattern or fingerprint.\n" +
+                "4. Come back to Accessibility settings and turn VocaPhone " +
+                "on — it will work this time.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        // Stacked rather than side by side: at a large display size two weighted
+        // buttons clip their labels to "1." and "2. App", which loses precisely
+        // the ordering the numbered steps above are asking the user to follow.
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            PrimaryButton(
+                text = "1. Accessibility settings",
+                onClick = onOpenAccessibilitySettings,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            SecondaryButton(
+                text = "2. App info",
+                onClick = onOpenAppInfo,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        Text(
+            "On Samsung phones running One UI 8.5, \"Allow restricted " +
+                "settings\" is currently missing from App info entirely for " +
+                "every sideloaded app — a Samsung bug, not something VocaPhone " +
+                "can work around from here. If that's what you're seeing, " +
+                "granting accessibility from a computer over adb is the only " +
+                "way through right now.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

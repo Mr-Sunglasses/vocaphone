@@ -1,8 +1,8 @@
 name: Android release
 
-# Pushing a version tag builds the signed full and fdroid release APKs plus the
-# full-flavor AAB (Play upload candidate), then publishes them as a workflow
-# artifact and a GitHub Release. Checksums and the signing certificate
+# Pushing a version tag builds the signed full, fdroid and x release APKs plus
+# the full-flavor AAB (Play upload candidate), then publishes them as a
+# workflow artifact and a GitHub Release. Checksums and the signing certificate
 # fingerprint are attached so testers can verify what they install. After the
 # GitHub Release is published, the full AAB is uploaded to Google Play Internal
 # testing when PLAY_SERVICE_ACCOUNT_JSON is set. That step is skipped if the
@@ -69,9 +69,10 @@ jobs:
           # script, so the keystore never becomes part of the command line.
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
           # Play gets the full-flavor AAB only. fdroid is APK-only for F-Droid
-          # rebuild verification; do not bundle that flavour for store upload.
-          ./gradlew assembleFullRelease assembleFdroidRelease bundleFullRelease \
-            testFullDebugUnitTest lintFullRelease
+          # rebuild verification, and x is APK-only because it sideloads; do
+          # not bundle either for store upload.
+          ./gradlew assembleFullRelease assembleFdroidRelease assembleXRelease \
+            bundleFullRelease testFullDebugUnitTest lintFullRelease lintXRelease
         working-directory: android
       - name: Verify signature and prepare release assets
         env:
@@ -90,6 +91,11 @@ jobs:
           # builds on their side.
           cp android/app/build/outputs/apk/fdroid/release/vocaphone-fdroidRelease.apk \
             release-assets/vocaphone-fdroid.apk
+          # The x flavour is VocaPhoneX: the floating-mic build for people who
+          # keep their own keyboard. It installs beside the main app from a
+          # different package name, so it sideloads rather than going to Play.
+          cp android/app/build/outputs/apk/x/release/vocaphone-xRelease.apk \
+            release-assets/vocaphone-x.apk
 
           # AGP names the bundle from the module (app) plus flavor/build type.
           # Glob rather than hard-coding the filename so a future archivesBaseName
@@ -116,15 +122,20 @@ jobs:
             exit 1
           fi
 
-          # Both flavours are published, so both get the same identity and
-          # signature checks rather than the second one being trusted implicitly.
-          for apk in release-assets/vocaphone.apk release-assets/vocaphone-fdroid.apk; do
+          # Every flavour is published, so each gets the same identity and
+          # signature checks rather than the extras being trusted implicitly.
+          for entry in \
+            "release-assets/vocaphone.apk com.vocahq.vocaphone" \
+            "release-assets/vocaphone-fdroid.apk com.vocahq.vocaphone" \
+            "release-assets/vocaphone-x.apk com.vocahq.vocaphone.x"; do
+            apk="${entry% *}"
+            expected_package="${entry##* }"
             package_line="$("$aapt" dump badging "$apk" | sed -n '1p')"
             package_name="$(printf '%s\n' "$package_line" \
               | sed -n "s/^package: name='\([^']*\)'.*/\1/p")"
             version_name="$(printf '%s\n' "$package_line" \
               | sed -n "s/.* versionName='\([^']*\)'.*/\1/p")"
-            if [ "$package_name" != "com.vocahq.vocaphone" ]; then
+            if [ "$package_name" != "$expected_package" ]; then
               echo "Unexpected package in $apk: $package_name" >&2
               exit 1
             fi
@@ -167,18 +178,20 @@ jobs:
           # the checks above enforced, so one fingerprint file covers them all.
           formatted_certificate="$(printf '%s' "$EXPECTED_CERT_SHA256" \
             | sed 's/../&:/g; s/:$//' | tr '[:lower:]' '[:upper:]')"
-          printf 'Package: %s\nVersion: %s\nSigning certificate SHA-256: %s\n' \
-            "com.vocahq.vocaphone" "${GITHUB_REF_NAME#android/v}" "$formatted_certificate" \
+          printf 'Packages: %s, %s\nVersion: %s\nSigning certificate SHA-256: %s\n' \
+            "com.vocahq.vocaphone" "com.vocahq.vocaphone.x" \
+            "${GITHUB_REF_NAME#android/v}" "$formatted_certificate" \
             > release-assets/SIGNING-CERTIFICATE-SHA256.txt
           (cd release-assets \
-            && sha256sum vocaphone.apk vocaphone-fdroid.apk vocaphone.aab \
+            && sha256sum vocaphone.apk vocaphone-fdroid.apk vocaphone-x.apk vocaphone.aab \
               > SHA256SUMS.txt)
       - name: Generate runtime and native dependency inventories
         run: |
           set -euo pipefail
-          (cd android && ./gradlew --no-configuration-cache --init-script ../tools/android-sbom.init.gradle fullReleaseSbom fdroidReleaseSbom)
+          (cd android && ./gradlew --no-configuration-cache --init-script ../tools/android-sbom.init.gradle fullReleaseSbom fdroidReleaseSbom xReleaseSbom)
           python3 tools/complete_android_sbom.py android/app/build/reports/sbom/full.cdx.json release-assets/vocaphone.apk release-assets/vocaphone.cdx.json
           python3 tools/complete_android_sbom.py android/app/build/reports/sbom/fdroid.cdx.json release-assets/vocaphone-fdroid.apk release-assets/vocaphone-fdroid.cdx.json
+          python3 tools/complete_android_sbom.py android/app/build/reports/sbom/x.cdx.json release-assets/vocaphone-x.apk release-assets/vocaphone-x.cdx.json
           (cd release-assets && sha256sum ./*.cdx.json >> SHA256SUMS.txt)
       - name: Attest release artifacts and inventories
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -248,9 +261,11 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             release-assets/vocaphone.apk \
             release-assets/vocaphone-fdroid.apk \
+            release-assets/vocaphone-x.apk \
             release-assets/vocaphone.aab \
             release-assets/vocaphone.cdx.json \
             release-assets/vocaphone-fdroid.cdx.json \
+            release-assets/vocaphone-x.cdx.json \
             release-assets/SHA256SUMS.txt \
             release-assets/SIGNING-CERTIFICATE-SHA256.txt \
             --repo "$GITHUB_REPOSITORY" \
@@ -258,7 +273,7 @@ jobs:
             "${release_kind[@]}" \
             --generate-notes \
             "${notes_range[@]}" \
-            --notes "The public beta is on Google Play (https://play.google.com/store/apps/details?id=com.vocahq.vocaphone). This GitHub Release is the signed APK for sideloading, covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. \`vocaphone.aab\` is the same full-flavor build as an Android App Bundle. This workflow uploads it to Google Play Internal testing when PLAY_SERVICE_ACCOUNT_JSON is set; production promotion stays a Console click. SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store. \`vocaphone-fdroid.apk\` is the same release built without the prebuilt sherpa-onnx and ONNX Runtime libraries, published so F-Droid can verify its own rebuild against it; install \`vocaphone.apk\` unless you specifically want that variant."
+            --notes "The public beta is on Google Play (https://play.google.com/store/apps/details?id=com.vocahq.vocaphone). This GitHub Release is the signed APK for sideloading, covering every ABI (arm64-v8a, armeabi-v7a, x86_64) and all Android 13+ devices. Install with \`adb install vocaphone.apk\` or open the APK on the device. \`vocaphone.aab\` is the same full-flavor build as an Android App Bundle. This workflow uploads it to Google Play Internal testing when PLAY_SERVICE_ACCOUNT_JSON is set; production promotion stays a Console click. SHA-256 checksum and signing-certificate fingerprint files are attached for verification. Android may still scan or restrict APKs installed outside an app store. \`vocaphone-fdroid.apk\` is the same release built without the prebuilt sherpa-onnx and ONNX Runtime libraries, published so F-Droid can verify its own rebuild against it; install \`vocaphone.apk\` unless you specifically want that variant. \`vocaphone-x.apk\` is VocaPhoneX, the floating-mic build: it installs beside the main app, keeps your own keyboard, and dictates into the focused field through an accessibility service. Grant it display-over-other-apps and accessibility access at first run; install \`vocaphone.apk\` if you want the keyboard instead."
       # After the GitHub Release so testers still get APKs if Play fails.
       # The action defaults to the production track, so tracks must be
       # internal. If that API name is missing, qa is the only other name

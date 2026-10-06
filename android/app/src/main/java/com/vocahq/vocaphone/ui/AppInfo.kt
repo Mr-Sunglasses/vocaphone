@@ -281,11 +281,19 @@ fun diagnosticsReport(
         }
     )
     appendLine()
-    appendLine("Keyboard: " + when {
-        setup.ime.selected -> "enabled and selected"
-        setup.ime.enabled -> "enabled, not selected"
-        else -> "not enabled"
-    })
+    if (com.vocahq.vocaphone.BuildConfig.FLOATING_INPUT) {
+        appendLine("Floating mic: " + when {
+            !setup.overlay -> "no overlay permission"
+            !setup.accessibility -> "no accessibility service"
+            else -> "overlay and accessibility granted"
+        })
+    } else {
+        appendLine("Keyboard: " + when {
+            setup.ime.selected -> "enabled and selected"
+            setup.ime.enabled -> "enabled, not selected"
+            else -> "not enabled"
+        })
+    }
     if (events.isNotBlank()) {
         appendLine("Event log:")
         append(events.trimEnd())

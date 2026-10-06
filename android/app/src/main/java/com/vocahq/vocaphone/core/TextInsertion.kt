@@ -77,6 +77,35 @@ object TextInsertion {
     }
 
     /**
+     * The caret a follow-up insert should trust. Editors that tokenize a
+     * field's text (recipient pickers, chip fields — Messages' To: line is the
+     * measured case) re-process the text `ACTION_SET_TEXT` wrote and then
+     * publish a caret inside the span they moved. Splicing at that caret
+     * interleaves the next dictation into the previous one. While the field
+     * still ends with the transcript as it was written — padding included —
+     * a collapsed caret that is not at the end is the editor's bookkeeping,
+     * not the user's intent, so the end of the text is the safer write point.
+     *
+     * A range selection is different: it can only be the user's, and it is
+     * always honored — dictating over a selection replaces it.
+     */
+    fun trustedCaret(
+        existing: String,
+        selectionStart: Int,
+        selectionEnd: Int,
+        lastInserted: String?,
+    ): Pair<Int, Int> {
+        if (lastInserted != null &&
+            selectionStart == selectionEnd &&
+            existing.endsWith(lastInserted) &&
+            selectionStart != existing.length
+        ) {
+            return existing.length to existing.length
+        }
+        return selectionStart to selectionEnd
+    }
+
+    /**
      * Removes a previous insertion, but only when the exact transcript still sits
      * where it was written. If the user or the app has since edited that text,
      * returns `null` so Undo is disabled rather than destroying their edit.

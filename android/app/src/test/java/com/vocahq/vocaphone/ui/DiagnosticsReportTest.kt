@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.ui
 
+import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,12 +28,23 @@ class DiagnosticsReportTest {
         localTranscriptionEnabled = false,
     )
 
-    private val ready = SetupStatus(
-        microphone = true,
-        notifications = true,
-        keyboard = true,
-        gatewayConfigured = true,
-    )
+    private val ready = if (BuildConfig.FLOATING_INPUT) {
+        SetupStatus(
+            microphone = true,
+            notifications = true,
+            disclosureAccepted = true,
+            overlay = true,
+            accessibility = true,
+            gatewayConfigured = true,
+        )
+    } else {
+        SetupStatus(
+            microphone = true,
+            notifications = true,
+            keyboard = true,
+            gatewayConfigured = true,
+        )
+    }
 
     @Test
     fun `report carries the version, platform and engine`() {

@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.ui
 
+import com.vocahq.vocaphone.BuildConfig
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -10,7 +11,10 @@ class SetupChecklistTest {
     @Test
     fun collapseSatisfiedAndLaterUnfinishedRows() {
         val next = SetupStatus().remainingSteps.first()
-        assertEquals(SetupStep.MICROPHONE, next)
+        assertEquals(
+            if (BuildConfig.FLOATING_INPUT) SetupStep.DISCLOSURE else SetupStep.MICROPHONE,
+            next,
+        )
 
         assertTrue(
             collapseChecklistRow(satisfied = true, isNextUnfinished = false),

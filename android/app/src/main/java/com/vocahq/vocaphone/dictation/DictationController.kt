@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import com.vocahq.vocaphone.BuildConfig
+import com.vocahq.vocaphone.accessibility.isAccessibilityServiceEnabled
 import com.vocahq.vocaphone.audio.AudioCapture
 import com.vocahq.vocaphone.audio.CueTiming
 import com.vocahq.vocaphone.audio.CaptureFormat
@@ -81,6 +83,12 @@ enum class DictationSource {
     /** The companion app's scratchpad: the transcript stays in the app. */
     COMPANION_APP,
 
+    /**
+     * The floating bubble (X builds): insert into whatever field is focused
+     * at Finish, through the accessibility service.
+     */
+    FLOATING,
+
     /** The system keyboard: commit into its current InputConnection. */
     IME,
 }
@@ -123,9 +131,42 @@ class DictationController(
     @Volatile
     var imeInserter: TranscriptInserter? = null
 
+    /** Set by the accessibility service while it is connected (X builds). */
+    @Volatile
+    var floatingInserter: TranscriptInserter? = null
+
+    private var lastInsertion: AppliedInsertion? = null
+
+    val canUndo: Boolean get() = lastInsertion != null
+
     private var pipeline: Job? = null
     private var startupRepairSignal: CompletableDeferred<Unit>? = null
     private var capture: AudioCapture? = null
+
+    /**
+     * The WAV scratch file and its writer while a dictation is recording.
+     * `runDictation` closes and deletes them on every path it reaches itself;
+     * these references exist so a cancel that kills the pipeline before it
+     * reaches that cleanup does not leave the recording behind.
+     */
+    private var liveWriter: WavWriter? = null
+    private var liveWavFile: File? = null
+
+    /**
+     * The in-flight session's recording and id, kept past the scratch window
+     * so a recovery path can tell an orphaned file (no history record: delete)
+     * from retry material (a record holds it: keep).
+     */
+    private var sessionWavFile: File? = null
+    private var activeSessionId: UUID? = null
+
+    /**
+     * Serializes pipeline ownership: a new session assigns `pipeline` and
+     * advances `generation` under it, and a recovery path checks ownership
+     * and resets under it, so a dead job's cleanup cannot interpose into the
+     * session that replaced it.
+     */
+    private val sessionLock = Any()
 
     @Volatile
     private var activeSource: DictationSource? = null
@@ -145,6 +186,68 @@ class DictationController(
      * and a write from an older one is dropped.
      */
     private val generation = AtomicInteger()
+
+    /**
+     * Starts and retries waiting behind an unwinding pipeline. The count is
+     * held from queueing until their claim attempt runs, so a watcher can
+     * tell "no session" from "the next one just hasn't taken the slot yet" —
+     * the gap where a foreground service would otherwise stop.
+     */
+    private val queuedStarts = AtomicInteger()
+
+    /**
+     * Bumped on every session transition the dictation service can care
+     * about: a claim, a queue add or drain, and a pipeline ending. The
+     * service's observer parks on it between sessions.
+     */
+    internal val sessionVersion = MutableStateFlow(0L)
+
+    private fun noteSessionChanged() {
+        sessionVersion.update { it + 1 }
+    }
+
+    /**
+     * True while any dictation owns or is about to own the pipeline slot:
+     * running, queued behind the current one, or holding a busy phase.
+     */
+    internal fun sessionInFlight(): Boolean =
+        pipeline?.isActive == true ||
+            queuedStarts.get() > 0 ||
+            _state.value.phase.isBusy
+
+    /**
+     * True while the pipeline's only remaining work is the tail of an attempt
+     * that resolved without recording — e.g. following a model download — and
+     * no queued session waits behind it. Read atomically under the session
+     * lock so a queued claim cannot split "old repair completed" from "queue
+     * drained": the queue count is held through the claim, and the claim
+     * swaps the repair signal inside this same lock.
+     */
+    internal fun repairSettledWithoutQueue(): Boolean = synchronized(sessionLock) {
+        startupRepairSignal?.isCompleted == true &&
+            queuedStarts.get() == 0 &&
+            pipeline?.isActive == true
+    }
+
+    /**
+     * Runs [queued] once [after] finishes. The queue count is held through
+     * the claim attempt — not just the wait — so [sessionInFlight] never
+     * reads "idle" while a successor is between the old job's end and the
+     * new session's first phase.
+     */
+    private fun queueSessionStart(after: Job?, queued: () -> Unit) {
+        queuedStarts.incrementAndGet()
+        noteSessionChanged()
+        scope.launch(Dispatchers.IO) {
+            try {
+                after?.join()
+                queued()
+            } finally {
+                queuedStarts.decrementAndGet()
+                noteSessionChanged()
+            }
+        }
+    }
 
     /**
      * How long the last completed capture ran, for the telemetry duration
@@ -203,15 +306,33 @@ class DictationController(
      * gateway settings surface as a repair state rather than a failure.
      */
     fun start(source: DictationSource) {
-        if (pipeline?.isActive == true) return
-        activeSource = source
+        val inFlight = pipeline
+        if (inFlight?.isActive == true) {
+            // A tap while a session is still unwinding used to be dropped
+            // silently; queue it so the dictation the user asked for runs
+            // once the pipeline frees the slot.
+            queueSessionStart(inFlight) { start(source) }
+            return
+        }
         diagnostics.recordAction("start", source.name)
-        finishSignal = CompletableDeferred()
-        cancelRequested = false
-        val generation = nextGeneration()
-        val repairSignal = CompletableDeferred<Unit>()
-        startupRepairSignal = repairSignal
-        pipeline = scope.launch {
+        var generation = -1
+        var lostSlot = false
+        synchronized(sessionLock) {
+            // The slot check repeats inside the claim: starts queued behind
+            // the same finishing pipeline can all see it idle before any of
+            // them launches. Whoever arrives second queues behind the winner
+            // rather than overwriting a session that is no longer theirs.
+            if (pipeline?.isActive == true) {
+                lostSlot = true
+            } else {
+                activeSource = source
+                finishSignal = CompletableDeferred()
+                cancelRequested = false
+                val repairSignal = CompletableDeferred<Unit>()
+                startupRepairSignal = repairSignal
+                generation = nextGeneration()
+                pipeline = scope.launch {
+                noteSessionChanged()
             awaitSettingsMigration()
             val configuration = settings.current()
             val missing = missingPermissions(configuration)
@@ -261,6 +382,109 @@ class DictationController(
                 }
             }
             runDictation(source, configuration, token, UUID.randomUUID(), generation)
+            }
+            }
+        }
+        if (lostSlot) {
+            queueSessionStart(pipeline) { start(source) }
+            return
+        }
+        lastPipelineSettled(pipeline, generation)
+    }
+
+    /**
+     * The unwind inside a pipeline is obliged to leave the phase non-busy,
+     * but nothing makes it: a crash or a hard cancel escapes with whatever
+     * phase was on screen, and every later cancel then joins an already-dead
+     * job and does nothing — a wedge that logs `action=cancel` forever. The
+     * pipeline's own exit is the last place that can let a busy phase past,
+     * so the settlement is checked here rather than trusted to every return.
+     */
+    private fun lastPipelineSettled(job: Job?, generation: Int) {
+        if (job == null) return
+        val completionCause = AtomicReference<Throwable?>()
+        job.invokeOnCompletion { completionCause.set(it) }
+        scope.launch(Dispatchers.IO) {
+            job.join()
+            // A failed job's cause is the crash the unwind never converted
+            // into a state; a plain cancel leaves it null.
+            settleBusyPipeline(job, generation, completionCause.get())
+            noteSessionChanged()
+        }
+    }
+
+    /**
+     * Ends a session whose pipeline left a busy phase behind, however it
+     * exited. Three recoveries happen as one operation under [sessionLock],
+     * checked against the job and generation that asked: the microphone is
+     * stopped (a crashed unwind can leave `AudioCapture`'s read thread
+     * holding it), a recording with no history record is deleted while retry
+     * material is kept, and the state is reset. Ownership and the reset are
+     * deliberately one guarded block — a new dictation must never be settled
+     * by the session it replaced.
+     */
+    private suspend fun settleBusyPipeline(job: Job?, generation: Int, cause: Throwable? = null) {
+        // A bounded wait first: a NonCancellable history write outlives
+        // cancellation, and the orphan check below has to read a history that
+        // has finished resolving.
+        if (job != null) {
+            withTimeoutOrNull(SETTLE_JOIN_MILLIS) { job.join() }
+        }
+        val orphan = run {
+            val sessionId = activeSessionId
+            val wavFile = sessionWavFile
+            // A live job can still be inside a NonCancellable history write:
+            // its record does not exist yet and the WAV is that write's own
+            // file, not an orphan. Only a settled pipeline leaves a recording
+            // history will never claim.
+            if (sessionId != null && wavFile != null &&
+                (job == null || job.isCompleted) &&
+                this@DictationController.generation.get() == generation &&
+                history.find(sessionId.toString())?.audioPath == null
+            ) {
+                wavFile
+            } else {
+                null
+            }
+        }
+        // Capture stop runs outside the lock: it can hold its monitor for
+        // seconds while the read thread drains, and a new session taking the
+        // lock to start must not wait behind it. While the generation still
+        // matches, the capture on the field is this session's to stop.
+        if (this@DictationController.generation.get() == generation) {
+            runCatching { capture?.stop() }
+        }
+        val wavInFlight = sessionWavFile
+        val wavSession = activeSessionId
+        if (job != null && !job.isCompleted && wavInFlight != null && wavSession != null) {
+            // The pipeline is still finishing a NonCancellable history write:
+            // its record does not exist yet and the WAV is that write's own
+            // file — never deleted mid-write. Sweep once the job truly ends;
+            // clearing the session refs below is then safe because this
+            // trailing pass owns the decision.
+            scope.launch(Dispatchers.IO) {
+                job.join()
+                if (history.find(wavSession.toString())?.audioPath == null) {
+                    wavInFlight.delete()
+                }
+            }
+        }
+        synchronized(sessionLock) {
+            if (pipeline !== job ||
+                this@DictationController.generation.get() != generation ||
+                !_state.value.phase.isBusy
+            ) {
+                return
+            }
+            diagnostics.recordError(
+                "pipeline_settled_busy",
+                cause?.javaClass?.simpleName ?: activeSource?.name,
+            )
+            discardLiveRecording(generation)
+            orphan?.delete()
+            sessionWavFile = null
+            activeSessionId = null
+            reset()
         }
     }
 
@@ -279,25 +503,116 @@ class DictationController(
         diagnostics.recordAction("cancel", activeSource?.name)
         cancelRequested = true
         finishSignal.complete(Unit)
-        // Stop a blocked upload/setup child immediately. Keep the recording
-        // parent alive long enough to close and discard its local WAV below.
-        pipeline?.children?.forEach { it.cancel() }
-        capture?.stop()
-        if (_state.value.phase != DictationPhase.LISTENING) {
-            pipeline?.cancel()
-            reset()
+        val job = pipeline
+        val captureToStop = capture
+        val generation = this.generation.get()
+        val phase = _state.value.phase
+        if (phase == DictationPhase.LISTENING && job != null) {
+            // The watchdog is armed before anything that can block, because
+            // the teardown below runs AudioCapture.stop(), which is
+            // synchronized and joins the read thread: a wedge there is exactly
+            // the cancel that must not be able to strand the unwind. IO rather
+            // than the controller's Default pool, so blocked pipeline work
+            // cannot starve it of a thread either.
+            scope.launch(Dispatchers.IO) {
+                // LISTENING unwinds itself: the completed signal lets the
+                // pipeline close and discard its WAV on its own thread, then
+                // it resets. That unwind crosses several suspend points, so a
+                // transport or writer that never answers would leave
+                // "Listening" on screen with no way out. The bound is on the
+                // wait, not the recovery: whatever the join leaves — a still
+                // running job or an already-dead one — a busy phase this
+                // session owns is ended here.
+                withTimeoutOrNull(CANCEL_UNWIND_MILLIS) { job.join() }
+                if (pipeline === job && _state.value.phase.isBusy) {
+                    job.cancel()
+                    settleBusyPipeline(job, generation)
+                }
+            }
+        }
+        // The rest of the teardown also moves off the caller's thread: cancel
+        // is called from service handlers and the bubble, and none of them may
+        // sit inside a blocking AudioRecord stop. A newer dictation can legally
+        // have taken pipeline/capture by the time this runs, so both are read
+        // into locals up front rather than re-read inside the coroutine.
+        scope.launch(Dispatchers.IO) {
+            // Stop a blocked upload/setup child immediately. Keep the
+            // recording parent alive long enough to close and discard its
+            // local WAV below.
+            job?.children?.forEach { it.cancel() }
+            captureToStop?.stop()
+            if (phase != DictationPhase.LISTENING && job != null) {
+                job.cancel()
+                if (phase.isBusy) {
+                    settleBusyPipeline(job, generation)
+                } else {
+                    // A dismissed failure or idle can still be cancelled;
+                    // only the generation guard decides it is ours to clear.
+                    synchronized(sessionLock) {
+                        if (this@DictationController.generation.get() == generation) {
+                            reset()
+                        }
+                    }
+                }
+            }
         }
     }
 
-    /** Re-sends audio that was preserved for a recoverable failure. */
-    fun retry(sessionId: String) {
-        if (pipeline?.isActive == true) return
-        startupRepairSignal = null
-        // Nothing is recorded on this path, so the previous capture's length is
-        // not this dictation's.
-        lastRecordingMillis = null
-        val generation = nextGeneration()
-        pipeline = scope.launch {
+    /**
+     * Last-resort cleanup for a pipeline that never reached its own writer
+     * close and WAV delete. Two guards decide ownership before anything is
+     * touched: the cancelling generation, so a stale cancel cannot close or
+     * delete a fresh dictation's recording, and the live references
+     * themselves — they exist only while a *recorded* session's WAV is still
+     * scratch (set when the file is created, cleared the moment the writer
+     * closes and custody passes to the pipeline's own delete-or-keep logic).
+     * A retry's WAV is history audio, never scratch, so this is a no-op for it.
+     */
+    private fun discardLiveRecording(generation: Int) {
+        if (this.generation.get() != generation) return
+        runCatching { liveWriter?.close() }
+        liveWavFile?.delete()
+        liveWriter = null
+        liveWavFile = null
+    }
+
+    /**
+     * Re-sends audio that was preserved for a recoverable failure.
+     *
+     * [source] is the surface the retry was initiated from, which decides where
+     * the transcript is delivered: the bubble retries a floating dictation into
+     * the focused field, while a History retry keeps it in the companion app.
+     */
+    fun retry(sessionId: String, source: DictationSource = DictationSource.COMPANION_APP) {
+        val inFlight = pipeline
+        if (inFlight?.isActive == true) {
+            // A busy pipeline used to drop this request silently, which is
+            // exactly what happens when a retry follows a cancel that is
+            // still unwinding. Queue it behind that job instead.
+            queueSessionStart(inFlight) { retryQueued(sessionId, source) }
+            return
+        }
+        retryQueued(sessionId, source)
+    }
+
+    private fun retryQueued(sessionId: String, source: DictationSource) {
+        var generation = -1
+        var lostSlot = false
+        synchronized(sessionLock) {
+            // Same claim as start(): the busy check is repeated under the
+            // lock, and a retry that loses queues behind the session that
+            // won instead of being dropped.
+            if (pipeline?.isActive == true) {
+                lostSlot = true
+            } else {
+                startupRepairSignal = null
+                activeSource = source
+                // Nothing is recorded on this path, so the previous capture's
+                // length is not this dictation's.
+                lastRecordingMillis = null
+                generation = nextGeneration()
+                pipeline = scope.launch {
+                noteSessionChanged()
             val record = history.find(sessionId) ?: return@launch
             val audio = record.audioPath?.let(::File)
             if (audio == null || !audio.exists()) {
@@ -350,7 +665,7 @@ class DictationController(
                         wavFile = audio,
                         language = record.language,
                         configuration = configuration,
-                        source = DictationSource.COMPANION_APP,
+                        source = source,
                         generation = generation,
                     )
                 } finally {
@@ -367,20 +682,42 @@ class DictationController(
                     language = record.language,
                     style = record.style,
                     configuration = configuration,
-                    source = DictationSource.COMPANION_APP,
+                    source = source,
                     generation = generation,
                 )
             }
+            }
+            }
         }
+        if (lostSlot) {
+            queueSessionStart(pipeline) { retryQueued(sessionId, source) }
+            return
+        }
+        lastPipelineSettled(pipeline, generation)
     }
 
     fun clearTransient() {
         if (!_state.value.phase.isBusy) reset()
     }
 
-    fun missingPermissions(configuration: VocaPhoneSettings): Set<MissingPermission> = buildSet {
+    /** Removes the last insertion when the exact text is still where it was put. */
+    suspend fun undoLast(): Boolean {
+        val insertion = lastInsertion ?: return false
+        val removed = floatingInserter?.undo(insertion) ?: false
+        if (removed) lastInsertion = null
+        return removed
+    }
+
+    fun missingPermissions(
+        configuration: VocaPhoneSettings,
+        source: DictationSource = activeSource ?: DictationSource.COMPANION_APP,
+    ): Set<MissingPermission> = buildSet {
         if (!hasPermission(Manifest.permission.RECORD_AUDIO)) add(MissingPermission.MICROPHONE)
         if (!hasPermission(Manifest.permission.POST_NOTIFICATIONS)) add(MissingPermission.NOTIFICATIONS)
+        if (BuildConfig.FLOATING_INPUT && source == DictationSource.FLOATING) {
+            if (!android.provider.Settings.canDrawOverlays(context)) add(MissingPermission.OVERLAY)
+            if (!context.isAccessibilityServiceEnabled()) add(MissingPermission.ACCESSIBILITY)
+        }
         if (!configuration.isConfigured && !configuration.localTranscriptionEnabled) {
             add(MissingPermission.GATEWAY_NOT_CONFIGURED)
         }
@@ -407,6 +744,12 @@ class DictationController(
     ) {
         audioDirectory.mkdirs()
         val wavFile = File(audioDirectory, "$sessionId.wav")
+        liveWavFile = wavFile
+        // The pair stays set past the scratch window: a settled-busy recovery
+        // uses it to tell a cancelled orphan (delete) from audio history is
+        // holding for retry (keep).
+        sessionWavFile = wavFile
+        activeSessionId = sessionId
         val client = token?.let { gatewayClient(configuration.gatewayUrl, it) }
         val sessionFinishSignal = finishSignal
         val frames = Channel<ShortArray>(capacity = FILE_FRAME_BUFFER_CAPACITY)
@@ -460,6 +803,7 @@ class DictationController(
             null
         }
         val writer = WavWriter(wavFile)
+        liveWriter = writer
         val captureError = AtomicReference<Throwable?>()
         val streamAcceptingFrames = AtomicBoolean(streamFrames != null)
         val droppedStreamFrames = AtomicInteger()
@@ -668,6 +1012,11 @@ class DictationController(
         streamFrames?.close()
         drain.join()
         writer.close()
+        // Past this point the file is never scratch again: every remaining
+        // path either deletes it itself or hands it to history for retry, so
+        // the discard-on-cancel references stop tracking it here.
+        liveWriter = null
+        liveWavFile = null
         lastRecordingMillis = writer.durationMillis
 
         var stream = streamReference.get()
@@ -1105,6 +1454,7 @@ class DictationController(
         scope.launch { usageStats.record(transcript, recordedMillis) }
         val target = when (source) {
             DictationSource.IME -> imeInserter
+            DictationSource.FLOATING -> floatingInserter.takeIf { configuration.automaticInsertion }
             DictationSource.COMPANION_APP -> null
         }
         val shouldInsert = target != null
@@ -1129,9 +1479,11 @@ class DictationController(
 
         _state.update { it.copy(phase = DictationPhase.INSERTING, transcript = transcript) }
         diagnostics.recordTiming("insertion_started", source.name)
-        // The IME connection is reacquired here rather than at Start, so the
-        // transcript is committed to the editor still owned by the keyboard.
+        // The inserter is reacquired here rather than at Start, so a dictation
+        // that followed the user into another app lands in the field they are
+        // actually looking at.
         val report = target.insert(transcript)
+        lastInsertion = report.applied
         history.recordSuccess(
             sessionId = sessionId.toString(),
             language = configuration.effectiveLanguage.wireValue,
@@ -1187,7 +1539,7 @@ class DictationController(
             recoverable = error.recoverable,
             audioFile = wavFile,
             retentionHours = configuration.audioRetention.hours,
-            targetPackage = null,
+            targetPackage = floatingInserter?.currentTargetPackage(),
         )
         // The history write above is the durable half and always runs: the audio
         // is preserved and Retry has to find it. Reporting the failure on screen
@@ -1338,6 +1690,20 @@ class DictationController(
 
         /** Long enough to read the empty-transcript line, short enough to give the strip back. */
         const val FAILED_LINGER_MILLIS = 3_000L
+
+        /**
+         * How long cancel waits for a LISTENING pipeline to close its WAV and
+         * reset before forcing it. Covers capture teardown plus a generous
+         * margin for the joins in the unwind path.
+         */
+        const val CANCEL_UNWIND_MILLIS = 2_500L
+
+        /**
+         * How long a settle waits for a cancelled pipeline's own tail to
+         * finish (a `NonCancellable` history write outlives cancellation)
+         * before deciding whether its WAV is orphaned.
+         */
+        const val SETTLE_JOIN_MILLIS = 1_000L
 
         /** File writing should stay far ahead of this six-second safety buffer. */
         const val FILE_FRAME_BUFFER_CAPACITY = 64

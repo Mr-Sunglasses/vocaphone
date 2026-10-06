@@ -5,7 +5,7 @@ import java.security.MessageDigest
 
 gradle.afterProject { project, state ->
     if (project.path != ':app') return
-    ['full', 'fdroid'].each { flavor ->
+    ['full', 'fdroid', 'x'].each { flavor ->
         project.tasks.register(flavor + 'ReleaseSbom') {
             doLast {
                 def configuration = project.configurations.getByName(flavor + 'ReleaseRuntimeClasspath')

@@ -105,6 +105,8 @@ fun DictateScreen(
     telemetryPendingCount: () -> Int,
     telemetryDeliveryStatus: () -> String,
     modifier: Modifier = Modifier,
+    /** X build only: the prominent accessibility disclosure's "I understand" action. */
+    onAcceptDisclosure: () -> Unit = {},
 ) {
     var scratchpad by remember { mutableStateOf(TextFieldValue()) }
     val context = LocalContext.current
@@ -258,6 +260,7 @@ fun DictateScreen(
                     onRefreshSetup = onRefreshSetup,
                     onDevice = settings.localTranscriptionEnabled,
                     onOpenModel = onOpenModel,
+                    onAcceptDisclosure = onAcceptDisclosure,
                 )
                 // A model still downloading is not a setup step to repair —
                 // SetupRepair has nothing to show for it — so a tap on Dictate

@@ -27,6 +27,8 @@ fun SetupRepair(
     /** True when the person chose on-device transcription; the source row then asks for a model, not a server. */
     onDevice: Boolean = false,
     onOpenModel: () -> Unit = onOpenGateway,
+    /** X build only: the prominent accessibility disclosure's "I understand" action. */
+    onAcceptDisclosure: () -> Unit = {},
 ) {
     // Launcher must register unconditionally; early-return after the last
     // remaining step would otherwise skip remember* and crash composition.
@@ -94,6 +96,34 @@ fun SetupRepair(
                         compact = !spotlight,
                     )
 
+                    // X build only. The disclosure is rendered below as its own
+                    // card: consent cannot become a one-tap accept beside
+                    // unrelated rows.
+                    SetupStep.DISCLOSURE -> Unit
+
+                    SetupStep.OVERLAY -> ChecklistRow(
+                        title = step.label,
+                        detail = "Draws the floating mic above the app you are typing in.",
+                        satisfied = false,
+                        actionLabel = "Open",
+                        onAction = { FloatingSetup.openOverlaySettings(context) },
+                        actionColor = LocalContentColor.current,
+                        compact = !spotlight,
+                    )
+
+                    SetupStep.ACCESSIBILITY -> ChecklistRow(
+                        title = step.label,
+                        detail = "Finds the focused field and inserts your transcript. " +
+                            "Force stopping VocaPhone always switches this off — " +
+                            "Android does that to every app with an accessibility " +
+                            "service, and only you can switch it back on.",
+                        satisfied = false,
+                        actionLabel = "Open",
+                        onAction = { FloatingSetup.openAccessibilitySettings(context) },
+                        actionColor = LocalContentColor.current,
+                        compact = !spotlight,
+                    )
+
                     // The speech-source step reads differently depending on
                     // which source was chosen. Setup can now finish while a
                     // model is still downloading, so an interrupted download
@@ -123,6 +153,17 @@ fun SetupRepair(
                     }
                 }
             }
+        }
+
+        if (SetupStep.DISCLOSURE in missing) {
+            AccessibilityDisclosure(accepted = false, onAccept = onAcceptDisclosure)
+        }
+
+        if (status.floating.restrictedSettingsGuidance) {
+            RestrictedSettingsHelp(
+                onOpenAccessibilitySettings = { FloatingSetup.openAccessibilitySettings(context) },
+                onOpenAppInfo = { FloatingSetup.openAppSettings(context) },
+            )
         }
     }
 }

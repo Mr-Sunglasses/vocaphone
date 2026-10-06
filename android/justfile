@@ -152,13 +152,16 @@ ci:
     set -euo pipefail
     (cd .. && python3 tools/model-pins/check_catalogs.py)
     export ANDROID_HOME="$({{ just_executable() }} _sdk)"
-    ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug
+    ./gradlew assembleFullDebug testFullDebugUnitTest lintFullDebug \
+        assembleXDebug testXDebugUnitTest
     git diff --exit-code -- app/schemas \
         || { echo "The checked-in Room schema is stale — commit app/schemas." >&2; exit 1; }
 
     git diff --check "$(git merge-base origin/main HEAD)" \
         || { echo "Whitespace errors in this branch — see git diff --check." >&2; exit 1; }
     python3 tools/check-page-alignment.py {{ apk }}
+    python3 tools/check-page-alignment.py \
+        app/build/outputs/apk/x/debug/vocaphone-xDebug.apk
 
 # Deliberately not _adb: the point of this recipe is to work when nothing is
 # attached, which is exactly when _adb refuses. A comment inside a recipe body

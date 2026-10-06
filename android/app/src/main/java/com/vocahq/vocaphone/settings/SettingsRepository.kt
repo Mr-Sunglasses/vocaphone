@@ -137,6 +137,19 @@ enum class AudioRetention(val hours: Int) {
     }
 }
 
+/** When the floating mic bubble is allowed to appear. X builds only. */
+enum class BubbleBehavior {
+    EVERY_EDITABLE_FIELD,
+    OFF,
+    ;
+
+    val displayName: String
+        get() = when (this) {
+            EVERY_EDITABLE_FIELD -> "Every eligible text field"
+            OFF -> "Never (app only)"
+        }
+}
+
 /**
  * How long an on-device model stays in RAM after the last dictation.
  *
@@ -296,6 +309,20 @@ data class VocaPhoneSettings(
     val telemetryAsked: Boolean = false,
     /** Trigger phrases dictated text is expanded against, after formatting. */
     val snippets: List<Snippet> = emptyList(),
+    /**
+     * Whether a finished floating-mic dictation is written into the focused
+     * field by itself. Off leaves it in History for a manual copy. X build only.
+     */
+    val automaticInsertion: Boolean = true,
+    /** Whether the floating bubble may appear over an editable field. X build only. */
+    val bubbleBehavior: BubbleBehavior = BubbleBehavior.EVERY_EDITABLE_FIELD,
+    /** Apps the bubble stays out of and reads nothing in. X build only. */
+    val excludedPackages: Set<String> = emptySet(),
+    /**
+     * The prominent accessibility disclosure has been read and accepted. the X build
+     * only — the keyboard build never asks for accessibility access.
+     */
+    val disclosureAccepted: Boolean = false,
 ) {
 
     /**
@@ -442,6 +469,14 @@ class SettingsRepository(private val context: Context) {
         put(Keys.MICROPHONE, preference.storedValue)
 
     suspend fun setAudioRetention(retention: AudioRetention) = put(Keys.RETENTION_HOURS, retention.hours)
+
+    suspend fun setAutomaticInsertion(enabled: Boolean) = put(Keys.AUTOMATIC_INSERTION, enabled)
+
+    suspend fun setBubbleBehavior(behavior: BubbleBehavior) = put(Keys.BUBBLE_BEHAVIOR, behavior.name)
+
+    suspend fun setExcludedPackages(packages: Set<String>) = put(Keys.EXCLUDED_PACKAGES, packages)
+
+    suspend fun setDisclosureAccepted(accepted: Boolean) = put(Keys.DISCLOSURE_ACCEPTED, accepted)
 
     suspend fun setModelIdleTimeout(timeout: ModelIdleTimeout) =
         put(Keys.MODEL_IDLE_TIMEOUT, timeout.storedValue)
@@ -744,6 +779,12 @@ class SettingsRepository(private val context: Context) {
             ?: com.vocahq.vocaphone.telemetry.TelemetryConfig.DEFAULT_ENABLED,
         telemetryAsked = this[Keys.TELEMETRY_ASKED] ?: false,
         snippets = Snippet.decode(this[Keys.SNIPPETS]),
+        automaticInsertion = this[Keys.AUTOMATIC_INSERTION] ?: true,
+        bubbleBehavior = this[Keys.BUBBLE_BEHAVIOR]?.let { name ->
+            BubbleBehavior.entries.firstOrNull { it.name == name }
+        } ?: BubbleBehavior.EVERY_EDITABLE_FIELD,
+        excludedPackages = this[Keys.EXCLUDED_PACKAGES].orEmpty(),
+        disclosureAccepted = this[Keys.DISCLOSURE_ACCEPTED] ?: false,
     )
 
     private object Keys {
@@ -796,6 +837,10 @@ class SettingsRepository(private val context: Context) {
         val TELEMETRY_ASKED = booleanPreferencesKey("telemetry_asked")
         val TELEMETRY_MILESTONES = stringSetPreferencesKey("telemetry_milestones")
         val SNIPPETS = stringPreferencesKey("snippets")
+        val AUTOMATIC_INSERTION = booleanPreferencesKey("automatic_insertion")
+        val BUBBLE_BEHAVIOR = stringPreferencesKey("bubble_behavior")
+        val EXCLUDED_PACKAGES = stringSetPreferencesKey("excluded_packages")
+        val DISCLOSURE_ACCEPTED = booleanPreferencesKey("disclosure_accepted")
         val LAST_REPORTED_EXIT_AT = longPreferencesKey("last_reported_process_exit_at")
     }
 

@@ -12,6 +12,9 @@ internal fun attentionCopy(remaining: List<SetupStep>): AttentionCopy {
             SetupStep.MICROPHONE -> "Allow the microphone" to "Allow microphone"
             SetupStep.NOTIFICATIONS -> "Allow notifications" to "Allow notifications"
             SetupStep.KEYBOARD -> "Turn on the VocaPhone keyboard" to "Turn on keyboard"
+            SetupStep.DISCLOSURE -> "Read the accessibility disclosure" to "Review disclosure"
+            SetupStep.OVERLAY -> "Allow display over other apps" to "Allow overlay"
+            SetupStep.ACCESSIBILITY -> "Turn on the accessibility service" to "Turn on accessibility"
         }
         return AttentionCopy("One more step", "$action and you\u2019re done.", button)
     }

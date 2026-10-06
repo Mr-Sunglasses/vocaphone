@@ -247,6 +247,24 @@ These reads happen once per dictation, outside the typing hot path. Context is
 used only in memory; unavailable context does not prevent insertion, and
 password/sensitive fields remain excluded.
 
+On the `x` flavor (VocaPhoneX) the floating mic replaces the IME as the
+dictation surface. `VocaPhoneAccessibilityService` watches focus events, and
+`BubbleController` draws an overlay mic (TYPE_APPLICATION_OVERLAY) beside the
+screen edge when an eligible editable field gains focus. A tap starts a
+dictation whose source is `FLOATING`; the same controller pipeline records,
+transcribes on-device or through the gateway, and delivers to
+`TextInsertion`, which re-acquires the focused editable node at insertion
+time and performs `ACTION_SET_TEXT` on it — cross-app dictation follows the
+latest safe target rather than a node that may have died mid-dictation.
+Field eligibility (editable, not password/number,
+not an excluded package or the app's own UI) is decided once per focus change
+in `FieldEligibility`/`BubblePolicy`; password and sensitive fields stay
+excluded and the bubble dismisses per typing session or by snooze. Undo and
+"inserted" confirmation ride the same `lastInsertion` path the keyboard uses.
+Because Android only binds one accessibility service per app, insertion never
+goes through an `InputConnection` here — the text arrives as one atomic set,
+not keystrokes.
+
 The recording foreground service observes status for display and waits for the
 controller's exact dictation job to complete. This keeps it alive through model
 loading, inference and insertion, while ensuring a short capture or cancelled

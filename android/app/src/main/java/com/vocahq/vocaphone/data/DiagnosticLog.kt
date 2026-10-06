@@ -171,7 +171,7 @@ class DiagnosticLog(
         const val MAX_BYTES = 48 * 1024
         const val MAX_VALUE_LENGTH = 64
         val EVENTS = setOf("state", "error", "action", "timing", "exit")
-        val SOURCES = setOf("IME", "COMPANION_APP", "none")
+        val SOURCES = setOf("IME", "COMPANION_APP", "FLOATING", "none")
         /**
          * `ApplicationExitInfo.REASON_*`, named rather than numbered so a
          * pasted log reads without the SDK next to it. `crash` is a Java

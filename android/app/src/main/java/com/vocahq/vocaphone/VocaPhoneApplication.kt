@@ -235,7 +235,11 @@ class VocaPhoneApplication : Application() {
         }
         // Same process/UID as the IME (see AppContainer). Setup already opens
         // the companion app, so this runs without VocaPhone being the typing IME.
-        VoiceShortcutIme.publishEnabledSubtypes(this)
+        // The X build removes the IME service from the manifest, so there is no voice
+        // shortcut subtype to publish.
+        if (!BuildConfig.FLOATING_INPUT) {
+            VoiceShortcutIme.publishEnabledSubtypes(this)
+        }
     }
 
     override fun onTrimMemory(level: Int) {

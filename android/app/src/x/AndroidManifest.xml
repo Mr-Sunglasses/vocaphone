@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Draws the floating mic over whatever app the user is typing in. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!--
+      Only launcher apps are queried, and only to let the user pick which apps
+      the bubble should stay out of. No broad package visibility is requested.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
+    <application>
+
+        <!--
+          The X build keeps every other keyboard intact instead of adding one, so the
+          IME service declared by the base manifest is merged out of this build.
+        -->
+        <service
+            android:name=".ime.VocaPhoneInputMethodService"
+            tools:node="remove" />
+
+        <!--
+          The service sees the focused field's shape, not its contents: it tells
+          the bubble where it may appear and writes the finished transcript at
+          the cursor.
+        -->
+        <service
+            android:name=".accessibility.VocaPhoneAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+
+    </application>
+</manifest>

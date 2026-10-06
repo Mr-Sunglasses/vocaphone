@@ -1,6 +1,9 @@
 package com.vocahq.vocaphone.ui
 
 import android.app.Application
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.database.ContentObserver
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
@@ -30,6 +33,7 @@ import com.vocahq.vocaphone.local.ModelDownloadService
 import com.vocahq.vocaphone.local.LocalModelIntegrityException
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
+import com.vocahq.vocaphone.settings.BubbleBehavior
 import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
 import com.vocahq.vocaphone.settings.SplitKeyboard
@@ -37,6 +41,7 @@ import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.telemetry.TelemetryDownloadOutcome
 import com.vocahq.vocaphone.telemetry.TelemetrySetupStep
 import com.vocahq.vocaphone.telemetry.TelemetrySource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -46,6 +51,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -59,6 +65,9 @@ data class ConnectionReport(
     val streamingSupported: Boolean?,
     val message: String,
 )
+
+/** One launchable app, for the X build "excluded apps" bubble blocklist. */
+data class InstalledApp(val packageName: String, val label: String)
 
 /**
  * What the Microphone setting can offer right now. The route is only knowable
@@ -117,6 +126,10 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     private val _setup = MutableStateFlow(SetupStatus(isLoaded = false))
     val setup: StateFlow<SetupStatus> = _setup.asStateFlow()
 
+    /** Launchable apps for the X build blocklist; loaded lazily by its page. */
+    private val _installedApps = MutableStateFlow<List<InstalledApp>>(emptyList())
+    val installedApps: StateFlow<List<InstalledApp>> = _installedApps.asStateFlow()
+
     private val _connection = MutableStateFlow<ConnectionReport?>(null)
     val connection: StateFlow<ConnectionReport?> = _connection.asStateFlow()
 
@@ -165,6 +178,7 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     init {
         audioManager?.registerAudioDeviceCallback(deviceCallback, null)
         ImeSetup.watchSettings(application, imeSettingsObserver)
+        FloatingSetup.watchSettings(application, imeSettingsObserver)
         container.telemetry.appFirstOpen()
         viewModelScope.launch {
             container.dictation.state.collect { state ->
@@ -195,6 +209,7 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     override fun onCleared() {
         audioManager?.unregisterAudioDeviceCallback(deviceCallback)
         ImeSetup.stopWatchingSettings(getApplication(), imeSettingsObserver)
+        FloatingSetup.stopWatchingSettings(getApplication(), imeSettingsObserver)
         super.onCleared()
     }
 
@@ -225,6 +240,7 @@ class VocaPhoneViewModel @JvmOverloads constructor(
                             container.localModels.hasPendingUse()
                         )
                     ),
+                disclosureAccepted = configuration.disclosureAccepted,
             )
             reportSetupProgress(_setup.value)
         }
@@ -433,6 +449,48 @@ class VocaPhoneViewModel @JvmOverloads constructor(
 
     fun setAudioRetention(retention: AudioRetention) =
         viewModelScope.launch { container.settings.setAudioRetention(retention) }
+
+    // X build only: the floating mic's insert/show behavior and app blocklist.
+    fun setAutomaticInsertion(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setAutomaticInsertion(enabled) }
+
+    fun setBubbleBehavior(behavior: BubbleBehavior) =
+        viewModelScope.launch { container.settings.setBubbleBehavior(behavior) }
+
+    fun setDisclosureAccepted(accepted: Boolean) = viewModelScope.launch {
+        container.settings.setDisclosureAccepted(accepted)
+        refreshSetup()
+    }
+
+    fun toggleExcludedApp(packageName: String) {
+        viewModelScope.launch {
+            val current = container.settings.current().excludedPackages
+            val updated = if (packageName in current) current - packageName else current + packageName
+            container.settings.setExcludedPackages(updated)
+        }
+    }
+
+    fun loadInstalledApps() {
+        if (_installedApps.value.isNotEmpty()) return
+        viewModelScope.launch {
+            _installedApps.value = withContext(Dispatchers.IO) { queryLauncherApps() }
+        }
+    }
+
+    private fun queryLauncherApps(): List<InstalledApp> {
+        val packageManager = getApplication<Application>().packageManager
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return packageManager
+            .queryIntentActivities(intent, PackageManager.ResolveInfoFlags.of(0))
+            .mapNotNull { resolved ->
+                val info: ApplicationInfo = resolved.activityInfo?.applicationInfo
+                    ?: return@mapNotNull null
+                if (info.packageName == getApplication<Application>().packageName) return@mapNotNull null
+                InstalledApp(info.packageName, packageManager.getApplicationLabel(info).toString())
+            }
+            .distinctBy { it.packageName }
+            .sortedBy { it.label.lowercase() }
+    }
 
     fun setModelIdleTimeout(timeout: ModelIdleTimeout) =
         viewModelScope.launch { container.settings.setModelIdleTimeout(timeout) }

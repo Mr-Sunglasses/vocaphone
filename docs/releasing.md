@@ -12,7 +12,7 @@ one of them.
 
 | Tag | Ships | GitHub Release | Store |
 | --- | --- | --- | --- |
-| `android/v0.1.1` | Android only | APK, AAB, fdroid APK, checksums. Marked **Latest**. | Play Internal, then production in Console |
+| `android/v0.1.1` | Android only | APK, AAB, fdroid APK, VocaPhoneX APK, checksums. Marked **Latest**. | Play Internal, then production in Console |
 | `android/v0.1.1-beta.1` | Android only | Same files. Marked **Pre-release**. | Play Internal testing |
 | `ios/v1.0.21` | iOS only | Notes only (no IPA). Not Latest. | TestFlight |
 | *two tags on the same commit* | Both | Two Releases, two changelogs | Both of the above |
@@ -45,6 +45,13 @@ marketing version changed. Leave `MARKETING_VERSION` at `1.0` until the App
 Store listing itself needs a new user-visible version.
 
 ## Android only
+
+One `android/v*` tag ships every flavor: `vocaphone.apk` (the keyboard app),
+`vocaphone-fdroid.apk` (F-Droid rebuild reference) and `vocaphone-x.apk`
+(VocaPhoneX, the floating-mic build — package `com.vocahq.vocaphone.x`,
+sideload-only). All three share the tag's `versionName`, so the X flavor
+never gets its own tag or version line: a release is the same codebase built
+each way.
 
 ```sh
 # 1. Bump versionName and versionCode in android/app/build.gradle.kts
@@ -100,9 +107,9 @@ iOS GitHub Release is notes plus a TestFlight link, not a binary.
 
 ## Verify Android release provenance
 
-New Android releases include `vocaphone.cdx.json` and
-`vocaphone-fdroid.cdx.json` (CycloneDX 1.6), checksums, and GitHub build
-attestations for APKs, AAB, and inventories. The full inventory also describes
+New Android releases include `vocaphone.cdx.json`,
+`vocaphone-fdroid.cdx.json` and `vocaphone-x.cdx.json` (CycloneDX 1.6),
+checksums, and GitHub build attestations for APKs, AAB, and inventories. The full inventory also describes
 the full AAB's runtime dependencies; native file hashes refer to the APK's
 packaged files. Models downloaded after installation and the optional gateway
 are not bundled and are outside these inventories.

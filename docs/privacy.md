@@ -202,6 +202,24 @@ optional clipboard history read
 clips only while the input view is showing; history stays on the phone. Neither
 path is used to insert a transcript.
 
+## Android floating mic (VocaPhoneX, x flavor)
+
+The `x` sideload build (VocaPhoneX) replaces the keyboard with a floating
+bubble. It requests two extra system permissions the shipped builds never
+need:
+
+- **Display over other apps** (`SYSTEM_ALERT_WINDOW`), to draw the mic bubble.
+- **Accessibility service**, which the OS grants after an explicit in-system
+  opt-in. The service reads focus events to know when an editable field is
+  active and performs `ACTION_SET_TEXT` to place the finished transcript.
+  Field reads are the same kind of context the keyboard sees; they stay on
+  the phone, are never logged, and are not sent to the gateway. Password and
+  other sensitive fields are excluded the same way, and apps the user lists
+  under Settings → Floating mic never see the bubble.
+
+Because insertion is `ACTION_SET_TEXT`, the transcript lands atomically and
+does not go through any keyboard's composing state or clipboard.
+
 ## Usage statistics (Android)
 
 Settings → Stats counts how much you have dictated. It is counts only: six

@@ -22,13 +22,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -72,6 +77,7 @@ import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelEngine
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.settings.AudioRetention
+import com.vocahq.vocaphone.settings.BubbleBehavior
 import com.vocahq.vocaphone.settings.KeyboardHeight
 import com.vocahq.vocaphone.settings.ModelIdleTimeout
 import com.vocahq.vocaphone.settings.SplitKeyboard
@@ -85,6 +91,7 @@ enum class SettingsPage(val title: String) {
     HOME("Settings"),
     MODELS("Voice model"),
     KEYBOARD("Keyboard"),
+    FLOATING_MIC("Floating mic"),
     DICTATION("Dictation"),
     SNIPPETS("Snippets"),
     DICTIONARY("Personal dictionary"),
@@ -98,7 +105,8 @@ enum class SettingsPage(val title: String) {
     companion object {
         fun fromExtra(value: String?): SettingsPage = when (value?.lowercase()) {
             "models" -> MODELS
-            "keyboard" -> KEYBOARD
+            "keyboard" -> if (BuildConfig.FLOATING_INPUT) FLOATING_MIC else KEYBOARD
+            "floating_mic" -> FLOATING_MIC
             "dictation" -> DICTATION
             "snippets" -> SNIPPETS
             "dictionary" -> DICTIONARY
@@ -168,6 +176,11 @@ fun SettingsScreen(
     onResetUsageStats: () -> Unit,
     historyCount: Int,
     onDeleteAllHistory: () -> Unit,
+    installedApps: List<InstalledApp> = emptyList(),
+    onLoadInstalledApps: () -> Unit = {},
+    onAutomaticInsertion: (Boolean) -> Unit = {},
+    onBubbleBehavior: (BubbleBehavior) -> Unit = {},
+    onToggleExcludedApp: (String) -> Unit = {},
     page: SettingsPage,
     onPageChange: (SettingsPage) -> Unit,
     openLanguagePicker: Boolean = false,
@@ -266,7 +279,9 @@ fun SettingsScreen(
                     onOpenModels = { onPageChange(SettingsPage.MODELS) },
                     onLocalTranscriptionEnabled = onLocalTranscriptionEnabled,
                 )
-                SettingsGroup(title = "Dictation and keyboard") {
+                SettingsGroup(
+                    title = if (BuildConfig.FLOATING_INPUT) "Dictation" else "Dictation and keyboard",
+                ) {
                     SettingsNavRow(
                         title = "Language",
                         supporting = settings.effectiveLanguage.displayName,
@@ -281,12 +296,21 @@ fun SettingsScreen(
                         onClick = { onPageChange(SettingsPage.DICTATION) },
                     )
                     SettingsDivider(inset = true)
-                    SettingsNavRow(
-                        title = "Keyboard",
-                        supporting = keyboardRowSummary(setup.ime),
-                        icon = R.drawable.ic_keyboard,
-                        onClick = { onPageChange(SettingsPage.KEYBOARD) },
-                    )
+                    if (BuildConfig.FLOATING_INPUT) {
+                        SettingsNavRow(
+                            title = "Floating mic",
+                            supporting = floatingMicSummary(setup),
+                            icon = R.drawable.ic_dictation,
+                            onClick = { onPageChange(SettingsPage.FLOATING_MIC) },
+                        )
+                    } else {
+                        SettingsNavRow(
+                            title = "Keyboard",
+                            supporting = keyboardRowSummary(setup.ime),
+                            icon = R.drawable.ic_keyboard,
+                            onClick = { onPageChange(SettingsPage.KEYBOARD) },
+                        )
+                    }
                 }
                 SettingsGroup(title = "Your content") {
                     SettingsNavRow(
@@ -376,6 +400,18 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
+
+            SettingsPage.FLOATING_MIC -> {
+                LaunchedEffect(Unit) { onLoadInstalledApps() }
+                FloatingMicSettings(
+                    settings = settings,
+                    setup = setup,
+                    installedApps = installedApps,
+                    onAutomaticInsertion = onAutomaticInsertion,
+                    onBubbleBehavior = onBubbleBehavior,
+                    onToggleExcludedApp = onToggleExcludedApp,
+                )
             }
 
             SettingsPage.KEYBOARD -> {
@@ -704,6 +740,91 @@ internal fun keyboardRowSummary(ime: ImeSetupStatus): String = when {
     ime.selected -> "On"
     ime.enabled -> "Turned on, not selected"
     else -> "Not turned on"
+}
+
+/** The floating-mic row's second line: the state of its two permissions. */
+internal fun floatingMicSummary(setup: SetupStatus): String = when {
+    !setup.overlay -> "Needs display-over-other-apps"
+    !setup.accessibility -> "Needs accessibility"
+    else -> "On"
+}
+
+/**
+ * The X build's input page: where the transcript goes, when the mic is
+ * allowed to appear, and which apps it stays out of.
+ */
+@Composable
+private fun FloatingMicSettings(
+    settings: VocaPhoneSettings,
+    setup: SetupStatus,
+    installedApps: List<InstalledApp>,
+    onAutomaticInsertion: (Boolean) -> Unit,
+    onBubbleBehavior: (BubbleBehavior) -> Unit,
+    onToggleExcludedApp: (String) -> Unit,
+) {
+    val context = LocalContext.current
+    if (!setup.accessibility || !setup.overlay) {
+        SettingsGroup(title = "Setup") {
+            SettingsNavRow(
+                title = "Finish floating mic setup",
+                supporting = "The mic needs the accessibility service and display-over-other-apps.",
+                icon = R.drawable.ic_warning,
+                onClick = {
+                    if (!setup.overlay) {
+                        FloatingSetup.openOverlaySettings(context)
+                    } else {
+                        FloatingSetup.openAccessibilitySettings(context)
+                    }
+                },
+            )
+        }
+    }
+    SettingsGroup(
+        title = "Insertion",
+    ) {
+        SettingsSwitchRow(
+            title = "Insert automatically",
+            supporting = "Write the transcript straight into the focused field. When off, it waits in History for you.",
+            checked = settings.automaticInsertion,
+            onCheckedChange = onAutomaticInsertion,
+        )
+    }
+    SettingsGroup(
+        title = "Floating mic",
+        footer = "The mic never appears in password or payment fields, on system permission screens, or in the apps you exclude below.",
+    ) {
+        SettingsChoiceRow(
+            title = "Show the mic",
+            options = BubbleBehavior.entries,
+            selected = settings.bubbleBehavior,
+            label = { it.displayName },
+            onSelect = onBubbleBehavior,
+        )
+    }
+    SettingsGroup(
+        title = "Excluded apps",
+        footer = "${settings.excludedPackages.size} excluded. The mic stays hidden and reads nothing in these apps.",
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+        ) {
+            items(installedApps, key = { it.packageName }) { app ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onToggleExcludedApp(app.packageName) }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = app.packageName in settings.excludedPackages,
+                        onCheckedChange = { onToggleExcludedApp(app.packageName) },
+                    )
+                    Text(app.label, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
 }
 
 /** The microphone row's second line: the choice, and what is in use while it is. */
