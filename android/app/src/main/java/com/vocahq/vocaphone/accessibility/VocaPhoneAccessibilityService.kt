@@ -3,6 +3,8 @@ package com.vocahq.vocaphone.accessibility
 import android.accessibilityservice.AccessibilityService
 import android.app.KeyguardManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -44,6 +46,8 @@ class VocaPhoneAccessibilityService : AccessibilityService(), TranscriptInserter
     // case) re-process SET_TEXT into chips and then publish a caret inside
     // the span they moved — the next dictation would splice there.
     private var lastApplied: AppliedInsertion? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val typingRefresh = Runnable { refreshBubble() }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -76,7 +80,18 @@ class VocaPhoneAccessibilityService : AccessibilityService(), TranscriptInserter
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val type = event?.eventType ?: return
-        if (type and EVENT_MASK != 0) refreshBubble()
+        if (type and EVENT_MASK == 0) return
+        when (BubbleRefreshPolicy.forEvent(type)) {
+            BubbleRefreshPolicy.Refresh.IMMEDIATE -> {
+                // Supersedes any typing refresh still waiting.
+                mainHandler.removeCallbacks(typingRefresh)
+                refreshBubble()
+            }
+            BubbleRefreshPolicy.Refresh.AFTER_TYPING -> {
+                mainHandler.removeCallbacks(typingRefresh)
+                mainHandler.postDelayed(typingRefresh, BubbleRefreshPolicy.TYPING_QUIET_MILLIS)
+            }
+        }
     }
 
     /**
@@ -101,6 +116,7 @@ class VocaPhoneAccessibilityService : AccessibilityService(), TranscriptInserter
     override fun onInterrupt() = Unit
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
+        mainHandler.removeCallbacks(typingRefresh)
         val container = VocaPhoneApplication.container(this)
         if (container.dictation.floatingInserter === this) container.dictation.floatingInserter = null
         bubble?.detach()
@@ -387,6 +403,31 @@ class VocaPhoneAccessibilityService : AccessibilityService(), TranscriptInserter
                 AccessibilityEvent.TYPE_VIEW_CLICKED or
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
                 AccessibilityEvent.TYPE_WINDOWS_CHANGED
+    }
+}
+
+/**
+ * When an accessibility event re-evaluates the bubble.
+ *
+ * A re-evaluation walks up to [SEARCH_NODE_BUDGET] nodes across every window,
+ * and text and selection changes arrive on every keystroke in every app, so
+ * running it for each one taxed typing system-wide with work that cannot
+ * change the answer: the field being typed in is still the field. Those wait
+ * until typing pauses. Focus, window and click events are how the field
+ * actually changes, so they still re-evaluate at once and drop any pending
+ * typing refresh. The typing events stay in the mask because some editors
+ * (Gmail's compose body) announce nothing else when they gain focus.
+ */
+internal object BubbleRefreshPolicy {
+    enum class Refresh { IMMEDIATE, AFTER_TYPING }
+
+    const val TYPING_QUIET_MILLIS = 150L
+
+    fun forEvent(type: Int): Refresh = when (type) {
+        AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+        AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED,
+        -> Refresh.AFTER_TYPING
+        else -> Refresh.IMMEDIATE
     }
 }
 

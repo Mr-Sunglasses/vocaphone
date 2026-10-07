@@ -550,6 +550,7 @@ internal fun VocaPhoneKeyboard(
     }
 
     VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled) {
+        ReportKeyboardSurface(MaterialTheme.colorScheme.surfaceContainerLowest)
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerLowest,
             contentColor = MaterialTheme.colorScheme.onSurface,
@@ -1148,6 +1149,7 @@ internal fun VoiceShortcutListeningChrome(
 ) {
     LaunchedEffect(Unit) { onReadyToListen() }
     VocaPhoneTheme(dynamicColor = settings.dynamicColorEnabled) {
+        ReportKeyboardSurface(MaterialTheme.colorScheme.surfaceContainerLowest)
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainerLowest,
             contentColor = MaterialTheme.colorScheme.onSurface,

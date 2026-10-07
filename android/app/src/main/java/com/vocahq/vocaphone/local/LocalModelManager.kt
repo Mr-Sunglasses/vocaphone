@@ -114,6 +114,22 @@ internal const val LOCAL_ENGINE_WARM_HEADROOM_BYTES = 512L * 1024 * 1024
  * are released before the next is built. Zero [availableBytes] means the
  * system would not say, which is not a reason to refuse.
  */
+/** Why a model download was cancelled: what the Models page says afterwards. */
+enum class DownloadCancelReason(val message: String) {
+    USER("Model download canceled."),
+
+    /**
+     * Android 15 allows a dataSync foreground service six hours in a day and
+     * then calls `onTimeout`. Nothing is resumable, so the download stops
+     * cleanly with a line that says why, rather than "canceled" for a
+     * cancel the user never made.
+     */
+    TIME_LIMIT(
+        "Model download stopped: Android limits background downloads to six hours. " +
+            "Try again on a faster connection.",
+    ),
+}
+
 internal fun hasRoomToWarm(
     availableBytes: Long,
     thresholdBytes: Long,
@@ -180,6 +196,9 @@ class LocalModelManager(
     /** The coroutine cannot interrupt a blocking OkHttp execute by itself. */
     private val activeDownloadCall = AtomicReference<Call?>(null)
     private val activeDownloadJob = AtomicReference<Job?>(null)
+
+    /** Why the in-flight download is being cancelled; read once by its unwind. */
+    private val cancelReason = AtomicReference(DownloadCancelReason.USER)
 
     /**
      * Stat-only pass. Anything present but not yet marked as digest-checked is
@@ -341,6 +360,9 @@ class LocalModelManager(
      */
     fun startDownload(model: LocalModelDescriptor, useWhenReady: Boolean = false): Job {
         cancelDownload()
+        // A reason left by a cancel that found the job already finishing
+        // must not label this download's unwind.
+        cancelReason.set(DownloadCancelReason.USER)
         val job = downloadScope.launch { download(model, useWhenReady) }
         activeDownloadJob.set(job)
         job.invokeOnCompletion { activeDownloadJob.compareAndSet(job, null) }
@@ -356,8 +378,10 @@ class LocalModelManager(
     fun clearPendingUse(id: String) = markAdopted(id)
 
 
-    fun cancelDownload() {
-        activeDownloadJob.getAndSet(null)?.cancel()
+    fun cancelDownload(reason: DownloadCancelReason = DownloadCancelReason.USER) {
+        val job = activeDownloadJob.getAndSet(null)
+        if (job != null) cancelReason.set(reason)
+        job?.cancel()
         activeDownloadCall.get()?.cancel()
     }
 
@@ -449,13 +473,13 @@ class LocalModelManager(
                 )
             } catch (error: CancellationException) {
                 staging.deleteRecursively()
-                _state.value = _state.value.copy(message = "Model download canceled.")
+                _state.value = _state.value.copy(message = takeCancelReason().message)
                     .withoutPendingUse(model.id)
                 throw error
             } catch (error: Throwable) {
                 if (!currentCoroutineContext().isActive) {
                     staging.deleteRecursively()
-                    _state.value = _state.value.copy(message = "Model download canceled.")
+                    _state.value = _state.value.copy(message = takeCancelReason().message)
                         .withoutPendingUse(model.id)
                     throw CancellationException("Model download canceled", error)
                 }
@@ -474,6 +498,9 @@ class LocalModelManager(
             }
         }
     }
+
+    private fun takeCancelReason(): DownloadCancelReason =
+        cancelReason.getAndSet(DownloadCancelReason.USER)
 
     /** Streams one file to disk and returns its SHA-256. */
     private suspend fun downloadFile(

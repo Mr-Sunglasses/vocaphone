@@ -126,6 +126,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private var lastSelEnd = -1
     private var caseCycleOriginal: String? = null
     private var caseCycleEmitted: String? = null
+    /** Set in onDestroy; posted work checks it before touching the service. */
+    private var destroyed = false
     /** True while the editor still has a composing region we set. */
     private var composingRegionActive = false
 
@@ -413,8 +415,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     override fun onDestroy() {
-        mainHandler.removeCallbacks(startVoiceShortcutDictation)
-        mainHandler.removeCallbacks(delayedRejectedHandback)
+        destroyed = true
+        // Everything this service posts — the clipboard read, the coalesced
+        // editor read, the voice shortcut runnables — reads the service or its
+        // connection, and none of it means anything once it is gone.
+        mainHandler.removeCallbacksAndMessages(null)
         voiceShortcutWindowWaits = 0
         voiceShortcutRejectGuidance = false
         stopClipboardWatch()
@@ -812,7 +817,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     private fun refreshClipboard() {
+        if (destroyed) return
         mainHandler.post {
+            // The settings collector and the clipboard listener can both get
+            // here in the frame onDestroy runs; the post then lands after it.
+            if (destroyed) return@post
             val settings = visibleSettings.value
             if (editorConfig.sensitive) {
                 visibleClipboard.value = null
