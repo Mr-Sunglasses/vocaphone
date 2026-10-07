@@ -301,6 +301,7 @@
 		98AE213452E133E22550785B /* KeyboardHaptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 858088F81E12EC57E13F9492 /* KeyboardHaptics.swift */; };
 		998609F2CD8D4E4FB805BCF9 /* InsertionTargetFingerprintTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDF4064EA96CCF0A54F218D8 /* InsertionTargetFingerprintTests.swift */; };
 		9A89862335FDE367954EF77B /* SherpaFeatureDither.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7083ED482761906EE2589E97 /* SherpaFeatureDither.swift */; };
+		9A92029F85994B1E2431B052 /* TextInsertionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06CCCA40180C0B446A75B796 /* TextInsertionTests.swift */; };
 		9AE625A9A97E5A57DC6520E9 /* TelemetryStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48D9836F52892447650F0375 /* TelemetryStats.swift */; };
 		9B5622A66F2595319CE5825E /* SentencePunctuation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78AF826E0D2C7820CBB4B78C /* SentencePunctuation.swift */; };
 		9C3766171C286926385A9F1E /* SpokenNumbers.swift in Sources */ = {isa = PBXBuildFile; fileRef = E590CFC53039DA367280B8CD /* SpokenNumbers.swift */; };
@@ -559,6 +560,7 @@
 		054B6576EFBD7797C0B0F433 /* SherpaLongAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SherpaLongAudio.swift; sourceTree = "<group>"; };
 		05735C847A47FF442B4FB21A /* TypingPrivacyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypingPrivacyTests.swift; sourceTree = "<group>"; };
 		05D4358F110A92E3D49FA4EE /* LocalModelEndToEndTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelEndToEndTests.swift; sourceTree = "<group>"; };
+		06CCCA40180C0B446A75B796 /* TextInsertionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextInsertionTests.swift; sourceTree = "<group>"; };
 		06FC8DDB89A55103E29C10D3 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		07178E9C6A3CF354CD83A2C1 /* SmartPunctuation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartPunctuation.swift; sourceTree = "<group>"; };
 		07C4BD2142E9377F123A8848 /* SwipeRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeRecognizer.swift; sourceTree = "<group>"; };
@@ -1178,6 +1180,7 @@
 				924E5D73CB086A4210BF6052 /* SwipeRecognizerTests.swift */,
 				0DFD83D2BCB84400E7981A4B /* SwipeTrailTests.swift */,
 				8D448639495E9251156A2802 /* TelemetryTests.swift */,
+				06CCCA40180C0B446A75B796 /* TextInsertionTests.swift */,
 				ABDF2EC3AB09FF78FD1EF935 /* TranscriptHistoryModelTests.swift */,
 				FCAE41267FF8113463CFFF96 /* TranscriptionQualityTests.swift */,
 				B154124C04655D1A36F1B4E4 /* TranscriptionSourceTests.swift */,
@@ -1915,6 +1918,7 @@
 				9AE625A9A97E5A57DC6520E9 /* TelemetryStats.swift in Sources */,
 				361B273516585197E5B3D8F1 /* TelemetryTests.swift in Sources */,
 				D7CC096732C721CE14B5F682 /* TextInsertion.swift in Sources */,
+				9A92029F85994B1E2431B052 /* TextInsertionTests.swift in Sources */,
 				C571D55DDA9D6C70259F0236 /* TouchTrace.swift in Sources */,
 				32ACD083D95E809FF6453331 /* TouchWitness.swift in Sources */,
 				8A69E16ABEF642C3D68FADD5 /* TranscriptHistoryModel.swift in Sources */,
