@@ -278,6 +278,49 @@ struct SherpaIncrementalSessionTests {
         #expect(!streamed.supersededBy(""))
     }
 
+    /// A re-decode that fell into a repetition loop is the longest answer in
+    /// raw characters and the shortest once the loop is collapsed. It used to
+    /// replace a correct partial transcript.
+    @Test func aRetryStuckInALoopDoesNotReplaceTheStreamedTranscript() {
+        let streamed = SherpaIncrementalResult(
+            transcript: SherpaTranscript(text: "the opening half and the rest of it"),
+            droppedAudibleChunk: true
+        )
+        let looped = Array(repeating: "the opening half", count: 8).joined(separator: " ")
+
+        #expect(looped.count > streamed.transcript.text.count)
+        #expect(!streamed.supersededBy(looped))
+        // A marker is not recovered speech either.
+        #expect(!streamed.supersededBy("the opening half [BLANK_AUDIO] [BLANK_AUDIO] [BLANK_AUDIO]"))
+    }
+
+    /// The streaming split lands in a pause the detector heard rather than at
+    /// ten seconds, when the room under the pause is too loud for the level
+    /// search to call it quiet.
+    @Test func theStreamingSplitLandsInAPauseTheDetectorHeard() async {
+        let samples = Self.tone(seconds: 16, amplitude: 0.4)
+        let sizes = RecordedSizes()
+        let session = SherpaIncrementalSession(
+            chunks: Self.stream(samples),
+            detector: {
+                ScriptedSpeechDetector([
+                    SpeechRegion(start: 0, end: 7 * Self.sampleRate),
+                    SpeechRegion(start: 8 * Self.sampleRate, end: 16 * Self.sampleRate),
+                ])
+            }
+        ) { chunk in
+            sizes.record(chunk.count)
+            return .decoded(SherpaTranscript(text: "spoken"))
+        }
+        _ = await session.finish()
+
+        // The pause also bought an early decode of everything up to it; the
+        // committed chunk is the one that ends in the middle of the pause.
+        let pause = 7 * Self.sampleRate + Int(SpeechActivity.pauseSeconds * Float(Self.sampleRate)) / 2
+        #expect(sizes.recorded.contains(pause))
+        #expect(!sizes.recorded.contains(10 * Self.sampleRate))
+    }
+
     @Test func trailingRoomToneIsNeitherDecodedNorCountedAsALoss() async {
         // Quiet speech, so the levelling gain reaches its eight-times ceiling —
         // enough to lift room tone over a threshold meant for capture levels.

@@ -94,7 +94,8 @@ VocaPhoneSherpaRecognizer VocaPhoneSherpaCreate(
         ? "greedy_search"
         : decoding_method;
     config.max_active_paths = max_active_paths > 0 ? max_active_paths : 4;
-    config.hotwords_score = 1.5f;
+    // No hotwords file is configured, so no hotwords score either: one on its
+    // own boosts nothing, and only suggested that biasing was in effect.
 
     switch (family) {
         case VocaPhoneSherpaNemoTransducer:
