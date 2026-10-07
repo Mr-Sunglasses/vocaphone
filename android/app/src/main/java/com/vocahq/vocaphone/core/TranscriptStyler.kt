@@ -116,6 +116,18 @@ object TranscriptStyler {
     )
 
     /**
+     * Words that open a sentence and are then often cut off from the rest by a
+     * pause, so a chunk join capitalizes whatever follows ("Okay So we start").
+     * Opening a sentence, they are not taken for the first half of a name the
+     * way "Doctor" in "Doctor Who" is.
+     */
+    private val DISCOURSE_OPENERS = setOf(
+        "okay", "ok", "yeah", "yep", "well", "hey", "hi", "hello", "oh", "right",
+        "alright", "sure", "thanks", "please", "now", "anyway", "actually",
+        "um", "uh",
+    )
+
+    /**
      * Drop Title Case the model invented, keep tokens that look like names.
      *
      * Some models Title-Case a whole sentence ("The Keyboard Is Ready"). When a
@@ -134,6 +146,12 @@ object TranscriptStyler {
         val eligible = IntArray(sentenceCount)
         val titled = IntArray(sentenceCount)
         val titledFunctionWords = IntArray(sentenceCount)
+        val opensWithFunctionWord = BooleanArray(sentenceCount)
+        for (token in tokens) {
+            if (token.isWord && token.opensSentence) {
+                opensWithFunctionWord[token.sentence] = functionKey(token.text) in FUNCTION_WORDS
+            }
+        }
         for (token in tokens) {
             if (!token.isWord || token.opensSentence) continue
             if (token.shape != Shape.LOWER && token.shape != Shape.TITLE) continue
@@ -145,10 +163,16 @@ object TranscriptStyler {
         // Three in four is well clear of a sentence that is simply full of
         // names ("meet Sarah and John in Paris on Monday" is four in seven). A
         // sentence too short for a ratio is the model's only when every word is
-        // capitalized and one of them is a function word: "Do It", not "Call Sarah".
+        // capitalized, one of them is a function word, and nothing left over
+        // could be a name: either the opening word is a function word too ("Do
+        // It Now") or every word after it is ("Call Him"). Not "Call Sarah", and
+        // not "Visit The Hague".
         val titleCased = BooleanArray(sentenceCount) { sentence ->
             (eligible[sentence] >= 3 && titled[sentence] * 4 >= eligible[sentence] * 3) ||
-                (titled[sentence] == eligible[sentence] && titledFunctionWords[sentence] > 0)
+                (
+                    titled[sentence] == eligible[sentence] && titledFunctionWords[sentence] > 0 &&
+                        (opensWithFunctionWord[sentence] || titledFunctionWords[sentence] == eligible[sentence])
+                    )
         }
 
         val words = tokens.filter { it.isWord }
@@ -174,12 +198,15 @@ object TranscriptStyler {
                         titleCased[token.sentence] -> true
                         token.opensSentence -> false
                         functionKey(token.text) !in FUNCTION_WORDS -> false
+                        // An opening word is capitalized anyway, so it vouches
+                        // for a name only when it could start one ("Doctor Who
+                        // is on").
                         else -> listOf(wordPosition - 1, wordPosition + 1)
                             .mapNotNull { words.getOrNull(it) }
                             .none { neighbour ->
                                 neighbour.sentence == token.sentence &&
-                                    !neighbour.opensSentence &&
-                                    neighbour.shape in CAPITALIZED_SHAPES
+                                    neighbour.shape in CAPITALIZED_SHAPES &&
+                                    (!neighbour.opensSentence || mayOpenName(neighbour.text))
                             }
                     }
                     result.append(if (flatten) token.text.lowercase() else token.text)
@@ -190,6 +217,11 @@ object TranscriptStyler {
     }
 
     private val CAPITALIZED_SHAPES = setOf(Shape.TITLE, Shape.ACRONYM, Shape.MIXED)
+
+    private fun mayOpenName(token: String): Boolean {
+        val key = functionKey(token)
+        return key !in FUNCTION_WORDS && key !in DISCOURSE_OPENERS
+    }
 
     private fun functionKey(token: String): String = token.lowercase().replace('’', '\'')
 

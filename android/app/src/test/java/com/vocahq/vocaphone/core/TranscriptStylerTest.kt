@@ -123,6 +123,27 @@ class TranscriptStylerTest {
         )
     }
 
+    /**
+     * A short all-Title-Case sentence is the model's only when nothing in it
+     * could be a name, and a capitalized opening word can be the first half of one.
+     */
+    @Test
+    fun `short and opening names keep their capitals`() {
+        assertEquals("Visit The Hague.", TranscriptStyler.apply("Visit The Hague", WritingStyle.FORMAL))
+        assertEquals(
+            "Doctor Who is on tonight.",
+            TranscriptStyler.apply("Doctor Who is on tonight", WritingStyle.FORMAL),
+        )
+        // Nothing here could be a name, so the model's Title Case still goes.
+        assertEquals("Call him.", TranscriptStyler.apply("Call Him", WritingStyle.FORMAL))
+        // An opening interjection is not half a name: the capital after it is a
+        // chunk join's.
+        assertEquals(
+            "Okay so we start at noon.",
+            TranscriptStyler.apply("Okay So we start at noon", WritingStyle.FORMAL),
+        )
+    }
+
     @Test
     fun `long all caps is still flattened`() {
         assertEquals("This is really good.", TranscriptStyler.apply("this is REALLY good", WritingStyle.FORMAL))

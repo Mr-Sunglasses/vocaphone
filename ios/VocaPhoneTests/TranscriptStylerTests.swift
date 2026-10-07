@@ -105,6 +105,25 @@ struct TranscriptStylerTests {
         #expect(TranscriptStyler.apply("Ate A Lot Of Pizza Today", style: .formal) == "Ate a lot of pizza today.")
     }
 
+    /// A short all-Title-Case sentence is the model's only when nothing in it
+    /// could be a name, and a capitalized opening word can be the first half
+    /// of one.
+    @Test func shortAndOpeningNamesKeepTheirCapitals() {
+        #expect(TranscriptStyler.apply("Visit The Hague", style: .formal) == "Visit The Hague.")
+        #expect(
+            TranscriptStyler.apply("Doctor Who is on tonight", style: .formal)
+                == "Doctor Who is on tonight."
+        )
+        // Nothing here could be a name, so the model's Title Case still goes.
+        #expect(TranscriptStyler.apply("Call Him", style: .formal) == "Call him.")
+        // An opening interjection is not half a name: the capital after it is
+        // a chunk join's.
+        #expect(
+            TranscriptStyler.apply("Okay So we start at noon", style: .formal)
+                == "Okay so we start at noon."
+        )
+    }
+
     @Test func longAllCapsIsStillFlattened() {
         #expect(TranscriptStyler.apply("this is REALLY good", style: .formal) == "This is really good.")
     }

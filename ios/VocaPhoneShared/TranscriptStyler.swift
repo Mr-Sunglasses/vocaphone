@@ -130,6 +130,16 @@ enum TranscriptStyler {
         "not", "just", "also", "very", "yes", "no",
     ]
 
+    /// Words that open a sentence and are then often cut off from the rest by
+    /// a pause, so a chunk join capitalizes whatever follows ("Okay So we
+    /// start"). Opening a sentence, they are not taken for the first half of a
+    /// name the way "Doctor" in "Doctor Who" is.
+    private static let discourseOpeners: Set<String> = [
+        "okay", "ok", "yeah", "yep", "well", "hey", "hi", "hello", "oh", "right",
+        "alright", "sure", "thanks", "please", "now", "anyway", "actually",
+        "um", "uh",
+    ]
+
     /// Drop Title Case the model invented, keep tokens that look like names.
     ///
     /// Some models Title-Case a whole sentence ("The Keyboard Is Ready"). When
@@ -150,6 +160,10 @@ enum TranscriptStyler {
         var eligible = [Int](repeating: 0, count: sentenceCount)
         var titled = [Int](repeating: 0, count: sentenceCount)
         var titledFunctionWords = [Int](repeating: 0, count: sentenceCount)
+        var opensWithFunctionWord = [Bool](repeating: false, count: sentenceCount)
+        for token in tokens where token.isWord && token.opensSentence {
+            opensWithFunctionWord[token.sentence] = functionWords.contains(functionKey(token.text))
+        }
         for token in tokens where token.isWord && !token.opensSentence {
             guard token.shape == .lower || token.shape == .title else { continue }
             eligible[token.sentence] += 1
@@ -162,11 +176,14 @@ enum TranscriptStyler {
         // Three in four is well clear of a sentence that is simply full of
         // names ("meet Sarah and John in Paris on Monday" is four in seven).
         // A sentence too short for a ratio is the model's only when every word
-        // is capitalized and one of them is a function word: "Do It", not
-        // "Call Sarah".
+        // is capitalized, one of them is a function word, and nothing left over
+        // could be a name: either the opening word is a function word too ("Do
+        // It Now") or every word after it is ("Call Him"). Not "Call Sarah",
+        // and not "Visit The Hague".
         let titleCased = (0..<sentenceCount).map { sentence in
             (eligible[sentence] >= 3 && titled[sentence] * 4 >= eligible[sentence] * 3)
-                || (titled[sentence] == eligible[sentence] && titledFunctionWords[sentence] > 0)
+                || (titled[sentence] == eligible[sentence] && titledFunctionWords[sentence] > 0
+                    && (opensWithFunctionWord[sentence] || titledFunctionWords[sentence] == eligible[sentence]))
         }
 
         var result = ""
@@ -197,16 +214,23 @@ enum TranscriptStyler {
                     let neighbours = [wordPosition - 1, wordPosition + 1]
                         .filter { words.indices.contains($0) }
                         .map { words[$0] }
+                    // An opening word is capitalized anyway, so it vouches for
+                    // a name only when it could start one ("Doctor Who is on").
                     flatten = !neighbours.contains { neighbour in
                         neighbour.sentence == token.sentence
-                            && !neighbour.opensSentence
                             && [Shape.title, .acronym, .mixed].contains(neighbour.shape)
+                            && (!neighbour.opensSentence || mayOpenName(neighbour.text))
                     }
                 }
                 result += flatten ? token.text.lowercased() : token.text
             }
         }
         return result
+    }
+
+    private static func mayOpenName(_ token: String) -> Bool {
+        let key = functionKey(token)
+        return !functionWords.contains(key) && !discourseOpeners.contains(key)
     }
 
     private static func functionKey(_ token: String) -> String {
