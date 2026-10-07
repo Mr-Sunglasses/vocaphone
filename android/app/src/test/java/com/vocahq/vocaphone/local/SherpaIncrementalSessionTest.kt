@@ -252,6 +252,23 @@ class SherpaIncrementalSessionTest {
     }
 
     @Test
+    fun `a pause seam in an unspaced script adds no space`() {
+        val levels = quiet(2) + spoken("alpha", "bravo", "charlie", "delta") + quiet(10) +
+            spoken("bravo", "alpha") + quiet(3)
+        var calls = 0
+
+        val outcome = outcomeOf(frames(levels.size) { levels[it] }) { samples ->
+            calls++
+            val words = wordsIn(samples).text.split(" ").filter(String::isNotEmpty)
+            SherpaTranscript(words.joinToString("") { CJK.getValue(it) })
+        }
+
+        assertEquals(2, calls)
+        assertTrue(outcome.isSafe)
+        assertEquals("你好世界再见朋友世界你好", outcome.transcript.text)
+    }
+
+    @Test
     fun `speech without a pause is still decoded once at the end`() {
         var calls = 0
         val levels = quiet(2) + spoken("alpha", "bravo", "charlie", "delta", "echo", "alpha") + quiet(2)
@@ -268,5 +285,6 @@ class SherpaIncrementalSessionTest {
     private companion object {
         val CLICKY_FRAMES = 120 until 130
         val WORDS = mapOf(3 to "alpha", 4 to "bravo", 5 to "charlie", 6 to "delta", 7 to "echo")
+        val CJK = mapOf("alpha" to "你好", "bravo" to "世界", "charlie" to "再见", "delta" to "朋友")
     }
 }

@@ -364,9 +364,28 @@ class SherpaLongAudioTest {
     @Test
     fun `a translated unspaced seam is never deduplicated`() {
         assertEquals(
-            "你好世界 世界再见",
+            "你好世界世界再见",
             SherpaTranscriptMerger.append("你好世界", "世界再见", deduplicateOverlap = false),
         )
+    }
+
+    /**
+     * A seam that is not de-duplicated -- a pause, or a translation -- still
+     * joins the way its script is written. Turning de-duplication off used to
+     * turn the unspaced join off with it, and every pause in a Chinese or
+     * Japanese dictation put a space in the text.
+     */
+    @Test
+    fun `a seam kept verbatim adds no space to an unspaced script`() {
+        assertEquals("你好世界再见", SherpaTranscriptMerger.append("你好世界", "再见", deduplicateOverlap = false))
+        assertEquals("你好。再见", SherpaTranscriptMerger.append("你好。", "再见", deduplicateOverlap = false))
+        assertEquals(
+            "コーヒーください",
+            SherpaTranscriptMerger.append("コーヒー", "ください", deduplicateOverlap = false),
+        )
+        // One word either side is still two words where the script uses spaces.
+        assertEquals("Okay. Thanks.", SherpaTranscriptMerger.append("Okay.", "Thanks.", deduplicateOverlap = false))
+        assertEquals("你好 OK", SherpaTranscriptMerger.append("你好", "OK", deduplicateOverlap = false))
     }
 
     @Test
@@ -420,7 +439,6 @@ class SherpaLongAudioTest {
         )
     }
 
-
     /** [seconds] of a steady tone at [level], or silence at zero. */
     private fun tone(seconds: Double, level: Float): FloatArray =
         FloatArray((seconds * SherpaLongAudio.SAMPLE_RATE).toInt()) { index ->
@@ -463,12 +481,29 @@ class SherpaLongAudioTest {
 
     @Test
     fun `quiet is judged against the speech, not a fixed level`() {
-        // Room tone at a fifth of this speaker's level is still a pause; a
-        // trailing stretch at half of it is someone carrying on softly.
-        val loudRoom = audio(tone(3.0, 0.2f), tone(0.8, 0.03f))
-        assertTrue(SherpaLongAudio.nextPauseSplit(loudRoom) != null)
+        // Room tone well under a loud speaker is a pause; a trailing stretch at
+        // half of their level is someone carrying on softly.
+        val room = audio(tone(3.0, 0.2f), tone(0.8, 0.01f))
+        assertTrue(SherpaLongAudio.nextPauseSplit(room) != null)
         val softer = audio(tone(3.0, 0.2f), tone(0.8, 0.1f))
         assertEquals(null, SherpaLongAudio.nextPauseSplit(softer))
+        // A quiet speaker's pause is a pause; their quieter words are not.
+        val quietSpeaker = audio(tone(3.0, 0.02f), tone(0.8, 0.003f))
+        assertTrue(SherpaLongAudio.nextPauseSplit(quietSpeaker) != null)
+        val quietWords = audio(tone(3.0, 0.02f), tone(0.8, 0.01f))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(quietWords))
+    }
+
+    /**
+     * Soft speech after a loud passage sat under a fifth of the loudest frame
+     * and was cut as a pause -- inside words, at a seam that is not
+     * de-duplicated. A pause is also quiet in absolute terms; a room loud
+     * enough not to be gives up pause splits, which costs only latency.
+     */
+    @Test
+    fun `soft speech after a loud passage is not a pause`() {
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(audio(tone(2.5, 0.2f), tone(0.7, 0.02f))))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(audio(tone(3.0, 0.2f), tone(0.8, 0.03f))))
     }
 
     @Test

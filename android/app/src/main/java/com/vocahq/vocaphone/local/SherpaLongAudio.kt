@@ -180,8 +180,15 @@ internal object SherpaLongAudio {
      * inside that quiet.
      *
      * Quiet is judged against the loudest frame buffered, as the boundary
-     * search judges it, so the same pause reads the same in a loud room and a
-     * quiet one; a buffer with nothing above that bar has nothing to decode.
+     * search judges it, and is also never louder than the level that search
+     * always counts as silence. The ratio alone took someone carrying on
+     * softly after a loud passage -- 0.02 after 0.2 -- for a pause, and cut
+     * inside their words at a seam that is deliberately not de-duplicated.
+     * A missed pause costs only latency, since the twelve-second split and
+     * Finish still decode it; a pause found inside speech can cut or double a
+     * word in a result that looks complete. So a room loud enough to sit over
+     * that level gets no pause splits at all. A buffer with nothing above the
+     * bar has nothing to decode.
      *
      * Only the first [size] samples are read, so a caller can ask of a growing
      * buffer every frame without copying it.
@@ -196,7 +203,10 @@ internal object SherpaLongAudio {
         val levels = DoubleArray(frames) { frame ->
             rms(samples, frame * frameSamples, (frame + 1) * frameSamples)
         }
-        val threshold = maxOf(SILENT_CHUNK_RMS, levels.max() * SILENCE_RMS_RATIO)
+        val threshold = maxOf(
+            SILENT_CHUNK_RMS,
+            minOf(levels.max() * SILENCE_RMS_RATIO, MIN_SILENCE_RMS),
+        )
         // Frames past the last whole one are too short to judge; they are
         // part of the retained audio either way.
         var quietFrames = 0
@@ -355,7 +365,9 @@ internal object SherpaTranscriptMerger {
         val right = next.trim()
         if (left.isEmpty()) return right
         if (right.isEmpty()) return left
-        if (!deduplicateOverlap) return join(left, right)
+        // Keeping a seam verbatim means not deleting anything at it, not adding
+        // a space the script does not use.
+        if (!deduplicateOverlap) return if (meetsUnspaced(left, right)) left + right else join(left, right)
 
         if (!left.any(Char::isWhitespace) && !right.any(Char::isWhitespace)) {
             return appendUnspaced(left, right)
@@ -390,6 +402,33 @@ internal object SherpaTranscriptMerger {
         } ?: 0
         return left + right.substring(overlap)
     }
+
+    /**
+     * Whether the letters either side of the seam are both of a script written
+     * without spaces between words. Asked of the letters rather than of the
+     * whole text, so "Okay." and "Thanks." are still two words.
+     */
+    private fun meetsUnspaced(left: String, right: String): Boolean {
+        val before = left.lastOrNull(::hasOwnScript) ?: return false
+        val after = right.firstOrNull(::hasOwnScript) ?: return false
+        return Character.UnicodeScript.of(before.code) in UNSPACED_SCRIPTS &&
+            Character.UnicodeScript.of(after.code) in UNSPACED_SCRIPTS
+    }
+
+    /** A letter that says which script it is: not the shared Katakana-Hiragana long-vowel mark, say. */
+    private fun hasOwnScript(character: Char): Boolean = character.isLetter() &&
+        Character.UnicodeScript.of(character.code) != Character.UnicodeScript.COMMON &&
+        Character.UnicodeScript.of(character.code) != Character.UnicodeScript.INHERITED
+
+    private val UNSPACED_SCRIPTS = setOf(
+        Character.UnicodeScript.HAN,
+        Character.UnicodeScript.HIRAGANA,
+        Character.UnicodeScript.KATAKANA,
+        Character.UnicodeScript.THAI,
+        Character.UnicodeScript.LAO,
+        Character.UnicodeScript.KHMER,
+        Character.UnicodeScript.MYANMAR,
+    )
 
     private fun wordKey(word: String): String = word
         .lowercase(Locale.ROOT)
