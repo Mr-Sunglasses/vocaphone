@@ -129,10 +129,36 @@ internal class WhisperContext private constructor(@Volatile private var pointer:
 }
 
 internal object WhisperCpuConfig {
+    /** Read once: a phone's core layout does not change while the app runs. */
+    private val performanceCores: Int? by lazy { performanceCoreCount(readCoreMaxKHz()) }
+
     fun preferredThreadCount(modelID: String): Int = whisperThreadCount(
         availableProcessors = Runtime.getRuntime().availableProcessors(),
         modelID = modelID,
+        performanceCores = performanceCores,
     )
+
+    /**
+     * A core clocked this close to the fastest one is counted as a
+     * performance core. 70% puts every prime and big core of the usual layouts
+     * on one side -- Snapdragon 845's 2.8/1.8 GHz, 855's 2.84/2.42/1.78,
+     * Tensor's 2.8/2.25/1.8 -- and their efficiency cores on the other.
+     */
+    private const val PERFORMANCE_CLOCK_RATIO = 0.7
+
+    /**
+     * How many cores run near the fastest one's clock, or null when the phone
+     * does not say.
+     *
+     * Every core has to publish its clock: one that does not -- offline, or
+     * hidden by the vendor -- could be a big core, and counting around it
+     * would undercount exactly the cores this is looking for.
+     */
+    internal fun performanceCoreCount(coreMaxKHz: List<Int>): Int? {
+        if (coreMaxKHz.isEmpty() || coreMaxKHz.any { it <= 0 }) return null
+        val fastest = coreMaxKHz.max()
+        return coreMaxKHz.count { it >= fastest * PERFORMANCE_CLOCK_RATIO }
+    }
 
     /**
      * Quantized Tiny through Small finish soon enough to use six workers
@@ -146,12 +172,30 @@ internal object WhisperCpuConfig {
      * v3 Turbo reaches the lower ceiling. The `-q` test is kept rather than
      * simplified away because it turns on how long the model runs, not on what
      * it is called, and the measurement above is expensive to rediscover.
+     *
+     * Within that, the worker count is capped at the number of
+     * [performanceCores]. ggml splits each graph node across every worker and
+     * waits at a barrier for the slowest, so on an eight-core phone the old
+     * "all but two" made six workers for four fast cores, and two of them ran
+     * wherever the scheduler put them -- an efficiency core, setting the pace
+     * for the rest. This sets only how many workers there are; it pins
+     * nothing, and which cores they run on is still the scheduler's choice,
+     * which with no more workers than fast cores is normally the fast ones.
+     * It never asks for more than the old count, so a phone whose clocks
+     * cannot separate its cores, or that does not publish them, decodes
+     * exactly as before.
      */
-    internal fun whisperThreadCount(availableProcessors: Int, modelID: String): Int {
+    internal fun whisperThreadCount(
+        availableProcessors: Int,
+        modelID: String,
+        performanceCores: Int? = null,
+    ): Int {
         val modelClass = whisperClass(modelID)
         val fullPrecisionSmall = modelClass == 3 && "-q" !in modelID
         val ceiling = if (fullPrecisionSmall || modelClass >= 4) 4 else 6
-        return (availableProcessors - 2).coerceIn(2, ceiling)
+        val allButTwo = availableProcessors - 2
+        val workers = performanceCores?.let { minOf(it, allButTwo) } ?: allButTwo
+        return workers.coerceIn(2, ceiling)
     }
 
     /** 20 ms of audio at 16 kHz, which is one unit of whisper's encoder window. */

@@ -19,6 +19,68 @@ class LocalPerformancePolicyTest {
         assertEquals(4, WhisperCpuConfig.whisperThreadCount(8, "small"))
     }
 
+    /** Peak clocks in kHz, as each core's `cpuinfo_max_freq` publishes them. */
+    private fun cores(vararg clusters: Pair<Int, Int>): List<Int> =
+        clusters.flatMap { (count, khz) -> List(count) { khz } }
+
+    @Test
+    fun `performance cores are the ones clocked near the fastest`() {
+        // Snapdragon 845, the POCO F1: 4 x 2.8 GHz + 4 x 1.77 GHz.
+        assertEquals(
+            4,
+            WhisperCpuConfig.performanceCoreCount(cores(4 to 1_766_400, 4 to 2_803_200)),
+        )
+        // Snapdragon 855: one prime, three big, four efficiency.
+        assertEquals(
+            4,
+            WhisperCpuConfig.performanceCoreCount(
+                cores(4 to 1_785_600, 3 to 2_419_200, 1 to 2_841_600),
+            ),
+        )
+        // Tensor G1, the Pixel 6a: 2 x X1 + 2 x A76 + 4 x A55.
+        assertEquals(
+            4,
+            WhisperCpuConfig.performanceCoreCount(
+                cores(4 to 1_803_000, 2 to 2_253_000, 2 to 2_802_000),
+            ),
+        )
+        // Helio G85-style 2 + 6: the clocks are too close to tell apart, so
+        // every core counts and the old ceiling decides.
+        assertEquals(
+            8,
+            WhisperCpuConfig.performanceCoreCount(cores(6 to 1_800_000, 2 to 2_000_000)),
+        )
+    }
+
+    @Test
+    fun `a phone that does not publish every clock is not guessed at`() {
+        assertEquals(null, WhisperCpuConfig.performanceCoreCount(emptyList()))
+        assertEquals(
+            null,
+            WhisperCpuConfig.performanceCoreCount(listOf(1_766_400, 0, 2_803_200, 2_803_200)),
+        )
+    }
+
+    @Test
+    fun `the whisper worker count is capped at the performance cores`() {
+        // 4 + 4: four big-core workers instead of two of them dragging two
+        // efficiency cores through every barrier.
+        assertEquals(4, WhisperCpuConfig.whisperThreadCount(8, "base-q8_0", performanceCores = 4))
+        // 2 + 6 reads as eight even cores: exactly the old count.
+        assertEquals(6, WhisperCpuConfig.whisperThreadCount(8, "base-q8_0", performanceCores = 8))
+        // Two big cores still get the floor of two workers.
+        assertEquals(2, WhisperCpuConfig.whisperThreadCount(8, "base-q8_0", performanceCores = 2))
+        // Never more than "all but two", which leaves the phone its UI.
+        assertEquals(2, WhisperCpuConfig.whisperThreadCount(4, "base-q8_0", performanceCores = 4))
+        // The large-model ceiling still applies.
+        assertEquals(
+            4,
+            WhisperCpuConfig.whisperThreadCount(12, "large-v3-turbo-q8_0", performanceCores = 8),
+        )
+        // Unreadable sysfs: the old formula.
+        assertEquals(6, WhisperCpuConfig.whisperThreadCount(8, "base-q8_0", performanceCores = null))
+    }
+
     @Test
     fun `short dictations crop the encoder window instead of padding to thirty seconds`() {
         // A two-second dictation needs 100 units of context; the floor is what

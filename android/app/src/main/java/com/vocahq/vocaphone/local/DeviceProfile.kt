@@ -3,6 +3,7 @@ package com.vocahq.vocaphone.local
 import android.os.Build
 import android.os.LocaleList
 import java.io.File
+import java.io.IOException
 import java.util.Locale
 import kotlin.math.abs
 
@@ -125,15 +126,36 @@ data class DeviceProfile(
  * Best-effort peak CPU clock. Many phones publish this in sysfs; some do not,
  * and then the tier falls back to RAM, cores, and the performance class.
  */
-fun readMaxCpuKHz(cpuRoot: File = File("/sys/devices/system/cpu")): Int {
-    val cpus = cpuRoot.listFiles { file ->
-        file.isDirectory && file.name.startsWith("cpu") &&
-            file.name.drop(3).all { it.isDigit() }
-    } ?: return 0
-    return cpus.maxOfOrNull { cpu ->
-        val freq = File(cpu, "cpufreq/cpuinfo_max_freq")
-        if (!freq.canRead()) 0 else freq.readText().trim().toIntOrNull() ?: 0
-    } ?: 0
+fun readMaxCpuKHz(cpuRoot: File = File("/sys/devices/system/cpu")): Int =
+    readCoreMaxKHz(cpuRoot).maxOrNull() ?: 0
+
+/**
+ * Each core's peak clock, in kHz, with zero for a core that does not publish
+ * one. Empty when the CPU directory cannot be listed at all.
+ *
+ * Never throws. This is a hint, read on the way into a dictation's decode as
+ * well as into the device tier, and sysfs is the vendor's: a node can pass
+ * `canRead()` and still fail the read, or be denied by SELinux. Any of that
+ * reads as an unpublished clock, which every caller already falls back on.
+ */
+internal fun readCoreMaxKHz(cpuRoot: File = File("/sys/devices/system/cpu")): List<Int> {
+    val cpus = try {
+        cpuRoot.listFiles { file ->
+            file.isDirectory && file.name.startsWith("cpu") &&
+                file.name.drop(3).all { it.isDigit() }
+        }
+    } catch (_: SecurityException) {
+        null
+    } ?: return emptyList()
+    return cpus.map { cpu -> readKHz(File(cpu, "cpufreq/cpuinfo_max_freq")) }
+}
+
+private fun readKHz(file: File): Int = try {
+    if (!file.canRead()) 0 else file.readText().trim().toIntOrNull() ?: 0
+} catch (_: IOException) {
+    0
+} catch (_: SecurityException) {
+    0
 }
 
 fun DeviceProfile.fits(model: LocalModelDescriptor): Boolean {
