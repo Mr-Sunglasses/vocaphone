@@ -180,10 +180,13 @@ enum TranscriptStyler {
         // could be a name: either the opening word is a function word too ("Do
         // It Now") or every word after it is ("Call Him"). Not "Call Sarah",
         // and not "Visit The Hague".
-        let titleCased = (0..<sentenceCount).map { sentence in
-            (eligible[sentence] >= 3 && titled[sentence] * 4 >= eligible[sentence] * 3)
-                || (titled[sentence] == eligible[sentence] && titledFunctionWords[sentence] > 0
-                    && (opensWithFunctionWord[sentence] || titledFunctionWords[sentence] == eligible[sentence]))
+        let titleCased = (0..<sentenceCount).map { sentence -> Bool in
+            let words: Int = eligible[sentence]
+            let capitals: Int = titled[sentence]
+            let capitalFunctionWords: Int = titledFunctionWords[sentence]
+            if words >= 3 && capitals * 4 >= words * 3 { return true }
+            guard capitals == words, capitalFunctionWords > 0 else { return false }
+            return opensWithFunctionWord[sentence] || capitalFunctionWords == words
         }
 
         var result = ""
