@@ -25,6 +25,16 @@ The App Group record is the source of truth. Polling is a wake-up strategy, not
 the data store. Audio references are opaque filenames; tokens, transcripts, and
 absolute paths are never written to ordinary logs.
 
+Every record write takes a short advisory lock beside the sessions directory and
+moves the stored revision forward, even when the writer's copy is stale. The
+containing app writes after an await — the microphone warming, a socket, a
+model — so its writes are conditional: it re-reads the record and writes only if
+the session has not ended, with a compare-and-swap against that revision. A
+Cancel or expiry the keyboard wrote during the wait therefore stands, and the
+app stops the capture it started instead of flipping the session back to
+recording. The lock is never held across an await, and a lock that cannot be
+taken within half a second is skipped rather than waited on.
+
 `SessionRecord.processingLocation` is optional and additive. It is how the
 keyboard and the Live Activity name the place transcription is happening without
 asking the app, and its absence is a real state — a record written before the

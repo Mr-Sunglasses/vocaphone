@@ -321,6 +321,7 @@
 		A745962F725F14ECF4639938 /* ShortWordCorrections.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDEF2896D6B013414A340977 /* ShortWordCorrections.swift */; };
 		A794CD8D0B445E5118500EC3 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7948F8C6C72A8D7A16C18562 /* SharedStore.swift */; };
 		A79BA8A795F60838D96EDFAA /* VocaPhoneLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3D3E1455AD292ED6DA1DFAC /* VocaPhoneLiveActivity.swift */; };
+		A7AE73138BB615DA311181D7 /* SharedStoreRevisionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C124A6D55A95BBC6A0C8AFD7 /* SharedStoreRevisionTests.swift */; };
 		A837F76BE6B41987F5B94211 /* RetiredLocalModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC2340A8CCED42A8274C7CD /* RetiredLocalModels.swift */; };
 		A86F678EFECCEA8BA246778C /* UsageReportingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 653FBC305F7EB4B9F7EB354B /* UsageReportingViews.swift */; };
 		A8E7D7F8F6BE5CED2509C07F /* KeyboardStatusPublicationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22D68C853A7603A9B3224B3C /* KeyboardStatusPublicationTests.swift */; };
@@ -744,6 +745,7 @@
 		BE0BE99770A5F7F08891E2BD /* KeyboardURLLauncher.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = KeyboardURLLauncher.h; sourceTree = "<group>"; };
 		BE3489C985467C23EB6A90AD /* DictationBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationBarView.swift; sourceTree = "<group>"; };
 		BF256CF6ED209E00193BF135 /* SherpaEmptyChunkRecovery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SherpaEmptyChunkRecovery.swift; sourceTree = "<group>"; };
+		C124A6D55A95BBC6A0C8AFD7 /* SharedStoreRevisionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStoreRevisionTests.swift; sourceTree = "<group>"; };
 		C304CF763960E5F1D8F76B2B /* LiveActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveActivityManager.swift; sourceTree = "<group>"; };
 		C3D3E1455AD292ED6DA1DFAC /* VocaPhoneLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocaPhoneLiveActivity.swift; sourceTree = "<group>"; };
 		C4211FAA8E574AEF57D788FA /* GatewayClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayClient.swift; sourceTree = "<group>"; };
@@ -1139,6 +1141,7 @@
 				B6B395C37266816A19C38B59 /* SemanticPaletteTests.swift */,
 				B854354D06D0111DEB123E7A /* SessionRecordTests.swift */,
 				EA031D86C1DE3C2F8B047308 /* SetupStatusTests.swift */,
+				C124A6D55A95BBC6A0C8AFD7 /* SharedStoreRevisionTests.swift */,
 				20F3E310970DBFA3822A4D19 /* SherpaDecodingMethodTests.swift */,
 				BA0A732D03A2951F028DDF6E /* SherpaIncrementalSessionTests.swift */,
 				B90C2BEEA5195CB9CB5A38CA /* SherpaLongAudioTests.swift */,
@@ -1833,6 +1836,7 @@
 				3219DC5DD26E1998A7A0CD5C /* SetupStatus.swift in Sources */,
 				1B72FBEA5D41DB51B82A1305 /* SetupStatusTests.swift in Sources */,
 				5A151959ABCE2ADE4646A79D /* SharedStore.swift in Sources */,
+				A7AE73138BB615DA311181D7 /* SharedStoreRevisionTests.swift in Sources */,
 				7E7D3327C8DF767DD960ECE9 /* SherpaDecodeOutcome.swift in Sources */,
 				F69EAE4A82B9ACE347EA0D77 /* SherpaDecodingMethodTests.swift in Sources */,
 				E5983EF5CBB205F7FBBB03B1 /* SherpaEmptyChunkRecovery.swift in Sources */,

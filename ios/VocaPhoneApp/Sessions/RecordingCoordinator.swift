@@ -559,7 +559,7 @@ final class RecordingCoordinator {
         do {
             record.error = nil
             try record.transition(to: .uploading)
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             message = "Retrying with the preserved recording…"
             startPipeline(record)
@@ -813,10 +813,14 @@ final class RecordingCoordinator {
         DiagnosticLog.record(.finishRequested)
         do {
             try record.transition(to: .finalizing)
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             liveActivity.update(status: "Finishing recording", canFinish: false)
             startPipeline(record)
+        } catch is CancellationError {
+            // Cancelled from the keyboard a moment earlier. The shared-state
+            // signal tears the recording down; finishing it would bring back a
+            // dictation the user threw away.
         } catch {
             message = "Could not finish the recording."
         }
@@ -997,7 +1001,14 @@ final class RecordingCoordinator {
             // Activity can name the same place the whole way through.
             record.processingLocation = Self.selectedProcessingLocation()
         captureClaimedTranscriptionSettings()
-            try? store.save(record)
+            do {
+                try commit(&record)
+            } catch is CancellationError {
+                return
+            } catch {
+                // The claim is advisory; a failed write must not stop the
+                // dictation the user asked for.
+            }
             clearQuickDictationMarker()
             activeRecord = record
             // Before the microphone, not at delivery: a selected model that is
@@ -1011,7 +1022,7 @@ final class RecordingCoordinator {
                     message: unavailable,
                     recoverable: false
                 )
-                try store.save(record)
+                try commit(&record)
                 activeRecord = record
                 message = unavailable
                 return
@@ -1035,7 +1046,7 @@ final class RecordingCoordinator {
                     message: "Enable microphone access in Settings.",
                     recoverable: false
                 )
-                try store.save(record)
+                try commit(&record)
                 activeRecord = record
                 return
             }
@@ -1124,7 +1135,9 @@ final class RecordingCoordinator {
                 try record.transition(to: .recording)
             }
             record.localAudioReference = audioURL.lastPathComponent
-            try store.save(record)
+            // The write this whole function waits for, and the one a Cancel
+            // during the waits above used to lose to.
+            try commit(&record)
             activeRecord = record
             message = record.startedInContainingApp == true
                 ? "Recording. Tap Finish on the keyboard when you are done."
@@ -1147,6 +1160,8 @@ final class RecordingCoordinator {
                 liveActivity.stopStandby()
             }
             beginPolling()
+        } catch is CancellationError {
+            await abandonEndedStart(id)
         } catch {
             recorder.cancelSession(keepAudioSessionActive: false)
             clearQuickDictationReadiness(deactivateAudioSession: true)
@@ -1159,7 +1174,7 @@ final class RecordingCoordinator {
                     message: "The microphone could not start. Try dictating again.",
                     recoverable: false
                 )
-                try? store.save(failedRecord)
+                try? commit(&failedRecord)
                 activeRecord = failedRecord
             }
             DiagnosticLog.record(
@@ -1168,6 +1183,37 @@ final class RecordingCoordinator {
             )
             message = "Recording could not start: \(error.localizedDescription)"
         }
+    }
+
+    /// Writes this coordinator's copy of a session unless the keyboard ended it
+    /// meanwhile; see ``SharedStore/saveUnlessEnded(_:)``. Most writes here
+    /// follow an await, and an ended session throws `CancellationError`, which
+    /// every caller treats as "stop quietly". `record` becomes what was written.
+    private func commit(_ record: inout SessionRecord) throws {
+        record = try store.saveUnlessEnded(record)
+    }
+
+    /// The keyboard cancelled, or expiry retired the session, while it was
+    /// starting. Its record is the truth, so everything this start set going
+    /// stops — the same teardown a Cancel during recording gets. The
+    /// shared-state signal may already have done some of it; all of it is safe
+    /// to repeat.
+    private func abandonEndedStart(_ id: UUID) async {
+        await streamingBridge.cancel()
+        discardIncrementalSession()
+        captureStartedAt = nil
+        let latest = try? store.load(id)
+        let shouldRemainReady = latest.map { shouldKeepQuickDictationReady(after: $0) } ?? false
+        recorder.cancelSession(keepAudioSessionActive: shouldRemainReady)
+        if shouldRemainReady {
+            armQuickDictation()
+        } else {
+            clearQuickDictationReadiness(deactivateAudioSession: true)
+        }
+        if let latest { activeRecord = latest }
+        message = latest?.state == .expired
+            ? "The dictation timed out and was discarded."
+            : "Recording canceled."
     }
 
     private func retrySession(id: UUID) {
@@ -1255,12 +1301,14 @@ final class RecordingCoordinator {
               record.state == .uploading else { return }
         do {
             try record.transition(to: .transcribing)
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             DiagnosticLog.record(.uploadCompleted)
             DiagnosticLog.record(.transcriptionStarted)
             message = "Transcribing on your gateway…"
             liveActivity.update(status: "Transcribing on your gateway", canFinish: false)
+        } catch is CancellationError {
+            // Cancelled while the body was in flight; the pipeline stops too.
         } catch {
             DiagnosticLog.record(.operationFailed)
         }
@@ -1341,7 +1389,15 @@ final class RecordingCoordinator {
         record.processingLocation = Self.selectedProcessingLocation()
 
         captureClaimedTranscriptionSettings()
-        try? store.save(record)
+        do {
+            try commit(&record)
+        } catch is CancellationError {
+            await streamingBridge.cancel()
+            discardIncrementalSession()
+            return
+        } catch {
+            // As before: the route is advisory, and the writes below retry it.
+        }
 
         // Local inference deliberately happens before the gateway guard. A
         // device configured for on-device transcription must still work with no
@@ -1367,7 +1423,7 @@ final class RecordingCoordinator {
             if record.state == .finalizing || record.canRetry {
                 try record.transition(to: .uploading)
             }
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             message = "Finishing the recording…"
             liveActivity.update(status: "Finishing recording", canFinish: false)
@@ -1389,7 +1445,7 @@ final class RecordingCoordinator {
                 )
                 record.error = nil
                 try record.transition(to: .readyToInsert)
-                try store.save(record)
+                try commit(&record)
                 activeRecord = record
                 DiagnosticLog.record(.transcriptReady)
                 UserDefaults.standard.set(
@@ -1423,7 +1479,7 @@ final class RecordingCoordinator {
                 style: record.style
             )
             record.serverJobID = created.jobID
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             DiagnosticLog.record(.uploadStarted)
             let sessionID = record.sessionID
@@ -1434,7 +1490,7 @@ final class RecordingCoordinator {
                 }
             )
             try record.transition(to: .transcribing)
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             let finished = try await client.finishUploaded(sessionID: record.sessionID, uploaded: uploaded)
             guard let transcript = finished.transcript, !transcript.isEmpty else {
@@ -1451,7 +1507,7 @@ final class RecordingCoordinator {
             )
             record.error = nil
             try record.transition(to: .readyToInsert)
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             DiagnosticLog.record(.transcriptReady)
             UserDefaults.standard.set(
@@ -1504,12 +1560,12 @@ final class RecordingCoordinator {
             if record.state == .finalizing || record.canRetry {
                 try record.transition(to: .uploading)
             }
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             message = "Transcribing on this iPhone…"
             liveActivity.update(status: "Transcribing on this iPhone", canFinish: false)
             try record.transition(to: .transcribing)
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
 
             let started = ContinuousClock.now
@@ -1601,7 +1657,7 @@ final class RecordingCoordinator {
             )
             record.error = nil
             try record.transition(to: .readyToInsert)
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             DiagnosticLog.record(.transcriptReady)
             try? FileManager.default.removeItem(at: audioURL)
@@ -1656,11 +1712,14 @@ final class RecordingCoordinator {
         do {
             try record.transition(to: state)
             record.error = SessionFailure(code: code, message: failureMessage, recoverable: recoverable)
-            try store.save(record)
+            try commit(&record)
             activeRecord = record
             message = failureMessage
             liveActivity.end(status: "Needs attention", dismissAfter: 5)
             beginPolling()
+        } catch is CancellationError {
+            // The user cancelled first. Reporting a failure for a dictation
+            // they already threw away would only contradict them.
         } catch {
             message = "The session failed and its state could not be saved."
         }
