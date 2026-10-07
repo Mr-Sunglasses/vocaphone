@@ -21,7 +21,8 @@ import Foundation
 ///    a name is the last word on it rather than something sentence case
 ///    overrides; before spoken emoji and digits, which could otherwise turn
 ///    part of a term into a glyph. Every route, because only Whisper can be
-///    prompted with the list. Never for `raw`.
+///    prompted with the list. Never for `raw`. One-letter slips are corrected
+///    only in English text; other languages get spacing and case.
 /// 5. Spoken emoji. After styling, because the styler has to see "emoji" as
 ///    an ordinary word to capitalize and terminate around it; before digits,
 ///    because the table's keys are words — "hundred emoji" is 💯, and once
@@ -47,7 +48,8 @@ enum DictatedTranscript {
         spokenEmoji: Bool,
         snippets: [Snippet] = SnippetStore.snippets,
         snippetExpander: SnippetExpanding = SnippetExpander(),
-        vocabulary: [String] = CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
+        vocabulary: [String] = CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary),
+        isDictionaryWord: (String) -> Bool = EnglishWords.contains
     ) -> String {
         let cleaned = TranscriptSanitizer.clean(raw)
         let repaired = repairSpeech && style != .raw
@@ -62,10 +64,15 @@ enum DictatedTranscript {
             ? VocabularyCorrection.apply(
                 styled,
                 terms: vocabulary,
-                isDictionaryWord: EnglishWords.contains,
+                isDictionaryWord: isDictionaryWord,
                 // A trigger corrected into a term would never expand. Found by
                 // the expander's own pattern, so exactly what it will match.
-                protectedRanges: SnippetExpander.triggerRanges(in: styled, using: snippets)
+                protectedRanges: SnippetExpander.triggerRanges(in: styled, using: snippets),
+                // The word list that keeps a real word from being taken for a
+                // near miss is English; in any other language nothing would.
+                nearMisses: !vocabulary.isEmpty && TranscriptRepair.isEnglish(
+                    styled, language: language, isDictionaryWord: isDictionaryWord
+                )
             )
             : styled
         let emojified = spokenEmoji && style != .raw

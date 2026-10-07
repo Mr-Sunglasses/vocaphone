@@ -54,6 +54,29 @@ object TranscriptRepair {
         return if (repaired.any { it.isLetterOrDigit() }) repaired else source
     }
 
+    /**
+     * Whether [text] is English: an explicit or detected `en`, or, on
+     * Automatic, a sentence that says so itself — on the terms
+     * [looksEnglish] sets out, or, for a fragment too short to carry two
+     * marker words, by most of its words being English ones by
+     * [isDictionaryWord] and none spelled with another alphabet's letters.
+     * For the stages that, like filler removal, would damage another
+     * language by applying English rules to it.
+     */
+    fun isEnglish(
+        text: String,
+        language: String = "auto",
+        isDictionaryWord: (String) -> Boolean = { false },
+    ): Boolean {
+        val code = language.lowercase().substringBefore('-')
+        val words = split(text)
+        if (looksEnglish(code, words)) return true
+        if (code.isNotEmpty() && code != "auto") return false
+        if (words.any { word -> word.text.lowercase().any { it in FOREIGN_LETTERS } }) return false
+        val keys = words.map { it.key }.filter { it.isNotEmpty() }
+        return keys.size >= 2 && keys.count(isDictionaryWord) * 3 >= keys.size * 2
+    }
+
     // region Words
 
     /**
@@ -587,6 +610,18 @@ object TranscriptRepair {
     )
 
     /**
+     * Bare `do` and `have` open imperatives as readily as questions: "Do it
+     * tomorrow", "Have this ready by five", "Have someone check it". Only a
+     * personal pronoun after them is unambiguously inverted, so they get this
+     * narrower set; "does it", "is that" and the rest keep the full one.
+     */
+    private val IMPERATIVE_AUXILIARIES = setOf("do", "have")
+
+    private val INVERTED_PERSONAL_SUBJECTS = setOf(
+        "i", "you", "we", "they", "he", "she", "there",
+    )
+
+    /**
      * Longest sentence still short enough for the question test to be worth
      * trusting. Past this a wh-word is far more often opening a noun clause.
      */
@@ -731,6 +766,7 @@ object TranscriptRepair {
             return false
         }
         if (keys[0] !in AUXILIARIES || keys[1] !in SUBJECT_PRONOUNS) return false
+        if (keys[0] in IMPERATIVE_AUXILIARIES) return keys[1] in INVERTED_PERSONAL_SUBJECTS
         // "Had I known" and "Were it up to me" invert the same way a question
         // does; the modal further along is what tells them apart.
         if (keys[0] == "had" || keys[0] == "were") {

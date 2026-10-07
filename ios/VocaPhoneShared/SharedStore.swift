@@ -1,9 +1,12 @@
 import Foundation
 
-enum SharedStoreError: Error {
+enum SharedStoreError: Error, Equatable {
     case appGroupUnavailable
     case unsupportedSchema(Int)
     case sessionInProgress
+    /// Another writer saved the session since the caller read it, or removed
+    /// it. See ``SharedStore/save(_:expectingRevision:)``.
+    case revisionConflict
 }
 
 /// A run of microphone levels, written by the app and read by the keyboard.
@@ -39,11 +42,76 @@ final class SharedStore: @unchecked Sendable {
         decoder.dateDecodingStrategy = .iso8601
     }
 
-    func save(_ record: SessionRecord) throws {
+    /// Writes a session record unconditionally — the newest writer wins.
+    ///
+    /// Still a new revision: the stored revision always moves forward, whatever
+    /// the caller's copy says, so a conditional writer that read the record
+    /// before this write can tell that it happened. Returns what was written.
+    @discardableResult
+    func save(_ record: SessionRecord) throws -> SessionRecord {
+        try write(record, expectingRevision: nil)
+    }
+
+    /// Writes a session record only if the stored copy is still at
+    /// `expectingRevision` — compare-and-swap across the app and the keyboard.
+    ///
+    /// The app reads a session, awaits something slow — the microphone, a
+    /// socket, a model — and writes it back. Without this, a Cancel the keyboard
+    /// wrote in between was silently overwritten: the bar flipped back to
+    /// Listening and the microphone kept recording. Throws
+    /// ``SharedStoreError/revisionConflict`` when anyone else has written the
+    /// session since, or removed it; the caller reloads and decides again.
+    /// Returns what was written, whose revision is the next one to expect.
+    @discardableResult
+    func save(_ record: SessionRecord, expectingRevision: Int) throws -> SessionRecord {
+        try write(record, expectingRevision: expectingRevision)
+    }
+
+    /// Writes the containing app's copy of a session, unless the session ended
+    /// while the app was not looking.
+    ///
+    /// Nearly every write the app makes follows an await — the microphone
+    /// warming, a socket opening, a model decoding — and the keyboard can write
+    /// Cancel, or expire the session, in that window. A plain save overwrote
+    /// it: the microphone kept recording and the bar flipped back to
+    /// Listening, or a cancelled dictation came back as a transcript. So the
+    /// newest stored copy is read again first. One that has ended, or been
+    /// removed, throws `CancellationError`. Anything else is written with a
+    /// compare-and-swap against that copy's revision, so a Cancel cannot land
+    /// between the check and the write.
+    @discardableResult
+    func saveUnlessEnded(_ record: SessionRecord) throws -> SessionRecord {
+        for _ in 0..<5 {
+            guard let latest = try load(record.sessionID), !latest.state.isTerminal else {
+                throw CancellationError()
+            }
+            do {
+                return try save(record, expectingRevision: latest.revision)
+            } catch SharedStoreError.revisionConflict {
+                continue
+            }
+        }
+        throw SharedStoreError.revisionConflict
+    }
+
+    private func write(_ incoming: SessionRecord, expectingRevision: Int?) throws -> SessionRecord {
         let directory = try sessionsDirectory()
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-        let data = try encoder.encode(record)
-        try data.write(to: url(for: record.sessionID, directory: directory), options: .atomic)
+        let fileURL = url(for: incoming.sessionID, directory: directory)
+        var record = incoming
+        try withSessionWriteLock {
+            let stored = decodedRecord(at: fileURL)
+            if let expectingRevision {
+                guard let stored, stored.revision == expectingRevision else {
+                    throw SharedStoreError.revisionConflict
+                }
+            }
+            if let stored {
+                record.revision = max(record.revision, stored.revision + 1)
+            }
+            let data = try encoder.encode(record)
+            try data.write(to: fileURL, options: .atomic)
+        }
         if record.state != .recording {
             try? fileManager.removeItem(at: meterURL(for: record.sessionID, directory: directory))
             try? fileManager.removeItem(at: liveTranscriptURL(for: record.sessionID, directory: directory))
@@ -55,6 +123,34 @@ final class SharedStore: @unchecked Sendable {
                 metadata: .state(record.state)
             )
         }
+        return record
+    }
+
+    /// Serializes record writes between the app and the keyboard, which are
+    /// separate processes, so a compare-and-swap's read and write cannot
+    /// interleave with another writer.
+    ///
+    /// An advisory `flock` on a file beside the sessions directory — not inside
+    /// it, where Delete all would remove it. It is held for one small read and
+    /// one atomic write, never across an await: iOS terminates a suspended
+    /// process that holds a lock in a shared container. A lock that cannot be
+    /// taken within half a second is skipped rather than waited on, so a frozen
+    /// peer degrades to the unlocked write this replaced instead of hanging the
+    /// keyboard's main thread.
+    private func withSessionWriteLock<T>(_ body: () throws -> T) throws -> T {
+        let root = try rootDirectory()
+        let path = root.appendingPathComponent("sessions.lock").path
+        let descriptor = open(path, O_RDWR | O_CREAT | O_CLOEXEC, 0o600)
+        guard descriptor >= 0 else { return try body() }
+        defer { close(descriptor) }
+        let deadline = Date().addingTimeInterval(0.5)
+        var locked = flock(descriptor, LOCK_EX | LOCK_NB) == 0
+        while !locked, Date() < deadline {
+            usleep(1_000)
+            locked = flock(descriptor, LOCK_EX | LOCK_NB) == 0
+        }
+        defer { if locked { flock(descriptor, LOCK_UN) } }
+        return try body()
     }
 
     /// Written several times a second while recording. An atomic write means a

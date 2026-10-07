@@ -379,6 +379,23 @@ struct TranscriptRepairTests {
         #expect(TranscriptRepair.apply("had you seen the report") == "had you seen the report?")
     }
 
+    /// Bare "do" and "have" also open imperatives. Only a personal pronoun
+    /// after them makes the sentence a question; "it" and "this" make an order.
+    @Test func anImperativeIsNotAQuestion() {
+        #expect(TranscriptRepair.apply("do it tomorrow") == "do it tomorrow")
+        #expect(TranscriptRepair.apply("Do it tomorrow.") == "Do it tomorrow.")
+        #expect(TranscriptRepair.apply("have this ready by five") == "have this ready by five")
+        #expect(TranscriptRepair.apply("do that again") == "do that again")
+        #expect(TranscriptRepair.apply("have someone check it") == "have someone check it")
+        #expect(TranscriptRepair.apply("have you seen the report") == "have you seen the report?")
+        #expect(TranscriptRepair.apply("do they know") == "do they know?")
+        #expect(TranscriptRepair.apply("have there been any issues") == "have there been any issues?")
+        // The other auxiliaries do not open imperatives and keep the full set.
+        #expect(TranscriptRepair.apply("does it work") == "does it work?")
+        #expect(TranscriptRepair.apply("is this ready") == "is this ready?")
+        #expect(TranscriptRepair.apply("has anyone seen it") == "has anyone seen it?")
+    }
+
     /// The mark belongs to the sentence, so it goes inside what wraps it.
     @Test func aQuestionMarkGoesInsideTheQuotes() {
         #expect(TranscriptRepair.apply("\"can you send it\"") == "\"can you send it?\"")

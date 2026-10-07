@@ -32,8 +32,13 @@ struct SherpaIncrementalResult: Sendable, Equatable {
     /// with a long pause in it, routinely — so taking the second pass on faith
     /// trades a hole for a bigger one, and the user watches a finished sentence
     /// lose its opening half.
+    ///
+    /// Measured after the sanitizer, as the user would read either one. A pass
+    /// that fell into a repetition loop is the longest answer of all in raw
+    /// characters — a phrase emitted until the window ran out — and once the
+    /// loop is collapsed it is often the shorter one.
     func supersededBy(_ wholeFile: String) -> Bool {
-        wholeFile.count > transcript.text.count
+        TranscriptSanitizer.clean(wholeFile).count > TranscriptSanitizer.clean(transcript.text).count
     }
 }
 
@@ -219,7 +224,10 @@ final class SherpaIncrementalSession: @unchecked Sendable {
             let closed = detector?.accept(incoming) ?? []
             regions += closed
 
-            while let split = SherpaLongAudio.nextStreamingSplit(samples) {
+            while let split = SherpaLongAudio.nextStreamingSplit(
+                samples,
+                speech: SpeechActivity.regions(regions, from: offset)
+            ) {
                 let chunk = Array(samples[..<split.endExclusive])
                 consume(chunk, outcome: decodeLevelled(chunk, gain: currentGain()))
                 samples.removeFirst(split.nextStart)

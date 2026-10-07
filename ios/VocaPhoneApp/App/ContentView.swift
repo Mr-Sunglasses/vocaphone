@@ -411,9 +411,11 @@ struct ContentView: View {
         record.sourceDocumentID == "in-app-test" || record.startedInContainingApp == true
     }
 
-    /// The keyboard dictating into Home's own field, not a microphone test.
+    /// The keyboard dictating into Home's own field, not a microphone test or
+    /// a dictation started from Shortcuts.
     private static func isTryFieldSession(_ record: SessionRecord) -> Bool {
         record.startedInContainingApp == true && record.sourceDocumentID != "in-app-test"
+            && !record.isFromShortcut
     }
 
     private static let sessionCardID = "session"

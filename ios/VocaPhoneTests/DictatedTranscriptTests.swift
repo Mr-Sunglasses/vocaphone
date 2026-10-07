@@ -297,4 +297,49 @@ struct DictatedTranscriptTests {
             ).isEmpty
         )
     }
+
+    /// A few words of the shipped English list, which really does carry
+    /// "der", "die", "ist" and "und".
+    private static let english: Set<String> = [
+        "send", "it", "to", "tell", "about", "please", "that", "the", "plan", "changed",
+        "der", "die", "ist", "und", "phone", "a", "kit",
+    ]
+
+    private func spelled(_ text: String, language: String, _ terms: [String]) -> String {
+        DictatedTranscript.finished(
+            text,
+            style: .casual,
+            language: language,
+            repairSpeech: false,
+            numbersAsDigits: false,
+            spokenEmoji: false,
+            snippets: [],
+            vocabulary: terms,
+            isDictionaryWord: Self.english.contains
+        )
+    }
+
+    /// The English word list is what stops a real word being taken for a near
+    /// miss, so in any other language nothing would: "Wagen" is one letter
+    /// from a colleague called Wagner.
+    @Test func nearMissesAreCorrectedOnlyInEnglish() {
+        #expect(spelled("der wagen ist rot", language: "de", ["Wagner"]).contains("wagen"))
+        #expect(spelled("tell kanish about it", language: "en", ["Kanishk"]).contains("Kanishk"))
+    }
+
+    /// On Automatic the sentence has to say it is English, as it does for repair.
+    @Test func automaticDecidesNearMissesFromTheSentence() {
+        #expect(spelled("please tell kanish that the plan changed", language: "auto", ["Kanishk"]).contains("Kanishk"))
+        #expect(spelled("der wagen ist rot und die tür ist offen", language: "auto", ["Wagner"]).contains("wagen"))
+        // Too short for two marker words: most of its words being English
+        // ones is what says so, and half of them is not most.
+        #expect(spelled("send it to kanish", language: "auto", ["Kanishk"]).contains("Kanishk"))
+        #expect(spelled("der wagen ist rot", language: "auto", ["Wagner"]).contains("wagen"))
+    }
+
+    /// Spacing and case are certain in any language.
+    @Test func everyLanguageStillGetsTheSpellingOfATerm() {
+        #expect(spelled("frag voca phone danach", language: "de", ["VocaPhone"]).contains("VocaPhone"))
+        #expect(spelled("pregunta a whisper kit", language: "es", ["WhisperKit"]).contains("WhisperKit"))
+    }
 }

@@ -75,6 +75,9 @@ class VocabularyCorrectionTest {
             style = WritingStyle.CASUAL,
             repairSpeech = false,
             vocabulary = listOf("Kanishk"),
+            // As the app passes the keyboard's English list: on Automatic it
+            // is what says this fragment is English.
+            isDictionaryWord = { it in setOf("send", "it", "to") },
         )
         assertTrue(casual, casual.contains("Kanishk"))
         val raw = DictatedTranscript.finished(
@@ -135,5 +138,17 @@ class VocabularyCorrectionTest {
         val transcript = List(200) { "please tell whisper kit about the plan" }.joinToString(" ")
         val corrected = VocabularyCorrection.apply(transcript, many + "WhisperKit")
         assertEquals(201, corrected.split("WhisperKit").size)
+    }
+
+    @Test
+    fun `without near misses only spacing and case are corrected`() {
+        assertEquals(
+            "Kanish uses WhisperKit",
+            VocabularyCorrection.apply(
+                "Kanish uses whisper kit",
+                listOf("Kanishk", "WhisperKit"),
+                nearMisses = false,
+            ),
+        )
     }
 }

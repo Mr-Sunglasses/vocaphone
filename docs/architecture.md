@@ -25,6 +25,16 @@ The App Group record is the source of truth. Polling is a wake-up strategy, not
 the data store. Audio references are opaque filenames; tokens, transcripts, and
 absolute paths are never written to ordinary logs.
 
+Every record write takes a short advisory lock beside the sessions directory and
+moves the stored revision forward, even when the writer's copy is stale. The
+containing app writes after an await — the microphone warming, a socket, a
+model — so its writes are conditional: it re-reads the record and writes only if
+the session has not ended, with a compare-and-swap against that revision. A
+Cancel or expiry the keyboard wrote during the wait therefore stands, and the
+app stops the capture it started instead of flipping the session back to
+recording. The lock is never held across an await, and a lock that cannot be
+taken within half a second is skipped rather than waited on.
+
 `SessionRecord.processingLocation` is optional and additive. It is how the
 keyboard and the Live Activity name the place transcription is happening without
 asking the app, and its absence is a real state — a record written before the
@@ -185,6 +195,14 @@ was trimmed.
 9. The keyboard verifies its session context, persists `inserting`, calls
    `insertText`, then persists `inserted` and `completed`.
 
+"Start dictation" from Shortcuts, Siri or the Action button writes the same
+`launchingApp` record from inside the app, with `sourceDocumentID` set to
+`shortcut` and `startedInContainingApp` set, so there is no swipe-back screen.
+It gets a Live Activity like any other dictation. The keyboard adopts its
+transcript in the next field it appears in but never inserts it automatically:
+a session started with no field has no field to match, so it waits behind
+Insert.
+
 After Finish, the app can rearm a Quick Dictation window without
 tearing down its `AVAudioEngine`. The window length is a preference — 10
 minutes, 20 minutes, or "until I close vocaphone", which takes a short lease the
@@ -195,6 +213,10 @@ file contains only activation and expiry timestamps. It is cleared before active
 recording, on expiry, on audio failure, when the user turns the feature off, and
 when the Live Activity's Pause button ends the current window. Pausing sets a
 flag that the next foreground clears; only the Settings toggle is durable.
+An audio interruption — a call, Siri — clears the window like any other audio
+failure. When it ends with iOS's `shouldResume` option, the app re-arms the
+window, in the background too, but only if standby or a dictation was running
+when the interruption began; without `shouldResume` it stays off.
 
 Persisting `inserting` before touching the document intentionally favors
 avoiding duplicate text if the extension terminates at the worst moment. A

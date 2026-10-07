@@ -21,6 +21,31 @@ enum TranscriptRepair {
 
     // MARK: - Entry point
 
+    /// Whether `text` is English: an explicit or detected `en`, or, on
+    /// Automatic, a sentence that says so itself — on the terms
+    /// ``looksEnglish(_:words:)`` sets out, or, for a fragment too short to
+    /// carry two marker words, by most of its words being English ones by
+    /// `isDictionaryWord` and none spelled with another alphabet's letters.
+    /// For the stages that, like filler removal, would damage another
+    /// language by applying English rules to it.
+    static func isEnglish(
+        _ text: String,
+        language: String = "auto",
+        isDictionaryWord: (String) -> Bool = { _ in false }
+    ) -> Bool {
+        let code = language.lowercased().split(separator: "-").first.map(String.init) ?? ""
+        let words = split(text)
+        if looksEnglish(code, words: words) { return true }
+        guard code.isEmpty || code == "auto" else { return false }
+        if words.contains(where: { word in
+            word.text.lowercased().contains(where: { foreignLetters.contains($0) })
+        }) {
+            return false
+        }
+        let keys = words.map(\.key).filter { !$0.isEmpty }
+        return keys.count >= 2 && keys.filter(isDictionaryWord).count * 3 >= keys.count * 2
+    }
+
     /// - Parameters:
     ///   - text: a transcript that has already been through ``TranscriptSanitizer``.
     ///   - language: the language the finished text is written in, or `"auto"`.
@@ -570,6 +595,16 @@ enum TranscriptRepair {
         "that", "this", "anyone", "anybody", "someone", "somebody", "everyone",
     ]
 
+    /// Bare `do` and `have` open imperatives as readily as questions: "Do it
+    /// tomorrow", "Have this ready by five", "Have someone check it". Only a
+    /// personal pronoun after them is unambiguously inverted, so they get this
+    /// narrower set; "does it", "is that" and the rest keep the full one.
+    private static let imperativeAuxiliaries: Set<String> = ["do", "have"]
+
+    private static let invertedPersonalSubjects: Set<String> = [
+        "i", "you", "we", "they", "he", "she", "there",
+    ]
+
     /// Longest sentence still short enough for the question test to be worth
     /// trusting. Past this a wh-word is far more often opening a noun clause.
     private static let maximumQuestionWords = 12
@@ -730,6 +765,9 @@ enum TranscriptRepair {
             return false
         }
         guard auxiliaries.contains(keys[0]), subjectPronouns.contains(keys[1]) else { return false }
+        if imperativeAuxiliaries.contains(keys[0]) {
+            return invertedPersonalSubjects.contains(keys[1])
+        }
         // "Had I known" and "Were it up to me" invert the same way a question
         // does; the modal further along is what tells them apart.
         if keys[0] == "had" || keys[0] == "were" {

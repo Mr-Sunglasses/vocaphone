@@ -11,6 +11,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var darwinObservations: [VocaPhoneDarwinObservation] = []
     private var appLaunchFallbackTask: Task<Void, Never>?
     private var lastInsertedText: String?
+    /// The document after the cursor when `lastInsertedText` went in. Undo
+    /// checks it is unchanged, because the text before the cursor is a bounded
+    /// window that a long dictation does not fit in. See ``InsertionUndo``.
+    private var lastInsertedFollowing: String?
+    /// The field `lastInsertedText` went into. Undo deletes by length, so a
+    /// window that shows only the insertion's tail is not enough on its own.
+    private var lastInsertedDocumentID: String?
     private var isPerformingInsertion = false
     private var lastSpaceInsertedAt: Date?
     /// Observed by this keyboard instance rather than read from the record: the
@@ -318,6 +325,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // waiting transcript stays put until the field is confirmed.
         sessionTargetDocumentID = nil
         sessionTargetConfirmed = false
+        // Undo deletes by length at the cursor. Off screen, this keyboard saw
+        // nothing of where the cursor went, and the identifier it would check
+        // is reissued across an app switch, so the offer ends with the
+        // appearance it was made in.
+        lastInsertedText = nil
         installDarwinObservers()
         publishKeyboardStatus()
         // Full Access can be granted or revoked in Settings while this instance
@@ -355,6 +367,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // flight being restored, not something that just happened to the user,
         // and it must not arrive as a buzz in their hand.
         announcesStateChanges = true
+#if DEBUG
+        // Layout diagnostics for development builds. A release keyboard has no
+        // business writing to the system log on every appearance.
         NSLog("""
         DIAG ourView=\(view.bounds.size) \
         super=\(String(describing: view.superview?.bounds.size)) \
@@ -363,6 +378,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         needsSwitchKey=\(needsInputModeSwitchKey) \
         window=\(String(describing: view.window?.bounds.size))
         """)
+#endif
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -538,6 +554,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             // without going through this keyboard. The document wins.
             typing.reconcile(document: snapshot)
         }
+        // A tap elsewhere in the field, or in another field, moves the cursor
+        // without a keystroke. Undo is retired there rather than kept for a
+        // place it no longer describes. Free while nothing is waiting to undo.
+        releaseUndoIfDetached()
         updateReturnKeyEnablement(for: snapshot)
         updateAutomaticShift(for: snapshot)
     }
@@ -620,13 +640,22 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func undoInsertion() {
         guard let inserted = lastInsertedText,
-              textDocumentProxy.documentContextBeforeInput?.hasSuffix(inserted) == true
+              InsertionUndo.isAtCursor(
+                  inserted,
+                  following: lastInsertedFollowing,
+                  documentID: lastInsertedDocumentID,
+                  before: textDocumentProxy.documentContextBeforeInput,
+                  after: textDocumentProxy.documentContextAfterInput,
+                  currentDocumentID: currentDocumentID
+              )
         else {
             dictationBar.flash("The cursor moved, so undo is no longer available.")
             lastInsertedText = nil
             refresh()
             return
         }
+        // By the stored length, not by what the window shows: the window may
+        // hold only the last sentence of it.
         inserted.forEach { _ in textDocumentProxy.deleteBackward() }
         lastInsertedText = nil
         refresh()
@@ -1120,9 +1149,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// document. Typing over it retires the offer rather than leaving a button
     /// that would delete the wrong characters.
     private func releaseUndoIfDetached() {
-        guard let inserted = lastInsertedText,
-              document.before?.hasSuffix(inserted) != true
-        else { return }
+        guard let inserted = lastInsertedText else { return }
+        let snapshot = document
+        guard !InsertionUndo.isAtCursor(
+            inserted,
+            following: lastInsertedFollowing,
+            documentID: lastInsertedDocumentID,
+            before: snapshot.before,
+            after: snapshot.after,
+            currentDocumentID: currentDocumentID
+        ) else { return }
         lastInsertedText = nil
         refresh()
     }
@@ -1234,17 +1270,25 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         isPerformingInsertion = true
         defer { isPerformingInsertion = false }
-        let prepared = TextInsertion.preparedTranscript(
+        let prepared = TextInsertion.prepare(
             transcript,
             before: textDocumentProxy.documentContextBeforeInput,
-            after: textDocumentProxy.documentContextAfterInput
+            after: textDocumentProxy.documentContextAfterInput,
+            hasSelection: textDocumentProxy.selectedText?.isEmpty == false
         )
         do {
             DiagnosticLog.record(.insertionStarted)
             try record.transition(to: .inserting)
             try store.save(record)
-            textDocumentProxy.insertText(prepared)
-            lastInsertedText = prepared
+            // Out of the middle of a word first, so "hel|lo" gets the
+            // transcript after "hello" rather than through it.
+            if prepared.cursorAdvance > 0 {
+                textDocumentProxy.adjustTextPosition(byCharacterOffset: prepared.cursorAdvance)
+            }
+            textDocumentProxy.insertText(prepared.text)
+            lastInsertedText = prepared.text
+            lastInsertedFollowing = prepared.following
+            lastInsertedDocumentID = currentDocumentID
             // The session ID makes this append idempotent if the extension is
             // interrupted after insertion. Recording here means an insertion
             // that happened cannot be lost merely because saving the terminal
@@ -1263,7 +1307,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try record.transition(to: .completed)
             try store.save(record)
 
-            if record.startedInContainingApp == true, record.sourceDocumentID != "in-app-test" {
+            if record.startedInContainingApp == true, record.sourceDocumentID != "in-app-test",
+               !record.isFromShortcut
+            {
                 KeyboardPreferences.hasCompletedKeyboardPractice = true
             }
             DiagnosticLog.record(.insertionCompleted)
@@ -1286,7 +1332,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // the containing app.
         if record.prefersQuickDictation == true {
             record.prefersQuickDictation = false
-            try? store.save(record)
+            _ = try? store.save(record)
             render(record)
         }
         let sessionID = record.sessionID
@@ -1562,7 +1608,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             target: confirmSessionTarget(for: record),
             sameDocument: documentMatchesSessionTarget(),
             interrupted: record.insertionInterrupted == true,
-            autoInsert: KeyboardPreferences.autoInsertTranscripts
+            autoInsert: PendingTranscriptPolicy.autoInserts(
+                record,
+                preference: KeyboardPreferences.autoInsertTranscripts
+            )
         )
         switch action {
         case .rearm:
