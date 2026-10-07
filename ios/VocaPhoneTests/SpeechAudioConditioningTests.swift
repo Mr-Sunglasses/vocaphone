@@ -127,4 +127,40 @@ struct SpeechAudioConditioningTests {
         let conditioned = SpeechAudioConditioning.condition(recording)
         #expect(abs(peak(Array(conditioned[0..<99_000])) - 0.4) < 0.02)
     }
+
+    // MARK: - Levelling kept across a growing dictation
+
+    /// Kept levelling has to give back the very samples the earlier pass did,
+    /// not merely close ones: the window cache trusts that the audio is the same.
+    @Test func keptLevellingReproducesTheEarlierAudioExactly() {
+        let first = tone(peak: 0.2, offset: 0.003, count: 32_000)
+        let longer = first + tone(peak: 0.21, offset: 0.0032, count: 8_000)
+        let early = SpeechAudioConditioning.levelled(first)
+        let later = SpeechAudioConditioning.levelled(longer, keeping: (early.gain, early.offset))
+        #expect(later.gain == early.gain)
+        #expect(later.offset == early.offset)
+        #expect(Array(later.samples.prefix(first.count)) == early.samples)
+        // Left to itself the longer recording would have levelled differently.
+        let own = SpeechAudioConditioning.levelled(longer)
+        #expect(own.gain != early.gain || own.offset != early.offset)
+    }
+
+    /// A dictation that started quietly and went on at full voice is a
+    /// different recording, and keeping the quiet start's boost would drive the
+    /// rest of it into the limiter.
+    @Test func aMuchLouderContinuationIsLevelledAfresh() {
+        let first = tone(peak: 0.05, count: 32_000)
+        let longer = first + tone(peak: 0.4, count: 32_000)
+        let early = SpeechAudioConditioning.levelled(first)
+        let later = SpeechAudioConditioning.levelled(longer, keeping: (early.gain, early.offset))
+        #expect(later.gain == SpeechAudioConditioning.levelled(longer).gain)
+        #expect(later.gain < early.gain)
+    }
+
+    @Test func aDifferentOffsetIsNotKept() {
+        let samples = tone(peak: 0.2, offset: 0.01)
+        let levelled = SpeechAudioConditioning.levelled(samples)
+        let kept = SpeechAudioConditioning.levelled(samples, keeping: (levelled.gain, 0.0))
+        #expect(kept.offset == levelled.offset)
+    }
 }

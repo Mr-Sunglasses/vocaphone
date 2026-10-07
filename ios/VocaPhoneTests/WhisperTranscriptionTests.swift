@@ -673,4 +673,41 @@ struct WhisperTranscriptionTests {
         #expect(cache.hits == 1)
         #expect(decoded.count == windowsOfLonger - 1)
     }
+
+    /// The speaker paused, an early decode levelled and decoded the first
+    /// forty seconds, and then they kept talking — a little louder, as people
+    /// do. Levelled on its own, the longer recording gets a slightly different
+    /// gain and offset, and its first window, the same thirty seconds of
+    /// speech, was decoded again at Finish. Kept, it is found.
+    @Test func aDictationThatKeptGoingReusesItsEarlyWindowsLevelled() async throws {
+        func withOffset(_ samples: [Float], _ offset: Float) -> [Float] { samples.map { $0 + offset } }
+        let first = withOffset(Self.speechLike(seconds: 40, level: 0.3), 0.004)
+        let longer = first + withOffset(Self.speechLike(seconds: 10, level: 0.32), 0.0045)
+
+        func decode(_ samples: [Float], levelling: SpeechAudioConditioning.Levelled, cache: WhisperWindowCache) async throws {
+            cache.levelling = WhisperWindowCache.Levelling(levelling)
+            _ = try await WhisperTranscription.transcribe(
+                samples: levelling.samples,
+                options: DecodingOptions(),
+                cache: cache,
+                levelling: WhisperWindowCache.Levelling(levelling)
+            ) { _, _ in Self.said("words") }
+        }
+
+        // Levelled afresh, as Finish used to: nothing is reused.
+        let fresh = WhisperWindowCache()
+        try await decode(first, levelling: SpeechAudioConditioning.levelled(first), cache: fresh)
+        let refreshed = SpeechAudioConditioning.levelled(longer)
+        #expect(WhisperWindowCache.Levelling(refreshed) != fresh.levelling)
+        try await decode(longer, levelling: refreshed, cache: fresh)
+        #expect(fresh.hits == 0)
+
+        // Keeping what the early decode used: the first window is found.
+        let kept = WhisperWindowCache()
+        try await decode(first, levelling: SpeechAudioConditioning.levelled(first), cache: kept)
+        let keeping = SpeechAudioConditioning.levelled(longer, keeping: kept.levelling?.kept)
+        #expect(WhisperWindowCache.Levelling(keeping) == kept.levelling)
+        try await decode(longer, levelling: keeping, cache: kept)
+        #expect(kept.hits == 1)
+    }
 }

@@ -1339,6 +1339,12 @@ final class RecordingCoordinator {
             return
         }
 
+        // Writing the file failed part-way — a full disk, most often — so it
+        // holds only the start of what was said. The streamed copy is whole,
+        // and both routes use it first; where the file is all there is, the
+        // user is told rather than handed a transcript of half a dictation.
+        let fileIncomplete = wasRecording && recorder.lastFileIncomplete
+
         // Re-resolved and persisted before any of finalizing, uploading or
         // transcribing. The route in force *now* is the one about to run, and a
         // session claimed by an older build carries no route at all — either way
@@ -1353,7 +1359,7 @@ final class RecordingCoordinator {
         // gateway URL, token, network, or server health result at all.
         if LocalTranscriptionPreferences.enabled {
             await streamingBridge.cancel()
-            await finalizeLocally(&record, audioURL: output)
+            await finalizeLocally(&record, audioURL: output, fileIncomplete: fileIncomplete)
             return
         }
 
@@ -1404,6 +1410,16 @@ final class RecordingCoordinator {
                 try? FileManager.default.removeItem(at: output)
                 markTranscriptDelivered(for: record)
                 liveActivity.end(status: "Transcript ready")
+                return
+            }
+
+            if fileIncomplete {
+                await fail(
+                    &record,
+                    state: .uploadFailedRecoverable,
+                    code: "audio_missing",
+                    message: Self.incompleteRecordingMessage(retrying: "send")
+                )
                 return
             }
 
@@ -1504,7 +1520,19 @@ final class RecordingCoordinator {
         }
     }
 
-    private func finalizeLocally(_ record: inout SessionRecord, audioURL: URL) async {
+    /// The recording file was cut short and nothing whole could stand in for it.
+    private struct IncompleteRecording: Error {}
+
+    private static func incompleteRecordingMessage(retrying verb: String) -> String {
+        "Only part of this recording could be saved — this iPhone may be out of storage. "
+            + "Retry to \(verb) the part that was saved."
+    }
+
+    private func finalizeLocally(
+        _ record: inout SessionRecord,
+        audioURL: URL,
+        fileIncomplete: Bool = false
+    ) async {
         do {
             if record.state == .finalizing || record.canRetry {
                 try record.transition(to: .uploading)
@@ -1543,9 +1571,14 @@ final class RecordingCoordinator {
                 // missing are invisible in the text it did produce. The retry
                 // levels the gain over the whole recording and splits on
                 // different boundaries, which is what recovers them.
-                if partial.text.isEmpty || incrementalResult.droppedAudibleChunk
+                let needsWholeFile = partial.text.isEmpty || incrementalResult.droppedAudibleChunk
                     || droppedLocalChunks
-                {
+                if needsWholeFile, fileIncomplete {
+                    // The whole-file retry would read only the file's first part.
+                    // What the session heard is the better answer, if it has one.
+                    guard !partial.text.isEmpty else { throw IncompleteRecording() }
+                    transcribed = partial
+                } else if needsWholeFile {
                     do {
                         let wholeFile = try await localModels.transcribe(
                             audioURL: audioURL,
@@ -1570,6 +1603,9 @@ final class RecordingCoordinator {
             } else {
                 // Its capture is only the recording if none of it was refused.
                 if droppedLocalChunks { await whisperSession?.cancel() }
+                if fileIncomplete, droppedLocalChunks || whisperSession == nil {
+                    throw IncompleteRecording()
+                }
                 transcribed = try await localModels.transcribe(
                     audioURL: audioURL,
                     language: record.language,
@@ -1615,6 +1651,15 @@ final class RecordingCoordinator {
             message = "Transcribed privately on this iPhone."
         } catch {
             if Task.isCancelled || error is CancellationError { return }
+            if error is IncompleteRecording {
+                await fail(
+                    &record,
+                    state: .transcriptionFailedRecoverable,
+                    code: "audio_missing",
+                    message: Self.incompleteRecordingMessage(retrying: "transcribe")
+                )
+                return
+            }
             await fail(
                 &record,
                 state: .transcriptionFailedRecoverable,

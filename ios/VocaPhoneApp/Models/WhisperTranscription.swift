@@ -464,7 +464,7 @@ enum WhisperTranscription {
 ///
 /// Keyed by everything that makes two windows the same decode: where the
 /// window sits in the recording, how long it is, the language it was decoded
-/// in, and how the recording was levelled — a louder sentence later in the
+/// in, and how the recording was levelled — a much louder sentence later in the
 /// dictation changes the gain, and a window levelled differently is different
 /// audio. Anything that does not match exactly is decoded again, so the cache
 /// can make a dictation faster and never different.
@@ -484,6 +484,9 @@ final class WhisperWindowCache {
         init(_ levelled: SpeechAudioConditioning.Levelled) {
             self.init(gain: levelled.gain, offset: levelled.offset)
         }
+
+        /// In the form `SpeechAudioConditioning.levelled(_:keeping:)` takes.
+        var kept: (gain: Float, offset: Float) { (gain, offset) }
     }
 
     struct Key: Hashable {
@@ -492,6 +495,12 @@ final class WhisperWindowCache {
         let language: String?
         let levelling: Levelling
     }
+
+    /// How the windows decoded last were levelled. The next pass over the same
+    /// dictation keeps it while the recording's own levelling stays close —
+    /// see `SpeechAudioConditioning.levelled(_:keeping:)` — or its gain and
+    /// offset drift with every second appended and no window is ever found.
+    var levelling: Levelling?
 
     private var entries: [Key: [TranscriptionResult]] = [:]
     /// Windows answered from the cache rather than decoded.

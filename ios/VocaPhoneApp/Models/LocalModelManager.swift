@@ -1336,7 +1336,7 @@ final class LocalModelManager {
             settings: WhisperDictationSettings.current(for: descriptor, language: language)
         )
         whisperDictation = dictation
-        Task { [weak self] in
+        dictation.load = Task { [weak self] in
             guard let self else { return }
             guard (try? LocalModelIntegrity.verifySizes(in: folder, files: LocalModelIntegrity.files(for: id))) != nil
             else { return }
@@ -1363,22 +1363,23 @@ final class LocalModelManager {
         for dictation: WhisperDictation,
         onText: (@MainActor @Sendable (String) -> Void)? = nil
     ) async {
-        if whisperLoadModelID == dictation.modelID, let inFlight = whisperLoad {
-            _ = try? await inFlight.value
-        }
+        await dictation.load?.value
         guard !Task.isCancelled, whisperDictation === dictation,
               loadedModelID == dictation.modelID, let whisperKit
         else { return }
+        let kept = dictation.cache.levelling?.kept
         let levelled = await Task.detached(priority: .userInitiated) {
-            SpeechAudioConditioning.levelled(prefix)
+            SpeechAudioConditioning.levelled(prefix, keeping: kept)
         }.value
         guard !Task.isCancelled else { return }
+        let levelling = WhisperWindowCache.Levelling(levelled)
+        dictation.cache.levelling = levelling
         let results = try? await WhisperTranscription.transcribe(
             samples: levelled.samples,
             options: dictation.settings.decodingOptions(for: whisperKit),
             retries: dictation.settings.quality.whisperRetryCount,
             cache: dictation.cache,
-            levelling: WhisperWindowCache.Levelling(levelled)
+            levelling: levelling
         ) { window, options in
             try await whisperKit.transcribe(audioArray: window, decodeOptions: options)
         }
@@ -2217,6 +2218,9 @@ final class LocalModelManager {
         // The dictation's own capture, cut after its last word, is exactly the
         // audio its early decodes read — which is what lets Finish reuse them.
         let streamed = descriptor.engine == .whisperKit ? await whisperSession?.finish() : nil
+        // The levelling the early decodes settled on, so the whole recording is
+        // levelled the same way unless it has grown materially louder since.
+        let kept = streamed == nil ? nil : dictation.flatMap { $0.modelID == id ? $0.cache.levelling?.kept : nil }
         let preparation = Task.detached(priority: .userInitiated) {
             let loaded = try streamed.map(\.samples) ?? Self.loadSamples(from: audioURL)
             guard !loaded.isEmpty else {
@@ -2225,7 +2229,7 @@ final class LocalModelManager {
             try Task.checkCancellation()
             // Safe here and not on the incremental path: this is the whole
             // recording, so one gain covers all of it.
-            let levelled = SpeechAudioConditioning.levelled(loaded)
+            let levelled = SpeechAudioConditioning.levelled(loaded, keeping: kept)
             try Task.checkCancellation()
             return levelled
         }
