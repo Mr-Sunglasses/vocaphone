@@ -195,6 +195,10 @@ file contains only activation and expiry timestamps. It is cleared before active
 recording, on expiry, on audio failure, when the user turns the feature off, and
 when the Live Activity's Pause button ends the current window. Pausing sets a
 flag that the next foreground clears; only the Settings toggle is durable.
+An audio interruption — a call, Siri — clears the window like any other audio
+failure. When it ends with iOS's `shouldResume` option, the app re-arms the
+window, in the background too, but only if standby or a dictation was running
+when the interruption began; without `shouldResume` it stays off.
 
 Persisting `inserting` before touching the document intentionally favors
 avoiding duplicate text if the extension terminates at the worst moment. A
