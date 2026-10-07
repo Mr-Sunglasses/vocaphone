@@ -107,10 +107,58 @@ object SpeechAudioConditioning {
             for (index in from until to) loudest = maxOf(loudest, abs(samples[index]))
             frames[frame] = loudest
         }
-        if (frameCount <= MINIMUM_FRAMES) return frames.max()
+        return levelOfFrames(frames)
+    }
+
+    /** [speechLevel] from the loudest sample of each 20 ms frame. Sorts [frames]. */
+    private fun levelOfFrames(frames: FloatArray): Float {
+        if (frames.isEmpty()) return 0f
+        if (frames.size <= MINIMUM_FRAMES) return frames.max()
         val audible = frames.count { it >= SILENCE_PEAK }
         frames.sortDescending()
-        return frames[minOf(setAside(audible), frameCount - 1)]
+        return frames[minOf(setAside(audible), frames.size - 1)]
+    }
+
+    /**
+     * [speechLevel] of everything appended so far, for audio that arrives a
+     * frame at a time.
+     *
+     * The streaming path used to level each chunk by the single loudest sample
+     * captured so far -- exactly the measure [speechLevel] replaced on the
+     * whole-file path, because the loudest sample of a dictation is so often
+     * the finger that started it or a knock on the desk. One of those kept the
+     * gain at 1 for every later chunk, and quiet speech the whole-file decode
+     * would have levelled was skipped as silence. This keeps the frame maxima
+     * instead -- fifty numbers a second -- so a chunk is levelled by the same
+     * rule the whole recording would be. iOS keeps the same `RunningLevel`.
+     */
+    class RunningLevel {
+        private var maxima = FloatArray(INITIAL_FRAMES)
+        private var count = 0
+        private var partial = 0f
+        private var partialCount = 0
+
+        fun append(sample: Float) {
+            partial = maxOf(partial, abs(sample))
+            if (++partialCount < FRAME_SAMPLES) return
+            if (count == maxima.size) maxima = maxima.copyOf(maxima.size * 2)
+            maxima[count++] = partial
+            partial = 0f
+            partialCount = 0
+        }
+
+        /** The level of everything appended, the frame still filling included. */
+        val level: Float
+            get() {
+                val frames = maxima.copyOf(count + if (partialCount > 0) 1 else 0)
+                if (partialCount > 0) frames[count] = partial
+                return levelOfFrames(frames)
+            }
+
+        private companion object {
+            /** Twenty seconds; it doubles from there. */
+            const val INITIAL_FRAMES = 1_000
+        }
     }
 
     /**
@@ -146,17 +194,18 @@ object SpeechAudioConditioning {
     }
 
     /**
-     * Levels one streaming chunk with the loudest raw sample seen so far.
+     * Levels one streaming chunk in place with the [RunningLevel] of everything
+     * captured so far.
      *
      * This is only for the latency path. The complete-WAV path above stays
      * authoritative whenever the gain moves materially between chunks, because
      * a single recording-wide gain is more accurate than a sequence of gains
      * that step at chunk boundaries.
      */
-    fun conditionStreaming(samples: FloatArray, peakSoFar: Float): FloatArray {
+    fun conditionStreaming(samples: FloatArray, levelSoFar: Float): FloatArray {
         if (samples.isEmpty()) return samples
 
-        val gain = gainFor(peakSoFar)
+        val gain = gainFor(levelSoFar)
         if (gain <= 1f) return samples
 
         for (index in samples.indices) samples[index] = limited(samples[index] * gain)
@@ -164,18 +213,18 @@ object SpeechAudioConditioning {
     }
 
     /**
-     * The gain [conditionStreaming] applies for [peak]. 1 means untouched.
+     * The gain [conditionStreaming] applies for [level]. 1 means untouched.
      *
      * Exposed so the streaming caller can compare the gains it actually used
-     * rather than the running peak they came from. That peak grows on nearly
+     * rather than the running level they came from. That level grows on nearly
      * every recording -- anyone who gets louder as they go moves it -- while
      * the gain it derives usually does not, and the gain is what reaches the
-     * model. Treating peak growth as a level change made the latency path
+     * model. Treating level growth as a level change made the latency path
      * discard its work almost every time.
      */
-    fun gainFor(peak: Float): Float {
-        if (peak < SILENCE_PEAK) return 1f
-        return (TARGET_PEAK / peak).coerceIn(1f, MAX_GAIN)
+    fun gainFor(level: Float): Float {
+        if (level < SILENCE_PEAK) return 1f
+        return (TARGET_PEAK / level).coerceIn(1f, MAX_GAIN)
     }
 
     /** 20 ms at 16 kHz: short enough that a click fills one or two frames. */

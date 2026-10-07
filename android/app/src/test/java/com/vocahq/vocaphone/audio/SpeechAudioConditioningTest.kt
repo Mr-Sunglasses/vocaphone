@@ -76,13 +76,27 @@ class SpeechAudioConditioningTest {
     }
 
     @Test
-    fun `streaming conditioning uses the running peak instead of per chunk gain`() {
+    fun `streaming conditioning uses the running level instead of per chunk gain`() {
         val conditioned = SpeechAudioConditioning.conditionStreaming(
             tone(peak = 0.1f),
-            peakSoFar = 0.2f,
+            levelSoFar = 0.2f,
         )
 
         assertEquals(0.425f, peak(conditioned), 0.02f)
+    }
+
+    @Test
+    fun `the running level of streamed audio is the level of the whole recording`() {
+        // Quiet speech, a knock, and a partial frame at the end: the knock is
+        // set aside and the half-filled last frame still counts.
+        val recording = tone(peak = 0.05f, count = 48_000 + 100)
+        for (index in 30_000 until 30_160) recording[index] = if (index % 2 == 0) 0.9f else -0.9f
+        val running = SpeechAudioConditioning.RunningLevel()
+        recording.forEach(running::append)
+
+        assertEquals(SpeechAudioConditioning.speechLevel(recording), running.level, 0f)
+        assertEquals(0.05f, running.level, 0.001f)
+        assertEquals(0f, SpeechAudioConditioning.RunningLevel().level, 0f)
     }
 
     @Test
