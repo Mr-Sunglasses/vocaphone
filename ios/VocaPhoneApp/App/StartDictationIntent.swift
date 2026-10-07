@@ -33,7 +33,7 @@ struct StartDictationIntent: AppIntent {
         )
         record.startedInContainingApp = true
         try? record.transition(to: .launchingApp)
-        try? SharedStore.shared.save(record)
+        _ = try? SharedStore.shared.save(record)
         VocaPhoneDarwinCenter.post(.sessionChanged)
         return .result()
     }

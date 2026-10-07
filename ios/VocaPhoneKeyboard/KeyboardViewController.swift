@@ -1290,7 +1290,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // the containing app.
         if record.prefersQuickDictation == true {
             record.prefersQuickDictation = false
-            try? store.save(record)
+            _ = try? store.save(record)
             render(record)
         }
         let sessionID = record.sessionID
