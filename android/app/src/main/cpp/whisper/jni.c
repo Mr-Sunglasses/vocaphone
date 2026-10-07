@@ -1,12 +1,44 @@
 #include <jni.h>
 #include <android/log.h>
+#include <stdatomic.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <time.h>
 #include "whisper.h"
 #include "ggml-backend.h"
 
 #define TAG "VocaPhoneWhisper"
 #define UNUSED(value) (void)(value)
+
+/**
+ * The handle Kotlin holds: one whisper context and the flag that stops it.
+ *
+ * whisper.cpp only checks for an abort through a callback, and the callback
+ * needs somewhere to look that another thread can write while `whisper_full`
+ * occupies this one. Keeping the flag beside the context it stops makes it per
+ * context, so cancelling one decode can never stop another model's.
+ */
+struct vocaphone_whisper {
+    struct whisper_context *context;
+    atomic_bool abort_requested;
+};
+
+static struct whisper_context *context_of(jlong handle) {
+    return ((struct vocaphone_whisper *) handle)->context;
+}
+
+/** Polled by whisper.cpp between encoder and decoder graph runs. */
+static bool should_abort(void *user_data) {
+    return atomic_load(&((struct vocaphone_whisper *) user_data)->abort_requested);
+}
+
+/** Stops a cancelled decode before it spends a whole encoder pass. */
+static bool may_begin_encoder(
+        struct whisper_context *context, struct whisper_state *state, void *user_data) {
+    UNUSED(context);
+    UNUSED(state);
+    return !should_abort(user_data);
+}
 
 /**
  * whisper.cpp writes its own diagnostics to stderr, which Android discards, so a
@@ -68,7 +100,15 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_initContext(
     struct whisper_context *context = whisper_init_from_file_with_params(
             path, whisper_context_default_params());
     (*env)->ReleaseStringUTFChars(env, model_path, path);
-    return (jlong) context;
+    if (context == NULL) return 0;
+    struct vocaphone_whisper *handle = malloc(sizeof(struct vocaphone_whisper));
+    if (handle == NULL) {
+        whisper_free(context);
+        return 0;
+    }
+    handle->context = context;
+    atomic_init(&handle->abort_requested, false);
+    return (jlong) handle;
 }
 
 JNIEXPORT void JNICALL
@@ -76,7 +116,34 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_freeContext(
         JNIEnv *env, jobject thiz, jlong context_ptr) {
     UNUSED(env);
     UNUSED(thiz);
-    if (context_ptr != 0) whisper_free((struct whisper_context *) context_ptr);
+    if (context_ptr == 0) return;
+    struct vocaphone_whisper *handle = (struct vocaphone_whisper *) context_ptr;
+    whisper_free(handle->context);
+    free(handle);
+}
+
+/**
+ * Asks a running `fullTranscribe` on this context to stop. Safe from any
+ * thread; the decode notices at its next encoder or decoder step and returns a
+ * failure status.
+ */
+JNIEXPORT void JNICALL
+Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_requestAbort(
+        JNIEnv *env, jobject thiz, jlong context_ptr) {
+    UNUSED(env);
+    UNUSED(thiz);
+    if (context_ptr == 0) return;
+    atomic_store(&((struct vocaphone_whisper *) context_ptr)->abort_requested, true);
+}
+
+/** Clears a previous abort, before the next decode is allowed to start. */
+JNIEXPORT void JNICALL
+Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_resetAbort(
+        JNIEnv *env, jobject thiz, jlong context_ptr) {
+    UNUSED(env);
+    UNUSED(thiz);
+    if (context_ptr == 0) return;
+    atomic_store(&((struct vocaphone_whisper *) context_ptr)->abort_requested, false);
 }
 
 /** Returns whisper's own status: zero on success, negative on failure. */
@@ -87,7 +154,8 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
         jint beam_size, jfloat temperature_increment, jint audio_context,
         jstring prompt_str) {
     UNUSED(thiz);
-    struct whisper_context *context = (struct whisper_context *) context_ptr;
+    struct vocaphone_whisper *handle = (struct vocaphone_whisper *) context_ptr;
+    struct whisper_context *context = handle->context;
     jfloat *audio = (*env)->GetFloatArrayElements(env, audio_data, NULL);
     jsize length = (*env)->GetArrayLength(env, audio_data);
     const char *language = (*env)->GetStringUTFChars(env, language_str, NULL);
@@ -143,6 +211,14 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
     // short dictation stops paying for the thirty-second one whisper otherwise
     // pads it to. Zero leaves whisper's own default in place.
     params.audio_ctx = audio_context;
+    // A cancelled dictation used to run its decode to the end, holding the
+    // engine the next dictation was waiting to load. The flag is cleared by the
+    // caller before each decode, never here: clearing it here could erase an
+    // abort that arrived while this call was still being set up.
+    params.abort_callback = should_abort;
+    params.abort_callback_user_data = handle;
+    params.encoder_begin_callback = may_begin_encoder;
+    params.encoder_begin_callback_user_data = handle;
 
     __android_log_print(
             ANDROID_LOG_INFO, TAG,
@@ -188,15 +264,14 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_getTextSegmentCount(
         JNIEnv *env, jobject thiz, jlong context_ptr) {
     UNUSED(env);
     UNUSED(thiz);
-    return whisper_full_n_segments((struct whisper_context *) context_ptr);
+    return whisper_full_n_segments(context_of(context_ptr));
 }
 
 JNIEXPORT jstring JNICALL
 Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_getTextSegment(
         JNIEnv *env, jobject thiz, jlong context_ptr, jint index) {
     UNUSED(thiz);
-    const char *text = whisper_full_get_segment_text(
-            (struct whisper_context *) context_ptr, index);
+    const char *text = whisper_full_get_segment_text(context_of(context_ptr), index);
     return (*env)->NewStringUTF(env, text == NULL ? "" : text);
 }
 
@@ -208,7 +283,7 @@ JNIEXPORT jstring JNICALL
 Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_getDetectedLanguage(
         JNIEnv *env, jobject thiz, jlong context_ptr) {
     UNUSED(thiz);
-    const int id = whisper_full_lang_id((struct whisper_context *) context_ptr);
+    const int id = whisper_full_lang_id(context_of(context_ptr));
     if (id < 0) return (*env)->NewStringUTF(env, "");
     const char *code = whisper_lang_str(id);
     return (*env)->NewStringUTF(env, code == NULL ? "" : code);

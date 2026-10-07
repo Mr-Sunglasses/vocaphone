@@ -53,6 +53,15 @@ internal class WhisperLib {
 
         external fun initContext(modelPath: String): Long
         external fun freeContext(contextPtr: Long)
+
+        /**
+         * Asks a [fullTranscribe] running on [contextPtr] to stop at its next
+         * encoder or decoder step. Callable from any thread.
+         */
+        external fun requestAbort(contextPtr: Long)
+
+        /** Clears an earlier [requestAbort] before the next decode. */
+        external fun resetAbort(contextPtr: Long)
         /**
          * @param translate whether to run whisper's translate task, whose only
          *   trained target is English.

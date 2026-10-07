@@ -8,6 +8,10 @@ import com.vocahq.vocaphone.core.WritingStyle
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.system.measureTimeMillis
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -84,6 +88,49 @@ class WhisperModelEndToEndTest {
         val text = dictate(scenario.samples(), vocabulary = "VocaPhone, Kanishk, whisper.cpp")
         val missing = scenario.markers.filterNot { text.lowercase().contains(it) }
         assertTrue("with vocabulary: missing $missing in \"$text\"", missing.isEmpty())
+    }
+
+    /**
+     * A cancelled decode stops inside whisper.cpp rather than running to the
+     * end, and the context is left usable: the next dictation's decode is not
+     * stopped by the abort the last one asked for.
+     */
+    @Test
+    fun cancellingStopsTheNativeDecodeAndLeavesTheContextUsable() = runBlocking {
+        val scenario = scenarios().single { it.name == "two_windows" }
+        val samples = SpeechAudioConditioning.condition(scenario.samples())
+        // Its own context, because this one is released mid-test.
+        val whisper = requireNotNull(
+            WhisperContext.create(File(root, model.primaryFile.path).absolutePath),
+        )
+        val decode: suspend () -> LocalTranscription = {
+            whisper.transcribe(
+                samples.copyOf(),
+                language = "auto",
+                translateTo = "",
+                quality = TranscriptionQuality.DEFAULT,
+                prompt = "",
+                cropAudioContext = model.cropsAudioContext,
+                threads = WhisperCpuConfig.preferredThreadCount(model.id),
+            )
+        }
+        val full = measureTimeMillis { decode() }
+
+        val abandoned = async(Dispatchers.Default) { decode() }
+        delay(full / 10)
+        abandoned.cancel()
+        val next = decode()
+        assertTrue("the decode after an abort was empty", next.text.isNotBlank())
+
+        val stopped = async(Dispatchers.Default) { decode() }
+        delay(full / 10)
+        // Release runs on the decode's own thread, so it starts only once the
+        // cancelled native call has actually returned.
+        val waited = measureTimeMillis {
+            stopped.cancel()
+            whisper.release()
+        }
+        assertTrue("waited ${waited}ms behind a cancelled ${full}ms decode", waited < full / 2)
     }
 
     private class Scenario(val name: String, val file: File, val markers: List<String>) {
