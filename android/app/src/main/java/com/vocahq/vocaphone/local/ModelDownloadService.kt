@@ -108,6 +108,22 @@ class ModelDownloadService : Service() {
         stopSelf(startId)
     }
 
+    /**
+     * Android 15+: a dataSync foreground service gets six hours in a day, then
+     * this, and the app is crashed if it has not stopped a few seconds later.
+     * The download is cancelled through the manager's ordinary path, so the
+     * staging files go and the Models page shows why, and the service stops
+     * now rather than after the usual final-notification linger.
+     */
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        watcher?.cancel()
+        watcher = null
+        VocaPhoneApplication.container(this).localModels
+            .cancelDownload(DownloadCancelReason.TIME_LIMIT)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
+
     override fun onDestroy() {
         watcher?.cancel()
         scope.cancel()

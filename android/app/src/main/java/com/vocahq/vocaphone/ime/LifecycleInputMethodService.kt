@@ -8,6 +8,9 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.platform.ComposeView
@@ -38,6 +41,8 @@ abstract class LifecycleInputMethodService : InputMethodService(),
     private val store = ViewModelStore()
     private val savedStateController = SavedStateRegistryController.create(this)
     private var inputComposeView: ComposeView? = null
+    private var appliedSurfaceColor: Int? = null
+    private val surfaceColorSink: (Int) -> Unit = ::applySurfaceColor
 
     final override val lifecycle: Lifecycle get() = lifecycleRegistry
     final override val viewModelStore: ViewModelStore get() = store
@@ -65,7 +70,11 @@ abstract class LifecycleInputMethodService : InputMethodService(),
             setBackgroundColor(surfaceColor)
             // Pad before the first measure so the IME window height includes it.
             setPadding(0, 0, 0, navigationBarBottomInsetPx(this))
-            setContent { KeyboardFontScale { KeyboardContent() } }
+            setContent {
+                CompositionLocalProvider(LocalKeyboardSurfaceSink provides surfaceColorSink) {
+                    KeyboardFontScale { KeyboardContent() }
+                }
+            }
             ViewCompat.setOnApplyWindowInsetsListener(this) { view, insets ->
                 val bottom = navigationBarBottomInsetPx(view, insets)
                 if (view.paddingBottom != bottom) {
@@ -75,6 +84,7 @@ abstract class LifecycleInputMethodService : InputMethodService(),
             }
         }
         inputComposeView = composeView
+        appliedSurfaceColor = surfaceColor
 
         window?.window?.let { imeWindow ->
             // Edge-to-edge so navigation-bar insets are dispatched to the input view.
@@ -147,11 +157,24 @@ abstract class LifecycleInputMethodService : InputMethodService(),
         super.onDestroy()
     }
 
+    /**
+     * The colour behind the navigation-bar padding before the keyboard has
+     * composed. From the first composition on, [ReportKeyboardSurface] replaces
+     * it with the scheme the keys are actually drawn in, which is the
+     * wallpaper's when dynamic colour is on.
+     */
     private fun keyboardSurfaceColor(): Int {
         val night = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
             Configuration.UI_MODE_NIGHT_YES
         // Keep in sync with Theme.kt surfaceContainerLowest.
         return if (night) Color.rgb(0x10, 0x12, 0x10) else Color.WHITE
+    }
+
+    private fun applySurfaceColor(argb: Int) {
+        if (argb == appliedSurfaceColor) return
+        appliedSurfaceColor = argb
+        inputComposeView?.setBackgroundColor(argb)
+        window?.window?.setBackgroundDrawable(argb.toDrawable())
     }
 
     private fun navigationBarBottomInsetPx(
@@ -181,6 +204,21 @@ abstract class LifecycleInputMethodService : InputMethodService(),
         const val GESTURE_NAVIGATION_MODE = 2
         const val GESTURE_NAV_FALLBACK_DP = 48
     }
+}
+
+/**
+ * Where the keyboard reports the surface colour it is drawn on, so the strip
+ * the service pads under it for the navigation bar matches. That strip is a
+ * View background outside the composition and cannot read the theme itself.
+ */
+internal val LocalKeyboardSurfaceSink = staticCompositionLocalOf<(Int) -> Unit> { {} }
+
+/** Call inside the keyboard's theme with the colour its root surface uses. */
+@Composable
+internal fun ReportKeyboardSurface(color: androidx.compose.ui.graphics.Color) {
+    val sink = LocalKeyboardSurfaceSink.current
+    val argb = color.toArgb()
+    SideEffect { sink(argb) }
 }
 
 /**
