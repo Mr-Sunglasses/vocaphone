@@ -1235,7 +1235,21 @@ final class RecordingCoordinator {
         pipelineSessionID = record.sessionID
         pipelineTask = Task { [weak self] in
             await self?.finalizeAndTranscribe(record)
-            guard let self, self.pipelineSessionID == record.sessionID else { return }
+            guard let self else { return }
+            // A pipeline that stopped because the keyboard cancelled or expired
+            // the session leaves the teardown — the Live Activity, the record
+            // this app shows — to the shared-state signal. Polling stopped when
+            // the pipeline began, so if iOS dropped that Darwin notification
+            // nothing else is watching any more. Ask once now; a signal that
+            // already ran has made `activeRecord` terminal and this is skipped.
+            if let active = self.activeRecord,
+               active.sessionID == record.sessionID, !active.state.isTerminal,
+               let stored = try? self.store.load(record.sessionID),
+               [.canceled, .expired].contains(stored.state)
+            {
+                await self.handleSharedStateSignal()
+            }
+            guard self.pipelineSessionID == record.sessionID else { return }
             self.pipelineSessionID = nil
             self.pipelineTask = nil
             self.scheduleLocalEngineRelease()
@@ -1702,17 +1716,21 @@ final class RecordingCoordinator {
             .operationFailed,
             metadata: .error(diagnosticErrorCode(for: code, state: state))
         )
-        Telemetry.shared.dictationFailed(
-            stage: TelemetryFailureMapping.stage(for: code),
-            reason: TelemetryFailureMapping.reason(for: code),
-            source: record.telemetrySource,
-            model: claimedModel,
-            quality: claimedQuality
-        )
+        // Counted unless the user cancelled first: that dictation did not fail.
+        let countFailure = { [claimedModel, claimedQuality, source = record.telemetrySource] in
+            Telemetry.shared.dictationFailed(
+                stage: TelemetryFailureMapping.stage(for: code),
+                reason: TelemetryFailureMapping.reason(for: code),
+                source: source,
+                model: claimedModel,
+                quality: claimedQuality
+            )
+        }
         do {
             try record.transition(to: state)
             record.error = SessionFailure(code: code, message: failureMessage, recoverable: recoverable)
             try commit(&record)
+            countFailure()
             activeRecord = record
             message = failureMessage
             liveActivity.end(status: "Needs attention", dismissAfter: 5)
@@ -1721,6 +1739,7 @@ final class RecordingCoordinator {
             // The user cancelled first. Reporting a failure for a dictation
             // they already threw away would only contradict them.
         } catch {
+            countFailure()
             message = "The session failed and its state could not be saved."
         }
     }

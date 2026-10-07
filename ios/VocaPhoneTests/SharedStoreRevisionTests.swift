@@ -145,6 +145,32 @@ struct SharedStoreRevisionTests {
         #expect(try store.recent().isEmpty)
     }
 
+    /// A peer that holds the lock and never lets go — frozen, or suspended
+    /// mid-write — must not hang the keyboard's main thread. The write waits
+    /// out the bound and goes ahead unlocked, as it did before the lock.
+    @Test func aLockNobodyReleasesIsWaitedOutNotDeadlockedOn() throws {
+        let (store, root) = Self.temporaryStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let holder = open(root.appendingPathComponent("sessions.lock").path, O_RDWR | O_CREAT, 0o600)
+        try #require(holder >= 0)
+        try #require(flock(holder, LOCK_EX | LOCK_NB) == 0)
+
+        let started = Date()
+        let written = try store.save(Self.launching())
+        let waited = Date().timeIntervalSince(started)
+        #expect(waited >= 0.4)
+        #expect(waited < 5)
+        #expect(try store.load(written.sessionID)?.state == .launchingApp)
+
+        // A process that dies holding it releases it with its descriptors;
+        // closing ours is the same event, and the next write does not wait.
+        close(holder)
+        let next = Date()
+        try store.save(written)
+        #expect(Date().timeIntervalSince(next) < 0.4)
+    }
+
     /// Two stores over one container stand in for the two processes: each has
     /// its own file descriptor for the lock, as the app and the keyboard do.
     /// Every increment is a read, a change and a conditional write; if a read
