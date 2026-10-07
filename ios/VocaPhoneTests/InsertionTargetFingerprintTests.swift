@@ -115,6 +115,16 @@ struct InsertionTargetFingerprintTests {
         #expect(action(.targetContextChanged, sameDocument: false) == .offer)
     }
 
+    /// The interrupted insertion may itself have changed the text around the
+    /// cursor, so a mismatch is expected in the very field it was dictated
+    /// for. Parking it would swap the "may have been interrupted" warning for
+    /// "Insert in this field" and invite a duplicate.
+    @Test func anInterruptedInsertionKeepsItsWarningInsteadOfParking() {
+        #expect(action(.readyToInsert, target: .different, interrupted: true) == .offer)
+        #expect(action(.readyToInsert, target: .unknown, interrupted: true) == .offer)
+        #expect(action(.readyToInsert, sameDocument: false, interrupted: true) == .offer)
+    }
+
     /// The cursor moved while the keyboard watched: the guard that existed
     /// before the fingerprint still applies.
     @Test func aWatchedMoveToAnotherFieldStillParks() {
@@ -131,16 +141,6 @@ struct InsertionTargetFingerprintTests {
     /// The text may already be in the field. A duplicate is worse than a tap.
     @Test func anInterruptedInsertionIsNeverInsertedAutomatically() {
         #expect(action(.readyToInsert, interrupted: true) == .offer)
-    }
-
-    /// The interrupted insertion may itself have changed the text around the
-    /// cursor, so a mismatch is expected in the very field it was dictated
-    /// for. Parking it would swap the "may have been interrupted" warning for
-    /// "Insert in this field" and invite a duplicate.
-    @Test func anInterruptedInsertionKeepsItsWarningInsteadOfParking() {
-        #expect(action(.readyToInsert, target: .different, interrupted: true) == .offer)
-        #expect(action(.readyToInsert, target: .unknown, interrupted: true) == .offer)
-        #expect(action(.readyToInsert, sameDocument: false, interrupted: true) == .offer)
     }
 
     @Test func otherStatesAreOnlyShown() {
