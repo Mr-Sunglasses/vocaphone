@@ -420,4 +420,63 @@ class SherpaLongAudioTest {
         )
     }
 
+
+    /** [seconds] of a steady tone at [level], or silence at zero. */
+    private fun tone(seconds: Double, level: Float): FloatArray =
+        FloatArray((seconds * SherpaLongAudio.SAMPLE_RATE).toInt()) { index ->
+            if (index % 2 == 0) level else -level
+        }
+
+    private fun audio(vararg parts: FloatArray): FloatArray =
+        parts.fold(FloatArray(0)) { joined, part -> joined + part }
+
+    @Test
+    fun `a pause after a few seconds of speech releases the prefix`() {
+        val samples = audio(tone(2.5, 0.2f), tone(0.7, 0.001f))
+
+        val split = requireNotNull(SherpaLongAudio.nextPauseSplit(samples))
+
+        // Cut in the middle of the quiet, keeping the found-silence overlap.
+        assertEquals(2_850 * SherpaLongAudio.SAMPLE_RATE / 1_000, split.endExclusive)
+        assertEquals(2_650 * SherpaLongAudio.SAMPLE_RATE / 1_000, split.nextStart)
+    }
+
+    @Test
+    fun `too little buffered waits for more`() {
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(audio(tone(1.8, 0.2f), tone(1.0, 0.001f))))
+    }
+
+    @Test
+    fun `a gap between words is not a pause`() {
+        // Speech with a 400 ms breath in it and no quiet at the end.
+        val samples = audio(tone(1.5, 0.2f), tone(0.4, 0.001f), tone(1.5, 0.2f))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(samples))
+        // The same breath at the end is still too short.
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(audio(tone(3.0, 0.2f), tone(0.5, 0.001f))))
+    }
+
+    @Test
+    fun `a buffer of nothing but quiet has nothing to decode`() {
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(tone(4.0, 0.001f)))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(FloatArray(4 * SherpaLongAudio.SAMPLE_RATE)))
+    }
+
+    @Test
+    fun `quiet is judged against the speech, not a fixed level`() {
+        // Room tone at a fifth of this speaker's level is still a pause; a
+        // trailing stretch at half of it is someone carrying on softly.
+        val loudRoom = audio(tone(3.0, 0.2f), tone(0.8, 0.03f))
+        assertTrue(SherpaLongAudio.nextPauseSplit(loudRoom) != null)
+        val softer = audio(tone(3.0, 0.2f), tone(0.8, 0.1f))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(softer))
+    }
+
+    @Test
+    fun `only the samples asked about are read`() {
+        val buffer = audio(tone(2.5, 0.2f), tone(0.7, 0.001f), tone(2.0, 0.2f))
+        val size = (3.2 * SherpaLongAudio.SAMPLE_RATE).toInt()
+
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(buffer))
+        assertTrue(SherpaLongAudio.nextPauseSplit(buffer, size) != null)
+    }
 }

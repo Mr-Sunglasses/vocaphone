@@ -5,7 +5,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -169,7 +171,102 @@ class SherpaIncrementalSessionTest {
         assertFalse(outcome.isSafe)
     }
 
+
+    /**
+     * A stand-in recognizer for audio made of [spoken] frames: each run of
+     * loud audio is one word, named by its length in 100 ms frames, so a word
+     * cut in half or decoded twice shows up in the text. Read in 50 ms steps,
+     * because a split can land half way through a capture frame.
+     */
+    private fun wordsIn(samples: FloatArray): SherpaTranscript {
+        val words = mutableListOf<String>()
+        var run = 0
+        fun close() {
+            if (run > 0) words += WORDS.getOrElse(run / 2) { "?$run" }
+            run = 0
+        }
+        for (step in 0 until samples.size / 800) {
+            var sum = 0.0
+            for (index in step * 800 until (step + 1) * 800) sum += samples[index] * samples[index]
+            if (kotlin.math.sqrt(sum / 800) > 0.05) run++ else close()
+        }
+        close()
+        return SherpaTranscript(words.joinToString(" "))
+    }
+
+    /** Frames for [words] (by name) with [gapFrames] of room tone between them. */
+    private fun spoken(vararg words: String, gapFrames: Int = 3): List<Int> =
+        words.flatMapIndexed { index, word ->
+            val loud = List(WORDS.entries.single { it.value == word }.key) { 8_000 }
+            if (index == 0) loud else List(gapFrames) { 30 } + loud
+        }
+
+    private fun quiet(frames: Int): List<Int> = List(frames) { 30 }
+
+    @Test
+    fun `a pause decodes what came before it while recording continues`() = runBlocking {
+        val first = quiet(3) + spoken("alpha", "bravo", "charlie", "delta") + quiet(10)
+        val second = spoken("echo", "alpha", "bravo") + quiet(3)
+        val decoded = java.util.Collections.synchronizedList(mutableListOf<Int>())
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            val session = SherpaIncrementalSession(scope = scope, prepare = {}) { samples ->
+                decoded += samples.size
+                wordsIn(samples)
+            }
+            frames(first.size) { first[it] }.forEach { assertTrue(session.offer(it)) }
+            // The first sentence is decoded during the pause, before Finish.
+            withTimeout(5_000) { while (decoded.isEmpty()) delay(10) }
+            assertEquals(1, decoded.size)
+
+            frames(second.size) { second[it] }.forEach { assertTrue(session.offer(it)) }
+            val outcome = session.finish()
+
+            assertTrue(outcome.isSafe)
+            assertEquals("alpha bravo charlie delta echo alpha bravo", outcome.transcript.text)
+            // What is left for Finish is the second sentence, not the recording.
+            assertEquals(2, decoded.size)
+            assertTrue(decoded[1] < (second.size + 10) * 1_600)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun `the stitched transcript matches one decode of the whole recording`() {
+        val levels = quiet(2) + spoken("charlie", "alpha", "delta", "bravo") + quiet(9) +
+            spoken("bravo", "echo", "charlie") + quiet(12) +
+            spoken("delta", "delta", "alpha", "echo") + quiet(4)
+        val whole = frames(levels.size) { levels[it] }
+            .flatMap { frame -> frame.map { it / 32_768f } }
+            .toFloatArray()
+
+        val outcome = outcomeOf(frames(levels.size) { levels[it] }, ::wordsIn)
+
+        assertTrue(outcome.isSafe)
+        assertEquals(wordsIn(whole).text, outcome.transcript.text)
+        assertEquals(
+            "charlie alpha delta bravo bravo echo charlie delta delta alpha echo",
+            outcome.transcript.text,
+        )
+    }
+
+    @Test
+    fun `speech without a pause is still decoded once at the end`() {
+        var calls = 0
+        val levels = quiet(2) + spoken("alpha", "bravo", "charlie", "delta", "echo", "alpha") + quiet(2)
+
+        val outcome = outcomeOf(frames(levels.size) { levels[it] }) {
+            calls++
+            wordsIn(it)
+        }
+
+        assertEquals(1, calls)
+        assertEquals("alpha bravo charlie delta echo alpha", outcome.transcript.text)
+    }
+
     private companion object {
         val CLICKY_FRAMES = 120 until 130
+        val WORDS = mapOf(3 to "alpha", 4 to "bravo", 5 to "charlie", 6 to "delta", 7 to "echo")
     }
 }

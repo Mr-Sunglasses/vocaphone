@@ -53,6 +53,23 @@ internal object SherpaLongAudio {
     const val STREAMING_WINDOW_SECONDS = TARGET_CHUNK_SECONDS + 2
 
     /**
+     * How much has to be buffered before a pause is worth decoding at.
+     *
+     * Below it the prefix is a few words, and a decode that short buys little
+     * latency while adding a seam and a gain decided on almost nothing.
+     */
+    const val PAUSE_SPLIT_MIN_SECONDS = 3
+
+    /**
+     * How long the quiet at the end of the buffer has to last to be a pause.
+     *
+     * Longer than any gap inside a word or between words -- a stop consonant
+     * is tens of milliseconds, a breath between phrases a few hundred -- so
+     * the cut never lands in the middle of one.
+     */
+    const val PAUSE_SPLIT_QUIET_MILLIS = 700
+
+    /**
      * The bar above which a window answering with no tokens is suspicious.
      *
      * Below it an empty answer is ordinary rather than a loss: the half second
@@ -147,6 +164,53 @@ internal object SherpaLongAudio {
         return SherpaStreamingSplit(
             endExclusive = end,
             nextStart = (end - retainedSamples).coerceAtLeast(1),
+        )
+    }
+
+    /**
+     * The prefix to decode now because the speaker has paused, or null.
+     *
+     * [nextStreamingSplit] only lets go of audio once twelve seconds are
+     * buffered, and almost every dictation is shorter than that, so the whole
+     * of it used to be decoded after Finish. A pause is the other point at
+     * which a prefix is stable: whatever comes next starts a new phrase. The
+     * cut is made in the middle of the trailing quiet, so measured silence
+     * sits on both sides of it, and the context retained after it -- the same
+     * amount a found silence keeps at a twelve-second split -- lies wholly
+     * inside that quiet.
+     *
+     * Quiet is judged against the loudest frame buffered, as the boundary
+     * search judges it, so the same pause reads the same in a loud room and a
+     * quiet one; a buffer with nothing above that bar has nothing to decode.
+     *
+     * Only the first [size] samples are read, so a caller can ask of a growing
+     * buffer every frame without copying it.
+     */
+    fun nextPauseSplit(samples: FloatArray, size: Int = samples.size): SherpaStreamingSplit? {
+        if (size < PAUSE_SPLIT_MIN_SECONDS * SAMPLE_RATE) return null
+        val frameSamples = SILENCE_FRAME_MILLIS * SAMPLE_RATE / 1_000
+        val frames = size / frameSamples
+        val quietFramesNeeded = PAUSE_SPLIT_QUIET_MILLIS / SILENCE_FRAME_MILLIS
+        if (frames <= quietFramesNeeded) return null
+
+        val levels = DoubleArray(frames) { frame ->
+            rms(samples, frame * frameSamples, (frame + 1) * frameSamples)
+        }
+        val threshold = maxOf(SILENT_CHUNK_RMS, levels.max() * SILENCE_RMS_RATIO)
+        // Frames past the last whole one are too short to judge; they are
+        // part of the retained audio either way.
+        var quietFrames = 0
+        while (quietFrames < frames && levels[frames - 1 - quietFrames] <= threshold) {
+            quietFrames++
+        }
+        if (quietFrames < quietFramesNeeded || quietFrames == frames) return null
+
+        val quietStart = (frames - quietFrames) * frameSamples
+        val end = quietStart + quietFrames * frameSamples / 2
+        val retained = SILENCE_OVERLAP_MILLIS * SAMPLE_RATE / 1_000
+        return SherpaStreamingSplit(
+            endExclusive = end,
+            nextStart = (end - retained).coerceAtLeast(1),
         )
     }
 
