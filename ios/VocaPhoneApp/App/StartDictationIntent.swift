@@ -26,8 +26,13 @@ struct StartDictationIntent: AppIntent {
     func perform() async throws -> some IntentResult {
         // A fresh session, written where the app's own deep-link handler looks
         // for it — the same path the keyboard uses, so there is one way in.
+        //
+        // Its own origin, not the microphone test's: the test's transcript
+        // goes nowhere, so the keyboard ignores it, no Live Activity starts and
+        // the result reads "Your gateway is working end to end". A dictation
+        // from the Action button is meant for the next field the user opens.
         var record = SessionRecord(
-            sourceDocumentID: "in-app-test",
+            sourceDocumentID: SessionOrigin.shortcut,
             language: KeyboardPreferences.effectiveTranscriptionLanguage.rawValue,
             style: KeyboardPreferences.writingStyle.rawValue
         )

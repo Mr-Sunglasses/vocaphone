@@ -185,6 +185,14 @@ was trimmed.
 9. The keyboard verifies its session context, persists `inserting`, calls
    `insertText`, then persists `inserted` and `completed`.
 
+"Start dictation" from Shortcuts, Siri or the Action button writes the same
+`launchingApp` record from inside the app, with `sourceDocumentID` set to
+`shortcut` and `startedInContainingApp` set, so there is no swipe-back screen.
+It gets a Live Activity like any other dictation. The keyboard adopts its
+transcript in the next field it appears in but never inserts it automatically:
+a session started with no field has no field to match, so it waits behind
+Insert.
+
 After Finish, the app can rearm a Quick Dictation window without
 tearing down its `AVAudioEngine`. The window length is a preference — 10
 minutes, 20 minutes, or "until I close vocaphone", which takes a short lease the

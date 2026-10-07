@@ -1131,7 +1131,9 @@ final class RecordingCoordinator {
             record.localAudioReference = audioURL.lastPathComponent
             try store.save(record)
             activeRecord = record
-            message = record.startedInContainingApp == true
+            message = record.isFromShortcut
+                ? "Recording. Tap Finish when you are done."
+                : record.startedInContainingApp == true
                 ? "Recording. Tap Finish on the keyboard when you are done."
                 : "Recording. Swipe back to the app where you want to type."
             if record.sourceDocumentID != "in-app-test" {
@@ -1687,6 +1689,8 @@ final class RecordingCoordinator {
         refreshSetupStatus()
         message = record.sourceDocumentID == "in-app-test"
             ? "Transcript ready. Your gateway is working end to end."
+            : record.isFromShortcut
+            ? "Transcript ready. Open a text field and tap Insert on the vocaphone keyboard."
             : "Transcript ready. Return to the keyboard to insert it."
     }
 

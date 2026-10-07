@@ -143,6 +143,32 @@ struct InsertionTargetFingerprintTests {
         #expect(action(.readyToInsert, interrupted: true) == .offer)
     }
 
+    /// A Shortcuts or Action button dictation has no field of its own. It
+    /// waits behind Insert in the next field rather than going into whichever
+    /// one the keyboard happens to appear in.
+    @Test func aShortcutDictationIsOfferedRatherThanInserted() {
+        var shortcut = SessionRecord(sourceDocumentID: SessionOrigin.shortcut)
+        #expect(shortcut.isFromShortcut)
+        #expect(!PendingTranscriptPolicy.autoInserts(shortcut, preference: true))
+        shortcut.sourceDocumentID = "C3A1F2E4-0000-0000-0000-000000000000"
+        #expect(!shortcut.isFromShortcut)
+        #expect(PendingTranscriptPolicy.autoInserts(shortcut, preference: true))
+        #expect(!PendingTranscriptPolicy.autoInserts(shortcut, preference: false))
+
+        let fromShortcut = SessionRecord(sourceDocumentID: SessionOrigin.shortcut)
+        #expect(action(
+            .readyToInsert,
+            autoInsert: PendingTranscriptPolicy.autoInserts(fromShortcut, preference: true)
+        ) == .offer)
+    }
+
+    /// The keyboard skips microphone tests, and a Shortcuts dictation must not
+    /// be mistaken for one.
+    @Test func aShortcutIsNotAMicrophoneTest() {
+        #expect(SessionOrigin.shortcut != SessionOrigin.microphoneTest)
+        #expect(SessionOrigin.microphoneTest == "in-app-test")
+    }
+
     @Test func otherStatesAreOnlyShown() {
         for state in SessionState.allCases
         where ![.readyToInsert, .targetContextChanged].contains(state) {

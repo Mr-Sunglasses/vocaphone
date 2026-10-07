@@ -75,6 +75,15 @@ enum PendingTranscriptPolicy {
         case offer
     }
 
+    /// Whether a transcript may go in without a tap, when everything else
+    /// says it is in the right field. A dictation from Shortcuts or the Action
+    /// button was started with no field at all, so the field the keyboard next
+    /// appears in is a guess — it might be a search box — and the transcript
+    /// is offered there behind Insert instead.
+    static func autoInserts(_ record: SessionRecord, preference: Bool) -> Bool {
+        preference && !record.isFromShortcut
+    }
+
     /// - Parameters:
     ///   - target: the fingerprint comparison, or `.same` once this appearance
     ///     has confirmed the field.
