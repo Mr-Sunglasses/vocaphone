@@ -21,9 +21,6 @@ enum TranscriptRepair {
 
     // MARK: - Entry point
 
-    /// - Parameters:
-    ///   - text: a transcript that has already been through ``TranscriptSanitizer``.
-    ///   - language: the language the finished text is written in, or `"auto"`.
     /// Whether `text` is English: an explicit or detected `en`, or, on
     /// Automatic, a sentence that says so itself — on the terms
     /// ``looksEnglish(_:words:)`` sets out, or, for a fragment too short to
@@ -49,6 +46,9 @@ enum TranscriptRepair {
         return keys.count >= 2 && keys.filter(isDictionaryWord).count * 3 >= keys.count * 2
     }
 
+    /// - Parameters:
+    ///   - text: a transcript that has already been through ``TranscriptSanitizer``.
+    ///   - language: the language the finished text is written in, or `"auto"`.
     static func apply(_ text: String?, language: String = "auto") -> String {
         let source = (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !source.isEmpty else { return "" }

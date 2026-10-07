@@ -20,7 +20,7 @@ import kotlin.math.abs
  *   "strip" is a word, and must not become "Stripe" because someone works there.
  *   English only: the dictionary that guards real words is the English one,
  *   so in any other language every word one letter from a term would be fair
- *   game -- German "Wagen" would become a colleague called "Wagner".
+ *   game — German "Wagen" would become a colleague called "Wagner".
  *
  * What it will not do is hear "Cooper Netties" as "Kubernetes". That takes a
  * model that was listening; this only has the text.
