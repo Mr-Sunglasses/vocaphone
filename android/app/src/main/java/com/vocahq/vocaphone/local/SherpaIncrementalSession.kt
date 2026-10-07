@@ -2,7 +2,6 @@ package com.vocahq.vocaphone.local
 
 import com.vocahq.vocaphone.audio.SpeechAudioConditioning
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.math.abs
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -89,55 +88,63 @@ internal class SherpaIncrementalSession(
         var retainedHead = 0
         var droppedAudibleChunk = false
         var conditioningChanged = false
-        // The gain the first decoded window was levelled with. `gainFor` is
-        // monotonically non-increasing in the running peak, so comparing every
-        // later window against this one measures the total drift rather than
-        // one step of it.
-        var firstAppliedGain = 0f
+        // The lowest and highest gains any decoded window was levelled with.
+        // The running level a gain derives from can move either way -- up as
+        // the speaker gets louder, down as more speech lets a transient be set
+        // aside -- so the drift is the spread of every gain used, not one step.
+        var lowestGain = 0f
+        var highestGain = 0f
+        // The loudest frame of everything decoded so far, as the microphone
+        // heard it. Raw because each window can be levelled with a slightly
+        // different gain, and a level stored at one gain compared with a level
+        // measured at another misjudges how loud this window is next to the
+        // speech before it. The current gain is applied when comparing, which
+        // is what the complete-WAV path's single gain amounts to.
         var loudestFrame = 0.0
 
         suspend fun consume(chunk: FloatArray) {
-            // Levelled before anything is judged on it, as the complete-WAV
-            // path levels the whole recording before its silence check. The
-            // raw level of a quiet speaker -- a phone on the desk -- can sit
+            // Silence is judged at the level the model will hear, as the
+            // complete-WAV path judges it after levelling the whole recording.
+            // The raw level of a quiet speaker -- a phone on the desk -- can sit
             // under the silence floor while the same window, at the gain the
             // WAV decode would give it, is plainly speech. Judging it raw
             // skipped that window without a decode or a fallback, and its
             // words were missing from a result that still looked complete.
-            val levelled = SpeechAudioConditioning.conditionStreaming(chunk, audio.peak)
-            val level = SherpaLongAudio.loudestFrame(levelled)
-            if (SherpaLongAudio.isEffectivelySilent(level)) return
+            // Below the limiter's knee, which the floor is far under, a frame
+            // levelled by `gain` measures `gain` times its raw level.
+            val speechLevel = audio.runningLevel.level
+            val gain = SpeechAudioConditioning.gainFor(speechLevel)
+            val level = SherpaLongAudio.loudestFrame(chunk)
+            if (SherpaLongAudio.isEffectivelySilent(level * gain)) return
 
-            // A running peak is the closest safe approximation to the
-            // recording-wide gain, and it moves on almost every recording:
-            // anyone who gets louder as they go raises it. What the model
-            // actually hears is the gain, which mostly does not move, so that
-            // is what is compared. Past the tolerance the complete-WAV path
-            // takes over and every word is levelled once.
-            val gain = SpeechAudioConditioning.gainFor(audio.peak)
-            if (firstAppliedGain > 0f &&
-                maxOf(firstAppliedGain, gain) / minOf(firstAppliedGain, gain) > MAX_GAIN_DRIFT
-            ) {
-                conditioningChanged = true
-            }
-            val decoded = decode(levelled)
+            // What the model actually hears is the gain, which mostly does not
+            // move even while the level it comes from does, so that is what is
+            // compared. Past the tolerance the complete-WAV path takes over and
+            // every word is levelled once.
+            lowestGain = if (lowestGain == 0f) gain else minOf(lowestGain, gain)
+            highestGain = maxOf(highestGain, gain)
+            if (highestGain / lowestGain > MAX_GAIN_DRIFT) conditioningChanged = true
+
             // Judged on what this window did not inherit from the one before
             // it. A window that is mostly retained overlap can be six seconds
             // long and carry half a second of new speech, and asking whether
             // the *chunk* was long enough is what let that half second vanish
-            // without the file ever being re-read.
-            val newRegion = levelled.copyOfRange(retainedHead.coerceAtMost(levelled.size), levelled.size)
+            // without the file ever being re-read. Measured before levelling,
+            // which happens in place.
+            val newRegion = chunk.copyOfRange(retainedHead.coerceAtMost(chunk.size), chunk.size)
+            val newRegionLevel = SherpaLongAudio.loudestFrame(newRegion)
+            val levelled = SpeechAudioConditioning.conditionStreaming(chunk, speechLevel)
+            val decoded = decode(levelled)
             if (decoded.text.isEmpty() &&
                 SherpaLongAudio.carriesRecoverableSpeech(
                     newRegion = newRegion,
                     inheritsAudio = retainedHead > 0,
-                    loudestFrame = SherpaLongAudio.loudestFrame(newRegion),
-                    loudestFrameSoFar = loudestFrame,
+                    loudestFrame = newRegionLevel * gain,
+                    loudestFrameSoFar = loudestFrame * gain,
                 )
             ) {
                 droppedAudibleChunk = true
             }
-            if (firstAppliedGain == 0f) firstAppliedGain = gain
             loudestFrame = maxOf(loudestFrame, level)
             transcript = transcript.append(decoded, deduplicateOverlap = overlapsPrevious)
         }
@@ -169,14 +176,14 @@ internal class SherpaIncrementalSession(
         private var samples = FloatArray(initialCapacity)
         var size: Int = 0
             private set
-        var peak: Float = 0f
-            private set
+        /** Of everything captured, including what has been discarded. */
+        val runningLevel = SpeechAudioConditioning.RunningLevel()
 
         fun append(frame: ShortArray) {
             ensureCapacity(size + frame.size)
             for (sample in frame) {
                 val value = sample / 32_768f
-                if (abs(value) > peak) peak = abs(value)
+                runningLevel.append(value)
                 samples[size++] = value
             }
         }

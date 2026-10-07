@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.local
 
+import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +20,15 @@ class SherpaIncrementalSessionTest {
             ShortArray(1_600) { sample ->
                 if (sample % 2 == 0) amplitude.toShort() else (-amplitude).toShort()
             }
+        }
+
+    /** 100 ms frames of a square wave at [amplitudeAt], with one louder sample every 20 ms. */
+    private fun clickyFrames(count: Int, click: Int, amplitudeAt: (Int) -> Int): List<ShortArray> =
+        frames(count, amplitudeAt).mapIndexed { index, frame ->
+            if (index in CLICKY_FRAMES) {
+                for (sample in frame.indices step 320) frame[sample] = click.toShort()
+            }
+            frame
         }
 
     private fun outcomeOf(
@@ -105,5 +115,61 @@ class SherpaIncrementalSessionTest {
         // tail, levelled or not, is nothing a model should be asked about.
         assertEquals(2, calls)
         assertTrue(outcome.isSafe)
+    }
+
+    /**
+     * The tap that started the dictation, or a knock on the desk, is the
+     * loudest sample of many recordings. The complete-WAV path sets it aside
+     * when it chooses the gain; the streaming path used to level by it, kept
+     * the gain at 1, and skipped the quiet speech that followed as silence.
+     */
+    @Test
+    fun `a loud tap does not stop quiet speech being levelled`() {
+        var calls = 0
+        val outcome = outcomeOf(
+            frames(250) {
+                when {
+                    it == 0 -> 30_000
+                    it < 120 -> 600
+                    else -> 150
+                }
+            },
+        ) {
+            calls++
+            SherpaTranscript("part $calls")
+        }
+
+        assertFalse(outcome.conditioningChanged)
+        assertTrue(outcome.isSafe)
+        assertEquals(3, calls)
+        assertEquals("part 1 part 2 part 3", outcome.transcript.text)
+    }
+
+    /**
+     * Speech a quarter as loud as what came before it is speech, whatever gain
+     * each window happened to be levelled with. Brief clicks halve the gain
+     * part-way through without moving it past the drift tolerance; the loudest
+     * frame used to be stored at the first window's gain and compared with this
+     * window's level at half of it, and an empty answer here was taken for a
+     * pause instead of a loss.
+     */
+    @Test
+    fun `an empty window is judged against earlier speech at one gain`() {
+        // 1_638 is 0.05 RMS and 410 is 0.0125: a quarter, well over the 18%
+        // that counts as speech. The clicks reach 0.2 and move the gain from
+        // 8 to 4.25, but add nothing to any 100 ms frame's RMS.
+        val outcome = outcomeOf(
+            clickyFrames(250, click = 6_554) { if (it < 130) 1_638 else 410 },
+        ) { samples ->
+            if (samples.maxOf { abs(it) } > 0.1f) SherpaTranscript("words") else SherpaTranscript.EMPTY
+        }
+
+        assertFalse(outcome.conditioningChanged)
+        assertTrue(outcome.droppedAudibleChunk)
+        assertFalse(outcome.isSafe)
+    }
+
+    private companion object {
+        val CLICKY_FRAMES = 120 until 130
     }
 }
