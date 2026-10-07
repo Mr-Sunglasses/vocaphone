@@ -146,6 +146,24 @@ struct SherpaLongAudioTests {
         #expect(split?.endExclusive == pause)
     }
 
+    /// A gap between two regions counts as much as the pause after the last
+    /// one: here it is the nearer to ten seconds, and the split lands in it.
+    @Test func aGapBetweenRegionsNearerTheTargetWins() {
+        let samples = Self.tone(seconds: SherpaLongAudio.streamingWindowSeconds)
+        let speech = [
+            SpeechRegion(start: 0, end: 9 * Self.rate),
+            SpeechRegion(start: 9 * Self.rate + 3 * Self.rate / 5, end: 11 * Self.rate),
+        ]
+
+        let split = SherpaLongAudio.nextStreamingSplit(samples, speech: speech)
+
+        // The middle of the 9.0–9.6 s gap, not the 11.25 s pause after the
+        // second region, nor the ten-second hard cut.
+        let gap = 9 * Self.rate + 3 * Self.rate / 10
+        #expect(split?.endExclusive == gap)
+        #expect(split?.nextStart == gap - SherpaLongAudio.silenceOverlapSamples)
+    }
+
     /// A chunk cut a couple of seconds in is a decode for almost nothing; a
     /// pause that early is left for the level search and the hard cut.
     @Test func aPauseTooEarlyInTheWindowIsNotUsed() {
