@@ -12,6 +12,7 @@ import android.content.pm.ServiceInfo
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.vocahq.vocaphone.NotificationIds
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.ui.MainActivity
@@ -180,7 +181,7 @@ class ModelDownloadService : Service() {
         const val EXTRA_NAME = "name"
         const val EXTRA_MODEL_ID = "modelId"
         private const val CHANNEL_ID = "vocaphone.model_download"
-        private const val NOTIFICATION_ID = 4102
+        private const val NOTIFICATION_ID = NotificationIds.MODEL_DOWNLOAD
         private const val FINAL_LINGER_MILLIS = 1_500L
         /**
          * Starts the service for a download the manager has already begun.

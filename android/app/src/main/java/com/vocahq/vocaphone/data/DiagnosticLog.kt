@@ -257,6 +257,9 @@ class DiagnosticLog(
             "background",
             "gateway",
             "insertion",
+            // startForeground(MICROPHONE) was refused until the retries ran
+            // out, so the tap never reached the recorder.
+            "microphone_service",
             "settings",
             "setup",
             "unknown",

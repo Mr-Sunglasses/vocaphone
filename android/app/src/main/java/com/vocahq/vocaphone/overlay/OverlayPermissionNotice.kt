@@ -8,6 +8,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
+import com.vocahq.vocaphone.NotificationIds
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.OverlayNoticePolicy
 
@@ -100,7 +101,7 @@ class OverlayPermissionNotice(private val context: Context) {
 
     private companion object {
         const val CHANNEL_ID = "vocaphone.bubble_blocked"
-        const val NOTIFICATION_ID = 4102
+        const val NOTIFICATION_ID = NotificationIds.OVERLAY_PERMISSION
         const val REQUEST_CODE = 2
     }
 }

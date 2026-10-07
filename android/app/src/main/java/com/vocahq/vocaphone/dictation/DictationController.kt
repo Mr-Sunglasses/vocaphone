@@ -700,6 +700,30 @@ class DictationController(
         if (!_state.value.phase.isBusy) reset()
     }
 
+    /**
+     * The microphone foreground service could not be started, so [start] was
+     * never reached and nothing was recorded. Without this the tap simply did
+     * nothing: the keyboard kept saying it was ready and the user was left to
+     * guess. Shown as an ordinary failure that clears itself like any other,
+     * and nothing goes to history because there is no audio to retry.
+     */
+    fun microphoneServiceRefused(source: DictationSource) {
+        diagnostics.recordError(MicrophoneForegroundPromote.ERROR_CATEGORY, source.name)
+        val sessionId = UUID.randomUUID()
+        synchronized(sessionLock) {
+            // A session that did get going owns the state; do not paint a
+            // failure over it.
+            val failed = MicrophoneForegroundPromote.refusedState(
+                current = _state.value,
+                sessionId = sessionId,
+                pipelineActive = pipeline?.isActive == true,
+            ) ?: return
+            nextGeneration()
+            _state.value = failed
+        }
+        lingerThenIdle(sessionId, DictationPhase.FAILED, FAILED_LINGER_MILLIS)
+    }
+
     /** Removes the last insertion when the exact text is still where it was put. */
     suspend fun undoLast(): Boolean {
         val insertion = lastInsertion ?: return false
@@ -1561,13 +1585,7 @@ class DictationController(
     private fun lingerThenIdle(sessionId: UUID, from: DictationPhase, millis: Long) {
         scope.launch {
             delay(millis)
-            _state.update { current ->
-                if (current.sessionId == sessionId && current.phase == from) {
-                    DictationState()
-                } else {
-                    current
-                }
-            }
+            _state.update { current -> afterLinger(current, sessionId, from) }
         }
     }
 
@@ -1741,6 +1759,14 @@ internal fun modelRepair(
         else -> MissingPermission.LOCAL_MODEL_UNAVAILABLE
     }
 }
+
+/**
+ * What a linger timer leaves behind when it fires: idle only if the state is
+ * still the very one it was started for. A later session, or a newer failure
+ * of the same phase, keeps the screen.
+ */
+internal fun afterLinger(current: DictationState, sessionId: UUID, from: DictationPhase): DictationState =
+    if (current.sessionId == sessionId && current.phase == from) DictationState() else current
 
 internal enum class DownloadOutcome { WAITING, PREPARING, LANDED, DIED }
 
