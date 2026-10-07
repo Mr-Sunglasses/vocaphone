@@ -2167,6 +2167,15 @@ final class LocalModelManager {
     /// `whisperSession` is the dictation's own capture, used in place of the
     /// file when the selected model is Whisper — the caller passes it only
     /// when the capture queue lost nothing.
+    /// Whether ``transcribe(audioURL:language:whisperSession:)`` would read a
+    /// dictation's streamed capture instead of its file. Only a Whisper model
+    /// does, so a dictation started under Whisper and finished after switching
+    /// to another engine is decoded from the file.
+    var selectedModelReadsStreamedCapture: Bool {
+        LocalTranscriptionPreferences.modelIdentifier
+            .flatMap(LocalModelCatalog.descriptor(for:))?.engine == .whisperKit
+    }
+
     func transcribe(
         audioURL: URL,
         language: String,

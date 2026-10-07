@@ -154,6 +154,12 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     var insertionInterrupted: Bool?
 
     var recordedSeconds: Double?
+    /// Set when writing the recording's file failed part-way — a full disk,
+    /// most often — so the file holds only its start, and cleared once the
+    /// user has been told so. Until then no retry may quietly transcribe or
+    /// send the file as if it were the whole recording. Optional so records
+    /// written before this field still decode.
+    var fileIncompleteUntold: Bool?
 
     init(
         sessionID: UUID = UUID(),
@@ -181,6 +187,7 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         targetFingerprint = nil
         insertionInterrupted = nil
         recordedSeconds = nil
+        fileIncompleteUntold = nil
     }
 
     mutating func transition(to next: SessionState, now: Date = Date()) throws {

@@ -1343,7 +1343,12 @@ final class RecordingCoordinator {
         // holds only the start of what was said. The streamed copy is whole,
         // and both routes use it first; where the file is all there is, the
         // user is told rather than handed a transcript of half a dictation.
-        let fileIncomplete = wasRecording && recorder.lastFileIncomplete
+        // Kept on the record, saved just below, so that a retry after some
+        // other failure — one that has no stream left — still tells them.
+        if wasRecording, recorder.lastFileIncomplete {
+            record.fileIncompleteUntold = true
+        }
+        let fileIncomplete = record.fileIncompleteUntold == true
 
         // Re-resolved and persisted before any of finalizing, uploading or
         // transcribing. The route in force *now* is the one about to run, and a
@@ -1414,6 +1419,8 @@ final class RecordingCoordinator {
             }
 
             if fileIncomplete {
+                // Told now, so the retry this offers sends what was saved.
+                record.fileIncompleteUntold = nil
                 await fail(
                     &record,
                     state: .uploadFailedRecoverable,
@@ -1602,14 +1609,19 @@ final class RecordingCoordinator {
                 }
             } else {
                 // Its capture is only the recording if none of it was refused.
+                let streamed = droppedLocalChunks ? nil : whisperSession
                 if droppedLocalChunks { await whisperSession?.cancel() }
-                if fileIncomplete, droppedLocalChunks || whisperSession == nil {
+                // And only a Whisper model reads it: a dictation started under
+                // Whisper and finished under another engine is decoded from the
+                // file, which is then all there is.
+                if fileIncomplete, streamed == nil || !localModels.selectedModelReadsStreamedCapture {
+                    await whisperSession?.cancel()
                     throw IncompleteRecording()
                 }
                 transcribed = try await localModels.transcribe(
                     audioURL: audioURL,
                     language: record.language,
-                    whisperSession: droppedLocalChunks ? nil : whisperSession
+                    whisperSession: streamed
                 )
             }
             DiagnosticLog.record(
@@ -1652,6 +1664,8 @@ final class RecordingCoordinator {
         } catch {
             if Task.isCancelled || error is CancellationError { return }
             if error is IncompleteRecording {
+                // Told now, so the retry this offers transcribes what was saved.
+                record.fileIncompleteUntold = nil
                 await fail(
                     &record,
                     state: .transcriptionFailedRecoverable,

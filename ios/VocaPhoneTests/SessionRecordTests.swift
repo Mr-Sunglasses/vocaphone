@@ -413,6 +413,7 @@ struct SessionRecordTests {
         // did. And nothing marks it as an interrupted insertion.
         #expect(record.targetFingerprint == nil)
         #expect(record.insertionInterrupted == nil)
+        #expect(record.fileIncompleteUntold == nil)
     }
 
     /// The fingerprint is written by the keyboard at creation and has to
@@ -434,6 +435,31 @@ struct SessionRecordTests {
         }
         #expect(record.targetFingerprint == "0123456789abcdef")
         #expect(record.insertionInterrupted == nil)
+    }
+
+    /// A file cut short by a failed write stays flagged through a failure and
+    /// the shared store. The retry that follows has no streamed copy left, so
+    /// the flag is all that stops it using the file as the whole recording
+    /// before the user has been told.
+    @Test func anUntoldIncompleteFileSurvivesAFailureAndTheStore() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedStore(rootOverride: directory)
+
+        var record = SessionRecord()
+        try record.transition(to: .launchingApp)
+        try record.transition(to: .recording)
+        try record.transition(to: .finalizing)
+        record.fileIncompleteUntold = true
+        try record.transition(to: .uploading)
+        try record.transition(to: .transcribing)
+        try record.transition(to: .transcriptionFailedRecoverable)
+        try store.save(record)
+
+        var retried = try #require(try store.load(record.sessionID))
+        try retried.transition(to: .uploading)
+        #expect(retried.fileIncompleteUntold == true)
     }
 
     /// Both routes survive a write and a read through the shared container,
