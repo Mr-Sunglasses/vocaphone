@@ -89,6 +89,17 @@ enum SessionProcessingLocation: String, Codable, Sendable {
     case gateway
 }
 
+/// `sourceDocumentID` values for sessions no keyboard field started. A
+/// keyboard-started session stores the field's document identifier there, so
+/// these are kept out of that format on purpose.
+enum SessionOrigin {
+    /// The microphone test on Home. Nothing is inserted anywhere.
+    static let microphoneTest = "in-app-test"
+    /// "Start dictation" from Shortcuts, Siri or the Action button. The
+    /// transcript waits for whichever field the user goes to next.
+    static let shortcut = "shortcut"
+}
+
 struct SessionFailure: Codable, Equatable, Sendable {
     let code: String
     let message: String
@@ -262,6 +273,11 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
 
     var canRetry: Bool {
         Self.retryableFailures.contains(state)
+    }
+
+    /// Started by Shortcuts, Siri or the Action button rather than a field.
+    var isFromShortcut: Bool {
+        sourceDocumentID == SessionOrigin.shortcut
     }
 
     /// Whether another process may still write this record or its sidecars.

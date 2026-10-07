@@ -1267,7 +1267,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try record.transition(to: .completed)
             try store.save(record)
 
-            if record.startedInContainingApp == true, record.sourceDocumentID != "in-app-test" {
+            if record.startedInContainingApp == true, record.sourceDocumentID != "in-app-test",
+               !record.isFromShortcut
+            {
                 KeyboardPreferences.hasCompletedKeyboardPractice = true
             }
             DiagnosticLog.record(.insertionCompleted)
@@ -1566,7 +1568,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             target: confirmSessionTarget(for: record),
             sameDocument: documentMatchesSessionTarget(),
             interrupted: record.insertionInterrupted == true,
-            autoInsert: KeyboardPreferences.autoInsertTranscripts
+            autoInsert: PendingTranscriptPolicy.autoInserts(
+                record,
+                preference: KeyboardPreferences.autoInsertTranscripts
+            )
         )
         switch action {
         case .rearm:
