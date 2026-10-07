@@ -229,8 +229,15 @@ internal class SherpaIncrementalSession(
 
         fun prefix(count: Int): FloatArray = samples.copyOf(count.coerceAtMost(size))
 
-        /** Asked of the live buffer, so the frames between pauses copy nothing. */
-        fun pauseSplit(): SherpaStreamingSplit? = SherpaLongAudio.nextPauseSplit(samples, size)
+        /**
+         * Asked of the live buffer, so the frames between pauses copy nothing,
+         * and judged at the gain this audio will be decoded with.
+         */
+        fun pauseSplit(): SherpaStreamingSplit? = SherpaLongAudio.nextPauseSplit(
+            samples,
+            size,
+            gain = SpeechAudioConditioning.gainFor(runningLevel.level),
+        )
 
         private fun ensureCapacity(required: Int) {
             if (required <= samples.size) return

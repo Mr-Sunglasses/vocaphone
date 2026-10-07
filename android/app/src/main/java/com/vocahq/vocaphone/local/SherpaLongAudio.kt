@@ -190,10 +190,20 @@ internal object SherpaLongAudio {
      * that level gets no pause splits at all. A buffer with nothing above the
      * bar has nothing to decode.
      *
+     * Levels are judged at [gain], the gain the decoded window will be
+     * levelled with, as the streaming silence check judges them. A quiet
+     * speaker -- a phone on the desk -- talks under that absolute level raw,
+     * so judged raw their whole recording read as one long pause and was cut
+     * every few seconds inside their words.
+     *
      * Only the first [size] samples are read, so a caller can ask of a growing
      * buffer every frame without copying it.
      */
-    fun nextPauseSplit(samples: FloatArray, size: Int = samples.size): SherpaStreamingSplit? {
+    fun nextPauseSplit(
+        samples: FloatArray,
+        size: Int = samples.size,
+        gain: Float = 1f,
+    ): SherpaStreamingSplit? {
         if (size < PAUSE_SPLIT_MIN_SECONDS * SAMPLE_RATE) return null
         val frameSamples = SILENCE_FRAME_MILLIS * SAMPLE_RATE / 1_000
         val frames = size / frameSamples
@@ -201,7 +211,7 @@ internal object SherpaLongAudio {
         if (frames <= quietFramesNeeded) return null
 
         val levels = DoubleArray(frames) { frame ->
-            rms(samples, frame * frameSamples, (frame + 1) * frameSamples)
+            rms(samples, frame * frameSamples, (frame + 1) * frameSamples) * gain
         }
         val threshold = maxOf(
             SILENT_CHUNK_RMS,

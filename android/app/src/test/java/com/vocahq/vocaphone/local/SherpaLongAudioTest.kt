@@ -480,6 +480,19 @@ class SherpaLongAudioTest {
     }
 
     @Test
+    fun `a quiet speaker's words are judged at the gain they are decoded with`() {
+        // Raw, 0.004 sits under the absolute silence level, so the whole
+        // stretch read as a pause; at the eight-fold gain this recording earns
+        // it is 0.032, plainly speech.
+        val samples = audio(tone(3.0, 0.02f), tone(0.8, 0.004f))
+        assertTrue(SherpaLongAudio.nextPauseSplit(samples) != null)
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(samples, gain = 8f))
+        // Their real pause still is one.
+        val paused = audio(tone(3.0, 0.02f), tone(0.8, 0.0005f))
+        assertTrue(SherpaLongAudio.nextPauseSplit(paused, gain = 8f) != null)
+    }
+
+    @Test
     fun `quiet is judged against the speech, not a fixed level`() {
         // Room tone well under a loud speaker is a pause; a trailing stretch at
         // half of their level is someone carrying on softly.
