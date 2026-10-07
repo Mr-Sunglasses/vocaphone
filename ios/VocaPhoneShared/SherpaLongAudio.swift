@@ -74,9 +74,26 @@ enum SherpaLongAudio {
 
     /// Returns a stable prefix once enough future audio exists to search for a
     /// quiet boundary. The caller retains `nextStart` for the next decode.
-    static func nextStreamingSplit(_ samples: [Float]) -> StreamingSplit? {
+    ///
+    /// `speech` is what the speech detector has heard so far, in the same
+    /// coordinates as `samples`, and a pause it heard end is the first choice
+    /// of boundary. The level search after it needs 300 ms under a threshold
+    /// set against the loudest frame nearby, which a pause over a fan or a
+    /// street does not give it; without one it cut at ten seconds wherever
+    /// that fell, and a word straddling the cut came back as two fragments the
+    /// overlap could not always stitch back together.
+    static func nextStreamingSplit(_ samples: [Float], speech: [SpeechRegion] = []) -> StreamingSplit? {
         let target = targetChunkSeconds * sampleRate
         guard samples.count >= streamingWindowSeconds * sampleRate else { return nil }
+
+        if let pause = pauseBoundary(
+            speech,
+            idealEnd: target,
+            minEnd: minChunkSamples,
+            maxEnd: min(maxChunkSeconds * sampleRate, samples.count)
+        ) {
+            return StreamingSplit(endExclusive: pause, nextStart: max(pause - silenceOverlapSamples, 1))
+        }
 
         let silence = findSilenceBoundary(
             samples: samples,
@@ -87,6 +104,30 @@ enum SherpaLongAudio {
         let end = silence ?? target
         let retainedSamples = silence == nil ? overlapSamples : silenceOverlapSamples
         return StreamingSplit(endExclusive: end, nextStart: max(end - retainedSamples, 1))
+    }
+
+    /// The middle of the pause nearest `idealEnd` that lies between `minEnd`
+    /// and `maxEnd`, or nil.
+    ///
+    /// A pause is the gap between two regions the detector closed, or — after
+    /// the last of them, whose successor has not been heard yet — the stretch
+    /// it waited out before closing it. Either is silence the detector has
+    /// already confirmed, however loud the room under it.
+    static func pauseBoundary(_ speech: [SpeechRegion], idealEnd: Int, minEnd: Int, maxEnd: Int) -> Int? {
+        let confirmedPause = Int(SpeechActivity.pauseSeconds * Float(sampleRate))
+        var best: Int?
+        for (index, region) in speech.enumerated() {
+            let pauseEnd = index + 1 < speech.count
+                ? speech[index + 1].start
+                : region.end + confirmedPause
+            guard pauseEnd > region.end else { continue }
+            let boundary = region.end + (pauseEnd - region.end) / 2
+            guard boundary >= minEnd, boundary <= maxEnd else { continue }
+            if best == nil || abs(boundary - idealEnd) < abs(best! - idealEnd) {
+                best = boundary
+            }
+        }
+        return best
     }
 
     private static func findSilenceBoundary(
