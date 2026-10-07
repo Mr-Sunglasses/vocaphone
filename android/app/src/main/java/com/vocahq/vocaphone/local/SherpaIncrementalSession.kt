@@ -27,6 +27,12 @@ internal data class SherpaIncrementalResult(
 /**
  * Decodes bounded Sherpa windows while AudioRecord continues capturing.
  *
+ * A window is let go at twelve seconds, which bounds a long dictation's wait,
+ * and at any pause after the first three, which is what most dictations --
+ * shorter than twelve seconds -- have instead: what was said before the pause
+ * is decoded while the speaker is still recording, and Finish waits only for
+ * what came after it.
+ *
  * This is a latency optimization, not a second source of truth. Every frame
  * is retained in the WAV as well. A changed running gain, an empty audible
  * chunk, a failed offer, or any native exception makes the caller use that
@@ -149,18 +155,38 @@ internal class SherpaIncrementalSession(
             transcript = transcript.append(decoded, deduplicateOverlap = overlapsPrevious)
         }
 
+        fun commit(split: SherpaStreamingSplit, retainsOnlyQuiet: Boolean = false) {
+            audio.discardPrefix(split.nextStart)
+            // A pause split's retained audio lies inside the quiet it was cut
+            // in, so no word can be heard on both sides of it, and matching
+            // repeated words back out there could only delete a word the
+            // speaker really said twice -- "bravo. Bravo".
+            overlapsPrevious = !retainsOnlyQuiet && split.nextStart < split.endExclusive
+            retainedHead = split.endExclusive - split.nextStart
+        }
+
         for (frame in frames) {
             audio.append(frame)
+            var split = false
             while (true) {
                 if (audio.size < SherpaLongAudio.STREAMING_WINDOW_SECONDS * SherpaLongAudio.SAMPLE_RATE) {
                     break
                 }
                 val available = audio.toFloatArray()
-                val split = SherpaLongAudio.nextStreamingSplit(available) ?: break
-                consume(available.copyOfRange(0, split.endExclusive))
-                audio.discardPrefix(split.nextStart)
-                overlapsPrevious = split.nextStart < split.endExclusive
-                retainedHead = split.endExclusive - split.nextStart
+                val next = SherpaLongAudio.nextStreamingSplit(available) ?: break
+                consume(available.copyOfRange(0, next.endExclusive))
+                commit(next)
+                split = true
+            }
+            // A pause decodes what came before it now, while the speaker is
+            // still recording, instead of after Finish. If they finish during
+            // it, what is left is the pause, and Finish has almost nothing to
+            // wait for.
+            if (!split) {
+                audio.pauseSplit()?.let { next ->
+                    consume(audio.prefix(next.endExclusive))
+                    commit(next, retainsOnlyQuiet = true)
+                }
             }
         }
 
@@ -200,6 +226,18 @@ internal class SherpaIncrementalSession(
         }
 
         fun toFloatArray(): FloatArray = samples.copyOf(size)
+
+        fun prefix(count: Int): FloatArray = samples.copyOf(count.coerceAtMost(size))
+
+        /**
+         * Asked of the live buffer, so the frames between pauses copy nothing,
+         * and judged at the gain this audio will be decoded with.
+         */
+        fun pauseSplit(): SherpaStreamingSplit? = SherpaLongAudio.nextPauseSplit(
+            samples,
+            size,
+            gain = SpeechAudioConditioning.gainFor(runningLevel.level),
+        )
 
         private fun ensureCapacity(required: Int) {
             if (required <= samples.size) return

@@ -53,6 +53,23 @@ internal object SherpaLongAudio {
     const val STREAMING_WINDOW_SECONDS = TARGET_CHUNK_SECONDS + 2
 
     /**
+     * How much has to be buffered before a pause is worth decoding at.
+     *
+     * Below it the prefix is a few words, and a decode that short buys little
+     * latency while adding a seam and a gain decided on almost nothing.
+     */
+    const val PAUSE_SPLIT_MIN_SECONDS = 3
+
+    /**
+     * How long the quiet at the end of the buffer has to last to be a pause.
+     *
+     * Longer than any gap inside a word or between words -- a stop consonant
+     * is tens of milliseconds, a breath between phrases a few hundred -- so
+     * the cut never lands in the middle of one.
+     */
+    const val PAUSE_SPLIT_QUIET_MILLIS = 700
+
+    /**
      * The bar above which a window answering with no tokens is suspicious.
      *
      * Below it an empty answer is ordinary rather than a loss: the half second
@@ -147,6 +164,73 @@ internal object SherpaLongAudio {
         return SherpaStreamingSplit(
             endExclusive = end,
             nextStart = (end - retainedSamples).coerceAtLeast(1),
+        )
+    }
+
+    /**
+     * The prefix to decode now because the speaker has paused, or null.
+     *
+     * [nextStreamingSplit] only lets go of audio once twelve seconds are
+     * buffered, and almost every dictation is shorter than that, so the whole
+     * of it used to be decoded after Finish. A pause is the other point at
+     * which a prefix is stable: whatever comes next starts a new phrase. The
+     * cut is made in the middle of the trailing quiet, so measured silence
+     * sits on both sides of it, and the context retained after it -- the same
+     * amount a found silence keeps at a twelve-second split -- lies wholly
+     * inside that quiet.
+     *
+     * Quiet is judged against the loudest frame buffered, as the boundary
+     * search judges it, and is also never louder than the level that search
+     * always counts as silence. The ratio alone took someone carrying on
+     * softly after a loud passage -- 0.02 after 0.2 -- for a pause, and cut
+     * inside their words at a seam that is deliberately not de-duplicated.
+     * A missed pause costs only latency, since the twelve-second split and
+     * Finish still decode it; a pause found inside speech can cut or double a
+     * word in a result that looks complete. So a room loud enough to sit over
+     * that level gets no pause splits at all. A buffer with nothing above the
+     * bar has nothing to decode.
+     *
+     * Levels are judged at [gain], the gain the decoded window will be
+     * levelled with, as the streaming silence check judges them. A quiet
+     * speaker -- a phone on the desk -- talks under that absolute level raw,
+     * so judged raw their whole recording read as one long pause and was cut
+     * every few seconds inside their words.
+     *
+     * Only the first [size] samples are read, so a caller can ask of a growing
+     * buffer every frame without copying it.
+     */
+    fun nextPauseSplit(
+        samples: FloatArray,
+        size: Int = samples.size,
+        gain: Float = 1f,
+    ): SherpaStreamingSplit? {
+        if (size < PAUSE_SPLIT_MIN_SECONDS * SAMPLE_RATE) return null
+        val frameSamples = SILENCE_FRAME_MILLIS * SAMPLE_RATE / 1_000
+        val frames = size / frameSamples
+        val quietFramesNeeded = PAUSE_SPLIT_QUIET_MILLIS / SILENCE_FRAME_MILLIS
+        if (frames <= quietFramesNeeded) return null
+
+        val levels = DoubleArray(frames) { frame ->
+            rms(samples, frame * frameSamples, (frame + 1) * frameSamples) * gain
+        }
+        val threshold = maxOf(
+            SILENT_CHUNK_RMS,
+            minOf(levels.max() * SILENCE_RMS_RATIO, MIN_SILENCE_RMS),
+        )
+        // Frames past the last whole one are too short to judge; they are
+        // part of the retained audio either way.
+        var quietFrames = 0
+        while (quietFrames < frames && levels[frames - 1 - quietFrames] <= threshold) {
+            quietFrames++
+        }
+        if (quietFrames < quietFramesNeeded || quietFrames == frames) return null
+
+        val quietStart = (frames - quietFrames) * frameSamples
+        val end = quietStart + quietFrames * frameSamples / 2
+        val retained = SILENCE_OVERLAP_MILLIS * SAMPLE_RATE / 1_000
+        return SherpaStreamingSplit(
+            endExclusive = end,
+            nextStart = (end - retained).coerceAtLeast(1),
         )
     }
 
@@ -291,7 +375,9 @@ internal object SherpaTranscriptMerger {
         val right = next.trim()
         if (left.isEmpty()) return right
         if (right.isEmpty()) return left
-        if (!deduplicateOverlap) return join(left, right)
+        // Keeping a seam verbatim means not deleting anything at it, not adding
+        // a space the script does not use.
+        if (!deduplicateOverlap) return if (meetsUnspaced(left, right)) left + right else join(left, right)
 
         if (!left.any(Char::isWhitespace) && !right.any(Char::isWhitespace)) {
             return appendUnspaced(left, right)
@@ -326,6 +412,33 @@ internal object SherpaTranscriptMerger {
         } ?: 0
         return left + right.substring(overlap)
     }
+
+    /**
+     * Whether the letters either side of the seam are both of a script written
+     * without spaces between words. Asked of the letters rather than of the
+     * whole text, so "Okay." and "Thanks." are still two words.
+     */
+    private fun meetsUnspaced(left: String, right: String): Boolean {
+        val before = left.lastOrNull(::hasOwnScript) ?: return false
+        val after = right.firstOrNull(::hasOwnScript) ?: return false
+        return Character.UnicodeScript.of(before.code) in UNSPACED_SCRIPTS &&
+            Character.UnicodeScript.of(after.code) in UNSPACED_SCRIPTS
+    }
+
+    /** A letter that says which script it is: not the shared Katakana-Hiragana long-vowel mark, say. */
+    private fun hasOwnScript(character: Char): Boolean = character.isLetter() &&
+        Character.UnicodeScript.of(character.code) != Character.UnicodeScript.COMMON &&
+        Character.UnicodeScript.of(character.code) != Character.UnicodeScript.INHERITED
+
+    private val UNSPACED_SCRIPTS = setOf(
+        Character.UnicodeScript.HAN,
+        Character.UnicodeScript.HIRAGANA,
+        Character.UnicodeScript.KATAKANA,
+        Character.UnicodeScript.THAI,
+        Character.UnicodeScript.LAO,
+        Character.UnicodeScript.KHMER,
+        Character.UnicodeScript.MYANMAR,
+    )
 
     private fun wordKey(word: String): String = word
         .lowercase(Locale.ROOT)

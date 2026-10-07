@@ -364,9 +364,28 @@ class SherpaLongAudioTest {
     @Test
     fun `a translated unspaced seam is never deduplicated`() {
         assertEquals(
-            "你好世界 世界再见",
+            "你好世界世界再见",
             SherpaTranscriptMerger.append("你好世界", "世界再见", deduplicateOverlap = false),
         )
+    }
+
+    /**
+     * A seam that is not de-duplicated -- a pause, or a translation -- still
+     * joins the way its script is written. Turning de-duplication off used to
+     * turn the unspaced join off with it, and every pause in a Chinese or
+     * Japanese dictation put a space in the text.
+     */
+    @Test
+    fun `a seam kept verbatim adds no space to an unspaced script`() {
+        assertEquals("你好世界再见", SherpaTranscriptMerger.append("你好世界", "再见", deduplicateOverlap = false))
+        assertEquals("你好。再见", SherpaTranscriptMerger.append("你好。", "再见", deduplicateOverlap = false))
+        assertEquals(
+            "コーヒーください",
+            SherpaTranscriptMerger.append("コーヒー", "ください", deduplicateOverlap = false),
+        )
+        // One word either side is still two words where the script uses spaces.
+        assertEquals("Okay. Thanks.", SherpaTranscriptMerger.append("Okay.", "Thanks.", deduplicateOverlap = false))
+        assertEquals("你好 OK", SherpaTranscriptMerger.append("你好", "OK", deduplicateOverlap = false))
     }
 
     @Test
@@ -420,4 +439,92 @@ class SherpaLongAudioTest {
         )
     }
 
+    /** [seconds] of a steady tone at [level], or silence at zero. */
+    private fun tone(seconds: Double, level: Float): FloatArray =
+        FloatArray((seconds * SherpaLongAudio.SAMPLE_RATE).toInt()) { index ->
+            if (index % 2 == 0) level else -level
+        }
+
+    private fun audio(vararg parts: FloatArray): FloatArray =
+        parts.fold(FloatArray(0)) { joined, part -> joined + part }
+
+    @Test
+    fun `a pause after a few seconds of speech releases the prefix`() {
+        val samples = audio(tone(2.5, 0.2f), tone(0.7, 0.001f))
+
+        val split = requireNotNull(SherpaLongAudio.nextPauseSplit(samples))
+
+        // Cut in the middle of the quiet, keeping the found-silence overlap.
+        assertEquals(2_850 * SherpaLongAudio.SAMPLE_RATE / 1_000, split.endExclusive)
+        assertEquals(2_650 * SherpaLongAudio.SAMPLE_RATE / 1_000, split.nextStart)
+    }
+
+    @Test
+    fun `too little buffered waits for more`() {
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(audio(tone(1.8, 0.2f), tone(1.0, 0.001f))))
+    }
+
+    @Test
+    fun `a gap between words is not a pause`() {
+        // Speech with a 400 ms breath in it and no quiet at the end.
+        val samples = audio(tone(1.5, 0.2f), tone(0.4, 0.001f), tone(1.5, 0.2f))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(samples))
+        // The same breath at the end is still too short.
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(audio(tone(3.0, 0.2f), tone(0.5, 0.001f))))
+    }
+
+    @Test
+    fun `a buffer of nothing but quiet has nothing to decode`() {
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(tone(4.0, 0.001f)))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(FloatArray(4 * SherpaLongAudio.SAMPLE_RATE)))
+    }
+
+    @Test
+    fun `a quiet speaker's words are judged at the gain they are decoded with`() {
+        // Raw, 0.004 sits under the absolute silence level, so the whole
+        // stretch read as a pause; at the eight-fold gain this recording earns
+        // it is 0.032, plainly speech.
+        val samples = audio(tone(3.0, 0.02f), tone(0.8, 0.004f))
+        assertTrue(SherpaLongAudio.nextPauseSplit(samples) != null)
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(samples, gain = 8f))
+        // Their real pause still is one.
+        val paused = audio(tone(3.0, 0.02f), tone(0.8, 0.0005f))
+        assertTrue(SherpaLongAudio.nextPauseSplit(paused, gain = 8f) != null)
+    }
+
+    @Test
+    fun `quiet is judged against the speech, not a fixed level`() {
+        // Room tone well under a loud speaker is a pause; a trailing stretch at
+        // half of their level is someone carrying on softly.
+        val room = audio(tone(3.0, 0.2f), tone(0.8, 0.01f))
+        assertTrue(SherpaLongAudio.nextPauseSplit(room) != null)
+        val softer = audio(tone(3.0, 0.2f), tone(0.8, 0.1f))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(softer))
+        // A quiet speaker's pause is a pause; their quieter words are not.
+        val quietSpeaker = audio(tone(3.0, 0.02f), tone(0.8, 0.003f))
+        assertTrue(SherpaLongAudio.nextPauseSplit(quietSpeaker) != null)
+        val quietWords = audio(tone(3.0, 0.02f), tone(0.8, 0.01f))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(quietWords))
+    }
+
+    /**
+     * Soft speech after a loud passage sat under a fifth of the loudest frame
+     * and was cut as a pause -- inside words, at a seam that is not
+     * de-duplicated. A pause is also quiet in absolute terms; a room loud
+     * enough not to be gives up pause splits, which costs only latency.
+     */
+    @Test
+    fun `soft speech after a loud passage is not a pause`() {
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(audio(tone(2.5, 0.2f), tone(0.7, 0.02f))))
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(audio(tone(3.0, 0.2f), tone(0.8, 0.03f))))
+    }
+
+    @Test
+    fun `only the samples asked about are read`() {
+        val buffer = audio(tone(2.5, 0.2f), tone(0.7, 0.001f), tone(2.0, 0.2f))
+        val size = (3.2 * SherpaLongAudio.SAMPLE_RATE).toInt()
+
+        assertEquals(null, SherpaLongAudio.nextPauseSplit(buffer))
+        assertTrue(SherpaLongAudio.nextPauseSplit(buffer, size) != null)
+    }
 }
