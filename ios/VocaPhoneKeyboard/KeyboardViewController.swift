@@ -344,6 +344,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // flight being restored, not something that just happened to the user,
         // and it must not arrive as a buzz in their hand.
         announcesStateChanges = true
+#if DEBUG
+        // Layout diagnostics for development builds. A release keyboard has no
+        // business writing to the system log on every appearance.
         NSLog("""
         DIAG ourView=\(view.bounds.size) \
         super=\(String(describing: view.superview?.bounds.size)) \
@@ -352,6 +355,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         needsSwitchKey=\(needsInputModeSwitchKey) \
         window=\(String(describing: view.window?.bounds.size))
         """)
+#endif
     }
 
     override func viewWillDisappear(_ animated: Bool) {

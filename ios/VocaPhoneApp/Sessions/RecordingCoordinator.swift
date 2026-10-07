@@ -81,6 +81,13 @@ final class RecordingCoordinator {
     private var lastMicrophoneName: String?
     private var audioSessionAvailable = true
     private var audioLifecycleGeneration = 0
+    /// Quick Dictation was standing by, or recording, when an interruption
+    /// took the audio session. The end of that interruption restores it, even
+    /// in the background. See ``QuickDictationInterruptionPolicy``.
+    private var quickDictationWasInterrupted = false
+    /// The capture in progress lost its audio — an interruption, a reset, or
+    /// the input disappearing — so silence in it has a known cause.
+    private var captureLostAudio = false
     private var darwinObservations: [VocaPhoneDarwinObservation] = []
     private let liveActivity = LiveActivityManager.shared
     private let streamingBridge = StreamingAudioBridge()
@@ -1042,10 +1049,21 @@ final class RecordingCoordinator {
 
             let directory = try localAudioDirectory()
             try await recorder.prepareForRecording()
-            await soundFeedback.play(.start)
-            guard let latestRecord = try store.load(id),
-                  [.launchingApp, .awaitingReturn].contains(latestRecord.state)
-            else {
+            // Whether the dictation is still wanted, asked on both sides of the
+            // chime: before it, so one cancelled while the microphone warmed up
+            // does not chime at all, and after it, because the chime is awaited.
+            func stillRequested() throws -> SessionRecord? {
+                guard let latest = try store.load(id),
+                      [.launchingApp, .awaitingReturn].contains(latest.state)
+                else { return nil }
+                return latest
+            }
+            var requested = try stillRequested()
+            if requested != nil {
+                await soundFeedback.play(.start)
+                requested = try stillRequested()
+            }
+            guard let latestRecord = requested else {
                 if KeyboardPreferences.quickDictationArmable, audioSessionAvailable {
                     armQuickDictation()
                 } else {
@@ -1065,6 +1083,7 @@ final class RecordingCoordinator {
             // which would inflate every duration bucket by however long the
             // user waited rather than spoke.
             captureStartedAt = Date()
+            captureLostAudio = false
             let audioURL = try recorder.start(
                 sessionID: record.sessionID,
                 directory: directory,
@@ -1327,8 +1346,7 @@ final class RecordingCoordinator {
                 &record,
                 state: .transcriptionFailedPermanent,
                 code: "microphone_silenced",
-                message: "Another app or a call was using the microphone, so only "
-                    + "silence was recorded. Try again once it has finished.",
+                message: SilentCapturePolicy.failureMessage(audioWasInterrupted: captureLostAudio),
                 recoverable: false
             )
             return
@@ -2082,6 +2100,9 @@ final class RecordingCoordinator {
         switch event {
         case .interruptionBegan:
             DiagnosticLog.record(.audioInterruptionBegan)
+            // Read before the loss below tears standby down.
+            quickDictationWasInterrupted = quickDictationWasInterrupted
+                || recorder.isStandbyActive || recorder.isRecording
             handleAudioLoss(reason: "Audio was interrupted. Finishing what was captured.")
         case let .interruptionEnded(shouldResume):
             audioLifecycleGeneration &+= 1
@@ -2090,10 +2111,18 @@ final class RecordingCoordinator {
                 .audioInterruptionEnded,
                 metadata: .reason(shouldResume ? .resumeAllowed : .resumeNotAllowed)
             )
-            if shouldResume,
-               KeyboardPreferences.containingAppIsForeground,
-               KeyboardPreferences.quickDictationEnabled
-            {
+            let wasReady = quickDictationWasInterrupted
+            quickDictationWasInterrupted = false
+            // The background audio mode lets a session that was running when
+            // the call came resume once iOS says it may. Only foregrounding
+            // vocaphone brought standby back before, and nobody does that
+            // between hanging up and going back to typing.
+            if QuickDictationInterruptionPolicy.shouldRearm(
+                shouldResume: shouldResume,
+                quickDictationEnabled: KeyboardPreferences.quickDictationEnabled,
+                appIsForeground: KeyboardPreferences.containingAppIsForeground,
+                wasReadyWhenInterrupted: wasReady
+            ) {
                 prepareQuickDictationIfEnabled()
             }
         case .mediaServicesReset:
@@ -2122,6 +2151,7 @@ final class RecordingCoordinator {
         audioLifecycleGeneration &+= 1
         audioSessionAvailable = false
         if activeRecord?.state == .recording, recorder.isRecording {
+            captureLostAudio = true
             message = reason
             // Ending the activity here retired the manager's session, which
             // then silently dropped every later update: the Dynamic Island
