@@ -52,6 +52,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// ``viewWillAppear(_:)`` and re-latched from the field the user has
     /// returned to.
     private var sessionTargetDocumentID: String?
+    /// Whether this appearance has evidence that the field the cursor is in is
+    /// the one the active session was dictated for: it started the session
+    /// here, or the field matched the session's ``SessionRecord/targetFingerprint``.
+    /// Released with the target on every appearance. Until it is set, a waiting
+    /// transcript is not inserted automatically.
+    private var sessionTargetConfirmed = false
     private var palette = KeyboardPalette(isDark: false)
     private lazy var typing = TypingEngine()
     /// The record the bar is currently drawn from, so a strip update can
@@ -306,7 +312,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // guard keeps the case it can actually observe: a cursor that moves to
         // another field *while the keyboard is on screen* still parks the
         // transcript rather than following the cursor.
+        //
+        // What the identifier cannot say across the switch — whether this is
+        // the same field at all — the session's target fingerprint does, so a
+        // waiting transcript stays put until the field is confirmed.
         sessionTargetDocumentID = nil
+        sessionTargetConfirmed = false
         installDarwinObservers()
         publishKeyboardStatus()
         // Full Access can be granted or revoked in Settings while this instance
@@ -1129,6 +1140,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try store.save(parked)
             activeSessionID = nil
             sessionTargetDocumentID = nil
+            sessionTargetConfirmed = false
         } catch {
             // A session still moving through the pipeline resolves on its own.
         }
@@ -1154,6 +1166,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             DiagnosticLog.record(.handoffForegroundFlagStale)
         }
         record.startedInContainingApp = inApp
+        // A hash of the text around the cursor, so a keyboard that later adopts
+        // this session in another app can tell it is somewhere else. The text
+        // itself never leaves this process.
+        let snapshot = document
+        record.targetFingerprint = InsertionTargetFingerprint.make(
+            sessionID: record.sessionID,
+            before: snapshot.before,
+            after: snapshot.after
+        )
         let availability = try? store.loadQuickDictationAvailability()
         record.prefersQuickDictation = availability?.isReady() == true
         do {
@@ -1161,6 +1182,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try store.save(record)
             activeSessionID = record.sessionID
             sessionTargetDocumentID = record.sourceDocumentID
+            sessionTargetConfirmed = true
             render(record)
             if record.prefersQuickDictation == true {
                 dictationBar.flash("Starting with Quick Dictation…")
@@ -1247,6 +1269,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             DiagnosticLog.record(.insertionCompleted)
             activeSessionID = nil
             sessionTargetDocumentID = nil
+            sessionTargetConfirmed = false
             render(record)
         } catch {
             dictationBar.flash("Insertion was interrupted; text will not be inserted twice.")
@@ -1430,32 +1453,76 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Removing observers cannot recall callbacks already queued on the main
         // actor. They must not insert text or restart polling after dismissal.
         guard isKeyboardVisible else { return }
-        if let id = activeSessionID, let record = try? store.load(id) {
-            if ![.launchingApp, .awaitingReturn].contains(record.state) {
+        if let id = activeSessionID, let loaded = try? store.load(id) {
+            if ![.launchingApp, .awaitingReturn].contains(loaded.state) {
                 appLaunchFallbackTask?.cancel()
                 appLaunchFallbackTask = nil
             }
+            let record = recoverInterruptedInsertion(loaded)
             guard !expireIfStale(record) else { return }
             latchSessionTarget()
             handle(record)
             return
         }
-        guard let recent = try? store.mostRecent(),
-              !recent.state.isTerminal,
-              recent.sourceDocumentID != "in-app-test"
+        guard let mostRecent = try? store.mostRecent(),
+              !mostRecent.state.isTerminal,
+              mostRecent.sourceDocumentID != "in-app-test"
         else {
             render(nil)
             return
         }
+        // Before expiry: an insertion interrupted a minute ago is still a
+        // transcript the user wants offered, and `inserting` has the shortest
+        // window of all.
+        let recent = recoverInterruptedInsertion(mostRecent)
         // Adoption is how a session survives the keyboard being torn down for
         // the hand-off, so it must not also resurrect one nobody is waiting for.
         guard !expireIfStale(recent) else { return }
         activeSessionID = recent.sessionID
         // A recreated instance cannot compare its identifiers with ones the
         // previous instance stored, so the field the user has returned to
-        // becomes the session's insertion target.
+        // becomes the session's insertion target — once its fingerprint says
+        // it is the same field. See ``confirmSessionTarget(for:)``.
         sessionTargetDocumentID = currentDocumentID
+        sessionTargetConfirmed = false
         handle(recent)
+    }
+
+    /// An `inserting` record this keyboard is not inserting belongs to an
+    /// extension that ended mid-insertion. It goes back to waiting for a tap,
+    /// flagged so nothing inserts it automatically. See ``InterruptedInsertion``.
+    private func recoverInterruptedInsertion(_ record: SessionRecord) -> SessionRecord {
+        InterruptedInsertion.recoverIfInterrupted(
+            record,
+            in: store,
+            insertingHere: isPerformingInsertion
+        ) ?? record
+    }
+
+    /// Whether the field the cursor is in is the one the session was dictated
+    /// for, as far as this appearance can tell.
+    ///
+    /// A session this appearance started, or one already confirmed, is answered
+    /// by the document identifier as before. Anything else — a session adopted
+    /// after an app switch or a relaunch — is compared by fingerprint, and only
+    /// while there is a transcript to place: reading the document is a hop into
+    /// the host, and recording does not need the answer.
+    private func confirmSessionTarget(for record: SessionRecord) -> InsertionTargetFingerprint.Match {
+        guard !sessionTargetConfirmed else { return .same }
+        let snapshot = document
+        let match = InsertionTargetFingerprint.compare(
+            recorded: record.targetFingerprint,
+            current: InsertionTargetFingerprint.make(
+                sessionID: record.sessionID,
+                before: snapshot.before,
+                after: snapshot.after
+            )
+        )
+        if match == .same {
+            sessionTargetConfirmed = true
+            sessionTargetDocumentID = currentDocumentID
+        }
+        return match
     }
 
     /// Retires a session that is waiting for something no longer coming, and
@@ -1466,6 +1533,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if activeSessionID == record.sessionID {
             activeSessionID = nil
             sessionTargetDocumentID = nil
+            sessionTargetConfirmed = false
         }
         appLaunchFallbackTask?.cancel()
         appLaunchFallbackTask = nil
@@ -1485,16 +1553,33 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func handle(_ incoming: SessionRecord) {
         var record = incoming
-        // Returning to the field the transcript was dictated for re-arms an
-        // insertion that was parked when the cursor moved elsewhere.
-        if record.state == .targetContextChanged, documentMatchesSessionTarget() {
-            transition(&record, to: .readyToInsert)
-        }
-        if record.state == .readyToInsert, KeyboardPreferences.autoInsertTranscripts {
-            insert(&record)
+        guard [.readyToInsert, .targetContextChanged].contains(record.state) else {
+            render(record)
             return
         }
-        render(record)
+        let action = PendingTranscriptPolicy.action(
+            for: record.state,
+            target: confirmSessionTarget(for: record),
+            sameDocument: documentMatchesSessionTarget(),
+            interrupted: record.insertionInterrupted == true,
+            autoInsert: KeyboardPreferences.autoInsertTranscripts
+        )
+        switch action {
+        case .rearm:
+            // Returning to the field the transcript was dictated for re-arms an
+            // insertion that was parked when the cursor moved elsewhere.
+            transition(&record, to: .readyToInsert)
+            if record.state == .readyToInsert { handle(record) }
+        case .park:
+            // Which of the two changed — the app or the field — is not knowable
+            // from here, so the log records that it happened at all.
+            DiagnosticLog.record(.insertionSkipped, metadata: .reason(.targetFieldChanged))
+            transition(&record, to: .targetContextChanged)
+        case .insert:
+            insert(&record)
+        case .offer:
+            render(record)
+        }
     }
 
     /// A strip update, and only a strip update.
@@ -1557,7 +1642,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 canUndo: lastInsertedText != nil,
                 candidates: typing.strip.candidates,
                 prefersQuickDictation: record?.prefersQuickDictation == true,
-                processingLocation: record?.processingLocation
+                processingLocation: record?.processingLocation,
+                insertionWasInterrupted: record?.state == .readyToInsert
+                    && record?.insertionInterrupted == true
             )
         )
 

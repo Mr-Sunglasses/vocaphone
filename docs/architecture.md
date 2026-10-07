@@ -33,6 +33,23 @@ answers that with neutral wording ("Transcribing") rather than guessing a route,
 and version-1 records without the field continue to decode unchanged. Nothing on
 the gateway wire format changed.
 
+`SessionRecord.targetFingerprint` and `SessionRecord.insertionInterrupted` are
+optional and additive in the same way; records without them decode unchanged
+and keep the earlier behaviour. The keyboard writes `targetFingerprint` when it
+creates a session: the first 64 bits of a SHA-256 over the session ID and the
+text within 24 characters either side of the cursor. Only the hash is stored,
+never the text, and the session ID salt keeps equal text in two sessions from
+producing equal values. A keyboard that adopts the session in a later
+appearance — after an app switch or an extension relaunch, where document
+identifiers are reissued and cannot be compared — computes the same value for
+the field it is in. A mismatch parks the transcript as `targetContextChanged`
+("Insert in this field") instead of inserting it automatically, so a dictation
+started in one app does not land in another. A field iOS has not answered for
+yet is not evidence either way: the transcript waits behind Insert. Two fields
+with the same text around the cursor, such as two empty fields, are
+indistinguishable, and the transcript follows the cursor there as it did
+before. `insertionInterrupted` is described under step 9.
+
 ## Recorded request flow
 
 ### Gateway work during recording (Android)
@@ -176,7 +193,14 @@ when the Live Activity's Pause button ends the current window. Pausing sets a
 flag that the next foreground clears; only the Settings toggle is durable.
 
 Persisting `inserting` before touching the document intentionally favors
-avoiding duplicate text if the extension terminates at the worst moment.
+avoiding duplicate text if the extension terminates at the worst moment. A
+keyboard that later finds a record still `inserting`, more than two seconds old
+and not its own, moves it back to `readyToInsert` with `insertionInterrupted`
+set. That transcript is offered behind Insert and Cancel with "Insertion may
+have been interrupted" and is never inserted automatically, since the text may
+already be in the field. `inserting` also expires after 30 seconds, and only
+counts as having an active writer within that window, so delete, Delete all and
+storage pruning can reclaim a record no keyboard came back for.
 
 ## Typing intelligence (iOS keyboard)
 

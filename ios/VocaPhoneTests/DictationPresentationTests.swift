@@ -41,6 +41,32 @@ struct DictationPresentationTests {
         #expect(empty.surfaceMessage(for: .readyToInsert) != nil)
     }
 
+    /// A keyboard that ended mid-insertion may have left the text in the
+    /// field. The transcript comes back behind Insert and Cancel with that said
+    /// plainly, and auto-insert does not change the copy into a promise.
+    @Test func anInterruptedInsertionOffersInsertAndCancelWithItsReason() {
+        for autoInsert in [false, true] {
+            let model = DictationBarModel.make(
+                DictationContext(
+                    state: .readyToInsert,
+                    transcript: "Meet at noon.",
+                    autoInsertsTranscripts: autoInsert,
+                    insertionWasInterrupted: true
+                )
+            )
+            let message = model.surfaceMessage(for: .readyToInsert)
+            #expect(message?.contains("may have been interrupted") == true)
+            #expect(message?.contains("Meet at noon.") == true)
+            #expect(model.primary.action == .insert)
+            #expect(model.primary.isEnabled)
+            #expect(model.secondaries.contains(.cancel))
+        }
+        let untold = DictationBarModel.make(
+            DictationContext(state: .readyToInsert, insertionWasInterrupted: true)
+        )
+        #expect(untold.surfaceMessage(for: .readyToInsert)?.contains("interrupted") == true)
+    }
+
     @Test func changedFieldSurfaceRetainsTranscriptAndGuidance() {
         let ready = Self.model(.targetContextChanged, transcript: "Waiting text.")
         let message = ready.surfaceMessage(for: .targetContextChanged)

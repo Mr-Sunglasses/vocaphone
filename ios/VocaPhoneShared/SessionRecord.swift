@@ -138,6 +138,20 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     /// rather than naming a route nobody confirmed. See
     /// ``SessionProcessingLocation``.
     var processingLocation: SessionProcessingLocation?
+    /// A one-way fingerprint of the field the keyboard started this dictation
+    /// in, written once at creation. A keyboard that adopts the session in a
+    /// later appearance compares it with the field it is in now, so a
+    /// transcript dictated in one app does not insert itself into another. Never
+    /// the text itself: see ``InsertionTargetFingerprint``. Optional so records
+    /// written before this field still decode, and an absent value keeps the
+    /// earlier behaviour.
+    var targetFingerprint: String?
+    /// Set when a keyboard found this session stuck in `inserting` — the
+    /// extension that started the insertion ended before recording the result —
+    /// and offered the transcript again. The text may already be in the field,
+    /// so a flagged transcript is never inserted automatically. Optional so
+    /// records written before this field still decode.
+    var insertionInterrupted: Bool?
 
     var recordedSeconds: Double?
 
@@ -164,6 +178,8 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         prefersQuickDictation = nil
         claimedAt = nil
         processingLocation = nil
+        targetFingerprint = nil
+        insertionInterrupted = nil
         recordedSeconds = nil
     }
 
@@ -234,7 +250,10 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         // the originating document restores the pending insertion instead of
         // discarding work the user already spoke.
         .targetContextChanged: [.readyToInsert, .canceled, .expired],
-        .inserting: [.inserted, .readyToInsert],
+        // An insertion is one synchronous call inside the keyboard. Finding it
+        // still `inserting` later means that extension ended mid-call, so the
+        // transcript goes back to waiting for a tap, or expires.
+        .inserting: [.inserted, .readyToInsert, .expired],
         .inserted: [.completed],
         .serverUnavailable: [.uploading, .canceled, .expired],
         .uploadFailedRecoverable: [.uploading, .canceled, .expired],
@@ -243,6 +262,19 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
 
     var canRetry: Bool {
         Self.retryableFailures.contains(state)
+    }
+
+    /// Whether another process may still write this record or its sidecars.
+    ///
+    /// The state alone answers that for everything except `inserting`, whose
+    /// only writer is a keyboard in the middle of one synchronous call. Past
+    /// the insertion window that keyboard is gone, and refusing to delete the
+    /// record would keep it — and Delete all — blocked for the life of the
+    /// install.
+    func hasActiveWriter(now: Date = Date()) -> Bool {
+        guard state.hasActiveWriter else { return false }
+        guard state == .inserting else { return true }
+        return !SessionExpiryPolicy.isStale(self, now: now)
     }
 
     private static func normalizedTimestamp(_ date: Date) -> Date {
@@ -277,6 +309,10 @@ enum SessionExpiryPolicy {
     /// A transcript waiting for a tap stays useful for a while, but not for the
     /// rest of the install — it is offered by whichever field is focused next.
     static let pendingUserActionWindow: TimeInterval = 60 * 60
+    /// An insertion takes microseconds inside one keyboard process. Anything
+    /// left in `inserting` this long belongs to an extension that ended
+    /// mid-insertion, and nothing else will ever move it on.
+    static let insertionWindow: TimeInterval = 30
 
     static func window(for state: SessionState) -> TimeInterval? {
         switch state {
@@ -289,8 +325,10 @@ enum SessionExpiryPolicy {
         case .readyToInsert, .targetContextChanged, .serverUnavailable,
              .uploadFailedRecoverable, .transcriptionFailedRecoverable:
             pendingUserActionWindow
-        // `idle`, `inserting` and `inserted` last microseconds inside a single
-        // process, and the terminal states need no watchdog at all.
+        case .inserting:
+            insertionWindow
+        // `idle` and `inserted` last microseconds inside a single process, and
+        // the terminal states need no watchdog at all.
         default:
             nil
         }
@@ -321,6 +359,73 @@ enum SessionExpiryPolicy {
         }
         DiagnosticLog.record(.sessionExpired, metadata: .state(record.state))
         return expiring
+    }
+}
+
+/// A transcript a keyboard was in the middle of inserting when its extension
+/// ended.
+///
+/// The keyboard persists `inserting` before it touches the document and
+/// `inserted` after, so that an extension killed in between cannot insert the
+/// same text twice. The cost of that was a record nothing would ever move on:
+/// `inserting` had no way out but the two writes that never came, every
+/// appearance of the keyboard adopted it and hid the keys behind "Inserting",
+/// and only reinstalling recovered.
+///
+/// A keyboard that finds one it is not inserting itself offers it again behind
+/// an explicit Insert, flagged so that nothing inserts it automatically: the
+/// text may already be in the field, and a duplicate is worse than one more tap.
+enum InterruptedInsertion {
+    /// Longer than any real insertion, so a keyboard never takes over one that
+    /// is still running. Timestamps are stored to the second, which this
+    /// absorbs too.
+    static let gracePeriod: TimeInterval = 2
+
+    enum Decision: Equatable {
+        /// Not an interrupted insertion, or too old to offer: expiry retires it.
+        case notApplicable
+        /// Possibly still running. Look again on the next refresh.
+        case wait
+        /// Offer the transcript again, without inserting it.
+        case offerAgain
+    }
+
+    static func decision(
+        for record: SessionRecord,
+        insertingHere: Bool,
+        now: Date = Date()
+    ) -> Decision {
+        guard record.state == .inserting, !insertingHere else { return .notApplicable }
+        let age = now.timeIntervalSince(record.updatedAt)
+        if age < gracePeriod { return .wait }
+        // A transcript waiting for a tap is offered for this long and no
+        // longer; an interrupted one has no claim to more.
+        if age > SessionExpiryPolicy.pendingUserActionWindow { return .notApplicable }
+        return .offerAgain
+    }
+
+    /// Moves an interrupted insertion back to `readyToInsert`, durably, so every
+    /// keyboard instance agrees it is waiting for a tap. Returns the recovered
+    /// record, or nil when there was nothing to recover.
+    @discardableResult
+    static func recoverIfInterrupted(
+        _ record: SessionRecord,
+        in store: SharedStore,
+        insertingHere: Bool,
+        now: Date = Date()
+    ) -> SessionRecord? {
+        guard decision(for: record, insertingHere: insertingHere, now: now) == .offerAgain
+        else { return nil }
+        var recovered = record
+        do {
+            try recovered.transition(to: .readyToInsert, now: now)
+            recovered.insertionInterrupted = true
+            try store.save(recovered)
+        } catch {
+            return nil
+        }
+        DiagnosticLog.record(.insertionSkipped, metadata: .reason(.insertionInterrupted))
+        return recovered
     }
 }
 
