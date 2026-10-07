@@ -68,7 +68,7 @@ enum TextInsertion {
         var preceding = before?.last
         var following = after
         var cursorAdvance = 0
-        if !hasSelection, let previous = preceding, isSpacedWordCharacter(previous), let after {
+        if !hasSelection, let before, let after, endsInsideWord(before, followedBy: after) {
             let word = wordPrefix(of: after)
             if let end = word.last {
                 cursorAdvance = word.utf16.count
@@ -131,6 +131,24 @@ enum TextInsertion {
         return !unspaced.contains { $0.contains(value) }
     }
 
+    /// Whether the cursor, with `before` behind it and `after` ahead, sits
+    /// inside a word. Just after a letter is inside one; so is just after an
+    /// apostrophe that has a letter on both sides, so "don'|t" finishes as
+    /// "don't" rather than splitting the contraction.
+    private static func endsInsideWord(_ before: String, followedBy after: String) -> Bool {
+        guard let previous = before.last else { return false }
+        if isSpacedWordCharacter(previous) { return true }
+        guard isApostrophe(previous),
+              let letter = before.dropLast().last, isSpacedWordCharacter(letter),
+              let next = after.first, isSpacedWordCharacter(next)
+        else { return false }
+        return true
+    }
+
+    private static func isApostrophe(_ character: Character) -> Bool {
+        character == "'" || character == "’"
+    }
+
     /// The rest of the word the cursor is in. An apostrophe between letters
     /// belongs to the word, so "do|n't" finishes as "don't".
     private static func wordPrefix(of text: String) -> Substring {
@@ -141,7 +159,7 @@ enum TextInsertion {
             let next = text.index(after: index)
             if isSpacedWordCharacter(character) {
                 end = next
-            } else if character == "'" || character == "’",
+            } else if isApostrophe(character),
                       next < text.endIndex, isSpacedWordCharacter(text[next]) {
                 // Kept only if a letter follows; the loop takes that next.
             } else {
@@ -173,20 +191,58 @@ enum TextInsertion {
 /// current sentence or paragraph — so a long dictation is never wholly visible
 /// in `documentContextBeforeInput`. Requiring the whole insertion there made
 /// Undo fail on every long dictation with "The cursor moved". The window is
-/// compared against the insertion's tail instead, and the text after the cursor
-/// must be what it was when the insertion was made — the evidence that the
-/// cursor has not moved somewhere that happens to end the same way.
+/// compared against the insertion's tail instead, with the text after the
+/// cursor as the evidence that the cursor has not moved somewhere that happens
+/// to end the same way.
+///
+/// That evidence is weaker than seeing the whole insertion, and Undo deletes
+/// by the insertion's length, so a wrong answer deletes text the user wrote.
+/// Where the window shows only a tail, Undo therefore also needs the same
+/// document identifier the insertion was made in, and a tail long enough to
+/// mean something: a window of "end." matches the end of half the sentences in
+/// any note. When in doubt it refuses — losing Undo costs a few taps, deleting
+/// the wrong paragraph costs the paragraph.
 enum InsertionUndo {
+    /// The shortest tail of an insertion accepted as evidence that the cursor
+    /// is still at its end, when the window does not show all of it.
+    static let minimumTailEvidence = 24
+
     static func isAtCursor(
         _ inserted: String,
         following: String?,
+        documentID: String?,
         before: String?,
-        after: String?
+        after: String?,
+        currentDocumentID: String?
     ) -> Bool {
         guard !inserted.isEmpty, let before, !before.isEmpty else { return false }
-        guard (after ?? "") == (following ?? "") else { return false }
-        if before.hasSuffix(inserted) { return true }
-        // A window shorter than the insertion can only be the insertion's tail.
-        return before.count < inserted.count && inserted.hasSuffix(before)
+        guard followingIsUnchanged(stored: following ?? "", current: after ?? "") else {
+            return false
+        }
+        if before.hasSuffix(inserted) {
+            // The whole insertion is in view. Only a known different document
+            // argues against it; iOS does not always say.
+            if let documentID, let currentDocumentID, documentID != currentDocumentID {
+                return false
+            }
+            return true
+        }
+        // A window shorter than the insertion can only be the insertion's tail,
+        // and only counts in the very document it went into.
+        guard let documentID, documentID == currentDocumentID else { return false }
+        return before.count < inserted.count
+            && before.count >= minimumTailEvidence
+            && inserted.hasSuffix(before)
+    }
+
+    /// The text after the cursor is a bounded window too, and the stored copy
+    /// was cut from the window read *before* the insertion. A host that bounds
+    /// it by length shows more at the far end once the cursor has stepped past
+    /// a word, so a current window that extends the stored one is still the
+    /// same place. Empty only matches empty: an empty stored window is a prefix
+    /// of everything.
+    private static func followingIsUnchanged(stored: String, current: String) -> Bool {
+        if stored.isEmpty || current.isEmpty { return stored.isEmpty && current.isEmpty }
+        return current.hasPrefix(stored)
     }
 }

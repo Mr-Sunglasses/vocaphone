@@ -15,6 +15,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// checks it is unchanged, because the text before the cursor is a bounded
     /// window that a long dictation does not fit in. See ``InsertionUndo``.
     private var lastInsertedFollowing: String?
+    /// The field `lastInsertedText` went into. Undo deletes by length, so a
+    /// window that shows only the insertion's tail is not enough on its own.
+    private var lastInsertedDocumentID: String?
     private var isPerformingInsertion = false
     private var lastSpaceInsertedAt: Date?
     /// Observed by this keyboard instance rather than read from the record: the
@@ -322,6 +325,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // waiting transcript stays put until the field is confirmed.
         sessionTargetDocumentID = nil
         sessionTargetConfirmed = false
+        // Undo deletes by length at the cursor. Off screen, this keyboard saw
+        // nothing of where the cursor went, and the identifier it would check
+        // is reissued across an app switch, so the offer ends with the
+        // appearance it was made in.
+        lastInsertedText = nil
         installDarwinObservers()
         publishKeyboardStatus()
         // Full Access can be granted or revoked in Settings while this instance
@@ -542,6 +550,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             // without going through this keyboard. The document wins.
             typing.reconcile(document: snapshot)
         }
+        // A tap elsewhere in the field, or in another field, moves the cursor
+        // without a keystroke. Undo is retired there rather than kept for a
+        // place it no longer describes. Free while nothing is waiting to undo.
+        releaseUndoIfDetached()
         updateReturnKeyEnablement(for: snapshot)
         updateAutomaticShift(for: snapshot)
     }
@@ -627,8 +639,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
               InsertionUndo.isAtCursor(
                   inserted,
                   following: lastInsertedFollowing,
+                  documentID: lastInsertedDocumentID,
                   before: textDocumentProxy.documentContextBeforeInput,
-                  after: textDocumentProxy.documentContextAfterInput
+                  after: textDocumentProxy.documentContextAfterInput,
+                  currentDocumentID: currentDocumentID
               )
         else {
             dictationBar.flash("The cursor moved, so undo is no longer available.")
@@ -1136,8 +1150,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         guard !InsertionUndo.isAtCursor(
             inserted,
             following: lastInsertedFollowing,
+            documentID: lastInsertedDocumentID,
             before: snapshot.before,
-            after: snapshot.after
+            after: snapshot.after,
+            currentDocumentID: currentDocumentID
         ) else { return }
         lastInsertedText = nil
         refresh()
@@ -1268,6 +1284,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             textDocumentProxy.insertText(prepared.text)
             lastInsertedText = prepared.text
             lastInsertedFollowing = prepared.following
+            lastInsertedDocumentID = currentDocumentID
             // The session ID makes this append idempotent if the extension is
             // interrupted after insertion. Recording here means an insertion
             // that happened cannot be lost merely because saving the terminal
