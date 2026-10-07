@@ -11,6 +11,7 @@ import java.nio.ByteOrder
 import kotlin.system.measureTimeMillis
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -115,14 +116,23 @@ class WhisperModelEndToEndTest {
             )
         }
         val full = measureTimeMillis { decode() }
+        // Cancelled only once whisper.cpp is under way. A decode cancelled
+        // while still queued never reaches native code, and would let this
+        // pass with the abort broken.
+        val started = Channel<Unit>(Channel.UNLIMITED)
+        whisper.onNativeDecodeStart = { started.trySend(Unit) }
 
         val abandoned = async(Dispatchers.Default) { decode() }
+        started.receive()
         delay(full / 10)
         abandoned.cancel()
         val next = decode()
+        started.receive()
+        assertTrue(abandoned.isCancelled)
         assertTrue("the decode after an abort was empty", next.text.isNotBlank())
 
         val stopped = async(Dispatchers.Default) { decode() }
+        started.receive()
         delay(full / 10)
         // Release runs on the decode's own thread, so it starts only once the
         // cancelled native call has actually returned.

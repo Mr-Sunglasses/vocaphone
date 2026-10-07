@@ -14,6 +14,16 @@ internal class WhisperContext private constructor(@Volatile private var pointer:
     private val dispatcher = executor.asCoroutineDispatcher()
 
     /**
+     * Called on the decode thread just before each native decode starts.
+     *
+     * Only the model test sets it: cancelling a decode that is still queued
+     * never reaches whisper.cpp, so a test of the abort has to know the native
+     * call is under way before it cancels.
+     */
+    @Volatile
+    internal var onNativeDecodeStart: (() -> Unit)? = null
+
+    /**
      * Decodes on this context's own thread, and stops the native decode when
      * the caller is cancelled.
      *
@@ -63,6 +73,7 @@ internal class WhisperContext private constructor(@Volatile private var pointer:
         threads: Int,
     ): LocalTranscription {
         check(pointer != 0L) { "Whisper context has been released" }
+        onNativeDecodeStart?.invoke()
         val status = WhisperLib.fullTranscribe(
             pointer,
             threads,
