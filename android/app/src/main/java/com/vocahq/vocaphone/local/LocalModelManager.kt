@@ -104,16 +104,6 @@ internal const val LOCAL_ENGINE_WARM_UNLOAD_MS = 5 * 60 * 1000L
 /** Left over after a speculative load: the keyboard, the recorder, the phone. */
 internal const val LOCAL_ENGINE_WARM_HEADROOM_BYTES = 512L * 1024 * 1024
 
-/**
- * Whether loading a model before anyone asked for it is worth the memory.
- *
- * A dictation loads regardless, because then the model is needed. A warm-up
- * is a guess, and a wrong guess on a phone that is already short gets the app
- * or the user's other apps killed — far worse than the seconds it would save.
- * [residentBytes] is a model already loaded that this one replaces: engines
- * are released before the next is built. Zero [availableBytes] means the
- * system would not say, which is not a reason to refuse.
- */
 /** Why a model download was cancelled: what the Models page says afterwards. */
 enum class DownloadCancelReason(val message: String) {
     USER("Model download canceled."),
@@ -130,6 +120,49 @@ enum class DownloadCancelReason(val message: String) {
     ),
 }
 
+/**
+ * The download in flight and, for each one, why it was cancelled.
+ *
+ * The reason belongs to the job, not to one shared slot: onTimeout can cancel
+ * a download and the user start another before the first has reached its
+ * unwind (it is still holding the download mutex), and a slot reset by that
+ * start made the first report "canceled" instead of the time limit.
+ */
+internal class DownloadJobs {
+    private class Active(val job: Job, val reason: AtomicReference<DownloadCancelReason>)
+
+    private val active = AtomicReference<Active?>(null)
+
+    /** [launch] gets this job's own reason, read by its unwind. */
+    fun start(launch: (cancelReason: () -> DownloadCancelReason) -> Job): Job {
+        val reason = AtomicReference(DownloadCancelReason.USER)
+        val job = launch(reason::get)
+        val entry = Active(job, reason)
+        active.set(entry)
+        job.invokeOnCompletion { active.compareAndSet(entry, null) }
+        return job
+    }
+
+    fun current(): Job? = active.get()?.job
+
+    /** Cancels the job in flight, if any, recording [reason] for its unwind first. */
+    fun cancel(reason: DownloadCancelReason) {
+        val entry = active.getAndSet(null) ?: return
+        entry.reason.set(reason)
+        entry.job.cancel()
+    }
+}
+
+/**
+ * Whether loading a model before anyone asked for it is worth the memory.
+ *
+ * A dictation loads regardless, because then the model is needed. A warm-up
+ * is a guess, and a wrong guess on a phone that is already short gets the app
+ * or the user's other apps killed — far worse than the seconds it would save.
+ * [residentBytes] is a model already loaded that this one replaces: engines
+ * are released before the next is built. Zero [availableBytes] means the
+ * system would not say, which is not a reason to refuse.
+ */
 internal fun hasRoomToWarm(
     availableBytes: Long,
     thresholdBytes: Long,
@@ -195,10 +228,7 @@ class LocalModelManager(
     private var loadedQuality: TranscriptionQuality? = null
     /** The coroutine cannot interrupt a blocking OkHttp execute by itself. */
     private val activeDownloadCall = AtomicReference<Call?>(null)
-    private val activeDownloadJob = AtomicReference<Job?>(null)
-
-    /** Why the in-flight download is being cancelled; read once by its unwind. */
-    private val cancelReason = AtomicReference(DownloadCancelReason.USER)
+    private val downloads = DownloadJobs()
 
     /**
      * Stat-only pass. Anything present but not yet marked as digest-checked is
@@ -360,16 +390,12 @@ class LocalModelManager(
      */
     fun startDownload(model: LocalModelDescriptor, useWhenReady: Boolean = false): Job {
         cancelDownload()
-        // A reason left by a cancel that found the job already finishing
-        // must not label this download's unwind.
-        cancelReason.set(DownloadCancelReason.USER)
-        val job = downloadScope.launch { download(model, useWhenReady) }
-        activeDownloadJob.set(job)
-        job.invokeOnCompletion { activeDownloadJob.compareAndSet(job, null) }
-        return job
+        return downloads.start { cancelReason ->
+            downloadScope.launch { download(model, useWhenReady, cancelReason) }
+        }
     }
 
-    fun activeDownload(): Job? = activeDownloadJob.get()
+    fun activeDownload(): Job? = downloads.current()
 
     fun markAdopted(id: String) {
         _state.update { if (it.pendingUse == id) it.copy(pendingUse = null) else it }
@@ -379,9 +405,7 @@ class LocalModelManager(
 
 
     fun cancelDownload(reason: DownloadCancelReason = DownloadCancelReason.USER) {
-        val job = activeDownloadJob.getAndSet(null)
-        if (job != null) cancelReason.set(reason)
-        job?.cancel()
+        downloads.cancel(reason)
         activeDownloadCall.get()?.cancel()
     }
 
@@ -397,7 +421,11 @@ class LocalModelManager(
         )
     }
 
-    suspend fun download(model: LocalModelDescriptor, useWhenReady: Boolean = false) = downloadMutex.withLock {
+    suspend fun download(
+        model: LocalModelDescriptor,
+        useWhenReady: Boolean = false,
+        cancelReason: () -> DownloadCancelReason = { DownloadCancelReason.USER },
+    ) = downloadMutex.withLock {
         // Checked here rather than only in the picker: a download reaching 95%
         // and then failing on a full phone is minutes of the user's time and an
         // error that does not say what to delete.
@@ -473,13 +501,13 @@ class LocalModelManager(
                 )
             } catch (error: CancellationException) {
                 staging.deleteRecursively()
-                _state.value = _state.value.copy(message = takeCancelReason().message)
+                _state.value = _state.value.copy(message = cancelReason().message)
                     .withoutPendingUse(model.id)
                 throw error
             } catch (error: Throwable) {
                 if (!currentCoroutineContext().isActive) {
                     staging.deleteRecursively()
-                    _state.value = _state.value.copy(message = takeCancelReason().message)
+                    _state.value = _state.value.copy(message = cancelReason().message)
                         .withoutPendingUse(model.id)
                     throw CancellationException("Model download canceled", error)
                 }
@@ -498,9 +526,6 @@ class LocalModelManager(
             }
         }
     }
-
-    private fun takeCancelReason(): DownloadCancelReason =
-        cancelReason.getAndSet(DownloadCancelReason.USER)
 
     /** Streams one file to disk and returns its SHA-256. */
     private suspend fun downloadFile(
