@@ -108,11 +108,16 @@ final class AudioCapturePipeline: @unchecked Sendable {
     private let meterHistory = OSAllocatedUnfairLock(initialState: [Float]())
     private let peak = OSAllocatedUnfairLock(initialState: Float(0))
     private let dropped = OSAllocatedUnfairLock(initialState: 0)
+    private let writeFailed = OSAllocatedUnfairLock(initialState: false)
     private var emit: ((Data) -> Bool)?
 
     /// Chunks the transport refused to buffer. Any loss makes the stream
     /// untrustworthy, so the caller falls back to uploading the intact file.
     var droppedChunkCount: Int { dropped.withLock { $0 } }
+    /// Whether writing the file failed — a full disk, most often. The file then
+    /// holds only the recording up to that point, and is no stand-in for the
+    /// whole of it.
+    var fileWriteFailed: Bool { writeFailed.withLock { $0 } }
     var meterLevel: Float { meter.withLock { $0 } }
 
     /// How many levels one drain tick is split into.
@@ -152,6 +157,14 @@ final class AudioCapturePipeline: @unchecked Sendable {
             ),
             let converter = AVAudioConverter(from: source, to: target)
         else { return nil }
+        // The default is medium quality, whose filter lets a tone just above
+        // 8 kHz alias back into the band at a fifth of its level — energy the
+        // recognizer then hears as part of the speech. Max rejects it by
+        // another 30 dB, for well under a millisecond of work per second of
+        // audio. The Mastering algorithm rejects more still, but at thirty
+        // times the CPU on the capture queue and with 36 ms held back in its
+        // filter, which the end of a recording does not flush.
+        converter.sampleRateConverterQuality = AVAudioQuality.max.rawValue
 
         // One drain tick's worth of audio, sized once so the hot path never
         // allocates a buffer.
@@ -206,6 +219,7 @@ final class AudioCapturePipeline: @unchecked Sendable {
             self.converter.reset()
         }
         dropped.withLock { $0 = 0 }
+        writeFailed.withLock { $0 = false }
         meter.withLock { $0 = 0 }
         peak.withLock { $0 = 0 }
 
@@ -270,7 +284,17 @@ final class AudioCapturePipeline: @unchecked Sendable {
         }
         guard status != .error, outputBuffer.frameLength > 0 else { return }
 
-        try? file?.write(from: outputBuffer)
+        if let file {
+            do {
+                try file.write(from: outputBuffer)
+            } catch {
+                // Stop writing rather than carry on past the hole: a file that
+                // is the recording's first part is honest about what it is,
+                // where one with a stretch missing from the middle is not.
+                writeFailed.withLock { $0 = true }
+                self.file = nil
+            }
+        }
 
         guard let converted = outputBuffer.floatChannelData?[0] else { return }
         carry.append(

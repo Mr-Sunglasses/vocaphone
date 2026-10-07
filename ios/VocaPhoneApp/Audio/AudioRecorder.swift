@@ -48,6 +48,10 @@ final class AudioRecorder: NSObject {
     /// The loudest sample of the recording that just finished. Zero means iOS
     /// handed this app silence, not that the user said nothing quietly.
     private(set) var lastPeakLevel: Float = 0
+    /// Whether the recording that just finished could not be written in full,
+    /// leaving a file that holds only its first part. The streamed copies are
+    /// unaffected.
+    private(set) var lastFileIncomplete = false
 
     override init() {
         super.init()
@@ -226,6 +230,7 @@ final class AudioRecorder: NSObject {
         localChunkContinuation = localContinuation
         localPcmChunks = localStream
         lastDroppedChunkCount = 0
+        lastFileIncomplete = false
         outputURL = output
         tap.isCapturing = true
 
@@ -292,6 +297,7 @@ final class AudioRecorder: NSObject {
         pipeline?.finish()
         lastDroppedChunkCount = (pipeline?.droppedChunkCount ?? 0) + (ring?.overflowCount ?? 0)
         lastPeakLevel = pipeline?.peakLevel ?? 0
+        lastFileIncomplete = pipeline?.fileWriteFailed ?? false
         chunkContinuation?.finish()
         chunkContinuation = nil
         pcmChunks = nil

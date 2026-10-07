@@ -51,20 +51,62 @@ enum SpeechAudioConditioning {
     /// same gain and offset are, sample for sample, the same audio — which is
     /// what lets a window decoded early be used again at Finish.
     static func levelled(_ samples: [Float]) -> Levelled {
+        levelled(samples, keeping: nil)
+    }
+
+    /// ``levelled(_:)``, except that while this recording's own gain and offset
+    /// stay close to `previous`, `previous` is applied instead.
+    ///
+    /// A dictation is levelled again every time it grows: once for each early
+    /// decode during a pause, and once more at Finish. Both numbers drift as it
+    /// does — the gain follows the loudest frames so far, the offset is a mean
+    /// over every sample — so the recording levelled at Finish was, sample for
+    /// sample, never the audio its early windows were decoded from, and none of
+    /// them could be reused. Within ``keptGainDecibels`` and ``keptOffset`` the
+    /// difference is far below anything a model hears, and keeping the earlier
+    /// numbers keeps the earlier audio. Past them the recording has changed —
+    /// a quiet start followed by full-voice speech — and is levelled afresh.
+    static func levelled(_ samples: [Float], keeping previous: (gain: Float, offset: Float)?) -> Levelled {
         guard !samples.isEmpty else { return Levelled(samples: samples, gain: 1, offset: 0) }
-        var samples = samples
+        var centred = samples
 
         // A DC offset costs a model headroom and shifts every frame's energy
         // without carrying any of the speech. Some phone inputs have a real one.
         var offset = Float(samples.reduce(0.0) { $0 + Double($1) } / Double(samples.count))
         if abs(offset) > 1e-4 {
-            for index in samples.indices { samples[index] -= offset }
+            for index in centred.indices { centred[index] -= offset }
         } else {
             offset = 0
         }
+        var gain = gain(forLevel: speechLevel(centred))
 
-        let gain = gain(forLevel: speechLevel(samples))
-        return Levelled(samples: condition(samples, gain: gain), gain: gain, offset: offset)
+        if let previous, keeps(previous, gain: gain, offset: offset) {
+            // Taken out of the original samples rather than corrected from the
+            // measured offset: the same subtraction an earlier pass made gives
+            // the same floats, where a correction would round differently.
+            if previous.offset != offset {
+                centred = samples
+                if previous.offset != 0 {
+                    for index in centred.indices { centred[index] -= previous.offset }
+                }
+            }
+            gain = previous.gain
+            offset = previous.offset
+        }
+        return Levelled(samples: condition(centred, gain: gain), gain: gain, offset: offset)
+    }
+
+    /// How far a recording's own gain may drift from the one kept: a decibel,
+    /// about the smallest change in level a listener notices.
+    static let keptGainDecibels: Float = 1
+
+    /// How far its offset may: a thousandth of full scale, sixty decibels down.
+    static let keptOffset: Float = 1e-3
+
+    private static func keeps(_ previous: (gain: Float, offset: Float), gain: Float, offset: Float) -> Bool {
+        guard previous.gain > 0, gain > 0 else { return false }
+        return abs(20 * log10(gain / previous.gain)) <= keptGainDecibels
+            && abs(offset - previous.offset) <= keptOffset
     }
 
     /// The level a recording's gain is derived from: its loudest 20 ms frames,

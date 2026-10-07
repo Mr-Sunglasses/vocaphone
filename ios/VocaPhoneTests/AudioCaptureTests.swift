@@ -150,6 +150,49 @@ struct AudioCaptureTests {
         #expect(pipeline.droppedChunkCount > 0)
     }
 
+    /// Everything above 8 kHz has to go before 48 kHz becomes 16 kHz, or it
+    /// folds back into the band the models listen to. The converter's default
+    /// quality let a tone at 8.5 kHz through at a fifth of its level.
+    @Test func pipelineDoesNotAliasAboveTheTargetBand() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let sourceRate: Double = 48_000
+        let ring = PCMRingBuffer(capacity: Int(sourceRate * 2))
+        let pipeline = try #require(
+            AudioCapturePipeline(sourceSampleRate: sourceRate, ring: ring)
+        )
+        let collected = SampleCollector()
+        try pipeline.start(writingTo: directory.appendingPathComponent("alias.wav")) { data in
+            collected.append(data)
+            return true
+        }
+        let count = Int(sourceRate)
+        let tone = (0..<count).map { Float(0.5 * sin(2 * Double.pi * 8_500 * Double($0) / sourceRate)) }
+        tone.withUnsafeBufferPointer { #expect(ring.write($0.baseAddress!, count: count)) }
+        pipeline.finish()
+
+        // Past the filter's settling time; a 0.5 sine is 0.35 RMS.
+        let settled = collected.samples.dropFirst(1_000)
+        let rms = (settled.reduce(Float(0)) { $0 + $1 * $1 } / Float(max(settled.count, 1))).squareRoot()
+        #expect(settled.count > 10_000)
+        #expect(rms < 0.01)
+    }
+
+    private final class SampleCollector: @unchecked Sendable {
+        private let lock = NSLock()
+        private var collected: [Float] = []
+
+        var samples: [Float] { lock.withLock { collected } }
+
+        func append(_ data: Data) {
+            let floats = data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
+            lock.withLock { collected += floats }
+        }
+    }
+
     /// The emit callback runs on the pipeline's queue, so the test's tally
     /// needs its own synchronisation.
     private final class Collector: @unchecked Sendable {

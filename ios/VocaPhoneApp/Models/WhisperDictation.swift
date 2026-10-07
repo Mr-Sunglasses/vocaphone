@@ -61,6 +61,12 @@ final class WhisperDictation {
     let modelID: String
     let settings: WhisperDictationSettings
     let cache = WhisperWindowCache()
+    /// The model load this dictation started, set before anything awaits so
+    /// an early decode can always wait for it. Registering the engine load
+    /// itself happens later, after the integrity check and any other engine's
+    /// load, and a pause that came first used to find nothing to wait for and
+    /// decoded nothing.
+    var load: Task<Void, Never>?
 
     init(modelID: String, settings: WhisperDictationSettings) {
         self.modelID = modelID
