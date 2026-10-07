@@ -125,15 +125,22 @@ data class DeviceProfile(
  * Best-effort peak CPU clock. Many phones publish this in sysfs; some do not,
  * and then the tier falls back to RAM, cores, and the performance class.
  */
-fun readMaxCpuKHz(cpuRoot: File = File("/sys/devices/system/cpu")): Int {
+fun readMaxCpuKHz(cpuRoot: File = File("/sys/devices/system/cpu")): Int =
+    readCoreMaxKHz(cpuRoot).maxOrNull() ?: 0
+
+/**
+ * Each core's peak clock, in kHz, with zero for a core that does not publish
+ * one. Empty when the CPU directory cannot be listed at all.
+ */
+internal fun readCoreMaxKHz(cpuRoot: File = File("/sys/devices/system/cpu")): List<Int> {
     val cpus = cpuRoot.listFiles { file ->
         file.isDirectory && file.name.startsWith("cpu") &&
             file.name.drop(3).all { it.isDigit() }
-    } ?: return 0
-    return cpus.maxOfOrNull { cpu ->
+    } ?: return emptyList()
+    return cpus.map { cpu ->
         val freq = File(cpu, "cpufreq/cpuinfo_max_freq")
         if (!freq.canRead()) 0 else freq.readText().trim().toIntOrNull() ?: 0
-    } ?: 0
+    }
 }
 
 fun DeviceProfile.fits(model: LocalModelDescriptor): Boolean {
