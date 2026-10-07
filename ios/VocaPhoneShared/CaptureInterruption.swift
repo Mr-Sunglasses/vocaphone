@@ -26,20 +26,70 @@ enum QuickDictationInterruptionPolicy {
     }
 }
 
+/// What the containing app remembers about Quick Dictation across one audio
+/// interruption, from the moment it begins to the moment it ends.
+///
+/// The interruption itself tears standby down, so whether a window was running
+/// has to be read before that and carried to the end. A second interruption
+/// that begins before the first has ended — a call, then Siri — keeps the first
+/// answer: by then standby is already gone, and it was gone because of the
+/// call, not because the user ended it.
+///
+/// iOS does not promise an end for every beginning. Anything that settles the
+/// window in the meantime — arming it again, or the user pausing, closing or
+/// switching it off — forgets the interruption, so a later, unrelated one can
+/// never bring back a window nobody had.
+struct QuickDictationInterruption: Equatable {
+    private(set) var wasRunning = false
+
+    /// - Parameter running: standby or a dictation was live when the audio
+    ///   session was taken.
+    mutating func began(running: Bool) {
+        wasRunning = wasRunning || running
+    }
+
+    /// Whether to arm standby again now that the interruption is over. Either
+    /// way the interruption is over and forgotten.
+    mutating func ended(
+        shouldResume: Bool,
+        quickDictationArmable: Bool,
+        appIsForeground: Bool
+    ) -> Bool {
+        defer { wasRunning = false }
+        return QuickDictationInterruptionPolicy.shouldRearm(
+            shouldResume: shouldResume,
+            quickDictationEnabled: quickDictationArmable,
+            appIsForeground: appIsForeground,
+            wasReadyWhenInterrupted: wasRunning
+        )
+    }
+
+    /// The window was settled some other way: armed again, or ended by the user.
+    mutating func forget() {
+        wasRunning = false
+    }
+}
+
 /// What to tell the user about a recording that is digital silence.
 ///
 /// A microphone another app has taken delivers exact zeros, which is why this
 /// case existed. But so does a capture that was finished before any audio
-/// arrived, or a muted input, and blaming "another app or a call" for those
-/// sends people looking for a culprit that is not there. The call is named only
-/// when this app actually saw its audio interrupted or its input disappear.
+/// arrived, or a muted input, and stating "another app or a call" as fact for
+/// those sends people looking for a culprit that is not there. The call is
+/// named as the cause only when this app actually saw its audio interrupted or
+/// its input disappear.
+///
+/// Without that, another app is still a candidate rather than ruled out: the
+/// session mixes with others, and iOS can hand a mixing app zeros when a
+/// foreground app starts recording, without posting an interruption. So the
+/// copy lists it among the things to check instead of dropping it.
 enum SilentCapturePolicy {
     static func failureMessage(audioWasInterrupted: Bool) -> String {
         if audioWasInterrupted {
             return "Another app or a call was using the microphone, so only "
                 + "silence was recorded. Try again once it has finished."
         }
-        return "No speech was heard. Check that the microphone isn't muted, "
-            + "then try again."
+        return "No speech was heard. Check that the microphone isn't muted "
+            + "or in use by another app, then try again."
     }
 }
