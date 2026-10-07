@@ -439,7 +439,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
             }
 
-            val committed = commitDictation(connection, cleaned, composingRegionActive)
+            val committed = commitDictation(
+                connection,
+                cleaned,
+                composingRegionActive,
+                lastSelStart,
+                lastSelEnd,
+            )
             // The composing region was finished before the commit, so the
             // half-typed word stays in the field and the keyboard has to drop
             // it. Cleared here rather than left to onUpdateSelection, whose
