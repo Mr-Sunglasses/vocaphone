@@ -98,6 +98,15 @@ abstract class LifecycleInputMethodService : InputMethodService(),
         window?.window?.decorView?.requestLayout()
     }
 
+    /**
+     * Never the extract-text fullscreen mode. The framework turns it on in
+     * landscape for any editor without IME_FLAG_NO_FULLSCREEN and draws its own
+     * extract editor above the input view; this keyboard has no extract view of
+     * its own and edits through the app's field, so that mode only hid the app
+     * behind a bare system text box.
+     */
+    override fun onEvaluateFullscreenMode(): Boolean = false
+
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         if (lifecycleRegistry.currentState == Lifecycle.State.STARTED) {
