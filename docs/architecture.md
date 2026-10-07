@@ -54,6 +54,10 @@ upload with speech for Whisper. A 64 KiB pipe and the existing 96-frame capture 
 eight seconds; dropped frames, an incomplete handshake, or a failed transport
 use the complete local file. Cancel stops the dictation's upload child and
 aborts the HTTP/socket request. On-device dictation opens no audio transport.
+Cancelling it during transcription asks whisper.cpp to abort at its next
+encoder or decoder step and deletes the recording, as a cancel while listening
+does; it is not recorded as a failure or kept for Retry. Cancelling a Retry
+leaves the recording history already holds.
 
 Completed-file uploads and retries encode the capture WAV to temporary mono
 16 kHz AAC/M4A at 48 kbps with Android's MediaCodec and MediaMuxer on an IO

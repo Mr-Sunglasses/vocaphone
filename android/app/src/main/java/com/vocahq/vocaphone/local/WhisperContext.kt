@@ -4,16 +4,36 @@ import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import java.util.concurrent.Executors
 import kotlin.math.ceil
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
 /** One serialized whisper.cpp context; the native context is not concurrency-safe. */
-internal class WhisperContext private constructor(private var pointer: Long) {
-    private val scope = CoroutineScope(
-        Executors.newSingleThreadExecutor().asCoroutineDispatcher(),
-    )
+internal class WhisperContext private constructor(@Volatile private var pointer: Long) {
+    private val executor = Executors.newSingleThreadExecutor()
+    private val dispatcher = executor.asCoroutineDispatcher()
 
+    /**
+     * Called on the decode thread just before each native decode starts.
+     *
+     * Only the model test sets it: cancelling a decode that is still queued
+     * never reaches whisper.cpp, so a test of the abort has to know the native
+     * call is under way before it cancels.
+     */
+    @Volatile
+    internal var onNativeDecodeStart: (() -> Unit)? = null
+
+    /**
+     * Decodes on this context's own thread, and stops the native decode when
+     * the caller is cancelled.
+     *
+     * whisper.cpp cannot be interrupted from Kotlin: a cancelled coroutine used
+     * to leave the decode running to the end, and the engine lock with it, so
+     * the next dictation sat on "Loading…" behind audio nobody wanted. The
+     * caller now resumes with the cancellation at once and the native call is
+     * told to abort at its next step; anything queued behind it on this thread
+     * -- the next decode, or a release -- waits only for that.
+     */
     suspend fun transcribe(
         samples: FloatArray,
         language: String,
@@ -22,47 +42,78 @@ internal class WhisperContext private constructor(private var pointer: Long) {
         prompt: String,
         cropAudioContext: Boolean,
         threads: Int,
-    ): LocalTranscription =
-        withContext(scope.coroutineContext) {
-            check(pointer != 0L) { "Whisper context has been released" }
-            val status = WhisperLib.fullTranscribe(
-                pointer,
-                threads,
-                samples,
-                if (language == "auto") "auto" else language,
-                translateTo.isNotEmpty(),
-                quality.whisperBeamSize,
-                quality.whisperTemperatureIncrement,
-                if (cropAudioContext) WhisperCpuConfig.whisperAudioContext(samples.size) else 0,
-                prompt,
-            )
-            // A failed decode returns no segments, which would otherwise be
-            // reported as an empty transcript — as though the microphone had
-            // heard nothing rather than the model having run out of room.
-            check(status == 0) {
-                "The on-device model could not decode this recording. " +
-                    "Try the Fast or Balanced accuracy setting, or a smaller model."
-            }
-            LocalTranscription(
-                text = buildString {
-                    repeat(WhisperLib.getTextSegmentCount(pointer)) { index ->
-                        append(WhisperLib.getTextSegment(pointer, index))
-                    }
-                }.trim(),
-                // Detection is meaningful only for Automatic. With an explicit
-                // selection, the user's requested output language remains the
-                // contract even if the engine reports something contradictory.
-                // Translating overrides both: the detected language is the one
-                // that was spoken, and the text on screen is the target.
-                language = ModelLanguageSupport.outputLanguage(
-                    requested = language,
-                    reported = WhisperLib.getDetectedLanguage(pointer),
-                    translateTo = translateTo,
-                ),
+    ): LocalTranscription = suspendCancellableCoroutine { continuation ->
+        // Captured here, while the caller holds the engine: a release can only
+        // be queued behind this decode, so the handle stays valid for as long
+        // as the abort below can reach it.
+        val handle = pointer
+        continuation.invokeOnCancellation {
+            if (handle != 0L) WhisperLib.requestAbort(handle)
+        }
+        executor.execute {
+            // Cleared before the cancellation check, never after it: an abort
+            // requested from here on is one this decode has to honour.
+            if (handle != 0L) WhisperLib.resetAbort(handle)
+            if (!continuation.isActive) return@execute
+            continuation.resumeWith(
+                runCatching {
+                    decode(samples, language, translateTo, quality, prompt, cropAudioContext, threads)
+                },
             )
         }
+    }
 
-    suspend fun release() = withContext(scope.coroutineContext) {
+    private fun decode(
+        samples: FloatArray,
+        language: String,
+        translateTo: String,
+        quality: TranscriptionQuality,
+        prompt: String,
+        cropAudioContext: Boolean,
+        threads: Int,
+    ): LocalTranscription {
+        check(pointer != 0L) { "Whisper context has been released" }
+        onNativeDecodeStart?.invoke()
+        val status = WhisperLib.fullTranscribe(
+            pointer,
+            threads,
+            samples,
+            if (language == "auto") "auto" else language,
+            translateTo.isNotEmpty(),
+            quality.whisperBeamSize,
+            quality.whisperTemperatureIncrement,
+            if (cropAudioContext) WhisperCpuConfig.whisperAudioContext(samples.size) else 0,
+            prompt,
+        )
+        // A failed decode returns no segments, which would otherwise be
+        // reported as an empty transcript — as though the microphone had
+        // heard nothing rather than the model having run out of room. An
+        // aborted one fails too, but its caller has already been cancelled
+        // and never sees this.
+        check(status == 0) {
+            "The on-device model could not decode this recording. " +
+                "Try the Fast or Balanced accuracy setting, or a smaller model."
+        }
+        return LocalTranscription(
+            text = buildString {
+                repeat(WhisperLib.getTextSegmentCount(pointer)) { index ->
+                    append(WhisperLib.getTextSegment(pointer, index))
+                }
+            }.trim(),
+            // Detection is meaningful only for Automatic. With an explicit
+            // selection, the user's requested output language remains the
+            // contract even if the engine reports something contradictory.
+            // Translating overrides both: the detected language is the one
+            // that was spoken, and the text on screen is the target.
+            language = ModelLanguageSupport.outputLanguage(
+                requested = language,
+                reported = WhisperLib.getDetectedLanguage(pointer),
+                translateTo = translateTo,
+            ),
+        )
+    }
+
+    suspend fun release() = withContext(dispatcher) {
         if (pointer != 0L) {
             WhisperLib.freeContext(pointer)
             pointer = 0L
