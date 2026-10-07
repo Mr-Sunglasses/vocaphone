@@ -198,7 +198,9 @@ keyboard that later finds a record still `inserting`, more than two seconds old
 and not its own, moves it back to `readyToInsert` with `insertionInterrupted`
 set. That transcript is offered behind Insert and Cancel with "Insertion may
 have been interrupted" and is never inserted automatically, since the text may
-already be in the field. `inserting` also expires after 30 seconds, and only
+already be in the field. It is not parked by its target fingerprint either: the
+interrupted insertion may itself have changed the text around the cursor, so
+the warning takes precedence over "Insert in this field". `inserting` also expires after 30 seconds, and only
 counts as having an active writer within that window, so delete, Delete all and
 storage pruning can reclaim a record no keyboard came back for.
 

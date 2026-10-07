@@ -92,11 +92,15 @@ enum PendingTranscriptPolicy {
         case .targetContextChanged:
             return target == .same && sameDocument ? .rearm : .offer
         case .readyToInsert:
+            // An interrupted insertion may have put the text in the field, and
+            // that alone changes the text around the cursor: a fingerprint
+            // mismatch cannot tell "already inserted here" from "another
+            // field". Parking would trade "may have been interrupted" for
+            // "Insert in this field", so it stays behind its own warning.
+            if interrupted { return .offer }
             if target == .different || (target == .same && !sameDocument) { return .park }
-            // An unread field is not evidence either way, and a transcript that
-            // may already be in the field must not go in twice: both wait for a
-            // tap.
-            guard target == .same, !interrupted, autoInsert else { return .offer }
+            // An unread field is not evidence either way: it waits for a tap.
+            guard target == .same, autoInsert else { return .offer }
             return .insert
         default:
             return .offer

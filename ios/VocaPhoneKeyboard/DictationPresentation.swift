@@ -413,7 +413,9 @@ extension DictationBarModel {
             primary: DictationButton(
                 title: "Insert",
                 symbol: "text.badge.plus",
-                action: .insert,
+                // A parked transcript only goes in through the explicit
+                // "insert here" path, which bypasses the field guard.
+                action: context.state == .targetContextChanged ? .insertHere : .insert,
                 hint: "Inserts the transcript at the cursor, even if part of it is already there."
             ),
             secondaries: [.cancel],
@@ -424,6 +426,10 @@ extension DictationBarModel {
     }
 
     private static func waitingForField(_ context: DictationContext) -> DictationBarModel {
+        // The interrupted insertion is the more important thing to say: the
+        // text may already be in this field or another, and "Insert in this
+        // field" alone reads as safe to tap.
+        if context.insertionWasInterrupted { return interruptedInsertion(context) }
         let detail = quoted(context.transcript).map {
             $0 + " This is a different text field from the one where you started."
         } ?? "Go back to the field you dictated for, or insert the text in this field."

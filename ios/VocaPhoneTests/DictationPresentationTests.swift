@@ -67,6 +67,26 @@ struct DictationPresentationTests {
         #expect(untold.surfaceMessage(for: .readyToInsert)?.contains("interrupted") == true)
     }
 
+    /// A transcript parked in another field — by an earlier build, or by a
+    /// cursor move this keyboard watched — still carries the warning, and its
+    /// Insert goes through the explicit path a parked transcript needs.
+    @Test func aParkedInterruptedInsertionKeepsItsWarning() {
+        let model = DictationBarModel.make(
+            DictationContext(
+                state: .targetContextChanged,
+                transcript: "Meet at noon.",
+                insertionWasInterrupted: true
+            )
+        )
+        let message = model.surfaceMessage(for: .targetContextChanged)
+        #expect(message?.contains("may have been interrupted") == true)
+        #expect(message?.contains("Meet at noon.") == true)
+        #expect(model.primary.action == .insertHere)
+        #expect(model.primary.hint?.contains("already there") == true)
+        #expect(model.announcement?.contains("interrupted") == true)
+        #expect(model.secondaries.contains(.cancel))
+    }
+
     @Test func changedFieldSurfaceRetainsTranscriptAndGuidance() {
         let ready = Self.model(.targetContextChanged, transcript: "Waiting text.")
         let message = ready.surfaceMessage(for: .targetContextChanged)

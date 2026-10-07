@@ -1643,8 +1643,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 candidates: typing.strip.candidates,
                 prefersQuickDictation: record?.prefersQuickDictation == true,
                 processingLocation: record?.processingLocation,
-                insertionWasInterrupted: record?.state == .readyToInsert
-                    && record?.insertionInterrupted == true
+                insertionWasInterrupted: record?.insertionInterrupted == true
+                    && [.readyToInsert, .targetContextChanged].contains(record?.state)
             )
         )
 
