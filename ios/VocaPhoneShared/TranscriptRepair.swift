@@ -570,6 +570,16 @@ enum TranscriptRepair {
         "that", "this", "anyone", "anybody", "someone", "somebody", "everyone",
     ]
 
+    /// Bare `do` and `have` open imperatives as readily as questions: "Do it
+    /// tomorrow", "Have this ready by five", "Have someone check it". Only a
+    /// personal pronoun after them is unambiguously inverted, so they get this
+    /// narrower set; "does it", "is that" and the rest keep the full one.
+    private static let imperativeAuxiliaries: Set<String> = ["do", "have"]
+
+    private static let invertedPersonalSubjects: Set<String> = [
+        "i", "you", "we", "they", "he", "she", "there",
+    ]
+
     /// Longest sentence still short enough for the question test to be worth
     /// trusting. Past this a wh-word is far more often opening a noun clause.
     private static let maximumQuestionWords = 12
@@ -730,6 +740,9 @@ enum TranscriptRepair {
             return false
         }
         guard auxiliaries.contains(keys[0]), subjectPronouns.contains(keys[1]) else { return false }
+        if imperativeAuxiliaries.contains(keys[0]) {
+            return invertedPersonalSubjects.contains(keys[1])
+        }
         // "Had I known" and "Were it up to me" invert the same way a question
         // does; the modal further along is what tells them apart.
         if keys[0] == "had" || keys[0] == "were" {

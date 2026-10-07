@@ -58,6 +58,57 @@ struct TranscriptStylerTests {
         #expect(TranscriptStyler.apply("i went home", style: .clean) == "I went home.")
     }
 
+    /// A capital in an otherwise ordinary sentence is a name someone said,
+    /// not Title Case the model invented.
+    @Test func namesSurviveInAnOrdinarySentence() {
+        let source = "I met Sarah in Paris on Monday"
+        for style in [WritingStyle.clean, .formal] {
+            #expect(TranscriptStyler.apply(source, style: style) == "I met Sarah in Paris on Monday.")
+        }
+        #expect(TranscriptStyler.apply(source, style: .casual) == "I met Sarah in Paris on Monday")
+        #expect(TranscriptStyler.apply(source, style: .excited) == "I met Sarah in Paris on Monday!")
+        // Four capitals in seven words is a sentence full of names, not a
+        // Title-Cased one.
+        #expect(
+            TranscriptStyler.apply("Meet Sarah and John in Paris on Monday", style: .formal)
+                == "Meet Sarah and John in Paris on Monday."
+        )
+        #expect(TranscriptStyler.apply("Call Sarah", style: .clean) == "Call Sarah.")
+        #expect(TranscriptStyler.apply("Ich habe Hunger", style: .formal) == "Ich habe Hunger.")
+    }
+
+    /// A function word a chunk join capitalized is flattened, but not inside
+    /// what looks like a multi-word name.
+    @Test func multiWordNamesKeepTheirFunctionWords() {
+        #expect(
+            TranscriptStyler.apply("we flew to the Bank Of America office", style: .formal)
+                == "We flew to the Bank Of America office."
+        )
+        #expect(
+            TranscriptStyler.apply("I moved to The Hague last year", style: .formal)
+                == "I moved to The Hague last year."
+        )
+        #expect(
+            TranscriptStyler.apply("Sarah said It was fine", style: .formal)
+                == "Sarah said it was fine."
+        )
+    }
+
+    /// The whole-sentence pathology is decided per sentence, so a Title-Cased
+    /// sentence does not cost the next one its names.
+    @Test func titleCaseIsJudgedPerSentence() {
+        #expect(
+            TranscriptStyler.apply("The Meeting Is At Noon. Ask Sarah about it", style: .formal)
+                == "The meeting is at noon. Ask Sarah about it."
+        )
+        #expect(TranscriptStyler.apply("Do It Now", style: .formal) == "Do it now.")
+        #expect(TranscriptStyler.apply("Ate A Lot Of Pizza Today", style: .formal) == "Ate a lot of pizza today.")
+    }
+
+    @Test func longAllCapsIsStillFlattened() {
+        #expect(TranscriptStyler.apply("this is REALLY good", style: .formal) == "This is really good.")
+    }
+
     @Test func localStylingKeepsProtectedSpansIntact() {
         #expect(
             TranscriptStyler.apply(

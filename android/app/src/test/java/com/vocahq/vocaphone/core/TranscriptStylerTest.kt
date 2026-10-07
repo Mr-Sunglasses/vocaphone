@@ -73,6 +73,61 @@ class TranscriptStylerTest {
         )
     }
 
+    /** A capital in an otherwise ordinary sentence is a name someone said. */
+    @Test
+    fun `names survive in an ordinary sentence`() {
+        val source = "I met Sarah in Paris on Monday"
+        for (style in listOf(WritingStyle.CLEAN, WritingStyle.FORMAL)) {
+            assertEquals("I met Sarah in Paris on Monday.", TranscriptStyler.apply(source, style))
+        }
+        assertEquals("I met Sarah in Paris on Monday", TranscriptStyler.apply(source, WritingStyle.CASUAL))
+        assertEquals("I met Sarah in Paris on Monday!", TranscriptStyler.apply(source, WritingStyle.EXCITED))
+        // Four capitals in seven words is a sentence full of names, not a
+        // Title-Cased one.
+        assertEquals(
+            "Meet Sarah and John in Paris on Monday.",
+            TranscriptStyler.apply("Meet Sarah and John in Paris on Monday", WritingStyle.FORMAL),
+        )
+        assertEquals("Call Sarah.", TranscriptStyler.apply("Call Sarah", WritingStyle.CLEAN))
+        assertEquals("Ich habe Hunger.", TranscriptStyler.apply("Ich habe Hunger", WritingStyle.FORMAL))
+    }
+
+    /** A chunk-join function word is flattened, but not inside a multi-word name. */
+    @Test
+    fun `multi-word names keep their function words`() {
+        assertEquals(
+            "We flew to the Bank Of America office.",
+            TranscriptStyler.apply("we flew to the Bank Of America office", WritingStyle.FORMAL),
+        )
+        assertEquals(
+            "I moved to The Hague last year.",
+            TranscriptStyler.apply("I moved to The Hague last year", WritingStyle.FORMAL),
+        )
+        assertEquals(
+            "Sarah said it was fine.",
+            TranscriptStyler.apply("Sarah said It was fine", WritingStyle.FORMAL),
+        )
+    }
+
+    /** A Title-Cased sentence does not cost the next one its names. */
+    @Test
+    fun `title case is judged per sentence`() {
+        assertEquals(
+            "The meeting is at noon. Ask Sarah about it.",
+            TranscriptStyler.apply("The Meeting Is At Noon. Ask Sarah about it", WritingStyle.FORMAL),
+        )
+        assertEquals("Do it now.", TranscriptStyler.apply("Do It Now", WritingStyle.FORMAL))
+        assertEquals(
+            "Ate a lot of pizza today.",
+            TranscriptStyler.apply("Ate A Lot Of Pizza Today", WritingStyle.FORMAL),
+        )
+    }
+
+    @Test
+    fun `long all caps is still flattened`() {
+        assertEquals("This is really good.", TranscriptStyler.apply("this is REALLY good", WritingStyle.FORMAL))
+    }
+
     @Test
     fun `local styling keeps protected spans intact`() {
         val source = "Email John@Example.com at 3:30."
