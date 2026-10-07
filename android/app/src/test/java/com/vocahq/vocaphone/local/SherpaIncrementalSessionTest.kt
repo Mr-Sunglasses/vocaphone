@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -67,5 +68,42 @@ class SherpaIncrementalSessionTest {
         val outcome = outcomeOf(frames(120) { 8_000 }) { SherpaTranscript.EMPTY }
 
         assertFalse(outcome.isSafe)
+    }
+
+    /**
+     * A quiet speaker -- a phone on the desk -- whose later windows sit under
+     * the silence floor raw but well above it at the gain the recording earns.
+     * The complete-WAV path levels first and decodes them; the streaming path
+     * used to judge them raw and skip them, losing their words from a result
+     * that still looked safe.
+     */
+    @Test
+    fun `quiet speech is judged at the level the model hears`() {
+        var calls = 0
+        // 600 is 0.018 RMS; 150 is 0.0046, under the 0.006 floor until the
+        // eight-fold gain this recording earns lifts it to 0.037.
+        val outcome = outcomeOf(frames(250) { if (it < 120) 600 else 150 }) {
+            calls++
+            SherpaTranscript("part $calls")
+        }
+
+        assertFalse(outcome.conditioningChanged)
+        assertTrue(outcome.isSafe)
+        assertEquals(3, calls)
+        assertEquals("part 1 part 2 part 3", outcome.transcript.text)
+    }
+
+    @Test
+    fun `near-digital silence is still never decoded`() {
+        var calls = 0
+        val outcome = outcomeOf(frames(250) { if (it < 120) 8_000 else 20 }) {
+            calls++
+            SherpaTranscript("part $calls")
+        }
+
+        // The loud opening and the window that straddles it are decoded; the
+        // tail, levelled or not, is nothing a model should be asked about.
+        assertEquals(2, calls)
+        assertTrue(outcome.isSafe)
     }
 }

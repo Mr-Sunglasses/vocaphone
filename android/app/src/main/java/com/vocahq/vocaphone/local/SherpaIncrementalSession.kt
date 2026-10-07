@@ -97,7 +97,15 @@ internal class SherpaIncrementalSession(
         var loudestFrame = 0.0
 
         suspend fun consume(chunk: FloatArray) {
-            val level = SherpaLongAudio.loudestFrame(chunk)
+            // Levelled before anything is judged on it, as the complete-WAV
+            // path levels the whole recording before its silence check. The
+            // raw level of a quiet speaker -- a phone on the desk -- can sit
+            // under the silence floor while the same window, at the gain the
+            // WAV decode would give it, is plainly speech. Judging it raw
+            // skipped that window without a decode or a fallback, and its
+            // words were missing from a result that still looked complete.
+            val levelled = SpeechAudioConditioning.conditionStreaming(chunk, audio.peak)
+            val level = SherpaLongAudio.loudestFrame(levelled)
             if (SherpaLongAudio.isEffectivelySilent(level)) return
 
             // A running peak is the closest safe approximation to the
@@ -112,14 +120,13 @@ internal class SherpaIncrementalSession(
             ) {
                 conditioningChanged = true
             }
-            val levelled = SpeechAudioConditioning.conditionStreaming(chunk, audio.peak)
             val decoded = decode(levelled)
             // Judged on what this window did not inherit from the one before
             // it. A window that is mostly retained overlap can be six seconds
             // long and carry half a second of new speech, and asking whether
             // the *chunk* was long enough is what let that half second vanish
             // without the file ever being re-read.
-            val newRegion = chunk.copyOfRange(retainedHead.coerceAtMost(chunk.size), chunk.size)
+            val newRegion = levelled.copyOfRange(retainedHead.coerceAtMost(levelled.size), levelled.size)
             if (decoded.text.isEmpty() &&
                 SherpaLongAudio.carriesRecoverableSpeech(
                     newRegion = newRegion,

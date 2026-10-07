@@ -330,7 +330,7 @@ class LocalModelManager(
             scope = scope,
             prepare = { prepareEngine(model, resolved, quality, target) },
             decode = { samples ->
-                decodePreparedSherpa(samples, model.id, resolved, quality, target)
+                decodePreparedSherpa(samples, model, resolved, quality, target)
             },
         )
     }
@@ -718,7 +718,7 @@ class LocalModelManager(
         // reaches, so without this the accuracy control rebuilds a large model
         // to produce an identical one -- a long "Preparing…" and a peak-memory
         // spike for no change in the transcript.
-        val quality = model.sherpaFamily?.effectiveQuality(requestedQuality) ?: requestedQuality
+        val quality = model.loadedQuality(requestedQuality)
         val directory = directoryFor(model)
         // Stat-only: cheap enough to run per dictation, unlike a digest pass.
         withContext(Dispatchers.IO) { LocalModelIntegrity.verifySizes(model, directory) }
@@ -819,16 +819,22 @@ class LocalModelManager(
 
     private suspend fun decodePreparedSherpa(
         samples: FloatArray,
-        modelID: String,
+        model: LocalModelDescriptor,
         resolvedLanguage: String,
-        quality: TranscriptionQuality,
+        requestedQuality: TranscriptionQuality,
         resolvedTranslateTo: String,
     ): SherpaTranscript = engineMutex.withLock {
         check(
-            loadedModelID == modelID &&
-                loadedLanguage == resolvedLanguage &&
-                loadedTranslateTo == resolvedTranslateTo &&
-                loadedQuality == quality,
+            sherpaEngineStillLoaded(
+                model = model,
+                requestedLanguage = resolvedLanguage,
+                requestedQuality = requestedQuality,
+                requestedTranslateTo = resolvedTranslateTo,
+                loadedModelID = loadedModelID,
+                loadedLanguage = loadedLanguage,
+                loadedQuality = loadedQuality,
+                loadedTranslateTo = loadedTranslateTo,
+            ),
         ) {
             "On-device model changed during transcription"
         }
@@ -911,6 +917,45 @@ internal fun shouldReloadLocalEngine(
     if (!languageIsBakedIn) return false
     return loadedLanguage != requestedLanguage || loadedTranslateTo != requestedTranslateTo
 }
+
+/**
+ * The quality this model's engine is built at for [requested].
+ *
+ * What [LocalModelManager] records as loaded, so anything that later compares
+ * against that record has to normalise through here too. Comparing the raw
+ * setting instead failed every streaming window of a greedy sherpa model on
+ * Fast or Accurate -- it is loaded at Balanced -- and sent each of those
+ * dictations to the whole-file decode after Finish.
+ */
+internal fun LocalModelDescriptor.loadedQuality(requested: TranscriptionQuality): TranscriptionQuality =
+    sherpaFamily?.effectiveQuality(requested) ?: requested
+
+/**
+ * Whether the sherpa engine in memory is still the one a streaming window was
+ * prepared for. A different answer means it was reloaded underneath the
+ * dictation and its windows can no longer be trusted.
+ *
+ * Compared on the same terms [shouldReloadLocalEngine] loads on: quality as
+ * the family is built at it, and language and target only where the family
+ * bakes them in. A family with no language field keeps whatever label it was
+ * first loaded under, so a strict comparison there rejected a perfectly good
+ * engine because the user's language had been relabelled since.
+ */
+internal fun sherpaEngineStillLoaded(
+    model: LocalModelDescriptor,
+    requestedLanguage: String,
+    requestedQuality: TranscriptionQuality,
+    requestedTranslateTo: String,
+    loadedModelID: String?,
+    loadedLanguage: String?,
+    loadedQuality: TranscriptionQuality?,
+    loadedTranslateTo: String,
+): Boolean = loadedModelID == model.id &&
+    loadedQuality == model.loadedQuality(requestedQuality) &&
+    (
+        model.sherpaFamily?.acceptsLanguage != true ||
+            (loadedLanguage == requestedLanguage && loadedTranslateTo == requestedTranslateTo)
+        )
 
 /**
  * The translation target this model can actually honour, or empty.

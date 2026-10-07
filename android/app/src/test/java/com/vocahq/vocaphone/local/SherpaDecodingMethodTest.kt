@@ -112,4 +112,94 @@ class SherpaDecodingMethodTest {
             ),
         )
     }
+
+    /**
+     * The engine is recorded at the quality it is built at, so a streaming
+     * window has to ask for the same. Asking with the raw setting rejected
+     * every window of a dictation on Fast or Accurate and decoded the whole
+     * file again after Finish.
+     */
+    @Test
+    fun `an engine prepared at any accuracy serves its own streaming windows`() {
+        val sherpaModels = LocalModelCatalog.all.filter { it.engine == LocalModelEngine.SHERPA_ONNX }
+        assertTrue(sherpaModels.isNotEmpty())
+        for (model in sherpaModels) {
+            for (quality in TranscriptionQuality.entries) {
+                assertTrue(
+                    "${model.id} at $quality",
+                    sherpaEngineStillLoaded(
+                        model = model,
+                        requestedLanguage = "en",
+                        requestedQuality = quality,
+                        requestedTranslateTo = "",
+                        loadedModelID = model.id,
+                        loadedLanguage = "en",
+                        // What prepareEngine records for this request.
+                        loadedQuality = model.loadedQuality(quality),
+                        loadedTranslateTo = "",
+                    ),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a family without a language field serves windows under a relabelled language`() {
+        val parakeet = requireNotNull(LocalModelCatalog.find("parakeet-tdt-0.6b-v3"))
+        assertTrue(
+            sherpaEngineStillLoaded(
+                model = parakeet,
+                requestedLanguage = "de",
+                requestedQuality = TranscriptionQuality.FAST,
+                requestedTranslateTo = "",
+                loadedModelID = parakeet.id,
+                loadedLanguage = "auto",
+                loadedQuality = TranscriptionQuality.DEFAULT,
+                loadedTranslateTo = "",
+            ),
+        )
+    }
+
+    @Test
+    fun `a reloaded engine still rejects the windows of the old dictation`() {
+        val canary = requireNotNull(LocalModelCatalog.find("canary-180m-flash"))
+        val parakeet = requireNotNull(LocalModelCatalog.find("parakeet-tdt-0.6b-v3"))
+        // Canary bakes the language in, so a different one is a different engine.
+        assertFalse(
+            sherpaEngineStillLoaded(
+                model = canary,
+                requestedLanguage = "de",
+                requestedQuality = TranscriptionQuality.DEFAULT,
+                requestedTranslateTo = "",
+                loadedModelID = canary.id,
+                loadedLanguage = "en",
+                loadedQuality = TranscriptionQuality.DEFAULT,
+                loadedTranslateTo = "",
+            ),
+        )
+        assertFalse(
+            sherpaEngineStillLoaded(
+                model = parakeet,
+                requestedLanguage = "en",
+                requestedQuality = TranscriptionQuality.DEFAULT,
+                requestedTranslateTo = "",
+                loadedModelID = canary.id,
+                loadedLanguage = "en",
+                loadedQuality = TranscriptionQuality.DEFAULT,
+                loadedTranslateTo = "",
+            ),
+        )
+        assertFalse(
+            sherpaEngineStillLoaded(
+                model = parakeet,
+                requestedLanguage = "en",
+                requestedQuality = TranscriptionQuality.DEFAULT,
+                requestedTranslateTo = "",
+                loadedModelID = null,
+                loadedLanguage = null,
+                loadedQuality = null,
+                loadedTranslateTo = "",
+            ),
+        )
+    }
 }
