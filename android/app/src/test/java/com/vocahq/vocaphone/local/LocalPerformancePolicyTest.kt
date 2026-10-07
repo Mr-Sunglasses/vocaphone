@@ -62,7 +62,7 @@ class LocalPerformancePolicyTest {
     }
 
     @Test
-    fun `whisper workers stay on the performance cores`() {
+    fun `the whisper worker count is capped at the performance cores`() {
         // 4 + 4: four big-core workers instead of two of them dragging two
         // efficiency cores through every barrier.
         assertEquals(4, WhisperCpuConfig.whisperThreadCount(8, "base-q8_0", performanceCores = 4))

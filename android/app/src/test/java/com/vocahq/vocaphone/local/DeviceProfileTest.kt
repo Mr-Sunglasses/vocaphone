@@ -228,6 +228,35 @@ class DeviceProfileTest {
         }
     }
 
+    /**
+     * A clock node that lists as readable and then fails the read used to
+     * throw out of the thread-count hint, and with it out of the decode: the
+     * dictation failed on a model that was ready. It reads as unpublished.
+     */
+    @Test
+    fun `a clock that fails to read falls back to the old worker count`() {
+        val root = kotlin.io.path.createTempDirectory("cpu").toFile()
+        try {
+            File(root, "cpu0/cpufreq").mkdirs()
+            File(root, "cpu0/cpufreq/cpuinfo_max_freq").writeText("1804800\n")
+            // A directory where the file should be: canRead() is true and
+            // readText() throws.
+            File(root, "cpu1/cpufreq/cpuinfo_max_freq").mkdirs()
+            assertTrue(File(root, "cpu1/cpufreq/cpuinfo_max_freq").canRead())
+
+            assertEquals(listOf(0, 1_804_800), readCoreMaxKHz(root).sorted())
+            assertEquals(1_804_800, readMaxCpuKHz(root))
+            val performanceCores = WhisperCpuConfig.performanceCoreCount(readCoreMaxKHz(root))
+            assertEquals(null, performanceCores)
+            assertEquals(
+                WhisperCpuConfig.whisperThreadCount(8, "base-q8_0"),
+                WhisperCpuConfig.whisperThreadCount(8, "base-q8_0", performanceCores),
+            )
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test
     fun `a core without a published clock reads as zero`() {
         val root = kotlin.io.path.createTempDirectory("cpu").toFile()

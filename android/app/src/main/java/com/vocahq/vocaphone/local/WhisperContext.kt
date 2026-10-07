@@ -173,11 +173,15 @@ internal object WhisperCpuConfig {
      * simplified away because it turns on how long the model runs, not on what
      * it is called, and the measurement above is expensive to rediscover.
      *
-     * Within that, workers stay on the [performanceCores]. ggml splits each
-     * graph node across every worker and waits at a barrier for the slowest,
-     * so an efficiency core in the pool sets the pace for the big ones: on an
-     * eight-core phone the old "all but two" put two efficiency cores in it.
-     * It never asks for more than that old count, so a phone whose clocks
+     * Within that, the worker count is capped at the number of
+     * [performanceCores]. ggml splits each graph node across every worker and
+     * waits at a barrier for the slowest, so on an eight-core phone the old
+     * "all but two" made six workers for four fast cores, and two of them ran
+     * wherever the scheduler put them -- an efficiency core, setting the pace
+     * for the rest. This sets only how many workers there are; it pins
+     * nothing, and which cores they run on is still the scheduler's choice,
+     * which with no more workers than fast cores is normally the fast ones.
+     * It never asks for more than the old count, so a phone whose clocks
      * cannot separate its cores, or that does not publish them, decodes
      * exactly as before.
      */
