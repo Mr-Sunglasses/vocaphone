@@ -359,12 +359,17 @@ internal object MicrophoneForegroundPromote {
 
     /**
      * What a refused microphone service shows: a failure the user can read,
-     * or null when a dictation already owns the state and must keep it.
+     * or null when a dictation already owns the state and must keep it
+     * ([pipelineActive], or a busy phase).
      * Not recoverable, because nothing was recorded for Retry to resend; the
      * next step is another tap on the mic.
      */
-    fun refusedState(current: DictationState, sessionId: UUID): DictationState? {
-        if (current.phase.isBusy) return null
+    fun refusedState(
+        current: DictationState,
+        sessionId: UUID,
+        pipelineActive: Boolean = false,
+    ): DictationState? {
+        if (pipelineActive || current.phase.isBusy) return null
         return DictationState(
             sessionId = sessionId,
             phase = DictationPhase.FAILED,

@@ -713,8 +713,11 @@ class DictationController(
         synchronized(sessionLock) {
             // A session that did get going owns the state; do not paint a
             // failure over it.
-            if (pipeline?.isActive == true) return
-            val failed = MicrophoneForegroundPromote.refusedState(_state.value, sessionId) ?: return
+            val failed = MicrophoneForegroundPromote.refusedState(
+                current = _state.value,
+                sessionId = sessionId,
+                pipelineActive = pipeline?.isActive == true,
+            ) ?: return
             nextGeneration()
             _state.value = failed
         }
@@ -1582,13 +1585,7 @@ class DictationController(
     private fun lingerThenIdle(sessionId: UUID, from: DictationPhase, millis: Long) {
         scope.launch {
             delay(millis)
-            _state.update { current ->
-                if (current.sessionId == sessionId && current.phase == from) {
-                    DictationState()
-                } else {
-                    current
-                }
-            }
+            _state.update { current -> afterLinger(current, sessionId, from) }
         }
     }
 
@@ -1762,6 +1759,14 @@ internal fun modelRepair(
         else -> MissingPermission.LOCAL_MODEL_UNAVAILABLE
     }
 }
+
+/**
+ * What a linger timer leaves behind when it fires: idle only if the state is
+ * still the very one it was started for. A later session, or a newer failure
+ * of the same phase, keeps the screen.
+ */
+internal fun afterLinger(current: DictationState, sessionId: UUID, from: DictationPhase): DictationState =
+    if (current.sessionId == sessionId && current.phase == from) DictationState() else current
 
 internal enum class DownloadOutcome { WAITING, PREPARING, LANDED, DIED }
 
