@@ -11,6 +11,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var darwinObservations: [VocaPhoneDarwinObservation] = []
     private var appLaunchFallbackTask: Task<Void, Never>?
     private var lastInsertedText: String?
+    /// The document after the cursor when `lastInsertedText` went in. Undo
+    /// checks it is unchanged, because the text before the cursor is a bounded
+    /// window that a long dictation does not fit in. See ``InsertionUndo``.
+    private var lastInsertedFollowing: String?
     private var isPerformingInsertion = false
     private var lastSpaceInsertedAt: Date?
     /// Observed by this keyboard instance rather than read from the record: the
@@ -620,13 +624,20 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func undoInsertion() {
         guard let inserted = lastInsertedText,
-              textDocumentProxy.documentContextBeforeInput?.hasSuffix(inserted) == true
+              InsertionUndo.isAtCursor(
+                  inserted,
+                  following: lastInsertedFollowing,
+                  before: textDocumentProxy.documentContextBeforeInput,
+                  after: textDocumentProxy.documentContextAfterInput
+              )
         else {
             dictationBar.flash("The cursor moved, so undo is no longer available.")
             lastInsertedText = nil
             refresh()
             return
         }
+        // By the stored length, not by what the window shows: the window may
+        // hold only the last sentence of it.
         inserted.forEach { _ in textDocumentProxy.deleteBackward() }
         lastInsertedText = nil
         refresh()
@@ -1120,9 +1131,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// document. Typing over it retires the offer rather than leaving a button
     /// that would delete the wrong characters.
     private func releaseUndoIfDetached() {
-        guard let inserted = lastInsertedText,
-              document.before?.hasSuffix(inserted) != true
-        else { return }
+        guard let inserted = lastInsertedText else { return }
+        let snapshot = document
+        guard !InsertionUndo.isAtCursor(
+            inserted,
+            following: lastInsertedFollowing,
+            before: snapshot.before,
+            after: snapshot.after
+        ) else { return }
         lastInsertedText = nil
         refresh()
     }
@@ -1234,17 +1250,24 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         isPerformingInsertion = true
         defer { isPerformingInsertion = false }
-        let prepared = TextInsertion.preparedTranscript(
+        let prepared = TextInsertion.prepare(
             transcript,
             before: textDocumentProxy.documentContextBeforeInput,
-            after: textDocumentProxy.documentContextAfterInput
+            after: textDocumentProxy.documentContextAfterInput,
+            hasSelection: textDocumentProxy.selectedText?.isEmpty == false
         )
         do {
             DiagnosticLog.record(.insertionStarted)
             try record.transition(to: .inserting)
             try store.save(record)
-            textDocumentProxy.insertText(prepared)
-            lastInsertedText = prepared
+            // Out of the middle of a word first, so "hel|lo" gets the
+            // transcript after "hello" rather than through it.
+            if prepared.cursorAdvance > 0 {
+                textDocumentProxy.adjustTextPosition(byCharacterOffset: prepared.cursorAdvance)
+            }
+            textDocumentProxy.insertText(prepared.text)
+            lastInsertedText = prepared.text
+            lastInsertedFollowing = prepared.following
             // The session ID makes this append idempotent if the extension is
             // interrupted after insertion. Recording here means an insertion
             // that happened cannot be lost merely because saving the terminal
