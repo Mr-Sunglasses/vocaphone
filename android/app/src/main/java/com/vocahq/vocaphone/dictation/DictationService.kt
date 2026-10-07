@@ -14,9 +14,14 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.vocahq.vocaphone.NotificationIds
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.R
+import com.vocahq.vocaphone.core.DictationFailure
+import com.vocahq.vocaphone.core.DictationPhase
+import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.ui.MainActivity
+import java.util.UUID
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -101,14 +106,25 @@ class DictationService : Service() {
             return
         }
         promoteFailures++
-        if (source != DictationSource.IME &&
+        if (MicrophoneForegroundPromote.launchesVisibleStarter(source) &&
             MicrophoneForegroundPromote.shouldLaunchVisibleActivity(promoteFailures)
         ) {
             launchVisibleStarter(this, source)
         }
         if (MicrophoneForegroundPromote.shouldRetry(promoteFailures)) {
             mainHandler.postDelayed(promoteRetry, MicrophoneForegroundPromote.RETRY_DELAY_MS)
+            return
         }
+        // Out of retries. This used to just stop posting them: the service
+        // stayed started with no notification and no dictation, and the
+        // keyboard went on showing Ready as if the tap had never happened.
+        // The first refused startForeground already cleared the system's
+        // must-call-startForeground deadline, so stopping here does not trip
+        // it; leaving the service up only kept a dead service around.
+        pendingSource = null
+        promoteFailures = 0
+        VocaPhoneApplication.container(this).dictation.microphoneServiceRefused(source)
+        stopSelf()
     }
 
     private fun enterMicrophoneForeground(): Boolean {
@@ -265,13 +281,19 @@ class DictationService : Service() {
         const val ACTION_CANCEL = "com.vocahq.vocaphone.CANCEL"
         const val EXTRA_SOURCE = "source"
         private const val CHANNEL_ID = "vocaphone.recording"
-        private const val NOTIFICATION_ID = 4101
+        private const val NOTIFICATION_ID = NotificationIds.DICTATION
 
         /**
          * Starts recording. Newer Android versions refuse some background service
          * starts even when Android rejects a background launch, so the documented
          * fallback is a no-animation activity that starts the service while
          * visible and closes immediately.
+         *
+         * Not for the keyboard. Its visible window is what makes the service
+         * start allowed at all, so a refusal means that window is gone, and a
+         * background activity launch from the same process is refused too on
+         * Android 14+ — the tap would vanish without a trace. The keyboard is
+         * told instead.
          */
         fun start(context: Context, source: DictationSource) {
             val intent = Intent(context, DictationService::class.java)
@@ -280,9 +302,17 @@ class DictationService : Service() {
             try {
                 ContextCompat.startForegroundService(context, intent)
             } catch (_: ForegroundServiceStartNotAllowedException) {
-                launchVisibleStarter(context, source)
+                startRefused(context, source)
             } catch (_: SecurityException) {
+                startRefused(context, source)
+            }
+        }
+
+        private fun startRefused(context: Context, source: DictationSource) {
+            if (MicrophoneForegroundPromote.launchesVisibleStarter(source)) {
                 launchVisibleStarter(context, source)
+            } else {
+                VocaPhoneApplication.container(context).dictation.microphoneServiceRefused(source)
             }
         }
 
@@ -314,6 +344,35 @@ internal object MicrophoneForegroundPromote {
 
     fun shouldLaunchVisibleActivity(failedTries: Int): Boolean =
         failedTries == LAUNCH_ACTIVITY_AFTER
+
+    /**
+     * Whether a refused start may fall back to [DictationLauncherActivity].
+     * Not for the keyboard: see [DictationService.start].
+     */
+    fun launchesVisibleStarter(source: DictationSource): Boolean = source != DictationSource.IME
+
+    /** Diagnostics category for a refused microphone service. Metadata only. */
+    const val ERROR_CATEGORY = "microphone_service"
+
+    const val REFUSED_CODE = "microphone_service_refused"
+    const val REFUSED_MESSAGE = "Couldn't start the microphone"
+
+    /**
+     * What a refused microphone service shows: a failure the user can read,
+     * or null when a dictation already owns the state and must keep it.
+     * Not recoverable, because nothing was recorded for Retry to resend; the
+     * next step is another tap on the mic.
+     */
+    fun refusedState(current: DictationState, sessionId: UUID): DictationState? {
+        if (current.phase.isBusy) return null
+        return DictationState(
+            sessionId = sessionId,
+            phase = DictationPhase.FAILED,
+            language = current.language,
+            style = current.style,
+            failure = DictationFailure(REFUSED_CODE, REFUSED_MESSAGE, recoverable = false),
+        )
+    }
 }
 
 /**

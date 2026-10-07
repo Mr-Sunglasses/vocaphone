@@ -700,6 +700,27 @@ class DictationController(
         if (!_state.value.phase.isBusy) reset()
     }
 
+    /**
+     * The microphone foreground service could not be started, so [start] was
+     * never reached and nothing was recorded. Without this the tap simply did
+     * nothing: the keyboard kept saying it was ready and the user was left to
+     * guess. Shown as an ordinary failure that clears itself like any other,
+     * and nothing goes to history because there is no audio to retry.
+     */
+    fun microphoneServiceRefused(source: DictationSource) {
+        diagnostics.recordError(MicrophoneForegroundPromote.ERROR_CATEGORY, source.name)
+        val sessionId = UUID.randomUUID()
+        synchronized(sessionLock) {
+            // A session that did get going owns the state; do not paint a
+            // failure over it.
+            if (pipeline?.isActive == true) return
+            val failed = MicrophoneForegroundPromote.refusedState(_state.value, sessionId) ?: return
+            nextGeneration()
+            _state.value = failed
+        }
+        lingerThenIdle(sessionId, DictationPhase.FAILED, FAILED_LINGER_MILLIS)
+    }
+
     /** Removes the last insertion when the exact text is still where it was put. */
     suspend fun undoLast(): Boolean {
         val insertion = lastInsertion ?: return false

@@ -1,6 +1,13 @@
 package com.vocahq.vocaphone.dictation
 
+import com.vocahq.vocaphone.core.DictationPhase
+import com.vocahq.vocaphone.core.DictationState
+import com.vocahq.vocaphone.core.TranscriptionLanguage
+import java.util.UUID
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -33,5 +40,46 @@ class MicrophoneForegroundPromoteTest {
                 MicrophoneForegroundPromote.LAUNCH_ACTIVITY_AFTER + 1,
             ),
         )
+    }
+
+    @Test
+    fun `the keyboard is never sent to the invisible activity`() {
+        // A background IME cannot launch it on Android 14+, so the tap vanished.
+        assertFalse(MicrophoneForegroundPromote.launchesVisibleStarter(DictationSource.IME))
+        assertTrue(MicrophoneForegroundPromote.launchesVisibleStarter(DictationSource.COMPANION_APP))
+        assertTrue(MicrophoneForegroundPromote.launchesVisibleStarter(DictationSource.FLOATING))
+    }
+
+    @Test
+    fun `a refused microphone service is a readable failure, not a silent Ready`() {
+        val id = UUID.randomUUID()
+        val current = DictationState(language = TranscriptionLanguage.entries.last())
+        val state = MicrophoneForegroundPromote.refusedState(current, id)
+        assertNotNull(state)
+        state!!
+        assertEquals(DictationPhase.FAILED, state.phase)
+        assertEquals(id, state.sessionId)
+        assertEquals(MicrophoneForegroundPromote.REFUSED_MESSAGE, state.statusText)
+        assertEquals(current.language, state.language)
+        // Nothing was recorded, so there is nothing for Retry to resend.
+        assertFalse(state.canRetry)
+    }
+
+    @Test
+    fun `a refused service replaces an earlier failure or confirmation`() {
+        for (phase in listOf(DictationPhase.IDLE, DictationPhase.FAILED, DictationPhase.INSERTED)) {
+            val state = MicrophoneForegroundPromote.refusedState(DictationState(phase = phase), UUID.randomUUID())
+            assertEquals(phase.name, DictationPhase.FAILED, state?.phase)
+        }
+    }
+
+    @Test
+    fun `a refused service never paints over a dictation that is running`() {
+        for (phase in DictationPhase.entries.filter { it.isBusy }) {
+            assertNull(
+                phase.name,
+                MicrophoneForegroundPromote.refusedState(DictationState(phase = phase), UUID.randomUUID()),
+            )
+        }
     }
 }
