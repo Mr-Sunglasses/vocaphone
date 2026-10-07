@@ -435,11 +435,20 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             val connection = currentInputConnection
                 ?: return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
             val cleaned = TranscriptSanitizer.clean(transcript)
-            if (cleaned.isEmpty()) {
+            if (cleaned.isBlank()) {
                 return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
             }
 
-            if (commitDictation(connection, cleaned)) {
+            val committed = commitDictation(connection, cleaned, composingRegionActive)
+            // The composing region was finished before the commit, so the
+            // half-typed word stays in the field and the keyboard has to drop
+            // it. Cleared here rather than left to onUpdateSelection, whose
+            // EditorCursorSync takes a cursor landing at or one past the old
+            // composing end for the keyboard's own update; the next letter
+            // would then recompose the stale prefix after the transcript.
+            composingRegionActive = false
+            editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
+            if (committed) {
                 syncShiftFromCursor()
                 refreshEditorText()
                 InsertionReport(InsertionOutcome.INSERTED)
