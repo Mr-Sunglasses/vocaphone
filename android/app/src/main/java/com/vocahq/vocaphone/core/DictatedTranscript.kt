@@ -21,6 +21,8 @@ package com.vocahq.vocaphone.core
  * 4. Custom vocabulary — after styling, so the user's own capitalization of a
  *    name is the last word on it; before spoken emoji and digits. Every route,
  *    because only Whisper can be prompted with the list. Never for `RAW`.
+ *    One-letter slips are corrected only in English text; other languages get
+ *    spacing and case.
  * 5. Spoken emoji — after styling, because the styler has to see "emoji" as an
  *    ordinary word to capitalize and terminate around it; before digits,
  *    because the table's keys are words — "hundred emoji" is 💯, and once
@@ -61,6 +63,10 @@ object DictatedTranscript {
                 vocabulary,
                 isDictionaryWord,
                 SnippetExpander.triggerRanges(styled, snippets),
+                // The word list that keeps a real word from being taken for a
+                // near miss is English; in any other language nothing would.
+                nearMisses = vocabulary.isNotEmpty() &&
+                    TranscriptRepair.isEnglish(styled, language, isDictionaryWord),
             )
         } else {
             styled

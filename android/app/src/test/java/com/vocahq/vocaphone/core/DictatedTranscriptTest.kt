@@ -271,4 +271,52 @@ class DictatedTranscriptTest {
             ),
         )
     }
+
+    /**
+     * A few words of the keyboard's English list, which really does carry
+     * "der", "die", "ist" and "und".
+     */
+    private val english = setOf(
+        "send", "it", "to", "tell", "about", "please", "that", "the", "plan", "changed",
+        "der", "die", "ist", "und", "phone", "a", "kit",
+    )
+
+    private fun spelled(text: String, language: String, vararg terms: String): String =
+        DictatedTranscript.finished(
+            text,
+            style = WritingStyle.CASUAL,
+            language = language,
+            repairSpeech = false,
+            vocabulary = terms.toList(),
+            isDictionaryWord = english::contains,
+        )
+
+    /**
+     * The English word list is what stops a real word being taken for a near
+     * miss, so in any other language nothing would: "Wagen" is one letter from
+     * a colleague called Wagner.
+     */
+    @Test
+    fun `near misses are corrected only in English`() {
+        assertTrue(spelled("der wagen ist rot", "de", "Wagner").contains("wagen"))
+        assertTrue(spelled("tell kanish about it", "en", "Kanishk").contains("Kanishk"))
+    }
+
+    /** On Automatic the sentence has to say it is English, as it does for repair. */
+    @Test
+    fun `automatic decides near misses from the sentence`() {
+        assertTrue(spelled("please tell kanish that the plan changed", "auto", "Kanishk").contains("Kanishk"))
+        assertTrue(spelled("der wagen ist rot und die tür ist offen", "auto", "Wagner").contains("wagen"))
+        // Too short for two marker words: most of its words being English
+        // ones is what says so, and half of them is not most.
+        assertTrue(spelled("send it to kanish", "auto", "Kanishk").contains("Kanishk"))
+        assertTrue(spelled("der wagen ist rot", "auto", "Wagner").contains("wagen"))
+    }
+
+    /** Spacing and case are certain in any language. */
+    @Test
+    fun `every language still gets the spelling of a term`() {
+        assertTrue(spelled("frag voca phone danach", "de", "VocaPhone").contains("VocaPhone"))
+        assertTrue(spelled("pregunta a whisper kit", "es", "WhisperKit").contains("WhisperKit"))
+    }
 }

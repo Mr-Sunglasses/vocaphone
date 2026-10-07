@@ -18,6 +18,9 @@ import kotlin.math.abs
  *   Deliberately narrow: within one edit for most terms and two for long ones,
  *   the same first letter, and never an ordinary dictionary word on its own —
  *   "strip" is a word, and must not become "Stripe" because someone works there.
+ *   English only: the dictionary that guards real words is the English one,
+ *   so in any other language every word one letter from a term would be fair
+ *   game -- German "Wagen" would become a colleague called "Wagner".
  *
  * What it will not do is hear "Cooper Netties" as "Kubernetes". That takes a
  * model that was listening; this only has the text.
@@ -51,7 +54,9 @@ object VocabularyCorrection {
      * [text] with every near-miss of a term in [terms] replaced by the term as
      * the user wrote it. A single [isDictionaryWord] is only ever replaced by an
      * exact match. Words that overlap [protectedRanges] — snippet triggers,
-     * which expand after this runs — are never touched.
+     * which expand after this runs — are never touched. With [nearMisses]
+     * false only the spacing and case of a term are corrected, which is
+     * certain in any language.
      *
      * Every term is used, however long the list. An exact match is a lookup;
      * for a near miss, terms are filed by first letter and length, the two
@@ -62,6 +67,7 @@ object VocabularyCorrection {
         terms: List<String>,
         isDictionaryWord: (String) -> Boolean = { false },
         protectedRanges: List<IntRange> = emptyList(),
+        nearMisses: Boolean = true,
     ): String {
         if (text.isEmpty()) return text
         val exact = HashMap<String, Term>()
@@ -79,7 +85,7 @@ object VocabularyCorrection {
             val word = words[index]
             protectedRanges.any { it.first < word.end && word.start <= it.last }
         }.toSet()
-        var budget = FUZZY_COMPARISON_BUDGET
+        var budget = if (nearMisses) FUZZY_COMPARISON_BUDGET else 0
 
         val replacements = mutableListOf<Pair<IntRange, String>>()
         var index = 0

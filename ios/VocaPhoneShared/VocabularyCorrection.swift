@@ -15,7 +15,10 @@ import Foundation
 ///   "VocaPhone". Deliberately narrow: within one edit for most terms and two
 ///   for long ones, the same first letter, and never an ordinary dictionary
 ///   word on its own — "strip" is a word, and must not become "Stripe" because
-///   someone works there.
+///   someone works there. English only: the dictionary that guards real words
+///   is the English one, so in any other language every word one letter from a
+///   term would be fair game — German "Wagen" would become a colleague called
+///   "Wagner".
 ///
 /// What it will not do is hear "Cooper Netties" as "Kubernetes". That takes a
 /// model that was listening; this only has the text.
@@ -44,7 +47,8 @@ enum VocabularyCorrection {
     /// the user wrote it. `isDictionaryWord` answers for one lowercased word;
     /// a single such word is only ever replaced by an exact match. Words that
     /// overlap `protectedRanges` — snippet triggers, which expand after this
-    /// runs — are never touched.
+    /// runs — are never touched. With `nearMisses` false only the spacing and
+    /// case of a term are corrected, which is certain in any language.
     ///
     /// Every term is used, however long the list. An exact match is a lookup;
     /// for a near miss, terms are filed by first letter and length, the two
@@ -54,7 +58,8 @@ enum VocabularyCorrection {
         _ text: String,
         terms: [String],
         isDictionaryWord: (String) -> Bool = { _ in false },
-        protectedRanges: [Range<String.Index>] = []
+        protectedRanges: [Range<String.Index>] = [],
+        nearMisses: Bool = true
     ) -> String {
         guard !text.isEmpty else { return text }
         var exact: [String: Term] = [:]
@@ -66,7 +71,7 @@ enum VocabularyCorrection {
             widest = max(widest, term.wordCount + extraWords)
         }
         guard !filed.isEmpty else { return text }
-        var budget = fuzzyComparisonBudget
+        var budget = nearMisses ? fuzzyComparisonBudget : 0
         let words = Self.words(in: text)
         guard !words.isEmpty else { return text }
         let protected = Set(words.indices.filter { index in
