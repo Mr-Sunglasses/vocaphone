@@ -587,6 +587,18 @@ object TranscriptRepair {
     )
 
     /**
+     * Bare `do` and `have` open imperatives as readily as questions: "Do it
+     * tomorrow", "Have this ready by five", "Have someone check it". Only a
+     * personal pronoun after them is unambiguously inverted, so they get this
+     * narrower set; "does it", "is that" and the rest keep the full one.
+     */
+    private val IMPERATIVE_AUXILIARIES = setOf("do", "have")
+
+    private val INVERTED_PERSONAL_SUBJECTS = setOf(
+        "i", "you", "we", "they", "he", "she", "there",
+    )
+
+    /**
      * Longest sentence still short enough for the question test to be worth
      * trusting. Past this a wh-word is far more often opening a noun clause.
      */
@@ -731,6 +743,7 @@ object TranscriptRepair {
             return false
         }
         if (keys[0] !in AUXILIARIES || keys[1] !in SUBJECT_PRONOUNS) return false
+        if (keys[0] in IMPERATIVE_AUXILIARIES) return keys[1] in INVERTED_PERSONAL_SUBJECTS
         // "Had I known" and "Were it up to me" invert the same way a question
         // does; the modal further along is what tells them apart.
         if (keys[0] == "had" || keys[0] == "were") {

@@ -23,15 +23,15 @@ enum TranscriptStyler {
             normalizeSpacing(spans.text),
             punctuation: punctuation
         )
-        // Whisper and Parakeet Title-Case content words. Flatten those before
-        // Clean/Formal/Casual so mid-sentence capitals are not left as-is.
-        // Mixed-case names and ALL-CAPS acronyms stay.
+        // A model can Title-Case a whole sentence, and a chunk join capitalizes
+        // the word it lands on. Flatten those before Clean/Formal/Casual, while
+        // names, mixed-case words and ALL-CAPS acronyms stay.
         let flattened: String
         switch style {
         case .raw, .veryCasual:
             flattened = normalized
         default:
-            flattened = flattenModelCaps(normalized)
+            flattened = flattenModelCaps(normalized, punctuation: punctuation)
         }
         let result: String
         switch style {
@@ -104,11 +104,147 @@ enum TranscriptStyler {
         return text + punctuation.terminator
     }
 
+    private enum Shape { case lower, title, acronym, shout, mixed, pronounI }
+
+    private struct Token {
+        var text: String
+        var isWord = false
+        var shape = Shape.lower
+        var sentence = 0
+        var opensSentence = false
+    }
+
+    /// Closed-class words a chunk join or a Title-Casing model capitalizes and
+    /// a name almost never is. "will", "may" and "a" are left out on purpose:
+    /// "Will", "May" and "Plan A" are names as often as not.
+    private static let functionWords: Set<String> = [
+        "the", "an", "and", "or", "but", "so", "if", "then", "than", "because",
+        "of", "to", "in", "on", "at", "by", "for", "with", "from", "as", "into",
+        "about", "over", "after", "before",
+        "is", "are", "was", "were", "be", "been", "am", "it's", "that's",
+        "do", "does", "did", "have", "has", "had", "would", "could", "should", "can",
+        "it", "its", "this", "that", "these", "those", "there", "here",
+        "we", "you", "he", "she", "they", "me", "him", "her", "them",
+        "my", "your", "his", "our", "their",
+        "what", "when", "where", "why", "how", "who", "which",
+        "not", "just", "also", "very", "yes", "no",
+    ]
+
+    /// Words that open a sentence and are then often cut off from the rest by
+    /// a pause, so a chunk join capitalizes whatever follows ("Okay So we
+    /// start"). Opening a sentence, they are not taken for the first half of a
+    /// name the way "Doctor" in "Doctor Who" is.
+    private static let discourseOpeners: Set<String> = [
+        "okay", "ok", "yeah", "yep", "well", "hey", "hi", "hello", "oh", "right",
+        "alright", "sure", "thanks", "please", "now", "anyway", "actually",
+        "um", "uh",
+    ]
+
     /// Drop Title Case the model invented, keep tokens that look like names.
-    private static func flattenModelCaps(_ text: String) -> String {
+    ///
+    /// Some models Title-Case a whole sentence ("The Keyboard Is Ready"). When
+    /// a sentence shows that — nearly every word after the first capitalized —
+    /// every Title-Case word in it is the model's and is flattened. Anywhere
+    /// else a capital is far more likely a name someone said ("I met Sarah in
+    /// Paris on Monday"), so the only thing flattened is a function word a
+    /// chunk join capitalized ("hello there How are you"), and not even that
+    /// next to another capitalized word, where it may be part of a name.
+    /// Mixed-case names and short ALL-CAPS acronyms always stay; a longer
+    /// ALL-CAPS word is the model shouting and is flattened.
+    private static func flattenModelCaps(
+        _ text: String,
+        punctuation: SentencePunctuation
+    ) -> String {
+        let tokens = tokenize(text, punctuation: punctuation)
+        let sentenceCount = (tokens.last?.sentence ?? 0) + 1
+        var eligible = [Int](repeating: 0, count: sentenceCount)
+        var titled = [Int](repeating: 0, count: sentenceCount)
+        var titledFunctionWords = [Int](repeating: 0, count: sentenceCount)
+        var opensWithFunctionWord = [Bool](repeating: false, count: sentenceCount)
+        for token in tokens where token.isWord && token.opensSentence {
+            opensWithFunctionWord[token.sentence] = functionWords.contains(functionKey(token.text))
+        }
+        for token in tokens where token.isWord && !token.opensSentence {
+            guard token.shape == .lower || token.shape == .title else { continue }
+            eligible[token.sentence] += 1
+            guard token.shape == .title else { continue }
+            titled[token.sentence] += 1
+            if functionWords.contains(functionKey(token.text)) {
+                titledFunctionWords[token.sentence] += 1
+            }
+        }
+        // Three in four is well clear of a sentence that is simply full of
+        // names ("meet Sarah and John in Paris on Monday" is four in seven).
+        // A sentence too short for a ratio is the model's only when every word
+        // is capitalized, one of them is a function word, and nothing left over
+        // could be a name: either the opening word is a function word too ("Do
+        // It Now") or every word after it is ("Call Him"). Not "Call Sarah",
+        // and not "Visit The Hague".
+        let titleCased = (0..<sentenceCount).map { sentence -> Bool in
+            let words: Int = eligible[sentence]
+            let capitals: Int = titled[sentence]
+            let capitalFunctionWords: Int = titledFunctionWords[sentence]
+            if words >= 3 && capitals * 4 >= words * 3 { return true }
+            guard capitals == words, capitalFunctionWords > 0 else { return false }
+            return opensWithFunctionWord[sentence] || capitalFunctionWords == words
+        }
+
         var result = ""
         result.reserveCapacity(text.count)
+        let words = tokens.filter(\.isWord)
+        var wordPosition = -1
+        for token in tokens {
+            guard token.isWord else {
+                result += token.text
+                continue
+            }
+            wordPosition += 1
+            switch token.shape {
+            case .pronounI:
+                let body = token.text.drop { !$0.isLetter }
+                result += String(token.text.dropLast(body.count)) + "I" + body.dropFirst()
+            case .shout:
+                result += token.text.lowercased()
+            case .lower, .acronym, .mixed:
+                result += token.text
+            case .title:
+                let flatten: Bool
+                if titleCased[token.sentence] {
+                    flatten = true
+                } else if token.opensSentence || !functionWords.contains(functionKey(token.text)) {
+                    flatten = false
+                } else {
+                    let neighbours = [wordPosition - 1, wordPosition + 1]
+                        .filter { words.indices.contains($0) }
+                        .map { words[$0] }
+                    // An opening word is capitalized anyway, so it vouches for
+                    // a name only when it could start one ("Doctor Who is on").
+                    flatten = !neighbours.contains { neighbour in
+                        neighbour.sentence == token.sentence
+                            && [Shape.title, .acronym, .mixed].contains(neighbour.shape)
+                            && (!neighbour.opensSentence || mayOpenName(neighbour.text))
+                    }
+                }
+                result += flatten ? token.text.lowercased() : token.text
+            }
+        }
+        return result
+    }
+
+    private static func mayOpenName(_ token: String) -> Bool {
+        let key = functionKey(token)
+        return !functionWords.contains(key) && !discourseOpeners.contains(key)
+    }
+
+    private static func functionKey(_ token: String) -> String {
+        token.lowercased().replacingOccurrences(of: "’", with: "'")
+    }
+
+    private static func tokenize(_ text: String, punctuation: SentencePunctuation) -> [Token] {
+        var tokens: [Token] = []
         let characters = Array(text)
+        var sentence = 0
+        var opensSentence = true
         var index = 0
         while index < characters.count {
             // Copy a protected span whole: flatten would lowercase the digits
@@ -119,7 +255,8 @@ enum TranscriptStyler {
                     index += 1
                 }
                 if index < characters.count { index += 1 }
-                result.append(contentsOf: characters[start..<index])
+                tokens.append(Token(text: String(characters[start..<index]), sentence: sentence))
+                opensSentence = false
                 continue
             }
             let character = characters[index]
@@ -134,33 +271,38 @@ enum TranscriptStyler {
                         break
                     }
                 }
-                result += softenToken(String(characters[start..<index]))
+                let word = String(characters[start..<index])
+                tokens.append(Token(
+                    text: word,
+                    isWord: true,
+                    shape: shape(of: word),
+                    sentence: sentence,
+                    opensSentence: opensSentence
+                ))
+                opensSentence = false
             } else {
-                result.append(character)
+                tokens.append(Token(text: String(character), sentence: sentence))
+                if punctuation.terminators.contains(character) {
+                    sentence += 1
+                    opensSentence = true
+                }
                 index += 1
             }
         }
-        return result
+        return tokens
     }
 
-    private static func softenToken(_ token: String) -> String {
-        if isPronounI(token) {
-            let body = token.drop { !$0.isLetter }
-            return String(token.dropLast(body.count)) + "I" + body.dropFirst()
-        }
+    private static func shape(of token: String) -> Shape {
+        if isPronounI(token) { return .pronounI }
         let letters = token.filter(\.isLetter)
-        if letters.isEmpty { return token }
+        guard let first = letters.first else { return .lower }
         let hasLower = letters.contains { $0.isLowercase }
         let hasUpper = letters.contains { $0.isUppercase }
-        if !hasLower && (2...4).contains(letters.count) { return token }
-        if !hasLower && letters.count > 4 { return token.lowercased() }
-        if hasLower && hasUpper {
-            let body = token.drop { !$0.isLetter }
-            guard let first = body.first else { return token }
-            let titleCase = first.isUppercase && !body.dropFirst().contains(where: \.isUppercase)
-            if !titleCase { return token }
-        }
-        return token.lowercased()
+        if !hasUpper { return .lower }
+        if !hasLower && (2...4).contains(letters.count) { return .acronym }
+        if !hasLower && letters.count > 4 { return .shout }
+        let titleCase = first.isUppercase && !letters.dropFirst().contains(where: \.isUppercase)
+        return titleCase ? .title : .mixed
     }
 
     private static func isPronounI(_ token: String) -> Bool {

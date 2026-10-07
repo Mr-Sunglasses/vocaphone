@@ -467,6 +467,26 @@ class TranscriptRepairTest {
         assertEquals("had you seen the report?", TranscriptRepair.apply("had you seen the report"))
     }
 
+    /**
+     * Bare "do" and "have" also open imperatives. Only a personal pronoun after
+     * them makes the sentence a question; "it" and "this" make an order.
+     */
+    @Test
+    fun `an imperative is not a question`() {
+        assertEquals("do it tomorrow", TranscriptRepair.apply("do it tomorrow"))
+        assertEquals("Do it tomorrow.", TranscriptRepair.apply("Do it tomorrow."))
+        assertEquals("have this ready by five", TranscriptRepair.apply("have this ready by five"))
+        assertEquals("do that again", TranscriptRepair.apply("do that again"))
+        assertEquals("have someone check it", TranscriptRepair.apply("have someone check it"))
+        assertEquals("have you seen the report?", TranscriptRepair.apply("have you seen the report"))
+        assertEquals("do they know?", TranscriptRepair.apply("do they know"))
+        assertEquals("have there been any issues?", TranscriptRepair.apply("have there been any issues"))
+        // The other auxiliaries do not open imperatives and keep the full set.
+        assertEquals("does it work?", TranscriptRepair.apply("does it work"))
+        assertEquals("is this ready?", TranscriptRepair.apply("is this ready"))
+        assertEquals("has anyone seen it?", TranscriptRepair.apply("has anyone seen it"))
+    }
+
     /** The mark belongs to the sentence, so it goes inside what wraps it. */
     @Test
     fun `a question mark goes inside the quotes`() {
