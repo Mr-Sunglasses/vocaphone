@@ -127,7 +127,7 @@ final class SharedStore: @unchecked Sendable {
     func delete(_ id: UUID) throws {
         let directory = try sessionsDirectory()
         let recordURL = url(for: id, directory: directory)
-        if decodedRecord(at: recordURL)?.state.hasActiveWriter == true {
+        if decodedRecord(at: recordURL)?.hasActiveWriter() == true {
             throw SharedStoreError.sessionInProgress
         }
         if try removeSessionFiles(at: recordURL) {
@@ -149,7 +149,7 @@ final class SharedStore: @unchecked Sendable {
         // Reject the whole request before removing anything. The recorder can
         // recreate a live sidecar while its JSON record still says recording.
         if files.contains(where: {
-            $0.pathExtension == "json" && decodedRecord(at: $0)?.state.hasActiveWriter == true
+            $0.pathExtension == "json" && decodedRecord(at: $0)?.hasActiveWriter() == true
         }) {
             throw SharedStoreError.sessionInProgress
         }
@@ -298,7 +298,7 @@ final class SharedStore: @unchecked Sendable {
             // The archive bound must not remove a recording that is still
             // producing meter or live-word updates, even if it is old enough
             // to fall outside the newest 50 records.
-            guard decodedRecord(at: url)?.state.hasActiveWriter != true else { continue }
+            guard decodedRecord(at: url)?.hasActiveWriter(now: now) != true else { continue }
             let isBeyondWindow = index >= keepCount
             let isStaleTerminal = !isBeyondWindow && decodedRecord(at: url).map {
                 $0.state.isTerminal && now.timeIntervalSince($0.updatedAt) > maximumAge

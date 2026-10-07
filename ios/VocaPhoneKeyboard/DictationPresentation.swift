@@ -152,6 +152,10 @@ struct DictationContext: Equatable {
     /// neutral rather than guessing — naming the wrong place is worse than
     /// naming none.
     var processingLocation: SessionProcessingLocation?
+    /// The keyboard that was inserting this transcript ended before it could
+    /// record the result, so the text may already be in the field. Offered
+    /// again, never inserted automatically.
+    var insertionWasInterrupted = false
 }
 
 extension DictationBarModel {
@@ -374,6 +378,7 @@ extension DictationBarModel {
     }
 
     private static func ready(_ context: DictationContext) -> DictationBarModel {
+        if context.insertionWasInterrupted { return interruptedInsertion(context) }
         let fallback = context.autoInsertsTranscripts
             ? "Inserting automatically…"
             : "Tap Insert to place the text."
@@ -395,7 +400,36 @@ extension DictationBarModel {
         )
     }
 
+    /// Says what is known and no more: the insertion started, and nothing
+    /// recorded whether it finished. The person can see the field; this
+    /// keyboard cannot.
+    private static func interruptedInsertion(_ context: DictationContext) -> DictationBarModel {
+        let detail = "Insertion may have been interrupted. Check the field before inserting again."
+        return DictationBarModel(
+            title: "Insertion interrupted",
+            body: .message(quoted(context.transcript).map { "\($0) \(detail)" } ?? detail),
+            accent: .working,
+            pulse: .steady,
+            primary: DictationButton(
+                title: "Insert",
+                symbol: "text.badge.plus",
+                // A parked transcript only goes in through the explicit
+                // "insert here" path, which bypasses the field guard.
+                action: context.state == .targetContextChanged ? .insertHere : .insert,
+                hint: "Inserts the transcript at the cursor, even if part of it is already there."
+            ),
+            secondaries: [.cancel],
+            showsElapsedTime: false,
+            isExpanded: true,
+            announcement: "Insertion may have been interrupted. Check the field, then insert or cancel."
+        )
+    }
+
     private static func waitingForField(_ context: DictationContext) -> DictationBarModel {
+        // The interrupted insertion is the more important thing to say: the
+        // text may already be in this field or another, and "Insert in this
+        // field" alone reads as safe to tap.
+        if context.insertionWasInterrupted { return interruptedInsertion(context) }
         let detail = quoted(context.transcript).map {
             $0 + " This is a different text field from the one where you started."
         } ?? "Go back to the field you dictated for, or insert the text in this field."

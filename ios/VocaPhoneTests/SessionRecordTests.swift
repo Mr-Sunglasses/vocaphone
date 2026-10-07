@@ -409,6 +409,31 @@ struct SessionRecordTests {
         // No processing location either. The interface answers that with
         // neutral wording rather than guessing a route.
         #expect(record.processingLocation == nil)
+        // No target fingerprint: such a record keeps inserting where it always
+        // did. And nothing marks it as an interrupted insertion.
+        #expect(record.targetFingerprint == nil)
+        #expect(record.insertionInterrupted == nil)
+    }
+
+    /// The fingerprint is written by the keyboard at creation and has to
+    /// survive every write the app makes on the way to `readyToInsert`.
+    @Test func theTargetFingerprintSurvivesTheStoreAndTheApp() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedStore(rootOverride: directory)
+        var record = SessionRecord()
+        record.targetFingerprint = "0123456789abcdef"
+        for state in [
+            SessionState.launchingApp, .recording, .finalizing, .uploading,
+            .transcribing, .readyToInsert,
+        ] {
+            try record.transition(to: state)
+            try store.save(record)
+            record = try #require(try store.load(record.sessionID))
+        }
+        #expect(record.targetFingerprint == "0123456789abcdef")
+        #expect(record.insertionInterrupted == nil)
     }
 
     /// Both routes survive a write and a read through the shared container,
@@ -595,6 +620,131 @@ struct SessionRecordTests {
             record,
             now: start.addingTimeInterval(SessionExpiryPolicy.pendingUserActionWindow + 1)
         ))
+    }
+
+    // MARK: - Interrupted insertion
+
+    /// A record left in `inserting` by a keyboard that ended mid-insertion.
+    private static func stuckInsertion(at start: Date) throws -> SessionRecord {
+        var record = SessionRecord(now: start)
+        for state in [
+            SessionState.launchingApp, .recording, .finalizing, .uploading,
+            .transcribing, .readyToInsert, .inserting,
+        ] {
+            try record.transition(to: state, now: start)
+        }
+        record.transcript = "Meet at noon."
+        return record
+    }
+
+    /// `inserting` used to have no way out but the two writes a killed keyboard
+    /// never makes, so the record was adopted on every appearance and hid the
+    /// keys behind "Inserting" until the app was reinstalled.
+    @Test func aStuckInsertionCanBeOfferedAgainOrExpire() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var offered = try Self.stuckInsertion(at: start)
+        try offered.transition(to: .readyToInsert)
+        #expect(offered.state == .readyToInsert)
+
+        let stuck = try Self.stuckInsertion(at: start)
+        #expect(!SessionExpiryPolicy.isStale(stuck, now: start.addingTimeInterval(10)))
+        #expect(SessionExpiryPolicy.isStale(
+            stuck,
+            now: start.addingTimeInterval(SessionExpiryPolicy.insertionWindow + 1)
+        ))
+        var expiring = stuck
+        try expiring.transition(to: .expired)
+        #expect(expiring.state.isTerminal)
+    }
+
+    /// The keyboard takes over only an insertion nobody is running: not its
+    /// own, not one written a moment ago, and not one so old that expiry is the
+    /// honest answer.
+    @Test func onlyAnAbandonedInsertionIsOfferedAgain() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let stuck = try Self.stuckInsertion(at: start)
+        let later = start.addingTimeInterval(60)
+
+        #expect(InterruptedInsertion.decision(for: stuck, insertingHere: false, now: later)
+            == .offerAgain)
+        #expect(InterruptedInsertion.decision(for: stuck, insertingHere: true, now: later)
+            == .notApplicable)
+        #expect(InterruptedInsertion.decision(
+            for: stuck,
+            insertingHere: false,
+            now: start.addingTimeInterval(InterruptedInsertion.gracePeriod - 1)
+        ) == .wait)
+        #expect(InterruptedInsertion.decision(
+            for: stuck,
+            insertingHere: false,
+            now: start.addingTimeInterval(SessionExpiryPolicy.pendingUserActionWindow + 1)
+        ) == .notApplicable)
+
+        var ready = SessionRecord(now: start)
+        for state in [
+            SessionState.launchingApp, .recording, .finalizing, .uploading, .readyToInsert,
+        ] {
+            try ready.transition(to: state, now: start)
+        }
+        #expect(InterruptedInsertion.decision(for: ready, insertingHere: false, now: later)
+            == .notApplicable)
+    }
+
+    /// Recovery is durable and flagged, so every keyboard instance agrees the
+    /// transcript is waiting for a tap — and none of them inserts it on its own.
+    @Test func recoveringAnInterruptedInsertionWritesThroughWithTheFlag() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = SharedStore(rootOverride: directory)
+        let start = Date(timeIntervalSince1970: 1_000)
+        let stuck = try Self.stuckInsertion(at: start)
+        try store.save(stuck)
+
+        #expect(InterruptedInsertion.recoverIfInterrupted(
+            stuck, in: store, insertingHere: false, now: start.addingTimeInterval(1)
+        ) == nil)
+        #expect(try store.load(stuck.sessionID)?.state == .inserting)
+
+        let recovered = InterruptedInsertion.recoverIfInterrupted(
+            stuck, in: store, insertingHere: false, now: start.addingTimeInterval(45)
+        )
+        #expect(recovered?.state == .readyToInsert)
+        let stored = try #require(try store.load(stuck.sessionID))
+        #expect(stored.state == .readyToInsert)
+        #expect(stored.insertionInterrupted == true)
+        #expect(stored.transcript == "Meet at noon.")
+        // A fresh `readyToInsert` window: recovery must not hand the
+        // transcript straight to expiry.
+        #expect(!SessionExpiryPolicy.isStale(stored, now: start.addingTimeInterval(60)))
+    }
+
+    /// Delete, Delete all and storage pruning all refused a record with an
+    /// active writer, and `inserting` counted as one forever.
+    @Test func aStuckInsertionNoLongerBlocksDeletion() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = SharedStore(rootOverride: root)
+        let now = Date()
+        let fresh = try Self.stuckInsertion(at: now)
+        #expect(fresh.hasActiveWriter(now: now))
+        try store.save(fresh)
+        #expect(throws: SharedStoreError.self) { try store.delete(fresh.sessionID) }
+        #expect(throws: SharedStoreError.self) { try store.deleteAllSessions() }
+
+        let abandoned = try Self.stuckInsertion(
+            at: now.addingTimeInterval(-(SessionExpiryPolicy.insertionWindow + 5))
+        )
+        #expect(!abandoned.hasActiveWriter(now: now))
+        try store.save(abandoned)
+        try store.delete(abandoned.sessionID)
+        #expect(try store.load(abandoned.sessionID) == nil)
+
+        try store.save(abandoned)
+        #expect(try store.pruneSessions(keeping: 0, now: now) == 1)
+        #expect(try store.load(abandoned.sessionID) == nil)
+        #expect(try store.load(fresh.sessionID) != nil)
     }
 
     /// Terminal states have already stopped; expiring them again would rewrite

@@ -109,6 +109,10 @@ enum DiagnosticReason: String, Codable, Sendable {
     /// An insertion was already running. Re-entrancy, not a failure: the text
     /// is going in from the first call.
     case insertionInFlight
+    /// A keyboard ended between persisting `inserting` and `inserted`. The
+    /// transcript is offered again behind Insert rather than inserted, because
+    /// it may already be in the field.
+    case insertionInterrupted
 }
 
 enum DiagnosticPhase: String, Codable, Sendable {

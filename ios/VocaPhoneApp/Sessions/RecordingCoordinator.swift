@@ -103,7 +103,7 @@ final class RecordingCoordinator {
     var canDeleteAllTranscripts: Bool {
         transcriptDeletionTask == nil && startingSessionID == nil
             && !recorder.isRecording && pipelineTask == nil
-            && activeRecord?.state.hasActiveWriter != true
+            && activeRecord?.hasActiveWriter() != true
     }
     var hasError: Bool { activeRecord?.error != nil }
     var transcript: String? { activeRecord?.transcript }
@@ -924,7 +924,12 @@ final class RecordingCoordinator {
            let expired = SessionExpiryPolicy.expireIfStale(record, in: store)
         {
             activeRecord = expired
-            message = "The last dictation timed out and was discarded."
+            // An insertion that never recorded its result may well have put the
+            // text in the field; "discarded" would be wrong, and the transcript
+            // is still in the history either way.
+            message = record.state == .inserting
+                ? "The last insertion was interrupted. Its transcript is in your history."
+                : "The last dictation timed out and was discarded."
             return
         }
         if [.launchingApp, .awaitingReturn].contains(record.state) {
