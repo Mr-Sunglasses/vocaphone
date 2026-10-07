@@ -21,6 +21,31 @@ enum TranscriptRepair {
 
     // MARK: - Entry point
 
+    /// Whether `text` is English: an explicit or detected `en`, or, on
+    /// Automatic, a sentence that says so itself — on the terms
+    /// ``looksEnglish(_:words:)`` sets out, or, for a fragment too short to
+    /// carry two marker words, by most of its words being English ones by
+    /// `isDictionaryWord` and none spelled with another alphabet's letters.
+    /// For the stages that, like filler removal, would damage another
+    /// language by applying English rules to it.
+    static func isEnglish(
+        _ text: String,
+        language: String = "auto",
+        isDictionaryWord: (String) -> Bool = { _ in false }
+    ) -> Bool {
+        let code = language.lowercased().split(separator: "-").first.map(String.init) ?? ""
+        let words = split(text)
+        if looksEnglish(code, words: words) { return true }
+        guard code.isEmpty || code == "auto" else { return false }
+        if words.contains(where: { word in
+            word.text.lowercased().contains(where: { foreignLetters.contains($0) })
+        }) {
+            return false
+        }
+        let keys = words.map(\.key).filter { !$0.isEmpty }
+        return keys.count >= 2 && keys.filter(isDictionaryWord).count * 3 >= keys.count * 2
+    }
+
     /// - Parameters:
     ///   - text: a transcript that has already been through ``TranscriptSanitizer``.
     ///   - language: the language the finished text is written in, or `"auto"`.

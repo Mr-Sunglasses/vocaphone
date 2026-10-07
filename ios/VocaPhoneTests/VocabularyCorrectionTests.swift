@@ -75,7 +75,10 @@ struct VocabularyCorrectionTests {
             numbersAsDigits: false,
             spokenEmoji: false,
             snippets: [],
-            vocabulary: ["Kanishk"]
+            vocabulary: ["Kanishk"],
+            // As the app passes the shipped English list: on Automatic it is
+            // what says this fragment is English.
+            isDictionaryWord: { ["send", "it", "to"].contains($0) }
         )
         #expect(casual.contains("Kanishk"))
         let raw = DictatedTranscript.finished(
@@ -145,5 +148,15 @@ struct VocabularyCorrectionTests {
             .joined(separator: " ")
         let corrected = VocabularyCorrection.apply(transcript, terms: many + ["WhisperKit"])
         #expect(corrected.components(separatedBy: "WhisperKit").count == 201)
+    }
+
+    @Test func withoutNearMissesOnlySpacingAndCaseAreCorrected() {
+        #expect(
+            VocabularyCorrection.apply(
+                "Kanish uses whisper kit",
+                terms: ["Kanishk", "WhisperKit"],
+                nearMisses: false
+            ) == "Kanish uses WhisperKit"
+        )
     }
 }
