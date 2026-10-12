@@ -284,6 +284,8 @@ data class VocaPhoneSettings(
     val correctionsEnabled: Boolean = true,
     val numberKeyHintsEnabled: Boolean = true,
     val longPressSymbolsEnabled: Boolean = false,
+    /** Arm shift at the start of a field and after a sentence ends. */
+    val autoCapitalizeEnabled: Boolean = true,
     /**
      * Words the suggestion strip should complete, as the user typed or pasted
      * them. Newlines or commas; the keyboard parses the text on read.
@@ -571,6 +573,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setLongPressSymbolsEnabled(enabled: Boolean) = put(Keys.LONG_PRESS_SYMBOLS, enabled)
 
+    suspend fun setAutoCapitalizeEnabled(enabled: Boolean) = put(Keys.AUTO_CAPITALIZE, enabled)
+
     suspend fun setPersonalDictionary(words: String) = put(Keys.PERSONAL_DICTIONARY, words)
 
     /**
@@ -773,6 +777,7 @@ class SettingsRepository(private val context: Context) {
         correctionsEnabled = this[Keys.CORRECTIONS] ?: true,
         numberKeyHintsEnabled = this[Keys.NUMBER_KEY_HINTS] ?: true,
         longPressSymbolsEnabled = this[Keys.LONG_PRESS_SYMBOLS] ?: false,
+        autoCapitalizeEnabled = this[Keys.AUTO_CAPITALIZE] ?: true,
         personalDictionary = this[Keys.PERSONAL_DICTIONARY].orEmpty(),
         asciiEmojiEnabled = this[Keys.ASCII_EMOJI] ?: true,
         swipeTypingEnabled = this[Keys.SWIPE_TYPING] ?: true,
@@ -832,6 +837,7 @@ class SettingsRepository(private val context: Context) {
         val CORRECTIONS = booleanPreferencesKey("keyboard_corrections")
         val NUMBER_KEY_HINTS = booleanPreferencesKey("keyboard_number_key_hints")
         val LONG_PRESS_SYMBOLS = booleanPreferencesKey("keyboard_long_press_symbols")
+        val AUTO_CAPITALIZE = booleanPreferencesKey("keyboard_auto_capitalize")
         val PERSONAL_DICTIONARY = stringPreferencesKey("keyboard_personal_dictionary")
         val ASCII_EMOJI = booleanPreferencesKey("keyboard_ascii_emoji")
         val SWIPE_TYPING = booleanPreferencesKey("keyboard_swipe_typing")

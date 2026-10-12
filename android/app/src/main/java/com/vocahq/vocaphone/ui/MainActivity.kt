@@ -441,6 +441,7 @@ fun VocaPhoneApp(
                 onCorrections = { viewModel.setCorrectionsEnabled(it) },
                 onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },
                 onLongPressSymbols = { viewModel.setLongPressSymbolsEnabled(it) },
+                onAutoCapitalize = { viewModel.setAutoCapitalizeEnabled(it) },
                 onPersonalDictionary = { viewModel.setPersonalDictionary(it) },
                 onAddSnippet = { trigger, expansion -> viewModel.addSnippet(trigger, expansion) },
                 onUpdateSnippet = { id, trigger, expansion -> viewModel.updateSnippet(id, trigger, expansion) },

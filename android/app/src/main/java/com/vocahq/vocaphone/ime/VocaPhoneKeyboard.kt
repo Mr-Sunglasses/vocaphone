@@ -418,6 +418,7 @@ internal fun VocaPhoneKeyboard(
             nowMillis = SystemClock.uptimeMillis(),
             composeWords = composeWords,
             hasSelection = text.hasSelection || text.selected.any { it.isLetter() },
+            autoCapitalize = settings.autoCapitalizeEnabled,
         )
         keyboardState = reduction.state
         reduction.command?.let(onCommand)
@@ -442,6 +443,7 @@ internal fun VocaPhoneKeyboard(
             replacement = text,
             composeWords = composeWords,
             restoreShift = swipeSeedShift,
+            autoCapitalize = settings.autoCapitalizeEnabled,
         )
         swipeSeedShift = null
         keyboardState = reduction.state

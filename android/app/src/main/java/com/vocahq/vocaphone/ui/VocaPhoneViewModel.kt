@@ -530,6 +530,9 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     fun setLongPressSymbolsEnabled(enabled: Boolean) =
         viewModelScope.launch { container.settings.setLongPressSymbolsEnabled(enabled) }
 
+    fun setAutoCapitalizeEnabled(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setAutoCapitalizeEnabled(enabled) }
+
     fun setPersonalDictionary(words: String) =
         viewModelScope.launch {
             container.settings.setPersonalDictionary(
