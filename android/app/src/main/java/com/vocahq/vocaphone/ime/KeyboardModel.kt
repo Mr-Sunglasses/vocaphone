@@ -285,6 +285,17 @@ internal object KeyboardChrome {
     fun shiftAfterCursorSync(current: ShiftState, atCursor: ShiftState): ShiftState =
         if (current == ShiftState.LOCKED) ShiftState.LOCKED else atCursor
 
+    /**
+     * What the shift key becomes when "Capitalize sentences" turns off under
+     * an open editor. That includes the first settings load: DataStore can
+     * answer after `onStartInput` has already armed shift from the default.
+     *
+     * Only a shift the keyboard armed by itself is dropped. If the user has
+     * pressed shift since, [current] no longer matches [autoArmed] and stays.
+     */
+    fun shiftWhenAutoCapitalizeOff(current: ShiftState, autoArmed: ShiftState): ShiftState =
+        if (current == autoArmed) ShiftState.OFF else current
+
     fun swipeAlternatives(
         committed: String,
         swipeMatches: List<String>,

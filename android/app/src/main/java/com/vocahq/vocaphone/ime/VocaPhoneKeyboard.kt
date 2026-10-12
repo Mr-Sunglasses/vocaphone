@@ -246,6 +246,17 @@ internal fun VocaPhoneKeyboard(
             )
         }
     }
+    LaunchedEffect(settings.autoCapitalizeEnabled) {
+        if (!settings.autoCapitalizeEnabled) {
+            keyboardState = keyboardState.copy(
+                shift = KeyboardChrome.shiftWhenAutoCapitalizeOff(
+                    current = keyboardState.shift,
+                    autoArmed = editor.initialShift,
+                ),
+                capitalizeAfterSpace = false,
+            )
+        }
+    }
     LaunchedEffect(editor.cursorSync) {
         if (editor.cursorSync > 0) {
             // Both flags describe the character the cursor was sitting after,
