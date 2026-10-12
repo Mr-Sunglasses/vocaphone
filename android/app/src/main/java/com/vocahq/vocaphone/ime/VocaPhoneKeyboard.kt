@@ -132,7 +132,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import java.util.Locale
 
@@ -2805,15 +2804,13 @@ private fun Modifier.spacebarGesture(
             down.consume()
             onPressedChange(true)
             onHaptic()
-            var lastX = down.position.x
-            var accumulated = 0f
-            var dragged = false
-            var longPressed = false
+            val tracker = SpacebarGesture(step, slop, down.position.x, down.position.y)
             val hold = launch {
                 delay(longPressMs)
-                longPressed = true
-                onPressedChange(false)
-                onLongPress()
+                if (tracker.holdElapsed()) {
+                    onPressedChange(false)
+                    onLongPress()
+                }
             }
             try {
                 while (true) {
@@ -2823,26 +2820,19 @@ private fun Modifier.spacebarGesture(
                         change.consume()
                         break
                     }
-                    if (!longPressed) {
-                        if ((change.position - down.position).getDistance() > slop) hold.cancel()
-                        accumulated += change.position.x - lastX
-                        if (abs(accumulated) >= step) {
-                            hold.cancel()
-                            val positions = (accumulated / step).toInt()
-                            onCursorMove(positions)
-                            onHaptic()
-                            accumulated -= positions * step
-                            dragged = true
-                        }
+                    val positions = tracker.move(change.position.x, change.position.y)
+                    if (!tracker.holdAllowed) hold.cancel()
+                    if (positions != 0) {
+                        onCursorMove(positions)
+                        onHaptic()
                     }
-                    lastX = change.position.x
                     change.consume()
                 }
             } finally {
                 hold.cancel()
                 onPressedChange(false)
             }
-            if (!dragged && !longPressed) onTap()
+            if (tracker.release()) onTap()
         }
     }
 }
