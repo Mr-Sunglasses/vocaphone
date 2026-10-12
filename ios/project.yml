@@ -142,6 +142,9 @@ targets:
         # to the system emoji keyboard and reads only `suggestions.tsv`.
         excludes:
           - emoji/catalog.tsv
+          # The Chinese tables are the app's transcript funnel, never the
+          # keyboard's: a megabyte the extension would carry and never read.
+          - chinese/**
     resources:
       - VocaPhoneKeyboard/PrivacyInfo.xcprivacy
     settings:

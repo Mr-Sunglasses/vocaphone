@@ -422,6 +422,7 @@ fun VocaPhoneApp(
                 onRepairSpeech = { viewModel.setRepairSpeech(it) },
                 onNumbersAsDigits = { viewModel.setNumbersAsDigits(it) },
                 onSpokenEmoji = { viewModel.setSpokenEmoji(it) },
+                onChineseScript = { viewModel.setChineseScript(it) },
                 onDictationTone = { viewModel.setDictationTone(it) },
                 onStopAfterPause = { viewModel.setStopAfterPause(it) },
                 onPreviewDictationTone = { viewModel.toggleDictationTonePreview(it) },

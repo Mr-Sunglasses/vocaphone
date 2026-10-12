@@ -5,7 +5,9 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import androidx.room.Room
 import com.vocahq.vocaphone.audio.DictationTonePlayer
+import com.vocahq.vocaphone.core.ChineseScript
 import com.vocahq.vocaphone.core.EmojiTable
+import com.vocahq.vocaphone.core.TraditionalChinese
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.DiagnosticLog
 import com.vocahq.vocaphone.data.ProcessExitReporter
@@ -232,6 +234,14 @@ class VocaPhoneApplication : Application() {
         EmojiTable.bind(assets)
         container.workScope.launch {
             runCatching { EmojiTable.load(assets) }
+        }
+        // The same reasoning, for the megabyte of Chinese tables, and only for
+        // someone who will use them.
+        TraditionalChinese.bind(assets)
+        container.workScope.launch {
+            if (container.settings.current().chineseScript != ChineseScript.UNCHANGED) {
+                runCatching { TraditionalChinese.warm() }
+            }
         }
         // Same process/UID as the IME (see AppContainer). Setup already opens
         // the companion app, so this runs without VocaPhone being the typing IME.

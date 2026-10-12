@@ -80,6 +80,9 @@ the active cursor. A gateway is never required for on-device mode.
   Canary between English, German, Spanish and French, and the multilingual
   Whisper models into English. Language says what you are speaking; Translate to
   says what comes back
+- Chinese in Traditional characters for Taiwan or Hong Kong, with each region's
+  vocabulary (软件 becomes 軟體 or 軟件), whichever model transcribed it. The
+  conversion uses OpenCC's tables, ships with the app, and runs on the phone
 - On iOS the containing app records, because a keyboard extension cannot use the
   microphone
 

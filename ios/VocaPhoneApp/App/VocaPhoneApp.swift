@@ -123,6 +123,11 @@ struct VocaPhoneApp: App {
                     // no equivalent: its typing strip reads the same table
                     // long before anyone dictates.
                     Task.detached(priority: .utility) { EmojiTable.warmUp() }
+                    // The same reasoning, for the megabyte of Chinese tables,
+                    // and only for someone who will use them.
+                    if KeyboardPreferences.chineseScript != .unchanged {
+                        TraditionalChinese.warm()
+                    }
                 }
                 // The heartbeat behind `containingAppIsForeground`. See
                 // `containingAppIsVerifiablyForeground`.

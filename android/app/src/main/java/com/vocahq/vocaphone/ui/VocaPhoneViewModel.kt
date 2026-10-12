@@ -15,7 +15,9 @@ import androidx.lifecycle.viewModelScope
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.audio.InputDevices
 import com.vocahq.vocaphone.audio.TonePreview
+import com.vocahq.vocaphone.core.ChineseScript
 import com.vocahq.vocaphone.core.DictationTone
+import com.vocahq.vocaphone.core.TraditionalChinese
 import com.vocahq.vocaphone.core.GatewayEndpoint
 import com.vocahq.vocaphone.core.UsageStats
 import com.vocahq.vocaphone.core.MicrophonePreference
@@ -391,6 +393,15 @@ class VocaPhoneViewModel @JvmOverloads constructor(
 
     fun setSpokenEmoji(enabled: Boolean) =
         viewModelScope.launch { container.settings.setSpokenEmoji(enabled) }
+
+    fun setChineseScript(script: ChineseScript) =
+        viewModelScope.launch {
+            container.settings.setChineseScript(script)
+            // Read the tables now rather than on the first transcript.
+            if (script != ChineseScript.UNCHANGED) {
+                withContext(Dispatchers.Default) { TraditionalChinese.warm() }
+            }
+        }
 
     fun setDictationTone(tone: DictationTone) {
         _tonePreviewListening.value = false

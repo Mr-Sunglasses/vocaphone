@@ -578,6 +578,7 @@ enum KeyboardPreferences {
     static let liveWordsKey = "liveWordsEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let translateToKey = "translateTo"
+    static let chineseScriptKey = "chineseScript"
     static let microphonePreferenceKey = "microphonePreference"
     static let recordingSoundsKey = "recordingSoundsEnabled"
     static let stopAfterPauseKey = "stopAfterPause"
@@ -1121,6 +1122,17 @@ enum KeyboardPreferences {
         }
         set {
             defaults?.set(newValue.rawValue, forKey: translateToKey)
+        }
+    }
+
+    /// Which characters Chinese dictation is written in. See ``ChineseScript``.
+    static var chineseScript: ChineseScript {
+        get {
+            defaults?.string(forKey: chineseScriptKey).flatMap(ChineseScript.init(rawValue:))
+                ?? .unchanged
+        }
+        set {
+            defaults?.set(newValue.rawValue, forKey: chineseScriptKey)
         }
     }
 

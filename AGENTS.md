@@ -73,7 +73,7 @@ not load `gateway/.env` into the shell (that is the Compose bearer token).
 | `android/` | Kotlin IME, foreground mic service, on-device engines, unit tests. Read [android/AGENTS.md](android/AGENTS.md) before changing the keyboard |
 | `ios/` | Swift app, keyboard extension, Live Activity, shared App Group state, tests |
 | `gateway/` | Pinned vocagateway checkout (not developed as a first-class tree here) |
-| `assets/keyboard/` | Shared word list, bigrams, emoji catalog (both keyboards) |
+| `assets/keyboard/` | Shared word list, bigrams, emoji catalog (both keyboards), Traditional Chinese tables (both apps' transcript funnel) |
 | `web/` | Static marketing site (vocaphone.vocahq.com) |
 | `docs/` | Architecture, privacy, device setup, releasing — not marketing |
 | `fdroid/` | F-Droid metadata |
@@ -200,6 +200,14 @@ iOS references that directory from `project.yml`; Android merges it via
 suggestion table: `python3 tools/generate-emoji-catalog.py --check` (and
 `--write` when regenerating). Brand vectors: edit constants in
 `assets/generate.py`, not the output SVGs.
+
+`assets/keyboard/chinese/s2hant.tsv` is generated from OpenCC by
+`tools/generate-chinese-script.py` (`--check`, `--write`, and `--verify`, which
+compares the ported algorithm with OpenCC). It needs the pinned OpenCC Python
+package, so it is not a CI step: run it with
+`uv run --with opencc==1.4.2 python tools/generate-chinese-script.py --verify`
+when touching the table or either port (`ChineseScript.swift`,
+`TraditionalChinese.kt`).
 
 No nested `web/AGENTS.md` — the site has no extra agent rules beyond this.
 

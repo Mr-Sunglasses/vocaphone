@@ -286,6 +286,25 @@ explicitly, so selecting Hindi transcribes Hindi.
 Speaking for longer also helps the auto-detecting models: a two-second clip
 carries much less evidence of which language it is than a full sentence.
 
+## Chinese came out in Simplified characters
+
+Every on-device model, and most gateway models, write Mandarin in Simplified
+characters whatever the speaker reads. **Chinese characters** (Settings →
+Dictation) converts the finished text to Traditional, with Taiwan or Hong Kong
+vocabulary: 软件 becomes 軟體 for Taiwan and 軟件 for Hong Kong. The row shows
+when Language is Automatic, Mandarin or Cantonese.
+
+- The conversion is OpenCC's, run on the phone from tables that ship with the
+  app. Nothing is downloaded and nothing leaves the device.
+- With Automatic, text holding any Japanese kana or Korean Hangul is left
+  alone, and a language pinned to anything but Mandarin or Cantonese is never
+  converted: Japanese uses the same characters, and 会社 is not a Chinese word
+  to rewrite.
+- It applies to every writing style, Raw included, because it changes the
+  writing system and not the words.
+- The words shown while you speak are the model's own. The conversion runs
+  once, on the finished transcript.
+
 ## Some numbers stayed as words
 
 **Write numbers as digits** (Settings → Dictation) converts what it can read as

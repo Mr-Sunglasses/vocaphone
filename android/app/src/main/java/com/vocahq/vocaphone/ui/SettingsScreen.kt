@@ -62,6 +62,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.vocahq.vocaphone.BuildConfig
 import com.vocahq.vocaphone.R
+import com.vocahq.vocaphone.core.ChineseScript
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
@@ -131,6 +132,7 @@ fun SettingsScreen(
     onRepairSpeech: (Boolean) -> Unit,
     onNumbersAsDigits: (Boolean) -> Unit,
     onSpokenEmoji: (Boolean) -> Unit,
+    onChineseScript: (ChineseScript) -> Unit,
     onDictationTone: (DictationTone) -> Unit,
     onStopAfterPause: (Boolean) -> Unit,
     onPreviewDictationTone: (DictationTone) -> Unit,
@@ -556,6 +558,22 @@ fun SettingsScreen(
                         onClick = { pickingTranslation = true }.takeIf { translationSupported },
                     )
                     SettingsDivider()
+                    // Only where Chinese can come out: a pinned English speaker
+                    // has no use for a row about Chinese characters.
+                    if (
+                        settings.effectiveLanguage in CHINESE_SCRIPT_LANGUAGES ||
+                        settings.chineseScript != ChineseScript.UNCHANGED
+                    ) {
+                        SettingsChoiceRow(
+                            title = "Chinese characters",
+                            options = ChineseScript.entries,
+                            selected = settings.chineseScript,
+                            label = { it.displayName },
+                            detail = { it.detail },
+                            onSelect = onChineseScript,
+                        )
+                        SettingsDivider()
+                    }
                     SettingsSwitchRow(
                         title = "Clean up speech",
                         supporting = "Drops “um”, “uh” and false starts.",
@@ -727,6 +745,13 @@ internal fun editableVocabulary(raw: String): List<String> {
         .map { it.trim() }
         .filter { it.isNotEmpty() && seen.add(it.lowercase()) }
 }
+
+/** The languages whose transcripts the Chinese characters row can change. */
+private val CHINESE_SCRIPT_LANGUAGES = setOf(
+    TranscriptionLanguage.AUTOMATIC,
+    TranscriptionLanguage.MANDARIN_CHINESE,
+    TranscriptionLanguage.CANTONESE,
+)
 
 /** "3 snippets", "1 word", "None yet". */
 internal fun countLabel(count: Int, noun: String): String = when (count) {

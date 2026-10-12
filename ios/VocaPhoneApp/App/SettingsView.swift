@@ -474,6 +474,10 @@ struct DictationSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var translateToRawValue = ModelTranslationSupport.off.rawValue
     @AppStorage(
+        KeyboardPreferences.chineseScriptKey,
+        store: KeyboardPreferences.defaults
+    ) private var chineseScriptRawValue = ChineseScript.unchanged.rawValue
+    @AppStorage(
         KeyboardPreferences.microphonePreferenceKey,
         store: KeyboardPreferences.defaults
     ) private var microphonePreferenceRawValue = MicrophonePreference.automatic.rawValue
@@ -637,6 +641,22 @@ struct DictationSettingsView: View {
             } else {
                 translateToRow
             }
+            // Only where Chinese can come out: a pinned English speaker has no
+            // use for a row about Chinese characters.
+            if showsChineseScript {
+                Picker(selection: $chineseScriptRawValue) {
+                    ForEach(ChineseScript.allCases) { script in
+                        Text(script.displayName).tag(script.rawValue)
+                    }
+                } label: {
+                    SettingLabel("Chinese characters", detail: selectedChineseScript.detail)
+                }
+                .onChange(of: chineseScriptRawValue) { _, rawValue in
+                    if ChineseScript(rawValue: rawValue) != .unchanged {
+                        TraditionalChinese.warm()
+                    }
+                }
+            }
         } header: {
             Text("Language")
         } footer: {
@@ -744,6 +764,15 @@ struct DictationSettingsView: View {
             TranscriptionLanguage(rawValue: transcriptionLanguageRawValue) ?? .automatic,
             modelLanguages: KeyboardPreferences.activeModelLanguages
         )
+    }
+
+    private var selectedChineseScript: ChineseScript {
+        ChineseScript(rawValue: chineseScriptRawValue) ?? .unchanged
+    }
+
+    private var showsChineseScript: Bool {
+        [.automatic, .mandarinChinese, .cantonese].contains(selectedLanguage)
+            || selectedChineseScript != .unchanged
     }
 
     /// The stored target, before resolving: `ModelTranslationSupport.summary`

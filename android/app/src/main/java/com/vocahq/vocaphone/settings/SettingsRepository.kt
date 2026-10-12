@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.vocahq.vocaphone.core.ChineseScript
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelLanguageSupport
@@ -230,6 +231,8 @@ data class VocaPhoneSettings(
      * someone is talking *about* an emoji rather than asking for one. Opt in.
      */
     val spokenEmoji: Boolean = false,
+    /** Which characters Chinese dictation is written in. See [ChineseScript]. */
+    val chineseScript: ChineseScript = ChineseScript.DEFAULT,
     val dictationTone: DictationTone = DictationTone.DEFAULT,
     val microphone: MicrophonePreference = MicrophonePreference.DEFAULT,
     val audioRetention: AudioRetention = AudioRetention.DEFAULT,
@@ -546,6 +549,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setNumbersAsDigits(enabled: Boolean) = put(Keys.NUMBERS_AS_DIGITS, enabled)
 
+    suspend fun setChineseScript(script: ChineseScript) = put(Keys.CHINESE_SCRIPT, script.storedValue)
+
     suspend fun setStopAfterPause(enabled: Boolean) = put(Keys.STOP_AFTER_PAUSE, enabled)
 
     suspend fun setSpokenEmoji(enabled: Boolean) = put(Keys.SPOKEN_EMOJI, enabled)
@@ -759,6 +764,7 @@ class SettingsRepository(private val context: Context) {
         numbersAsDigits = this[Keys.NUMBERS_AS_DIGITS] ?: false,
         stopAfterPause = this[Keys.STOP_AFTER_PAUSE] ?: false,
         spokenEmoji = this[Keys.SPOKEN_EMOJI] ?: false,
+        chineseScript = ChineseScript.fromStored(this[Keys.CHINESE_SCRIPT]),
         numberRowEnabled = this[Keys.NUMBER_ROW] ?: true,
         keyboardHeight = KeyboardHeight.fromStored(this[Keys.KEYBOARD_HEIGHT]),
         splitKeyboard = SplitKeyboard.fromStored(this[Keys.SPLIT_KEYBOARD]),
@@ -815,6 +821,7 @@ class SettingsRepository(private val context: Context) {
         val SYNC_WHISPER_DICTIONARY = booleanPreferencesKey("sync_whisper_dictionary")
         val REPAIR_SPEECH = booleanPreferencesKey("repair_speech")
         val NUMBERS_AS_DIGITS = booleanPreferencesKey("numbers_as_digits")
+        val CHINESE_SCRIPT = stringPreferencesKey("chinese_script")
         val STOP_AFTER_PAUSE = booleanPreferencesKey("stop_after_pause")
         val SPOKEN_EMOJI = booleanPreferencesKey("spoken_emoji")
         val NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")

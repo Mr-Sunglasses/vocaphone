@@ -10,26 +10,31 @@ package com.vocahq.vocaphone.core
  * 1. Sanitize. The later stages capitalize sentences and add terminators, and
  *    doing that to `[BLANK_AUDIO]` only makes it look more like something the
  *    user meant to say.
- * 2. Repair — the one stage allowed to change the words, and only when the user
+ * 2. Chinese script, when the user picked Traditional. Before every stage
+ *    that reads words, so repair, custom vocabulary and snippets all see the
+ *    characters the user writes — a custom 軟體 is never compared with the
+ *    model's 软件. Every route and every style, `RAW` included: it is a choice
+ *    of writing system, not an edit.
+ * 3. Repair — the one stage allowed to change the words, and only when the user
  *    has left Clean up speech on. It runs before styling because it is what
  *    puts the sentence boundaries *there*: styling capitalizes and terminates
  *    around boundaries, and cannot find one that is missing. Never for `RAW`,
  *    which promises the model's own output.
- * 3. Style — but only for transcripts produced on this device. A gateway has
+ * 4. Style — but only for transcripts produced on this device. A gateway has
  *    already applied the writing style the session asked for, and applying it
  *    twice is how "Hello." becomes "Hello.." on one route and not the other.
- * 4. Custom vocabulary — after styling, so the user's own capitalization of a
+ * 5. Custom vocabulary — after styling, so the user's own capitalization of a
  *    name is the last word on it; before spoken emoji and digits. Every route,
  *    because only Whisper can be prompted with the list. Never for `RAW`.
  *    One-letter slips are corrected only in English text; other languages get
  *    spacing and case.
- * 5. Spoken emoji — after styling, because the styler has to see "emoji" as an
+ * 6. Spoken emoji — after styling, because the styler has to see "emoji" as an
  *    ordinary word to capitalize and terminate around it; before digits,
  *    because the table's keys are words — "hundred emoji" is 💯, and once
  *    digit conversion has made it "100 emoji" there is no key left to find.
  *    Applies whichever route produced the transcript: unlike styling, no
  *    gateway has done it already.
- * 6. Digits — after styling, so sentence capitalization can still see the
+ * 7. Digits — after styling, so sentence capitalization can still see the
  *    first word. Matching snippets are protected so a number-word trigger
  *    still expands literally after digit conversion finishes.
  */
@@ -42,11 +47,12 @@ object DictatedTranscript {
         repairSpeech: Boolean,
         numbersAsDigits: Boolean = false,
         spokenEmoji: Boolean = false,
+        chineseScript: ChineseScript = ChineseScript.UNCHANGED,
         snippets: List<Snippet> = emptyList(),
         vocabulary: List<String> = emptyList(),
         isDictionaryWord: (String) -> Boolean = { false },
     ): String {
-        val cleaned = TranscriptSanitizer.clean(raw)
+        val cleaned = TraditionalChinese.apply(TranscriptSanitizer.clean(raw), chineseScript, language)
         val repaired = if (repairSpeech && style != WritingStyle.RAW) {
             TranscriptRepair.apply(cleaned, language)
         } else {
