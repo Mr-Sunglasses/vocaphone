@@ -1,8 +1,10 @@
 # Android typing keyboard plan
 
 Implemented on the Android IME. This document is the spec that landed, not a
-backlog. Long-press space to switch IMEs was dropped: Android's own keyboard
-switcher already covers that, and the spacebar keeps swipe-to-move-cursor.
+backlog. Long-press space opens the system keyboard picker (#402): the
+navigation-bar switcher is easy to miss and absent on some gesture-navigation
+setups. The spacebar keeps swipe-to-move-cursor; the hold only fires while the
+finger has not moved.
 
 VocaPhone's Android IME is already a full QWERTY keyboard with dictation on top
 (`VocaPhoneInputMethodService`, `KeyboardLayouts`, `VocaPhoneKeyboard`). The
@@ -153,8 +155,10 @@ the right. That is why the spacebar sits right of center.
 
 Remove `KEYBOARD_SWITCH` from every layer. Android already exposes a keyboard
 picker in the navigation bar when more than one IME is enabled
-(`method.xml` already sets `supportsSwitchingToNextInputMethod`). Do not add a
-long-press-space switcher; swipe-on-space stays cursor movement.
+(`method.xml` already sets `supportsSwitchingToNextInputMethod`). Holding the
+spacebar still opens the same picker (`showInputMethodPicker`) for people who
+never find that button; swipe-on-space stays cursor movement and cancels the
+hold.
 
 After the globe is gone, give `?123` and Enter the same weight, and comma and
 period the same weight. Recheck visual center on a device. If the emoji key

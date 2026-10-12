@@ -210,6 +210,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onRemoveClipboardHistory = ::removeClipboardHistory,
                 onClearClipboardHistory = ::clearClipboardHistory,
                 onEmojiUsed = ::recordEmojiRecent,
+                onSpaceLongPress = ::showKeyboardPicker,
             )
         }
     }
@@ -1143,6 +1144,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         if (!switchToPreviousInputMethod()) {
             voiceShortcutReturned = false
         }
+    }
+
+    /** Space bar long-press: the system list of enabled keyboards (#402). */
+    private fun showKeyboardPicker() {
+        getSystemService(InputMethodManager::class.java)?.showInputMethodPicker()
     }
 
     private fun openCompanion(page: String? = null) {
