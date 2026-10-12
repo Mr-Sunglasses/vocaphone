@@ -53,8 +53,9 @@ Select a Whisper model (Base or Small), then repeat with Parakeet 110M on the
 | 1 | Warm | Two 5 s dictations back to back | Both insert, the second without "Loading model" in the log |
 | 2 | Long | One 45–60 s dictation | Every numbered sentence, including the one spoken around 30 s (#332) |
 | 3 | Idle unload | Wait 3 minutes (the engine unloads after 2), then dictate 40 s | Full text. The log shows a fresh "Loading model" |
-| 4 | Screen off | Start, lock the phone, speak 40 s, unlock, finish | Full text. The microphone foreground service keeps the recording alive |
+| 4 | Screen off | Start from the app, lock the phone, speak 40 s, unlock, finish | Full text. The microphone foreground service keeps the recording alive. From the keyboard, locking cancels the take: the editor's connection is gone |
 | 5 | Memory | The largest model the app offers on the oldest supported phone (it hides models the phone lacks the memory for), 60 s | No crash, and no `lowmemorykiller` line for `com.vocahq.vocaphone` in logcat |
+| 6 | Screen timeout | Start from the keyboard, speak past the screen timeout without touching the phone, finish | The screen stays on while recording and transcribing, and the full text inserts (#403) |
 
 ## Reading the evidence
 

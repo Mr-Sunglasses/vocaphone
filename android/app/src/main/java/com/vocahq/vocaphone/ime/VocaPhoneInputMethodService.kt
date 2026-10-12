@@ -7,6 +7,7 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
@@ -142,6 +143,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 lastState = state
                 visibleDictationState.value = state
                 if (!state.phase.isBusy) startedImeDictation = false
+                updateKeepScreenOn()
                 if (voiceShortcutOwnedSession && state.phase != DictationPhase.IDLE) {
                     voiceShortcutLeftIdle = true
                 }
@@ -997,9 +999,28 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         if (!startedImeDictation) return
         container.diagnostics.recordAction(reason, DictationSource.IME.name)
         startedImeDictation = false
+        updateKeepScreenOn()
         // An editor connection is unsafe after this callback, so do not let a
         // late gateway response insert into whichever field receives focus next.
         container.dictation.cancel()
+    }
+
+    /**
+     * Holds the screen on while a dictation this keyboard started is still
+     * busy. When the screen times out the editor loses its input connection,
+     * and [onFinishInput] has to cancel the take because nothing can be
+     * inserted any more, so a long dictation was silently thrown away.
+     *
+     * The flag lives on the keyboard's own window, so it is dropped as soon as
+     * the keyboard hides or the dictation ends, and costs nothing otherwise.
+     */
+    private fun updateKeepScreenOn() {
+        val keepOn = startedImeDictation && lastState.phase.isBusy
+        val imeWindow = window?.window ?: return
+        val flag = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        val current = imeWindow.attributes.flags and flag != 0
+        if (current == keepOn) return
+        if (keepOn) imeWindow.addFlags(flag) else imeWindow.clearFlags(flag)
     }
 
     private fun startImeDictation() {
@@ -1010,6 +1031,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             container.dictation.clearTransient()
         }
         startedImeDictation = true
+        updateKeepScreenOn()
         if (voiceShortcutActive) {
             voiceShortcutOwnedSession = true
             voiceShortcutStartRequested = true
