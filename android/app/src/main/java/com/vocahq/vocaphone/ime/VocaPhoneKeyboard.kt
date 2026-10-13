@@ -100,6 +100,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -131,7 +132,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import java.util.Locale
 
@@ -166,6 +166,7 @@ internal fun VocaPhoneKeyboard(
     onRemoveClipboardHistory: (String) -> Unit,
     onClearClipboardHistory: () -> Unit,
     onEmojiUsed: (String) -> Unit,
+    onSpaceLongPress: () -> Unit = {},
 ) {
     // One set of state holders for the life of the composition, reset when the
     // editor changes rather than rebuilt.
@@ -550,6 +551,8 @@ internal fun VocaPhoneKeyboard(
     val onUndoSwipeStable = remember { { latestUndoSwipe() } }
     val onLongPressVariantStable = remember { { text: String -> latestLongPressVariant(text) } }
     val onCursorMoveStable = remember { { positions: Int -> latestCursorMove(positions) } }
+    val latestSpaceLongPress by rememberUpdatedState(onSpaceLongPress)
+    val onSpaceLongPressStable = remember { { latestSpaceLongPress() } }
     val onKeyHoldStable = remember {
         { key: KeyboardKey, heldMs: Long ->
             if (key.type == KeyboardKeyType.DELETE) latestDelete(heldMs)
@@ -730,6 +733,7 @@ internal fun VocaPhoneKeyboard(
                             onKey = onKeyStable,
                             onKeyHold = onKeyHoldStable,
                             onCursorMove = onCursorMoveStable,
+                            onSpaceLongPress = onSpaceLongPressStable,
                             onPreview = onKeyPreview,
                             onLongPressVariant = onLongPressVariantStable,
                         )
@@ -775,6 +779,7 @@ internal fun VocaPhoneKeyboard(
                             onKey = onKeyStable,
                             onKeyHold = onKeyHoldStable,
                             onCursorMove = onCursorMoveStable,
+                            onSpaceLongPress = onSpaceLongPressStable,
                         )
                     }
                 }
@@ -2190,6 +2195,7 @@ private fun EmojiLayer(
     onKey: (KeyboardKey) -> Unit,
     onKeyHold: (KeyboardKey, Long) -> Unit = { _, _ -> },
     onCursorMove: (Int) -> Unit,
+    onSpaceLongPress: () -> Unit = {},
     onPreview: (KeyPreview?) -> Unit = {},
     onLongPressVariant: (String) -> Unit = {},
 ) {
@@ -2223,6 +2229,7 @@ private fun EmojiLayer(
             onKey = onKey,
             onKeyHold = onKeyHold,
             onCursorMove = onCursorMove,
+            onSpaceLongPress = onSpaceLongPress,
             onLongPressVariant = onLongPressVariant,
         )
     }
@@ -2318,6 +2325,7 @@ private fun KeyboardRows(
     onKey: (KeyboardKey) -> Unit,
     onKeyHold: (KeyboardKey, Long) -> Unit = { _, _ -> },
     onCursorMove: (Int) -> Unit,
+    onSpaceLongPress: () -> Unit = {},
 ) {
     val swipeConsumed = remember { mutableStateOf(false) }
     val keyBounds = remember { mutableMapOf<String, Pair<KeyboardKey, Rect>>() }
@@ -2420,6 +2428,7 @@ private fun KeyboardRows(
                                     onCommitText = onCommitText,
                                     onPreview = onPreviewStable,
                                     onCursorMove = onCursorMove,
+                                    onSpaceLongPress = onSpaceLongPress,
                                     modifier = Modifier
                                         .weight(key.weight)
                                         .onGloballyPositioned { coords ->
@@ -2589,6 +2598,7 @@ private fun RowScope.KeyButton(
     onCommitText: (String) -> Unit,
     onPreview: (KeyPreview?) -> Unit,
     onCursorMove: (Int) -> Unit,
+    onSpaceLongPress: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val view = LocalView.current
@@ -2596,6 +2606,7 @@ private fun RowScope.KeyButton(
     val currentOnHold = rememberUpdatedState(onHold)
     val currentOnCommitText = rememberUpdatedState(onCommitText)
     val currentOnCursorMove = rememberUpdatedState(onCursorMove)
+    val currentOnSpaceLongPress = rememberUpdatedState(onSpaceLongPress)
     val currentOnPreview = rememberUpdatedState(onPreview)
     var pressed by remember(key.id) { mutableStateOf(false) }
     var accentIndex by remember(key.id) { mutableStateOf(-1) }
@@ -2660,6 +2671,10 @@ private fun RowScope.KeyButton(
             pointerKey = key.id,
             onTap = { currentOnPress.value() },
             onCursorMove = { currentOnCursorMove.value(it) },
+            onLongPress = {
+                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                currentOnSpaceLongPress.value()
+            },
             onPressedChange = { pressed = it },
             onHaptic = haptic,
         )
@@ -2715,6 +2730,12 @@ private fun RowScope.KeyButton(
                 onClick {
                     currentOnPress.value()
                     true
+                }
+                if (key.type == KeyboardKeyType.SPACE) {
+                    onLongClick(label = "Switch keyboard") {
+                        currentOnSpaceLongPress.value()
+                        true
+                    }
                 }
             }
             .then(gesture),
@@ -2773,42 +2794,59 @@ private fun Modifier.keyGesture(
     }
 }
 
+/**
+ * Tap commits a space on up; a horizontal drag moves the cursor; holding still
+ * for the long-press timeout opens the system keyboard picker instead of
+ * typing. Once the finger has moved past touch slop or the cursor has moved,
+ * the hold can no longer fire, so a slow cursor drag never opens the picker.
+ */
 private fun Modifier.spacebarGesture(
     pointerKey: String,
     onTap: () -> Unit,
     onCursorMove: (Int) -> Unit,
+    onLongPress: () -> Unit,
     onPressedChange: (Boolean) -> Unit,
     onHaptic: () -> Unit,
 ) = pointerInput(pointerKey) {
     val step = 18.dp.toPx()
-    awaitEachGesture {
-        val down = awaitFirstDown(requireUnconsumed = false)
-        down.consume()
-        onPressedChange(true)
-        onHaptic()
-        var lastX = down.position.x
-        var accumulated = 0f
-        var dragged = false
-        while (true) {
-            val event = awaitPointerEvent()
-            val change = event.changes.firstOrNull { it.id == down.id } ?: break
-            if (!change.pressed) {
-                change.consume()
-                break
+    val slop = viewConfiguration.touchSlop
+    val longPressMs = viewConfiguration.longPressTimeoutMillis
+    coroutineScope {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            down.consume()
+            onPressedChange(true)
+            onHaptic()
+            val tracker = SpacebarGesture(step, slop, down.position.x, down.position.y)
+            val hold = launch {
+                delay(longPressMs)
+                if (tracker.holdElapsed()) {
+                    onPressedChange(false)
+                    onLongPress()
+                }
             }
-            accumulated += change.position.x - lastX
-            lastX = change.position.x
-            if (abs(accumulated) >= step) {
-                val positions = (accumulated / step).toInt()
-                onCursorMove(positions)
-                onHaptic()
-                accumulated -= positions * step
-                dragged = true
+            try {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) {
+                        change.consume()
+                        break
+                    }
+                    val positions = tracker.move(change.position.x, change.position.y)
+                    if (!tracker.holdAllowed) hold.cancel()
+                    if (positions != 0) {
+                        onCursorMove(positions)
+                        onHaptic()
+                    }
+                    change.consume()
+                }
+            } finally {
+                hold.cancel()
+                onPressedChange(false)
             }
-            change.consume()
+            if (tracker.release()) onTap()
         }
-        onPressedChange(false)
-        if (!dragged) onTap()
     }
 }
 
@@ -3146,7 +3184,8 @@ private fun keyDescription(
         ShiftState.LOCKED -> "Caps lock on"
     }
     KeyboardKeyType.DELETE -> "Delete"
-    KeyboardKeyType.SPACE -> "Space. Swipe left or right to move the cursor."
+    KeyboardKeyType.SPACE ->
+        "Space. Swipe left or right to move the cursor. Touch and hold to switch keyboards."
     KeyboardKeyType.RETURN -> when (returnKey) {
         ReturnKeyKind.ENTER -> "Enter"
         ReturnKeyKind.GO -> "Go"
