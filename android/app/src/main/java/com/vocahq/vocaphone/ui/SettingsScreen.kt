@@ -151,6 +151,7 @@ fun SettingsScreen(
     onCorrections: (Boolean) -> Unit,
     onNumberKeyHints: (Boolean) -> Unit,
     onLongPressSymbols: (Boolean) -> Unit,
+    onAutoCapitalize: (Boolean) -> Unit,
     onPersonalDictionary: (String) -> Unit,
     onAddSnippet: (trigger: String, expansion: String) -> Unit,
     onUpdateSnippet: (id: String, trigger: String, expansion: String) -> Unit,
@@ -458,6 +459,13 @@ fun SettingsScreen(
                         supporting = "Nearby words in the toolbar.",
                         checked = settings.correctionsEnabled,
                         onCheckedChange = onCorrections,
+                    )
+                    SettingsDivider()
+                    SettingsSwitchRow(
+                        title = "Capitalize sentences",
+                        supporting = "Shift turns on at the start of a sentence.",
+                        checked = settings.autoCapitalizeEnabled,
+                        onCheckedChange = onAutoCapitalize,
                     )
                     SettingsDivider()
                     SettingsSwitchRow(

@@ -111,6 +111,18 @@ class KeyboardEditorConfigTest {
     }
 
     @Test
+    fun `auto-capitalize off never arms shift from the editor`() {
+        assertEquals(
+            ShiftState.OFF,
+            KeyboardEditorConfig.shiftFromCapsMode(InputType.TYPE_TEXT_FLAG_CAP_SENTENCES, autoCapitalize = false),
+        )
+        assertEquals(
+            ShiftState.OFF,
+            KeyboardEditorConfig.shiftFromCapsMode(InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS, autoCapitalize = false),
+        )
+    }
+
+    @Test
     fun `restarting the same field keeps the session`() {
         assertTrue(
             EditorRestart.keepsSession(

@@ -227,16 +227,20 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         lastSelStart = attribute?.initialSelStart ?: -1
         lastSelEnd = attribute?.initialSelEnd ?: -1
         composingRegionActive = false
-        val cursorCapsMode = if (voiceShortcutActive) {
+        val autoCapitalize = visibleSettings.value.autoCapitalizeEnabled
+        // Off, the answer is ignored, so skip the Binder call.
+        val cursorCapsMode = if (voiceShortcutActive || !autoCapitalize) {
             0
         } else {
             runCatching {
                 currentInputConnection?.getCursorCapsMode(currentInputType) ?: 0
             }.getOrDefault(0)
         }
-        val started = KeyboardEditorConfig.from(attribute, editorSession).let { config ->
+        val started = KeyboardEditorConfig.from(attribute, editorSession, autoCapitalize).let { config ->
             if (config.initialLayer == KeyboardLayer.LETTERS) {
-                config.copy(initialShift = KeyboardEditorConfig.shiftFromCapsMode(cursorCapsMode))
+                config.copy(
+                    initialShift = KeyboardEditorConfig.shiftFromCapsMode(cursorCapsMode, autoCapitalize),
+                )
             } else {
                 config
             }
@@ -810,6 +814,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
      */
     private fun syncShiftFromCursor() {
         if (editorConfig.initialLayer != KeyboardLayer.LETTERS) return
+        // With "Capitalize sentences" off nothing here may arm shift, and
+        // leaving the user's own shift alone needs no editor read at all.
+        if (!visibleSettings.value.autoCapitalizeEnabled) return
         val capsMode = runCatching {
             currentInputConnection?.getCursorCapsMode(currentInputType) ?: 0
         }.getOrDefault(0)
