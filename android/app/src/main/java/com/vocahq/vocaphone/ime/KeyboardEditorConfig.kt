@@ -37,13 +37,23 @@ internal data class KeyboardEditorConfig(
             sensitive = false,
         )
 
-        fun shiftFromCapsMode(capsMode: Int): ShiftState = when {
+        /**
+         * [autoCapitalize] is the "Capitalize sentences" setting. Off, the
+         * keyboard never arms shift on the editor's behalf, not even for a
+         * field that asks for capitals; the user's shift key still works.
+         */
+        fun shiftFromCapsMode(capsMode: Int, autoCapitalize: Boolean = true): ShiftState = when {
+            !autoCapitalize -> ShiftState.OFF
             capsMode and InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS != 0 -> ShiftState.LOCKED
             capsMode != 0 -> ShiftState.ONCE
             else -> ShiftState.OFF
         }
 
-        fun from(info: EditorInfo?, sessionId: Int): KeyboardEditorConfig {
+        fun from(
+            info: EditorInfo?,
+            sessionId: Int,
+            autoCapitalize: Boolean = true,
+        ): KeyboardEditorConfig {
             val inputType = info?.inputType ?: InputType.TYPE_NULL
             val inputClass = inputType and InputType.TYPE_MASK_CLASS
             val initialLayer = when (inputClass) {
@@ -58,7 +68,7 @@ internal data class KeyboardEditorConfig(
             // inputType is almost always set, and treating that as "shift on"
             // capitalizes every letter after a dictation or mid-sentence tap.
             val initialShift = if (initialLayer == KeyboardLayer.LETTERS) {
-                shiftFromCapsMode(info?.initialCapsMode ?: 0)
+                shiftFromCapsMode(info?.initialCapsMode ?: 0, autoCapitalize)
             } else {
                 ShiftState.OFF
             }

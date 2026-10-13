@@ -70,6 +70,51 @@ class KeyboardReducerTest {
     }
 
     @Test
+    fun `auto-capitalize off leaves shift alone after a sentence, return, and double space`() {
+        val initial = KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF)
+        val punctuation = KeyboardReducer.press(
+            initial,
+            character("."),
+            nowMillis = 1_000,
+            autoCapitalize = false,
+        )
+        val space = KeyboardReducer.press(punctuation.state, spaceKey(), nowMillis = 1_100, autoCapitalize = false)
+        val period = KeyboardReducer.press(space.state, spaceKey(), nowMillis = 1_200, autoCapitalize = false)
+        val enter = KeyboardReducer.press(
+            initial,
+            KeyboardKey("return", "Enter", type = KeyboardKeyType.RETURN),
+            nowMillis = 1_300,
+            autoCapitalize = false,
+        )
+
+        assertEquals(ShiftState.OFF, space.state.shift)
+        assertEquals(KeyboardCommand.DoubleSpacePeriod, period.command)
+        assertEquals(ShiftState.OFF, period.state.shift)
+        assertEquals(KeyboardCommand.PerformEditorAction, enter.command)
+        assertEquals(ShiftState.OFF, enter.state.shift)
+    }
+
+    @Test
+    fun `auto-capitalize off keeps manual shift and caps lock`() {
+        val shifted = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.OFF),
+            shiftKey(),
+            nowMillis = 1_000,
+            autoCapitalize = false,
+        )
+        val letter = KeyboardReducer.press(shifted.state, character("v"), nowMillis = 1_100, autoCapitalize = false)
+        val locked = KeyboardReducer.press(
+            KeyboardState(KeyboardLayer.LETTERS, ShiftState.LOCKED),
+            KeyboardKey("return", "Enter", type = KeyboardKeyType.RETURN),
+            nowMillis = 1_200,
+            autoCapitalize = false,
+        )
+
+        assertEquals(KeyboardCommand.CommitText("V"), letter.command)
+        assertEquals(ShiftState.LOCKED, locked.state.shift)
+    }
+
+    @Test
     fun `layer switches change state without writing text`() {
         val result = KeyboardReducer.press(
             KeyboardState(KeyboardLayer.LETTERS, ShiftState.ONCE),

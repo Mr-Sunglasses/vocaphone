@@ -298,4 +298,40 @@ class KeyboardChromeTest {
             ),
         )
     }
+
+    @Test
+    fun `turning auto-capitalize off drops the capital it armed`() {
+        assertEquals(
+            ShiftState.OFF,
+            KeyboardChrome.shiftWhenAutoCapitalizeOff(
+                current = ShiftState.ONCE,
+                autoArmed = ShiftState.ONCE,
+            ),
+        )
+        assertEquals(
+            ShiftState.OFF,
+            KeyboardChrome.shiftWhenAutoCapitalizeOff(
+                current = ShiftState.LOCKED,
+                autoArmed = ShiftState.LOCKED,
+            ),
+        )
+    }
+
+    @Test
+    fun `turning auto-capitalize off keeps a shift the user pressed`() {
+        assertEquals(
+            ShiftState.ONCE,
+            KeyboardChrome.shiftWhenAutoCapitalizeOff(
+                current = ShiftState.ONCE,
+                autoArmed = ShiftState.OFF,
+            ),
+        )
+        assertEquals(
+            ShiftState.LOCKED,
+            KeyboardChrome.shiftWhenAutoCapitalizeOff(
+                current = ShiftState.LOCKED,
+                autoArmed = ShiftState.ONCE,
+            ),
+        )
+    }
 }
