@@ -551,6 +551,24 @@ struct DictationPresentationTests {
         #expect(DictationNotice.forEndedSession(Self.ended(.completed)) == nil)
     }
 
+    /// Discarding a failed dictation cancels it with the failure's error still
+    /// attached. The recording worked; blaming the microphone would be wrong.
+    @Test func discardingAFailureDoesNotBlameTheMicrophone() {
+        let gateway = SessionFailure(code: "gateway_unreachable", message: "x", recoverable: true)
+        #expect(DictationNotice.forEndedSession(Self.ended(.canceled, error: gateway)) == nil)
+    }
+
+    /// A capped recording keeps its reason on the Lock Screen while it is
+    /// processed; any other recording shows the step it is on.
+    @Test func theLiveActivityKeepsTheLimitReasonThroughProcessing() {
+        var record = SessionRecord(state: .uploading)
+        #expect(DictationBarModel.processingActivityStatus("Sending to your gateway", for: record)
+            == "Sending to your gateway")
+        record.stoppedAtRecordingLimit = true
+        #expect(DictationBarModel.processingActivityStatus("Sending to your gateway", for: record)
+            == DictationBarModel.recordingLimitTitle)
+    }
+
     @Test func expiryIsToldApartByWhatWasLost() {
         #expect(DictationNotice.forEndedSession(Self.ended(.expired)) == .handoffTimedOut)
         #expect(DictationNotice.forEndedSession(Self.ended(.expired, audio: "a.wav"))

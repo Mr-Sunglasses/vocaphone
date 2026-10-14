@@ -269,9 +269,12 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
             .uploading, .uploadFailedRecoverable, .transcriptionFailedPermanent, .canceled,
             .expired,
         ],
+        // The gateway can judge the audio at upload, before transcribing:
+        // silence, or a language its model cannot do. Neither is helped by a
+        // retry, so the upload ends there as permanent.
         .uploading: [
             .transcribing, .readyToInsert, .serverUnavailable, .uploadFailedRecoverable,
-            .canceled, .expired,
+            .transcriptionFailedPermanent, .canceled, .expired,
         ],
         .transcribing: [
             .readyToInsert, .transcriptionFailedRecoverable,

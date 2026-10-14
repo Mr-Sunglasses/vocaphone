@@ -236,14 +236,18 @@ enum DictationNotice: Equatable {
     static let freshness: TimeInterval = 10 * 60
 
     /// The notice an ended session deserves, or `nil` when it ended the way
-    /// somebody asked it to. A plain Cancel has no error and says nothing.
+    /// somebody asked it to. A plain Cancel has no error and says nothing, and
+    /// nor does discarding a failure: that cancel keeps the failure's error,
+    /// so only the microphone's own code means the recording never began.
     static func forEndedSession(_ record: SessionRecord, now: Date = Date()) -> DictationNotice? {
         guard record.sourceDocumentID != SessionOrigin.microphoneTest,
               now.timeIntervalSince(record.updatedAt) <= freshness
         else { return nil }
         switch record.state {
         case .canceled:
-            return record.error == nil ? nil : .recordingDidNotStart
+            return record.error?.code == DictationFailure.recordingStartFailedCode
+                ? .recordingDidNotStart
+                : nil
         case .expired:
             if let transcript = record.transcript,
                !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -546,6 +550,14 @@ extension DictationBarModel {
     /// disagree.
     static var recordingLimitTitle: String {
         "Stopped at the \(RecordingClock.limitPhrase) limit"
+    }
+
+    /// The Live Activity's line while the app processes a recording. One the
+    /// cap stopped keeps saying so for the whole wait, as the bar does: the
+    /// steps after finishing used to replace it within a second, so the Lock
+    /// Screen never said why the last sentence was missing.
+    static func processingActivityStatus(_ status: String, for record: SessionRecord) -> String {
+        record.stoppedAtRecordingLimit == true ? recordingLimitTitle : status
     }
 
     private static func processingTitle(_ context: DictationContext) -> String {

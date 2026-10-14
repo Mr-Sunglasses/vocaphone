@@ -1213,7 +1213,7 @@ final class RecordingCoordinator {
             {
                 try? failedRecord.transition(to: .canceled)
                 failedRecord.error = SessionFailure(
-                    code: "recording_start_failed",
+                    code: DictationFailure.recordingStartFailedCode,
                     message: "The microphone could not start. Try dictating again.",
                     recoverable: false
                 )
@@ -1363,7 +1363,10 @@ final class RecordingCoordinator {
             DiagnosticLog.record(.uploadCompleted)
             DiagnosticLog.record(.transcriptionStarted)
             message = "Transcribing on your gateway…"
-            liveActivity.update(status: "Transcribing on your gateway", canFinish: false)
+            liveActivity.update(
+                status: DictationBarModel.processingActivityStatus("Transcribing on your gateway", for: record),
+                canFinish: false
+            )
         } catch is CancellationError {
             // Cancelled while the body was in flight; the pipeline stops too.
         } catch {
@@ -1493,7 +1496,10 @@ final class RecordingCoordinator {
             try commit(&record)
             activeRecord = record
             message = "Finishing the recording…"
-            liveActivity.update(status: "Finishing recording", canFinish: false)
+            liveActivity.update(
+                status: DictationBarModel.processingActivityStatus("Finishing recording", for: record),
+                canFinish: false
+            )
 
             if let transcript = await streamingBridge.finish(
                 droppedChunks: recorder.lastDroppedChunkCount
@@ -1539,7 +1545,10 @@ final class RecordingCoordinator {
             }
 
             message = "Uploading to your gateway…"
-            liveActivity.update(status: "Sending to your gateway", canFinish: false)
+            liveActivity.update(
+                status: DictationBarModel.processingActivityStatus("Sending to your gateway", for: record),
+                canFinish: false
+            )
 
             // A reachable server can still have no usable model. Check before
             // sending audio or entering the long-running transcription request.
@@ -1664,7 +1673,10 @@ final class RecordingCoordinator {
             try commit(&record)
             activeRecord = record
             message = "Transcribing on this iPhone…"
-            liveActivity.update(status: "Transcribing on this iPhone", canFinish: false)
+            liveActivity.update(
+                status: DictationBarModel.processingActivityStatus("Transcribing on this iPhone", for: record),
+                canFinish: false
+            )
             try record.transition(to: .transcribing)
             try commit(&record)
             activeRecord = record
@@ -2246,7 +2258,10 @@ final class RecordingCoordinator {
 
         switch shared.state {
         case .finalizing:
-            liveActivity.update(status: "Finishing recording", canFinish: false)
+            liveActivity.update(
+                status: DictationBarModel.processingActivityStatus("Finishing recording", for: shared),
+                canFinish: false
+            )
             startPipeline(shared)
         case .uploading where !recorder.isRecording && pipelineSessionID == nil:
             startPipeline(shared)

@@ -23,6 +23,8 @@ enum DictationFailure: Equatable, Sendable {
 
     static let noSpeechCode = "no_speech"
     static let voiceModelMissingCode = "local_model_unavailable"
+    /// The app could not start the microphone and cancelled the session.
+    static let recordingStartFailedCode = "recording_start_failed"
 
     init(code: String?) {
         switch code {

@@ -30,6 +30,22 @@ struct SessionRecordTests {
         #expect(!record.canRetry)
     }
 
+    /// The gateway can reject audio as silent, or its language as
+    /// unsupported, while it is still being uploaded. That failure has to be
+    /// savable from `uploading`, or the keyboard waits on a recording that is
+    /// already gone until the session expires.
+    @Test func aGatewayVerdictAtUploadFailsPermanently() throws {
+        var record = SessionRecord()
+        try record.transition(to: .launchingApp)
+        try record.transition(to: .recording)
+        try record.transition(to: .finalizing)
+        try record.transition(to: .uploading)
+        try record.transition(to: .transcriptionFailedPermanent)
+
+        #expect(record.state.isTerminal)
+        #expect(!record.canRetry)
+    }
+
     @Test func sharedStoreRoundTripsAtomically() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
