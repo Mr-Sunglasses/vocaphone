@@ -528,7 +528,8 @@ struct SetupView: View {
         // two large motions on top of each other. While the model is still
         // coming there is no keyboard, so it costs nothing to be ready.
         case .practice: true
-        case .keyboardSwitch: keyboardVerification == .fullAccessOff
+        case .keyboardSwitch:
+            keyboardVerification == .fullAccessOff || keyboardVerification == .stalled
         default: false
         }
     }
@@ -573,7 +574,10 @@ struct SetupView: View {
             Group {
                 if expands {
                     practiceStage
-                } else if page == .keyboardSwitch, keyboardVerification != .fullAccessOff {
+                } else if page == .keyboardSwitch,
+                          keyboardVerification != .fullAccessOff,
+                          keyboardVerification != .stalled
+                {
                     // Not a ScrollView: destroying one on the way to Try
                     // dictating dropped the keyboard inset and the bottom jumped.
                     // The repair page never makes that trip, and it has enough
@@ -1235,6 +1239,13 @@ struct SetupView: View {
 
     private var keyboardSwitchPage: some View {
         VStack(alignment: .leading, spacing: VocaMetrics.grouping) {
+            // First, in the band the keyboard cannot cover, and only once the
+            // page has waited long enough for it to be news. The page scrolls
+            // from here on, with the keyboard's inset respected.
+            if let help = OnboardingPresentation.keyboardTroubleshooting(for: keyboardVerification) {
+                keyboardTroubleshootingCard(help)
+                    .transition(.opacity)
+            }
             // Above the video, not in the docked slot at the bottom: this page
             // deliberately keeps the keyboard up to show the globe, and the
             // dock is behind it. The top band is the only part of the page the
@@ -1260,6 +1271,55 @@ struct SetupView: View {
                 keyboardProbeFocused = true
             }
         }
+    }
+
+    private func keyboardTroubleshootingCard(
+        _ help: OnboardingPresentation.KeyboardTroubleshooting
+    ) -> some View {
+        VocaCard {
+            VStack(alignment: .leading, spacing: VocaMetrics.related + 2) {
+                Text(help.title)
+                    .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
+                ForEach(Array(help.steps.enumerated()), id: \.offset) { index, step in
+                    HStack(alignment: .firstTextBaseline, spacing: VocaMetrics.related) {
+                        Text("\(index + 1).")
+                            .font(.subheadline.monospacedDigit().weight(.semibold))
+                            .foregroundStyle(Color.vocaSecondaryText)
+                        Text(step)
+                            .font(.subheadline)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+                HStack(spacing: VocaMetrics.related) {
+                    Button(help.openSettingsTitle, action: openSystemSettings)
+                        .buttonStyle(.borderedProminent)
+                        .tint(Color.brand)
+                    Button(help.skipTitle, action: skipKeyboardVerification)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(minHeight: VocaMetrics.minimumTarget)
+                        .accessibilityHint("Finishes setup now. Home lists what is left.")
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Skip on a stalled Enable keyboard. Setup finishes when it can — the
+    /// keyboard is in the list, the microphone is allowed — and Home's
+    /// checklist carries whatever is still missing. Practice is skipped with
+    /// it: there is nothing to practise with until the keyboard runs.
+    private func skipKeyboardVerification() {
+        keyboardProbeFocused = false
+        practiceFocused = false
+        if OnboardingPresentation.canFinishSetup(status: status) {
+            leaveFirstRun()
+        } else {
+            resignOnScreenKeyboard()
+            finishSetup()
+        }
+        UIAccessibility.post(notification: .screenChanged, argument: nil)
     }
 
     /// Sits to the right of the vocaphone row so the name stays readable.
