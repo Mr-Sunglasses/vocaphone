@@ -8,6 +8,7 @@ import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +28,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
@@ -48,6 +51,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.selected
@@ -87,6 +91,12 @@ fun HistoryScreen(
     onToggleSelect: (String) -> Unit,
     onEnterSelect: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The record a Retry is running for, if any. Retry gave no sign it had
+     * done anything, so people tapped it again, and every tap queued another
+     * pass over the same recording.
+     */
+    retryingSessionId: String? = null,
 ) {
     var query by remember { mutableStateOf("") }
     var opened by remember { mutableStateOf<String?>(null) }
@@ -162,6 +172,7 @@ fun HistoryScreen(
                             time = timeFormat.format(Date(record.createdAt)),
                             selected = record.sessionId in selectedIds,
                             selecting = selecting,
+                            retrying = record.sessionId == retryingSessionId,
                             onRetry = { onRetry(record.sessionId) },
                             onOpen = { opened = record.sessionId },
                             onToggleSelect = { onToggleSelect(record.sessionId) },
@@ -176,6 +187,7 @@ fun HistoryScreen(
     records.firstOrNull { it.sessionId == opened }?.let { record ->
         HistoryDetailSheet(
             record = record,
+            retrying = record.sessionId == retryingSessionId,
             onRetry = {
                 onRetry(record.sessionId)
                 opened = null
@@ -251,6 +263,7 @@ private fun HistoryRow(
     time: String,
     selected: Boolean,
     selecting: Boolean,
+    retrying: Boolean,
     onRetry: () -> Unit,
     onOpen: () -> Unit,
     onToggleSelect: () -> Unit,
@@ -305,7 +318,16 @@ private fun HistoryRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        if (canRetry) {
+        if (canRetry && retrying) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .semantics { contentDescription = "Retrying" },
+                contentAlignment = Alignment.Center,
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            }
+        } else if (canRetry) {
             FilledTonalIconButton(onClick = onRetry) {
                 Icon(painter = painterResource(R.drawable.ic_retry), contentDescription = "Retry")
             }
@@ -317,6 +339,7 @@ private fun HistoryRow(
 @Composable
 private fun HistoryDetailSheet(
     record: DictationRecordEntity,
+    retrying: Boolean,
     onRetry: () -> Unit,
     onDelete: () -> Unit,
     onDismiss: () -> Unit,
@@ -384,9 +407,10 @@ private fun HistoryDetailSheet(
                 }
                 if (canRetry) {
                     SettingsActionRow(
-                        title = "Retry",
+                        title = if (retrying) "Retrying…" else "Retry",
                         icon = R.drawable.ic_retry,
                         onClick = onRetry,
+                        enabled = !retrying,
                     )
                     SettingsDivider(inset = true)
                 }

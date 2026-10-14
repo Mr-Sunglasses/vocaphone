@@ -269,6 +269,13 @@ class DictationController(
     /** Last speech-source settings seen; see the collector in `init`. */
     private var repairInputs: RepairInputs? = null
 
+    /** The history record the running pipeline is retrying, if it is a retry. */
+    @Volatile
+    private var retryingSessionId: String? = null
+
+    /** Retries waiting behind a running pipeline, so a second tap is not a second retry. */
+    private val queuedRetries: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     init {
         scope.launch {
             state
@@ -335,52 +342,21 @@ class DictationController(
                 noteSessionChanged()
             awaitSettingsMigration()
             val configuration = settings.current()
-            val missing = missingPermissions(configuration)
-            if (missing.isNotEmpty()) {
+            val blocked = startupBlocker(configuration, source)
+            if (blocked != null) {
                 diagnostics.recordError("setup", source.name)
-                _state.value = DictationState(
-                    phase = DictationPhase.PERMISSION_REPAIR,
-                    missingPermissions = missing,
-                )
+                _state.value = blocked
+                // No recording will start in this attempt. Model progress
+                // keeps the pipeline alive, but needs no microphone service.
                 repairSignal.complete(Unit)
+                val repair = blocked.missingPermissions.singleOrNull()
+                if (repair == MissingPermission.MODEL_DOWNLOADING || repair == MissingPermission.MODEL_PREPARING) {
+                    val models = localModels.state.value
+                    (models.pendingUse ?: models.downloading)?.let { followDownload(target = it) }
+                }
                 return@launch
             }
             val token = if (configuration.localTranscriptionEnabled) null else settings.token()
-            if (!configuration.localTranscriptionEnabled && token.isNullOrEmpty()) {
-                diagnostics.recordError("setup", source.name)
-                _state.value = DictationState(
-                    phase = DictationPhase.PERMISSION_REPAIR,
-                    missingPermissions = setOf(MissingPermission.GATEWAY_NOT_CONFIGURED),
-                )
-                repairSignal.complete(Unit)
-                return@launch
-            }
-            if (configuration.localTranscriptionEnabled) {
-                val models = localModels.state.value
-                val repair = modelRepair(
-                    configuredId = configuration.localModelId,
-                    configuredPresent = !localModelUnavailable(configuration),
-                    models = models,
-                )
-                if (repair != null) {
-                    diagnostics.recordError("setup", source.name)
-                    _state.value = DictationState(
-                        phase = DictationPhase.PERMISSION_REPAIR,
-                        missingPermissions = setOf(repair),
-                        modelDownloadProgress = models.progress.takeIf { repair == MissingPermission.MODEL_DOWNLOADING },
-                    )
-                    // No recording will start in this attempt. Model progress
-                    // keeps the pipeline alive, but needs no microphone service.
-                    repairSignal.complete(Unit)
-                    val target = models.pendingUse ?: models.downloading
-                    if (target != null &&
-                        (repair == MissingPermission.MODEL_DOWNLOADING || repair == MissingPermission.MODEL_PREPARING)
-                    ) {
-                        followDownload(target = target)
-                    }
-                    return@launch
-                }
-            }
             runDictation(source, configuration, token, UUID.randomUUID(), generation)
             }
             }
@@ -390,6 +366,76 @@ class DictationController(
             return
         }
         lastPipelineSettled(pipeline, generation)
+    }
+
+    /**
+     * What stops a dictation from starting right now, as the repair state to
+     * show, or null when nothing does. One place for [start] and
+     * [recheckRepair], so the keyboard's re-check cannot pass a dictation
+     * that `start` would then refuse.
+     */
+    private suspend fun startupBlocker(
+        configuration: VocaPhoneSettings,
+        source: DictationSource,
+    ): DictationState? {
+        val missing = missingPermissions(configuration, source)
+        if (missing.isNotEmpty()) {
+            return DictationState(phase = DictationPhase.PERMISSION_REPAIR, missingPermissions = missing)
+        }
+        if (!configuration.localTranscriptionEnabled && settings.token().isNullOrEmpty()) {
+            return DictationState(
+                phase = DictationPhase.PERMISSION_REPAIR,
+                missingPermissions = setOf(MissingPermission.GATEWAY_NOT_CONFIGURED),
+            )
+        }
+        if (!configuration.localTranscriptionEnabled) return null
+        val models = localModels.state.value
+        val repair = modelRepair(
+            configuredId = configuration.localModelId,
+            configuredPresent = !localModelUnavailable(configuration),
+            models = models,
+        ) ?: return null
+        return DictationState(
+            phase = DictationPhase.PERMISSION_REPAIR,
+            missingPermissions = setOf(repair),
+            modelDownloadProgress = models.progress.takeIf { repair == MissingPermission.MODEL_DOWNLOADING },
+        )
+    }
+
+    /**
+     * Asks again whether a showing repair still stands, without starting.
+     *
+     * Only a speech-source settings change used to clear a repair (see the
+     * collector in `init`), and granting the microphone or notifications is
+     * not one: the keyboard went on saying a permission was needed, and every
+     * tap of its mic opened the app, after the permission had been granted.
+     * True means nothing blocks a dictation now and the repair has been
+     * cleared, so the caller can start one. False leaves the repair showing,
+     * refreshed to what is missing now, so the page it sends the user to is
+     * the right one.
+     */
+    suspend fun recheckRepair(source: DictationSource): Boolean {
+        awaitSettingsMigration()
+        val blocked = startupBlocker(settings.current(), source)
+        synchronized(sessionLock) {
+            // A model download being followed keeps the pipeline alive, and
+            // that pipeline owns the repair it is showing.
+            if (_state.value.phase != DictationPhase.PERMISSION_REPAIR || pipeline?.isActive == true) {
+                return blocked == null
+            }
+            if (blocked == null) {
+                diagnostics.recordAction("repair_resolved", source.name)
+                reset()
+            } else {
+                _state.update {
+                    it.copy(
+                        missingPermissions = blocked.missingPermissions,
+                        modelDownloadProgress = blocked.modelDownloadProgress,
+                    )
+                }
+            }
+        }
+        return blocked == null
     }
 
     /**
@@ -584,15 +630,29 @@ class DictationController(
      * the focused field, while a History retry keeps it in the companion app.
      */
     fun retry(sessionId: String, source: DictationSource = DictationSource.COMPANION_APP) {
+        // Each tap on a Retry that gave no feedback used to queue another
+        // pass over the same recording, one after the other.
+        if (retryInFlight(sessionId, retryingSessionId, pipeline?.isActive == true, queuedRetries)) {
+            diagnostics.recordAction("retry_ignored", source.name)
+            return
+        }
         val inFlight = pipeline
         if (inFlight?.isActive == true) {
             // A busy pipeline used to drop this request silently, which is
             // exactly what happens when a retry follows a cancel that is
             // still unwinding. Queue it behind that job instead.
-            queueSessionStart(inFlight) { retryQueued(sessionId, source) }
+            queueRetry(inFlight, sessionId, source)
             return
         }
         retryQueued(sessionId, source)
+    }
+
+    private fun queueRetry(after: Job?, sessionId: String, source: DictationSource) {
+        queuedRetries.add(sessionId)
+        queueSessionStart(after) {
+            queuedRetries.remove(sessionId)
+            retryQueued(sessionId, source)
+        }
     }
 
     private fun retryQueued(sessionId: String, source: DictationSource) {
@@ -607,6 +667,7 @@ class DictationController(
             } else {
                 startupRepairSignal = null
                 activeSource = source
+                retryingSessionId = sessionId
                 // Nothing is recorded on this path, so the previous capture's
                 // length is not this dictation's.
                 lastRecordingMillis = null
@@ -629,12 +690,21 @@ class DictationController(
                 lingerThenIdle(id, DictationPhase.FAILED, FAILED_LINGER_MILLIS)
                 return@launch
             }
+
             // The same two guards as `start`. A recording kept across an upgrade
             // can be retried before the retired-model migration has run, and a
             // retry against a model that is not on the phone fails again every
             // time -- recoverably, so it could be retried forever.
             awaitSettingsMigration()
             val configuration = settings.current()
+            // A recording the gateway refused for its language is retried
+            // because the user has since picked another one; replaying the
+            // language it was recorded with would fail the same way forever.
+            val language = retryLanguage(
+                recorded = record.language,
+                errorCode = record.errorCode,
+                configured = configuration.effectiveLanguage.wireValue,
+            )
             if (localModelUnavailable(configuration)) {
                 _state.value = DictationState(
                     phase = DictationPhase.PERMISSION_REPAIR,
@@ -644,7 +714,13 @@ class DictationController(
             }
             _state.value = DictationState(
                 sessionId = UUID.fromString(sessionId),
-                phase = DictationPhase.UPLOADING,
+                // Nothing is sent anywhere on the phone's own model, and
+                // Uploading reads "Sending to your gateway".
+                phase = if (configuration.localTranscriptionEnabled) {
+                    DictationPhase.TRANSCRIBING
+                } else {
+                    DictationPhase.UPLOADING
+                },
                 language = configuration.effectiveLanguage,
                 style = configuration.style,
             )
@@ -654,7 +730,7 @@ class DictationController(
                     localModels.beginUse()
                     localModels.warm(
                         it,
-                        record.language,
+                        language,
                         configuration.transcriptionQuality,
                         configuration.translationTarget,
                     )
@@ -663,7 +739,7 @@ class DictationController(
                     deliverLocal(
                         sessionId = UUID.fromString(sessionId),
                         wavFile = audio,
-                        language = record.language,
+                        language = language,
                         configuration = configuration,
                         source = source,
                         generation = generation,
@@ -682,7 +758,7 @@ class DictationController(
                     client = gatewayClient(configuration.gatewayUrl, token),
                     sessionId = UUID.fromString(sessionId),
                     wavFile = audio,
-                    language = record.language,
+                    language = language,
                     style = record.style,
                     configuration = configuration,
                     source = source,
@@ -693,8 +769,14 @@ class DictationController(
             }
         }
         if (lostSlot) {
-            queueSessionStart(pipeline) { retryQueued(sessionId, source) }
+            queueRetry(pipeline, sessionId, source)
             return
+        }
+        val retryJob = pipeline
+        retryJob?.invokeOnCompletion {
+            synchronized(sessionLock) {
+                if (pipeline === retryJob) retryingSessionId = null
+            }
         }
         lastPipelineSettled(pipeline, generation)
     }
@@ -1197,8 +1279,12 @@ class DictationController(
                 null
             } catch (error: GatewayException) {
                 if (stream.incremental && !error.recoverable) {
-                    wavFile.delete()
-                    fail(sessionId, error, wavFile = null, configuration = configuration, generation = generation)
+                    // A batch fallback would be refused the same way. A token
+                    // or language the user can fix keeps its recording for
+                    // Retry; anything else has no use for it.
+                    val kept = wavFile.takeIf { error.retainsAudio }
+                    if (kept == null) wavFile.delete()
+                    fail(sessionId, error, wavFile = kept, configuration = configuration, generation = generation)
                     return
                 }
                 recordBatchFallback()
@@ -1547,6 +1633,7 @@ class DictationController(
                 insertedIntoField = false,
             )
             diagnostics.recordAction("ready_to_insert", source.name)
+            lingerSavedTranscript(sessionId, source)
             return
         }
 
@@ -1585,6 +1672,21 @@ class DictationController(
             // "Inserted" is a confirmation, not a state the user acts on: after a
             // moment the keyboard returns to its idle mic on its own.
             lingerThenIdle(sessionId, DictationPhase.INSERTED, INSERTED_LINGER_MILLIS)
+        } else {
+            lingerSavedTranscript(sessionId, source)
+        }
+    }
+
+    /**
+     * The keyboard's "Saved to History" offers Insert for a while, then gives
+     * the strip back. It used to stay until the next mic tap, holding the
+     * suggestions and the clipboard chip hostage with no way to act on it.
+     * The transcript is in History either way. Only the keyboard's: the app's
+     * scratchpad and the bubble consume the state themselves.
+     */
+    private fun lingerSavedTranscript(sessionId: UUID, source: DictationSource) {
+        if (source == DictationSource.IME) {
+            lingerThenIdle(sessionId, DictationPhase.READY_TO_INSERT, SAVED_LINGER_MILLIS)
         }
     }
 
@@ -1609,7 +1711,9 @@ class DictationController(
             style = configuration.style.wireValue,
             errorCode = error.code,
             errorMessage = error.userMessage,
-            recoverable = error.recoverable,
+            // History's "recoverable" is "offers Retry", which is what decides
+            // whether it keeps the audio.
+            recoverable = error.retainsAudio,
             audioFile = wavFile,
             retentionHours = configuration.audioRetention.hours,
             targetPackage = floatingInserter?.currentTargetPackage(),
@@ -1620,15 +1724,21 @@ class DictationController(
         // so a cancel, or the dictation started right after it, can have taken
         // the state over while the write was in flight.
         if (this@DictationController.generation.get() != generation) return@withContext
+        val retryable = error.retainsAudio && wavFile != null
         _state.value = _state.value.copy(
             phase = DictationPhase.FAILED,
             level = 0f,
-            failure = DictationFailure(error.code, error.userMessage, error.recoverable),
+            failure = DictationFailure(error.code, error.userMessage, retryable),
         )
         // Same idea as the "Inserted" confirmation: the keyboard needs the
-        // strip back for suggestions and the clipboard chip. History still
-        // has Retry if they want another pass.
-        lingerThenIdle(sessionId, DictationPhase.FAILED, FAILED_LINGER_MILLIS)
+        // strip back for suggestions and the clipboard chip. A failure with
+        // its recording kept stays longer, because the keyboard offers Retry
+        // on it; History has Retry after that too.
+        lingerThenIdle(
+            sessionId,
+            DictationPhase.FAILED,
+            if (retryable) RETRYABLE_FAILED_LINGER_MILLIS else FAILED_LINGER_MILLIS,
+        )
     }
 
     private fun lingerThenIdle(sessionId: UUID, from: DictationPhase, millis: Long) {
@@ -1755,8 +1865,14 @@ class DictationController(
         /** How long the "Inserted" confirmation stays before the keyboard goes idle. */
         const val INSERTED_LINGER_MILLIS = 2_000L
 
-        /** Long enough to read the empty-transcript line, short enough to give the strip back. */
-        const val FAILED_LINGER_MILLIS = 3_000L
+        /** Long enough to read the failure line, short enough to give the strip back. */
+        const val FAILED_LINGER_MILLIS = 5_000L
+
+        /** Long enough to reach for Retry, which the keyboard offers on these. */
+        const val RETRYABLE_FAILED_LINGER_MILLIS = 15_000L
+
+        /** How long the keyboard's "Saved to History" offers Insert before going idle. */
+        const val SAVED_LINGER_MILLIS = 12_000L
 
         /**
          * How long cancel waits for a LISTENING pipeline to close its WAV and
@@ -1818,6 +1934,22 @@ internal fun afterLinger(current: DictationState, sessionId: UUID, from: Dictati
     if (current.sessionId == sessionId && current.phase == from) DictationState() else current
 
 internal enum class DownloadOutcome { WAITING, PREPARING, LANDED, DIED }
+
+/** Whether a Retry of [sessionId] is already running or waiting to. */
+internal fun retryInFlight(
+    sessionId: String,
+    retrying: String?,
+    pipelineActive: Boolean,
+    queued: Set<String>,
+): Boolean = sessionId in queued || (pipelineActive && retrying == sessionId)
+
+/**
+ * The language a Retry asks for: the one the dictation was recorded with,
+ * except after the gateway refused that language -- then the user has been
+ * told to pick another, and the one they picked is the point of retrying.
+ */
+internal fun retryLanguage(recorded: String, errorCode: String?, configured: String): String =
+    if (errorCode == "language_unsupported") configured else recorded
 
 internal fun downloadOutcome(latest: LocalModelState, target: String): DownloadOutcome =
     when {

@@ -46,6 +46,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vocahq.vocaphone.R
+import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.ui.theme.VocaPhoneTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filter
@@ -169,12 +170,17 @@ fun VocaPhoneApp(
     LaunchedEffect(launchIntent) {
         val incoming = launchIntent ?: return@LaunchedEffect
         if (!incoming.getBooleanExtra(MainActivity.EXTRA_OPEN_SETTINGS, false)) return@LaunchedEffect
+        val page = incoming.getStringExtra(MainActivity.EXTRA_SETTINGS_PAGE)
+            ?: incoming.takeIf { it.getBooleanExtra(MainActivity.EXTRA_OPEN_MODELS, false) }
+                ?.let { "models" }
+        // A permission the keyboard needs is granted from the Dictate
+        // screen's repair list, not from anywhere in Settings.
+        if (page == DictationState.REPAIR_PAGE_DICTATE) {
+            destination = Destination.DICTATE
+            return@LaunchedEffect
+        }
         destination = Destination.SETTINGS
-        settingsPage = SettingsPage.fromExtra(
-            incoming.getStringExtra(MainActivity.EXTRA_SETTINGS_PAGE)
-                ?: incoming.takeIf { it.getBooleanExtra(MainActivity.EXTRA_OPEN_MODELS, false) }
-                    ?.let { "models" },
-        )
+        settingsPage = SettingsPage.fromExtra(page)
     }
 
     val showSetup = !settings.onboardingComplete && !showingGateway
@@ -409,6 +415,7 @@ fun VocaPhoneApp(
                     historySelecting = true
                     historySelection = setOf(id)
                 },
+                retryingSessionId = dictation.sessionId?.toString()?.takeIf { dictation.phase.isBusy },
                 modifier = content,
             )
 

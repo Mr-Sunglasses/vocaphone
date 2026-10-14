@@ -10,13 +10,31 @@ import org.junit.Test
 class MicDictationControlTest {
 
     @Test
-    fun `tap starts, finishes, or cancels by phase`() {
+    fun `tap starts or finishes by phase`() {
         assertEquals(MicDictationAction.START, MicDictationControl.tap(DictationPhase.IDLE))
         assertEquals(MicDictationAction.FINISH, MicDictationControl.tap(DictationPhase.LISTENING))
-        assertEquals(MicDictationAction.CANCEL, MicDictationControl.tap(DictationPhase.TRANSCRIBING))
-        assertEquals(MicDictationAction.CANCEL, MicDictationControl.tap(DictationPhase.FINALIZING))
+        // A failure or a saved transcript is not in the way of a new take.
+        assertEquals(MicDictationAction.START, MicDictationControl.tap(DictationPhase.FAILED))
+        assertEquals(MicDictationAction.START, MicDictationControl.tap(DictationPhase.READY_TO_INSERT))
+    }
+
+    @Test
+    fun `a tap on the processing spinner never discards the dictation`() {
+        // It used to cancel and delete the recording; discarding is the X.
+        for (phase in listOf(
+            DictationPhase.FINALIZING,
+            DictationPhase.UPLOADING,
+            DictationPhase.TRANSCRIBING,
+            DictationPhase.INSERTING,
+        )) {
+            assertEquals(phase.name, MicDictationAction.NONE, MicDictationControl.tap(phase))
+        }
+    }
+
+    @Test
+    fun `a tap on a repair checks again instead of always opening the app`() {
         assertEquals(
-            MicDictationAction.OPEN_APP,
+            MicDictationAction.RECHECK_SETUP,
             MicDictationControl.tap(DictationPhase.PERMISSION_REPAIR),
         )
     }

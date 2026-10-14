@@ -96,6 +96,17 @@ internal object VoiceShortcutIme {
     }
 
     /**
+     * How long a failure stays on the voice-shortcut chrome before handing
+     * back. It used to hand back on the same frame, so the person was returned
+     * to their keyboard with no idea the dictation had failed or why. Zero for
+     * every other return, which has nothing left to read.
+     */
+    fun handbackDelayMillis(phase: DictationPhase): Long =
+        if (phase == DictationPhase.FAILED) FAILED_HANDBACK_DELAY_MS else 0L
+
+    const val FAILED_HANDBACK_DELAY_MS = 2_500L
+
+    /**
      * How to leave the voice subtype when dictation cannot run.
      *
      * [RejectedHandback.IMMEDIATE] is for sensitive editors (passwords): leave

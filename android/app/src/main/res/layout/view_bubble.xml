@@ -37,26 +37,31 @@
         android:textSize="13sp"
         android:visibility="gone" />
 
+    <!--
+      48 dp targets, the platform minimum. The glyphs stay their old size
+      through the padding; at 36 dp with a 2 dp gap, Finish and Cancel were
+      easy to swap by accident.
+    -->
     <ImageButton
         android:id="@+id/bubble_finish"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:layout_marginStart="8dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="4dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/bubble_finish"
-        android:padding="7dp"
+        android:padding="13dp"
         android:src="@drawable/ic_check"
         android:visibility="gone"
         android:tint="@color/on_surface_dark" />
 
     <ImageButton
         android:id="@+id/bubble_cancel"
-        android:layout_width="36dp"
-        android:layout_height="36dp"
-        android:layout_marginStart="2dp"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="4dp"
         android:background="?android:attr/selectableItemBackgroundBorderless"
         android:contentDescription="@string/bubble_cancel"
-        android:padding="8dp"
+        android:padding="14dp"
         android:src="@drawable/ic_cancel"
         android:tint="@color/bubble_secondary_icon" />
 </LinearLayout>

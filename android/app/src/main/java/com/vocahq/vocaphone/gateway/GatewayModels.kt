@@ -54,15 +54,26 @@ data class GatewaySession(
 }
 
 /**
- * Every failure the user can be shown. [recoverable] decides whether the audio
- * is kept for Retry or discarded straight away.
+ * Every failure the user can be shown. [recoverable] means the same request
+ * may succeed if simply sent again. [fixableInSettings] means it will fail
+ * the same way until the user changes a setting -- the token, the language --
+ * and after that the very same recording can succeed. Either keeps the audio
+ * for Retry ([retainsAudio]); anything else is discarded straight away.
  */
 class GatewayException(
     val code: String,
     val userMessage: String,
     val recoverable: Boolean,
     cause: Throwable? = null,
+    val fixableInSettings: Boolean = false,
 ) : Exception(userMessage, cause) {
+
+    /**
+     * Whether the recording is worth keeping for Retry. A rejected token used
+     * to throw the dictation away with it: the user fixed the token in
+     * Settings and then had to say it all again.
+     */
+    val retainsAudio: Boolean get() = recoverable || fixableInSettings
 
     companion object {
         fun fromStatus(status: Int, code: String?): GatewayException {
@@ -74,14 +85,16 @@ class GatewayException(
                 resolved == "language_unsupported" -> GatewayException(
                     resolved,
                     "Your gateway's model does not support this language. " +
-                        "Choose Automatic or another language, or load a matching model.",
+                        "Choose Automatic or another language, or load a matching model, then retry.",
                     recoverable = false,
+                    fixableInSettings = true,
                 )
 
                 status == 401 || status == 403 -> GatewayException(
                     resolved,
-                    "Your gateway rejected the token. Check it in Settings.",
+                    "Your gateway rejected the token. Check it in Settings, then retry.",
                     recoverable = false,
+                    fixableInSettings = true,
                 )
 
                 status == 413 -> GatewayException(

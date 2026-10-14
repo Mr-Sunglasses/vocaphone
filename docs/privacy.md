@@ -75,6 +75,35 @@ WAV follows the existing success/retry lifecycle. Audio conversion happens
 off the microphone and UI threads. Existing gateway authentication, upload
 limits, and retention apply to both paths.
 
+### Android recordings kept for Retry
+
+The Android recording is deleted as soon as a transcript is produced, whether
+or not it is inserted. A failed dictation keeps its WAV in private app storage
+only when Retry can still help:
+
+- a gateway that could not be reached, was busy, or failed in a way that may
+  not repeat, and an on-device transcription that failed;
+- a gateway that rejected the bearer token (HTTP 401/403) or whose model does
+  not support the chosen language. Sending the same request again would fail
+  the same way, but after the token or language is changed in Settings the
+  same recording can succeed, so it is kept rather than making the user say
+  it again. A Retry of a language rejection uses the language selected now.
+
+Every other failure deletes the recording immediately: a recording larger than
+the gateway accepts (HTTP 413), one the gateway could not read, an empty
+transcript, an interrupted or silent microphone. A kept recording is deleted
+when a Retry succeeds, when its History entry is deleted, or when the audio
+retention window chosen under Settings › Privacy passes (1, 6 or 24 hours; 6 by
+default), whichever comes first.
+
+Leaving a text field, or switching keyboards, while the keyboard is dictating
+no longer discards the recording. Recording stops at that moment and the
+dictation is transcribed as usual; the transcript is saved to History without
+being inserted, because whichever field has focus by then is not the one it was
+meant for. The keyboard offers it as "Saved to History" with an Insert button
+for a few seconds; inserting it is always the user's tap. Its recording follows
+the rules above.
+
 The gateway host stores randomized audio names under its private data directory.
 On success, original and normalized audio are deleted by default. Failed and
 abandoned sessions remain for the retry window (24 hours by default), after
