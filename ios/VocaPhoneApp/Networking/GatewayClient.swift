@@ -11,6 +11,9 @@ struct GatewayHealth: Decodable, Sendable {
     let languages: [String]?
     /// True when the model picks the language itself and cannot be pinned.
     let detectsLanguageAutomatically: Bool?
+    /// The longest recording the gateway accepts. Absent from gateways that
+    /// predate it; see ``RecordingLengthLimit`` for what is assumed then.
+    let maximumDurationSeconds: Int?
 
     enum CodingKeys: String, CodingKey {
         case status
@@ -19,6 +22,7 @@ struct GatewayHealth: Decodable, Sendable {
         case streamingSupported = "streaming_supported"
         case languages
         case detectsLanguageAutomatically = "detects_language_automatically"
+        case maximumDurationSeconds = "maximum_duration_seconds"
     }
 }
 
@@ -30,6 +34,8 @@ enum GatewayStatusPreferences {
     static let streamingSupportKnownKey = "gatewayStreamingSupportKnown"
     static let streamingSupportCheckedAtKey = "gatewayStreamingSupportCheckedAt"
     static let streamingSupportBaseURLKey = "gatewayStreamingSupportBaseURL"
+    static let maximumDurationKey = "gatewayMaximumDurationSeconds"
+    static let maximumDurationBaseURLKey = "gatewayMaximumDurationBaseURL"
 
     /// Both the setup checklist and the settings screen read this state, so the
     /// writes live in one place rather than being duplicated per view.
@@ -49,6 +55,54 @@ enum GatewayStatusPreferences {
     static func storeLanguageSupport(_ health: GatewayHealth?) {
         KeyboardPreferences.modelLanguages = Set(health?.languages ?? [])
         KeyboardPreferences.modelDetectsLanguage = health?.detectsLanguageAutomatically ?? false
+    }
+
+    /// Records the longest recording the gateway at `baseURL` said it accepts,
+    /// or that it said nothing. Called after every successful health check.
+    ///
+    /// Kept per gateway address and left alone when a check fails: an
+    /// unreachable gateway has not changed its limit, and forgetting it would
+    /// cut the next recording to two minutes for no reason. A different
+    /// address reads as unreported until it has been checked.
+    static func storeMaximumDuration(_ health: GatewayHealth, for baseURL: URL) {
+        let defaults = UserDefaults.standard
+        if let seconds = health.maximumDurationSeconds, seconds > 0 {
+            defaults.set(seconds, forKey: maximumDurationKey)
+        } else {
+            defaults.removeObject(forKey: maximumDurationKey)
+        }
+        defaults.set(baseURL.absoluteString, forKey: maximumDurationBaseURLKey)
+    }
+
+    /// No gateway is configured any more.
+    static func clearMaximumDuration() {
+        UserDefaults.standard.removeObject(forKey: maximumDurationKey)
+        UserDefaults.standard.removeObject(forKey: maximumDurationBaseURLKey)
+    }
+
+    /// The limit last reported by the gateway at `baseURL`, or nil when that
+    /// gateway has not reported one.
+    static func reportedMaximumDuration(
+        for baseURL: URL?,
+        defaults: UserDefaults = .standard
+    ) -> Int? {
+        reportedMaximumDuration(
+            storedSeconds: defaults.object(forKey: maximumDurationKey) as? Int,
+            storedBaseURL: defaults.string(forKey: maximumDurationBaseURLKey),
+            currentBaseURL: baseURL
+        )
+    }
+
+    static func reportedMaximumDuration(
+        storedSeconds: Int?,
+        storedBaseURL: String?,
+        currentBaseURL: URL?
+    ) -> Int? {
+        guard let storedSeconds, storedSeconds > 0,
+              let currentBaseURL,
+              storedBaseURL == currentBaseURL.absoluteString
+        else { return nil }
+        return storedSeconds
     }
 
     static func storeStreamingSupport(_ supported: Bool?, for baseURL: URL?) {

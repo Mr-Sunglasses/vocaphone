@@ -105,7 +105,6 @@ enum AppConfiguration {
     /// rather than the part the reader has to act on.
     static let fullAccessKeyboardHint =
         "Turn on Allow Full Access in \(fullAccessSettingsPage)."
-    static let maximumRecordingSeconds: TimeInterval = 120
     /// How long the keyboard waits for an unclaimed Quick Dictation request
     /// before falling back to opening vocaphone.
     static let quickDictationLaunchFallbackSeconds: TimeInterval = 1.5

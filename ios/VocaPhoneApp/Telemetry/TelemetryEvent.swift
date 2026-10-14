@@ -137,8 +137,9 @@ enum TelemetryReason: String, CaseIterable, Sendable {
 ///
 /// Never the exact duration and never a character count: both are
 /// content-length side channels. Buckets answer the one question worth asking —
-/// whether `AppConfiguration.maximumRecordingSeconds` is cutting real
-/// dictations short — and nothing else.
+/// whether recordings run long enough for the maximum recording length to
+/// matter — and nothing else. The buckets are fixed vocabulary: the longer
+/// choices all land in `over_60s`.
 enum TelemetryDurationBucket: String, CaseIterable, Sendable {
     case under10s = "under_10s"
     case tenTo30s = "10_30s"

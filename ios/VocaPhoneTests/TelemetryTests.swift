@@ -382,8 +382,8 @@ struct TelemetryTests {
         #expect(TelemetryDurationBucket.of(10) == .tenTo30s)
         #expect(TelemetryDurationBucket.of(59.9) == .thirtyTo60s)
         #expect(TelemetryDurationBucket.of(60) == .over60s)
-        // The 120s cap in AppConfiguration is the reason this bucket exists.
-        #expect(TelemetryDurationBucket.of(AppConfiguration.maximumRecordingSeconds) == .over60s)
+        // Every maximum recording length past a minute lands in this bucket.
+        #expect(TelemetryDurationBucket.of(MaximumRecordingLength.longest.seconds) == .over60s)
     }
 
     // MARK: - Vocabulary hygiene

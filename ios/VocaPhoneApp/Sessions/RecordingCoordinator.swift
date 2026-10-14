@@ -352,6 +352,18 @@ final class RecordingCoordinator {
         LocalTranscriptionPreferences.enabled ? .onDevice : .gateway
     }
 
+    /// The cap for a recording starting now: the user's maximum recording
+    /// length, and on the gateway route no more than the gateway accepts.
+    static func maximumRecordingSeconds() -> TimeInterval {
+        let gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL")
+            .flatMap(GatewayEndpoint.validatedURL(from:))
+        return RecordingLengthLimit.effectiveSeconds(
+            choice: KeyboardPreferences.maximumRecordingLength,
+            location: selectedProcessingLocation(),
+            gatewayReportedSeconds: GatewayStatusPreferences.reportedMaximumDuration(for: gatewayURL)
+        )
+    }
+
     /// Removes one transcript from this iPhone.
     ///
     /// If it is the session currently on screen, the home card lets go of it
@@ -736,6 +748,7 @@ final class RecordingCoordinator {
             )
             GatewayStatusPreferences.storeLanguageSupport(nil)
             GatewayStatusPreferences.storeStreamingSupport(nil, for: nil)
+            GatewayStatusPreferences.clearMaximumDuration()
             return
         }
         let client = GatewayClient(baseURL: baseURL, token: token)
@@ -755,6 +768,7 @@ final class RecordingCoordinator {
                 health.streamingSupported,
                 for: baseURL
             )
+            GatewayStatusPreferences.storeMaximumDuration(health, for: baseURL)
         } catch let GatewayError.api(status, _) where status == 401 {
             GatewayStatusPreferences.store(
                 message: "Gateway reachable, but the pairing token was rejected.",
@@ -1110,7 +1124,8 @@ final class RecordingCoordinator {
             let audioURL = try recorder.start(
                 sessionID: record.sessionID,
                 directory: directory,
-                includeLocalModelChunks: localEngine != nil
+                includeLocalModelChunks: localEngine != nil,
+                maximumDuration: Self.maximumRecordingSeconds()
             )
             if shouldUseSherpaIncremental, let chunks = recorder.localPcmChunks {
                 // Started, not awaited. Capture is already running and the
@@ -1533,7 +1548,9 @@ final class RecordingCoordinator {
 
             // A reachable server can still have no usable model. Check before
             // sending audio or entering the long-running transcription request.
-            guard try await client.health().engineReady else {
+            let health = try await client.health()
+            GatewayStatusPreferences.storeMaximumDuration(health, for: client.baseURL)
+            guard health.engineReady else {
                 await fail(
                     &record,
                     state: .serverUnavailable,

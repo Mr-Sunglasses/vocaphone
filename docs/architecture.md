@@ -219,6 +219,20 @@ was trimmed.
 9. The keyboard verifies its session context, persists `inserting`, calls
    `insertText`, then persists `inserted` and `completed`.
 
+A recording finishes by itself at its length cap, exactly as if Finish had been
+tapped. The cap is read when capture starts. On the on-device route it is the
+user's **Maximum recording length** (Settings → Dictation: 1, 2, 5 or 10
+minutes; 5 by default). On the gateway route it is the smaller of that and the
+gateway's own limit, which `GET /health` reports as `maximum_duration_seconds`.
+The app keeps the last value each gateway address reported, refreshed on every
+health check and kept through a failed one. A gateway that has not reported a
+limit is an older one and is treated as accepting 120 seconds, so it never
+receives a recording it would refuse for its length. When the gateway's limit
+is the shorter one, Settings says so under the choice. The keyboard's expiry
+for a live recording covers the longest choice plus two minutes, because the
+keyboard does not know which cap the app applied. No surface shows the elapsed
+time or counts down to the cap.
+
 "Start dictation" from Shortcuts, Siri or the Action button writes the same
 `launchingApp` record from inside the app, with `sourceDocumentID` set to
 `shortcut` and `startedInContainingApp` set, so there is no swipe-back screen.

@@ -186,6 +186,13 @@ enum SettingsHelp {
                         + "seconds of quiet following at least a second of speech. "
                         + "Leave it off if you pause to think while you talk.",
                 ]),
+                .init(heading: "Maximum recording length", paragraphs: [
+                    "A recording that reaches this length finishes by itself and is "
+                        + "transcribed as usual.",
+                    "Your gateway has its own limit. When it is shorter, recordings "
+                        + "sent to it stop there instead. A gateway that does not report "
+                        + "its limit is treated as accepting 2 minutes.",
+                ]),
             ]
         )
     }

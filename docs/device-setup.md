@@ -89,7 +89,11 @@ current checkout.
    that a gateway additionally names the loaded speech-to-text model.
 5. Under **Settings → Dictation**, choose Automatic microphone routing or iPhone
    Microphone, connect any AirPods or Bluetooth headset used in normal
-   operation, and confirm **Input in use**.
+   operation, and confirm **Input in use**. **Maximum recording length** sets
+   when a recording finishes by itself: 1, 2, 5 (default) or 10 minutes. On the
+   gateway route the gateway's own limit applies when it is shorter; a gateway
+   that does not report one in `/health` is treated as accepting 2 minutes, and
+   Settings shows a note under the choice.
 6. Under **Settings → Keyboard**, try each height — Compact, Standard, Tall — in
    a real host app and leave it on the one you want to accept.
 7. Open iOS Settings from vocaphone.

@@ -559,6 +559,7 @@ enum KeyboardPreferences {
     static let enabledTypingLayoutsKey = "enabledTypingLayouts"
     static let quickDictationKey = "quickDictationEnabled"
     static let quickDictationDurationKey = "quickDictationDuration"
+    static let maximumRecordingLengthKey = "maximumRecordingLength"
     /// A stop from the Live Activity is a pause, not a preference change: the
     /// user is silencing this window, not saying they never want Quick
     /// Dictation again. Reopening vocaphone clears it. Kept in the App Group so
@@ -656,6 +657,18 @@ enum KeyboardPreferences {
         }
         set {
             defaults?.set(newValue.rawValue, forKey: quickDictationDurationKey)
+        }
+    }
+
+    /// How long one dictation may record. Read by the app as each recording
+    /// starts; the keyboard never needs it.
+    static var maximumRecordingLength: MaximumRecordingLength {
+        get {
+            defaults?.string(forKey: maximumRecordingLengthKey)
+                .flatMap(MaximumRecordingLength.init(rawValue:)) ?? .default
+        }
+        set {
+            defaults?.set(newValue.rawValue, forKey: maximumRecordingLengthKey)
         }
     }
 

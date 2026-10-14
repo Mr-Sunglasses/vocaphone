@@ -636,7 +636,7 @@ struct SessionRecordTests {
 
         #expect(!SessionExpiryPolicy.isStale(
             record,
-            now: start.addingTimeInterval(AppConfiguration.maximumRecordingSeconds + 60)
+            now: start.addingTimeInterval(MaximumRecordingLength.longest.seconds + 60)
         ))
         #expect(SessionExpiryPolicy.isStale(
             record,
