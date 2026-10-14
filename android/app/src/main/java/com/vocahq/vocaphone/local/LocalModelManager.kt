@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -80,6 +81,14 @@ data class LocalModelState(
     val availableStorageBytes: Long = 0,
     /** Whether the active connection bills by the byte. */
     val meteredNetwork: Boolean = false,
+    /**
+     * The model whose last download failed, when Retry makes sense: [message]
+     * then says why, and the picker shows it as an error with Retry rather
+     * than as small grey text. Cleared by the next download.
+     */
+    val failedDownload: String? = null,
+    /** Whether that failed download was a "download and use". */
+    val failedDownloadForUse: Boolean = false,
 )
 
 /** Leaving the picker or the activity must not cancel a running download. */
@@ -104,6 +113,9 @@ internal const val LOCAL_ENGINE_WARM_UNLOAD_MS = 5 * 60 * 1000L
 /** Left over after a speculative load: the keyboard, the recorder, the phone. */
 internal const val LOCAL_ENGINE_WARM_HEADROOM_BYTES = 512L * 1024 * 1024
 
+/** How long a partial download waits for a Retry before its files are reclaimed. */
+internal const val ABANDONED_STAGING_MILLIS = 7 * 24 * 60 * 60 * 1000L
+
 /** Why a model download was cancelled: what the Models page says afterwards. */
 enum class DownloadCancelReason(val message: String) {
     USER("Model download canceled."),
@@ -116,7 +128,7 @@ enum class DownloadCancelReason(val message: String) {
      */
     TIME_LIMIT(
         "Model download stopped: Android limits background downloads to six hours. " +
-            "Try again on a faster connection.",
+            "Tap Retry to continue it, ideally on a faster connection.",
     ),
 }
 
@@ -257,6 +269,7 @@ class LocalModelManager(
         )
         migrateLegacyLayout()
         deleteRetiredModelFiles()
+        deleteAbandonedStaging()
         val verified = mutableSetOf<String>()
         val pending = mutableListOf<LocalModelDescriptor>()
         LocalModelCatalog.all.forEach { model ->
@@ -319,6 +332,21 @@ class LocalModelManager(
      * one the user downgraded from, and guessing there would delete a model
      * they are about to want back.
      */
+    /**
+     * An interrupted download keeps its partial files so Retry can continue
+     * it (see [keepsPartialDownload]). One nobody retries would otherwise hold
+     * hundreds of megabytes indefinitely, invisible to the picker, so a
+     * staging folder untouched for [ABANDONED_STAGING_MILLIS] is reclaimed.
+     */
+    private fun deleteAbandonedStaging(now: Long = System.currentTimeMillis()) {
+        val active = _state.value.downloading
+        modelRoot.listFiles { file -> file.isDirectory && file.name.endsWith(".staging") }?.forEach { staging ->
+            if (active != null && staging.name == ".$active.staging") return@forEach
+            val newest = staging.walkBottomUp().maxOfOrNull(File::lastModified) ?: 0L
+            if (now - newest > ABANDONED_STAGING_MILLIS) staging.deleteRecursively()
+        }
+    }
+
     private fun deleteRetiredModelFiles() {
         RetiredModels.replacements.keys.forEach { id ->
             if (LocalModelCatalog.find(id) != null) return@forEach
@@ -428,13 +456,19 @@ class LocalModelManager(
     ) = downloadMutex.withLock {
         // Checked here rather than only in the picker: a download reaching 95%
         // and then failing on a full phone is minutes of the user's time and an
-        // error that does not say what to delete.
+        // error that does not say what to delete. Bytes already staged by an
+        // interrupted attempt are already on disk and need no new room.
         val free = availableStorageBytes(modelRoot)
-        val needed = requiredStorageBytes(model.sizeBytes)
+        val staged = stagingFor(model).walkBottomUp().filter(File::isFile).sumOf(File::length)
+        val needed = (requiredStorageBytes(model.sizeBytes) - staged).coerceAtLeast(0)
         if (free in 1..<needed) {
             val sentence = "${model.displayName} needs ${byteLabel(needed)} free and this " +
                 "phone has ${byteLabel(free)}. Free up some space and try again."
-            _state.value = _state.value.copy(message = sentence)
+            _state.value = _state.value.copy(
+                message = sentence,
+                failedDownload = model.id,
+                failedDownloadForUse = useWhenReady,
+            )
             // Thrown rather than returned: the caller reads a normal return as a
             // finished download, reports it as one, and then tries to load a
             // model that was never fetched.
@@ -454,14 +488,17 @@ class LocalModelManager(
                 return@withContext
             }
 
-            val staging = File(modelRoot, ".${model.id}.staging")
-            staging.deleteRecursively()
+            // Not cleared first: a previous attempt that was interrupted left
+            // a verified-as-it-goes prefix here, and downloadFile continues it.
+            val staging = stagingFor(model)
             staging.mkdirs()
             _state.value = _state.value.copy(
                 downloading = model.id,
                 pendingUse = if (useWhenReady) model.id else _state.value.pendingUse,
                 progress = 0,
                 message = null,
+                failedDownload = null,
+                failedDownloadForUse = false,
                 downloadedBytes = 0,
                 totalBytes = model.sizeBytes,
                 startedAtMillis = SystemClock.elapsedRealtime(),
@@ -474,14 +511,12 @@ class LocalModelManager(
                     val actual = downloadFile(
                         url = LocalModelCatalog.downloadUrl(model, pinned),
                         destination = destination,
+                        expectedBytes = pinned.sizeBytes,
                         alreadyCompleted = completed,
                         totalBytes = model.sizeBytes,
                     )
                     if (destination.length() != pinned.sizeBytes) {
-                        error(
-                            "${pinned.path} downloaded ${destination.length()} bytes; " +
-                                "expected ${pinned.sizeBytes}.",
-                        )
+                        throw ModelDownloadSizeException(pinned.path, destination.length(), pinned.sizeBytes)
                     }
                     if (!actual.equals(pinned.sha256, ignoreCase = true)) {
                         throw LocalModelIntegrityException(model.id, pinned.sha256, actual)
@@ -500,20 +535,18 @@ class LocalModelManager(
                     message = "${model.displayName} downloaded and verified.",
                 )
             } catch (error: CancellationException) {
-                staging.deleteRecursively()
-                _state.value = _state.value.copy(message = cancelReason().message)
-                    .withoutPendingUse(model.id)
+                stopped(model, staging, useWhenReady, cancelReason())
                 throw error
             } catch (error: Throwable) {
                 if (!currentCoroutineContext().isActive) {
-                    staging.deleteRecursively()
-                    _state.value = _state.value.copy(message = cancelReason().message)
-                        .withoutPendingUse(model.id)
+                    stopped(model, staging, useWhenReady, cancelReason())
                     throw CancellationException("Model download canceled", error)
                 }
-                staging.deleteRecursively()
+                if (!keepsPartialDownload(error, cancelReason = null)) staging.deleteRecursively()
                 _state.value = _state.value.copy(
-                    message = error.localizedMessage ?: "Model download failed",
+                    message = downloadFailureMessage(model.displayName, error),
+                    failedDownload = model.id,
+                    failedDownloadForUse = useWhenReady,
                 ).withoutPendingUse(model.id)
                 throw error
             } finally {
@@ -527,14 +560,58 @@ class LocalModelManager(
         }
     }
 
-    /** Streams one file to disk and returns its SHA-256. */
+    private fun stagingFor(model: LocalModelDescriptor): File = File(modelRoot, ".${model.id}.staging")
+
+    /**
+     * A cancelled download. The user's own Cancel discards what was fetched;
+     * Android's time limit keeps it, so Retry continues instead of starting
+     * over.
+     */
+    private fun stopped(
+        model: LocalModelDescriptor,
+        staging: File,
+        useWhenReady: Boolean,
+        reason: DownloadCancelReason,
+    ) {
+        val resumable = keepsPartialDownload(error = null, cancelReason = reason)
+        if (!resumable) staging.deleteRecursively()
+        _state.value = _state.value.copy(
+            message = reason.message,
+            failedDownload = model.id.takeIf { resumable },
+            failedDownloadForUse = useWhenReady && resumable,
+        ).withoutPendingUse(model.id)
+    }
+
+    /**
+     * Streams one file to disk and returns its SHA-256.
+     *
+     * Continues a partial file left by an interrupted attempt with an HTTP
+     * Range request. The bytes already there are hashed first, so the digest
+     * returned -- and checked against the pin -- covers the whole file exactly
+     * as a fresh download's would. A server that ignores the range gets the
+     * file from the start.
+     */
     private suspend fun downloadFile(
         url: String,
         destination: File,
+        expectedBytes: Long,
         alreadyCompleted: Long,
         totalBytes: Long,
     ): String {
-        val call = client.newCall(Request.Builder().url(url).build())
+        val digest = MessageDigest.getInstance("SHA-256")
+        val offset = resumeOffset(if (destination.isFile) destination.length() else 0L, expectedBytes)
+        if (offset == 0L) {
+            destination.delete()
+        } else {
+            hashInto(digest, destination)
+            reportProgress(alreadyCompleted + offset, totalBytes)
+            // Complete already; there is nothing left to ask the server for.
+            if (offset == expectedBytes) return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+        val request = Request.Builder().url(url).apply {
+            if (offset > 0L) header("Range", "bytes=$offset-")
+        }.build()
+        val call = client.newCall(request)
         activeDownloadCall.set(call)
         // Tie coroutine cancellation to the blocking OkHttp call too. This
         // closes the small race between finishing one file and starting the
@@ -546,10 +623,11 @@ class LocalModelManager(
         try {
             val response = call.execute()
             response.use { result ->
-                check(result.isSuccessful) { "Model download failed: HTTP ${result.code}" }
-                val digest = MessageDigest.getInstance("SHA-256")
-                var written = 0L
-                FileOutputStream(destination).use { output ->
+                if (!result.isSuccessful) throw ModelDownloadHttpException(result.code)
+                val append = rangeHonoured(offset, result.code, result.header("Content-Range"))
+                var written = if (append) offset else 0L
+                if (!append && offset > 0L) digest.reset()
+                FileOutputStream(destination, append).use { output ->
                     result.body.byteStream().use { input ->
                         val buffer = ByteArray(1024 * 1024)
                         while (true) {
@@ -559,12 +637,7 @@ class LocalModelManager(
                             output.write(buffer, 0, count)
                             digest.update(buffer, 0, count)
                             written += count
-                            _state.value = _state.value.copy(
-                                progress = (((alreadyCompleted + written) * 100) / totalBytes)
-                                    .toInt().coerceIn(0, 99),
-                                downloadedBytes = (alreadyCompleted + written)
-                                    .coerceAtMost(totalBytes),
-                            )
+                            reportProgress(alreadyCompleted + written, totalBytes)
                         }
                     }
                 }
@@ -576,12 +649,45 @@ class LocalModelManager(
         }
     }
 
+    private fun reportProgress(done: Long, totalBytes: Long) {
+        _state.value = _state.value.copy(
+            progress = ((done * 100) / totalBytes).toInt().coerceIn(0, 99),
+            downloadedBytes = done.coerceAtMost(totalBytes),
+        )
+    }
+
+    private suspend fun hashInto(digest: MessageDigest, file: File) {
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(1024 * 1024)
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+    }
+
+    /**
+     * Deletes [model]'s files, and any half-finished download of it. A failure
+     * is reported on the Models page rather than dropped: the picker went on
+     * showing a model as installed that was half gone, with no word why.
+     */
     suspend fun delete(model: LocalModelDescriptor) = withContext(Dispatchers.IO) {
         engineMutex.withLock {
             if (loadedModelID == model.id) releaseEngines()
         }
-        directoryFor(model).deleteRecursively()
-        _state.value = _state.value.copy(downloaded = _state.value.downloaded - model.id)
+        val removed = directoryFor(model).deleteRecursively()
+        stagingFor(model).deleteRecursively()
+        _state.value = _state.value.copy(
+            downloaded = _state.value.downloaded - model.id,
+            failedDownload = _state.value.failedDownload.takeIf { it != model.id },
+            message = if (removed) {
+                "${model.displayName} deleted."
+            } else {
+                "Could not delete all of ${model.displayName}. Try again."
+            },
+        )
     }
 
     private suspend fun releaseEngines() {

@@ -74,7 +74,7 @@ class ModelDownloadService : Service() {
                 val job = models.activeDownload()
                 if (job == null) {
                     watcher?.cancel()
-                    watcher = scope.launch { finish(models.state.value.message, startId) }
+                    watcher = scope.launch { finish(modelId, name, startId) }
                 } else {
                     watch(job, modelId, name, startId)
                 }
@@ -97,14 +97,26 @@ class ModelDownloadService : Service() {
             }
             job.join()
             progress.cancel()
-            finish(models.state.value.message, startId)
+            finish(modelId, name, startId)
         }
     }
 
-    private suspend fun finish(message: String?, startId: Int) {
-        notificationManager().notify(NOTIFICATION_ID, finalNotification(message))
-        delay(FINAL_LINGER_MILLIS)
-        stopForeground(STOP_FOREGROUND_REMOVE)
+    /**
+     * A finished download's notification goes after a moment. A failed one
+     * stays: it used to vanish after a second and a half, which is how a
+     * download that died while the person was in another app went unnoticed.
+     * Either way a tap opens the Models page, where Retry is.
+     */
+    private suspend fun finish(modelId: String, name: String, startId: Int) {
+        val state = VocaPhoneApplication.container(this).localModels.state.value
+        val failed = state.failedDownload == modelId
+        notificationManager().notify(NOTIFICATION_ID, finalNotification(name, state.message, failed))
+        if (failed) {
+            stopForeground(STOP_FOREGROUND_DETACH)
+        } else {
+            delay(FINAL_LINGER_MILLIS)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }
         stopSelf(startId)
     }
 
@@ -148,17 +160,36 @@ class ModelDownloadService : Service() {
             .addAction(R.drawable.ic_cancel, "Cancel", cancelIntent())
             .build()
 
-    private fun finalNotification(message: String?): Notification =
-        builder()
-            .setContentTitle(message ?: "Model download finished")
-            .setOngoing(false)
-            .build()
+    private fun finalNotification(name: String, message: String?, failed: Boolean): Notification =
+        if (failed) {
+            builder()
+                .setContentTitle(if (name.isBlank()) "Model download failed" else "Couldn't download $name")
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setOngoing(false)
+                .setAutoCancel(true)
+                .build()
+        } else {
+            builder()
+                .setContentTitle(message ?: "Model download finished")
+                .setOngoing(false)
+                .build()
+        }
 
     private fun builder(): NotificationCompat.Builder {
+        // Named component, as in DictationService, and straight to Models.
         val open = PendingIntent.getActivity(
             this,
             0,
-            Intent(this, MainActivity::class.java).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            // CLEAR_TOP | SINGLE_TOP: an app already open gets the page
+            // through onNewIntent instead of just being brought forward.
+            Intent(this, MainActivity::class.java)
+                .setFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP,
+                )
+                .putExtra(MainActivity.EXTRA_OPEN_SETTINGS, true)
+                .putExtra(MainActivity.EXTRA_SETTINGS_PAGE, "models"),
             PendingIntent.FLAG_IMMUTABLE,
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
