@@ -786,6 +786,22 @@ class DictationController(
     }
 
     /**
+     * The keyboard committed the saved transcript after the user tapped
+     * Insert. History learns where it went before the bar clears; otherwise
+     * the record kept saying it was never typed into an app.
+     */
+    fun savedTranscriptInserted(targetPackage: String?) {
+        val state = _state.value
+        if (state.phase != DictationPhase.READY_TO_INSERT) return
+        state.sessionId?.let { sessionId ->
+            scope.launch(Dispatchers.IO) {
+                history.recordInserted(sessionId.toString(), targetPackage)
+            }
+        }
+        clearTransient()
+    }
+
+    /**
      * The microphone foreground service could not be started, so [start] was
      * never reached and nothing was recorded. Without this the tap simply did
      * nothing: the keyboard kept saying it was ready and the user was left to

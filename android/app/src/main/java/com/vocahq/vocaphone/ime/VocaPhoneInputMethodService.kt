@@ -1091,7 +1091,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         container.diagnostics.recordAction("saved_inserted", DictationSource.IME.name)
         syncShiftFromCursor()
         refreshEditorText()
-        container.dictation.clearTransient()
+        container.dictation.savedTranscriptInserted(currentInputEditorInfo?.packageName)
     }
 
     private fun startImeDictation() {

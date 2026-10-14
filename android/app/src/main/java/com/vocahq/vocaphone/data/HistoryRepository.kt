@@ -42,6 +42,26 @@ class HistoryRepository(private val dao: DictationRecordDao) {
         )
     }
 
+    /**
+     * A saved transcript the user then inserted with the keyboard's Insert.
+     * Only a completed record changes: one deleted or retried in the meantime
+     * is not this transcript any more.
+     */
+    suspend fun recordInserted(
+        sessionId: String,
+        targetPackage: String?,
+        now: Long = System.currentTimeMillis(),
+    ) {
+        val existing = dao.find(sessionId)?.takeIf { it.state == RECORD_STATE_COMPLETED } ?: return
+        dao.upsert(
+            existing.copy(
+                updatedAt = now,
+                targetPackage = targetPackage ?: existing.targetPackage,
+                insertedIntoField = true,
+            )
+        )
+    }
+
     suspend fun recordFailure(
         sessionId: String,
         language: String,

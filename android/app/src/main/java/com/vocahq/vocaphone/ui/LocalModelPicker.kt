@@ -179,10 +179,16 @@ fun LocalModelPicker(
     val askToDelete: ((LocalModelDescriptor) -> Unit)? = onDelete?.let {
         { model: LocalModelDescriptor -> confirmingDelete = model }
     }
+    // Through the same guard as the first attempt: a download that failed on
+    // Wi-Fi may be retried on mobile data.
     val retryFailedDownload: () -> Unit = {
         LocalModelCatalog.find(state.failedDownload.orEmpty())?.let { model ->
-            if (state.failedDownloadForUse) onDownloadAndUse(model) else onDownload(model)
+            if (state.failedDownloadForUse) guardedDownloadAndUse(model) else onDownload(model)
         }
+    }
+    // Already confirmed once; asking again would only be in the way.
+    val retryFailedDelete: (() -> Unit)? = onDelete?.let { delete ->
+        { LocalModelCatalog.find(state.failedDelete.orEmpty())?.let(delete) }
     }
 
     val filtered = remember(usable, query, engineFilter, sizeFilter, languageFilter) {
@@ -290,7 +296,12 @@ fun LocalModelPicker(
                 onDismiss = { inspecting = null },
             )
         }
-        ModelDownloadMessage(state = state, busy = busy, onRetry = retryFailedDownload)
+        ModelDownloadMessage(
+            state = state,
+            busy = busy,
+            onRetry = retryFailedDownload,
+            onRetryDelete = retryFailedDelete,
+        )
         ModelDeleteDialog(
             model = confirmingDelete,
             inUse = confirmingDelete?.id == selectedModelId,
@@ -472,7 +483,12 @@ fun LocalModelPicker(
         onInspect = { inspecting = it },
     )
 
-    ModelDownloadMessage(state = state, busy = busy, onRetry = retryFailedDownload)
+    ModelDownloadMessage(
+        state = state,
+        busy = busy,
+        onRetry = retryFailedDownload,
+        onRetryDelete = retryFailedDelete,
+    )
 
     inspecting?.let { model ->
         ModelDetailSheet(
@@ -505,8 +521,26 @@ fun LocalModelPicker(
  * verified", under the whole list, holding the raw exception text.
  */
 @Composable
-private fun ModelDownloadMessage(state: LocalModelState, busy: Boolean, onRetry: () -> Unit) {
+private fun ModelDownloadMessage(
+    state: LocalModelState,
+    busy: Boolean,
+    onRetry: () -> Unit,
+    onRetryDelete: (() -> Unit)?,
+) {
     val message = state.message ?: return
+    if (state.failedDelete != null) {
+        Notice(tone = NoticeTone.Warning) {
+            Text(
+                message,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+            if (onRetryDelete != null) {
+                TextButton(onClick = onRetryDelete, enabled = !busy) { Text("Delete again") }
+            }
+        }
+        return
+    }
     if (state.failedDownload == null) {
         Text(
             message,
@@ -1208,6 +1242,27 @@ private fun ModelActions(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        // Out of `downloaded` so it cannot be used, but Download would be the
+        // wrong offer for files the person asked to have removed.
+        state.failedDelete == model.id && onDelete != null -> Column(
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                "Some files could not be deleted.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            TextButton(
+                onClick = { onDelete(model) },
+                enabled = !busy,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+                contentPadding = PaddingValues(horizontal = 0.dp),
+            ) {
+                Text("Delete again")
+            }
         }
         model.id !in state.downloaded -> PrimaryButton(
             text = downloadLabel,

@@ -77,6 +77,12 @@ data class LocalModelState(
     val totalBytes: Long = 0,
     /** `SystemClock.elapsedRealtime()` when the transfer began, for the estimate. */
     val startedAtMillis: Long = 0,
+    /**
+     * Bytes a resumed attempt found already on disk. Counted in
+     * [downloadedBytes] but not fetched since [startedAtMillis], so the
+     * estimate leaves them out of the rate.
+     */
+    val resumedBytes: Long = 0,
     /** Free space on the models volume, refreshed when the picker asks. */
     val availableStorageBytes: Long = 0,
     /** Whether the active connection bills by the byte. */
@@ -89,6 +95,12 @@ data class LocalModelState(
     val failedDownload: String? = null,
     /** Whether that failed download was a "download and use". */
     val failedDownloadForUse: Boolean = false,
+    /**
+     * The model whose last delete left files behind. It is out of [downloaded]
+     * -- a half-deleted model must not be offered for use -- but the picker
+     * offers the delete again rather than a download.
+     */
+    val failedDelete: String? = null,
 )
 
 /** Leaving the picker or the activity must not cancel a running download. */
@@ -122,9 +134,9 @@ enum class DownloadCancelReason(val message: String) {
 
     /**
      * Android 15 allows a dataSync foreground service six hours in a day and
-     * then calls `onTimeout`. Nothing is resumable, so the download stops
-     * cleanly with a line that says why, rather than "canceled" for a
-     * cancel the user never made.
+     * then calls `onTimeout`. The download stops with a line that says why,
+     * rather than "canceled" for a cancel the user never made, and keeps what
+     * it fetched so Retry continues it.
      */
     TIME_LIMIT(
         "Model download stopped: Android limits background downloads to six hours. " +
@@ -499,9 +511,12 @@ class LocalModelManager(
                 message = null,
                 failedDownload = null,
                 failedDownloadForUse = false,
+                // The download replaces whatever a failed delete left.
+                failedDelete = _state.value.failedDelete.takeIf { it != model.id },
                 downloadedBytes = 0,
                 totalBytes = model.sizeBytes,
                 startedAtMillis = SystemClock.elapsedRealtime(),
+                resumedBytes = 0,
             )
             try {
                 var completed = 0L
@@ -555,6 +570,7 @@ class LocalModelManager(
                     downloadedBytes = 0,
                     totalBytes = 0,
                     startedAtMillis = 0,
+                    resumedBytes = 0,
                 )
             }
         }
@@ -604,6 +620,7 @@ class LocalModelManager(
             destination.delete()
         } else {
             hashInto(digest, destination)
+            _state.value = _state.value.copy(resumedBytes = _state.value.resumedBytes + offset)
             reportProgress(alreadyCompleted + offset, totalBytes)
             // Complete already; there is nothing left to ask the server for.
             if (offset == expectedBytes) return digest.digest().joinToString("") { "%02x".format(it) }
@@ -626,7 +643,12 @@ class LocalModelManager(
                 if (!result.isSuccessful) throw ModelDownloadHttpException(result.code)
                 val append = rangeHonoured(offset, result.code, result.header("Content-Range"))
                 var written = if (append) offset else 0L
-                if (!append && offset > 0L) digest.reset()
+                if (!append && offset > 0L) {
+                    digest.reset()
+                    // The server sent the whole file: the bytes on disk are
+                    // being fetched again, not carried over.
+                    _state.value = _state.value.copy(resumedBytes = _state.value.resumedBytes - offset)
+                }
                 FileOutputStream(destination, append).use { output ->
                     result.body.byteStream().use { input ->
                         val buffer = ByteArray(1024 * 1024)
@@ -677,11 +699,16 @@ class LocalModelManager(
         engineMutex.withLock {
             if (loadedModelID == model.id) releaseEngines()
         }
-        val removed = directoryFor(model).deleteRecursively()
-        stagingFor(model).deleteRecursively()
+        val removed = directoryFor(model).deleteRecursively() and
+            stagingFor(model).deleteRecursively()
         _state.value = _state.value.copy(
             downloaded = _state.value.downloaded - model.id,
             failedDownload = _state.value.failedDownload.takeIf { it != model.id },
+            failedDelete = if (removed) {
+                _state.value.failedDelete.takeIf { it != model.id }
+            } else {
+                model.id
+            },
             message = if (removed) {
                 "${model.displayName} deleted."
             } else {

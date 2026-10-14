@@ -95,4 +95,27 @@ class DictationBarCopyTest {
         assertEquals("Start a new dictation", DictationBarCopy.micDescription(gatewayDown, true))
         assertEquals("Dictation unavailable", DictationBarCopy.micDescription(busy, false))
     }
+
+    @Test
+    fun `the voice shortcut reads its guidance in full but only the phase while dictating`() {
+        val idle = DictationState()
+        assertEquals(
+            "Voice shortcut. ${VoiceShortcutIme.REJECTED_HANDBACK_GUIDANCE}",
+            DictationBarCopy.shortcutAnnouncement(
+                state = idle,
+                status = "Voice shortcut",
+                detail = VoiceShortcutIme.REJECTED_HANDBACK_GUIDANCE,
+                guidance = true,
+            ),
+        )
+        assertEquals(
+            "VocaPhone. Voice input",
+            DictationBarCopy.shortcutAnnouncement(idle, "VocaPhone", "Voice input", guidance = false),
+        )
+        val listening = DictationState(phase = DictationPhase.LISTENING, partialTranscript = "meet at")
+        assertEquals(
+            "Listening",
+            DictationBarCopy.shortcutAnnouncement(listening, "Listening · 0:04", "meet at", guidance = false),
+        )
+    }
 }

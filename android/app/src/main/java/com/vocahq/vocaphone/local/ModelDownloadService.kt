@@ -47,6 +47,8 @@ class ModelDownloadService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var watcher: Job? = null
+    /** The model being watched, for the notice [onTimeout] leaves behind. */
+    private var modelName = ""
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -60,6 +62,7 @@ class ModelDownloadService : Service() {
             ACTION_START -> {
                 createChannel()
                 val name = intent.getStringExtra(EXTRA_NAME).orEmpty()
+                modelName = name
                 val modelId = intent.getStringExtra(EXTRA_MODEL_ID)
                 if (modelId.isNullOrEmpty()) {
                     stopSelf(startId)
@@ -123,16 +126,21 @@ class ModelDownloadService : Service() {
     /**
      * Android 15+: a dataSync foreground service gets six hours in a day, then
      * this, and the app is crashed if it has not stopped a few seconds later.
-     * The download is cancelled through the manager's ordinary path, so the
-     * staging files go and the Models page shows why, and the service stops
-     * now rather than after the usual final-notification linger.
+     * The download is cancelled through the manager's ordinary path, which
+     * keeps what was fetched for Retry, and the service stops now rather than
+     * waiting for that unwind. The failure notice stays, as [finish] leaves
+     * one: this is the stop most likely to happen while nobody is watching.
      */
     override fun onTimeout(startId: Int, fgsType: Int) {
         watcher?.cancel()
         watcher = null
         VocaPhoneApplication.container(this).localModels
             .cancelDownload(DownloadCancelReason.TIME_LIMIT)
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        notificationManager().notify(
+            NOTIFICATION_ID,
+            finalNotification(modelName, DownloadCancelReason.TIME_LIMIT.message, failed = true),
+        )
+        stopForeground(STOP_FOREGROUND_DETACH)
         stopSelf()
     }
 

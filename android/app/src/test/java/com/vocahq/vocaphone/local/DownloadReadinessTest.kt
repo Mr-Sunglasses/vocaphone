@@ -113,6 +113,30 @@ class DownloadReadinessTest {
     }
 
     @Test
+    fun bytesCarriedOverFromAnEarlierAttemptDoNotCountTowardTheRate() {
+        // 600 MB was on disk; 10 MB more in 10s = 1 MB/s, 60 MB left. Counting
+        // the carried-over bytes as fetched read as 61 MB/s: "a few seconds".
+        assertEquals(
+            "about a minute left",
+            downloadTimeRemaining(
+                downloadedBytes = 610L * 1_000_000L,
+                totalBytes = large,
+                elapsedMillis = 10_000,
+                resumedBytes = 600L * 1_000_000L,
+            ),
+        )
+        // Nothing fetched yet this attempt: no rate to speak of.
+        assertNull(
+            downloadTimeRemaining(
+                downloadedBytes = 600L * 1_000_000L,
+                totalBytes = large,
+                elapsedMillis = 10_000,
+                resumedBytes = 600L * 1_000_000L,
+            ),
+        )
+    }
+
+    @Test
     fun aVerySlowConnectionDoesNotPromiseAnHourlyFigure() {
         assertNull(
             downloadTimeRemaining(

@@ -1166,8 +1166,8 @@ private fun DictationStatus(
     status: String,
     detail: String,
     modifier: Modifier = Modifier,
+    announcement: String = DictationBarCopy.announcement(state) ?: status,
 ) {
-    val announcement = DictationBarCopy.announcement(state) ?: status
     Box(
         modifier = modifier
             .fillMaxHeight()
@@ -1299,6 +1299,12 @@ private fun VoiceShortcutListeningBar(
         else -> DictationBarCopy.detail(state, idleDetail = "Voice input", busyDetail = "")
     }
     val barAction = DictationBarCopy.action(state).takeIf { editor.dictationAllowed && !rejectGuidance }
+    val announcement = DictationBarCopy.shortcutAnnouncement(
+        state = state,
+        status = status,
+        detail = detail,
+        guidance = rejectGuidance || editor.sensitive || !editor.dictationAllowed,
+    )
 
     Row(
         modifier = Modifier
@@ -1321,6 +1327,7 @@ private fun VoiceShortcutListeningBar(
             status = status,
             detail = detail,
             modifier = Modifier.weight(1f),
+            announcement = announcement,
         )
         if (barAction != null) {
             DictationActionButton(

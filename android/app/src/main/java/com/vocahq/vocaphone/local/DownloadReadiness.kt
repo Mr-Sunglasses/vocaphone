@@ -91,16 +91,23 @@ fun byteLabel(bytes: Long): String = if (bytes >= 1_000_000_000) {
  * setup, and an estimate that swings from "12 minutes" to "40 seconds" is worse
  * than no estimate at all. So nothing is claimed until the transfer has both
  * run for a moment and actually moved.
+ *
+ * [resumedBytes] were already on disk when a resumed attempt began. They count
+ * toward what is left but not toward the rate: a nearly finished download
+ * resumed on a slow connection otherwise claims "a few seconds left".
  */
 fun downloadTimeRemaining(
     downloadedBytes: Long,
     totalBytes: Long,
     elapsedMillis: Long,
+    resumedBytes: Long = 0,
 ): String? {
     if (totalBytes <= 0 || downloadedBytes <= 0) return null
     if (elapsedMillis < MIN_ESTIMATE_ELAPSED_MILLIS) return null
     if (downloadedBytes >= totalBytes) return null
-    val bytesPerMilli = downloadedBytes.toDouble() / elapsedMillis
+    val fetchedBytes = downloadedBytes - resumedBytes.coerceAtLeast(0)
+    if (fetchedBytes <= 0) return null
+    val bytesPerMilli = fetchedBytes.toDouble() / elapsedMillis
     if (bytesPerMilli <= 0) return null
     val remainingMillis = ((totalBytes - downloadedBytes) / bytesPerMilli).roundToLong()
     val seconds = remainingMillis / 1000
@@ -148,6 +155,6 @@ fun downloadProgressLine(state: LocalModelState): String {
     return listOfNotNull(
         "${state.progress}%",
         downloadSizeProgress(state.downloadedBytes, state.totalBytes),
-        downloadTimeRemaining(state.downloadedBytes, state.totalBytes, elapsed),
+        downloadTimeRemaining(state.downloadedBytes, state.totalBytes, elapsed, state.resumedBytes),
     ).joinToString(" · ")
 }

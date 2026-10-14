@@ -86,6 +86,24 @@ internal object DictationBarCopy {
         DictationPhase.PERMISSION_REPAIR -> state.repairTitle
     }
 
+    /**
+     * The voice-shortcut bar's label. Its [guidance] lines -- a field that
+     * rejected the shortcut, a private field -- and the idle prompt never
+     * tick, so both lines are read: the second is the instruction, and
+     * [announcement] alone said just "Voice shortcut". While dictation runs
+     * it is the phase only, as on the keyboard.
+     */
+    fun shortcutAnnouncement(
+        state: DictationState,
+        status: String,
+        detail: String,
+        guidance: Boolean,
+    ): String {
+        val phase = announcement(state)
+        if (!guidance && phase != null) return phase
+        return listOf(status, detail).filter { it.isNotBlank() }.joinToString(". ")
+    }
+
     /** The mic's accessibility label; the spinner says it is not the way to cancel. */
     fun micDescription(state: DictationState, enabled: Boolean): String = when {
         !enabled -> "Dictation unavailable"
