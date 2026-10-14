@@ -432,6 +432,7 @@ fun VocaPhoneApp(
                 onChineseScript = { viewModel.setChineseScript(it) },
                 onDictationTone = { viewModel.setDictationTone(it) },
                 onStopAfterPause = { viewModel.setStopAfterPause(it) },
+                onMaximumRecordingLength = { viewModel.setMaximumRecordingLength(it) },
                 onPreviewDictationTone = { viewModel.toggleDictationTonePreview(it) },
                 tonePreviewListening = tonePreviewListening,
                 onMicrophone = { viewModel.setMicrophone(it) },

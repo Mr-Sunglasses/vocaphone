@@ -44,6 +44,9 @@ internal object SettingsHelp {
             "Stop after a pause finishes a dictation by itself after three seconds of " +
                 "quiet following at least a second of speech. Leave it off if you pause " +
                 "to think while you talk.",
+            "Maximum recording length stops a dictation by itself and transcribes it " +
+                "once it has run that long. With a gateway, the gateway's own limit " +
+                "applies too, whichever is shorter.",
             "Keep model loaded sets how long the on-device model stays in RAM after " +
                 "you stop dictating. Unloading saves battery; keeping it makes the next " +
                 "dictation start faster.",

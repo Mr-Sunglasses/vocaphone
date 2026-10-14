@@ -6,9 +6,7 @@ import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.MissingPermission
 import java.util.UUID
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DictationBarCopyTest {
@@ -45,15 +43,15 @@ class DictationBarCopyTest {
     }
 
     @Test
-    fun `the keyboard warns a minute before the recording cap`() {
+    fun `the keyboard never counts down to the recording limit`() {
         val listening = DictationState(phase = DictationPhase.LISTENING, partialTranscript = "hello")
-        assertEquals("hello", detail(listening))
-        assertFalse(DictationBarCopy.detailIsWarning(listening))
-
-        val nearCap = listening.copy(approachingLimit = true)
-        assertEquals(DictationBarCopy.ONE_MINUTE_LEFT, detail(nearCap))
-        assertTrue(DictationBarCopy.detailIsWarning(nearCap))
-        assertEquals("Listening. 1 minute left", DictationBarCopy.announcement(nearCap))
+        val nearLimit = listening.copy(approachingLimit = true)
+        assertEquals("hello", detail(nearLimit))
+        assertEquals("Listening", DictationBarCopy.announcement(nearLimit))
+        assertEquals(
+            "Tap the red button to finish",
+            detail(nearLimit.copy(partialTranscript = "")),
+        )
     }
 
     @Test

@@ -16,6 +16,12 @@ data class GatewayHealth(
     val languages: Set<String>,
     /** True when the model picks the language itself and cannot be pinned. */
     val detectsLanguageAutomatically: Boolean,
+    /**
+     * The longest recording the gateway accepts, in seconds. Null from a
+     * gateway older than the field; see
+     * [com.vocahq.vocaphone.core.RecordingLimit.UNREPORTED_GATEWAY_SECONDS].
+     */
+    val maximumDurationSeconds: Int? = null,
 ) {
     companion object {
         fun from(json: JSONObject) = GatewayHealth(
@@ -31,6 +37,7 @@ data class GatewayHealth(
                 (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotEmpty) }
             }.orEmpty().toSet(),
             detectsLanguageAutomatically = json.optBoolean("detects_language_automatically", false),
+            maximumDurationSeconds = json.optInt("maximum_duration_seconds", 0).takeIf { it > 0 },
         )
     }
 }

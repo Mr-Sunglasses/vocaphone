@@ -20,7 +20,6 @@ internal enum class DictationBarAction(val label: String) {
  */
 internal object DictationBarCopy {
     const val SAVED_TITLE = "Saved to History"
-    const val ONE_MINUTE_LEFT = "1 minute left"
 
     fun status(state: DictationState, formattedDuration: String): String = when (state.phase) {
         DictationPhase.IDLE -> "VocaPhone"
@@ -37,9 +36,6 @@ internal object DictationBarCopy {
      */
     fun detail(state: DictationState, idleDetail: String, busyDetail: String): String = when {
         state.phase == DictationPhase.IDLE -> idleDetail
-        // The bubble and the Dictate screen warned a minute before the cap
-        // stopped the recording; the keyboard never did.
-        state.phase == DictationPhase.LISTENING && state.approachingLimit -> ONE_MINUTE_LEFT
         state.phase == DictationPhase.LISTENING && state.partialTranscript.isNotBlank() ->
             state.partialTranscript.replace('\n', ' ').take(64)
         state.phase == DictationPhase.LISTENING ->
@@ -51,10 +47,6 @@ internal object DictationBarCopy {
             state.transcript.orEmpty().replace('\n', ' ').take(64)
         else -> "Ready"
     }
-
-    /** True when the second line is a warning rather than information. */
-    fun detailIsWarning(state: DictationState): Boolean =
-        state.phase == DictationPhase.LISTENING && state.approachingLimit
 
     fun action(state: DictationState): DictationBarAction? = when {
         state.canRetry -> DictationBarAction.RETRY
@@ -72,8 +64,7 @@ internal object DictationBarCopy {
      */
     fun announcement(state: DictationState): String? = when (state.phase) {
         DictationPhase.IDLE -> null
-        DictationPhase.LISTENING ->
-            if (state.approachingLimit) "Listening. $ONE_MINUTE_LEFT" else "Listening"
+        DictationPhase.LISTENING -> "Listening"
         DictationPhase.FINALIZING -> "Finishing"
         DictationPhase.UPLOADING -> "Sending to your gateway"
         DictationPhase.TRANSCRIBING -> "Transcribing"

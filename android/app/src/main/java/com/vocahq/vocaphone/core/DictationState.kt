@@ -121,7 +121,11 @@ data class DictationState(
     val recordedMillis: Long = 0L,
     val level: Float = 0f,
     val partialTranscript: String = "",
-    /** True once the recording is within a minute of the five-minute cap. */
+    /**
+     * True once the recording is within a minute of its stop. Never set for a
+     * limit short enough that the warning would come in its first half; see
+     * [RecordingLimit.warningAtMillis].
+     */
     val approachingLimit: Boolean = false,
     val transcript: String? = null,
     val streaming: Boolean = false,
@@ -212,12 +216,6 @@ data class DictationState(
             MissingPermission.MODEL_PREPARING,
             MissingPermission.LOCAL_MODEL_UNAVAILABLE,
         )
-
-        /** Active dictation follows focus across apps, but never past this. */
-        const val MAXIMUM_RECORDING_MILLIS = 5 * 60 * 1000L
-
-        /** A one-minute warning before the cap stops the recording for them. */
-        const val RECORDING_WARNING_MILLIS = 4 * 60 * 1000L
     }
 
     /**

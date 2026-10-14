@@ -231,7 +231,7 @@ fun DictateScreen(
                             )
                             if (state.approachingLimit) {
                                 Text(
-                                    "One minute left before the five-minute limit stops this recording.",
+                                    "One minute left before this recording stops.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.error,
                                 )

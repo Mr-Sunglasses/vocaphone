@@ -1047,27 +1047,38 @@ class LocalModelManager(
         translateTo,
     )
 
-    private fun readWavSamples(file: File): FloatArray {
-        require(file.isFile) { "Recording is missing" }
-        FileInputStream(file).use { input ->
-            val header = ByteArray(44)
-            require(input.read(header) == header.size) { "Recording header is incomplete" }
-            require(header.copyOfRange(0, 4).contentEquals("RIFF".toByteArray())) {
-                "Recording is not a RIFF WAV file"
-            }
-            val dataBytes = (file.length() - header.size).coerceAtLeast(0).toInt()
-            val pcm = ByteArray(dataBytes)
-            var offset = 0
-            while (offset < pcm.size) {
-                val count = input.read(pcm, offset, pcm.size - offset)
-                if (count < 0) break
-                offset += count
-            }
-            val samples = FloatArray(offset / CaptureFormat.BYTES_PER_SAMPLE)
-            val buffer = ByteBuffer.wrap(pcm, 0, offset).order(ByteOrder.LITTLE_ENDIAN)
-            for (index in samples.indices) samples[index] = buffer.short / 32_768f
-            return samples
+    private fun readWavSamples(file: File): FloatArray = readPcm16WavSamples(file)
+}
+
+/** The capture WAV's 16-bit PCM as floats, skipping its 44-byte header. */
+internal fun readPcm16WavSamples(file: File): FloatArray {
+    require(file.isFile) { "Recording is missing" }
+    FileInputStream(file).use { input ->
+        val header = ByteArray(44)
+        require(input.read(header) == header.size) { "Recording header is incomplete" }
+        require(header.copyOfRange(0, 4).contentEquals("RIFF".toByteArray())) {
+            "Recording is not a RIFF WAV file"
         }
+        val dataBytes = (file.length() - header.size).coerceAtLeast(0).toInt()
+        // Converted a block at a time: reading all the PCM first held a
+        // second copy of the recording (19.2 MB at ten minutes) alongside
+        // the floats.
+        val samples = FloatArray(dataBytes / CaptureFormat.BYTES_PER_SAMPLE)
+        val block = ByteArray(64 * 1024)
+        val view = ByteBuffer.wrap(block).order(ByteOrder.LITTLE_ENDIAN)
+        var count = 0
+        var carried = 0
+        while (count < samples.size) {
+            val read = input.read(block, carried, block.size - carried)
+            if (read < 0) break
+            val available = carried + read
+            val whole = minOf(available / CaptureFormat.BYTES_PER_SAMPLE, samples.size - count)
+            view.clear()
+            repeat(whole) { samples[count++] = view.short / 32_768f }
+            carried = available - whole * CaptureFormat.BYTES_PER_SAMPLE
+            if (carried > 0) block.copyInto(block, 0, available - carried, available)
+        }
+        return if (count == samples.size) samples else samples.copyOf(count)
     }
 }
 

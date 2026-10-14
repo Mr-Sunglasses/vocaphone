@@ -1204,11 +1204,7 @@ private fun DictationStatus(
                 Text(
                     text = detail,
                     modifier = Modifier.fillMaxWidth(),
-                    color = if (DictationBarCopy.detailIsWarning(state)) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelSmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

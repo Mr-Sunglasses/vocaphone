@@ -95,6 +95,20 @@ upload. Temporary copies live in the app's private cache and are removed after
 success, failure, or cancellation. The recoverable WAV is deleted only after
 the existing successful transcript flow.
 
+A dictation stops by itself at the length chosen under Settings › Dictation ›
+Maximum recording length (1, 2, 5 or 10 minutes; 5 by default), counted from
+"Listening". On a gateway route the stop is the shorter of that and the
+`maximum_duration_seconds` the gateway reported in `/health`, persisted at each
+connection test and assumed to be 120 s when the gateway does not report it.
+The gateway limit is reduced by one second because the WAV starts when the
+microphone opens, before the start cue ends, and the gateway tolerates only a
+quarter of a second over its limit. Ten minutes is the longest option because
+it is what the buffers are sized for: the Sherpa incremental frame queue, the
+streamed upload's call deadline, and the 19.2 MB of PCM16 it produces, which
+stays under the gateway's 25 MiB upload limit. A one-minute warning is shown in
+the bubble, the Dictate screen and the notification only when the limit is
+over two minutes.
+
 The client switches from Uploading to Transcribing when the last body bytes
 are sent, before the gateway's response arrives. Upload-completed and
 transcription-started diagnostics use that same boundary.

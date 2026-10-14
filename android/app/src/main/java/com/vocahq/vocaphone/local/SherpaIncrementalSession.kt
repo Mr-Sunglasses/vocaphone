@@ -1,6 +1,7 @@
 package com.vocahq.vocaphone.local
 
 import com.vocahq.vocaphone.audio.SpeechAudioConditioning
+import com.vocahq.vocaphone.core.MaximumRecordingLength
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -246,8 +247,10 @@ internal class SherpaIncrementalSession(
     }
 
     private companion object {
-        // AudioCapture emits one 100 ms frame; the app stops at five minutes.
-        const val MAX_RECORDING_FRAMES = 3_100
+        // AudioCapture emits one 100 ms frame; no recording outlasts the
+        // longest length Settings offers. A margin of ten seconds on top.
+        // The channel allocates as it fills, not up front.
+        val MAX_RECORDING_FRAMES = (MaximumRecordingLength.LONGEST.millis / 100).toInt() + 100
 
         /**
          * How far the streaming gain may drift before the complete WAV has to

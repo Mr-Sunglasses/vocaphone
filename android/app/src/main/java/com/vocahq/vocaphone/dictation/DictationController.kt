@@ -26,6 +26,7 @@ import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.MissingPermission
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.PauseDetector
+import com.vocahq.vocaphone.core.RecordingLimit
 import com.vocahq.vocaphone.core.SnippetExpander
 import com.vocahq.vocaphone.data.HistoryRepository
 import com.vocahq.vocaphone.data.UsageStatsRepository
@@ -1127,7 +1128,14 @@ class DictationController(
         }
         if (gatewayAudio && streamFrames == null) recordBatchFallback()
 
-        awaitFinish(sessionFinishSignal)
+        awaitFinish(
+            sessionFinishSignal,
+            RecordingLimit.effectiveMillis(
+                choice = configuration.maximumRecordingLength,
+                onDevice = configuration.localTranscriptionEnabled,
+                gatewayReportedSeconds = configuration.gatewayMaximumDurationSeconds,
+            ),
+        )
         recorder.stop()
         announceStopped(configuration.dictationTone)
         diagnostics.recordTiming("capture_stopped", source.name)
@@ -1372,20 +1380,18 @@ class DictationController(
     )
 
     /**
-     * Recording follows the user across apps until they press Finish, warning a
-     * minute before the cap and stopping at it rather than recording forever.
+     * Recording follows the user across apps until they press Finish, stopping
+     * at [limitMillis] rather than recording forever, and warning a minute
+     * before that when the limit is long enough for a warning to help.
      */
-    private suspend fun awaitFinish(signal: CompletableDeferred<Unit>) {
+    private suspend fun awaitFinish(signal: CompletableDeferred<Unit>, limitMillis: Long) {
         val startedAt = _state.value.startedAtElapsedMillis
-        if (awaitSignalUntil(
-                signal,
-                startedAt + DictationState.RECORDING_WARNING_MILLIS,
-            )
-        ) {
-            return
+        val warningAt = RecordingLimit.warningAtMillis(limitMillis)
+        if (warningAt != null) {
+            if (awaitSignalUntil(signal, startedAt + warningAt)) return
+            _state.update { it.copy(approachingLimit = true) }
         }
-        _state.update { it.copy(approachingLimit = true) }
-        awaitSignalUntil(signal, startedAt + DictationState.MAXIMUM_RECORDING_MILLIS)
+        awaitSignalUntil(signal, startedAt + limitMillis)
     }
 
     private suspend fun awaitSignalUntil(

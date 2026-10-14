@@ -75,6 +75,18 @@ class GatewayClientTest {
     }
 
     @Test
+    fun `health reports the gateway's recording limit when it has one`() = runTest {
+        server.enqueue(
+            json(body = """{"status":"ok","engine_ready":true,"engine":"moonshine","maximum_duration_seconds":300}"""),
+        )
+        assertEquals(300, client().health().maximumDurationSeconds)
+
+        // A gateway older than the field: unknown, so the app assumes 120 s.
+        server.enqueue(json(body = """{"status":"ok","engine_ready":true,"engine":"whisper.cpp"}"""))
+        assertNull(client().health().maximumDurationSeconds)
+    }
+
+    @Test
     fun `every session call carries the bearer token`() = runTest {
         server.enqueue(json(body = sessionBody("created")))
 
