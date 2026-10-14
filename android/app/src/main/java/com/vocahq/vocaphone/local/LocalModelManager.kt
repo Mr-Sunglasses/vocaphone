@@ -98,10 +98,16 @@ data class LocalModelState(
     /**
      * The model whose last delete left files behind. It is out of [downloaded]
      * -- a half-deleted model must not be offered for use -- but the picker
-     * offers the delete again rather than a download.
+     * offers the delete again rather than a download. It has its own notice
+     * ([deleteFailureMessage]) rather than [message]: that line belongs to
+     * whatever ran last, and a later download's failure there must keep its
+     * Retry instead of pointing at this model.
      */
     val failedDelete: String? = null,
 )
+
+fun deleteFailureMessage(modelName: String): String = "Could not delete all of $modelName. Try again."
+
 
 /** Leaving the picker or the activity must not cancel a running download. */
 const val CANCEL_MODEL_DOWNLOAD_WHEN_HOST_LEAVES = false
@@ -709,11 +715,7 @@ class LocalModelManager(
             } else {
                 model.id
             },
-            message = if (removed) {
-                "${model.displayName} deleted."
-            } else {
-                "Could not delete all of ${model.displayName}. Try again."
-            },
+            message = if (removed) "${model.displayName} deleted." else _state.value.message,
         )
     }
 

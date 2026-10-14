@@ -45,21 +45,15 @@ class HistoryRepository(private val dao: DictationRecordDao) {
     /**
      * A saved transcript the user then inserted with the keyboard's Insert.
      * Only a completed record changes: one deleted or retried in the meantime
-     * is not this transcript any more.
+     * is not this transcript any more. A conditional update rather than read
+     * then upsert, which could write a row back after the user deleted it.
      */
     suspend fun recordInserted(
         sessionId: String,
         targetPackage: String?,
         now: Long = System.currentTimeMillis(),
     ) {
-        val existing = dao.find(sessionId)?.takeIf { it.state == RECORD_STATE_COMPLETED } ?: return
-        dao.upsert(
-            existing.copy(
-                updatedAt = now,
-                targetPackage = targetPackage ?: existing.targetPackage,
-                insertedIntoField = true,
-            )
-        )
+        dao.markInserted(sessionId, targetPackage, now, RECORD_STATE_COMPLETED)
     }
 
     suspend fun recordFailure(

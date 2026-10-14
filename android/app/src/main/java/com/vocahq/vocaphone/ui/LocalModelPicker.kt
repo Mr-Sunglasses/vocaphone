@@ -71,6 +71,7 @@ import com.vocahq.vocaphone.local.ModelPick
 import com.vocahq.vocaphone.local.ModelPlainLanguage
 import com.vocahq.vocaphone.local.byteLabel
 import com.vocahq.vocaphone.local.coversLanguage
+import com.vocahq.vocaphone.local.deleteFailureMessage
 import com.vocahq.vocaphone.local.downloadSizeProgress
 import com.vocahq.vocaphone.local.downloadTimeRemaining
 import com.vocahq.vocaphone.local.downloadWarning
@@ -527,11 +528,12 @@ private fun ModelDownloadMessage(
     onRetry: () -> Unit,
     onRetryDelete: (() -> Unit)?,
 ) {
-    val message = state.message ?: return
-    if (state.failedDelete != null) {
+    // Its own notice, beside the download line rather than in place of it, so
+    // each message keeps the action that answers it.
+    LocalModelCatalog.find(state.failedDelete.orEmpty())?.let { model ->
         Notice(tone = NoticeTone.Warning) {
             Text(
-                message,
+                deleteFailureMessage(model.displayName),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -539,8 +541,8 @@ private fun ModelDownloadMessage(
                 TextButton(onClick = onRetryDelete, enabled = !busy) { Text("Delete again") }
             }
         }
-        return
     }
+    val message = state.message ?: return
     if (state.failedDownload == null) {
         Text(
             message,

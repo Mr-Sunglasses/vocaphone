@@ -28,6 +28,15 @@ class HistoryRepositoryTest {
         override suspend fun clearAudio(sessionId: String) {
             records[sessionId]?.let { records[sessionId] = it.copy(audioPath = null, audioExpiresAt = null) }
         }
+        // Mirrors the SQL: changes a matching row in place, never inserts one.
+        override suspend fun markInserted(sessionId: String, targetPackage: String?, now: Long, state: String) {
+            val existing = records[sessionId]?.takeIf { it.state == state } ?: return
+            records[sessionId] = existing.copy(
+                insertedIntoField = true,
+                targetPackage = targetPackage ?: existing.targetPackage,
+                updatedAt = now,
+            )
+        }
     }
 
     @Test

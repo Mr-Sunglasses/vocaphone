@@ -62,6 +62,17 @@ interface DictationRecordDao {
 
     @Query("UPDATE dictation_records SET audioPath = NULL, audioExpiresAt = NULL WHERE sessionId = :sessionId")
     suspend fun clearAudio(sessionId: String)
+
+    /**
+     * One statement, so a delete that lands meanwhile cannot be undone by
+     * writing the row back. Only a row still in [state] changes.
+     */
+    @Query(
+        "UPDATE dictation_records SET insertedIntoField = 1, " +
+            "targetPackage = COALESCE(:targetPackage, targetPackage), updatedAt = :now " +
+            "WHERE sessionId = :sessionId AND state = :state"
+    )
+    suspend fun markInserted(sessionId: String, targetPackage: String?, now: Long, state: String)
 }
 
 @Database(entities = [DictationRecordEntity::class], version = 1, exportSchema = true)
