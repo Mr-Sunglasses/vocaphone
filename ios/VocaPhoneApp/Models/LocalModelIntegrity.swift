@@ -257,3 +257,75 @@ enum LocalModelManagerError: LocalizedError, Equatable {
         }
     }
 }
+
+/// Why a model download stopped, in the words Home and the picker show.
+///
+/// The picker used to print `localizedDescription` — a URL, a path inside the
+/// container, an HTTP status — and Home showed nothing at all once the
+/// transfer stopped. These are the few things that actually go wrong, each
+/// with the one thing to do about it.
+enum ModelDownloadFailureReason: Equatable, Sendable {
+    case offline
+    case notEnoughStorage
+    case serverError
+    /// The files arrived but did not match their pinned SHA-256, so they were
+    /// not used.
+    case damaged
+    case other
+
+    init(error: Error) {
+        switch error {
+        case LocalModelManagerError.insufficientStorage:
+            self = .notEnoughStorage
+        case LocalModelManagerError.downloadFailed:
+            self = .serverError
+        case LocalModelManagerError.integrityFileMissing,
+             LocalModelManagerError.integritySizeMismatch,
+             LocalModelManagerError.integrityUnverified,
+             LocalModelManagerError.integrityManifestMissing:
+            self = .damaged
+        case let url as URLError:
+            switch url.code {
+            case .notConnectedToInternet, .networkConnectionLost, .timedOut,
+                 .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+                 .dataNotAllowed, .internationalRoamingOff:
+                self = .offline
+            case .badServerResponse, .resourceUnavailable, .zeroByteResource:
+                self = .serverError
+            default:
+                self = .other
+            }
+        default:
+            let ns = error as NSError
+            if (ns.domain == NSCocoaErrorDomain && ns.code == NSFileWriteOutOfSpaceError)
+                || (ns.domain == NSPOSIXErrorDomain && ns.code == Int(ENOSPC))
+            {
+                self = .notEnoughStorage
+            } else {
+                self = .other
+            }
+        }
+    }
+
+    var plainText: String {
+        switch self {
+        case .offline:
+            "This iPhone looks offline. Connect to the internet and try again."
+        case .notEnoughStorage:
+            "Not enough free storage on this iPhone. Free up some space and try again."
+        case .serverError:
+            "The download server had a problem. Try again in a little while."
+        case .damaged:
+            "The files didn't match their checksum, so they weren't used. Try again."
+        case .other:
+            "The download stopped before it finished. Try again."
+        }
+    }
+}
+
+/// The last model download that failed, kept until it is retried, replaced
+/// or dismissed — so Home can say so rather than forget the download began.
+struct FailedModelDownload: Equatable, Sendable {
+    let modelID: String
+    let reason: ModelDownloadFailureReason
+}

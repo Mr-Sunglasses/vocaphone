@@ -7,6 +7,10 @@ enum HomeSessionAction: Equatable {
     case cancel
     case retry
     case copyTranscript
+    /// iOS Settings, for microphone access only the user can give back.
+    case openSettings
+    /// Voice model settings, for a dictation that failed for want of one.
+    case chooseVoiceModel
 }
 
 /// The home screen's one session card, derived rather than assembled in the
@@ -57,6 +61,8 @@ struct HomeSessionCard: Equatable {
         var processingLocation: SessionProcessingLocation?
         var transcript: String?
         var errorMessage: String?
+        /// The failure's code, which decides what the card offers next.
+        var errorCode: String?
         var canRetry = false
         var startedInApp = true
         /// A keyboard dictation targeting Home's own text field. Keep that
@@ -264,6 +270,13 @@ struct HomeSessionCard: Equatable {
         )
     }
 
+    /// The microphone test is a diagnostic. It was the prominent button on
+    /// every card that had nothing better to offer — after a finished
+    /// dictation, after a failure — as though testing the microphone were the
+    /// next thing anyone wanted. It is a quiet link now, and the prominent
+    /// button is the one that answers the card or there is none.
+    private static let quietTest = Action(title: "Test the microphone only", action: .startTest)
+
     private static func finished(_ context: Context) -> HomeSessionCard {
         HomeSessionCard(
             status: .ready,
@@ -273,9 +286,10 @@ struct HomeSessionCard: Equatable {
                 : "The transcript went into the field you were typing in.",
             primary: context.transcript != nil
                 ? Action(title: "Copy transcript", action: .copyTranscript, symbol: "doc.on.doc")
-                : Action(title: "Start microphone test", action: .startTest, symbol: "mic.fill"),
+                : nil,
             secondary: nil,
-            showsTranscript: context.transcript != nil
+            showsTranscript: context.transcript != nil,
+            quietAction: context.transcript == nil ? quietTest : nil
         )
     }
 
@@ -306,27 +320,44 @@ struct HomeSessionCard: Equatable {
             detail: context.errorMessage ?? "Your recording is preserved.",
             primary: context.canRetry
                 ? Action(title: "Retry", action: .retry, symbol: "arrow.clockwise")
-                : Action(title: "Start microphone test", action: .startTest, symbol: "mic.fill"),
+                : nil,
             secondary: Action(title: "Discard recording", action: .cancel),
-            showsTryField: context.isTryFieldSession
+            showsTryField: context.isTryFieldSession,
+            quietAction: context.canRetry ? nil : quietTest
         )
     }
 
+    /// The prominent button is whatever fixes this failure: Settings for a
+    /// microphone that was refused, the model picker for a model that is not
+    /// here. A recording with no speech in it needs nothing fixed — the next
+    /// dictation is the answer — so it gets no button at all.
     private static func failed(_ context: Context) -> HomeSessionCard {
-        HomeSessionCard(
+        let failure = DictationFailure(code: context.errorCode)
+        let title: String
+        let primary: Action?
+        if context.state == .permissionDenied {
+            title = "Microphone access needed"
+            primary = Action(title: "Open Settings", action: .openSettings, symbol: "gear")
+        } else if failure == .voiceModelMissing {
+            title = failure.keyboardTitle
+            primary = Action(
+                title: "Download a voice model",
+                action: .chooseVoiceModel,
+                symbol: "arrow.down.circle"
+            )
+        } else {
+            title = failure == .other ? "Transcription failed" : failure.keyboardTitle
+            primary = nil
+        }
+        return HomeSessionCard(
             status: .failed,
-            title: context.state == .permissionDenied
-                ? "Microphone access needed"
-                : "Transcription failed",
+            title: title,
             detail: context.errorMessage
                 ?? "Make a new recording once the problem is fixed.",
-            primary: Action(
-                title: "Start microphone test",
-                action: .startTest,
-                symbol: "mic.fill"
-            ),
+            primary: primary,
             secondary: nil,
-            showsTryField: context.isTryFieldSession
+            showsTryField: context.isTryFieldSession,
+            quietAction: primary == nil ? quietTest : nil
         )
     }
 }
@@ -345,6 +376,8 @@ struct HomeSetupChecklist: Equatable {
         case allowMicrophone
         /// iOS Settings, for what vocaphone cannot switch on itself.
         case openSystemSettings
+        /// Start the download that failed again.
+        case retryDownload
     }
 
     struct Action: Equatable {
@@ -371,13 +404,21 @@ struct HomeSetupChecklist: Equatable {
     /// `nil` once dictation can work. Also `nil` when the only thing missing
     /// is a model that is already downloading: the download card says that,
     /// and a checklist over it read as if setup had been thrown away.
-    static func make(_ status: SetupStatus, isModelArriving: Bool) -> HomeSetupChecklist? {
+    ///
+    /// `failedDownload` is the plain reason the last model download stopped.
+    /// Without it the row went straight back to "Download one", as if the
+    /// download had never been tried.
+    static func make(
+        _ status: SetupStatus,
+        isModelArriving: Bool,
+        failedDownload: String? = nil
+    ) -> HomeSetupChecklist? {
         let missing = status.blockingSteps
         guard !missing.isEmpty else { return nil }
         if missing == [.source], isModelArriving { return nil }
 
         let rows = SetupStep.allCases.filter(\.isRequiredForDictation).map { step in
-            row(step, status: status, isModelArriving: isModelArriving)
+            row(step, status: status, isModelArriving: isModelArriving, failedDownload: failedDownload)
         }
         let left = rows.filter { !$0.isDone }.count
         return HomeSetupChecklist(
@@ -390,7 +431,8 @@ struct HomeSetupChecklist: Equatable {
     private static func row(
         _ step: SetupStep,
         status: SetupStatus,
-        isModelArriving: Bool
+        isModelArriving: Bool,
+        failedDownload: String?
     ) -> Row {
         let done = status.isSatisfied(step)
         switch step {
@@ -400,6 +442,15 @@ struct HomeSetupChecklist: Equatable {
             guard !done else { return Row(step: step, title: title, detail: nil, isDone: true, action: nil) }
             if onDevice, isModelArriving {
                 return Row(step: step, title: title, detail: "Downloading…", isDone: false, action: nil)
+            }
+            if onDevice, let failedDownload {
+                return Row(
+                    step: step,
+                    title: title,
+                    detail: "Download failed — \(failedDownload)",
+                    isDone: false,
+                    action: Action(title: "Retry", kind: .retryDownload)
+                )
             }
             return Row(
                 step: step,
