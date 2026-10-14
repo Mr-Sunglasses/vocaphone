@@ -970,43 +970,50 @@ private fun DictationBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // Bare icon until the menu is open: a filled disc on both ends of the
-        // strip framed the suggestions like a toolbar rather than a keyboard.
-        Box(
-            modifier = Modifier
-                .size(ToolbarControlSize)
-                .clip(CircleShape)
-                .background(
-                    if (menuOpen) {
-                        MaterialTheme.colorScheme.surfaceContainerHigh
-                    } else {
-                        Color.Transparent
-                    },
-                )
-                .semantics {
-                    role = Role.Button
-                    contentDescription = "Keyboard menu"
-                    if (!menuEnabled) disabled()
-                }
-                .pointerInput(menuEnabled, menuOpen) {
-                    if (!menuEnabled) return@pointerInput
-                    detectTapGestures(
-                        onTap = {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            onMenuTap()
+        // The menu is disabled while dictation runs, so its slot carries the
+        // discard X instead: the leading edge, as on iOS, and across the strip
+        // from Stop so a tap reaching for Stop cannot discard.
+        if (MicDictationControl.showsSeparateCancel(state.phase)) {
+            DictationCancelButton(onClick = onMicLongPress)
+        } else {
+            // Bare icon until the menu is open: a filled disc on both ends of the
+            // strip framed the suggestions like a toolbar rather than a keyboard.
+            Box(
+                modifier = Modifier
+                    .size(ToolbarControlSize)
+                    .clip(CircleShape)
+                    .background(
+                        if (menuOpen) {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        } else {
+                            Color.Transparent
                         },
                     )
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_keyboard_menu),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                    alpha = if (menuEnabled) 1f else 0.38f,
-                ),
-            )
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Keyboard menu"
+                        if (!menuEnabled) disabled()
+                    }
+                    .pointerInput(menuEnabled, menuOpen) {
+                        if (!menuEnabled) return@pointerInput
+                        detectTapGestures(
+                            onTap = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onMenuTap()
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_keyboard_menu),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                        alpha = if (menuEnabled) 1f else 0.38f,
+                    ),
+                )
+            }
         }
 
         Row(
@@ -1142,9 +1149,6 @@ private fun DictationBar(
         if (panelTitle != null) {
             ToolbarCloseButton(onClick = onClosePanel)
         }
-        if (MicDictationControl.showsSeparateCancel(state.phase)) {
-            DictationCancelButton(onClick = onMicLongPress)
-        }
         MicButton(
             state = state,
             enabled = editor.dictationAllowed && !isPreferenceWritePending,
@@ -1228,6 +1232,13 @@ private fun VoiceShortcutListeningBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
+        // Leading, opposite Stop, matching the keyboard toolbar. The spacer
+        // keeps the status centred over the bar when there is nothing to cancel.
+        if (MicDictationControl.showsSeparateCancel(state.phase)) {
+            DictationCancelButton(onClick = onMicLongPress)
+        } else {
+            Spacer(Modifier.size(ToolbarControlSize))
+        }
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -1270,9 +1281,6 @@ private fun VoiceShortcutListeningBar(
                     )
                 }
             }
-        }
-        if (MicDictationControl.showsSeparateCancel(state.phase)) {
-            DictationCancelButton(onClick = onMicLongPress)
         }
         MicButton(
             state = state,

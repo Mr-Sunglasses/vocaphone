@@ -22,11 +22,12 @@ internal object MicDictationControl {
         if (phase.isBusy) MicDictationAction.CANCEL else null
 
     /**
-     * Visible X next to the mic. Hidden while listening so a walking tap cannot
-     * discard; the red Stop long-press is the discard path then.
+     * Visible X whenever dictation is running, listening included: discarding
+     * used to mean Stop and then X, or a long-press nobody found. It sits at
+     * the leading edge, across the strip from Stop, so a tap reaching for Stop
+     * cannot land on it. Long-pressing Stop still discards too.
      */
-    fun showsSeparateCancel(phase: DictationPhase): Boolean =
-        phase.isBusy && phase != DictationPhase.LISTENING
+    fun showsSeparateCancel(phase: DictationPhase): Boolean = phase.isBusy
 
     /** Menu, clipboard, and models stay reachable unless dictation is actually running. */
     fun allowsMenu(phase: DictationPhase): Boolean = !phase.isBusy

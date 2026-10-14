@@ -36,12 +36,16 @@ class MicDictationControlTest {
     }
 
     @Test
-    fun `separate cancel is hidden while listening so a walking tap cannot discard`() {
+    fun `separate cancel shows whenever dictation is running, listening included`() {
         assertFalse(MicDictationControl.showsSeparateCancel(DictationPhase.IDLE))
-        assertFalse(MicDictationControl.showsSeparateCancel(DictationPhase.LISTENING))
+        assertTrue(MicDictationControl.showsSeparateCancel(DictationPhase.LISTENING))
+        assertTrue(MicDictationControl.showsSeparateCancel(DictationPhase.UPLOADING))
         assertTrue(MicDictationControl.showsSeparateCancel(DictationPhase.TRANSCRIBING))
         assertTrue(MicDictationControl.showsSeparateCancel(DictationPhase.FINALIZING))
+        assertTrue(MicDictationControl.showsSeparateCancel(DictationPhase.INSERTING))
         assertFalse(MicDictationControl.showsSeparateCancel(DictationPhase.FAILED))
+        assertFalse(MicDictationControl.showsSeparateCancel(DictationPhase.INSERTED))
+        assertFalse(MicDictationControl.showsSeparateCancel(DictationPhase.PERMISSION_REPAIR))
     }
 
     @Test
