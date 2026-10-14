@@ -601,6 +601,9 @@ enum KeyboardPreferences {
     /// that iOS reclaiming the app mid-setup does not turn a diagnosed problem
     /// back into an unexplained wait.
     static let keyboardLackedFullAccessKey = "keyboardLackedFullAccessAt"
+    /// The last ended session a keyboard has already told the user about.
+    /// See ``acknowledgedEndedSessionID``.
+    static let acknowledgedEndedSessionKey = "keyboardAcknowledgedEndedSession"
     static let firstDictationKey = "hasCompletedFirstDictation"
     /// Separate from the first transcript milestone: this proves the user has
     /// seen a transcript make the complete trip through the keyboard and into a
@@ -1228,6 +1231,18 @@ enum KeyboardPreferences {
     static var keyboardLackedFullAccessAt: Date? {
         get { defaults?.object(forKey: keyboardLackedFullAccessKey) as? Date }
         set { defaults?.set(newValue, forKey: keyboardLackedFullAccessKey) }
+    }
+
+    /// A session whose failure or timeout a keyboard has already reported.
+    ///
+    /// The report is shown once, by whichever keyboard instance comes up first
+    /// — often a fresh one, because iOS tears the extension down while
+    /// vocaphone is in front. Kept in the App Group so the next instance, or
+    /// the next field, does not say it again. Only an identifier: nothing about
+    /// what was said, or where.
+    static var acknowledgedEndedSessionID: UUID? {
+        get { defaults?.string(forKey: acknowledgedEndedSessionKey).flatMap(UUID.init(uuidString:)) }
+        set { defaults?.set(newValue?.uuidString, forKey: acknowledgedEndedSessionKey) }
     }
 
     /// A successful keyboard insertion into vocaphone's own practice field.

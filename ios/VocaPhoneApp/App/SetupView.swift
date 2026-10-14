@@ -1212,7 +1212,7 @@ struct SetupView: View {
 
             SettingsReferenceCard(
                 title: "Allow Full Access",
-                detail: "Keyboards → vocaphone",
+                detail: "vocaphone › Keyboards",
                 symbol: "checkmark.shield",
                 note: "Currently off"
             )

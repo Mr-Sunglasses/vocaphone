@@ -165,6 +165,18 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     var insertionInterrupted: Bool?
 
     var recordedSeconds: Double?
+    /// When the microphone actually started writing this session, set by the
+    /// containing app as it moves the record to `recording`. The keyboard and
+    /// the swipe-back screen count the recording clock from it — not from the
+    /// tap, and not from whenever a keyboard first noticed the state — so the
+    /// warning before the length cap lands when the cap does. Optional so
+    /// records written before this field still decode.
+    var recordingStartedAt: Date?
+    /// Set when capture stopped because it reached the length cap rather than
+    /// because anyone tapped Finish, so every surface can say why the last
+    /// sentence was cut off. Optional so records written before this field
+    /// still decode.
+    var stoppedAtRecordingLimit: Bool?
     /// Set when writing the recording's file failed part-way — a full disk,
     /// most often — so the file holds only its start, and cleared once the
     /// user has been told so. Until then no retry may quietly transcribe or
@@ -198,6 +210,8 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
         targetFingerprint = nil
         insertionInterrupted = nil
         recordedSeconds = nil
+        recordingStartedAt = nil
+        stoppedAtRecordingLimit = nil
         fileIncompleteUntold = nil
     }
 

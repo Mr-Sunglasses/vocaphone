@@ -114,6 +114,7 @@
 		366E7DFAD5B2666FC1FF9FB3 /* SetupStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 342F2B3B437269514C969C77 /* SetupStatus.swift */; };
 		36A5F07E79173A14F240A47F /* local_model_pins.json in Resources */ = {isa = PBXBuildFile; fileRef = DBAE2B11D3A27A798D0F39ED /* local_model_pins.json */; };
 		36A8B74F656E9B17D367775A /* StatsShare.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2978D103DB7CEA2D29A546C1 /* StatsShare.swift */; };
+		37728FC65F246F34051F2F6A /* DictationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A249ECD5882022276DF9D6D /* DictationFailure.swift */; };
 		387B6B6A0B0AE57B6324B55F /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87F5D76EB1E944F3A323006D /* SettingsView.swift */; };
 		3948B010FEE4F51B8CE2074D /* TranscriptStyler.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0DBF47C7F5E5B13752056CB /* TranscriptStyler.swift */; };
 		396330316A5B80A3884BE142 /* LocalTranscriptionPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13FF1A5ABC4220C886291309 /* LocalTranscriptionPreferences.swift */; };
@@ -261,6 +262,7 @@
 		8509302F6F0C1F5E3402B5A0 /* LocalModelFileRemovalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A74E702D642171D04B0EB8A /* LocalModelFileRemovalTests.swift */; };
 		85207216B77DE9C92D5E0519 /* AppGroupEntitlementTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E49565018533AF6A394F9C24 /* AppGroupEntitlementTests.swift */; };
 		855203661CA514E5C200FBA2 /* SpeechActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = A54523E86C63DA57B3FE7C71 /* SpeechActivity.swift */; };
+		85CB92A49CC4BB0B7EE5FEAE /* DictationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A249ECD5882022276DF9D6D /* DictationFailure.swift */; };
 		85D8C00FF03940BD62FB7957 /* WhisperTranscription.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4B54CB26556AF141347151C /* WhisperTranscription.swift */; };
 		867671B90E038F77BE36A4E6 /* DarwinNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3498C523755A678225152570 /* DarwinNotifications.swift */; };
 		86B74F487C94F9DBD1E691C4 /* SpokenEmoji.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF1DAD70952939C37DE50F0B /* SpokenEmoji.swift */; };
@@ -379,6 +381,7 @@
 		BD67C86E9CCCEEBB2ABC845A /* TypingCandidates.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEAA4440B24071020CD693DB /* TypingCandidates.swift */; };
 		BF1BF9FEBFC0373AE2C4187D /* DarwinNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3498C523755A678225152570 /* DarwinNotifications.swift */; };
 		BF22B8C9A4943F8B06F74216 /* DictationBarComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75FD84E65614D9F94D8EF0AC /* DictationBarComponents.swift */; };
+		BF2FB6EFF246095B5C9B1BE0 /* DictationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A249ECD5882022276DF9D6D /* DictationFailure.swift */; };
 		C087E97DAE9ED4EF99C5E059 /* SileroSpeechDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0A2865A99E8F5891708C76D /* SileroSpeechDetector.swift */; };
 		C1B1F70A0C28FB9059780143 /* Snippet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69943FB61027DEE31DA51705 /* Snippet.swift */; };
 		C2930E7FD81AF00E3553F79C /* SherpaEmptyChunkRecovery.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF256CF6ED209E00193BF135 /* SherpaEmptyChunkRecovery.swift */; };
@@ -468,6 +471,7 @@
 		EA1EE748995FD124BD88360F /* StreamingAudioBridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37BE0E4369B6C1358B5143BE /* StreamingAudioBridgeTests.swift */; };
 		EA2FD0ECF8725FC06FE079DD /* KeyboardDefaultsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B09ACAFE8463E73915BD264 /* KeyboardDefaultsTests.swift */; };
 		EA85F08A81F26ABC84C78D30 /* VocabularyCorrection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 029284027456BBB1AFD80161 /* VocabularyCorrection.swift */; };
+		EABB120A333F44F8EB89F14D /* DictationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A249ECD5882022276DF9D6D /* DictationFailure.swift */; };
 		EAD46E947414FAB6F95B61F1 /* UsageStats.swift in Sources */ = {isa = PBXBuildFile; fileRef = C93CC576887F75BD471DDDF8 /* UsageStats.swift */; };
 		EBD16FB95C5B654BE5B5CA2F /* GatewayUploadClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F1000488FD3C508B0D2D8B0 /* GatewayUploadClientTests.swift */; };
 		ECAABA45F8C1DBD7328EDDC5 /* ModelPlainLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BC6BFCD9D1ED528959C2647 /* ModelPlainLanguage.swift */; };
@@ -594,6 +598,7 @@
 		27748467103CFAD3F6A2F603 /* TelemetryRecord.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryRecord.swift; sourceTree = "<group>"; };
 		28ECEDA044D2B1021710F205 /* TranscriptHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptHistoryView.swift; sourceTree = "<group>"; };
 		2978D103DB7CEA2D29A546C1 /* StatsShare.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsShare.swift; sourceTree = "<group>"; };
+		2A249ECD5882022276DF9D6D /* DictationFailure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationFailure.swift; sourceTree = "<group>"; };
 		2D34E7E54437AFA69FDC2848 /* OnboardingPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPresentation.swift; sourceTree = "<group>"; };
 		2E6C1FB17BFD787FDDCBBF82 /* SherpaOnnxBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SherpaOnnxBridge.h; sourceTree = "<group>"; };
 		2F4DE1B5E75DB40AE6B29D9C /* VocabularyCorrectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VocabularyCorrectionTests.swift; sourceTree = "<group>"; };
@@ -948,6 +953,7 @@
 				3498C523755A678225152570 /* DarwinNotifications.swift */,
 				5FA135DE504590121F6D8843 /* DiagnosticLog.swift */,
 				575BDB070A428051B623F095 /* DictatedTranscript.swift */,
+				2A249ECD5882022276DF9D6D /* DictationFailure.swift */,
 				CF56F0E966D9AECA1DCFF65E /* DownloadReadiness.swift */,
 				8EA1B6FDE1A86C551FFCD094 /* EmojiTable.swift */,
 				9A0A752EC9784F6FD2274150 /* GatewayEndpoint.swift */,
@@ -1466,6 +1472,7 @@
 				BF22B8C9A4943F8B06F74216 /* DictationBarComponents.swift in Sources */,
 				2D1CF0D6875DFD7D9BFD10FF /* DictationBarStyle.swift in Sources */,
 				F1CDF580A8C552E1A03524A1 /* DictationBarView.swift in Sources */,
+				BF2FB6EFF246095B5C9B1BE0 /* DictationFailure.swift in Sources */,
 				E4187B9A8DA6FBBA6DE095AC /* DictationPresentation.swift in Sources */,
 				C8A0B999624A4CA5DFBD8330 /* DictationSurfaceView.swift in Sources */,
 				22916AAC244D261969A38330 /* DownloadReadiness.swift in Sources */,
@@ -1563,6 +1570,7 @@
 				17A121351047369782528CA2 /* DictationBarComponents.swift in Sources */,
 				84E419209B93E8F1B50FEE4E /* DictationBarStyle.swift in Sources */,
 				78D493F3552BE347D8931376 /* DictationBarView.swift in Sources */,
+				EABB120A333F44F8EB89F14D /* DictationFailure.swift in Sources */,
 				A018E5851AAB98E42FBBB65A /* DictationPresentation.swift in Sources */,
 				9470DF414CA8F44F2330CC77 /* DictationSurfaceView.swift in Sources */,
 				94F7D564583E151ECAF6C33C /* DownloadReadiness.swift in Sources */,
@@ -1706,6 +1714,7 @@
 				867671B90E038F77BE36A4E6 /* DarwinNotifications.swift in Sources */,
 				12A7F7D550BED2750227A111 /* DiagnosticLog.swift in Sources */,
 				EFEB53E947DAF4C77FE5E059 /* DictatedTranscript.swift in Sources */,
+				37728FC65F246F34051F2F6A /* DictationFailure.swift in Sources */,
 				EF4B66CAC02A63D743384B49 /* DownloadReadiness.swift in Sources */,
 				8A9E2E39C1371D1C12913813 /* EmojiTable.swift in Sources */,
 				3655C2E063B7C9B8F286057B /* FinishRecordingIntent.swift in Sources */,
@@ -1783,6 +1792,7 @@
 				3226364FB9F43F49B12FE2A6 /* DictationBarLayoutTests.swift in Sources */,
 				15CB6862BDAB7694EE44D7F8 /* DictationBarStyle.swift in Sources */,
 				8DD5E5E2B734765883552523 /* DictationBarView.swift in Sources */,
+				85CB92A49CC4BB0B7EE5FEAE /* DictationFailure.swift in Sources */,
 				1BB4BED912ADFA11ED122052 /* DictationPresentation.swift in Sources */,
 				DEB245BAC4DEE643F2EB38B0 /* DictationPresentationTests.swift in Sources */,
 				CDFE48F60144A96B1C41080A /* DictationSurfaceView.swift in Sources */,

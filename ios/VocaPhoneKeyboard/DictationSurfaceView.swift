@@ -8,7 +8,13 @@ final class DictationSurfaceState: ObservableObject {
     var state: SessionState {
         get { storedState }
         set {
-            if storedState != newValue { recoveryMessage = nil }
+            if storedState != newValue {
+                recoveryMessage = nil
+                // A passing message is about the moment it was shown in.
+                // "Starting with Quick Dictation…" must not still be up once
+                // recording has begun.
+                clearNotice()
+            }
             change(&storedState, to: newValue)
         }
     }
@@ -155,6 +161,40 @@ final class DictationSurfaceState: ObservableObject {
 
     func showRecoveryMessage(_ message: String) {
         recoveryMessage = message
+    }
+
+    /// A passing message: in place of the suggestions on the idle row, or as
+    /// the line under the bars while a session holds the keyboard. Unlike
+    /// `centerMessage` it never opens the surface — the idle row stays a row.
+    private var storedNotice: String?
+    var notice: String? {
+        get { storedNotice }
+        set { change(&storedNotice, to: newValue) }
+    }
+    private var noticeExpiry: DispatchWorkItem?
+
+    /// Long enough to read a sentence, and longer for a longer one.
+    func showNotice(_ message: String) {
+        noticeExpiry?.cancel()
+        notice = message
+        let work = DispatchWorkItem { [weak self] in self?.notice = nil }
+        noticeExpiry = work
+        let seconds = min(6, max(2.6, Double(message.count) / 14))
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func clearNotice() {
+        noticeExpiry?.cancel()
+        noticeExpiry = nil
+        notice = nil
+    }
+
+    /// The recording clock, while recording. Republished only when its text
+    /// changes — once a second — however often the session poll runs.
+    private var storedRecordingClock: RecordingClock?
+    var recordingClock: RecordingClock? {
+        get { storedRecordingClock }
+        set { change(&storedRecordingClock, to: newValue) }
     }
 
     /// The trailing button in this state: Finish, Insert, Retry, Start.
@@ -595,6 +635,7 @@ struct DictationSurfaceView: View {
 
     /// The one line under the middle of the surface.
     private var centerText: String {
+        if let notice = state.notice, !isRecording { return notice }
         if let message = state.centerMessage, !isRecording { return message }
         if isWorking { return workingTitle }
         return "\(state.language.displayName) • \(state.style.displayName)"
@@ -794,6 +835,7 @@ struct DictationSurfaceView: View {
             && !sessionIsOpen
             && !state.hasTypedThisSession
             && !state.hasCandidates
+            && state.notice == nil
     }
 
     @ViewBuilder
@@ -816,11 +858,46 @@ struct DictationSurfaceView: View {
             leadingGlassContainer
             if isSuggesting {
                 CandidateRow(state: state.typing)
+            } else if isRecording, let clock = state.recordingClock {
+                // Between Cancel and Finish, where the eye already is. The cap
+                // used to stop a recording at two minutes with nothing on this
+                // surface counting towards it.
+                Spacer(minLength: 0)
+                recordingClockLabel(clock)
+                Spacer(minLength: 0)
+            } else if !isOpen, let notice = state.notice {
+                noticeLine(notice)
             } else {
                 Spacer()
             }
             trailingActionButton
         }
+    }
+
+    private func recordingClockLabel(_ clock: RecordingClock) -> some View {
+        Text(clock.text)
+            .font(.system(size: 15, weight: .semibold).monospacedDigit())
+            .foregroundStyle(
+                clock.isNearLimit
+                    ? Color(keyPalette.tint(for: .recording))
+                    : controlForeground.opacity(0.7)
+            )
+            .contentTransition(.identity)
+            .accessibilityLabel(clock.accessibilityLabel)
+    }
+
+    /// One passing line where the suggestions would be. Two lines at most and
+    /// a little smaller than a candidate, so it reads as a remark rather than
+    /// as something to tap.
+    private func noticeLine(_ notice: String) -> some View {
+        Text(notice)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(controlForeground.opacity(0.75))
+            .lineLimit(2)
+            .minimumScaleFactor(0.85)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .transition(.opacity)
     }
 
     /// Menu on the leading edge, microphone on the trailing. Writing style
@@ -852,7 +929,15 @@ struct DictationSurfaceView: View {
                     // destroy and recreate the glass.
                     if isSuggesting {
                         CandidateRow(state: state.typing)
+                    } else if let notice = state.notice {
+                        noticeLine(notice)
+                    } else if centresAction {
+                        // Start holds the middle, so the language takes the
+                        // free end rather than crowding the menu.
+                        Spacer()
+                        idleLanguageChip
                     } else {
+                        idleLanguageChip
                         Spacer()
                     }
                     if !centresAction {
@@ -1168,6 +1253,33 @@ struct DictationSurfaceView: View {
         .animation(nil, value: state.language)
         .accessibilityLabel("Transcription language")
         .accessibilityValue(state.language.displayName)
+    }
+
+    /// The language the next dictation uses, on the row itself. It used to be
+    /// reachable only through "…", and a dictation in the wrong language is
+    /// a whole recording to say again. Tapping it opens the picker and comes
+    /// back to the keys, not to the dashboard.
+    private var idleLanguageChip: some View {
+        Button {
+            state.present(.language)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "globe")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(state.language.shortLabel)
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundStyle(controlForeground.opacity(0.8))
+            .padding(.horizontal, 10)
+            .frame(minHeight: Self.buttonDiameter)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .modifier(GlassCapsuleModifier())
+        .animation(nil, value: state.language)
+        .accessibilityLabel("Dictation language")
+        .accessibilityValue(state.language.displayName)
+        .accessibilityHint("Changes the language for the next dictation.")
     }
 
     /// Icon only: the name already lives on the style page.
@@ -1537,6 +1649,16 @@ struct DictationSurfaceView: View {
     /// in the corner. Not the same thing as whether VocaPhone is running.
     private var compactShowsStart: Bool { centresAction }
 
+    /// The hand-off's way out — Open app — is a labelled capsule. Recording's
+    /// check and the working spinner stay round: those are the states the
+    /// surface is built around, and their meaning is the whole surface.
+    private var showsLabelledPrimary: Bool {
+        switch state.state {
+        case .launchingApp, .awaitingReturn: state.primaryIsEnabled
+        default: false
+        }
+    }
+
     /// Compact idle action. Same identity in the middle and the corner so
     /// the first keystroke slides it rather than teleporting it. Not glass:
     /// a brand fill, so it stays visible on both light and dark keys.
@@ -1573,6 +1695,20 @@ struct DictationSurfaceView: View {
                 .foregroundStyle(dashboardAccent)
                 .frame(width: Self.compactActionWidth, height: Self.buttonDiameter)
                 .modifier(GlassCapsuleModifier())
+            } else if showsLabelledPrimary {
+                // Words, not a glyph, whenever the button does something other
+                // than start or finish. An arrow out of a box in a circle was
+                // the only way out of a stalled hand-off, and nothing said so.
+                HStack(spacing: 7) {
+                    Image(systemName: state.primarySymbol)
+                    Text(state.primaryLabel)
+                        .lineLimit(1)
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(onAccent)
+                .padding(.horizontal, 16)
+                .frame(height: Self.buttonDiameter)
+                .background(Capsule().fill(dashboardAccent))
             } else {
                 ZStack {
                     if state.usesCompactControls {
@@ -1796,9 +1932,11 @@ private struct CompactRunningSwitch: UIViewRepresentable {
 
     func makeUIView(context: Context) -> FrozenSwitchView {
         let view = FrozenSwitchView()
-        view.control.accessibilityLabel = "vocaphone"
+        // Named for what it controls. "vocaphone" on a switch said nothing
+        // about what turning it on would do.
+        view.control.accessibilityLabel = "Quick Dictation"
         view.control.accessibilityHint =
-            "Opens or closes vocaphone. Quick Dictation settings stay as they are."
+            "On opens vocaphone so you can dictate without leaving this app. Off closes vocaphone."
         view.control.addTarget(
             context.coordinator,
             action: #selector(Coordinator.changed(_:)),

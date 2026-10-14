@@ -3,18 +3,18 @@ import UIKit
 
 @MainActor
 struct DictationPresentationTests {
-    @Test func failuresKeepTheirDetailsAndRecoveryInstructions() {
+    /// The keyboard says one short line about a failure; the app's paragraph
+    /// about it stays in the app. Concatenating the two put three sentences
+    /// over somebody else's text field.
+    @Test func failuresShowAShortLineNotTheAppsParagraph() {
+        let appDetail = "Select and load a speech-to-text model in the gateway, then retry."
         for state in [SessionState.serverUnavailable, .uploadFailedRecoverable,
                       .transcriptionFailedRecoverable, .transcriptionFailedPermanent] {
-            let model = Self.model(
-                state,
-                errorMessage: "Select and load a speech-to-text model in the gateway.",
-                canRetry: true
-            )
+            let model = Self.model(state, errorMessage: appDetail, canRetry: true)
             let message = model.surfaceMessage(for: state)
-            #expect(message?.contains("Select and load a speech-to-text model") == true)
-            #expect(message?.contains(model.title) == true)
-            #expect(message?.contains(model.primary.title) == true)
+            #expect(message != nil)
+            #expect(message?.contains(appDetail) == false)
+            #expect((message?.count ?? 0) < 60)
             #expect(model.primary.isEnabled)
         }
         let permission = Self.model(.permissionDenied)
@@ -34,7 +34,7 @@ struct DictationPresentationTests {
         let ready = Self.model(.readyToInsert, transcript: "A preview to check.")
         let message = ready.surfaceMessage(for: .readyToInsert)
         #expect(message?.contains("A preview to check.") == true)
-        #expect(ready.secondaries.contains(.cancel))
+        #expect(ready.secondaries.contains { $0.action == .cancel })
         #expect(ready.primary.action == .insert)
         #expect(ready.primary.isEnabled)
         let empty = Self.model(.readyToInsert)
@@ -59,7 +59,7 @@ struct DictationPresentationTests {
             #expect(message?.contains("Meet at noon.") == true)
             #expect(model.primary.action == .insert)
             #expect(model.primary.isEnabled)
-            #expect(model.secondaries.contains(.cancel))
+            #expect(model.secondaries.contains { $0.action == .cancel })
         }
         let untold = DictationBarModel.make(
             DictationContext(state: .readyToInsert, insertionWasInterrupted: true)
@@ -84,7 +84,7 @@ struct DictationPresentationTests {
         #expect(model.primary.action == .insertHere)
         #expect(model.primary.hint?.contains("already there") == true)
         #expect(model.announcement?.contains("interrupted") == true)
-        #expect(model.secondaries.contains(.cancel))
+        #expect(model.secondaries.contains { $0.action == .cancel })
     }
 
     @Test func changedFieldSurfaceRetainsTranscriptAndGuidance() {
@@ -193,7 +193,7 @@ struct DictationPresentationTests {
         #expect(model.accent == .locked)
         #expect(model.primary.isEnabled)
         #expect(model.primary.action == .openFullAccessSettings)
-        #expect(model.primary.symbol == "lock.fill")
+        #expect(model.primary.title == "Turn on Full Access")
         #expect(model.secondaries.isEmpty)
     }
 
@@ -266,7 +266,7 @@ struct DictationPresentationTests {
         let model = Self.model(.targetContextChanged, transcript: "Redirect me")
         #expect(model.title == "Your text is ready")
         #expect(model.primary.action == .insertHere)
-        #expect(model.primary.title == "Insert in this field")
+        #expect(model.primary.title == "Insert here")
         #expect(model.body == .message(
             "“Redirect me” This is a different text field from the one where you started."
         ))
@@ -357,8 +357,10 @@ struct DictationPresentationTests {
         // path out in full — see `AppConfiguration.fullAccessSettingsPath`.
         #expect(text.hasPrefix("Turn on Allow Full Access"))
         #expect(text.contains("Settings"))
-        #expect(text.contains("Keyboard"))
-        #expect(AppConfiguration.fullAccessSettingsPath.contains("Keyboards › vocaphone"))
+        #expect(text.contains("Keyboards"))
+        // The route the button takes: vocaphone opens its own Settings page.
+        #expect(AppConfiguration.fullAccessSettingsPath.contains("vocaphone › Keyboards"))
+        #expect(text.contains(AppConfiguration.fullAccessSettingsPage))
     }
 
     // MARK: - Announcements
@@ -395,5 +397,216 @@ struct DictationPresentationTests {
         )
         #expect(landscape.expandedHeight < portrait.collapsedHeight)
         #expect(landscape.messageLineLimit == 1)
+    }
+
+    // MARK: - Who owns the keyboard
+
+    /// Only capture and the wait for its transcript take the keys away. A
+    /// waiting transcript or a failure is adopted by every field in every app
+    /// for up to an hour, so those sit above the keys instead.
+    @Test func onlyRecordingAndProcessingTakeTheKeysAway() {
+        let owning: Set<SessionState> = [
+            .launchingApp, .awaitingReturn, .recording, .finalizing, .uploading, .transcribing,
+        ]
+        for state in SessionState.allCases {
+            #expect(
+                DictationBarModel.surfaceOwnsKeyboard(state, hasFullAccess: true)
+                    == owning.contains(state),
+                "\(state.rawValue)"
+            )
+            #expect(!DictationBarModel.surfaceOwnsKeyboard(state, hasFullAccess: false))
+        }
+        // And what is not owned is drawn as the status bar, with its action.
+        for state in [SessionState.readyToInsert, .targetContextChanged, .serverUnavailable,
+                      .transcriptionFailedPermanent, .permissionDenied] {
+            #expect(Self.model(state).layout == .status)
+        }
+    }
+
+    /// × on a waiting transcript puts it away rather than deleting it, and
+    /// says where it went.
+    @Test func dismissingAWaitingTranscriptSaysItIsKept() {
+        for state in [SessionState.readyToInsert, .targetContextChanged] {
+            let model = Self.model(state, transcript: "Kept words")
+            #expect(model.secondaries == [.dismissTranscript])
+            #expect(DictationButton.dismissTranscript.hint?.contains("Transcripts") == true)
+        }
+    }
+
+    /// Every failure that ended its session can be put away without starting
+    /// another one.
+    @Test func endedFailuresCanBeDismissed() {
+        for state in [SessionState.transcriptionFailedPermanent, .permissionDenied] {
+            #expect(Self.model(state).secondaries.contains { $0.action == .dismiss })
+        }
+    }
+
+    /// Retry resends kept audio; a new recording starts over. They must not
+    /// look alike.
+    @Test func aNewRecordingNeverWearsRetrysArrow() {
+        let retry = Self.model(.serverUnavailable, canRetry: true).primary
+        #expect(retry.symbol == "arrow.clockwise")
+        for model in [
+            Self.model(.serverUnavailable, canRetry: false),
+            Self.model(.transcriptionFailedPermanent),
+            DictationBarModel.notice(.recordingDidNotStart),
+        ] {
+            #expect(model.primary.action == .start)
+            #expect(model.primary.symbol != retry.symbol)
+        }
+    }
+
+    // MARK: - Failures that are not the model's fault
+
+    @Test func aRecordingWithNoSpeechAsksForANewOneNotARetry() {
+        let model = DictationBarModel.make(
+            DictationContext(
+                state: .transcriptionFailedPermanent,
+                errorMessage: DictationFailure.noSpeechMessage,
+                errorCode: DictationFailure.noSpeechCode
+            )
+        )
+        #expect(model.title == "Didn't catch any speech")
+        #expect(model.primary.action == .start)
+        #expect(!model.title.localizedCaseInsensitiveContains("gateway"))
+        #expect(!model.title.localizedCaseInsensitiveContains("failed"))
+    }
+
+    @Test func aMissingVoiceModelOffersTheAppNotAnotherDictation() {
+        let failed = DictationBarModel.make(
+            DictationContext(
+                state: .transcriptionFailedPermanent,
+                errorCode: DictationFailure.voiceModelMissingCode
+            )
+        )
+        #expect(failed.title == "Voice model needed")
+        #expect(failed.primary.action == .openVoiceModelSetup)
+
+        let checkedFirst = DictationBarModel.make(
+            DictationContext(state: .idle, notice: .voiceModelNeeded)
+        )
+        #expect(checkedFirst.title == "Voice model needed")
+        #expect(checkedFirst.primary.action == .openVoiceModelSetup)
+        #expect(checkedFirst.secondaries.contains { $0.action == .dismiss })
+        #expect(checkedFirst.layout == .status)
+    }
+
+    @Test func gatewayAnswersForSilenceAreNoSpeech() {
+        #expect(DictationFailure.gatewayFoundNoSpeech(code: "empty_transcript"))
+        #expect(DictationFailure.gatewayFoundNoSpeech(code: "silent_audio"))
+        #expect(!DictationFailure.gatewayFoundNoSpeech(code: "engine_unavailable"))
+        #expect(DictationFailure(code: "no_speech") == .noSpeech)
+        #expect(DictationFailure(code: nil) == .other)
+        for failure in [DictationFailure.noSpeech, .voiceModelMissing, .microphoneSilenced,
+                        .languageUnsupported, .other] {
+            #expect(failure.keyboardLine.count < 60)
+        }
+    }
+
+    @Test func aFailedLiveActivityNamesTheProblem() {
+        #expect(DictationFailure.liveActivityStatus(state: .serverUnavailable, code: nil)
+            .contains("Gateway unreachable"))
+        #expect(DictationFailure.liveActivityStatus(
+            state: .transcriptionFailedPermanent, code: "no_speech"
+        ) == "Didn't catch any speech")
+        for state in [SessionState.serverUnavailable, .uploadFailedRecoverable,
+                      .transcriptionFailedRecoverable, .transcriptionFailedPermanent] {
+            let status = DictationFailure.liveActivityStatus(state: state, code: nil)
+            #expect(status != "Needs attention")
+            #expect(status.count <= 40)
+        }
+    }
+
+    // MARK: - Sessions that ended without being asked to
+
+    private static func ended(
+        _ state: SessionState,
+        error: SessionFailure? = nil,
+        audio: String? = nil,
+        transcript: String? = nil,
+        age: TimeInterval = 5,
+        source: String? = "doc"
+    ) -> SessionRecord {
+        var record = SessionRecord(state: state, sourceDocumentID: source)
+        record.error = error
+        record.localAudioReference = audio
+        record.transcript = transcript
+        record.updatedAt = Date(timeIntervalSinceNow: -age)
+        return record
+    }
+
+    @Test func aMicrophoneThatWouldNotStartIsReportedOnce() {
+        let failure = SessionFailure(code: "recording_start_failed", message: "x", recoverable: false)
+        #expect(DictationNotice.forEndedSession(Self.ended(.canceled, error: failure))
+            == .recordingDidNotStart)
+        let model = DictationBarModel.make(
+            DictationContext(state: .canceled, notice: .recordingDidNotStart)
+        )
+        #expect(model.title == "Recording didn't start")
+        #expect(model.primary.action == .start)
+    }
+
+    @Test func aPlainCancelSaysNothing() {
+        #expect(DictationNotice.forEndedSession(Self.ended(.canceled)) == nil)
+        #expect(DictationNotice.forEndedSession(Self.ended(.completed)) == nil)
+    }
+
+    @Test func expiryIsToldApartByWhatWasLost() {
+        #expect(DictationNotice.forEndedSession(Self.ended(.expired)) == .handoffTimedOut)
+        #expect(DictationNotice.forEndedSession(Self.ended(.expired, audio: "a.wav"))
+            == .dictationTimedOut)
+        #expect(DictationNotice.forEndedSession(Self.ended(.expired, transcript: "words"))
+            == .transcriptExpired)
+        #expect(DictationNotice.forExpiry(of: Self.ended(.awaitingReturn, age: 125))
+            == .handoffTimedOut)
+        #expect(DictationNotice.forExpiry(of: Self.ended(.readyToInsert, transcript: "w", age: 3_700))
+            == .transcriptExpired)
+    }
+
+    /// Yesterday's failure is not news, and nor is a microphone test.
+    @Test func oldOrInAppSessionsAreNotReported() {
+        let failure = SessionFailure(code: "recording_start_failed", message: "x", recoverable: false)
+        #expect(DictationNotice.forEndedSession(
+            Self.ended(.canceled, error: failure, age: 86_400)
+        ) == nil)
+        #expect(DictationNotice.forEndedSession(
+            Self.ended(.canceled, error: failure, source: SessionOrigin.microphoneTest)
+        ) == nil)
+        #expect(DictationNotice.forExpiry(of: Self.ended(.launchingApp, age: 86_400)) == nil)
+        #expect(!DictationNotice.showsEndedFailure(Self.ended(.transcriptionFailedPermanent, age: 86_400)))
+        #expect(DictationNotice.showsEndedFailure(Self.ended(.transcriptionFailedPermanent)))
+        #expect(!DictationNotice.showsEndedFailure(Self.ended(.completed)))
+    }
+
+    /// A notice only stands in for the resting bar. A live session always wins.
+    @Test func aNoticeNeverCoversALiveSession() {
+        let live = DictationBarModel.make(
+            DictationContext(state: .recording, notice: .voiceModelNeeded)
+        )
+        #expect(live.title == "Listening")
+    }
+
+    // MARK: - The length cap
+
+    @Test func theRecordingClockWarnsBeforeTheCap() {
+        let early = RecordingClock(elapsed: 65, limit: 120)
+        #expect(early.text == "1:05")
+        #expect(!early.isNearLimit)
+        let late = RecordingClock(elapsed: 107, limit: 120)
+        #expect(late.isNearLimit)
+        #expect(late.text == "13s left")
+        #expect(late.accessibilityLabel == "13 seconds left")
+        #expect(RecordingClock(elapsed: 200, limit: 120).text == "0s left")
+        #expect(RecordingClock.limitPhrase == "2-minute")
+    }
+
+    @Test func aRecordingStoppedByTheCapSaysSo() {
+        for state in [SessionState.finalizing, .uploading, .transcribing] {
+            let model = DictationBarModel.make(
+                DictationContext(state: state, stoppedAtRecordingLimit: true)
+            )
+            #expect(model.title == "Stopped at the 2-minute limit")
+        }
+        #expect(Self.model(.finalizing).title == "Finishing recording")
     }
 }

@@ -151,3 +151,29 @@ struct GatewayUploadClientTests {
         return url
     }
 }
+
+/// A failed gateway test names what to check, never Foundation's own sentence.
+struct GatewayFailureCopyTests {
+    @Test func eachFailureNamesItsFix() {
+        #expect(GatewayFailureCopy.kind(for: URLError(.cannotFindHost)) == .unreachable)
+        #expect(GatewayFailureCopy.kind(for: URLError(.notConnectedToInternet)) == .unreachable)
+        #expect(GatewayFailureCopy.kind(for: URLError(.timedOut)) == .timedOut)
+        #expect(GatewayFailureCopy.kind(for: URLError(.serverCertificateUntrusted)) == .insecureConnection)
+        #expect(GatewayFailureCopy.kind(for: GatewayError.api(status: 401, code: "unauthorized")) == .tokenRejected)
+        #expect(GatewayFailureCopy.kind(for: GatewayError.invalidResponse) == .notAGateway)
+        #expect(GatewayFailureCopy.kind(for: GatewayError.api(status: 500, code: "x")) == .gatewayError(status: 500))
+    }
+
+    @Test func noMessageLeaksTheRawError() {
+        let errors: [Error] = [
+            URLError(.cannotFindHost), URLError(.timedOut), URLError(.secureConnectionFailed),
+            GatewayError.api(status: 401, code: "unauthorized"), GatewayError.invalidResponse,
+            URLError(.unknown),
+        ]
+        for error in errors {
+            let message = GatewayFailureCopy.message(for: error)
+            #expect(!message.hasPrefix("Gateway test failed:"))
+            #expect(!message.contains(error.localizedDescription))
+        }
+    }
+}

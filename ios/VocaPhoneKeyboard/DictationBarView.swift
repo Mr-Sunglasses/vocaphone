@@ -148,6 +148,33 @@ final class DictationBarView: UIView, TypingStripViewDelegate {
         secondarySizes.forEach { $0.constant = diameter }
     }
 
+    /// The smallest square a tap on a round secondary is allowed to aim at.
+    static let minimumHitSide: CGFloat = 44
+
+    /// Round secondaries — Undo, Dismiss — are drawn at 34 pt, 28 in landscape,
+    /// to sit beside the primary without crowding the title. Their touch area
+    /// is the 44 pt the rest of the product uses, so a thumb that lands just
+    /// outside the circle still undoes. The primary keeps every point of its
+    /// own frame: only touches outside it are given to a neighbour.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard !isHidden, alpha > 0.01, isUserInteractionEnabled else {
+            return super.hitTest(point, with: event)
+        }
+        let primaryFrame = primaryButton.convert(primaryButton.bounds, to: self)
+        if !primaryButton.isHidden, primaryFrame.contains(point) {
+            return super.hitTest(point, with: event)
+        }
+        for button in secondaryButtons where !button.isHidden && button.isEnabled {
+            let frame = button.convert(button.bounds, to: self)
+            let target = frame.insetBy(
+                dx: min(0, (frame.width - Self.minimumHitSide) / 2),
+                dy: min(0, (frame.height - Self.minimumHitSide) / 2)
+            )
+            if target.contains(point) { return button }
+        }
+        return super.hitTest(point, with: event)
+    }
+
     // MARK: - Rendering
 
     /// `render` runs on every poll tick, so an unchanged model must cost

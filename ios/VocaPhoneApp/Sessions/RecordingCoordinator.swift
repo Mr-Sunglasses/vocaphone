@@ -176,6 +176,10 @@ final class RecordingCoordinator {
     /// permission can be revoked from Settings while the app is suspended.
     func refreshSetupStatus() {
         guard !isInert else { return }
+        // Before the comparison below: this is read by another process, so it
+        // has to follow the model on disk even when nothing on screen changes.
+        LocalTranscriptionPreferences.selectedModelUnavailable =
+            localModelUnavailableMessage() != nil
         let keyboardStatus = try? store.loadKeyboardStatus()
         let lackedFullAccessAt = KeyboardPreferences.keyboardLackedFullAccessAt
         // Either report means the extension has run, which is better evidence
@@ -425,7 +429,7 @@ final class RecordingCoordinator {
         recorder.microphonePreference = KeyboardPreferences.microphonePreference
         meterSequence = 0
         recorder.onMeter = { [weak self] levels in self?.persistMeter(levels) }
-        recorder.onMaximumDuration = { [weak self] in self?.requestFinish() }
+        recorder.onMaximumDuration = { [weak self] in self?.requestFinish(reachedLimit: true) }
         recorder.onInputRouteChanged = { [weak self] inputName in
             guard let self else { return }
             self.currentMicrophoneName = inputName
@@ -761,7 +765,7 @@ final class RecordingCoordinator {
             GatewayStatusPreferences.storeStreamingSupport(nil, for: nil)
         } catch {
             GatewayStatusPreferences.store(
-                message: "Gateway test failed: \(error.localizedDescription)",
+                message: GatewayFailureCopy.message(for: error),
                 engine: "",
                 ready: false
             )
@@ -817,15 +821,22 @@ final class RecordingCoordinator {
         }
     }
 
-    func requestFinish() {
+    /// - Parameter reachedLimit: the recorder's length cap stopped capture,
+    ///   not a tap. Kept on the record so the keyboard, the swipe-back screen
+    ///   and the Live Activity can all say why the recording ended mid-sentence.
+    func requestFinish(reachedLimit: Bool = false) {
         guard !isInert else { return }
         guard var record = activeRecord, record.state == .recording else { return }
         DiagnosticLog.record(.finishRequested)
         do {
             try record.transition(to: .finalizing)
+            if reachedLimit { record.stoppedAtRecordingLimit = true }
             try commit(&record)
             activeRecord = record
-            liveActivity.update(status: "Finishing recording", canFinish: false)
+            liveActivity.update(
+                status: reachedLimit ? DictationBarModel.recordingLimitTitle : "Finishing recording",
+                canFinish: false
+            )
             startPipeline(record)
         } catch is CancellationError {
             // Cancelled from the keyboard a moment earlier. The shared-state
@@ -1161,6 +1172,9 @@ final class RecordingCoordinator {
             } else if record.state == .awaitingReturn {
                 try record.transition(to: .recording)
             }
+            // The microphone's own clock, so every surface counting towards
+            // the length cap counts from the same moment the cap does.
+            record.recordingStartedAt = captureStartedAt
             record.localAudioReference = audioURL.lastPathComponent
             // The write this whole function waits for, and the one a Cancel
             // during the waits above used to lose to.
@@ -1589,6 +1603,14 @@ final class RecordingCoordinator {
                 return
             }
             let code = redactedErrorCode(error)
+            // Nothing in the recording was speech. That is not the gateway
+            // failing, and a Retry that resends the same silence cannot work,
+            // so it ends here with a new recording as the way on.
+            if DictationFailure.gatewayFoundNoSpeech(code: code) {
+                try? FileManager.default.removeItem(at: output)
+                await failForNoSpeech(&record)
+                return
+            }
             // The gateway's model cannot transcribe the chosen language. Retrying
             // replays the same pairing, so this fails permanently and says what to
             // change instead of promising a retry that cannot succeed.
@@ -1759,6 +1781,11 @@ final class RecordingCoordinator {
             message = "Transcribed privately on this iPhone."
         } catch {
             if Task.isCancelled || error is CancellationError { return }
+            if case LocalModelManagerError.emptyTranscript = error {
+                try? FileManager.default.removeItem(at: audioURL)
+                await failForNoSpeech(&record)
+                return
+            }
             if error is IncompleteRecording {
                 // Told now, so the retry this offers transcribes what was saved.
                 record.fileIncompleteUntold = nil
@@ -1777,6 +1804,21 @@ final class RecordingCoordinator {
                 message: "On-device transcription failed. The recording is preserved; retry after checking the selected model."
             )
         }
+    }
+
+    /// The model heard the recording and found no speech in it, after its own
+    /// recovery attempts. Said as that — "Didn't catch any speech" — rather
+    /// than as the model or the gateway failing, and ended rather than kept
+    /// for a Retry: the same audio would give the same answer, and the audio
+    /// has already been deleted, as it is after any transcript.
+    private func failForNoSpeech(_ record: inout SessionRecord) async {
+        await fail(
+            &record,
+            state: .transcriptionFailedPermanent,
+            code: DictationFailure.noSpeechCode,
+            message: DictationFailure.noSpeechMessage,
+            recoverable: false
+        )
     }
 
     private func beginCancellationMonitoring(sessionID: UUID) {
@@ -1823,7 +1865,12 @@ final class RecordingCoordinator {
             countFailure()
             activeRecord = record
             message = failureMessage
-            liveActivity.end(status: "Needs attention", dismissAfter: 5)
+            // A reason, and long enough to read it. "Needs attention" for five
+            // seconds was gone before most people looked at the Lock Screen.
+            liveActivity.end(
+                status: DictationFailure.liveActivityStatus(state: state, code: code),
+                dismissAfter: 60
+            )
             beginPolling()
         } catch is CancellationError {
             // The user cancelled first. Reporting a failure for a dictation

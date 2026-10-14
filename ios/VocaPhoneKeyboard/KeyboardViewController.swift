@@ -24,6 +24,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// record's timestamps cover the whole session, including the hand-off to
     /// the app, which is not what the user is watching tick up.
     private var recordingStartedAt: Date?
+    /// What the status bar says while no session owns it: news about one that
+    /// ended without being asked to, or why the next one cannot start. Lives
+    /// for this appearance; ended sessions are also acknowledged in the App
+    /// Group, so the next instance does not repeat them.
+    private var notice: DictationNotice?
+    /// The recording whose approaching length cap has been announced.
+    private var warnedOfRecordingLimit: UUID?
     /// Whether the surface held the whole keyboard at the last layout pass.
     private var surfaceOwnedKeyboard = false
     /// `panelOwnsKeyboard` as of the last render, so a layout change can tell
@@ -311,6 +318,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // is reissued across an app switch, so the offer ends with the
         // appearance it was made in.
         lastInsertedText = nil
+        // A notice belongs to the appearance it was shown in. One about a
+        // missing voice model in particular has usually just been acted on:
+        // the button opens vocaphone, and coming back is this.
+        notice = nil
         installDarwinObservers()
         publishKeyboardStatus()
         // Full Access can be granted or revoked in Settings while this instance
@@ -558,6 +569,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         case .retry: retryTranscription()
         case .cancel: cancelSession()
         case .undo: undoInsertion()
+        case .dismiss: dismissMessage()
+        case .openVoiceModelSetup: openContainingAppAction("home")
         }
     }
 
@@ -591,7 +604,35 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func cancelSession() {
         guard let id = activeSessionID, var record = try? store.load(id) else { return }
+        // A waiting transcript is put away, not thrown away: cancelling stops
+        // every field offering it, and the words stay in Transcripts with every
+        // other finished dictation. Saying so is the difference between a ×
+        // and a delete key.
+        let keepsTranscript = [.readyToInsert, .targetContextChanged].contains(record.state)
+            && record.transcript?.isEmpty == false
         transition(&record, to: .canceled)
+        if keepsTranscript, record.state == .canceled {
+            flash("Dismissed. It's saved in Transcripts in vocaphone.")
+        }
+    }
+
+    /// Puts away a notice, or a failure that already ended its session.
+    /// Nothing is cancelled or deleted: there is nothing left to cancel.
+    private func dismissMessage() {
+        notice = nil
+        if let id = activeSessionID,
+           let record = try? store.load(id),
+           record.state.isTerminal
+        {
+            forgetActiveSession()
+        }
+        render(activeSessionID == nil ? nil : lastRecord)
+    }
+
+    private func forgetActiveSession() {
+        activeSessionID = nil
+        sessionTargetDocumentID = nil
+        sessionTargetConfirmed = false
     }
 
     private func retryTranscription() {
@@ -629,7 +670,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                   currentDocumentID: currentDocumentID
               )
         else {
-            dictationBar.flash("The cursor moved, so undo is no longer available.")
+            flash("The cursor moved, so undo is no longer available.")
             lastInsertedText = nil
             refresh()
             return
@@ -639,7 +680,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         inserted.forEach { _ in textDocumentProxy.deleteBackward() }
         lastInsertedText = nil
         refresh()
-        dictationBar.flash("The last insertion was removed.")
+        flash("The last insertion was removed.")
     }
 
     // MARK: - Typing
@@ -1117,6 +1158,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             openFullAccessSettings()
             return
         }
+        // Checked before anything is created or discarded. Without a model the
+        // app can only fail this dictation, and the trip there and back used
+        // to end on "Transcription failed" with a button that made it again.
+        guard !LocalTranscriptionPreferences.dictationNeedsVoiceModel else {
+            showVoiceModelNeeded()
+            return
+        }
+        notice = nil
         discardParkedSession()
         var record = SessionRecord(
             state: .idle,
@@ -1151,7 +1200,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             sessionTargetConfirmed = true
             render(record)
             if record.prefersQuickDictation == true {
-                dictationBar.flash("Starting with Quick Dictation…")
+                flash("Starting with Quick Dictation…")
                 scheduleContainingAppFallback(for: record)
             } else {
                 if availability != nil {
@@ -1160,8 +1209,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 openContainingApp(for: record)
             }
         } catch {
-            dictationBar.flash("Could not create a shared session.")
+            flash("Could not create a shared session.")
         }
+    }
+
+    /// Says why Dictate cannot start, with the button that fixes it. A failure
+    /// that already ended its session gives way to it; a transcript still
+    /// waiting does not, and gets the same words as a passing line instead.
+    private func showVoiceModelNeeded() {
+        if let id = activeSessionID {
+            if let record = try? store.load(id), !record.state.isTerminal {
+                flash("Download a voice model in vocaphone to dictate.")
+                return
+            }
+            forgetActiveSession()
+        }
+        notice = .voiceModelNeeded
+        render(nil)
     }
 
     /// A transcript belongs to the field it was dictated for. The comparison
@@ -1248,7 +1312,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             sessionTargetConfirmed = false
             render(record)
         } catch {
-            dictationBar.flash("Insertion was interrupted; text will not be inserted twice.")
+            flash("Insertion was interrupted; text will not be inserted twice.")
         }
     }
 
@@ -1325,9 +1389,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         openURLFromKeyboard(AppConfiguration.fullAccessDeepLink) { [weak self] opened in
             DispatchQueue.main.async {
                 guard let self, !opened else { return }
-                self.dictationBar.flash(
-                    "Full Access is needed. \(DictationBarModel.fullAccessPath)"
-                )
+                self.flash("Full Access is needed. \(DictationBarModel.fullAccessPath)")
             }
         }
     }
@@ -1363,7 +1425,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             try store.save(record)
             render(record)
         } catch {
-            dictationBar.flash("The session changed. Please try again.")
+            flash("The session changed. Please try again.")
         }
     }
 
@@ -1436,15 +1498,24 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
             let record = recoverInterruptedInsertion(loaded)
             guard !expireIfStale(record) else { return }
+            guard !reportEndedSession(record) else { return }
             latchSessionTarget()
             handle(record)
             return
         }
-        guard let mostRecent = try? store.mostRecent(),
-              !mostRecent.state.isTerminal,
-              mostRecent.sourceDocumentID != "in-app-test"
-        else {
+        guard let mostRecent = try? store.mostRecent() else {
             render(nil)
+            return
+        }
+        guard !mostRecent.state.isTerminal,
+              mostRecent.sourceDocumentID != SessionOrigin.microphoneTest
+        else {
+            // A session this instance never saw can still have ended in a way
+            // the user has to hear about — a fresh extension is exactly what
+            // comes up after vocaphone failed to start the microphone.
+            if !reportEndedSession(mostRecent), !adoptUnseenFailure(mostRecent) {
+                render(nil)
+            }
             return
         }
         // Before expiry: an insertion interrupted a minute ago is still a
@@ -1505,15 +1576,52 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// hands the bar back to the user. Reports whether it did, so callers stop
     /// rendering a record they have just made terminal.
     private func expireIfStale(_ record: SessionRecord) -> Bool {
-        guard SessionExpiryPolicy.expireIfStale(record, in: store) != nil else { return false }
+        guard let expired = SessionExpiryPolicy.expireIfStale(record, in: store) else { return false }
         if activeSessionID == record.sessionID {
-            activeSessionID = nil
-            sessionTargetDocumentID = nil
-            sessionTargetConfirmed = false
+            forgetActiveSession()
         }
         appLaunchFallbackTask?.cancel()
         appLaunchFallbackTask = nil
+        // Expiry was silent: a hand-off vocaphone never answered went back to
+        // an idle keyboard as if Dictate had never been tapped. Said once, and
+        // only when the wait was recent enough to be the one the user is in.
+        if let ended = DictationNotice.forExpiry(of: record),
+           KeyboardPreferences.acknowledgedEndedSessionID != expired.sessionID
+        {
+            KeyboardPreferences.acknowledgedEndedSessionID = expired.sessionID
+            notice = ended
+        }
         render(nil)
+        return true
+    }
+
+    /// Tells the user, once, about a session that ended without them asking:
+    /// the app could not start the microphone, or another process retired it.
+    /// Reports whether it did, so the caller stops rendering that record.
+    private func reportEndedSession(_ record: SessionRecord) -> Bool {
+        guard record.sessionID != KeyboardPreferences.acknowledgedEndedSessionID,
+              let ended = DictationNotice.forEndedSession(record)
+        else { return false }
+        KeyboardPreferences.acknowledgedEndedSessionID = record.sessionID
+        if activeSessionID == record.sessionID { forgetActiveSession() }
+        notice = ended
+        render(nil)
+        return true
+    }
+
+    /// A failure that ended its session — no speech, no voice model, no
+    /// microphone access — while a different keyboard instance was the one
+    /// watching, or none was. It is shown once, as the session it is, so its
+    /// own words and its own button come with it.
+    private func adoptUnseenFailure(_ record: SessionRecord) -> Bool {
+        guard record.sessionID != KeyboardPreferences.acknowledgedEndedSessionID,
+              DictationNotice.showsEndedFailure(record)
+        else { return false }
+        KeyboardPreferences.acknowledgedEndedSessionID = record.sessionID
+        activeSessionID = record.sessionID
+        sessionTargetDocumentID = currentDocumentID
+        sessionTargetConfirmed = false
+        render(record)
         return true
     }
 
@@ -1614,6 +1722,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 hasFullAccess: hasFullAccess,
                 transcript: record?.transcript,
                 errorMessage: record?.error?.message,
+                errorCode: record?.error?.code,
                 autoInsertsTranscripts: KeyboardPreferences.autoInsertTranscripts,
                 canRetry: record?.canRetry == true,
                 // Undo is offered only while the transcript is still the tail of
@@ -1623,14 +1732,23 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 prefersQuickDictation: record?.prefersQuickDictation == true,
                 processingLocation: record?.processingLocation,
                 insertionWasInterrupted: record?.insertionInterrupted == true
-                    && [.readyToInsert, .targetContextChanged].contains(record?.state)
+                    && [.readyToInsert, .targetContextChanged].contains(record?.state),
+                stoppedAtRecordingLimit: record?.stoppedAtRecordingLimit == true,
+                notice: notice
             )
         )
+        // A failure this instance is showing counts as told: another instance
+        // coming up for the next field must not adopt it and say it again.
+        if let record, DictationNotice.showsEndedFailure(record, now: record.updatedAt),
+           KeyboardPreferences.acknowledgedEndedSessionID != record.sessionID
+        {
+            KeyboardPreferences.acknowledgedEndedSessionID = record.sessionID
+        }
 
         // An idle keyboard needs no meter and no subtitle, and the height they
         // would occupy is better spent on the keys — the idle bar is a one-row
         // typing strip, shorter than the collapsed status bar it replaces.
-        updateElapsedTime(for: state)
+        updateElapsedTime(for: record)
         if state == .recording, let sessionID = record?.sessionID {
             pushMeter(for: sessionID)
         } else {
@@ -1785,15 +1903,36 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         dictationSurfaceState.appendMeterLevels(fresh)
     }
 
-    private func updateElapsedTime(for state: SessionState) {
-        guard state == .recording else {
+    /// The recording clock, from when the microphone actually started.
+    ///
+    /// The app stamps that moment on the record. A record from an older build
+    /// has no stamp, and falls back to when this instance first saw the
+    /// recording — which lags by however long the swipe back took, so the
+    /// warning before the length cap could arrive after the cap.
+    ///
+    /// Runs on the session poll, four times a second while recording, but the
+    /// surface only republishes when the text changes: once a second.
+    private func updateElapsedTime(for record: SessionRecord?) {
+        guard let record, record.state == .recording else {
             recordingStartedAt = nil
             dictationBar.setElapsed(nil)
+            dictationSurfaceState.recordingClock = nil
             return
         }
-        let start = recordingStartedAt ?? Date()
+        let start = record.recordingStartedAt ?? recordingStartedAt ?? Date()
         recordingStartedAt = start
-        dictationBar.setElapsed(Date().timeIntervalSince(start))
+        let elapsed = Date().timeIntervalSince(start)
+        dictationBar.setElapsed(elapsed)
+        let clock = RecordingClock(elapsed: elapsed)
+        dictationSurfaceState.recordingClock = clock
+        // Once per recording, the moment the warning starts: VoiceOver users
+        // cannot see the clock turn red.
+        if clock.isNearLimit, warnedOfRecordingLimit != record.sessionID {
+            warnedOfRecordingLimit = record.sessionID
+            if announcesStateChanges {
+                UIAccessibility.post(notification: .announcement, argument: clock.accessibilityLabel)
+            }
+        }
     }
 
     /// The keyboard is often not the view the user is looking at while a
@@ -1905,11 +2044,26 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         openURLFromKeyboard(url) { [weak self] opened in
             DispatchQueue.main.async {
                 guard let self, !opened else { return }
-                self.dictationSurfaceState.showRecoveryMessage(
-                    "Open vocaphone to continue."
-                )
+                self.flash("Open vocaphone to continue.")
             }
         }
+    }
+
+    /// A passing message, on whichever of the two surfaces is on screen.
+    ///
+    /// Every message used to go to the old bar, and the old bar is hidden
+    /// whenever the surface is up — which is idle, recording and processing,
+    /// most of a session. "The last insertion was removed", "Starting with
+    /// Quick Dictation…" and the Full Access fallback were all being written to
+    /// a view nobody could see.
+    private func flash(_ message: String) {
+        if dictationBar.isHidden {
+            dictationSurfaceState.showNotice(message)
+        } else {
+            dictationBar.flash(message)
+        }
+        guard isKeyboardVisible else { return }
+        UIAccessibility.post(notification: .announcement, argument: message)
     }
 
     private func configureUI() {
@@ -2007,38 +2161,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// buttons and the keys, and seven points of it read as the two rows
     /// touching.
 
-    /// The states the dictation surface owns outright: it fills the keyboard,
-    /// the keys are put away, and the old bar stays out of it.
+    /// See ``DictationBarModel/surfaceOwnsKeyboard(_:hasFullAccess:)``.
     private static func surfaceOwnsKeyboard(
         _ state: SessionState,
         hasFullAccess: Bool
     ) -> Bool {
-        // Without Full Access the keyboard is locked, and the only thing worth
-        // saying is the path to unlock it. That is the old bar's card, and it
-        // has to be allowed to appear whatever state the stored session is in.
-        guard hasFullAccess else { return false }
-        return switch state {
-        // The hand-off belongs here as much as the recording does. Measured on
-        // device: a tap on the microphone goes to `launchingApp` first, and
-        // that state's bar model is the expanded status card — 84 pt against
-        // the strip's 54. The keyboard grew by thirty points before recording
-        // had even begun, which is the jump, and the flash of a card nobody
-        // asked for is the same event seen from the other side.
-        case .launchingApp, .awaitingReturn: true
-        case .recording, .finalizing, .uploading, .transcribing: true
-        // The transcript arriving, and every way it can fail. These were the
-        // seam: the surface handed the session back to the old bar at the exact
-        // moment it had something to report, and the whole keyboard changed
-        // shape to say "Gateway unavailable".
-        // `.inserted` belongs with `.inserting`: one model serves both, so a
-        // session that reached it while the surface was up would otherwise
-        // hand the keyboard back mid-insertion.
-        case .readyToInsert, .inserting, .inserted, .targetContextChanged: true
-        case .serverUnavailable, .uploadFailedRecoverable: true
-        case .transcriptionFailedRecoverable, .transcriptionFailedPermanent: true
-        case .permissionDenied: true
-        default: false
-        }
+        DictationBarModel.surfaceOwnsKeyboard(state, hasFullAccess: hasFullAccess)
     }
 
     /// The margin between the keys and the edge of the screen.

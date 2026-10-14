@@ -403,3 +403,82 @@ enum GatewayError: LocalizedError {
         }
     }
 }
+
+/// What a failed gateway check says, in words that point at the fix.
+///
+/// The test used to print "Gateway test failed: " and then whatever
+/// `localizedDescription` came back — "A server with the specified hostname
+/// could not be found.", "The certificate for this server is invalid. You
+/// might be connecting to a server that is pretending to be…" — which names
+/// the symptom in Foundation's terms. The few failures a self-hosted gateway
+/// actually has each get one sentence about what to check.
+enum GatewayFailureCopy {
+    enum Kind: Equatable {
+        case unreachable
+        case timedOut
+        case insecureConnection
+        case tokenRejected
+        case notAGateway
+        case gatewayError(status: Int)
+        case unknown
+    }
+
+    static func kind(for error: Error) -> Kind {
+        if let gateway = error as? GatewayError {
+            switch gateway {
+            case .invalidResponse:
+                return .notAGateway
+            case let .api(status, _) where status == 401 || status == 403:
+                return .tokenRejected
+            case let .api(status, _):
+                return .gatewayError(status: status)
+            }
+        }
+        if let url = error as? URLError {
+            switch url.code {
+            case .timedOut:
+                return .timedOut
+            case .secureConnectionFailed, .serverCertificateUntrusted,
+                 .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot,
+                 .serverCertificateNotYetValid, .clientCertificateRejected,
+                 .clientCertificateRequired, .appTransportSecurityRequiresSecureConnection:
+                return .insecureConnection
+            case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+                 .notConnectedToInternet, .networkConnectionLost,
+                 .internationalRoamingOff, .dataNotAllowed, .resourceUnavailable:
+                return .unreachable
+            case .badServerResponse, .cannotParseResponse, .badURL, .unsupportedURL:
+                return .notAGateway
+            default:
+                return .unknown
+            }
+        }
+        if error is DecodingError { return .notAGateway }
+        return .unknown
+    }
+
+    static func message(for error: Error) -> String {
+        message(for: kind(for: error))
+    }
+
+    static func message(for kind: Kind) -> String {
+        switch kind {
+        case .unreachable:
+            "Can't reach the gateway. Check the address, that it's running, and that "
+                + "this iPhone is on a network that can reach it."
+        case .timedOut:
+            "The gateway didn't answer in time. Check that it's running and reachable, then test again."
+        case .insecureConnection:
+            "A secure connection couldn't be made. Check the gateway's HTTPS certificate, "
+                + "or use the address shown in its pairing code."
+        case .tokenRejected:
+            "Gateway reachable, but the pairing token was rejected. Pair again with a fresh code."
+        case .notAGateway:
+            "Something answered at that address, but not a vocaphone gateway. Check the address and port."
+        case let .gatewayError(status):
+            "The gateway reported an error (\(status)). Check its logs, then test again."
+        case .unknown:
+            "The gateway test didn't complete. Check the address and that the gateway is running."
+        }
+    }
+}

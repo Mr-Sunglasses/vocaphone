@@ -216,7 +216,7 @@ struct GatewaySetupView: View {
             gatewayEngine = ""
             gatewayEngineReady = false
         } catch {
-            healthMessage = "Gateway test failed: \(error.localizedDescription)"
+            healthMessage = GatewayFailureCopy.message(for: error)
             gatewayEngine = ""
             gatewayEngineReady = false
         }
