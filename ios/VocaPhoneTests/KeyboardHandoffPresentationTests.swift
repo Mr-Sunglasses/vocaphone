@@ -29,9 +29,6 @@ struct KeyboardHandoffPresentationTests {
         #expect(presentation?.primaryAction == KeyboardHandoffPresentation.PrimaryAction.none)
         #expect(presentation?.primaryTitle == nil)
         #expect(presentation?.showsCancel == true)
-        #expect(presentation?.showsElapsedTime == true)
-        // Nothing is recording yet while the app comes up, so no clock.
-        #expect(KeyboardHandoffPresentation.make(record(state: .launchingApp))?.showsElapsedTime == false)
     }
 
     /// The app is opened by the keyboard, so the screen it opens on has to be
@@ -127,12 +124,6 @@ struct KeyboardHandoffPresentationTests {
             #expect(KeyboardHandoffPresentation.make(record(state: state))?.showsNotNow == true)
         }
         #expect(KeyboardHandoffPresentation.make(record(state: .recording))?.showsNotNow == false)
-    }
-
-    @Test func aRecordingStoppedByTheCapSaysSoHereToo() {
-        var capped = record(state: .transcribing)
-        capped.stoppedAtRecordingLimit = true
-        #expect(KeyboardHandoffPresentation.make(capped)?.title == "Stopped at the 2-minute limit")
     }
 
     /// A Home-button iPhone has no bottom edge to swipe. Everyone gets the

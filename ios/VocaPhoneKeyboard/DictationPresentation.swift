@@ -202,10 +202,6 @@ struct DictationContext: Equatable {
     /// record the result, so the text may already be in the field. Offered
     /// again, never inserted automatically.
     var insertionWasInterrupted = false
-    /// Recording ended because it reached the length cap, not because anyone
-    /// tapped Finish. Said in the processing title, or the cut-off sentence
-    /// reads as a lost one.
-    var stoppedAtRecordingLimit = false
     /// Something this keyboard has to say while no session owns the bar.
     var notice: DictationNotice?
 }
@@ -520,14 +516,7 @@ extension DictationBarModel {
     /// and the interface has no business guessing which. Never "local" for a
     /// gateway either — audio genuinely leaves the phone on that route.
     private static func working(_ context: DictationContext) -> DictationBarModel {
-        let title: String = if context.stoppedAtRecordingLimit {
-            // Said for the whole wait, not only while finishing: the last
-            // sentence was cut off by the cap, and the person needs to know
-            // that before the transcript arrives without it.
-            recordingLimitTitle
-        } else {
-            processingTitle(context)
-        }
+        let title = processingTitle(context)
         return DictationBarModel(
             title: title,
             body: .waveform(.indeterminate),
@@ -544,20 +533,6 @@ extension DictationBarModel {
             isExpanded: true,
             announcement: context.state == .finalizing ? title : nil
         )
-    }
-
-    /// "Stopped at the 2-minute limit", from the cap itself so the two cannot
-    /// disagree.
-    static var recordingLimitTitle: String {
-        "Stopped at the \(RecordingClock.limitPhrase) limit"
-    }
-
-    /// The Live Activity's line while the app processes a recording. One the
-    /// cap stopped keeps saying so for the whole wait, as the bar does: the
-    /// steps after finishing used to replace it within a second, so the Lock
-    /// Screen never said why the last sentence was missing.
-    static func processingActivityStatus(_ status: String, for record: SessionRecord) -> String {
-        record.stoppedAtRecordingLimit == true ? recordingLimitTitle : status
     }
 
     private static func processingTitle(_ context: DictationContext) -> String {

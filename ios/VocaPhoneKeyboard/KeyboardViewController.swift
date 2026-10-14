@@ -29,8 +29,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// for this appearance; ended sessions are also acknowledged in the App
     /// Group, so the next instance does not repeat them.
     private var notice: DictationNotice?
-    /// The recording whose approaching length cap has been announced.
-    private var warnedOfRecordingLimit: UUID?
     /// Whether the surface held the whole keyboard at the last layout pass.
     private var surfaceOwnedKeyboard = false
     /// `panelOwnsKeyboard` as of the last render, so a layout change can tell
@@ -1733,7 +1731,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 processingLocation: record?.processingLocation,
                 insertionWasInterrupted: record?.insertionInterrupted == true
                     && [.readyToInsert, .targetContextChanged].contains(record?.state),
-                stoppedAtRecordingLimit: record?.stoppedAtRecordingLimit == true,
                 notice: notice
             )
         )
@@ -1748,7 +1745,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // An idle keyboard needs no meter and no subtitle, and the height they
         // would occupy is better spent on the keys — the idle bar is a one-row
         // typing strip, shorter than the collapsed status bar it replaces.
-        updateElapsedTime(for: record)
+        updateElapsedTime(for: state)
         if state == .recording, let sessionID = record?.sessionID {
             pushMeter(for: sessionID)
         } else {
@@ -1903,36 +1900,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         dictationSurfaceState.appendMeterLevels(fresh)
     }
 
-    /// The recording clock, from when the microphone actually started.
-    ///
-    /// The app stamps that moment on the record. A record from an older build
-    /// has no stamp, and falls back to when this instance first saw the
-    /// recording — which lags by however long the swipe back took, so the
-    /// warning before the length cap could arrive after the cap.
-    ///
-    /// Runs on the session poll, four times a second while recording, but the
-    /// surface only republishes when the text changes: once a second.
-    private func updateElapsedTime(for record: SessionRecord?) {
-        guard let record, record.state == .recording else {
+    private func updateElapsedTime(for state: SessionState) {
+        guard state == .recording else {
             recordingStartedAt = nil
             dictationBar.setElapsed(nil)
-            dictationSurfaceState.recordingClock = nil
             return
         }
-        let start = record.recordingStartedAt ?? recordingStartedAt ?? Date()
+        let start = recordingStartedAt ?? Date()
         recordingStartedAt = start
-        let elapsed = Date().timeIntervalSince(start)
-        dictationBar.setElapsed(elapsed)
-        let clock = RecordingClock(elapsed: elapsed)
-        dictationSurfaceState.recordingClock = clock
-        // Once per recording, the moment the warning starts: VoiceOver users
-        // cannot see the clock turn red.
-        if clock.isNearLimit, warnedOfRecordingLimit != record.sessionID {
-            warnedOfRecordingLimit = record.sessionID
-            if announcesStateChanges {
-                UIAccessibility.post(notification: .announcement, argument: clock.accessibilityLabel)
-            }
-        }
+        dictationBar.setElapsed(Date().timeIntervalSince(start))
     }
 
     /// The keyboard is often not the view the user is looking at while a

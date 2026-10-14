@@ -81,34 +81,3 @@ enum DictationFailure: Equatable, Sendable {
         }
     }
 }
-
-/// The recording length cap, as the person sees it: a running clock, and a
-/// warning before the cap stops them mid-sentence.
-struct RecordingClock: Equatable, Sendable {
-    /// When the warning starts. Long enough to finish a sentence.
-    static let warningLead: TimeInterval = 15
-
-    let text: String
-    let accessibilityLabel: String
-    /// Inside the last `warningLead` seconds.
-    let isNearLimit: Bool
-
-    init(elapsed: TimeInterval, limit: TimeInterval = AppConfiguration.maximumRecordingSeconds) {
-        let elapsedSeconds = max(0, Int(elapsed))
-        let remaining = max(0, Int(limit.rounded(.down)) - elapsedSeconds)
-        isNearLimit = TimeInterval(remaining) <= Self.warningLead
-        if isNearLimit {
-            text = "\(remaining)s left"
-            accessibilityLabel = "\(remaining) seconds left"
-        } else {
-            text = String(format: "%d:%02d", elapsedSeconds / 60, elapsedSeconds % 60)
-            accessibilityLabel = "Recording time \(text)"
-        }
-    }
-
-    /// "2-minute", from the cap itself.
-    static var limitPhrase: String {
-        let seconds = Int(AppConfiguration.maximumRecordingSeconds)
-        return seconds % 60 == 0 ? "\(seconds / 60)-minute" : "\(seconds)-second"
-    }
-}

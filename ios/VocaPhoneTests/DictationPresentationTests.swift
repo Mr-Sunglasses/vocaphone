@@ -558,17 +558,6 @@ struct DictationPresentationTests {
         #expect(DictationNotice.forEndedSession(Self.ended(.canceled, error: gateway)) == nil)
     }
 
-    /// A capped recording keeps its reason on the Lock Screen while it is
-    /// processed; any other recording shows the step it is on.
-    @Test func theLiveActivityKeepsTheLimitReasonThroughProcessing() {
-        var record = SessionRecord(state: .uploading)
-        #expect(DictationBarModel.processingActivityStatus("Sending to your gateway", for: record)
-            == "Sending to your gateway")
-        record.stoppedAtRecordingLimit = true
-        #expect(DictationBarModel.processingActivityStatus("Sending to your gateway", for: record)
-            == DictationBarModel.recordingLimitTitle)
-    }
-
     @Test func expiryIsToldApartByWhatWasLost() {
         #expect(DictationNotice.forEndedSession(Self.ended(.expired)) == .handoffTimedOut)
         #expect(DictationNotice.forEndedSession(Self.ended(.expired, audio: "a.wav"))
@@ -602,29 +591,5 @@ struct DictationPresentationTests {
             DictationContext(state: .recording, notice: .voiceModelNeeded)
         )
         #expect(live.title == "Listening")
-    }
-
-    // MARK: - The length cap
-
-    @Test func theRecordingClockWarnsBeforeTheCap() {
-        let early = RecordingClock(elapsed: 65, limit: 120)
-        #expect(early.text == "1:05")
-        #expect(!early.isNearLimit)
-        let late = RecordingClock(elapsed: 107, limit: 120)
-        #expect(late.isNearLimit)
-        #expect(late.text == "13s left")
-        #expect(late.accessibilityLabel == "13 seconds left")
-        #expect(RecordingClock(elapsed: 200, limit: 120).text == "0s left")
-        #expect(RecordingClock.limitPhrase == "2-minute")
-    }
-
-    @Test func aRecordingStoppedByTheCapSaysSo() {
-        for state in [SessionState.finalizing, .uploading, .transcribing] {
-            let model = DictationBarModel.make(
-                DictationContext(state: state, stoppedAtRecordingLimit: true)
-            )
-            #expect(model.title == "Stopped at the 2-minute limit")
-        }
-        #expect(Self.model(.finalizing).title == "Finishing recording")
     }
 }

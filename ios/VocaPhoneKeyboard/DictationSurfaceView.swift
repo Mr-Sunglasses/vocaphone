@@ -189,14 +189,6 @@ final class DictationSurfaceState: ObservableObject {
         notice = nil
     }
 
-    /// The recording clock, while recording. Republished only when its text
-    /// changes — once a second — however often the session poll runs.
-    private var storedRecordingClock: RecordingClock?
-    var recordingClock: RecordingClock? {
-        get { storedRecordingClock }
-        set { change(&storedRecordingClock, to: newValue) }
-    }
-
     /// The trailing button in this state: Finish, Insert, Retry, Start.
     private var storedPrimarySymbol: String = "mic.fill"
     var primarySymbol: String {
@@ -863,30 +855,11 @@ struct DictationSurfaceView: View {
                 noticeLine(notice)
             } else if isSuggesting {
                 CandidateRow(state: state.typing)
-            } else if isRecording, let clock = state.recordingClock {
-                // Between Cancel and Finish, where the eye already is. The cap
-                // used to stop a recording at two minutes with nothing on this
-                // surface counting towards it.
-                Spacer(minLength: 0)
-                recordingClockLabel(clock)
-                Spacer(minLength: 0)
             } else {
                 Spacer()
             }
             trailingActionButton
         }
-    }
-
-    private func recordingClockLabel(_ clock: RecordingClock) -> some View {
-        Text(clock.text)
-            .font(.system(size: 15, weight: .semibold).monospacedDigit())
-            .foregroundStyle(
-                clock.isNearLimit
-                    ? Color(keyPalette.tint(for: .recording))
-                    : controlForeground.opacity(0.7)
-            )
-            .contentTransition(.identity)
-            .accessibilityLabel(clock.accessibilityLabel)
     }
 
     /// One passing line where the suggestions would be. Two lines at most and
@@ -934,13 +907,7 @@ struct DictationSurfaceView: View {
                         noticeLine(notice)
                     } else if isSuggesting {
                         CandidateRow(state: state.typing)
-                    } else if centresAction {
-                        // Start holds the middle, so the language takes the
-                        // free end rather than crowding the menu.
-                        Spacer()
-                        idleLanguageChip
                     } else {
-                        idleLanguageChip
                         Spacer()
                     }
                     if !centresAction {
@@ -1256,33 +1223,6 @@ struct DictationSurfaceView: View {
         .animation(nil, value: state.language)
         .accessibilityLabel("Transcription language")
         .accessibilityValue(state.language.displayName)
-    }
-
-    /// The language the next dictation uses, on the row itself. It used to be
-    /// reachable only through "…", and a dictation in the wrong language is
-    /// a whole recording to say again. Tapping it opens the picker and comes
-    /// back to the keys, not to the dashboard.
-    private var idleLanguageChip: some View {
-        Button {
-            state.present(.language)
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "globe")
-                    .font(.system(size: 13, weight: .semibold))
-                Text(state.language.shortLabel)
-                    .font(.system(size: 14, weight: .semibold))
-            }
-            .foregroundStyle(controlForeground.opacity(0.8))
-            .padding(.horizontal, 10)
-            .frame(minHeight: Self.buttonDiameter)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .modifier(GlassCapsuleModifier())
-        .animation(nil, value: state.language)
-        .accessibilityLabel("Dictation language")
-        .accessibilityValue(state.language.displayName)
-        .accessibilityHint("Changes the language for the next dictation.")
     }
 
     /// Icon only: the name already lives on the style page.
@@ -1935,11 +1875,9 @@ private struct CompactRunningSwitch: UIViewRepresentable {
 
     func makeUIView(context: Context) -> FrozenSwitchView {
         let view = FrozenSwitchView()
-        // Named for what it controls. "vocaphone" on a switch said nothing
-        // about what turning it on would do.
-        view.control.accessibilityLabel = "Quick Dictation"
+        view.control.accessibilityLabel = "vocaphone"
         view.control.accessibilityHint =
-            "On opens vocaphone so you can dictate without leaving this app. Off closes vocaphone."
+            "Opens or closes vocaphone. Quick Dictation settings stay as they are."
         view.control.addTarget(
             context.coordinator,
             action: #selector(Coordinator.changed(_:)),

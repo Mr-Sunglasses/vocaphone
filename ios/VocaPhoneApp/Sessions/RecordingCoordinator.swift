@@ -429,7 +429,7 @@ final class RecordingCoordinator {
         recorder.microphonePreference = KeyboardPreferences.microphonePreference
         meterSequence = 0
         recorder.onMeter = { [weak self] levels in self?.persistMeter(levels) }
-        recorder.onMaximumDuration = { [weak self] in self?.requestFinish(reachedLimit: true) }
+        recorder.onMaximumDuration = { [weak self] in self?.requestFinish() }
         recorder.onInputRouteChanged = { [weak self] inputName in
             guard let self else { return }
             self.currentMicrophoneName = inputName
@@ -821,22 +821,15 @@ final class RecordingCoordinator {
         }
     }
 
-    /// - Parameter reachedLimit: the recorder's length cap stopped capture,
-    ///   not a tap. Kept on the record so the keyboard, the swipe-back screen
-    ///   and the Live Activity can all say why the recording ended mid-sentence.
-    func requestFinish(reachedLimit: Bool = false) {
+    func requestFinish() {
         guard !isInert else { return }
         guard var record = activeRecord, record.state == .recording else { return }
         DiagnosticLog.record(.finishRequested)
         do {
             try record.transition(to: .finalizing)
-            if reachedLimit { record.stoppedAtRecordingLimit = true }
             try commit(&record)
             activeRecord = record
-            liveActivity.update(
-                status: reachedLimit ? DictationBarModel.recordingLimitTitle : "Finishing recording",
-                canFinish: false
-            )
+            liveActivity.update(status: "Finishing recording", canFinish: false)
             startPipeline(record)
         } catch is CancellationError {
             // Cancelled from the keyboard a moment earlier. The shared-state
@@ -1172,9 +1165,6 @@ final class RecordingCoordinator {
             } else if record.state == .awaitingReturn {
                 try record.transition(to: .recording)
             }
-            // The microphone's own clock, so every surface counting towards
-            // the length cap counts from the same moment the cap does.
-            record.recordingStartedAt = captureStartedAt
             record.localAudioReference = audioURL.lastPathComponent
             // The write this whole function waits for, and the one a Cancel
             // during the waits above used to lose to.
@@ -1363,10 +1353,7 @@ final class RecordingCoordinator {
             DiagnosticLog.record(.uploadCompleted)
             DiagnosticLog.record(.transcriptionStarted)
             message = "Transcribing on your gateway…"
-            liveActivity.update(
-                status: DictationBarModel.processingActivityStatus("Transcribing on your gateway", for: record),
-                canFinish: false
-            )
+            liveActivity.update(status: "Transcribing on your gateway", canFinish: false)
         } catch is CancellationError {
             // Cancelled while the body was in flight; the pipeline stops too.
         } catch {
@@ -1496,10 +1483,7 @@ final class RecordingCoordinator {
             try commit(&record)
             activeRecord = record
             message = "Finishing the recording…"
-            liveActivity.update(
-                status: DictationBarModel.processingActivityStatus("Finishing recording", for: record),
-                canFinish: false
-            )
+            liveActivity.update(status: "Finishing recording", canFinish: false)
 
             if let transcript = await streamingBridge.finish(
                 droppedChunks: recorder.lastDroppedChunkCount
@@ -1545,10 +1529,7 @@ final class RecordingCoordinator {
             }
 
             message = "Uploading to your gateway…"
-            liveActivity.update(
-                status: DictationBarModel.processingActivityStatus("Sending to your gateway", for: record),
-                canFinish: false
-            )
+            liveActivity.update(status: "Sending to your gateway", canFinish: false)
 
             // A reachable server can still have no usable model. Check before
             // sending audio or entering the long-running transcription request.
@@ -1673,10 +1654,7 @@ final class RecordingCoordinator {
             try commit(&record)
             activeRecord = record
             message = "Transcribing on this iPhone…"
-            liveActivity.update(
-                status: DictationBarModel.processingActivityStatus("Transcribing on this iPhone", for: record),
-                canFinish: false
-            )
+            liveActivity.update(status: "Transcribing on this iPhone", canFinish: false)
             try record.transition(to: .transcribing)
             try commit(&record)
             activeRecord = record
@@ -2258,10 +2236,7 @@ final class RecordingCoordinator {
 
         switch shared.state {
         case .finalizing:
-            liveActivity.update(
-                status: DictationBarModel.processingActivityStatus("Finishing recording", for: shared),
-                canFinish: false
-            )
+            liveActivity.update(status: "Finishing recording", canFinish: false)
             startPipeline(shared)
         case .uploading where !recorder.isRecording && pipelineSessionID == nil:
             startPipeline(shared)

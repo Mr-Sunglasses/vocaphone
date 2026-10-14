@@ -60,15 +60,6 @@ with the same text around the cursor, such as two empty fields, are
 indistinguishable, and the transcript follows the cursor there as it did
 before. `insertionInterrupted` is described under step 9.
 
-`SessionRecord.recordingStartedAt` and `SessionRecord.stoppedAtRecordingLimit`
-are optional and additive too. The app stamps the first when the record moves
-to `recording`, from the microphone's own clock, so the keyboard's recording
-clock and its warning in the last 15 seconds count towards the length cap
-from the same moment the cap does; an older record falls back to when the
-keyboard first saw the recording. The second is set when the cap, not a tap,
-ended capture, and every surface titles the wait "Stopped at the 2-minute
-limit".
-
 Only recording and the wait for its transcript (`launchingApp` through
 `transcribing`) take the keys away. A transcript waiting for a tap, a changed
 field and every failure are drawn in the status bar above the keys, because a

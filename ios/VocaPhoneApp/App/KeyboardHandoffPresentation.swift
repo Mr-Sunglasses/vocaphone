@@ -31,8 +31,6 @@ struct KeyboardHandoffPresentation: Equatable {
     /// Without it, the only way past this screen while a transcript waited
     /// was Cancel dictation — the app was unusable for up to an hour.
     var showsNotNow = false
-    /// The recording clock, counted from when the microphone started.
-    var showsElapsedTime = false
 
     /// The handoff applies only to work that began in another app. A session
     /// hosted by vocaphone's practice field has no app to return to.
@@ -65,14 +63,6 @@ struct KeyboardHandoffPresentation: Equatable {
     static func make(_ record: SessionRecord) -> KeyboardHandoffPresentation? {
         guard shouldPresent(record) else { return nil }
 
-        // The cap ended the recording, not a tap, so the last sentence may be
-        // cut off. Said for the whole wait, as the keyboard says it.
-        if record.stoppedAtRecordingLimit == true,
-           [.finalizing, .uploading, .transcribing].contains(record.state)
-        {
-            return processing(title: DictationBarModel.recordingLimitTitle)
-        }
-
         switch record.state {
         // One screen from the moment the app is asked for until the transcript
         // exists: the request is the same request whether the recorder has
@@ -88,8 +78,7 @@ struct KeyboardHandoffPresentation: Equatable {
                 detail: "Recording follows you there.",
                 primaryAction: .none,
                 primaryTitle: nil,
-                showsCancel: true,
-                showsElapsedTime: record.state == .recording
+                showsCancel: true
             )
         case .finalizing:
             return processing(title: "Finishing recording")

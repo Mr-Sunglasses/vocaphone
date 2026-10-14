@@ -7,8 +7,8 @@ import UIKit
 /// only the person holding the phone can do that, with the system's own
 /// previous-app gesture. So the screen is a demonstration and little else: one
 /// sentence, a picture of the gesture running on a loop, the other way back
-/// (the "◀" button at the top-left), the recording clock, and a quiet Cancel
-/// for a Dictate tapped by mistake.
+/// (the "◀" button at the top-left), and a quiet Cancel for a Dictate tapped
+/// by mistake.
 ///
 /// The phone in the picture is drawn, not photographed, so it follows the
 /// palette into dark mode and scales with the space it is given.
@@ -20,10 +20,6 @@ struct SwipeBackScreen: View {
     /// menu opens. The demo waits for it to go, like it waits for vocaphone to
     /// come on screen.
     var isCovered = false
-    /// When the microphone started, for the recording clock. `nil` before
-    /// recording has begun, and for the Quick Dictation guide, which records
-    /// nothing.
-    var recordingStartedAt: Date?
     /// A quiet way out for a dictation started by mistake. The Live Activity
     /// and the keyboard each have one, but neither is on this screen.
     var onCancel: (() -> Void)?
@@ -79,20 +75,6 @@ struct SwipeBackScreen: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityElement(children: .combine)
-
-                    if let recordingStartedAt {
-                        Label {
-                            Text(recordingStartedAt, style: .timer)
-                                .monospacedDigit()
-                        } icon: {
-                            Image(systemName: "record.circle")
-                                .foregroundStyle(Color.vocaRecording)
-                        }
-                        .font(.headline)
-                        .foregroundStyle(Color.vocaSecondaryText)
-                        .accessibilityElement(children: .combine)
-                        .accessibilityLabel("Recording time")
-                    }
 
                     if let onCancel {
                         Button("Cancel dictation", role: .destructive, action: onCancel)

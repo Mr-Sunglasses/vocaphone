@@ -44,7 +44,6 @@ struct KeyboardHandoffView: View {
             detail: presentation.detail,
             reduceMotion: reduceMotion,
             isCovered: isCovered,
-            recordingStartedAt: presentation.showsElapsedTime ? record.recordingStartedAt : nil,
             onCancel: presentation.showsCancel ? { coordinator.cancel() } : nil
         )
         // Same picture from launching through recording. Without this the
@@ -85,7 +84,7 @@ struct KeyboardHandoffView: View {
                 .foregroundStyle(statusColor)
             Spacer()
             if presentation.kind == .recording {
-                Text(record.recordingStartedAt ?? record.createdAt, style: .timer)
+                Text(record.createdAt, style: .timer)
                     .font(.headline.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Elapsed recording time")
