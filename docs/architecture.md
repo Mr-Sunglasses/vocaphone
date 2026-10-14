@@ -53,12 +53,45 @@ producing equal values. A keyboard that adopts the session in a later
 appearance — after an app switch or an extension relaunch, where document
 identifiers are reissued and cannot be compared — computes the same value for
 the field it is in. A mismatch parks the transcript as `targetContextChanged`
-("Insert in this field") instead of inserting it automatically, so a dictation
+("Insert here") instead of inserting it automatically, so a dictation
 started in one app does not land in another. A field iOS has not answered for
 yet is not evidence either way: the transcript waits behind Insert. Two fields
 with the same text around the cursor, such as two empty fields, are
 indistinguishable, and the transcript follows the cursor there as it did
 before. `insertionInterrupted` is described under step 9.
+
+`SessionRecord.recordingStartedAt` and `SessionRecord.stoppedAtRecordingLimit`
+are optional and additive too. The app stamps the first when the record moves
+to `recording`, from the microphone's own clock, so the keyboard's recording
+clock and its warning in the last 15 seconds count towards the length cap
+from the same moment the cap does; an older record falls back to when the
+keyboard first saw the recording. The second is set when the cap, not a tap,
+ended capture, and every surface titles the wait "Stopped at the 2-minute
+limit".
+
+Only recording and the wait for its transcript (`launchingApp` through
+`transcribing`) take the keys away. A transcript waiting for a tap, a changed
+field and every failure are drawn in the status bar above the keys, because a
+session is adopted by every keyboard appearance in every app. Dismissing a
+waiting transcript cancels the session; the transcript stays in Transcripts
+like any other. Failures use a short keyboard line keyed by `SessionFailure.code`
+(`DictationFailure`); the app's full message stays in the app.
+
+Two App Group values support that. The app writes
+`localTranscriptionSelectedModelUnavailable` whenever it re-reads setup, so
+Dictate can say "Voice model needed" before creating a session it could only
+fail. The keyboard writes `keyboardAcknowledgedEndedSession`, a session ID and
+nothing else, once it has reported a session that ended without being asked
+to — the microphone would not start, a hand-off timed out, no speech was
+heard — so that a fresh extension instance reports it once and the next does
+not repeat it. An empty transcript, on device or `empty_transcript` /
+`silent_audio` from the gateway, ends the session as
+`transcriptionFailedPermanent` with code `no_speech` and its audio is deleted:
+retrying the same audio cannot change the answer.
+
+The Live Activity's Cancel is a `LiveActivityIntent` that writes `canceled`
+to the shared record, the same way Finish writes `finalizing`; the app tears
+down through the shared-state signal exactly as for the keyboard's Cancel.
 
 ## Recorded request flow
 
@@ -226,7 +259,7 @@ set. That transcript is offered behind Insert and Cancel with "Insertion may
 have been interrupted" and is never inserted automatically, since the text may
 already be in the field. It is not parked by its target fingerprint either: the
 interrupted insertion may itself have changed the text around the cursor, so
-the warning takes precedence over "Insert in this field". `inserting` also expires after 30 seconds, and only
+the warning takes precedence over "Insert here". `inserting` also expires after 30 seconds, and only
 counts as having an active writer within that window, so delete, Delete all and
 storage pruning can reclaim a record no keyboard came back for.
 

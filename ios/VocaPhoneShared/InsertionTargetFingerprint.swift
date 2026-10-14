@@ -12,7 +12,7 @@ import Foundation
 /// What does survive an app switch is the text around the cursor. A keyboard
 /// that adopts a session in a later appearance compares the field it is in now
 /// with this fingerprint, taken when the dictation started, and parks the
-/// transcript behind "Insert in this field" when they differ.
+/// transcript behind "Insert here" when they differ.
 ///
 /// Only a salted, truncated SHA-256 is stored, never the text: the record lives
 /// in the App Group, and the field the user was typing in is not the keyboard's
@@ -105,7 +105,7 @@ enum PendingTranscriptPolicy {
             // that alone changes the text around the cursor: a fingerprint
             // mismatch cannot tell "already inserted here" from "another
             // field". Parking would trade "may have been interrupted" for
-            // "Insert in this field", so it stays behind its own warning.
+            // "Insert here", so it stays behind its own warning.
             if interrupted { return .offer }
             if target == .different || (target == .same && !sameDocument) { return .park }
             // An unread field is not evidence either way: it waits for a tap.

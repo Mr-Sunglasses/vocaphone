@@ -856,7 +856,12 @@ struct DictationSurfaceView: View {
     private var standardControlsRow: some View {
         HStack(spacing: 8) {
             leadingGlassContainer
-            if isSuggesting {
+            // A passing message outranks the suggestions for its few seconds:
+            // it is the answer to something just tapped, and the words come
+            // back on the next keystroke anyway.
+            if !isOpen, let notice = state.notice {
+                noticeLine(notice)
+            } else if isSuggesting {
                 CandidateRow(state: state.typing)
             } else if isRecording, let clock = state.recordingClock {
                 // Between Cancel and Finish, where the eye already is. The cap
@@ -865,8 +870,6 @@ struct DictationSurfaceView: View {
                 Spacer(minLength: 0)
                 recordingClockLabel(clock)
                 Spacer(minLength: 0)
-            } else if !isOpen, let notice = state.notice {
-                noticeLine(notice)
             } else {
                 Spacer()
             }
@@ -927,10 +930,10 @@ struct DictationSurfaceView: View {
                     // Candidates swap with the spacer only. The action stays
                     // in this trailing slot so appearing predictions do not
                     // destroy and recreate the glass.
-                    if isSuggesting {
-                        CandidateRow(state: state.typing)
-                    } else if let notice = state.notice {
+                    if let notice = state.notice {
                         noticeLine(notice)
+                    } else if isSuggesting {
+                        CandidateRow(state: state.typing)
                     } else if centresAction {
                         // Start holds the middle, so the language takes the
                         // free end rather than crowding the menu.

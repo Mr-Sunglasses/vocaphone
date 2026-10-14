@@ -14,6 +14,10 @@ stays on the phone until success. The temporary copy is removed when the upload 
 including on failure or cancellation; if encoding fails or the copy would be
 larger, the app sends the WAV. On-device transcription uses the WAV.
 
+A recording in which the model finds no speech is deleted as soon as that is
+known, the same as after a transcript: the session ends there, and there is
+nothing a retry could recover.
+
 For gateway models that do not decode incrementally (including Whisper), the
 iPhone sends mono 16 kHz, 16-bit PCM through a bounded HTTP/HTTPS upload while
 the dictation is being recorded. The gateway receives it as a streaming WAV
