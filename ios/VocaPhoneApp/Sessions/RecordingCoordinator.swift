@@ -355,13 +355,18 @@ final class RecordingCoordinator {
     /// The cap for a recording starting now: the user's maximum recording
     /// length, and on the gateway route no more than the gateway accepts.
     static func maximumRecordingSeconds() -> TimeInterval {
-        let gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL")
-            .flatMap(GatewayEndpoint.validatedURL(from:))
-        return RecordingLengthLimit.effectiveSeconds(
+        RecordingLengthLimit.effectiveSeconds(
             choice: KeyboardPreferences.maximumRecordingLength,
             location: selectedProcessingLocation(),
-            gatewayReportedSeconds: GatewayStatusPreferences.reportedMaximumDuration(for: gatewayURL)
+            gatewayReportedSeconds: configuredGatewayReportedSeconds()
         )
+    }
+
+    /// What the configured gateway last reported it accepts, if anything.
+    private static func configuredGatewayReportedSeconds() -> Int? {
+        let gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL")
+            .flatMap(GatewayEndpoint.validatedURL(from:))
+        return GatewayStatusPreferences.reportedMaximumDuration(for: gatewayURL)
     }
 
     /// Removes one transcript from this iPhone.
@@ -1497,6 +1502,25 @@ final class RecordingCoordinator {
             }
             try commit(&record)
             activeRecord = record
+
+            // Checked before anything is sent: see `exceedsGateway`.
+            let gatewayReported = Self.configuredGatewayReportedSeconds()
+            if RecordingLengthLimit.exceedsGateway(
+                recordedSeconds: record.recordedSeconds,
+                gatewayReportedSeconds: gatewayReported
+            ) {
+                await streamingBridge.cancel()
+                await fail(
+                    &record,
+                    state: .uploadFailedRecoverable,
+                    code: DictationFailure.tooLongForGatewayCode,
+                    message: RecordingLengthLimit.tooLongForGatewayMessage(
+                        gatewayReportedSeconds: gatewayReported
+                    )
+                )
+                return
+            }
+
             message = "Finishing the recording…"
             liveActivity.update(status: "Finishing recording", canFinish: false)
 

@@ -52,6 +52,21 @@ struct RecordingLengthLimitTests {
         }
     }
 
+    /// A route or gateway switched after recording began can meet a recording
+    /// longer than the gateway takes. It is caught before the upload, and a
+    /// recording the cap itself stopped is never caught by mistake.
+    @Test func aRecordingLongerThanTheGatewayAcceptsIsCaughtBeforeUpload() {
+        #expect(RecordingLengthLimit.exceedsGateway(recordedSeconds: 300, gatewayReportedSeconds: 120))
+        #expect(RecordingLengthLimit.exceedsGateway(recordedSeconds: 300, gatewayReportedSeconds: nil))
+        #expect(!RecordingLengthLimit.exceedsGateway(recordedSeconds: 120.4, gatewayReportedSeconds: 120))
+        #expect(!RecordingLengthLimit.exceedsGateway(recordedSeconds: 300, gatewayReportedSeconds: 300))
+        #expect(!RecordingLengthLimit.exceedsGateway(recordedSeconds: nil, gatewayReportedSeconds: 60))
+        #expect(DictationFailure(code: DictationFailure.tooLongForGatewayCode) == .tooLongForGateway)
+        #expect(DictationFailure.tooLongForGateway.keyboardLine.count < 60)
+        #expect(RecordingLengthLimit.tooLongForGatewayMessage(gatewayReportedSeconds: nil)
+            .contains("up to 2 minutes"))
+    }
+
     @Test func settingsNotesOnlyAGatewayThatStopsSooner() {
         #expect(RecordingLengthLimit.gatewayNote(choice: .fiveMinutes, gatewayReportedSeconds: nil)
             == "Your gateway accepts up to 2 minutes. Update the gateway to record longer.")

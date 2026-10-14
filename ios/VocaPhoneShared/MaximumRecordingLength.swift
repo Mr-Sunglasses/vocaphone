@@ -77,6 +77,28 @@ enum RecordingLengthLimit {
             + "Update the gateway to record longer."
     }
 
+    /// Whether a finished recording is longer than the gateway accepts.
+    ///
+    /// The cap is chosen when recording starts, for the route in force then.
+    /// The route is chosen again when the recording is sent — so switching to
+    /// on-device and tapping Retry works — which means a route or gateway
+    /// changed in between can meet a recording longer than this gateway takes.
+    /// It would only refuse it after the whole upload. A second's slack keeps a
+    /// recording the cap itself stopped from tripping this; an unknown length
+    /// (a record from an older build) is let through for the gateway to judge.
+    static func exceedsGateway(recordedSeconds: TimeInterval?, gatewayReportedSeconds: Int?) -> Bool {
+        guard let recordedSeconds else { return false }
+        return recordedSeconds > gatewayLimit(gatewayReportedSeconds) + 1
+    }
+
+    /// "This recording is longer than your gateway accepts (up to 2 minutes)."
+    static func tooLongForGatewayMessage(gatewayReportedSeconds: Int?) -> String {
+        "This recording is longer than your gateway accepts "
+            + "(up to \(phrase(for: gatewayLimit(gatewayReportedSeconds)))). "
+            + "Turn on on-device transcription and retry, or raise the gateway's limit. "
+            + "Your recording is kept."
+    }
+
     private static func gatewayLimit(_ reported: Int?) -> TimeInterval {
         // A zero or negative value is not a limit anyone set on purpose.
         guard let reported, reported > 0 else { return unreportedGatewaySeconds }

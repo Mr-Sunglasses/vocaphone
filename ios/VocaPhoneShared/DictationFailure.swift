@@ -19,12 +19,16 @@ enum DictationFailure: Equatable, Sendable {
     case microphoneSilenced
     /// The gateway's model cannot transcribe the chosen language.
     case languageUnsupported
+    /// Longer than the gateway accepts: the route or gateway changed after
+    /// recording began. Kept, so Retry works once either changes back.
+    case tooLongForGateway
     case other
 
     static let noSpeechCode = "no_speech"
     static let voiceModelMissingCode = "local_model_unavailable"
     /// The app could not start the microphone and cancelled the session.
     static let recordingStartFailedCode = "recording_start_failed"
+    static let tooLongForGatewayCode = "recording_too_long_for_gateway"
 
     init(code: String?) {
         switch code {
@@ -32,6 +36,7 @@ enum DictationFailure: Equatable, Sendable {
         case Self.voiceModelMissingCode: self = .voiceModelMissing
         case "microphone_silenced": self = .microphoneSilenced
         case "language_unsupported": self = .languageUnsupported
+        case Self.tooLongForGatewayCode: self = .tooLongForGateway
         default: self = .other
         }
     }
@@ -53,6 +58,7 @@ enum DictationFailure: Equatable, Sendable {
         case .voiceModelMissing: "Voice model needed"
         case .microphoneSilenced: "No sound recorded"
         case .languageUnsupported: "Language not supported"
+        case .tooLongForGateway: "Too long for your gateway"
         case .other: "Transcription failed"
         }
     }
@@ -64,6 +70,7 @@ enum DictationFailure: Equatable, Sendable {
         case .voiceModelMissing: "Download one in vocaphone to dictate."
         case .microphoneSilenced: "The microphone was muted or in use."
         case .languageUnsupported: "Pick another language, then dictate."
+        case .tooLongForGateway: "Switch to on-device, then tap Retry."
         case .other: "Couldn't transcribe this recording."
         }
     }
