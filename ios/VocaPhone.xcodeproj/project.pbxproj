@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		00FB74A674997E0E7E4489A8 /* WhisperDictation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D02BC7720453E34A121B9EFB /* WhisperDictation.swift */; };
+		0129ECBE7C58FB9673F70F51 /* CancelRecordingIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A47B3EB77F583A35637086 /* CancelRecordingIntent.swift */; };
 		01A0F8C43B7A8290B87B8228 /* TypingStripPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D80C83295868E17F215D9382 /* TypingStripPresentationTests.swift */; };
 		03F5EBC714CDD237056E021D /* OnboardingMotionIntroView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 094F22F59A65DD2C6FC24D4B /* OnboardingMotionIntroView.swift */; };
 		044611DCE2FFB3B38B4BFACE /* TypingFieldPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC2CD13AAF5FDF79DD5D0075 /* TypingFieldPolicy.swift */; };
@@ -379,6 +380,7 @@
 		BC36D829FEE2BEC0A6BC30C2 /* KeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5118F8CFAAE127CD5FF92076 /* KeyView.swift */; };
 		BCB8CA3BAACE6280D9ED4B22 /* QuickDictationAvailability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB84927D76F9C32C4BE1547 /* QuickDictationAvailability.swift */; };
 		BD67C86E9CCCEEBB2ABC845A /* TypingCandidates.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEAA4440B24071020CD693DB /* TypingCandidates.swift */; };
+		BD7B498DE9C3FCDAA178C7AC /* CancelRecordingIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A47B3EB77F583A35637086 /* CancelRecordingIntent.swift */; };
 		BF1BF9FEBFC0373AE2C4187D /* DarwinNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3498C523755A678225152570 /* DarwinNotifications.swift */; };
 		BF22B8C9A4943F8B06F74216 /* DictationBarComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75FD84E65614D9F94D8EF0AC /* DictationBarComponents.swift */; };
 		BF2FB6EFF246095B5C9B1BE0 /* DictationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A249ECD5882022276DF9D6D /* DictationFailure.swift */; };
@@ -687,6 +689,7 @@
 		7E9E5CE913B4FA5EF8EECD4E /* PairingPayloadTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingPayloadTests.swift; sourceTree = "<group>"; };
 		7F810558C0B42C924BC6CF21 /* DictatedTranscriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictatedTranscriptTests.swift; sourceTree = "<group>"; };
 		7FED099938C2E7D091FFE2BD /* KeyboardGeometryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardGeometryTests.swift; sourceTree = "<group>"; };
+		81A47B3EB77F583A35637086 /* CancelRecordingIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CancelRecordingIntent.swift; sourceTree = "<group>"; };
 		8201161064874EF522DF3F70 /* SpokenNumbersTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenNumbersTests.swift; sourceTree = "<group>"; };
 		858088F81E12EC57E13F9492 /* KeyboardHaptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardHaptics.swift; sourceTree = "<group>"; };
 		85AA9291707DE7366D08EB0C /* CustomVocabulary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomVocabulary.swift; sourceTree = "<group>"; };
@@ -1264,6 +1267,7 @@
 		BA056971FB6830230CA657BE /* VocaPhoneActivityShared */ = {
 			isa = PBXGroup;
 			children = (
+				81A47B3EB77F583A35637086 /* CancelRecordingIntent.swift */,
 				5B19321866AE8083C78C2B7F /* FinishRecordingIntent.swift */,
 				332854D2644CFCE5843E3F31 /* StopQuickDictationIntent.swift */,
 				8988211922DAD4FC77AF89EB /* VocaPhoneActivityAttributes.swift */,
@@ -1558,6 +1562,7 @@
 				B803C86D8A77C8A2D758DA0A /* AudioRecorder.swift in Sources */,
 				D7E05D9E84A4B87B4467834D /* BackgroundAssertion.swift in Sources */,
 				590AE5D90BD9113ABA4EEF3F /* BrandPalette.swift in Sources */,
+				0129ECBE7C58FB9673F70F51 /* CancelRecordingIntent.swift in Sources */,
 				173C098A124E300C4E458706 /* CaptureInterruption.swift in Sources */,
 				DA8136691B7BC099E2B52B23 /* ChineseScript.swift in Sources */,
 				D4CA018F48AA244D322B9156 /* ContentView.swift in Sources */,
@@ -1708,6 +1713,7 @@
 			files = (
 				314748D93E078B40FEEEBEBE /* AppConfiguration.swift in Sources */,
 				5FB6858C38350EC77F45EB62 /* BrandPalette.swift in Sources */,
+				BD7B498DE9C3FCDAA178C7AC /* CancelRecordingIntent.swift in Sources */,
 				606AD36CF4F0419AA2850D57 /* CaptureInterruption.swift in Sources */,
 				F63DD8AFD20DC0C776FCF42E /* ChineseScript.swift in Sources */,
 				25A9766454D6E24C9AD7BF2B /* CustomVocabulary.swift in Sources */,

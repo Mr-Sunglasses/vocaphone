@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The containing-app surface for a dictation started in another app. The
 /// keyboard cannot return the user to that app, so this view teaches the real
@@ -13,6 +14,8 @@ struct KeyboardHandoffView: View {
     let presentation: KeyboardHandoffPresentation
     /// Whether the Settings sheet is drawn over this screen.
     var isCovered = false
+    /// Not now: Home, with the session left exactly as it is.
+    var onNotNow: () -> Void = {}
     /// Bumped each time the swipe-back screen is actually seen: on appearing
     /// while vocaphone is on screen, and on vocaphone coming on screen with it.
     @State private var arrivals = 0
@@ -40,7 +43,9 @@ struct KeyboardHandoffView: View {
             title: presentation.title,
             detail: presentation.detail,
             reduceMotion: reduceMotion,
-            isCovered: isCovered
+            isCovered: isCovered,
+            recordingStartedAt: presentation.showsElapsedTime ? record.recordingStartedAt : nil,
+            onCancel: presentation.showsCancel ? { coordinator.cancel() } : nil
         )
         // Same picture from launching through recording. Without this the
         // state change remounts the animation, which is the hitch after the
@@ -80,7 +85,7 @@ struct KeyboardHandoffView: View {
                 .foregroundStyle(statusColor)
             Spacer()
             if presentation.kind == .recording {
-                Text(record.createdAt, style: .timer)
+                Text(record.recordingStartedAt ?? record.createdAt, style: .timer)
                     .font(.headline.monospacedDigit())
                     .foregroundStyle(.secondary)
                     .accessibilityLabel("Elapsed recording time")
@@ -99,9 +104,10 @@ struct KeyboardHandoffView: View {
                     .frame(maxWidth: 220)
             }
             .padding(.vertical, VocaMetrics.related)
-            .accessibilityElement(children: .combine)
+            // A stable label. The level as a percentage changed several times
+            // a second, and VoiceOver read every one of them.
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel("Recording")
-            .accessibilityValue("Voice level \(Int(coordinator.meterLevel * 100)) percent")
         case .processing:
             ProgressView()
                 .controlSize(.large)
@@ -152,11 +158,25 @@ struct KeyboardHandoffView: View {
 
     @ViewBuilder private var actions: some View {
         VStack(spacing: VocaMetrics.related) {
-            if let title = presentation.primaryTitle {
+            if presentation.primaryAction == .copyTranscript, let title = presentation.primaryTitle {
+                VocaCopyButton(title: title, value: record.transcript)
+                    .accessibilityHint("Copies the transcript. It also stays ready for the keyboard.")
+            } else if let title = presentation.primaryTitle {
                 VocaPrimaryButton(title: title, symbol: primarySymbol) {
                     perform(presentation.primaryAction)
                 }
                 .accessibilityHint(primaryHint)
+            }
+
+            if presentation.showsNotNow {
+                Button("Not now", action: onNotNow)
+                    .font(.body.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: VocaMetrics.minimumTarget)
+                    .accessibilityHint(
+                        presentation.kind == .ready
+                            ? "Goes to Home. The text stays ready for the keyboard."
+                            : "Goes to Home and leaves this dictation as it is."
+                    )
             }
 
             if presentation.showsCancel {
@@ -193,6 +213,7 @@ struct KeyboardHandoffView: View {
         switch presentation.primaryAction {
         case .finish: "stop.fill"
         case .retry: "arrow.clockwise"
+        case .copyTranscript: "doc.on.doc"
         case .none: nil
         }
     }
@@ -203,7 +224,7 @@ struct KeyboardHandoffView: View {
             "Stops recording and starts speech to text. Return to the keyboard to insert the result."
         case .retry:
             "Sends the preserved recording again."
-        case .none:
+        case .copyTranscript, .none:
             ""
         }
     }
@@ -214,6 +235,8 @@ struct KeyboardHandoffView: View {
             coordinator.requestFinish()
         case .retry:
             coordinator.retryPreservedRecording()
+        case .copyTranscript:
+            UIPasteboard.general.string = record.transcript
         case .none:
             break
         }

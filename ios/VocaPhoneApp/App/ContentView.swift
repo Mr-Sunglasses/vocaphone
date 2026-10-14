@@ -47,6 +47,9 @@ struct ContentView: View {
     }
 
     @State private var isShowingTranscriptionSettingsFromAttention = false
+    /// A hand-off the user chose to leave with Not now. Keyed by session, so
+    /// the next dictation brings the screen back.
+    @State private var handoffSetAsideFor: UUID?
     /// The selected on-device model, observed so the attention card can react
     /// to it. `setupStatus` is a stored snapshot that home only rewrites on a
     /// return to the foreground; a download started in setup is adopted once
@@ -91,7 +94,8 @@ struct ContentView: View {
                 KeyboardHandoffView(
                     record: record,
                     presentation: presentation,
-                    isCovered: isShowingSettings
+                    isCovered: isShowingSettings,
+                    onNotNow: { handoffSetAsideFor = record.sessionID }
                 )
             }
         }
@@ -656,7 +660,8 @@ struct ContentView: View {
 
     private var keyboardHandoffRecord: SessionRecord? {
         guard let record = coordinator.activeRecord,
-              KeyboardHandoffPresentation.shouldPresent(record)
+              KeyboardHandoffPresentation.shouldPresent(record),
+              record.sessionID != handoffSetAsideFor
         else { return nil }
         return record
     }
@@ -787,9 +792,10 @@ struct RecordingMeter: View {
             )
         }
         .frame(height: 26)
-        .accessibilityElement()
-        .accessibilityLabel("Voice level")
-        .accessibilityValue("\(Int(coordinator.meterLevel * 100)) percent")
+        // Decoration for sighted users. Its value changed several times a
+        // second, and VoiceOver read each one as a new percentage; the card's
+        // own status line already says Listening.
+        .accessibilityHidden(true)
     }
 
     private func height(for index: Int, in available: CGFloat) -> CGFloat {
