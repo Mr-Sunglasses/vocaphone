@@ -65,6 +65,8 @@ import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.ChineseScript
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictationTone
+import com.vocahq.vocaphone.core.MaximumRecordingLength
+import com.vocahq.vocaphone.core.RecordingLimit
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelTranslationSupport
 import com.vocahq.vocaphone.core.Snippet
@@ -135,6 +137,7 @@ fun SettingsScreen(
     onChineseScript: (ChineseScript) -> Unit,
     onDictationTone: (DictationTone) -> Unit,
     onStopAfterPause: (Boolean) -> Unit,
+    onMaximumRecordingLength: (MaximumRecordingLength) -> Unit,
     onPreviewDictationTone: (DictationTone) -> Unit,
     tonePreviewListening: Boolean,
     onMicrophone: (MicrophonePreference) -> Unit,
@@ -635,6 +638,30 @@ fun SettingsScreen(
                         checked = settings.stopAfterPause,
                         onCheckedChange = onStopAfterPause,
                     )
+                    SettingsDivider()
+                    SettingsChoiceRow(
+                        title = "Maximum recording length",
+                        options = MaximumRecordingLength.entries,
+                        selected = settings.maximumRecordingLength,
+                        label = { it.displayName },
+                        onSelect = onMaximumRecordingLength,
+                    )
+                    // Only when the gateway, not this choice, is what will
+                    // stop the recording.
+                    val gatewayNote = RecordingLimit.gatewayNote(
+                        choice = settings.maximumRecordingLength,
+                        onDevice = settings.localTranscriptionEnabled || !settings.isConfigured,
+                        gatewayReportedSeconds = settings.gatewayMaximumDurationSeconds,
+                    )
+                    if (gatewayNote != null) {
+                        SettingsGroupContent {
+                            Text(
+                                gatewayNote,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     SettingsDivider()
                     SettingsChoiceRow(
                         title = "Microphone",

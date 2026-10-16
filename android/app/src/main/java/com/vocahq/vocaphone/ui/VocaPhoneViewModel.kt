@@ -19,6 +19,7 @@ import com.vocahq.vocaphone.core.ChineseScript
 import com.vocahq.vocaphone.core.DictationTone
 import com.vocahq.vocaphone.core.TraditionalChinese
 import com.vocahq.vocaphone.core.GatewayEndpoint
+import com.vocahq.vocaphone.core.MaximumRecordingLength
 import com.vocahq.vocaphone.core.UsageStats
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.TranscriptionLanguage
@@ -357,6 +358,7 @@ class VocaPhoneViewModel @JvmOverloads constructor(
             streamingSupported = health.streamingSupported == true,
             modelLanguages = health.languages,
             modelDetectsLanguage = health.detectsLanguageAutomatically,
+            maximumDurationSeconds = health.maximumDurationSeconds,
         )
         return ConnectionReport(
             reachable = true,
@@ -390,6 +392,9 @@ class VocaPhoneViewModel @JvmOverloads constructor(
 
     fun setStopAfterPause(enabled: Boolean) =
         viewModelScope.launch { container.settings.setStopAfterPause(enabled) }
+
+    fun setMaximumRecordingLength(length: MaximumRecordingLength) =
+        viewModelScope.launch { container.settings.setMaximumRecordingLength(length) }
 
     fun setSpokenEmoji(enabled: Boolean) =
         viewModelScope.launch { container.settings.setSpokenEmoji(enabled) }

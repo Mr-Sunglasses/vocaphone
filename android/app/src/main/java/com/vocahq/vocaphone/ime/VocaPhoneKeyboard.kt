@@ -98,6 +98,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
@@ -155,6 +156,8 @@ internal fun VocaPhoneKeyboard(
     onCommand: (KeyboardCommand) -> Unit,
     onMicTap: () -> Unit,
     onMicLongPress: () -> Unit,
+    onRetry: () -> Unit = {},
+    onInsertSaved: () -> Unit = {},
     onOpenSettings: (String) -> Unit,
     onLanguageSelected: (TranscriptionLanguage) -> Unit,
     onStyleSelected: (WritingStyle) -> Unit,
@@ -194,6 +197,17 @@ internal fun VocaPhoneKeyboard(
         )
     }
     var preferencePanel by remember { mutableStateOf<PreferencePanel?>(null) }
+    // Clear wiped the whole clipboard history on one tap, with no undo. The
+    // first tap now asks; a second within a few seconds clears.
+    var confirmingClipboardClear by remember { mutableStateOf(false) }
+    LaunchedEffect(confirmingClipboardClear, preferencePanel) {
+        if (preferencePanel != PreferencePanel.CLIPBOARD) {
+            confirmingClipboardClear = false
+        } else if (confirmingClipboardClear) {
+            delay(CLIPBOARD_CLEAR_CONFIRM_MILLIS)
+            confirmingClipboardClear = false
+        }
+    }
     var emojiCategory by remember { mutableStateOf(EmojiCategory.SMILEYS) }
     var swipeChoices by remember { mutableStateOf<List<String>>(emptyList()) }
     var swipeWord by remember { mutableStateOf<String?>(null) }
@@ -606,6 +620,8 @@ internal fun VocaPhoneKeyboard(
                     onEmojiCategory = { emojiCategory = it },
                     onMicTap = onMicTap,
                     onMicLongPress = onMicLongPress,
+                    onRetry = onRetry,
+                    onInsertSaved = onInsertSaved,
                     menuOpen = preferencePanel == PreferencePanel.MENU,
                     panelTitle = when (preferencePanel) {
                         PreferencePanel.MENU -> "Keyboard"
@@ -618,12 +634,19 @@ internal fun VocaPhoneKeyboard(
                         preferencePanel == PreferencePanel.CLIPBOARD &&
                             settings.clipboardHistory.isNotEmpty()
                     ) {
-                        "Clear"
+                        if (confirmingClipboardClear) "Clear all?" else "Clear"
                     } else {
                         null
                     },
                     panelActionDestructive = true,
-                    onPanelAction = onClearClipboardHistory,
+                    onPanelAction = {
+                        if (confirmingClipboardClear) {
+                            confirmingClipboardClear = false
+                            onClearClipboardHistory()
+                        } else {
+                            confirmingClipboardClear = true
+                        }
+                    },
                     onClosePanel = { preferencePanel = null },
                     onMenuTap = {
                         preferencePanel = if (preferencePanel == PreferencePanel.MENU) {
@@ -907,6 +930,12 @@ private fun SwipeTrailLayer(
 /** Material 3 icon-button minimum. Fits Compact's 48 dp dictation bar. */
 private val ToolbarControlSize = 48.dp
 
+/** Material's minimum touch target, for controls drawn smaller than it. */
+private val MinimumTouchTarget = 48.dp
+
+/** How long "Clear all?" waits for the second tap before going back to "Clear". */
+private const val CLIPBOARD_CLEAR_CONFIRM_MILLIS = 4_000L
+
 /** Suggestion-strip slot for a clipboard chip. Short clips pad out; long ones ellipsize. */
 private val ClipboardChipMinWidth = 148.dp
 private val ClipboardChipMaxWidth = 220.dp
@@ -927,6 +956,8 @@ private fun DictationBar(
     onEmojiCategory: (EmojiCategory) -> Unit,
     onMicTap: () -> Unit,
     onMicLongPress: () -> Unit,
+    onRetry: () -> Unit,
+    onInsertSaved: () -> Unit,
     menuOpen: Boolean,
     panelTitle: String? = null,
     panelActionLabel: String? = null,
@@ -944,23 +975,18 @@ private fun DictationBar(
     val status = when {
         editor.sensitive -> "Private field"
         !editor.dictationAllowed -> "Typing only"
-        idle -> "VocaPhone"
-        state.phase == DictationPhase.LISTENING -> "Listening · ${formatDuration(state.recordedMillis)}"
-        else -> state.statusText
+        else -> DictationBarCopy.status(state, formatDuration(state.recordedMillis))
     }
     val detail = when {
         editor.sensitive -> "Dictation is off here"
         !editor.dictationAllowed -> "Dictation is available in text fields"
-        idle -> ""
-        state.phase == DictationPhase.LISTENING && state.partialTranscript.isNotBlank() ->
-            state.partialTranscript.replace('\n', ' ').take(64)
-        state.phase == DictationPhase.LISTENING ->
-            state.inputRouteLabel ?: "Tap the red button to finish"
-        state.phase.isBusy -> "You can keep typing while VocaPhone works"
-        state.phase == DictationPhase.PERMISSION_REPAIR -> state.repairHint
-        state.phase == DictationPhase.FAILED -> "Tap the mic to try again"
-        else -> "Ready"
+        else -> DictationBarCopy.detail(
+            state,
+            idleDetail = "",
+            busyDetail = "You can keep typing while VocaPhone works",
+        )
     }
+    val barAction = DictationBarCopy.action(state).takeIf { editor.dictationAllowed && panelTitle == null }
 
     Row(
         modifier = Modifier
@@ -970,49 +996,54 @@ private fun DictationBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // Bare icon until the menu is open: a filled disc on both ends of the
-        // strip framed the suggestions like a toolbar rather than a keyboard.
-        Box(
-            modifier = Modifier
-                .size(ToolbarControlSize)
-                .clip(CircleShape)
-                .background(
-                    if (menuOpen) {
-                        MaterialTheme.colorScheme.surfaceContainerHigh
-                    } else {
-                        Color.Transparent
-                    },
-                )
-                .semantics {
-                    role = Role.Button
-                    contentDescription = "Keyboard menu"
-                    if (!menuEnabled) disabled()
-                }
-                .pointerInput(menuEnabled, menuOpen) {
-                    if (!menuEnabled) return@pointerInput
-                    detectTapGestures(
-                        onTap = {
-                            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                            onMenuTap()
+        // The menu is disabled while dictation runs, so its slot carries the
+        // discard X instead: the leading edge, as on iOS, and across the strip
+        // from Stop so a tap reaching for Stop cannot discard.
+        if (MicDictationControl.showsSeparateCancel(state.phase)) {
+            DictationCancelButton(onClick = onMicLongPress)
+        } else {
+            // Bare icon until the menu is open: a filled disc on both ends of the
+            // strip framed the suggestions like a toolbar rather than a keyboard.
+            Box(
+                modifier = Modifier
+                    .size(ToolbarControlSize)
+                    .clip(CircleShape)
+                    .background(
+                        if (menuOpen) {
+                            MaterialTheme.colorScheme.surfaceContainerHigh
+                        } else {
+                            Color.Transparent
                         },
                     )
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_keyboard_menu),
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                    alpha = if (menuEnabled) 1f else 0.38f,
-                ),
-            )
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Keyboard menu"
+                        if (!menuEnabled) disabled()
+                    }
+                    .pointerInput(menuEnabled, menuOpen) {
+                        if (!menuEnabled) return@pointerInput
+                        detectTapGestures(
+                            onTap = {
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                onMenuTap()
+                            },
+                        )
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_keyboard_menu),
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(
+                        alpha = if (menuEnabled) 1f else 0.38f,
+                    ),
+                )
+            }
         }
 
         Row(
-            modifier = Modifier
-                .weight(1f)
-                .semantics { liveRegion = LiveRegionMode.Polite },
+            modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -1029,50 +1060,12 @@ private fun DictationBar(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                !idle -> {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        if (state.isRecording) {
-                            Waveform(
-                                level = state.level,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(34.dp),
-                                alpha = 0.34f,
-                                bars = 13,
-                            )
-                        }
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            Text(
-                                text = status,
-                                modifier = Modifier.fillMaxWidth(),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                            )
-                            if (detail.isNotEmpty()) {
-                                Text(
-                                    text = detail,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textAlign = TextAlign.Center,
-                                )
-                            }
-                        }
-                    }
-                }
+                !idle -> DictationStatus(
+                    state = state,
+                    status = status,
+                    detail = detail,
+                    modifier = Modifier.weight(1f),
+                )
                 emojiCategory != null -> EmojiCategoryRow(
                     selected = emojiCategory,
                     hasRecents = hasEmojiRecents,
@@ -1142,8 +1135,12 @@ private fun DictationBar(
         if (panelTitle != null) {
             ToolbarCloseButton(onClick = onClosePanel)
         }
-        if (MicDictationControl.showsSeparateCancel(state.phase)) {
-            DictationCancelButton(onClick = onMicLongPress)
+        if (barAction != null) {
+            DictationActionButton(
+                action = barAction,
+                enabled = !isPreferenceWritePending,
+                onClick = if (barAction == DictationBarAction.RETRY) onRetry else onInsertSaved,
+            )
         }
         MicButton(
             state = state,
@@ -1151,6 +1148,90 @@ private fun DictationBar(
             onClick = onMicTap,
             onLongPress = onMicLongPress,
         )
+    }
+}
+
+/**
+ * The status in the middle of the bar while dictation is doing something.
+ *
+ * The whole status is one node for TalkBack, labelled with the phase alone
+ * and announced as a polite live region only when that changes. The timer and
+ * partial transcript under it were a live region of their own, and so was the
+ * suggestion strip beside them: TalkBack read them out over the person
+ * speaking, about once a second.
+ */
+@Composable
+private fun DictationStatus(
+    state: DictationState,
+    status: String,
+    detail: String,
+    modifier: Modifier = Modifier,
+    announcement: String = DictationBarCopy.announcement(state) ?: status,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clearAndSetSemantics {
+                contentDescription = announcement
+                liveRegion = LiveRegionMode.Polite
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (state.isRecording) {
+            Waveform(
+                level = state.level,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(34.dp),
+                alpha = 0.34f,
+                bars = 13,
+            )
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = status,
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
+            if (detail.isNotEmpty()) {
+                Text(
+                    text = detail,
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+/** Retry or Insert, beside the mic. */
+@Composable
+private fun DictationActionButton(
+    action: DictationBarAction,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val view = LocalView.current
+    TextButton(
+        onClick = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onClick()
+        },
+        enabled = enabled,
+        contentPadding = PaddingValues(horizontal = 8.dp),
+    ) {
+        Text(action.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
 
@@ -1163,6 +1244,8 @@ internal fun VoiceShortcutListeningChrome(
     rejectGuidance: Boolean = false,
     onMicTap: () -> Unit,
     onMicLongPress: () -> Unit,
+    onRetry: () -> Unit = {},
+    onInsertSaved: () -> Unit = {},
     onReadyToListen: () -> Unit = {},
 ) {
     LaunchedEffect(Unit) { onReadyToListen() }
@@ -1180,6 +1263,8 @@ internal fun VoiceShortcutListeningChrome(
                 rejectGuidance = rejectGuidance,
                 onMicTap = onMicTap,
                 onMicLongPress = onMicLongPress,
+                onRetry = onRetry,
+                onInsertSaved = onInsertSaved,
             )
         }
     }
@@ -1194,30 +1279,28 @@ private fun VoiceShortcutListeningBar(
     rejectGuidance: Boolean = false,
     onMicTap: () -> Unit,
     onMicLongPress: () -> Unit,
+    onRetry: () -> Unit,
+    onInsertSaved: () -> Unit,
 ) {
-    val idle = state.phase == DictationPhase.IDLE
     val status = when {
         rejectGuidance -> "Voice shortcut"
         editor.sensitive -> "Private field"
         !editor.dictationAllowed -> "Typing only"
-        idle -> "VocaPhone"
-        state.phase == DictationPhase.LISTENING -> "Listening · ${formatDuration(state.recordedMillis)}"
-        else -> state.statusText
+        else -> DictationBarCopy.status(state, formatDuration(state.recordedMillis))
     }
     val detail = when {
         rejectGuidance -> VoiceShortcutIme.REJECTED_HANDBACK_GUIDANCE
         editor.sensitive -> "Dictation is off here"
         !editor.dictationAllowed -> "Dictation is available in text fields"
-        idle -> "Voice input"
-        state.phase == DictationPhase.LISTENING && state.partialTranscript.isNotBlank() ->
-            state.partialTranscript.replace('\n', ' ').take(64)
-        state.phase == DictationPhase.LISTENING ->
-            state.inputRouteLabel ?: "Tap the red button to finish"
-        state.phase == DictationPhase.PERMISSION_REPAIR -> state.repairHint
-        state.phase == DictationPhase.FAILED -> "Tap the mic to try again"
-        state.phase.isBusy -> ""
-        else -> "Ready"
+        else -> DictationBarCopy.detail(state, idleDetail = "Voice input", busyDetail = "")
     }
+    val barAction = DictationBarCopy.action(state).takeIf { editor.dictationAllowed && !rejectGuidance }
+    val announcement = DictationBarCopy.shortcutAnnouncement(
+        state = state,
+        status = status,
+        detail = detail,
+        guidance = rejectGuidance || editor.sensitive || !editor.dictationAllowed,
+    )
 
     Row(
         modifier = Modifier
@@ -1228,51 +1311,26 @@ private fun VoiceShortcutListeningBar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .semantics { liveRegion = LiveRegionMode.Polite },
-            contentAlignment = Alignment.Center,
-        ) {
-            if (state.isRecording) {
-                Waveform(
-                    level = state.level,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(34.dp),
-                    alpha = 0.34f,
-                    bars = 13,
-                )
-            }
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Text(
-                    text = status,
-                    modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                )
-                if (detail.isNotEmpty()) {
-                    Text(
-                        text = detail,
-                        modifier = Modifier.fillMaxWidth(),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-            }
-        }
+        // Leading, opposite Stop, matching the keyboard toolbar. The spacer
+        // keeps the status centred over the bar when there is nothing to cancel.
         if (MicDictationControl.showsSeparateCancel(state.phase)) {
             DictationCancelButton(onClick = onMicLongPress)
+        } else {
+            Spacer(Modifier.size(ToolbarControlSize))
+        }
+        DictationStatus(
+            state = state,
+            status = status,
+            detail = detail,
+            modifier = Modifier.weight(1f),
+            announcement = announcement,
+        )
+        if (barAction != null) {
+            DictationActionButton(
+                action = barAction,
+                enabled = !isPreferenceWritePending,
+                onClick = if (barAction == DictationBarAction.RETRY) onRetry else onInsertSaved,
+            )
         }
         MicButton(
             state = state,
@@ -1518,17 +1576,20 @@ private fun ClipboardHistoryTile(
                     text = preview,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(start = 10.dp, end = 28.dp, top = 8.dp, bottom = 8.dp),
+                        // Clear of the remove target's full 48 dp.
+                        .padding(start = 10.dp, end = 40.dp, top = 8.dp, bottom = 8.dp),
                     fontSize = 13.sp,
                     lineHeight = 16.sp,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+            // Drawn as a 14 dp glyph but a full 48 dp target: at 32 dp the tap
+            // that missed it pasted the clip instead.
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .size(32.dp)
+                    .size(MinimumTouchTarget)
                     .semantics {
                         role = Role.Button
                         contentDescription = "Remove from clipboard"
@@ -1849,13 +1910,10 @@ private fun MicButton(
         DictationPhase.INSERTING,
     )
     val recording = state.phase == DictationPhase.LISTENING
-    val description = when {
-        !enabled -> "Dictation unavailable"
-        recording -> "Finish dictation. Long-press to discard without inserting"
-        processing -> "Dictation in progress"
-        state.phase == DictationPhase.PERMISSION_REPAIR -> state.repairHint
-        else -> "Start dictation"
-    }
+    val description = DictationBarCopy.micDescription(state, enabled)
+    // The gesture below is keyed on `enabled` only; the phase it checks has
+    // to be the current one, not the one it was first composed with.
+    val currentPhase by rememberUpdatedState(state.phase)
     val container = when {
         !enabled -> MaterialTheme.colorScheme.surfaceContainerHigh
         recording -> MaterialTheme.colorScheme.error
@@ -1881,7 +1939,11 @@ private fun MicButton(
                 if (!enabled) return@pointerInput
                 detectTapGestures(
                     onTap = {
-                        view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                        // The spinner does nothing on a tap (cancel is the X),
+                        // so it does not confirm one either.
+                        if (MicDictationControl.tap(currentPhase) != MicDictationAction.NONE) {
+                            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                        }
                         onClick()
                     },
                     onLongPress = { _ ->
@@ -1955,21 +2017,27 @@ private fun ClipboardChipButton(
     // Material 3 input chip: label + trailing remove, fixed height, ellipsis
     // instead of growing with the clip. Centered in the suggestion strip so a
     // short paste and a long one occupy the same slot.
-    Surface(
+    //
+    // The chip is drawn 32 dp tall, but its dismiss target is a full 48 dp
+    // square laid over the chip's trailing end: at 32 dp, in a strip people
+    // hit while typing, a dismiss that just missed pasted the clip instead.
+    Box(
         modifier = modifier
-            .height(ClipboardChipHeight)
+            .height(MinimumTouchTarget)
             .widthIn(min = ClipboardChipMinWidth, max = ClipboardChipMaxWidth),
-        shape = RoundedCornerShape(percent = 50),
-        color = Color.Transparent,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        contentAlignment = Alignment.CenterStart,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
+        Surface(
+            modifier = Modifier
+                .height(ClipboardChipHeight)
+                .widthIn(min = ClipboardChipMinWidth, max = ClipboardChipMaxWidth),
+            shape = RoundedCornerShape(percent = 50),
+            color = Color.Transparent,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
             Row(
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxWidth()
                     .semantics {
                         role = Role.Button
                         contentDescription = "Paste clipboard, $preview"
@@ -1978,7 +2046,7 @@ private fun ClipboardChipButton(
                         view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                         onClick()
                     }
-                    .padding(start = 12.dp, end = 4.dp),
+                    .padding(start = 12.dp, end = MinimumTouchTarget),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
@@ -2004,26 +2072,27 @@ private fun ClipboardChipButton(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Box(
-                modifier = Modifier
-                    .size(ClipboardChipHeight)
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Dismiss clipboard"
-                    }
-                    .clickable {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        onLongClick()
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_cancel),
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .size(MinimumTouchTarget)
+                .semantics {
+                    role = Role.Button
+                    contentDescription = "Dismiss clipboard"
+                }
+                .clickable {
+                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    onLongClick()
+                },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painter = painterResource(R.drawable.ic_cancel),
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

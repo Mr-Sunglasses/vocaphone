@@ -119,6 +119,20 @@ upload. Temporary copies live in the app's private cache and are removed after
 success, failure, or cancellation. The recoverable WAV is deleted only after
 the existing successful transcript flow.
 
+A dictation stops by itself at the length chosen under Settings › Dictation ›
+Maximum recording length (1, 2, 5 or 10 minutes; 5 by default), counted from
+"Listening". On a gateway route the stop is the shorter of that and the
+`maximum_duration_seconds` the gateway reported in `/health`, persisted at each
+connection test and assumed to be 120 s when the gateway does not report it.
+The gateway limit is reduced by one second because the WAV starts when the
+microphone opens, before the start cue ends, and the gateway tolerates only a
+quarter of a second over its limit. Ten minutes is the longest option because
+it is what the buffers are sized for: the Sherpa incremental frame queue, the
+streamed upload's call deadline, and the 19.2 MB of PCM16 it produces, which
+stays under the gateway's 25 MiB upload limit. A one-minute warning is shown in
+the bubble, the Dictate screen and the notification only when the limit is
+over two minutes.
+
 The client switches from Uploading to Transcribing when the last body bytes
 are sent, before the gateway's response arrives. Upload-completed and
 transcription-started diagnostics use that same boundary.
@@ -355,6 +369,23 @@ Because Android only binds one accessibility service per app, insertion never
 goes through an `InputConnection` here — the text arrives as one atomic set,
 not keystrokes.
 
+A keyboard dictation is only ever inserted into the field it started in. The
+IME notes its editor session when the dictation starts (or is retried from the
+keyboard) and refuses an insertion once that session has ended. When the field
+closes, the input unbinds or the keyboard is destroyed mid-dictation, the IME
+calls `finish()` rather than `cancel()`: capture stops, transcription runs, and
+the transcript is recorded in History as not inserted (`READY_TO_INSERT`). The
+keyboard shows it as "Saved to History" with an explicit Insert action, then
+returns to idle after a short linger. A keyboard failure whose recording was
+kept offers Retry, which re-sends that recording into the current field.
+
+A permission repair is re-checked rather than only cleared by a speech-source
+settings change: a mic tap in the repair state (keyboard or bubble) and the
+keyboard reopening both ask `recheckRepair`, which runs the same startup checks
+as `start`. If nothing blocks a dictation any more the repair is cleared and the
+tap starts one; otherwise the tap opens the app on the page that fixes the
+cause (Dictate for permissions, Speech for a gateway, Models for a model).
+
 The recording foreground service observes status for display and waits for the
 controller's exact dictation job to complete. This keeps it alive through model
 loading, inference and insertion, while ensuring a short capture or cancelled
@@ -363,7 +394,18 @@ phases. A per-start repair signal releases the microphone service when startup
 requires permissions, gateway setup or a model download/preparation; the model
 progress job can continue without the recording notification. The signal is
 separate from UI state so a previous attempt's repair cannot stop a new recording.
-The observer also removes the notification on failure or cancellation.
+The observer also removes the notification on failure or cancellation. While
+the microphone is open the notification is titled "Recording" and offers Finish
+as well as Cancel.
+
+Model downloads that fail on the network, a server error or Android's
+six-hour foreground limit keep their partial files in the model's staging
+folder. Retry continues each file with an HTTP `Range` request; the bytes
+already on disk are hashed again first, so the pinned size and SHA-256 checks
+cover the whole file exactly as for a fresh download, and a server that ignores
+the range sends the file from the start. A checksum or size mismatch, or the
+user's own Cancel, deletes the partial files. A staging folder untouched for a
+week is reclaimed at launch.
 
 Automatic microphone routing avoids selecting a Bluetooth communication device:
 it asks for the phone microphone when a Bluetooth headset is attached. Only an

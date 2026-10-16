@@ -1,6 +1,6 @@
 package com.vocahq.vocaphone.gateway
 
-import com.vocahq.vocaphone.core.DictationState
+import com.vocahq.vocaphone.core.MaximumRecordingLength
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.net.InetAddress
@@ -39,7 +39,7 @@ class GatewayRecordingUploadTest {
         Receiver().use { server ->
             val upload = GatewayRecordingUpload(client, request(server.port))
             try {
-                assertEquals(DictationState.MAXIMUM_RECORDING_MILLIS +
+                assertEquals(MaximumRecordingLength.LONGEST.millis +
                     TimeUnit.SECONDS.toMillis(GatewayClient.UPLOAD_TIMEOUT_SECONDS +
                         GatewayClient.FINISH_TIMEOUT_SECONDS), deadline.get())
                 upload.sendFrames(shortArrayOf(1, 2, 3))

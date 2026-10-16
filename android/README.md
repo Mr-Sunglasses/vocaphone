@@ -197,7 +197,13 @@ nothing from either path is logged.
   picker.
 - Tap **Dictate**, speak, then tap **Finish**. The keyboard shows recording state,
   elapsed time, input level and a streaming partial transcript when available.
-- Recording warns a minute before the five-minute cap and stops there.
+- Recording stops by itself at **Settings › Dictation › Maximum recording
+  length**: 1, 2, 5 (default) or 10 minutes. On a gateway it stops at the
+  shorter of that and the gateway's own limit, which the app reads from
+  `/health` when it tests the connection (120 seconds for a gateway that does
+  not report one). With a limit of five minutes or more, the bubble, the Dictate
+  screen and the recording notification warn a minute before; the keyboard
+  shows no countdown.
 - Password and other sensitive input types disable dictation rather than exposing
   their contents to the keyboard.
 

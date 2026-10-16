@@ -276,6 +276,11 @@ class DiagnosticLog(
             "editor_finished",
             "input_unbound",
             "keyboard_destroyed",
+            "voice_shortcut_hidden",
+            "retry",
+            "retry_ignored",
+            "repair_resolved",
+            "saved_inserted",
             "unknown",
         )
         val TIMING_STAGES = setOf(

@@ -269,6 +269,17 @@ in a URL or screenshot.
 
 ## 413, 415, or 422
 
+- `413 audio_too_large`: the upload is over 25 MiB. The apps' 16 kHz mono WAV
+  stays under it up to ten minutes; a longer or higher-rate file from another
+  client does not.
+- `422 invalid_audio` "Recording exceeds the duration limit": the recording is
+  longer than the gateway's `maximum_duration_seconds` (120 s on gateways that
+  do not report it, 300 s by default on those that do). Android stops a gateway
+  recording at the shorter of **Settings › Dictation › Maximum recording
+  length** and the limit the gateway reported in `/health` at the last
+  connection test, and assumes 120 s when the gateway has not reported one.
+  After updating or reconfiguring the gateway, test the connection again so the
+  phone learns the new limit.
 - `413 audio_too_large`: the recording is longer or larger than the gateway
   accepts (25 MB by default, plus its own duration limit). vocaphone stops a
   gateway recording at the shorter of **Settings → Dictation → Maximum

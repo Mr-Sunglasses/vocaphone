@@ -2,7 +2,7 @@ package com.vocahq.vocaphone.gateway
 
 import com.vocahq.vocaphone.audio.CaptureFormat
 import com.vocahq.vocaphone.audio.WavWriter
-import com.vocahq.vocaphone.core.DictationState
+import com.vocahq.vocaphone.core.MaximumRecordingLength
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -57,7 +57,7 @@ class GatewayRecordingUpload internal constructor(
             // The request is open for the whole capture, then drains at Finish.
             // EOF may now return a transcript, so allow the ordinary /finish
             // response budget in addition to the full supported capture window.
-            .callTimeout(DictationState.MAXIMUM_RECORDING_MILLIS +
+            .callTimeout(MaximumRecordingLength.LONGEST.millis +
                 TimeUnit.SECONDS.toMillis(GatewayClient.UPLOAD_TIMEOUT_SECONDS +
                     GatewayClient.FINISH_TIMEOUT_SECONDS), TimeUnit.MILLISECONDS)
             .readTimeout(GatewayClient.FINISH_TIMEOUT_SECONDS, TimeUnit.SECONDS)

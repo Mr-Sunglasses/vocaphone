@@ -13,6 +13,9 @@ import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.ImageButton
 import android.widget.TextView
+import android.widget.Toast
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
@@ -23,6 +26,7 @@ import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 
 /**
  * The floating dictation bubble. It never takes focus, so the user's own
@@ -43,6 +47,7 @@ class BubbleController(
     private var finish: ImageButton? = null
     private var cancel: ImageButton? = null
 
+    private var scope: CoroutineScope? = null
     private var snoozedUntilElapsed = 0L
     private var pushToTalkActive = false
 
@@ -94,6 +99,7 @@ class BubbleController(
     }
 
     fun attach(scope: CoroutineScope) {
+        this.scope = scope
         dictation.state
             .onEach(::render)
             .launchIn(scope)
@@ -139,6 +145,17 @@ class BubbleController(
             snooze()
             true
         }
+        // The long-press hides the bubble for a quarter of an hour, which
+        // nothing on screen said. TalkBack names it as an action, and the
+        // snooze itself says so with a toast.
+        cancel?.let {
+            ViewCompat.replaceAccessibilityAction(
+                it,
+                AccessibilityActionCompat.ACTION_LONG_CLICK,
+                SNOOZE_LABEL,
+                null,
+            )
+        }
 
         runCatching { windowManager.addView(view, layoutParams) }
             .onSuccess { root = view }
@@ -165,6 +182,7 @@ class BubbleController(
         }
         dictation.clearTransient()
         forceHide()
+        Toast.makeText(context, "Dictation bubble hidden for 15 minutes", Toast.LENGTH_SHORT).show()
     }
 
     private fun forceHide() {
@@ -207,13 +225,17 @@ class BubbleController(
         status?.visibility = if (state.phase == DictationPhase.IDLE) View.GONE else View.VISIBLE
         finish?.visibility = if (state.phase.holdsMicrophone) View.VISIBLE else View.GONE
         mic?.isSelected = state.phase.holdsMicrophone
+        // Retry only for a failure that kept its recording: for any other, a
+        // tap starts a new dictation, and a retry arrow promised otherwise.
         mic?.setImageResource(
-            when (state.phase) {
-                DictationPhase.FAILED -> R.drawable.ic_retry
-                DictationPhase.PERMISSION_REPAIR -> R.drawable.ic_warning
+            when {
+                state.canRetry -> R.drawable.ic_retry
+                state.phase == DictationPhase.PERMISSION_REPAIR -> R.drawable.ic_warning
                 else -> R.drawable.ic_dictation
             }
         )
+        // The mic said "Dictate" whatever it was about to do.
+        mic?.contentDescription = bubbleMicLabel(state)
         view.contentDescription = state.statusText
         // Showing or hiding the status text changes the bubble's width, so its
         // position has to be re-checked against the screen every time.
@@ -244,13 +266,28 @@ class BubbleController(
         val phase = dictation.state.value.phase
         when {
             phase.holdsMicrophone -> DictationService.send(context, DictationService.ACTION_FINISH)
-            phase == DictationPhase.FAILED -> {
+            dictation.state.value.canRetry -> {
                 dictation.state.value.sessionId?.let {
                     dictation.retry(it.toString(), DictationSource.FLOATING)
                 }
             }
 
-            phase == DictationPhase.PERMISSION_REPAIR -> openCompanionApp()
+            // Same re-check as the keyboard: a permission granted since the
+            // repair appeared starts the dictation instead of opening the app.
+            phase == DictationPhase.PERMISSION_REPAIR -> {
+                val owner = scope
+                if (owner == null) {
+                    openCompanionApp(dictation.state.value.repairPage)
+                } else {
+                    owner.launch {
+                        if (dictation.recheckRepair(DictationSource.FLOATING)) {
+                            DictationService.start(context, DictationSource.FLOATING)
+                        } else {
+                            openCompanionApp(dictation.state.value.repairPage)
+                        }
+                    }
+                }
+            }
             phase.isBusy -> Unit
             else -> {
                 dictation.clearTransient()
@@ -259,9 +296,17 @@ class BubbleController(
         }
     }
 
-    private fun openCompanionApp() {
+    private fun openCompanionApp(page: String? = null) {
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName) ?: return
         launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (!page.isNullOrEmpty()) {
+            // Delivered to an app that is already open, not just raised.
+            launch.addFlags(
+                android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            )
+            launch.putExtra(com.vocahq.vocaphone.ui.MainActivity.EXTRA_OPEN_SETTINGS, true)
+            launch.putExtra(com.vocahq.vocaphone.ui.MainActivity.EXTRA_SETTINGS_PAGE, page)
+        }
         context.startActivity(launch)
     }
 
@@ -358,5 +403,15 @@ class BubbleController(
 
     private companion object {
         const val SNOOZE_MILLIS = 15 * 60 * 1000L
+        const val SNOOZE_LABEL = "Hide the bubble for 15 minutes"
     }
+}
+
+/** What the bubble's mic says it will do, for TalkBack. */
+internal fun bubbleMicLabel(state: DictationState): String = when {
+    state.phase.holdsMicrophone -> "Finish dictation"
+    state.phase.isBusy -> state.statusText
+    state.canRetry -> "Retry dictation"
+    state.phase == DictationPhase.PERMISSION_REPAIR -> "${state.repairTitle}. Open VocaPhone"
+    else -> "Dictate"
 }

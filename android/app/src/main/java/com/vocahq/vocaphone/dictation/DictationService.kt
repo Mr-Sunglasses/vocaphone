@@ -132,7 +132,7 @@ class DictationService : Service() {
         return try {
             startForeground(
                 NOTIFICATION_ID,
-                notification("Listening"),
+                notification(RecordingNotice.of(DictationState(phase = DictationPhase.LISTENING))),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE,
             )
             microphoneForeground = true
@@ -168,8 +168,9 @@ class DictationService : Service() {
                         controller.activeJob,
                         controller.state,
                         controller.startupRepair,
-                    ) { status ->
-                        notificationManager().notify(NOTIFICATION_ID, notification(status))
+                        describe = RecordingNotice::of,
+                    ) { notice ->
+                        notificationManager().notify(NOTIFICATION_ID, notification(notice))
                     }
                     // A repair that resolved without recording (e.g. a model
                     // download) means this attempt produces no audio: release
@@ -214,7 +215,7 @@ class DictationService : Service() {
         super.onDestroy()
     }
 
-    private fun notification(status: String): Notification {
+    private fun notification(notice: RecordingNotice): Notification {
         // Destination named, and nothing else set.
         //
         // The action and category this used to carry were copied from what
@@ -248,15 +249,25 @@ class DictationService : Service() {
             Intent(this, DictationService::class.java).setAction(ACTION_CANCEL),
             PendingIntent.FLAG_IMMUTABLE,
         )
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_dictation)
-            .setContentTitle("VocaPhone is working")
-            .setContentText(status)
+            .setContentTitle(notice.title)
+            .setContentText(notice.text)
             .setOngoing(true)
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .setContentIntent(open)
+        if (notice.offersFinish) {
+            val finish = PendingIntent.getService(
+                this,
+                2,
+                Intent(this, DictationService::class.java).setAction(ACTION_FINISH),
+                PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(R.drawable.ic_check, "Finish", finish)
+        }
+        return builder
             .addAction(R.drawable.ic_cancel, "Cancel", cancel)
             .build()
     }

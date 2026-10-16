@@ -114,6 +114,21 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             -> returnToPreviousIme()
         }
     }
+    /**
+     * Hands back after a failure has been on screen long enough to read; see
+     * [VoiceShortcutIme.handbackDelayMillis]. Re-checked when it fires: a
+     * Retry or a new dictation in the meantime keeps the shortcut up.
+     */
+    private val delayedFailedHandback = Runnable {
+        if (voiceShortcutActive && !lastState.phase.isBusy) returnToPreviousIme()
+    }
+
+    /**
+     * [editorSession] when this keyboard's dictation started (or was retried).
+     * A transcript is only ever inserted into that same field: leaving it
+     * mid-dictation finishes the dictation into History instead.
+     */
+    private var dictationEditorSession = -1
     private var ignoredClipboardText: String? = null
     private var lastRecordedClip: String? = null
     private var lastImageSource: String? = null
@@ -180,6 +195,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 rejectGuidance = voiceShortcutRejectGuidance,
                 onMicTap = ::toggleDictation,
                 onMicLongPress = ::cancelDictationFromMic,
+                onRetry = ::retryImeDictation,
+                onInsertSaved = ::insertSavedTranscript,
                 onReadyToListen = ::scheduleVoiceShortcutDictation,
             )
         } else {
@@ -199,6 +216,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onCommand = ::handleCommand,
                 onMicTap = ::toggleDictation,
                 onMicLongPress = ::cancelDictationFromMic,
+                onRetry = ::retryImeDictation,
+                onInsertSaved = ::insertSavedTranscript,
                 onOpenSettings = ::openCompanion,
                 onLanguageSelected = ::setLanguage,
                 onStyleSelected = ::setStyle,
@@ -278,6 +297,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         // Auto-start waits for VoiceShortcutListeningChrome's first frame.
         // A microphone FGS is not eligible on this handoff (targetSdk 36).
         maybeHandBackVoiceShortcut()
+        // A permission granted while the keyboard was away clears its repair
+        // here, rather than on a tap that would otherwise open the app.
+        if (lastState.phase == DictationPhase.PERMISSION_REPAIR) {
+            scope.launch { container.dictation.recheckRepair(DictationSource.IME) }
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -292,10 +316,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         }
         mainHandler.removeCallbacks(startVoiceShortcutDictation)
         mainHandler.removeCallbacks(delayedRejectedHandback)
+        mainHandler.removeCallbacks(delayedFailedHandback)
         voiceShortcutWindowWaits = 0
         voiceShortcutRejectGuidance = false
         if (voiceShortcutActive) {
-            cancelOwnedDictation("voice_shortcut_hidden")
+            releaseOwnedDictation("voice_shortcut_hidden")
             if (VoiceShortcutIme.shouldReturnWhenViewFinishes(
                     voiceShortcutActive,
                     voiceShortcutReturned,
@@ -386,9 +411,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     override fun onFinishInput() {
         mainHandler.removeCallbacks(startVoiceShortcutDictation)
         mainHandler.removeCallbacks(delayedRejectedHandback)
+        mainHandler.removeCallbacks(delayedFailedHandback)
         voiceShortcutWindowWaits = 0
         voiceShortcutRejectGuidance = false
-        cancelOwnedDictation("editor_finished")
+        releaseOwnedDictation("editor_finished")
         if (VoiceShortcutIme.shouldReturnWhenViewFinishes(
                 voiceShortcutActive,
                 voiceShortcutReturned,
@@ -415,7 +441,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     override fun onUnbindInput() {
-        cancelOwnedDictation("input_unbound")
+        releaseOwnedDictation("input_unbound")
         super.onUnbindInput()
     }
 
@@ -428,7 +454,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         voiceShortcutWindowWaits = 0
         voiceShortcutRejectGuidance = false
         stopClipboardWatch()
-        cancelOwnedDictation("keyboard_destroyed")
+        releaseOwnedDictation("keyboard_destroyed")
         if (container.dictation.imeInserter === this) {
             container.dictation.imeInserter = null
         }
@@ -439,6 +465,12 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     override suspend fun insert(transcript: String): InsertionReport =
         withContext(Dispatchers.Main.immediate) {
             if (!ImeInputPolicy.acceptsDictation(currentInputType)) {
+                return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
+            }
+            // The field this dictation was for has closed since it started.
+            // Whatever has focus now is not where it was meant to go, so it
+            // lands in History ("Saved to History") rather than here.
+            if (dictationEditorSession != editorSession) {
                 return@withContext InsertionReport(InsertionOutcome.NO_TARGET)
             }
 
@@ -969,10 +1001,16 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                     container.diagnostics.recordAction("cancel", DictationSource.IME.name)
                     cancelImeDictation()
                 }
-                // Straight to Models when a voice model is all that is
-                // missing: that page is where the one-tap download is.
-                MicDictationAction.OPEN_APP ->
-                    openCompanion(page = "models".takeIf { lastState.needsVoiceModel })
+                MicDictationAction.RECHECK_SETUP -> scope.launch {
+                    if (container.dictation.recheckRepair(DictationSource.IME)) {
+                        startImeDictation()
+                    } else {
+                        // Straight to the page with the fix: Models for a
+                        // model, Speech for a gateway, Dictate for permissions.
+                        openCompanion(page = container.dictation.state.value.repairPage)
+                    }
+                }
+                MicDictationAction.NONE -> Unit
                 MicDictationAction.START -> startImeDictation()
             }
         }
@@ -1001,13 +1039,59 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         preferenceWrites.submit(write)
     }
 
-    private fun cancelOwnedDictation(reason: String) {
+    /**
+     * The field this keyboard's dictation was for is going away.
+     *
+     * This used to cancel, which deleted the recording -- a sentence lost to
+     * tapping another field, or the keyboard being swapped out, mid-dictation.
+     * It finishes instead: recording stops now, and transcription carries on.
+     * The transcript can never land in whichever field has focus by then,
+     * because [insert] only accepts the field the dictation started in; it is
+     * saved to History, and the keyboard offers it as "Saved to History".
+     * finish() only completes a signal, so it is safe from onDestroy too.
+     */
+    private fun releaseOwnedDictation(reason: String) {
         if (!startedImeDictation) return
         container.diagnostics.recordAction(reason, DictationSource.IME.name)
         startedImeDictation = false
-        // An editor connection is unsafe after this callback, so do not let a
-        // late gateway response insert into whichever field receives focus next.
-        container.dictation.cancel()
+        container.dictation.finish()
+    }
+
+    /** Retry of the recording the keyboard's failure kept, into this field. */
+    private fun retryImeDictation() {
+        val state = lastState
+        if (!state.canRetry || preferenceWrites.isPending) return
+        val sessionId = state.sessionId ?: return
+        if (!ImeInputPolicy.acceptsDictation(currentInputType)) return
+        container.diagnostics.recordAction("retry", DictationSource.IME.name)
+        startedImeDictation = true
+        dictationEditorSession = editorSession
+        if (voiceShortcutActive) {
+            mainHandler.removeCallbacks(delayedFailedHandback)
+            voiceShortcutOwnedSession = true
+            voiceShortcutStartRequested = true
+        }
+        container.dictation.retry(sessionId.toString(), DictationSource.IME)
+    }
+
+    /**
+     * "Insert" on a transcript saved to History: the user asking for it here,
+     * in the field they are in now. Never automatic -- see [insert].
+     */
+    private fun insertSavedTranscript() {
+        val state = lastState
+        if (state.phase != DictationPhase.READY_TO_INSERT) return
+        val transcript = state.transcript?.let(TranscriptSanitizer::clean)?.takeIf { it.isNotBlank() } ?: return
+        if (!ImeInputPolicy.acceptsDictation(currentInputType)) return
+        val connection = currentInputConnection ?: return
+        val committed = commitDictation(connection, transcript, composingRegionActive, lastSelStart, lastSelEnd)
+        composingRegionActive = false
+        editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
+        if (!committed) return
+        container.diagnostics.recordAction("saved_inserted", DictationSource.IME.name)
+        syncShiftFromCursor()
+        refreshEditorText()
+        container.dictation.savedTranscriptInserted(currentInputEditorInfo?.packageName)
     }
 
     private fun startImeDictation() {
@@ -1018,6 +1102,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             container.dictation.clearTransient()
         }
         startedImeDictation = true
+        dictationEditorSession = editorSession
         if (voiceShortcutActive) {
             voiceShortcutOwnedSession = true
             voiceShortcutStartRequested = true
@@ -1065,6 +1150,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         voiceShortcutReturned = false
         voiceShortcutWindowWaits = 0
         mainHandler.removeCallbacks(delayedRejectedHandback)
+        mainHandler.removeCallbacks(delayedFailedHandback)
         voiceShortcutRejectGuidance = false
     }
 
@@ -1139,8 +1225,21 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 phase = lastState.phase,
             )
         ) {
+            // A Retry, or anything else that keeps the shortcut, calls off a
+            // handback a failure scheduled.
+            mainHandler.removeCallbacks(delayedFailedHandback)
             return
         }
+        val delay = VoiceShortcutIme.handbackDelayMillis(lastState.phase)
+        if (delay > 0L) {
+            // Once per failure: a later emission of the same state must not
+            // push the handback back again.
+            if (!mainHandler.hasCallbacks(delayedFailedHandback)) {
+                mainHandler.postDelayed(delayedFailedHandback, delay)
+            }
+            return
+        }
+        mainHandler.removeCallbacks(delayedFailedHandback)
         returnToPreviousIme()
     }
 

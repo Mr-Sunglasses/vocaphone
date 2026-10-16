@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.vocahq.vocaphone.core.ChineseScript
 import com.vocahq.vocaphone.core.DictationTone
+import com.vocahq.vocaphone.core.MaximumRecordingLength
 import com.vocahq.vocaphone.core.MicrophonePreference
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.ModelTranslationSupport
@@ -224,6 +225,12 @@ data class VocaPhoneSettings(
      */
     val stopAfterPause: Boolean = false,
     /**
+     * The longest one dictation records before it stops by itself. A gateway
+     * route is also held to [gatewayMaximumDurationSeconds]; see
+     * [com.vocahq.vocaphone.core.RecordingLimit].
+     */
+    val maximumRecordingLength: MaximumRecordingLength = MaximumRecordingLength.DEFAULT,
+    /**
      * Whether "crying emoji" becomes 😭.
      *
      * Off by default, matching Write numbers as digits. Saying "emoji" out
@@ -252,6 +259,11 @@ data class VocaPhoneSettings(
      */
     val modelLanguages: Set<String> = emptySet(),
     val modelDetectsLanguage: Boolean = false,
+    /**
+     * The `maximum_duration_seconds` the gateway last reported from `/health`,
+     * or null when it has not been checked or is too old to report one.
+     */
+    val gatewayMaximumDurationSeconds: Int? = null,
     /** First-run default is this phone. Gateway is opt-in from setup or settings. */
     val localTranscriptionEnabled: Boolean = true,
     val localModelId: String = "",
@@ -457,6 +469,7 @@ class SettingsRepository(private val context: Context) {
             preferences.remove(Keys.LAST_ENGINE_CHECKED_AT)
             preferences.remove(Keys.MODEL_LANGUAGES)
             preferences.remove(Keys.MODEL_DETECTS_LANGUAGE)
+            preferences.remove(Keys.GATEWAY_MAX_DURATION_SECONDS)
         }
         TokenVault.clear()
     }
@@ -554,6 +567,9 @@ class SettingsRepository(private val context: Context) {
     suspend fun setChineseScript(script: ChineseScript) = put(Keys.CHINESE_SCRIPT, script.storedValue)
 
     suspend fun setStopAfterPause(enabled: Boolean) = put(Keys.STOP_AFTER_PAUSE, enabled)
+
+    suspend fun setMaximumRecordingLength(length: MaximumRecordingLength) =
+        put(Keys.MAXIMUM_RECORDING_MINUTES, length.minutes)
 
     suspend fun setSpokenEmoji(enabled: Boolean) = put(Keys.SPOKEN_EMOJI, enabled)
 
@@ -724,6 +740,7 @@ class SettingsRepository(private val context: Context) {
         checkedAtMillis: Long = System.currentTimeMillis(),
         modelLanguages: Set<String> = emptySet(),
         modelDetectsLanguage: Boolean = false,
+        maximumDurationSeconds: Int? = null,
     ) {
         context.dataStore.edit { preferences ->
             preferences[Keys.LAST_ENGINE] = engine
@@ -732,6 +749,13 @@ class SettingsRepository(private val context: Context) {
             preferences[Keys.LAST_ENGINE_CHECKED_AT] = checkedAtMillis
             preferences[Keys.MODEL_LANGUAGES] = modelLanguages
             preferences[Keys.MODEL_DETECTS_LANGUAGE] = modelDetectsLanguage
+            // Removed rather than kept when absent: an older gateway that
+            // replaced a newer one at the same address accepts only its own.
+            if (maximumDurationSeconds != null) {
+                preferences[Keys.GATEWAY_MAX_DURATION_SECONDS] = maximumDurationSeconds
+            } else {
+                preferences.remove(Keys.GATEWAY_MAX_DURATION_SECONDS)
+            }
         }
     }
 
@@ -758,6 +782,7 @@ class SettingsRepository(private val context: Context) {
         lastEngineCheckedAtMillis = this[Keys.LAST_ENGINE_CHECKED_AT],
         modelLanguages = this[Keys.MODEL_LANGUAGES].orEmpty(),
         modelDetectsLanguage = this[Keys.MODEL_DETECTS_LANGUAGE] ?: false,
+        gatewayMaximumDurationSeconds = this[Keys.GATEWAY_MAX_DURATION_SECONDS],
         localTranscriptionEnabled = this[Keys.LOCAL_TRANSCRIPTION_ENABLED] ?: true,
         localModelId = this[Keys.LOCAL_MODEL_ID].orEmpty(),
         retiredModelReplacement = this[Keys.RETIRED_MODEL_REPLACEMENT].orEmpty(),
@@ -767,6 +792,7 @@ class SettingsRepository(private val context: Context) {
         repairSpeech = this[Keys.REPAIR_SPEECH] ?: true,
         numbersAsDigits = this[Keys.NUMBERS_AS_DIGITS] ?: false,
         stopAfterPause = this[Keys.STOP_AFTER_PAUSE] ?: false,
+        maximumRecordingLength = MaximumRecordingLength.fromMinutes(this[Keys.MAXIMUM_RECORDING_MINUTES]),
         spokenEmoji = this[Keys.SPOKEN_EMOJI] ?: false,
         chineseScript = ChineseScript.fromStored(this[Keys.CHINESE_SCRIPT]),
         numberRowEnabled = this[Keys.NUMBER_ROW] ?: true,
@@ -818,6 +844,7 @@ class SettingsRepository(private val context: Context) {
         val LAST_ENGINE_CHECKED_AT = longPreferencesKey("last_engine_checked_at")
         val MODEL_LANGUAGES = stringSetPreferencesKey("model_languages")
         val MODEL_DETECTS_LANGUAGE = booleanPreferencesKey("model_detects_language")
+        val GATEWAY_MAX_DURATION_SECONDS = intPreferencesKey("gateway_maximum_duration_seconds")
         val LOCAL_TRANSCRIPTION_ENABLED = booleanPreferencesKey("local_transcription_enabled")
         val LOCAL_MODEL_ID = stringPreferencesKey("local_model_id")
         val RETIRED_MODEL_REPLACEMENT = stringPreferencesKey("retired_model_replacement")
@@ -828,6 +855,7 @@ class SettingsRepository(private val context: Context) {
         val NUMBERS_AS_DIGITS = booleanPreferencesKey("numbers_as_digits")
         val CHINESE_SCRIPT = stringPreferencesKey("chinese_script")
         val STOP_AFTER_PAUSE = booleanPreferencesKey("stop_after_pause")
+        val MAXIMUM_RECORDING_MINUTES = intPreferencesKey("maximum_recording_minutes")
         val SPOKEN_EMOJI = booleanPreferencesKey("spoken_emoji")
         val NUMBER_ROW = booleanPreferencesKey("keyboard_number_row")
         val KEYBOARD_HEIGHT = stringPreferencesKey("keyboard_height")
@@ -871,5 +899,6 @@ class SettingsRepository(private val context: Context) {
         remove(Keys.LAST_ENGINE_CHECKED_AT)
         remove(Keys.MODEL_LANGUAGES)
         remove(Keys.MODEL_DETECTS_LANGUAGE)
+        remove(Keys.GATEWAY_MAX_DURATION_SECONDS)
     }
 }

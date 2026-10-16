@@ -71,6 +71,7 @@ import com.vocahq.vocaphone.local.ModelPick
 import com.vocahq.vocaphone.local.ModelPlainLanguage
 import com.vocahq.vocaphone.local.byteLabel
 import com.vocahq.vocaphone.local.coversLanguage
+import com.vocahq.vocaphone.local.deleteFailureMessage
 import com.vocahq.vocaphone.local.downloadSizeProgress
 import com.vocahq.vocaphone.local.downloadTimeRemaining
 import com.vocahq.vocaphone.local.downloadWarning
@@ -174,6 +175,22 @@ fun LocalModelPicker(
             onDownloadAndUse(model)
         }
     }
+    // Delete was one tap, even on the model dictation runs on.
+    var confirmingDelete by remember { mutableStateOf<LocalModelDescriptor?>(null) }
+    val askToDelete: ((LocalModelDescriptor) -> Unit)? = onDelete?.let {
+        { model: LocalModelDescriptor -> confirmingDelete = model }
+    }
+    // Through the same guard as the first attempt: a download that failed on
+    // Wi-Fi may be retried on mobile data.
+    val retryFailedDownload: () -> Unit = {
+        LocalModelCatalog.find(state.failedDownload.orEmpty())?.let { model ->
+            if (state.failedDownloadForUse) guardedDownloadAndUse(model) else onDownload(model)
+        }
+    }
+    // Already confirmed once; asking again would only be in the way.
+    val retryFailedDelete: (() -> Unit)? = onDelete?.let { delete ->
+        { LocalModelCatalog.find(state.failedDelete.orEmpty())?.let(delete) }
+    }
 
     val filtered = remember(usable, query, engineFilter, sizeFilter, languageFilter) {
         filterModelCatalog(usable, query, engineFilter, sizeFilter, languageFilter)
@@ -276,13 +293,25 @@ fun LocalModelPicker(
                 onSelect = { onSelect(it); pickFromCatalog(it) },
                 onDownloadAndUse = { guardedDownloadAndUse(it); pickFromCatalog(it) },
                 onCancelDownload = onCancelDownload,
-                onDelete = onDelete,
+                onDelete = askToDelete,
                 onDismiss = { inspecting = null },
             )
         }
-        state.message?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
+        ModelDownloadMessage(
+            state = state,
+            busy = busy,
+            onRetry = retryFailedDownload,
+            onRetryDelete = retryFailedDelete,
+        )
+        ModelDeleteDialog(
+            model = confirmingDelete,
+            inUse = confirmingDelete?.id == selectedModelId,
+            onConfirm = { model ->
+                confirmingDelete = null
+                onDelete?.invoke(model)
+            },
+            onDismiss = { confirmingDelete = null },
+        )
         return
     }
 
@@ -455,13 +484,12 @@ fun LocalModelPicker(
         onInspect = { inspecting = it },
     )
 
-    state.message?.let {
-        Text(
-            it,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    ModelDownloadMessage(
+        state = state,
+        busy = busy,
+        onRetry = retryFailedDownload,
+        onRetryDelete = retryFailedDelete,
+    )
 
     inspecting?.let { model ->
         ModelDetailSheet(
@@ -473,11 +501,95 @@ fun LocalModelPicker(
             onSelect = onSelect,
             onDownloadAndUse = onDownloadAndUse,
             onCancelDownload = onCancelDownload,
-            onDelete = onDelete,
+            onDelete = askToDelete,
             onDismiss = { inspecting = null },
         )
     }
+    ModelDeleteDialog(
+        model = confirmingDelete,
+        inUse = confirmingDelete?.id == selectedModelId,
+        onConfirm = { model ->
+            confirmingDelete = null
+            onDelete?.invoke(model)
+        },
+        onDismiss = { confirmingDelete = null },
+    )
 }
+
+/**
+ * The manager's last word on a download. A failure is an error with Retry
+ * beside it; it used to be the same small grey line as "downloaded and
+ * verified", under the whole list, holding the raw exception text.
+ */
+@Composable
+private fun ModelDownloadMessage(
+    state: LocalModelState,
+    busy: Boolean,
+    onRetry: () -> Unit,
+    onRetryDelete: (() -> Unit)?,
+) {
+    // Its own notice, beside the download line rather than in place of it, so
+    // each message keeps the action that answers it.
+    LocalModelCatalog.find(state.failedDelete.orEmpty())?.let { model ->
+        Notice(tone = NoticeTone.Warning) {
+            Text(
+                deleteFailureMessage(model.displayName),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+            if (onRetryDelete != null) {
+                TextButton(onClick = onRetryDelete, enabled = !busy) { Text("Delete again") }
+            }
+        }
+    }
+    val message = state.message ?: return
+    if (state.failedDownload == null) {
+        Text(
+            message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        return
+    }
+    Notice(tone = NoticeTone.Warning) {
+        Text(
+            message,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.error,
+        )
+        TextButton(onClick = onRetry, enabled = !busy) { Text("Retry") }
+    }
+}
+
+/** Confirms a delete, and says plainly when it is the model dictation uses. */
+@Composable
+private fun ModelDeleteDialog(
+    model: LocalModelDescriptor?,
+    inUse: Boolean,
+    onConfirm: (LocalModelDescriptor) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    model ?: return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete ${model.displayName}?") },
+        text = { Text(modelDeleteConfirmation(model.sizeLabel, inUse)) },
+        confirmButton = {
+            DestructiveTextButton(text = "Delete", onClick = { onConfirm(model) })
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+internal fun modelDeleteConfirmation(sizeLabel: String, inUse: Boolean): String =
+    if (inUse) {
+        "Dictation uses this model, so it stops working until you download it again or pick another. " +
+            "This frees $sizeLabel."
+    } else {
+        "This frees $sizeLabel. You can download it again later."
+    }
 
 /**
  * The download in progress, with what is moving and how long is left.
@@ -1132,6 +1244,27 @@ private fun ModelActions(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        // Out of `downloaded` so it cannot be used, but Download would be the
+        // wrong offer for files the person asked to have removed.
+        state.failedDelete == model.id && onDelete != null -> Column(
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                "Some files could not be deleted.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            TextButton(
+                onClick = { onDelete(model) },
+                enabled = !busy,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+                contentPadding = PaddingValues(horizontal = 0.dp),
+            ) {
+                Text("Delete again")
+            }
         }
         model.id !in state.downloaded -> PrimaryButton(
             text = downloadLabel,
