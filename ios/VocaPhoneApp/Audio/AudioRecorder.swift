@@ -38,11 +38,19 @@ final class AudioRecorder: NSObject {
     /// or a slower first decode cannot discard the beginning of the transcript.
     private(set) var localPcmChunks: AsyncStream<Data>?
     private(set) var lastDroppedChunkCount = 0
-    /// Whether the on-device queue refused a chunk. Its capacity is comfortably
-    /// past the recording limit, so this should never fire — but the two numbers
-    /// are set in different files, and the failure it guards is silent: a
-    /// refused chunk is seconds missing from the end of the transcript with
-    /// nothing in the text to show for it.
+    /// Every chunk of the longest recording anyone can choose, and a minute
+    /// more. Chunks only pile up here while the reader is behind — a model
+    /// still loading, a slow first decode — so this is a ceiling, not an
+    /// allocation: about 42 MB if the reader never caught up at all.
+    static let localChunkCapacity = Int(
+        (MaximumRecordingLength.longest.seconds + 60) * CaptureFormat.sampleRate
+            / Double(CaptureFormat.chunkSampleCount)
+    )
+    /// Whether the on-device queue refused a chunk. Its capacity is past the
+    /// longest recording length, so this should never fire — but the failure
+    /// it guards is silent: a refused chunk is seconds missing from the end of
+    /// the transcript with nothing in the text to show for it. The finish path
+    /// decodes the complete file when it does.
     private let localChunksDropped = OSAllocatedUnfairLock(initialState: false)
     var didDropLocalChunks: Bool { localChunksDropped.withLock { $0 } }
     /// The loudest sample of the recording that just finished. Zero means iOS
@@ -167,7 +175,8 @@ final class AudioRecorder: NSObject {
     func start(
         sessionID: UUID,
         directory: URL,
-        includeLocalModelChunks: Bool = false
+        includeLocalModelChunks: Bool = false,
+        maximumDuration: TimeInterval = MaximumRecordingLength.default.seconds
     ) throws -> URL {
         guard !isRecording else { throw RecordingError.alreadyRecording }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -198,7 +207,7 @@ final class AudioRecorder: NSObject {
         var localContinuation: AsyncStream<Data>.Continuation?
         let localStream: AsyncStream<Data>?
         if includeLocalModelChunks {
-            localStream = AsyncStream<Data>(bufferingPolicy: .bufferingOldest(2_048)) {
+            localStream = AsyncStream<Data>(bufferingPolicy: .bufferingOldest(Self.localChunkCapacity)) {
                 localContinuation = $0
             }
         } else {
@@ -239,7 +248,7 @@ final class AudioRecorder: NSObject {
             MainActor.assumeIsolated { self?.sampleMeter() }
         }
         limitTimer = Timer.scheduledTimer(
-            withTimeInterval: AppConfiguration.maximumRecordingSeconds,
+            withTimeInterval: maximumDuration,
             repeats: false
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.onMaximumDuration?() }

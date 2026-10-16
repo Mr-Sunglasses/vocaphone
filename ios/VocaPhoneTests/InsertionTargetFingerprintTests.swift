@@ -118,7 +118,7 @@ struct InsertionTargetFingerprintTests {
     /// The interrupted insertion may itself have changed the text around the
     /// cursor, so a mismatch is expected in the very field it was dictated
     /// for. Parking it would swap the "may have been interrupted" warning for
-    /// "Insert in this field" and invite a duplicate.
+    /// "Insert here" and invite a duplicate.
     @Test func anInterruptedInsertionKeepsItsWarningInsteadOfParking() {
         #expect(action(.readyToInsert, target: .different, interrupted: true) == .offer)
         #expect(action(.readyToInsert, target: .unknown, interrupted: true) == .offer)

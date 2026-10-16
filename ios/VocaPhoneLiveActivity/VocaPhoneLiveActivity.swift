@@ -77,6 +77,7 @@ struct VocaPhoneRecordingActivity: Widget {
                 Text(compactLabel(for: context.state.effectivePhase))
                     .font(.caption2.bold())
                     .foregroundStyle(tint(for: context.state.effectivePhase))
+                    .accessibilityLabel(compactAccessibilityLabel(for: context.state))
             } minimal: {
                 VocaPhoneLogo(size: 18)
             }
@@ -90,11 +91,19 @@ struct VocaPhoneRecordingActivity: Widget {
     ) -> some View {
         if state.canFinish {
             let sessionID = state.sessionID ?? fallbackSessionID
-            Button(intent: FinishRecordingIntent(sessionID: sessionID)) {
-                Label("Finish", systemImage: "stop.fill")
+            HStack(spacing: 8) {
+                Button(intent: CancelRecordingIntent(sessionID: sessionID)) {
+                    Image(systemName: "xmark")
+                }
+                .buttonStyle(.bordered)
+                .tint(.secondary)
+                .accessibilityLabel("Cancel recording")
+                Button(intent: FinishRecordingIntent(sessionID: sessionID)) {
+                    Label("Finish", systemImage: "stop.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.vocaRecording)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.vocaRecording)
         } else if state.effectivePhase == .standby {
             Button(intent: StopQuickDictationIntent()) {
                 Label("Pause", systemImage: "mic.slash.fill")
@@ -111,12 +120,19 @@ struct VocaPhoneRecordingActivity: Widget {
     ) -> some View {
         if state.canFinish {
             let sessionID = state.sessionID ?? fallbackSessionID
-            Button(intent: FinishRecordingIntent(sessionID: sessionID)) {
-                Label("Finish recording", systemImage: "stop.fill")
-                    .frame(maxWidth: .infinity)
+            HStack(spacing: 8) {
+                Button(intent: CancelRecordingIntent(sessionID: sessionID)) {
+                    Label("Cancel", systemImage: "xmark")
+                }
+                .buttonStyle(.bordered)
+                .tint(.secondary)
+                Button(intent: FinishRecordingIntent(sessionID: sessionID)) {
+                    Label("Finish recording", systemImage: "stop.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.vocaRecording)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.vocaRecording)
         } else if state.effectivePhase == .standby {
             // "Pause", not "Turn off": this button ends the current window and
             // nothing else. Reopening vocaphone arms a new one.
@@ -153,6 +169,18 @@ struct VocaPhoneRecordingActivity: Widget {
         }
     }
 
+    /// What the compact trailing region means, in words. "•••" has no name,
+    /// so VoiceOver read three bullets; the status is the honest answer.
+    private func compactAccessibilityLabel(
+        for state: VocaPhoneActivityAttributes.ContentState
+    ) -> String {
+        switch state.effectivePhase {
+        case .standby: "Quick Dictation on standby"
+        case .recording: "Recording"
+        case .processing, .finished: state.status
+        }
+    }
+
     private func compactLabel(
         for phase: VocaPhoneActivityAttributes.ContentState.Phase
     ) -> String {
@@ -186,8 +214,7 @@ private struct VocaPhoneLogo: View {
 // The Lock Screen and the Dynamic Island are the two surfaces that cannot be
 // reached from the app at all: seeing one meant starting a real dictation and
 // locking the phone. All four phases are here, plus the two end states —
-// including the "Needs attention" one, which is the whole message a failed
-// dictation currently gets.
+// including a failed one, which names its reason.
 
 private let previewAttributes = VocaPhoneActivityAttributes(
     sessionID: "preview-session",
@@ -224,7 +251,7 @@ private extension VocaPhoneActivityAttributes.ContentState {
     )
 
     static let failed = VocaPhoneActivityAttributes.ContentState(
-        status: "Needs attention",
+        status: "Gateway unreachable · recording kept",
         canFinish: false,
         phase: .processing
     )
@@ -262,7 +289,7 @@ private extension VocaPhoneActivityAttributes.ContentState {
     VocaPhoneActivityAttributes.ContentState.finished
 }
 
-/// The compact trailing region is where `"•••"` lives, with no accessible name.
+/// The compact trailing region is where `"•••"` lives; it is read out as the status.
 #Preview(
     "Live Activity — compact",
     as: .dynamicIsland(.compact),

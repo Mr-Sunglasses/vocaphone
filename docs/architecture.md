@@ -53,12 +53,36 @@ producing equal values. A keyboard that adopts the session in a later
 appearance — after an app switch or an extension relaunch, where document
 identifiers are reissued and cannot be compared — computes the same value for
 the field it is in. A mismatch parks the transcript as `targetContextChanged`
-("Insert in this field") instead of inserting it automatically, so a dictation
+("Insert here") instead of inserting it automatically, so a dictation
 started in one app does not land in another. A field iOS has not answered for
 yet is not evidence either way: the transcript waits behind Insert. Two fields
 with the same text around the cursor, such as two empty fields, are
 indistinguishable, and the transcript follows the cursor there as it did
 before. `insertionInterrupted` is described under step 9.
+
+Only recording and the wait for its transcript (`launchingApp` through
+`transcribing`) take the keys away. A transcript waiting for a tap, a changed
+field and every failure are drawn in the status bar above the keys, because a
+session is adopted by every keyboard appearance in every app. Dismissing a
+waiting transcript cancels the session; the transcript stays in Transcripts
+like any other. Failures use a short keyboard line keyed by `SessionFailure.code`
+(`DictationFailure`); the app's full message stays in the app.
+
+Two App Group values support that. The app writes
+`localTranscriptionSelectedModelUnavailable` whenever it re-reads setup, so
+Dictate can say "Voice model needed" before creating a session it could only
+fail. The keyboard writes `keyboardAcknowledgedEndedSession`, a session ID and
+nothing else, once it has reported a session that ended without being asked
+to — the microphone would not start, a hand-off timed out, no speech was
+heard — so that a fresh extension instance reports it once and the next does
+not repeat it. An empty transcript, on device or `empty_transcript` /
+`silent_audio` from the gateway, ends the session as
+`transcriptionFailedPermanent` with code `no_speech` and its audio is deleted:
+retrying the same audio cannot change the answer.
+
+The Live Activity's Cancel is a `LiveActivityIntent` that writes `canceled`
+to the shared record, the same way Finish writes `finalizing`; the app tears
+down through the shared-state signal exactly as for the keyboard's Cancel.
 
 ## Recorded request flow
 
@@ -209,6 +233,20 @@ was trimmed.
 9. The keyboard verifies its session context, persists `inserting`, calls
    `insertText`, then persists `inserted` and `completed`.
 
+A recording finishes by itself at its length cap, exactly as if Finish had been
+tapped. The cap is read when capture starts. On the on-device route it is the
+user's **Maximum recording length** (Settings → Dictation: 1, 2, 5 or 10
+minutes; 5 by default). On the gateway route it is the smaller of that and the
+gateway's own limit, which `GET /health` reports as `maximum_duration_seconds`.
+The app keeps the last value each gateway address reported, refreshed on every
+health check and kept through a failed one. A gateway that has not reported a
+limit is an older one and is treated as accepting 120 seconds, so it never
+receives a recording it would refuse for its length. When the gateway's limit
+is the shorter one, Settings says so under the choice. The keyboard's expiry
+for a live recording covers the longest choice plus two minutes, because the
+keyboard does not know which cap the app applied. No surface shows the elapsed
+time or counts down to the cap.
+
 "Start dictation" from Shortcuts, Siri or the Action button writes the same
 `launchingApp` record from inside the app, with `sourceDocumentID` set to
 `shortcut` and `startedInContainingApp` set, so there is no swipe-back screen.
@@ -240,7 +278,7 @@ set. That transcript is offered behind Insert and Cancel with "Insertion may
 have been interrupted" and is never inserted automatically, since the text may
 already be in the field. It is not parked by its target fingerprint either: the
 interrupted insertion may itself have changed the text around the cursor, so
-the warning takes precedence over "Insert in this field". `inserting` also expires after 30 seconds, and only
+the warning takes precedence over "Insert here". `inserting` also expires after 30 seconds, and only
 counts as having an active writer within that window, so delete, Delete all and
 storage pruning can reclaim a record no keyboard came back for.
 

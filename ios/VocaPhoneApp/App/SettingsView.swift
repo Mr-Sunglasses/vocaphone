@@ -490,6 +490,19 @@ struct DictationSettingsView: View {
         store: KeyboardPreferences.defaults
     ) private var stopAfterPause = false
     @AppStorage(
+        KeyboardPreferences.maximumRecordingLengthKey,
+        store: KeyboardPreferences.defaults
+    ) private var maximumRecordingLengthRawValue = MaximumRecordingLength.default.rawValue
+    @AppStorage(
+        LocalTranscriptionPreferences.enabledKey,
+        store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
+    ) private var localTranscriptionEnabled = false
+    @AppStorage("gatewayURL") private var gatewayURL = ""
+    @AppStorage(GatewayStatusPreferences.maximumDurationKey)
+    private var gatewayMaximumDuration = 0
+    @AppStorage(GatewayStatusPreferences.maximumDurationBaseURLKey)
+    private var gatewayMaximumDurationBaseURL = ""
+    @AppStorage(
         LocalTranscriptionPreferences.vocabularyKey,
         store: UserDefaults(suiteName: AppConfiguration.appGroupIdentifier)
     ) private var savedCustomVocabulary = ""
@@ -599,6 +612,11 @@ struct DictationSettingsView: View {
             Toggle(isOn: $stopAfterPause) {
                 SettingLabel("Stop after a pause", detail: "Finishes after three seconds of quiet.")
             }
+            Picker("Maximum recording length", selection: $maximumRecordingLengthRawValue) {
+                ForEach(MaximumRecordingLength.allCases) { length in
+                    Text(length.displayName).tag(length.rawValue)
+                }
+            }
             Toggle(isOn: $liveWords) {
                 SettingLabel(
                     "Show words while speaking",
@@ -611,7 +629,27 @@ struct DictationSettingsView: View {
                 topic: SettingsHelp.recording(quickDictation: selectedQuickDictationDuration.settingsFooter),
                 presented: $learnMore
             )
+        } footer: {
+            if let gatewayLengthNote {
+                Text(gatewayLengthNote)
+            }
         }
+    }
+
+    /// Said only when the gateway is the route in use and will stop a
+    /// recording before the length chosen above.
+    private var gatewayLengthNote: String? {
+        guard !localTranscriptionEnabled,
+              let url = GatewayEndpoint.validatedURL(from: gatewayURL)
+        else { return nil }
+        return RecordingLengthLimit.gatewayNote(
+            choice: MaximumRecordingLength(rawValue: maximumRecordingLengthRawValue) ?? .default,
+            gatewayReportedSeconds: GatewayStatusPreferences.reportedMaximumDuration(
+                storedSeconds: gatewayMaximumDuration,
+                storedBaseURL: gatewayMaximumDurationBaseURL,
+                currentBaseURL: url
+            )
+        )
     }
 
     /// One row that pushes to the full list, the way a `Picker` behaves in a

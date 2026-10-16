@@ -176,6 +176,10 @@ final class RecordingCoordinator {
     /// permission can be revoked from Settings while the app is suspended.
     func refreshSetupStatus() {
         guard !isInert else { return }
+        // Before the comparison below: this is read by another process, so it
+        // has to follow the model on disk even when nothing on screen changes.
+        LocalTranscriptionPreferences.selectedModelUnavailable =
+            localModelUnavailableMessage() != nil
         let keyboardStatus = try? store.loadKeyboardStatus()
         let lackedFullAccessAt = KeyboardPreferences.keyboardLackedFullAccessAt
         // Either report means the extension has run, which is better evidence
@@ -346,6 +350,18 @@ final class RecordingCoordinator {
     /// dictations must not rewrite the one already in flight.
     static func selectedProcessingLocation() -> SessionProcessingLocation {
         LocalTranscriptionPreferences.enabled ? .onDevice : .gateway
+    }
+
+    /// The cap for a recording starting now: the user's maximum recording
+    /// length, and on the gateway route no more than the gateway accepts.
+    static func maximumRecordingSeconds() -> TimeInterval {
+        let gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL")
+            .flatMap(GatewayEndpoint.validatedURL(from:))
+        return RecordingLengthLimit.effectiveSeconds(
+            choice: KeyboardPreferences.maximumRecordingLength,
+            location: selectedProcessingLocation(),
+            gatewayReportedSeconds: GatewayStatusPreferences.reportedMaximumDuration(for: gatewayURL)
+        )
     }
 
     /// Removes one transcript from this iPhone.
@@ -732,6 +748,7 @@ final class RecordingCoordinator {
             )
             GatewayStatusPreferences.storeLanguageSupport(nil)
             GatewayStatusPreferences.storeStreamingSupport(nil, for: nil)
+            GatewayStatusPreferences.clearMaximumDuration()
             return
         }
         let client = GatewayClient(baseURL: baseURL, token: token)
@@ -751,6 +768,7 @@ final class RecordingCoordinator {
                 health.streamingSupported,
                 for: baseURL
             )
+            GatewayStatusPreferences.storeMaximumDuration(health, for: baseURL)
         } catch let GatewayError.api(status, _) where status == 401 {
             GatewayStatusPreferences.store(
                 message: "Gateway reachable, but the pairing token was rejected.",
@@ -761,7 +779,7 @@ final class RecordingCoordinator {
             GatewayStatusPreferences.storeStreamingSupport(nil, for: nil)
         } catch {
             GatewayStatusPreferences.store(
-                message: "Gateway test failed: \(error.localizedDescription)",
+                message: GatewayFailureCopy.message(for: error),
                 engine: "",
                 ready: false
             )
@@ -1106,7 +1124,8 @@ final class RecordingCoordinator {
             let audioURL = try recorder.start(
                 sessionID: record.sessionID,
                 directory: directory,
-                includeLocalModelChunks: localEngine != nil
+                includeLocalModelChunks: localEngine != nil,
+                maximumDuration: Self.maximumRecordingSeconds()
             )
             if shouldUseSherpaIncremental, let chunks = recorder.localPcmChunks {
                 // Started, not awaited. Capture is already running and the
@@ -1199,7 +1218,7 @@ final class RecordingCoordinator {
             {
                 try? failedRecord.transition(to: .canceled)
                 failedRecord.error = SessionFailure(
-                    code: "recording_start_failed",
+                    code: DictationFailure.recordingStartFailedCode,
                     message: "The microphone could not start. Try dictating again.",
                     recoverable: false
                 )
@@ -1478,6 +1497,31 @@ final class RecordingCoordinator {
             }
             try commit(&record)
             activeRecord = record
+
+            // Checked before anything is sent: see `exceedsGateway`. The gateway
+            // is only asked again when its saved limit would refuse this one.
+            let gatewayCheck = await RecordingLengthLimit.checkGateway(
+                recordedSeconds: record.recordedSeconds,
+                savedSeconds: GatewayStatusPreferences.reportedMaximumDuration(for: client.baseURL),
+                askGateway: {
+                    let health = try await client.health()
+                    GatewayStatusPreferences.storeMaximumDuration(health, for: client.baseURL)
+                    return health.maximumDurationSeconds
+                }
+            )
+            if gatewayCheck.exceeds {
+                await streamingBridge.cancel()
+                await fail(
+                    &record,
+                    state: .uploadFailedRecoverable,
+                    code: DictationFailure.tooLongForGatewayCode,
+                    message: RecordingLengthLimit.tooLongForGatewayMessage(
+                        gatewayReportedSeconds: gatewayCheck.gatewaySeconds
+                    )
+                )
+                return
+            }
+
             message = "Finishing the recording…"
             liveActivity.update(status: "Finishing recording", canFinish: false)
 
@@ -1529,7 +1573,9 @@ final class RecordingCoordinator {
 
             // A reachable server can still have no usable model. Check before
             // sending audio or entering the long-running transcription request.
-            guard try await client.health().engineReady else {
+            let health = try await client.health()
+            GatewayStatusPreferences.storeMaximumDuration(health, for: client.baseURL)
+            guard health.engineReady else {
                 await fail(
                     &record,
                     state: .serverUnavailable,
@@ -1589,6 +1635,14 @@ final class RecordingCoordinator {
                 return
             }
             let code = redactedErrorCode(error)
+            // Nothing in the recording was speech. That is not the gateway
+            // failing, and a Retry that resends the same silence cannot work,
+            // so it ends here with a new recording as the way on.
+            if DictationFailure.gatewayFoundNoSpeech(code: code) {
+                try? FileManager.default.removeItem(at: output)
+                await failForNoSpeech(&record)
+                return
+            }
             // The gateway's model cannot transcribe the chosen language. Retrying
             // replays the same pairing, so this fails permanently and says what to
             // change instead of promising a retry that cannot succeed.
@@ -1759,6 +1813,11 @@ final class RecordingCoordinator {
             message = "Transcribed privately on this iPhone."
         } catch {
             if Task.isCancelled || error is CancellationError { return }
+            if case LocalModelManagerError.emptyTranscript = error {
+                try? FileManager.default.removeItem(at: audioURL)
+                await failForNoSpeech(&record)
+                return
+            }
             if error is IncompleteRecording {
                 // Told now, so the retry this offers transcribes what was saved.
                 record.fileIncompleteUntold = nil
@@ -1777,6 +1836,21 @@ final class RecordingCoordinator {
                 message: "On-device transcription failed. The recording is preserved; retry after checking the selected model."
             )
         }
+    }
+
+    /// The model heard the recording and found no speech in it, after its own
+    /// recovery attempts. Said as that — "Didn't catch any speech" — rather
+    /// than as the model or the gateway failing, and ended rather than kept
+    /// for a Retry: the same audio would give the same answer, and the audio
+    /// has already been deleted, as it is after any transcript.
+    private func failForNoSpeech(_ record: inout SessionRecord) async {
+        await fail(
+            &record,
+            state: .transcriptionFailedPermanent,
+            code: DictationFailure.noSpeechCode,
+            message: DictationFailure.noSpeechMessage,
+            recoverable: false
+        )
     }
 
     private func beginCancellationMonitoring(sessionID: UUID) {
@@ -1823,7 +1897,12 @@ final class RecordingCoordinator {
             countFailure()
             activeRecord = record
             message = failureMessage
-            liveActivity.end(status: "Needs attention", dismissAfter: 5)
+            // A reason, and long enough to read it. "Needs attention" for five
+            // seconds was gone before most people looked at the Lock Screen.
+            liveActivity.end(
+                status: DictationFailure.liveActivityStatus(state: state, code: code),
+                dismissAfter: 60
+            )
             beginPolling()
         } catch is CancellationError {
             // The user cancelled first. Reporting a failure for a dictation

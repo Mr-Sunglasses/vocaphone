@@ -1,12 +1,14 @@
 import SwiftUI
+import UIKit
 
 /// The one step vocaphone cannot take for the user.
 ///
 /// A keyboard extension has no way to put the app it came from back on screen;
 /// only the person holding the phone can do that, with the system's own
-/// previous-app gesture. So the screen is a demonstration and nothing else: no
-/// controls to mistake for navigation, no status to read, one sentence and a
-/// picture of the gesture running on a loop.
+/// previous-app gesture. So the screen is a demonstration and little else: one
+/// sentence, a picture of the gesture running on a loop, the other way back
+/// (the "◀" button at the top-left), and a quiet Cancel for a Dictate tapped
+/// by mistake.
 ///
 /// The phone in the picture is drawn, not photographed, so it follows the
 /// palette into dark mode and scales with the space it is given.
@@ -18,8 +20,30 @@ struct SwipeBackScreen: View {
     /// menu opens. The demo waits for it to go, like it waits for vocaphone to
     /// come on screen.
     var isCovered = false
+    /// A quiet way out for a dictation started by mistake. The Live Activity
+    /// and the keyboard each have one, but neither is on this screen.
+    var onCancel: (() -> Void)?
+
+    private var guidance: SwipeBackGuidance {
+        SwipeBackGuidance.make(
+            hasHomeIndicator: Self.deviceHasHomeIndicator,
+            title: title,
+            detail: detail
+        )
+    }
+
+    /// A Home-button iPhone has no home indicator, so no bottom-edge swipe to
+    /// teach. Read from the window's bottom inset, which is zero exactly there.
+    static var deviceHasHomeIndicator: Bool {
+        let windows = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+        guard let window = windows.first(where: \.isKeyWindow) ?? windows.first else { return true }
+        return window.safeAreaInsets.bottom > 0
+    }
 
     var body: some View {
+        let guidance = guidance
         ZStack {
             Color.vocaCanvas
                 .ignoresSafeArea()
@@ -28,20 +52,36 @@ struct SwipeBackScreen: View {
                 VStack(spacing: VocaMetrics.section) {
                     Spacer(minLength: 0)
 
-                    SwipeBackPhone(reduceMotion: reduceMotion, isCovered: isCovered)
-                        .frame(maxWidth: 340)
-                        .frame(height: 330)
+                    Group {
+                        if guidance.showsSwipe {
+                            SwipeBackPhone(reduceMotion: reduceMotion, isCovered: isCovered)
+                        } else {
+                            SwipeBackBreadcrumb(reduceMotion: reduceMotion)
+                        }
+                    }
+                    .frame(maxWidth: 340)
+                    .frame(height: guidance.showsSwipe ? 330 : 220)
 
                     VStack(spacing: VocaMetrics.related + 2) {
-                        Text(title)
+                        Text(guidance.title)
                             .font(.largeTitle.weight(.bold))
-                        Text(detail)
+                        Text(guidance.detail)
                             .font(.title3)
+                            .foregroundStyle(Color.vocaSecondaryText)
+                        Text(guidance.alternative)
+                            .font(.subheadline)
                             .foregroundStyle(Color.vocaSecondaryText)
                     }
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityElement(children: .combine)
+
+                    if let onCancel {
+                        Button("Cancel dictation", role: .destructive, action: onCancel)
+                            .font(.subheadline.weight(.semibold))
+                            .frame(minHeight: VocaMetrics.minimumTarget)
+                            .accessibilityHint("Stops recording and discards this dictation.")
+                    }
 
                     Spacer(minLength: 0)
                 }
@@ -247,6 +287,54 @@ private struct SwipeBackPhone: View {
             withAnimation(.easeIn(duration: 0.28)) { touchOpacity = 0 }
             try? await Task.sleep(for: .milliseconds(700))
         }
+    }
+}
+
+/// The top-left of a phone, with the "◀ App" button iOS shows after one app
+/// opens another. A Home-button iPhone has no bottom edge to swipe, and this
+/// button is the way back there — on every iPhone, in fact.
+private struct SwipeBackBreadcrumb: View {
+    let reduceMotion: Bool
+    @State private var pressed = false
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(Color.vocaSurface)
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .strokeBorder(Color.vocaPrimaryText, lineWidth: 8)
+            HStack(spacing: 3) {
+                Image(systemName: "arrowtriangle.left.fill")
+                    .font(.system(size: 11, weight: .bold))
+                Text("Your app")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+            .foregroundStyle(Color.brand)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.brand.opacity(pressed ? 0.28 : 0.12), in: Capsule())
+            .scaleEffect(pressed ? 0.94 : 1)
+            .padding(.top, 22)
+            .padding(.leading, 22)
+            Circle()
+                .fill(Color.vocaPrimaryText.opacity(0.26))
+                .frame(width: 64, height: 64)
+                .offset(x: 46, y: 30)
+                .opacity(pressed ? 1 : 0)
+        }
+        .task(id: reduceMotion) {
+            guard !reduceMotion else { return }
+            while !Task.isCancelled {
+                withAnimation(.easeOut(duration: 0.25)) { pressed = true }
+                try? await Task.sleep(for: .milliseconds(600))
+                withAnimation(.easeIn(duration: 0.3)) { pressed = false }
+                try? await Task.sleep(for: .milliseconds(1_100))
+            }
+        }
+        .accessibilityElement()
+        .accessibilityLabel(
+            "Picture. The back button with the name of your app, at the top-left of the screen."
+        )
     }
 }
 

@@ -20,6 +20,15 @@ within two minutes; it recovers the waiting keyboard request and starts recordin
 Automatic return to the original app is not available, so swipe back manually
 after recording starts.
 
+## Recording stops before I tap Finish
+
+A recording finishes by itself at its maximum length and is transcribed as
+usual. Choose 1, 2, 5 (the default) or 10 minutes under **Settings → Dictation
+→ Maximum recording length**. On the gateway route the gateway's own limit
+applies when it is shorter, and Settings shows a note under the choice: update
+the gateway, or raise its duration limit, to record longer. A gateway too old
+to report its limit is treated as accepting 2 minutes.
+
 ## Keyboard never shows recording
 
 Confirm that Settings → General → Keyboard → Keyboards → vocaphone → Allow Full
@@ -271,6 +280,13 @@ in a URL or screenshot.
   connection test, and assumes 120 s when the gateway has not reported one.
   After updating or reconfiguring the gateway, test the connection again so the
   phone learns the new limit.
+- `413 audio_too_large`: the recording is longer or larger than the gateway
+  accepts (25 MB by default, plus its own duration limit). vocaphone stops a
+  gateway recording at the shorter of **Settings → Dictation → Maximum
+  recording length** and the limit the gateway reports in `/health`
+  (`maximum_duration_seconds`); a gateway that reports none is treated as
+  accepting 2 minutes. If you still see this, raise the gateway's limits or
+  choose a shorter maximum recording length.
 - `415 unsupported_audio_type`: use M4A, CAF, or WAV.
 - `422 audio_empty`, `invalid_audio`, or `silent_audio`: record again and inspect
   the phone's input route.

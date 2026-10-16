@@ -8,7 +8,13 @@ final class DictationSurfaceState: ObservableObject {
     var state: SessionState {
         get { storedState }
         set {
-            if storedState != newValue { recoveryMessage = nil }
+            if storedState != newValue {
+                recoveryMessage = nil
+                // A passing message is about the moment it was shown in.
+                // "Starting with Quick Dictation…" must not still be up once
+                // recording has begun.
+                clearNotice()
+            }
             change(&storedState, to: newValue)
         }
     }
@@ -155,6 +161,32 @@ final class DictationSurfaceState: ObservableObject {
 
     func showRecoveryMessage(_ message: String) {
         recoveryMessage = message
+    }
+
+    /// A passing message: in place of the suggestions on the idle row, or as
+    /// the line under the bars while a session holds the keyboard. Unlike
+    /// `centerMessage` it never opens the surface — the idle row stays a row.
+    private var storedNotice: String?
+    var notice: String? {
+        get { storedNotice }
+        set { change(&storedNotice, to: newValue) }
+    }
+    private var noticeExpiry: DispatchWorkItem?
+
+    /// Long enough to read a sentence, and longer for a longer one.
+    func showNotice(_ message: String) {
+        noticeExpiry?.cancel()
+        notice = message
+        let work = DispatchWorkItem { [weak self] in self?.notice = nil }
+        noticeExpiry = work
+        let seconds = min(6, max(2.6, Double(message.count) / 14))
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: work)
+    }
+
+    private func clearNotice() {
+        noticeExpiry?.cancel()
+        noticeExpiry = nil
+        notice = nil
     }
 
     /// The trailing button in this state: Finish, Insert, Retry, Start.
@@ -595,6 +627,7 @@ struct DictationSurfaceView: View {
 
     /// The one line under the middle of the surface.
     private var centerText: String {
+        if let notice = state.notice, !isRecording { return notice }
         if let message = state.centerMessage, !isRecording { return message }
         if isWorking { return workingTitle }
         return "\(state.language.displayName) • \(state.style.displayName)"
@@ -794,6 +827,7 @@ struct DictationSurfaceView: View {
             && !sessionIsOpen
             && !state.hasTypedThisSession
             && !state.hasCandidates
+            && state.notice == nil
     }
 
     @ViewBuilder
@@ -814,13 +848,32 @@ struct DictationSurfaceView: View {
     private var standardControlsRow: some View {
         HStack(spacing: 8) {
             leadingGlassContainer
-            if isSuggesting {
+            // A passing message outranks the suggestions for its few seconds:
+            // it is the answer to something just tapped, and the words come
+            // back on the next keystroke anyway.
+            if !isOpen, let notice = state.notice {
+                noticeLine(notice)
+            } else if isSuggesting {
                 CandidateRow(state: state.typing)
             } else {
                 Spacer()
             }
             trailingActionButton
         }
+    }
+
+    /// One passing line where the suggestions would be. Two lines at most and
+    /// a little smaller than a candidate, so it reads as a remark rather than
+    /// as something to tap.
+    private func noticeLine(_ notice: String) -> some View {
+        Text(notice)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(controlForeground.opacity(0.75))
+            .lineLimit(2)
+            .minimumScaleFactor(0.85)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .transition(.opacity)
     }
 
     /// Menu on the leading edge, microphone on the trailing. Writing style
@@ -850,7 +903,9 @@ struct DictationSurfaceView: View {
                     // Candidates swap with the spacer only. The action stays
                     // in this trailing slot so appearing predictions do not
                     // destroy and recreate the glass.
-                    if isSuggesting {
+                    if let notice = state.notice {
+                        noticeLine(notice)
+                    } else if isSuggesting {
                         CandidateRow(state: state.typing)
                     } else {
                         Spacer()
@@ -1537,6 +1592,16 @@ struct DictationSurfaceView: View {
     /// in the corner. Not the same thing as whether VocaPhone is running.
     private var compactShowsStart: Bool { centresAction }
 
+    /// The hand-off's way out — Open app — is a labelled capsule. Recording's
+    /// check and the working spinner stay round: those are the states the
+    /// surface is built around, and their meaning is the whole surface.
+    private var showsLabelledPrimary: Bool {
+        switch state.state {
+        case .launchingApp, .awaitingReturn: state.primaryIsEnabled
+        default: false
+        }
+    }
+
     /// Compact idle action. Same identity in the middle and the corner so
     /// the first keystroke slides it rather than teleporting it. Not glass:
     /// a brand fill, so it stays visible on both light and dark keys.
@@ -1573,6 +1638,20 @@ struct DictationSurfaceView: View {
                 .foregroundStyle(dashboardAccent)
                 .frame(width: Self.compactActionWidth, height: Self.buttonDiameter)
                 .modifier(GlassCapsuleModifier())
+            } else if showsLabelledPrimary {
+                // Words, not a glyph, whenever the button does something other
+                // than start or finish. An arrow out of a box in a circle was
+                // the only way out of a stalled hand-off, and nothing said so.
+                HStack(spacing: 7) {
+                    Image(systemName: state.primarySymbol)
+                    Text(state.primaryLabel)
+                        .lineLimit(1)
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(onAccent)
+                .padding(.horizontal, 16)
+                .frame(height: Self.buttonDiameter)
+                .background(Capsule().fill(dashboardAccent))
             } else {
                 ZStack {
                     if state.usesCompactControls {
