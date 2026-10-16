@@ -13,6 +13,10 @@ struct TranscriptHistoryView: View {
     @State private var filter = TranscriptHistoryModel.Filter()
     @State private var copiedID: UUID?
     @State private var deletionError: String?
+    /// Whether the first read has come back. Until it has, an empty list means
+    /// "not read yet", and saying "No transcripts yet" over it told people with
+    /// a full history that it was gone.
+    @State private var hasLoaded = false
 
     init() {}
 
@@ -33,7 +37,16 @@ struct TranscriptHistoryView: View {
 
     var body: some View {
         List {
-            if sections.isEmpty {
+            if !hasLoaded, records.isEmpty {
+                HStack(spacing: VocaMetrics.related) {
+                    ProgressView()
+                    Text("Loading transcripts…")
+                        .foregroundStyle(Color.vocaSecondaryText)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .listRowBackground(Color.clear)
+                .accessibilityElement(children: .combine)
+            } else if sections.isEmpty {
                 ContentUnavailableView(
                     records.isEmpty ? "No transcripts yet" : "Nothing matches",
                     systemImage: records.isEmpty ? "text.quote" : "magnifyingglass",
@@ -171,6 +184,7 @@ struct TranscriptHistoryView: View {
     private func reload() async {
         records = await coordinator.loadRecentTranscripts()
         copiedID = nil
+        hasLoaded = true
     }
 }
 

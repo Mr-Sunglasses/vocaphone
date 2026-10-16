@@ -210,13 +210,14 @@ struct GatewaySetupView: View {
             gatewayEngine = health.engine.trimmingCharacters(in: .whitespacesAndNewlines)
             gatewayEngineReady = health.engineReady
             GatewayStatusPreferences.storeLanguageSupport(health)
+            GatewayStatusPreferences.storeMaximumDuration(health, for: url)
             coordinator.updateGateway(baseURL: url, token: token)
         } catch let GatewayError.api(status, _) where status == 401 {
             healthMessage = "Gateway reachable, but the pairing token was rejected."
             gatewayEngine = ""
             gatewayEngineReady = false
         } catch {
-            healthMessage = "Gateway test failed: \(error.localizedDescription)"
+            healthMessage = GatewayFailureCopy.message(for: error)
             gatewayEngine = ""
             gatewayEngineReady = false
         }

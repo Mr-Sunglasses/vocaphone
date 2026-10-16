@@ -88,23 +88,23 @@ enum AppConfiguration {
     static var fullAccessDeepLink: URL {
         URL(string: "\(urlScheme)://full-access")!
     }
-    /// The manual route to the Full Access switch, written once because the app
-    /// and the keyboard both have to give it and they must not disagree.
+    /// Where the Full Access switch is, written once because the keyboard,
+    /// setup and Settings all have to give it and they must not disagree.
     ///
-    /// iOS exposes no URL that opens the switch itself. The lock on a locked
-    /// keyboard opens vocaphone's Settings pane, where Keyboards is.
-    static let fullAccessSettingsPath =
-        "Settings › General › Keyboard › Keyboards › vocaphone › Allow Full Access."
+    /// It is the route every Full Access button actually takes. iOS exposes no
+    /// URL for the switch itself, so the keyboard's button opens vocaphone,
+    /// and vocaphone opens its own page in Settings — where Keyboards holds the
+    /// switch. Three surfaces used to name three different paths to it.
+    static let fullAccessSettingsPage = "Settings › vocaphone › Keyboards"
+
+    static let fullAccessSettingsPath = "\(fullAccessSettingsPage) › Allow Full Access."
 
     /// The same instruction, front-loaded for the keyboard's two-line bar.
     ///
-    /// The full path does not fit there and truncates mid-phrase — "… › Allow
-    /// Full A…" — which drops the one part the reader has to act on. Naming the
-    /// switch first means a truncation costs the tail of the path, which the
-    /// containing app spells out in full under Privacy and permissions.
+    /// Naming the switch first means a truncation costs the tail of the path
+    /// rather than the part the reader has to act on.
     static let fullAccessKeyboardHint =
-        "Turn on Allow Full Access under Settings › General › Keyboard."
-    static let maximumRecordingSeconds: TimeInterval = 120
+        "Turn on Allow Full Access in \(fullAccessSettingsPage)."
     /// How long the keyboard waits for an unclaimed Quick Dictation request
     /// before falling back to opening vocaphone.
     static let quickDictationLaunchFallbackSeconds: TimeInterval = 1.5

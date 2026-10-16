@@ -1000,4 +1000,19 @@ struct OnboardingPresentationTests {
             OnboardingPresentation.resumeStage(status: status, hasCompletedKeyboardPractice: false) == .model
         )
     }
+
+    /// A stalled Enable keyboard offers the likely fixes and a way past,
+    /// instead of a picture of the globe key and nothing to tap.
+    @Test func aStalledKeyboardPageOffersFixesAndAWayPast() {
+        #expect(OnboardingPresentation.keyboardTroubleshooting(for: .waiting) == nil)
+        #expect(OnboardingPresentation.keyboardTroubleshooting(for: .verified) == nil)
+        #expect(OnboardingPresentation.keyboardTroubleshooting(for: .fullAccessOff) == nil)
+        let help = OnboardingPresentation.keyboardTroubleshooting(for: .stalled)
+        #expect(help?.openSettingsTitle == "Open Settings")
+        #expect(help?.skipTitle == "Skip for now")
+        let steps = help?.steps.joined(separator: " ") ?? ""
+        #expect(steps.contains("globe"))
+        #expect(steps.contains("Allow Full Access"))
+        #expect(steps.contains(AppConfiguration.fullAccessSettingsPage))
+    }
 }

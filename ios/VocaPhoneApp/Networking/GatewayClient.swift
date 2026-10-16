@@ -11,6 +11,9 @@ struct GatewayHealth: Decodable, Sendable {
     let languages: [String]?
     /// True when the model picks the language itself and cannot be pinned.
     let detectsLanguageAutomatically: Bool?
+    /// The longest recording the gateway accepts. Absent from gateways that
+    /// predate it; see ``RecordingLengthLimit`` for what is assumed then.
+    let maximumDurationSeconds: Int?
 
     enum CodingKeys: String, CodingKey {
         case status
@@ -19,6 +22,7 @@ struct GatewayHealth: Decodable, Sendable {
         case streamingSupported = "streaming_supported"
         case languages
         case detectsLanguageAutomatically = "detects_language_automatically"
+        case maximumDurationSeconds = "maximum_duration_seconds"
     }
 }
 
@@ -30,6 +34,8 @@ enum GatewayStatusPreferences {
     static let streamingSupportKnownKey = "gatewayStreamingSupportKnown"
     static let streamingSupportCheckedAtKey = "gatewayStreamingSupportCheckedAt"
     static let streamingSupportBaseURLKey = "gatewayStreamingSupportBaseURL"
+    static let maximumDurationKey = "gatewayMaximumDurationSeconds"
+    static let maximumDurationBaseURLKey = "gatewayMaximumDurationBaseURL"
 
     /// Both the setup checklist and the settings screen read this state, so the
     /// writes live in one place rather than being duplicated per view.
@@ -49,6 +55,54 @@ enum GatewayStatusPreferences {
     static func storeLanguageSupport(_ health: GatewayHealth?) {
         KeyboardPreferences.modelLanguages = Set(health?.languages ?? [])
         KeyboardPreferences.modelDetectsLanguage = health?.detectsLanguageAutomatically ?? false
+    }
+
+    /// Records the longest recording the gateway at `baseURL` said it accepts,
+    /// or that it said nothing. Called after every successful health check.
+    ///
+    /// Kept per gateway address and left alone when a check fails: an
+    /// unreachable gateway has not changed its limit, and forgetting it would
+    /// cut the next recording to two minutes for no reason. A different
+    /// address reads as unreported until it has been checked.
+    static func storeMaximumDuration(_ health: GatewayHealth, for baseURL: URL) {
+        let defaults = UserDefaults.standard
+        if let seconds = health.maximumDurationSeconds, seconds > 0 {
+            defaults.set(seconds, forKey: maximumDurationKey)
+        } else {
+            defaults.removeObject(forKey: maximumDurationKey)
+        }
+        defaults.set(baseURL.absoluteString, forKey: maximumDurationBaseURLKey)
+    }
+
+    /// No gateway is configured any more.
+    static func clearMaximumDuration() {
+        UserDefaults.standard.removeObject(forKey: maximumDurationKey)
+        UserDefaults.standard.removeObject(forKey: maximumDurationBaseURLKey)
+    }
+
+    /// The limit last reported by the gateway at `baseURL`, or nil when that
+    /// gateway has not reported one.
+    static func reportedMaximumDuration(
+        for baseURL: URL?,
+        defaults: UserDefaults = .standard
+    ) -> Int? {
+        reportedMaximumDuration(
+            storedSeconds: defaults.object(forKey: maximumDurationKey) as? Int,
+            storedBaseURL: defaults.string(forKey: maximumDurationBaseURLKey),
+            currentBaseURL: baseURL
+        )
+    }
+
+    static func reportedMaximumDuration(
+        storedSeconds: Int?,
+        storedBaseURL: String?,
+        currentBaseURL: URL?
+    ) -> Int? {
+        guard let storedSeconds, storedSeconds > 0,
+              let currentBaseURL,
+              storedBaseURL == currentBaseURL.absoluteString
+        else { return nil }
+        return storedSeconds
     }
 
     static func storeStreamingSupport(_ supported: Bool?, for baseURL: URL?) {
@@ -400,6 +454,85 @@ enum GatewayError: LocalizedError {
             "The gateway returned an invalid response."
         case let .api(status, code):
             "Gateway error \(status): \(code)"
+        }
+    }
+}
+
+/// What a failed gateway check says, in words that point at the fix.
+///
+/// The test used to print "Gateway test failed: " and then whatever
+/// `localizedDescription` came back — "A server with the specified hostname
+/// could not be found.", "The certificate for this server is invalid. You
+/// might be connecting to a server that is pretending to be…" — which names
+/// the symptom in Foundation's terms. The few failures a self-hosted gateway
+/// actually has each get one sentence about what to check.
+enum GatewayFailureCopy {
+    enum Kind: Equatable {
+        case unreachable
+        case timedOut
+        case insecureConnection
+        case tokenRejected
+        case notAGateway
+        case gatewayError(status: Int)
+        case unknown
+    }
+
+    static func kind(for error: Error) -> Kind {
+        if let gateway = error as? GatewayError {
+            switch gateway {
+            case .invalidResponse:
+                return .notAGateway
+            case let .api(status, _) where status == 401 || status == 403:
+                return .tokenRejected
+            case let .api(status, _):
+                return .gatewayError(status: status)
+            }
+        }
+        if let url = error as? URLError {
+            switch url.code {
+            case .timedOut:
+                return .timedOut
+            case .secureConnectionFailed, .serverCertificateUntrusted,
+                 .serverCertificateHasBadDate, .serverCertificateHasUnknownRoot,
+                 .serverCertificateNotYetValid, .clientCertificateRejected,
+                 .clientCertificateRequired, .appTransportSecurityRequiresSecureConnection:
+                return .insecureConnection
+            case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed,
+                 .notConnectedToInternet, .networkConnectionLost,
+                 .internationalRoamingOff, .dataNotAllowed, .resourceUnavailable:
+                return .unreachable
+            case .badServerResponse, .cannotParseResponse, .badURL, .unsupportedURL:
+                return .notAGateway
+            default:
+                return .unknown
+            }
+        }
+        if error is DecodingError { return .notAGateway }
+        return .unknown
+    }
+
+    static func message(for error: Error) -> String {
+        message(for: kind(for: error))
+    }
+
+    static func message(for kind: Kind) -> String {
+        switch kind {
+        case .unreachable:
+            "Can't reach the gateway. Check the address, that it's running, and that "
+                + "this iPhone is on a network that can reach it."
+        case .timedOut:
+            "The gateway didn't answer in time. Check that it's running and reachable, then test again."
+        case .insecureConnection:
+            "A secure connection couldn't be made. Check the gateway's HTTPS certificate, "
+                + "or use the address shown in its pairing code."
+        case .tokenRejected:
+            "Gateway reachable, but the pairing token was rejected. Pair again with a fresh code."
+        case .notAGateway:
+            "Something answered at that address, but not a vocaphone gateway. Check the address and port."
+        case let .gatewayError(status):
+            "The gateway reported an error (\(status)). Check its logs, then test again."
+        case .unknown:
+            "The gateway test didn't complete. Check the address and that the gateway is running."
         }
     }
 }

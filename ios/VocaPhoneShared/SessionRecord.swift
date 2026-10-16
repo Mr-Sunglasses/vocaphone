@@ -255,9 +255,12 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
             .uploading, .uploadFailedRecoverable, .transcriptionFailedPermanent, .canceled,
             .expired,
         ],
+        // The gateway can judge the audio at upload, before transcribing:
+        // silence, or a language its model cannot do. Neither is helped by a
+        // retry, so the upload ends there as permanent.
         .uploading: [
             .transcribing, .readyToInsert, .serverUnavailable, .uploadFailedRecoverable,
-            .canceled, .expired,
+            .transcriptionFailedPermanent, .canceled, .expired,
         ],
         .transcribing: [
             .readyToInsert, .transcriptionFailedRecoverable,
@@ -324,9 +327,11 @@ enum SessionExpiryPolicy {
     /// The containing app claims a hand-off within seconds. Two minutes still
     /// covers a cold launch behind Face ID and a first on-device model load.
     static let handoffWindow: TimeInterval = 120
-    /// Capture is hard-capped by `maximumRecordingSeconds`, so anything past
-    /// that plus a wide margin means the recorder is gone, not slow.
-    static let captureWindow: TimeInterval = AppConfiguration.maximumRecordingSeconds + 120
+    /// Capture is hard-capped by the user's maximum recording length, so
+    /// anything past the longest choice plus a wide margin means the recorder
+    /// is gone, not slow. The longest, not the chosen one: the keyboard expires
+    /// sessions too and does not know which length the app applied.
+    static let captureWindow: TimeInterval = MaximumRecordingLength.longest.seconds + 120
     /// Upload and transcription run on the user's own gateway or on device.
     static let processingWindow: TimeInterval = 10 * 60
     /// A transcript waiting for a tap stays useful for a while, but not for the

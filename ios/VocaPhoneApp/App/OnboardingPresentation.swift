@@ -303,6 +303,35 @@ enum OnboardingPresentation {
         return waitedFor >= KeyboardVerification.grace ? .stalled : .waiting
     }
 
+    /// What Enable keyboard offers once it has waited long enough to stop
+    /// being merely patient.
+    struct KeyboardTroubleshooting: Equatable {
+        let title: String
+        let steps: [String]
+        let openSettingsTitle: String
+        let skipTitle: String
+    }
+
+    /// `nil` until the page is stalled. `.stalled` was computed and then
+    /// ignored: the page stayed a picture of the globe key, with no button and
+    /// no Skip, for as long as the keyboard stayed silent — and the commonest
+    /// reasons it does are things this page can name.
+    static func keyboardTroubleshooting(
+        for verification: KeyboardVerification
+    ) -> KeyboardTroubleshooting? {
+        guard verification == .stalled else { return nil }
+        return KeyboardTroubleshooting(
+            title: "Not showing up?",
+            steps: [
+                "Hold the globe key under the keys and choose vocaphone.",
+                "In \(AppConfiguration.fullAccessSettingsPage), turn on Allow Full Access.",
+                "Still missing? Turn vocaphone off and on again in that list.",
+            ],
+            openSettingsTitle: "Open Settings",
+            skipTitle: "Skip for now"
+        )
+    }
+
     /// vocaphone ran at or after `gate`. A write from last week is earlier and
     /// does not count.
     ///

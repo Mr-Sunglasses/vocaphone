@@ -31,6 +31,32 @@ enum LocalTranscriptionPreferences {
         }
     }
 
+    static let selectedModelUnavailableKey = "localTranscriptionSelectedModelUnavailable"
+
+    /// Whether on-device transcription is selected and its model is not on
+    /// this iPhone, as the containing app last found it.
+    ///
+    /// The keyboard cannot look for model files — they live in the app's own
+    /// container — and without this a Dictate tap with no model opened the
+    /// app, failed there, and came back as "Transcription failed" with a
+    /// button that went round the same loop. The app writes it whenever it
+    /// re-reads setup, which includes every download landing or being removed
+    /// and every change of model. A missing value reads as available: a stale
+    /// "no" must not be able to lock someone out of dictating.
+    static var selectedModelUnavailable: Bool {
+        get { defaults?.bool(forKey: selectedModelUnavailableKey) ?? false }
+        set {
+            guard defaults?.bool(forKey: selectedModelUnavailableKey) != newValue else { return }
+            defaults?.set(newValue, forKey: selectedModelUnavailableKey)
+        }
+    }
+
+    /// Dictate would only fail for want of a model. Read by the keyboard as a
+    /// Dictate is tapped, so the answer is current to the app's last look.
+    static var dictationNeedsVoiceModel: Bool {
+        enabled && selectedModelUnavailable
+    }
+
     static let retiredModelReplacementKey = "localTranscriptionRetiredModelReplacement"
 
     /// The model the retired-model migration moved this iPhone onto, or nil.

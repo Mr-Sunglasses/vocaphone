@@ -93,6 +93,14 @@ final class LocalModelManager {
     private(set) var loadingMessage: String?
     private(set) var message: String?
     private(set) var hasError = false
+    /// The download that most recently failed, until it is retried, another
+    /// download replaces it, or it is dismissed. Home shows it; without it a
+    /// failed download simply vanished from Home.
+    private(set) var failedDownload: FailedModelDownload?
+
+    func dismissDownloadFailure() {
+        failedDownload = nil
+    }
     /// Models whose files are present but whose SHA-256 digests are still being
     /// checked. Published because "downloaded" and "safe to load" are different
     /// claims, and the picker must not offer the second before it is true.
@@ -1495,6 +1503,7 @@ final class LocalModelManager {
             // first dictation then sits through the compile.
             await specializeAfterDownload(descriptor, folder: folder)
             downloadedModelIDs.insert(descriptor.id)
+            if failedDownload?.modelID == descriptor.id { failedDownload = nil }
             message = "\(descriptor.displayName) downloaded and verified."
             Telemetry.shared.modelDownloadFinished(model: descriptor, outcome: .completed)
         } catch is CancellationError {
@@ -1509,7 +1518,15 @@ final class LocalModelManager {
             throw CancellationError()
         } catch {
             hasError = true
-            message = error.localizedDescription
+            let reason = ModelDownloadFailureReason(error: error)
+            failedDownload = FailedModelDownload(modelID: descriptor.id, reason: reason)
+            // The storage error already names both figures; everything else
+            // used to print a URL or a path inside the container.
+            if case LocalModelManagerError.insufficientStorage = error {
+                message = error.localizedDescription
+            } else {
+                message = reason.plainText
+            }
             // The error itself is never passed on: its message can name a
             // download URL or a path inside the container, and the whole point
             // of the enum is that neither can get out.
@@ -1552,6 +1569,9 @@ final class LocalModelManager {
         onCompletion: @escaping @MainActor () -> Void
     ) {
         let id = descriptor.id
+        // A new attempt replaces the old failure, whichever model it was for:
+        // Home shows one download at a time.
+        failedDownload = nil
         // In flight from this call, not from the task's first turn. Choose
         // model starts a download and leaves the page in the same tap, and
         // the page after it asks whether a model is on its way.

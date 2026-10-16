@@ -18,7 +18,7 @@ enum TelemetryFailureMapping {
         case "microphone_permission_denied", "microphone_silenced",
             "recording_start_failed", "audio_missing":
             .capture
-        case "gateway_not_configured": .upload
+        case "gateway_not_configured", "recording_too_long_for_gateway": .upload
         default: .transcription
         }
     }

@@ -47,6 +47,9 @@ struct ContentView: View {
     }
 
     @State private var isShowingTranscriptionSettingsFromAttention = false
+    /// A hand-off the user chose to leave with Not now. Keyed by session, so
+    /// the next dictation brings the screen back.
+    @State private var handoffSetAsideFor: UUID?
     /// The selected on-device model, observed so the attention card can react
     /// to it. `setupStatus` is a stored snapshot that home only rewrites on a
     /// return to the foreground; a download started in setup is adopted once
@@ -91,7 +94,8 @@ struct ContentView: View {
                 KeyboardHandoffView(
                     record: record,
                     presentation: presentation,
-                    isCovered: isShowingSettings
+                    isCovered: isShowingSettings,
+                    onNotNow: { handoffSetAsideFor = record.sessionID }
                 )
             }
         }
@@ -243,8 +247,27 @@ struct ContentView: View {
     /// screen, re-derived from the system every time rather than trusted from a
     /// one-time "setup completed" flag — as one row per step, each with its
     /// own button, not a count with a button for the first.
+    /// A download that failed and has not been retried or replaced, for a
+    /// model that is still not on this iPhone.
+    private var failedModelDownload: FailedModelDownload? {
+        let models = coordinator.localModels
+        guard !isModelDownloadInFlight,
+              let failed = models.failedDownload,
+              !models.isDownloaded(failed.modelID)
+        else { return nil }
+        return failed
+    }
+
+    private var setupChecklist: HomeSetupChecklist? {
+        HomeSetupChecklist.make(
+            attentionStatus,
+            isModelArriving: isModelDownloadInFlight,
+            failedDownload: failedModelDownload?.reason.plainText
+        )
+    }
+
     @ViewBuilder private var setupChecklistCard: some View {
-        if let checklist = HomeSetupChecklist.make(attentionStatus, isModelArriving: isModelDownloadInFlight) {
+        if let checklist = setupChecklist {
             VocaCard {
                 VStack(alignment: .leading, spacing: VocaMetrics.padding) {
                     VocaStatusLine(status: .attention, title: checklist.title, detail: checklist.detail)
@@ -293,14 +316,27 @@ struct ContentView: View {
             coordinator.requestMicrophonePermission()
         case .openSystemSettings:
             coordinator.openSystemSettings()
+        case .retryDownload:
+            retryFailedDownload()
         }
+    }
+
+    private func retryFailedDownload() {
+        guard let failed = coordinator.localModels.failedDownload,
+              let descriptor = LocalModelCatalog.descriptor(for: failed.modelID)
+        else { return }
+        coordinator.localModels.startDownload(descriptor)
     }
 
     /// Same transfer the setup page showed. First run ending must not hide
     /// a model that is still coming, or home looks like setup was thrown away.
     @ViewBuilder private var modelDownloadCard: some View {
         let models = coordinator.localModels
-        if let id = models.downloadingModelID ?? models.queuedModelIDs.first {
+        if let failed = failedModelDownload, setupChecklist == nil {
+            // The checklist says it when setup is waiting on this model; this
+            // card is for a download that failed with setup already done.
+            modelDownloadFailureCard(failed)
+        } else if let id = models.downloadingModelID ?? models.queuedModelIDs.first {
             let name = LocalModelCatalog.descriptor(for: id)?.displayName ?? "Speech model"
             let inFlight = models.downloadingModelID != nil
             let optimizing = models.isOptimizing(id)
@@ -341,6 +377,33 @@ struct ContentView: View {
                     ? "Downloading \(name), \(Int(models.progress(for: id) * 100)) percent"
                     : "Waiting to download \(name)"
             )
+        }
+    }
+
+    private func modelDownloadFailureCard(_ failed: FailedModelDownload) -> some View {
+        let name = LocalModelCatalog.descriptor(for: failed.modelID)?.displayName ?? "Speech model"
+        return VocaCard {
+            VStack(alignment: .leading, spacing: VocaMetrics.padding - 2) {
+                VocaStatusLine(
+                    status: .attention,
+                    title: "Download failed — \(name)",
+                    detail: failed.reason.plainText
+                )
+                VocaPrimaryButton(title: "Retry download", symbol: "arrow.clockwise") {
+                    retryFailedDownload()
+                }
+                HStack {
+                    NavigationLink {
+                        TranscriptionSettingsView()
+                    } label: {
+                        Text("See models")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    Spacer()
+                    Button("Dismiss") { coordinator.localModels.dismissDownloadFailure() }
+                        .font(.subheadline)
+                }
+            }
         }
     }
 
@@ -391,6 +454,7 @@ struct ContentView: View {
                 processingLocation: coordinator.activeRecord?.processingLocation,
                 transcript: coordinator.transcript,
                 errorMessage: coordinator.hasError ? coordinator.message : nil,
+                errorCode: coordinator.activeRecord?.error?.code,
                 canRetry: coordinator.activeRecord?.canRetry == true,
                 // Read from the record, not from `isKeyboardRecording`: that one
                 // is false once capture stops, which would let a transcript
@@ -539,6 +603,10 @@ struct ContentView: View {
             coordinator.retryPreservedRecording()
         case .copyTranscript:
             UIPasteboard.general.string = coordinator.transcript
+        case .openSettings:
+            coordinator.openSystemSettings()
+        case .chooseVoiceModel:
+            isShowingTranscriptionSettingsFromAttention = true
         }
     }
 
@@ -656,7 +724,8 @@ struct ContentView: View {
 
     private var keyboardHandoffRecord: SessionRecord? {
         guard let record = coordinator.activeRecord,
-              KeyboardHandoffPresentation.shouldPresent(record)
+              KeyboardHandoffPresentation.shouldPresent(record),
+              record.sessionID != handoffSetAsideFor
         else { return nil }
         return record
     }
@@ -787,9 +856,10 @@ struct RecordingMeter: View {
             )
         }
         .frame(height: 26)
-        .accessibilityElement()
-        .accessibilityLabel("Voice level")
-        .accessibilityValue("\(Int(coordinator.meterLevel * 100)) percent")
+        // Decoration for sighted users. Its value changed several times a
+        // second, and VoiceOver read each one as a new percentage; the card's
+        // own status line already says Listening.
+        .accessibilityHidden(true)
     }
 
     private func height(for index: Int, in available: CGFloat) -> CGFloat {

@@ -79,6 +79,12 @@ struct VocaPhoneApp: App {
                     case "settings":
                         isShowingQuickDictationReturnGuide = false
                         isShowingSettings = true
+                    case "home":
+                        // The keyboard's "Voice model needed": Home is where
+                        // the missing model is offered for download, so
+                        // nothing may be left covering it.
+                        isShowingQuickDictationReturnGuide = false
+                        isShowingSettings = false
                     case "ready":
                         isShowingSettings = false
                         isShowingQuickDictationReturnGuide = true

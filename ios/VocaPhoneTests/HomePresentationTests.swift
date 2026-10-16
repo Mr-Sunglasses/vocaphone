@@ -134,9 +134,81 @@ struct HomePresentationTests {
         }
     }
 
-    @Test func anUnretryableFailureOffersAFreshRecordingInstead() {
+    /// Nothing to retry, and testing the microphone is not what the card is
+    /// about: it stays available as a quiet link.
+    @Test func anUnretryableFailureDoesNotPromoteTheMicrophoneTest() {
         let card = Self.card(.serverUnavailable, canRetry: false)
-        #expect(card.primary?.action == .startTest)
+        #expect(card.primary == nil)
+        #expect(card.secondary?.action == .cancel)
+        #expect(card.quietAction?.action == .startTest)
+    }
+
+    /// The prominent button is whatever fixes the failure, or none.
+    @Test func aFailedCardOffersTheFixNotATest() {
+        let denied = Self.card(.permissionDenied)
+        #expect(denied.primary?.action == .openSettings)
+
+        let noModel = HomeSessionCard.make(HomeSessionCard.Context(
+            state: .transcriptionFailedPermanent,
+            errorCode: DictationFailure.voiceModelMissingCode
+        ))
+        #expect(noModel.primary?.action == .chooseVoiceModel)
+        #expect(noModel.title == "Voice model needed")
+
+        let noSpeech = HomeSessionCard.make(HomeSessionCard.Context(
+            state: .transcriptionFailedPermanent,
+            errorMessage: DictationFailure.noSpeechMessage,
+            errorCode: DictationFailure.noSpeechCode
+        ))
+        #expect(noSpeech.title == "Didn't catch any speech")
+        #expect(noSpeech.primary == nil)
+        #expect(noSpeech.quietAction?.action == .startTest)
+
+        for card in [denied, noModel, noSpeech, Self.card(.transcriptionFailedPermanent)] {
+            #expect(card.primary?.action != .startTest)
+        }
+    }
+
+    @Test func aFinishedCardWithoutTextDoesNotPromoteTheTest() {
+        let card = Self.card(.completed, showTranscriptOnSession: true)
+        #expect(card.primary?.action != .startTest)
+    }
+
+    /// A failed download says so, with its reason and a Retry, instead of the
+    /// row going back to "Download one" as if nothing had been tried.
+    @Test func aFailedDownloadIsNamedOnTheChecklist() {
+        let reason = ModelDownloadFailureReason.offline.plainText
+        let checklist = HomeSetupChecklist.make(
+            Self.status(source: false),
+            isModelArriving: false,
+            failedDownload: reason
+        )
+        let row = checklist?.rows.first { $0.step == .source }
+        #expect(row?.detail == "Download failed — \(reason)")
+        #expect(row?.action?.kind == .retryDownload)
+        #expect(row?.action?.title == "Retry")
+    }
+
+    @Test func downloadFailuresAreSaidInPlainLanguage() {
+        #expect(ModelDownloadFailureReason(error: URLError(.notConnectedToInternet)) == .offline)
+        #expect(ModelDownloadFailureReason(error: URLError(.timedOut)) == .offline)
+        #expect(ModelDownloadFailureReason(
+            error: LocalModelManagerError.insufficientStorage(freeBytes: 1, requiredBytes: 2)
+        ) == .notEnoughStorage)
+        #expect(ModelDownloadFailureReason(
+            error: NSError(domain: NSCocoaErrorDomain, code: NSFileWriteOutOfSpaceError)
+        ) == .notEnoughStorage)
+        #expect(ModelDownloadFailureReason(
+            error: LocalModelManagerError.downloadFailed(path: "x", statusCode: 503)
+        ) == .serverError)
+        #expect(ModelDownloadFailureReason(
+            error: LocalModelManagerError.integritySizeMismatch("x")
+        ) == .damaged)
+        #expect(ModelDownloadFailureReason(error: URLError(.unknown)) == .other)
+        for reason in [ModelDownloadFailureReason.offline, .notEnoughStorage, .serverError, .damaged, .other] {
+            #expect(!reason.plainText.contains("http"))
+            #expect(!reason.plainText.contains("/"))
+        }
     }
 
     /// A keyboard dictation delivers its transcript into the host field, so the
