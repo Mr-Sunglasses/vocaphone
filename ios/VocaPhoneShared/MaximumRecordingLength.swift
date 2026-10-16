@@ -91,6 +91,36 @@ enum RecordingLengthLimit {
         return recordedSeconds > gatewayLimit(gatewayReportedSeconds) + 1
     }
 
+    /// `exceedsGateway`, but without holding a recording to a stale limit.
+    ///
+    /// The saved limit decides when it lets the recording through. When it does
+    /// not, the gateway is asked again first: the failure tells people to raise
+    /// the gateway's limit, so a Retry after they have must see the new one.
+    /// A gateway that cannot be asked leaves the saved limit in force.
+    ///
+    /// Returns whether the recording is too long, and the limit that decided.
+    /// Runs on the caller's actor, so `askGateway` may touch what it owns.
+    static func checkGateway(
+        recordedSeconds: TimeInterval?,
+        savedSeconds: Int?,
+        isolation: isolated (any Actor)? = #isolation,
+        askGateway: () async throws -> Int?
+    ) async -> (exceeds: Bool, gatewaySeconds: Int?) {
+        guard exceedsGateway(recordedSeconds: recordedSeconds, gatewayReportedSeconds: savedSeconds)
+        else { return (false, savedSeconds) }
+        // Not `try?`: that would flatten "unreachable" into "reports no limit".
+        let current: Int?
+        do {
+            current = try await askGateway()
+        } catch {
+            return (true, savedSeconds)
+        }
+        return (
+            exceedsGateway(recordedSeconds: recordedSeconds, gatewayReportedSeconds: current),
+            current
+        )
+    }
+
     /// "This recording is longer than your gateway accepts (up to 2 minutes)."
     static func tooLongForGatewayMessage(gatewayReportedSeconds: Int?) -> String {
         "This recording is longer than your gateway accepts "

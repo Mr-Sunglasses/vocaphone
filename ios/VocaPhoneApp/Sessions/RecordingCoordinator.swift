@@ -355,18 +355,13 @@ final class RecordingCoordinator {
     /// The cap for a recording starting now: the user's maximum recording
     /// length, and on the gateway route no more than the gateway accepts.
     static func maximumRecordingSeconds() -> TimeInterval {
-        RecordingLengthLimit.effectiveSeconds(
-            choice: KeyboardPreferences.maximumRecordingLength,
-            location: selectedProcessingLocation(),
-            gatewayReportedSeconds: configuredGatewayReportedSeconds()
-        )
-    }
-
-    /// What the configured gateway last reported it accepts, if anything.
-    private static func configuredGatewayReportedSeconds() -> Int? {
         let gatewayURL = UserDefaults.standard.string(forKey: "gatewayURL")
             .flatMap(GatewayEndpoint.validatedURL(from:))
-        return GatewayStatusPreferences.reportedMaximumDuration(for: gatewayURL)
+        return RecordingLengthLimit.effectiveSeconds(
+            choice: KeyboardPreferences.maximumRecordingLength,
+            location: selectedProcessingLocation(),
+            gatewayReportedSeconds: GatewayStatusPreferences.reportedMaximumDuration(for: gatewayURL)
+        )
     }
 
     /// Removes one transcript from this iPhone.
@@ -1503,19 +1498,25 @@ final class RecordingCoordinator {
             try commit(&record)
             activeRecord = record
 
-            // Checked before anything is sent: see `exceedsGateway`.
-            let gatewayReported = Self.configuredGatewayReportedSeconds()
-            if RecordingLengthLimit.exceedsGateway(
+            // Checked before anything is sent: see `exceedsGateway`. The gateway
+            // is only asked again when its saved limit would refuse this one.
+            let gatewayCheck = await RecordingLengthLimit.checkGateway(
                 recordedSeconds: record.recordedSeconds,
-                gatewayReportedSeconds: gatewayReported
-            ) {
+                savedSeconds: GatewayStatusPreferences.reportedMaximumDuration(for: client.baseURL),
+                askGateway: {
+                    let health = try await client.health()
+                    GatewayStatusPreferences.storeMaximumDuration(health, for: client.baseURL)
+                    return health.maximumDurationSeconds
+                }
+            )
+            if gatewayCheck.exceeds {
                 await streamingBridge.cancel()
                 await fail(
                     &record,
                     state: .uploadFailedRecoverable,
                     code: DictationFailure.tooLongForGatewayCode,
                     message: RecordingLengthLimit.tooLongForGatewayMessage(
-                        gatewayReportedSeconds: gatewayReported
+                        gatewayReportedSeconds: gatewayCheck.gatewaySeconds
                     )
                 )
                 return
