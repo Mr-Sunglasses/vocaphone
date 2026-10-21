@@ -169,6 +169,26 @@ struct GrammarModelStoreTests {
         #expect(leftovers.isEmpty)
     }
 
+    /// Greptile on #415: a refresh that started over damaged files and finishes
+    /// after a download installed good ones must not report the model missing.
+    @Test func aRefreshFinishingAfterADownloadKeepsItReady() async throws {
+        let root = try Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        // Right sizes, wrong bytes and no marker: refresh has to hash them, and fails.
+        let directory = root.appendingPathComponent(GrammarModelStore.modelID, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for (path, body) in Self.bodies {
+            try Data(String(repeating: "x", count: body.utf8.count).utf8).write(to: directory.appendingPathComponent(path))
+        }
+        let store = GrammarModelStore(pins: Self.pins, root: root, fetch: Self.fetch())
+        async let refreshed: Void = store.refresh()
+        try await store.download()
+        await refreshed
+
+        #expect(store.isReady)
+        #expect(store.phase == .ready)
+    }
+
     /// A staging folder from an attempt the system killed is swept on the next launch.
     @Test func abandonedStagingFoldersAreRemoved() throws {
         let root = try Self.temporaryRoot()

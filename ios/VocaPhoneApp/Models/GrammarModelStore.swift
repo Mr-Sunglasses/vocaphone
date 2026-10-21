@@ -99,9 +99,11 @@ final class GrammarModelStore {
             )) != nil
         }.value
         guard started == generation else { return }
-        if verified {
+        // A download may have finished while the digests were being checked:
+        // its files are the ones on disk now, and its `.ready` stands.
+        if verified || isReady {
             phase = .ready
-        } else if phase == .ready {
+        } else if phase == .ready, downloadTask == nil {
             phase = .absent
         }
     }
