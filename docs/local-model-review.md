@@ -210,21 +210,22 @@ sentences. Upstream publishes no inference code, so the recipe was rebuilt and
 checked in [tools/grammar-eval](../tools/grammar-eval/README.md) on 337
 hand-written dictation-style sentences (174 already correct, 163 with the
 agreement, article, homophone, `could of`, dropped-word and verb-form slips that
-speech produces):
+speech produces). Precision counts every edit, including any made to a
+correct sentence:
 
 | Configuration | Precision | Recall | F0.5 | Exact (errors) | False positives (correct) | Protected-span damage |
 | --- | --- | --- | --- | --- | --- | --- |
 | Shipped recipe (KEEP bias 2.0, guard) | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 |
-| No guard or protections | 0.927 | 0.596 | 0.835 | 59.5% | 1.7% | 0 |
-| KEEP bias 0 | 0.906 | 0.620 | 0.829 | 62.6% | 1.1% | 0 |
-| No `[BOS]` | 0.912 | 0.363 | 0.700 | 35.6% | 4.0% | 0 |
+| No guard or protections | 0.903 | 0.596 | 0.819 | 59.5% | 1.7% | 0 |
+| KEEP bias 0 | 0.883 | 0.620 | 0.814 | 62.6% | 1.1% | 0 |
+| No `[BOS]` | 0.827 | 0.363 | 0.658 | 35.6% | 4.0% | 0 |
 
 The set and the recipe share an author, one guard rule was fitted to the set's
 only false positive (without it the rate is 0.6%), and there is no held-out
 set. It fixes agreement, articles and the common homophones well, and leaves
 verb forms after modals, double negatives, pronoun case and most sound-alike
 content words alone. Laptop CPU latency is about 2 ms per sentence (p95 4 ms);
-the real model through the iOS bridge reproduces all 41 parity cases, at a
+the real model through the iOS bridge reproduces all 43 parity cases, at a
 median of 18 ms per case in a Debug simulator build. **No phone measurement has
 been made yet.** The stage spends a 150 ms budget sentence by sentence and
 keeps what finished, so a slow phone loses corrections rather than time.
