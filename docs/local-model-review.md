@@ -225,10 +225,14 @@ only false positive (without it the rate is 0.6%), and there is no held-out
 set. It fixes agreement, articles and the common homophones well, and leaves
 verb forms after modals, double negatives, pronoun case and most sound-alike
 content words alone. Laptop CPU latency is about 2 ms per sentence (p95 4 ms);
-the real model through the iOS bridge reproduces all 43 parity cases, at a
-median of 18 ms per case in a Debug simulator build. **No phone measurement has
-been made yet.** The stage spends a 150 ms budget sentence by sentence and
-keeps what finished, so a slow phone loses corrections rather than time.
+the real model through the iOS bridge reproduces all 44 parity cases, at a
+median of 18 ms per case in a Debug simulator build, and the feature has
+been checked by hand on an iPhone 14 Pro. **No phone latency measurement
+has been made yet.** The stage works to a soft 150 ms budget, checked before
+each sentence, each pass and each chunk: it keeps the corrections it has
+finished and skips the rest, but a model call already started runs to its
+end, so one call (at most 150 tokens) can carry insertion past the budget.
+That overrun is logged as `grammarSlow`.
 
 ## Other candidates
 
