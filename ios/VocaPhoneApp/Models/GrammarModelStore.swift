@@ -39,6 +39,10 @@ final class GrammarModelStore {
     private let root: URL?
     private let fetch: Fetch
     private var downloadTask: Task<Void, Error>?
+    /// Bumped by `delete()`. Work that started under an older value — a
+    /// download's last hash, a refresh's digest pass — must not install files
+    /// or publish `.ready` afterwards.
+    private var generation = 0
 
     var sizeBytes: Int64 { pins?.files.reduce(0) { $0 + $1.size } ?? 0 }
 
@@ -57,7 +61,19 @@ final class GrammarModelStore {
         self.pins = pins
         self.root = root
         self.fetch = fetch
+        removeAbandonedStaging()
         if isReady { phase = .ready }
+    }
+
+    /// Staging folders left by an attempt the system killed mid-download. Each
+    /// attempt names its own, so nothing else would ever reuse or remove them.
+    private func removeAbandonedStaging() {
+        guard downloadTask == nil, let root,
+              let names = try? FileManager.default.contentsOfDirectory(atPath: root.path)
+        else { return }
+        for name in names where name.hasPrefix(".download-\(Self.modelID)-") {
+            try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
+        }
     }
 
     /// Stat-only: safe on any path that runs per dictation.
@@ -70,6 +86,8 @@ final class GrammarModelStore {
     /// marker for these pins are hashed once here, off the main actor.
     func refresh() async {
         guard let pins, let directory else { return }
+        removeAbandonedStaging()
+        let started = generation
         if isReady {
             phase = .ready
             return
@@ -80,6 +98,7 @@ final class GrammarModelStore {
                 in: directory, files: files, modelIdentifier: GrammarModelStore.modelID
             )) != nil
         }.value
+        guard started == generation else { return }
         if verified {
             phase = .ready
         } else if phase == .ready {
@@ -105,6 +124,7 @@ final class GrammarModelStore {
     /// Removes the model. Returns whether nothing was left behind.
     @discardableResult
     func delete() -> Bool {
+        generation += 1
         cancel()
         guard let directory else { return false }
         if FileManager.default.fileExists(atPath: directory.path) {
@@ -124,6 +144,7 @@ final class GrammarModelStore {
             phase = .ready
             return
         }
+        let started = generation
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
 
@@ -174,6 +195,10 @@ final class GrammarModelStore {
                 completed += file.size
                 phase = .downloading(fraction: min(Double(completed) / Double(total), 0.99))
             }
+            // A delete or cancel that landed during the last file's hash is
+            // only seen here; nothing below may run after one.
+            try Task.checkCancellation()
+            guard started == generation else { throw CancellationError() }
             // Each file was hashed as it landed; only the set is left.
             try LocalModelIntegrity.verifySizes(in: staging, files: pins.files, requiringMarker: false)
             try LocalModelIntegrity.writeMarker(LocalModelIntegrity.fingerprint(of: pins.files), in: staging)
@@ -235,9 +260,47 @@ final class GrammarModelStore {
         throw URLError(.cannotLoadFromNetwork)
     }
 
+    /// The transfer and its cancellation, which arrive on different threads
+    /// and in either order.
     private final class TaskBox: @unchecked Sendable {
-        var task: URLSessionDownloadTask?
-        var observation: NSKeyValueObservation?
+        private let lock = NSLock()
+        private var task: URLSessionDownloadTask?
+        private var observation: NSKeyValueObservation?
+        private var cancelled = false
+        private var resumed = false
+
+        /// Keeps `task`, unless cancellation already happened: then it is
+        /// cancelled at once and this returns false.
+        func install(_ task: URLSessionDownloadTask, observation: NSKeyValueObservation) -> Bool {
+            let keep = lock.withLock { () -> Bool in
+                guard !cancelled else { return false }
+                self.task = task
+                self.observation = observation
+                return true
+            }
+            if !keep {
+                observation.invalidate()
+                task.cancel()
+            }
+            return keep
+        }
+
+        func cancel() {
+            let task = lock.withLock { () -> URLSessionDownloadTask? in
+                cancelled = true
+                return self.task
+            }
+            task?.cancel()
+        }
+
+        /// True exactly once, so the continuation is resumed once.
+        func claimResume() -> Bool {
+            lock.withLock {
+                defer { resumed = true }
+                observation?.invalidate()
+                return !resumed
+            }
+        }
     }
 
     private nonisolated static func transfer(
@@ -249,7 +312,7 @@ final class GrammarModelStore {
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
                 let completion: @Sendable (URL?, URLResponse?, Error?) -> Void = { location, response, error in
-                    box.observation?.invalidate()
+                    guard box.claimResume() else { return }
                     if let error { return continuation.resume(throwing: error) }
                     guard let location, let http = response as? HTTPURLResponse else {
                         return continuation.resume(throwing: URLError(.badServerResponse))
@@ -274,14 +337,17 @@ final class GrammarModelStore {
                 } else {
                     URLSession.shared.downloadTask(with: url, completionHandler: completion)
                 }
-                box.task = task
-                box.observation = task.observe(\.countOfBytesReceived) { task, _ in
+                let observation = task.observe(\.countOfBytesReceived) { task, _ in
                     progress(task.countOfBytesReceived)
+                }
+                guard box.install(task, observation: observation) else {
+                    if box.claimResume() { continuation.resume(throwing: CancellationError()) }
+                    return
                 }
                 task.resume()
             }
         } onCancel: {
-            box.task?.cancel()
+            box.cancel()
         }
     }
 }

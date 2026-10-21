@@ -135,4 +135,29 @@ class GrammarModelStoreTest {
         LocalModelIntegrity.writeMarker(model.files.map { it.copy(sha256 = "0".repeat(64)) }, directory)
         MockWebServer().use { server -> assertFalse(store(server).isReady()) }
     }
+
+    /** Greptile on #415: a cancel with no request open must still stop the install. */
+    @Test
+    fun aCancelMidDownloadNeverInstallsTheModel() = runBlocking {
+        MockWebServer().use { server ->
+            lateinit var store: GrammarModelStore
+            server.dispatcher = object : mockwebserver3.Dispatcher() {
+                override fun dispatch(request: mockwebserver3.RecordedRequest): MockResponse {
+                    // The first file is served whole; the cancel lands as it
+                    // finishes, before the second request exists.
+                    store.cancel()
+                    return ok(bodies.getValue(request.url.encodedPath.removePrefix("/")))
+                }
+            }
+            server.start()
+            store = store(server)
+
+            assertThrows(kotlinx.coroutines.CancellationException::class.java) { runBlocking { store.download() } }
+
+            assertFalse(store.isReady())
+            assertFalse(File(temp.root, model.id).exists())
+            assertFalse(File(temp.root, ".${model.id}.staging").exists())
+            assertEquals(1, server.requestCount)
+        }
+    }
 }

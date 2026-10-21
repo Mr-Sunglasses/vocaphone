@@ -141,6 +141,47 @@ struct GrammarModelStoreTests {
         #expect(!GrammarModelStore(pins: Self.pins, root: root, fetch: Self.fetch()).isReady)
     }
 
+    @MainActor final class Holder {
+        var store: GrammarModelStore?
+    }
+
+    /// Greptile on #415: a delete while the last file is landing must not let
+    /// the download install the model afterwards.
+    @Test func aDeleteDuringTheDownloadKeepsTheModelGone() async throws {
+        let root = try Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let holder = Holder()
+        let serve = Self.fetch()
+        let store = GrammarModelStore(pins: Self.pins, root: root) { url, progress in
+            let file = try await serve(url, progress)
+            if url.lastPathComponent == "model.onnx" {
+                await MainActor.run { _ = holder.store?.delete() }
+            }
+            return file
+        }
+        holder.store = store
+
+        await #expect(throws: CancellationError.self) { try await store.download() }
+
+        #expect(!store.isReady)
+        #expect(store.phase == .absent)
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        #expect(leftovers.isEmpty)
+    }
+
+    /// A staging folder from an attempt the system killed is swept on the next launch.
+    @Test func abandonedStagingFoldersAreRemoved() throws {
+        let root = try Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let abandoned = root.appendingPathComponent(".download-\(GrammarModelStore.modelID)-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: abandoned, withIntermediateDirectories: true)
+        try Data("half".utf8).write(to: abandoned.appendingPathComponent("model.onnx"))
+
+        _ = GrammarModelStore(pins: Self.pins, root: root, fetch: Self.fetch())
+
+        #expect(!FileManager.default.fileExists(atPath: abandoned.path))
+    }
+
     // MARK: - The bundled pins
 
     private static var bundledPins: LocalModelIntegrity.PinnedModelManifest {

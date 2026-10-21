@@ -7,6 +7,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,6 +58,7 @@ class GrammarModelStore internal constructor(
     private val mutex = Mutex()
     private val activeCall = AtomicReference<Call?>(null)
     private val cancelled = AtomicBoolean(false)
+    private val activeJob = AtomicReference<Job?>(null)
     private val _state = MutableStateFlow(GrammarModelState(totalBytes = model.sizeBytes))
     val state: StateFlow<GrammarModelState> = _state.asStateFlow()
 
@@ -110,12 +113,17 @@ class GrammarModelStore internal constructor(
             // Kept from an interrupted attempt, so the files continue.
             staging.mkdirs()
             cancelled.set(false)
+            activeJob.set(currentCoroutineContext()[Job])
             _state.update {
                 it.copy(downloading = true, failure = null, downloadedBytes = 0, totalBytes = model.sizeBytes)
             }
             try {
                 var completed = 0L
                 model.files.forEach { pinned ->
+                    // A cancel can land while no request is open -- hashing a
+                    // resumed prefix, between files -- where aborting the call
+                    // reaches nothing.
+                    throwIfCancelled()
                     val destination = File(staging, pinned.path)
                     val actual = fetchPinnedFile(
                         client = client,
@@ -135,6 +143,7 @@ class GrammarModelStore internal constructor(
                     }
                     completed += pinned.sizeBytes
                 }
+                throwIfCancelled()
                 // Each file was hashed as it streamed in; only the set is left.
                 LocalModelIntegrity.verifySizes(model.displayName, model.files, staging, requireMarker = false)
                 LocalModelIntegrity.writeMarker(model.files, staging)
@@ -156,6 +165,7 @@ class GrammarModelStore internal constructor(
                 _state.update { it.copy(failure = downloadFailureMessage("The grammar model", error)) }
                 throw error
             } finally {
+                activeJob.set(null)
                 _state.update { it.copy(downloading = false) }
             }
         }
@@ -164,7 +174,12 @@ class GrammarModelStore internal constructor(
     /** Stops a download in flight and discards what it fetched. */
     fun cancel() {
         cancelled.set(true)
+        activeJob.get()?.cancel()
         activeCall.get()?.cancel()
+    }
+
+    private fun throwIfCancelled() {
+        if (cancelled.get()) throw CancellationException("Grammar model download canceled")
     }
 
     /** Removes the model and any half-finished download of it. Returns whether everything went. */
