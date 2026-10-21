@@ -30,8 +30,11 @@ def main() -> None:
         target = dest / Path(path).name
         if target.exists() and hashlib.sha256(target.read_bytes()).hexdigest() == digest:
             continue
+        # Built only from the constants above, never from input, and always
+        # https: the pinned digest is checked before anything is written.
         url = f"https://huggingface.co/{REPOSITORY}/resolve/{REVISION}/{path}"
-        data = urllib.request.urlopen(url, timeout=120).read()
+        assert url.startswith("https://huggingface.co/")
+        data = urllib.request.urlopen(url, timeout=120).read()  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
         got = hashlib.sha256(data).hexdigest()
         if len(data) != size or got != digest:
             sys.exit(f"{path}: expected {size} bytes {digest}, got {len(data)} bytes {got}")

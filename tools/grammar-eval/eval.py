@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import difflib
 import json
 import re
@@ -39,12 +40,17 @@ def protected_items(text: str) -> list[str]:
 
 
 def damaged(src: str, out: str) -> list[str]:
-    out_words = WORD.findall(out)
+    """Every protected occurrence the output lost, counted rather than merely
+    looked for: "Kevin met Kevin" → "Kevin met Alex" lost one Kevin."""
+    src_words = collections.Counter(WORD.findall(src))
+    out_words = collections.Counter(WORD.findall(out))
     lost = []
-    for item in protected_items(src):
-        found = item in out_words if WORD.fullmatch(item) else item in out
-        if not found:
-            lost.append(item)
+    for item in dict.fromkeys(protected_items(src)):
+        if WORD.fullmatch(item):
+            wanted, have = src_words[item], out_words[item]
+        else:
+            wanted, have = src.count(item), out.count(item)
+        lost += [item] * max(0, wanted - have)
     return lost
 
 
@@ -59,6 +65,12 @@ def score(tagger: Tagger, cases: list[dict]) -> dict:
         lost = damaged(c["input"], out)
         if lost:
             damage.append((c["input"], out, lost))
+        # Edit-level counts cover every case: an edit to a correct sentence is
+        # a false positive too, and must cost precision.
+        g, h = edits(c["input"], c["expected"]), edits(c["input"], out)
+        tp += len(g & h)
+        fp += len(h - g)
+        fn += len(g - h)
         if c["input"] == c["expected"]:
             clean += 1
             if out != c["input"]:
@@ -67,10 +79,6 @@ def score(tagger: Tagger, cases: list[dict]) -> dict:
             continue
         noisy += 1
         noisy_exact += out == c["expected"]
-        g, h = edits(c["input"], c["expected"]), edits(c["input"], out)
-        tp += len(g & h)
-        fp += len(h - g)
-        fn += len(g - h)
         if out != c["expected"]:
             misses.append((c["input"], out, c["expected"]))
     p = tp / (tp + fp) if tp + fp else 0.0

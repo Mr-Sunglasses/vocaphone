@@ -198,9 +198,12 @@ class Tagger:
             return spans[int(m.group(1))]
         return word.text.replace("’", "'")
 
-    def tag(self, words: list[Word], vocabulary: frozenset[str],
+    def tag(self, words: list[Word], start: int, end: int, vocabulary: frozenset[str],
             spans: list[str] = ()) -> PassTrace:
-        texts = [self.model_text(w, spans) for w in words]
+        """Runs words[start:end] through the model. The guard sees the whole
+        sentence, so a name or a preposition at a chunk's edge keeps the
+        protection it has anywhere else."""
+        texts = [self.model_text(w, spans) for w in words[start:end]]
         ids, starts = self.encode(texts)
         lg = self.logits(ids)
         decisions = []
@@ -208,7 +211,7 @@ class Tagger:
             row = lg[pos].astype(np.float64)
             row[KEEP] += self.keep_bias
             label = self.labels[int(row.argmax())]
-            chosen = self.allow(words, i, label, vocabulary) if self.guard else label
+            chosen = self.allow(words, start + i, label, vocabulary) if self.guard else label
             decisions.append(Decision(texts[i], label, chosen))
         return PassTrace(texts, ids, starts, decisions)
 
@@ -339,34 +342,44 @@ class Tagger:
             return sentence, []
         traces = []
         for _ in range(MAX_PASSES):
-            new: list[Word] = []
-            changed = False
-            for chunk in self.chunk(words, spans):
-                trace = self.tag(chunk, vocabulary, spans)
+            chosen = ["KEEP"] * len(words)
+            for start, end in self.chunk(words, spans):
+                if end - start == 1 and self.oversized(words[start], spans):
+                    continue  # one word longer than the model can read: leave it
+                trace = self.tag(words, start, end, vocabulary, spans)
                 traces.append(trace)
-                applied = self.apply(chunk, trace.decisions)
-                if [w.text for w in applied] != [w.text for w in chunk]:
-                    changed = True
-                if new and applied and applied[0].space == "" and chunk[0].space:
-                    applied[0] = Word(applied[0].text, chunk[0].space, applied[0].protected)
-                new.extend(applied)
+                chosen[start:end] = [d.chosen for d in trace.decisions]
+            new = self.apply(words, [Decision(w.text, c, c) for w, c in zip(words, chosen)])
+            changed = [w.text for w in new] != [w.text for w in words]
             words = new
             if not changed:
                 break
         trailing = sentence[len(sentence.rstrip()):]
         return "".join(w.space + w.text for w in words) + trailing, traces
 
-    def chunk(self, words: list[Word], spans: list[str] = ()) -> list[list[Word]]:
-        chunks, cur, n = [], [], 0
-        for w in words:
+    def oversized(self, word: Word, spans: list[str]) -> bool:
+        return len(self.encode_word(self.model_text(word, spans))) > MAX_TOKENS
+
+    def chunk(self, words: list[Word], spans: list[str] = ()) -> list[tuple[int, int]]:
+        """[start, end) word ranges of at most MAX_TOKENS tokens each. A word
+        that alone is longer (a long URL fed as itself) gets a range of its
+        own, which correct_sentence leaves untouched rather than overflow the
+        model's 160 positions."""
+        chunks, start, n = [], 0, 0
+        for i, w in enumerate(words):
             k = len(self.encode_word(self.model_text(w, spans)))
-            if cur and n + k > MAX_TOKENS:
-                chunks.append(cur)
-                cur, n = [], 0
-            cur.append(w)
+            if i > start and n + k > MAX_TOKENS:
+                chunks.append((start, i))
+                start, n = i, 0
+            if k > MAX_TOKENS:
+                if i > start:
+                    chunks.append((start, i))
+                chunks.append((i, i + 1))
+                start, n = i + 1, 0
+                continue
             n += k
-        if cur:
-            chunks.append(cur)
+        if start < len(words):
+            chunks.append((start, len(words)))
         return chunks
 
 

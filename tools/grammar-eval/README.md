@@ -27,19 +27,20 @@ uv run --with-requirements requirements.txt python infer.py ~/.cache/vocaphone/m
 
 | Configuration | Precision | Recall | F0.5 | Exact (errors) | False-positive rate (correct) | Protected-span damage | p50 ms | p95 ms |
 |---|---|---|---|---|---|---|---|---|
-| **shipped recipe** | **0.944** | **0.596** | **0.846** | **60.1%** | **0.0%** | **0** | **2.2** | **4.3** |
-| no guard or protections, KEEP bias 2.0 | 0.927 | 0.596 | 0.835 | 59.5% | 1.7% | 0 | 2.2 | 4.4 |
-| guard, KEEP bias 0 | 0.906 | 0.620 | 0.829 | 62.6% | 1.1% | 0 | 2.2 | 4.3 |
-| guard, KEEP bias 3.0 | 0.960 | 0.567 | 0.843 | 57.1% | 0.0% | 0 | 2.2 | 4.3 |
-| alignment: no `[BOS]` | 0.912 | 0.363 | 0.700 | 35.6% | 4.0% | 0 | 2.0 | 4.0 |
-| alignment: first word without `Ġ` | 0.959 | 0.544 | 0.832 | 54.6% | 0.0% | 0 | 2.1 | 4.3 |
-| alignment: last subtoken | 0.951 | 0.456 | 0.782 | 46.6% | 0.0% | 0 | 2.1 | 4.1 |
-| protected spans fed as placeholders | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 | 2.2 | 4.2 |
+| **shipped recipe** | **0.944** | **0.596** | **0.846** | **60.1%** | **0.0%** | **0** | **1.9** | **3.4** |
+| no guard or protections, KEEP bias 2.0 | 0.903 | 0.596 | 0.819 | 59.5% | 1.7% | 0 | 1.9 | 4.1 |
+| guard, KEEP bias 0 | 0.883 | 0.620 | 0.814 | 62.6% | 1.1% | 0 | 1.9 | 3.7 |
+| guard, KEEP bias 3.0 | 0.960 | 0.567 | 0.843 | 57.1% | 0.0% | 0 | 1.9 | 3.6 |
+| alignment: no `[BOS]` | 0.827 | 0.363 | 0.658 | 35.6% | 4.0% | 0 | 1.6 | 3.3 |
+| alignment: first word without `Ġ` | 0.959 | 0.544 | 0.832 | 54.6% | 0.0% | 0 | 1.8 | 3.5 |
+| alignment: last subtoken | 0.951 | 0.456 | 0.782 | 46.6% | 0.0% | 0 | 2.3 | 4.4 |
+| protected spans fed as placeholders | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 | 2.1 | 3.9 |
 
 Gate: false positives ≤ 3% on correct sentences (0.0%), no protected-span
 damage (0), and a real gain on the error set (98 of 163 fixed exactly, edit
 precision 0.94). Precision and recall are over word-level edits
-(`difflib` on the same word split the model uses); "exact" is whole-sentence.
+(`difflib` on the same word split the model uses), counted on every sentence,
+so an edit to a correct sentence costs precision too; "exact" is whole-sentence.
 Latency is one sentence through every pass on an Apple-silicon laptop CPU,
 ONNX Runtime 1.31, two threads; timings move by a few tenths of a millisecond between runs.
 
@@ -107,7 +108,7 @@ anything else back into `KEEP` when:
   on `i`, or `$CASE_UP` on `i` (the engine already cased the sentence);
 - it is `APPEND_<w>` where `w` is not punctuation or one of
   `a an the to is are am was were be have has 's 'm 're 've 'll 'd`;
-- it is `REPLACE_too` before punctuation or the end of the sentence;
+- it replaces `too` before punctuation or the end of the sentence (`come too.` must not become `come to.`);
 - it is `REPLACE_<w>` and the pair is not: case-only, in `plausible_pairs.json`
   (314 `src→dst` strings), in the closed confusion sets in `infer.py`
   (articles, `be`/`have`/`do` forms, `their/there/they're`, `its/it's`,
@@ -123,12 +124,15 @@ mid-sentence.
 **Passes.** Split into sentences at `.`, `!` or `?` followed by whitespace,
 mask protected spans once for the whole text, and run each sentence up to 3
 times, stopping after a pass that changes nothing. A sentence longer than 150
-tokens is cut into chunks at word boundaries. If the output has no letters,
+tokens is cut into chunks at word boundaries; each chunk is a separate model
+call, but the guard always reads the whole sentence, so a name or preposition at
+a chunk's edge keeps its protection. A single word longer than 150 tokens (a long
+URL fed as itself) is never sent to the model and stays as it is. If the output has no letters,
 return the input.
 
 ## Parity fixtures
 
-`assets/grammar/parity_fixtures.json` holds 41 cases and 29 tokenizer-only
+`assets/grammar/parity_fixtures.json` holds 43 cases and 29 tokenizer-only
 words. For each pass of each sentence it records the words, the token ids, the
 first-subtoken positions, the label after the bias and the label the guard
 allowed, then the final text. The ports should match `ids` exactly, apply

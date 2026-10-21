@@ -86,10 +86,30 @@ def sha256(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+def boundary_case(t: Tagger) -> str:
+    """A sentence long enough to need two chunks, with a name as the second
+    chunk's first word: the guard must still treat it as mid-sentence."""
+    words, tokens = ["So"], len(t.encode_word("So"))
+    filler = ["and", "then", "we", "went"]
+    while tokens < MAX_TOKENS:
+        w = filler[len(words) % len(filler)]
+        k = len(t.encode_word(w))
+        if tokens + k > MAX_TOKENS:
+            break
+        words.append(w)
+        tokens += k
+    return " ".join(words + ["Kevin", "said", "he", "don't", "know."])
+
+
+# A URL longer than the model can read on its own, beside a fixable slip.
+LONG_URL = "https://example.com/" + "/".join(f"segment{i}" for i in range(60))
+
+
 def build(model_dir: Path) -> str:
     t = Tagger(model_dir)
     cases = []
-    for text, vocabulary in CASES:
+    extra = [(boundary_case(t), []), (f"He don't know where {LONG_URL} went.", [])]
+    for text, vocabulary in CASES + extra:
         r = t.correct(text, frozenset(vocabulary))
         cases.append({
             "input": text,
@@ -133,7 +153,7 @@ def main() -> None:
         print(f"{OUT.name} is current")
         return
     OUT.write_text(text)
-    print(f"wrote {OUT} ({len(CASES)} cases)")
+    print(f"wrote {OUT} ({len(CASES) + 2} cases)")
 
 
 if __name__ == "__main__":

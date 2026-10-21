@@ -4,14 +4,14 @@
 
 | Configuration | Precision | Recall | F0.5 | Exact (errors) | False-positive rate (correct) | Protected-span damage | p50 ms | p95 ms |
 |---|---|---|---|---|---|---|---|---|
-| shipped recipe | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 | 2.2 | 4.3 |
-| no guard, KEEP bias 2.0 | 0.927 | 0.596 | 0.835 | 59.5% | 1.7% | 0 | 2.2 | 4.4 |
-| guard, KEEP bias 0 | 0.906 | 0.620 | 0.829 | 62.6% | 1.1% | 0 | 2.2 | 4.3 |
-| guard, KEEP bias 3.0 | 0.960 | 0.567 | 0.843 | 57.1% | 0.0% | 0 | 2.2 | 4.3 |
-| alignment: no [BOS] | 0.912 | 0.363 | 0.700 | 35.6% | 4.0% | 0 | 2.0 | 4.0 |
-| alignment: first word without Ġ | 0.959 | 0.544 | 0.832 | 54.6% | 0.0% | 0 | 2.1 | 4.3 |
-| alignment: last subtoken | 0.951 | 0.456 | 0.782 | 46.6% | 0.0% | 0 | 2.1 | 4.1 |
-| protected spans fed as placeholders | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 | 2.2 | 4.2 |
+| shipped recipe | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 | 1.9 | 3.4 |
+| no guard or protections, KEEP bias 2.0 | 0.903 | 0.596 | 0.819 | 59.5% | 1.7% | 0 | 1.9 | 4.1 |
+| guard, KEEP bias 0 | 0.883 | 0.620 | 0.814 | 62.6% | 1.1% | 0 | 1.9 | 3.7 |
+| guard, KEEP bias 3.0 | 0.960 | 0.567 | 0.843 | 57.1% | 0.0% | 0 | 1.9 | 3.6 |
+| alignment: no [BOS] | 0.827 | 0.363 | 0.658 | 35.6% | 4.0% | 0 | 1.6 | 3.3 |
+| alignment: first word without Ġ | 0.959 | 0.544 | 0.832 | 54.6% | 0.0% | 0 | 1.8 | 3.5 |
+| alignment: last subtoken | 0.951 | 0.456 | 0.782 | 46.6% | 0.0% | 0 | 2.3 | 4.4 |
+| protected spans fed as placeholders | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 | 2.1 | 3.9 |
 
 ### Correct sentences the stage changed (0)
 
