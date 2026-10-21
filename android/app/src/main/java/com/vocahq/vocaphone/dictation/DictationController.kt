@@ -38,6 +38,7 @@ import com.vocahq.vocaphone.gateway.GatewayStreamingPolicy
 import com.vocahq.vocaphone.gateway.GatewayUploadAudio
 import com.vocahq.vocaphone.gateway.StreamingUnavailableException
 import com.vocahq.vocaphone.gateway.openRecordingTransport
+import com.vocahq.vocaphone.grammar.GrammarCorrector
 import com.vocahq.vocaphone.local.LocalModelManager
 import com.vocahq.vocaphone.local.LocalModelState
 import com.vocahq.vocaphone.local.LocalTranscription
@@ -105,6 +106,8 @@ class DictationController(
     private val diagnostics: DiagnosticLog,
     private val audioDirectory: File,
     private val localModels: LocalModelManager,
+    /** "Fix grammar (English)"; null in tests, and a no-op where the build has no ONNX Runtime. */
+    private val grammar: GrammarCorrector? = null,
     private val telemetry: Telemetry,
     private val cues: DictationTonePlayer,
     private val usageStats: UsageStatsRepository,
@@ -726,6 +729,7 @@ class DictationController(
                 style = configuration.style,
             )
             if (configuration.localTranscriptionEnabled) {
+                if (configuration.fixGrammar) grammar?.warm()
                 val modelID = configuration.localModelId.takeIf { it.isNotEmpty() }
                 modelID?.let {
                     localModels.beginUse()
@@ -881,6 +885,9 @@ class DictationController(
         val frames = Channel<ShortArray>(capacity = FILE_FRAME_BUFFER_CAPACITY)
         val selectedLocalModelID = configuration.localModelId.takeIf { it.isNotEmpty() }
         if (configuration.localTranscriptionEnabled) {
+            // A few hundred milliseconds of tokenizer and session, loaded
+            // while the user is still talking rather than after.
+            if (configuration.fixGrammar) grammar?.warm()
             selectedLocalModelID?.let { modelID ->
                 localModels.beginUse()
                 // Load weights while the mic is already capturing. Whisper used
@@ -1596,6 +1603,8 @@ class DictationController(
         snippets = configuration.snippets,
         vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
         isDictionaryWord = ::isEnglishWord,
+        // Gateway routes never get here; they pass styledUpstream instead.
+        grammar = grammar?.takeIf { configuration.fixGrammar },
     )
 
     /**

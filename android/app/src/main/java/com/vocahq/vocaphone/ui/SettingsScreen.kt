@@ -75,6 +75,8 @@ import com.vocahq.vocaphone.core.TranscriptionQuality
 import com.vocahq.vocaphone.core.UsageStats
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.ime.PersonalDictionary
+import com.vocahq.vocaphone.local.GrammarModelCatalog
+import com.vocahq.vocaphone.local.GrammarModelState
 import com.vocahq.vocaphone.local.LocalModelCatalog
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.LocalModelEngine
@@ -132,6 +134,8 @@ fun SettingsScreen(
     onTranslateTo: (TranscriptionLanguage) -> Unit,
     onStyle: (WritingStyle) -> Unit,
     onRepairSpeech: (Boolean) -> Unit,
+    grammarModel: GrammarModelState = GrammarModelState(),
+    onFixGrammar: (Boolean) -> Unit = {},
     onNumbersAsDigits: (Boolean) -> Unit,
     onSpokenEmoji: (Boolean) -> Unit,
     onChineseScript: (ChineseScript) -> Unit,
@@ -592,6 +596,12 @@ fun SettingsScreen(
                         onCheckedChange = onRepairSpeech,
                     )
                     SettingsDivider()
+                    // Hidden where there is no ONNX Runtime to run it: the
+                    // fdroid flavor and the x86_64 emulator.
+                    if (GrammarModelCatalog.available) {
+                        FixGrammarRow(settings, grammarModel, onFixGrammar)
+                        SettingsDivider()
+                    }
                     SettingsSwitchRow(
                         title = "Write numbers as digits",
                         supporting = "“six pm” becomes “6 pm”. English only.",

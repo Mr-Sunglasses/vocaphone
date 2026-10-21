@@ -146,3 +146,19 @@ function(build_whisper target_name)
 endfunction()
 
 build_whisper(whisper)
+
+# The grammar model's bridge to ONNX Runtime, for the full and x flavors only:
+# they pass VOCAPHONE_GRAMMAR, and they are the ones that ship
+# libonnxruntime.so. fdroid does not, so its native build -- and the
+# reproducible APK -- is exactly what it was. The bridge opens ONNX Runtime with
+# dlopen rather than linking it, so an ABI without the prebuilt library (the
+# x86_64 emulator) still builds and the feature reports itself unavailable.
+option(VOCAPHONE_GRAMMAR "Build the grammar model's ONNX Runtime bridge" OFF)
+if(VOCAPHONE_GRAMMAR)
+    set(GRAMMAR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../grammar)
+    get_filename_component(GRAMMAR_DIR "${GRAMMAR_DIR}" ABSOLUTE)
+    add_library(vocaphone_grammar SHARED ${GRAMMAR_DIR}/grammar_jni.c)
+    target_include_directories(vocaphone_grammar PRIVATE ${GRAMMAR_DIR}/onnxruntime-1.28.0)
+    target_compile_options(vocaphone_grammar PRIVATE -ffile-prefix-map=${GRAMMAR_DIR}=/grammar)
+    target_link_libraries(vocaphone_grammar ${LOG_LIB} dl)
+endif()

@@ -217,6 +217,14 @@ data class VocaPhoneSettings(
      * applied to [WritingStyle.RAW], which promises the model's own output.
      */
     val repairSpeech: Boolean = true,
+    /**
+     * Whether the on-device grammar model corrects common English grammar and
+     * spelling slips after Clean up speech. Off by default: it is a 28 MB
+     * download, it can change a sentence that was right, and it only applies
+     * to on-device transcription in English. On only once the model has been
+     * downloaded and verified; see [com.vocahq.vocaphone.grammar.GrammarCorrector].
+     */
+    val fixGrammar: Boolean = false,
     /** Whether dictated English number words are written as digits. Off by default. */
     val numbersAsDigits: Boolean = false,
     /**
@@ -562,6 +570,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setRepairSpeech(enabled: Boolean) = put(Keys.REPAIR_SPEECH, enabled)
 
+    suspend fun setFixGrammar(enabled: Boolean) = put(Keys.FIX_GRAMMAR, enabled)
+
     suspend fun setNumbersAsDigits(enabled: Boolean) = put(Keys.NUMBERS_AS_DIGITS, enabled)
 
     suspend fun setChineseScript(script: ChineseScript) = put(Keys.CHINESE_SCRIPT, script.storedValue)
@@ -790,6 +800,7 @@ class SettingsRepository(private val context: Context) {
         customVocabulary = this[Keys.CUSTOM_VOCABULARY].orEmpty(),
         syncWhisperDictionary = this[Keys.SYNC_WHISPER_DICTIONARY] ?: true,
         repairSpeech = this[Keys.REPAIR_SPEECH] ?: true,
+        fixGrammar = this[Keys.FIX_GRAMMAR] ?: false,
         numbersAsDigits = this[Keys.NUMBERS_AS_DIGITS] ?: false,
         stopAfterPause = this[Keys.STOP_AFTER_PAUSE] ?: false,
         maximumRecordingLength = MaximumRecordingLength.fromMinutes(this[Keys.MAXIMUM_RECORDING_MINUTES]),
@@ -852,6 +863,7 @@ class SettingsRepository(private val context: Context) {
         val CUSTOM_VOCABULARY = stringPreferencesKey("custom_vocabulary")
         val SYNC_WHISPER_DICTIONARY = booleanPreferencesKey("sync_whisper_dictionary")
         val REPAIR_SPEECH = booleanPreferencesKey("repair_speech")
+        val FIX_GRAMMAR = booleanPreferencesKey("fix_grammar")
         val NUMBERS_AS_DIGITS = booleanPreferencesKey("numbers_as_digits")
         val CHINESE_SCRIPT = stringPreferencesKey("chinese_script")
         val STOP_AFTER_PAUSE = booleanPreferencesKey("stop_after_pause")

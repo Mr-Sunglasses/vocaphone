@@ -9,4 +9,10 @@ class VocaPhoneSettingsTest {
     fun dynamicColorDefaultsOffSoBrandTealStays() {
         assertFalse(VocaPhoneSettings().dynamicColorEnabled)
     }
+
+    /** A 28 MB download that can change a correct sentence is never on by itself. */
+    @Test
+    fun fixGrammarDefaultsOff() {
+        assertFalse(VocaPhoneSettings().fixGrammar)
+    }
 }

@@ -20,6 +20,13 @@ internal object SettingsHelp {
                 "\"So we should ship it Friday.\" Only sounds with no meaning go — " +
                 "\"um\", \"uh\", \"er\". Real words stay, including \"like\" and \"you " +
                 "know\", and so do \"mhm\" and \"uh-huh\", which are answers.",
+            "Fix grammar (English) corrects common grammar and spelling slips after " +
+                "Clean up speech: \"he don't know\" becomes \"he doesn't know\", " +
+                "\"their going\" becomes \"they're going\". It runs on this phone with a " +
+                "28 MB model you download once, and your words are never sent anywhere. " +
+                "It leaves names, numbers, links and your own words alone, works only on " +
+                "English transcribed on this phone, and can occasionally change a " +
+                "sentence that was already right. Off by default.",
             "Write numbers as digits writes “six pm” as “6 pm” and " +
                 "“twenty three” as “23”. A lone “one” stays " +
                 "a word unless a unit follows it. English only. Ordinals and spoken " +
@@ -31,7 +38,7 @@ internal object SettingsHelp {
                 "so “send me the emoji” is still typed as you said it. The " +
                 "emoji names are English, and work by that name in a transcript in any " +
                 "language.",
-            "Clean up speech and spoken emoji are not applied to the Raw writing " +
+            "Clean up speech, Fix grammar and spoken emoji are not applied to the Raw writing " +
                 "style. Write numbers as digits still applies to it when it is on.",
         ),
     )

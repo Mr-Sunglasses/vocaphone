@@ -20,21 +20,28 @@ package com.vocahq.vocaphone.core
  *    puts the sentence boundaries *there*: styling capitalizes and terminates
  *    around boundaries, and cannot find one that is missing. Never for `RAW`,
  *    which promises the model's own output.
- * 4. Style — but only for transcripts produced on this device. A gateway has
+ * 4. Grammar — the optional "Fix grammar (English)" model, after repair
+ *    because it reads the sentences repair has finished and its model was
+ *    trained on punctuated text, and before style so the styler capitalizes
+ *    and terminates whatever words it settled on. Only for on-device
+ *    transcripts (a gateway has its own pipeline), never for `RAW`, and only
+ *    for English. It may not touch a custom vocabulary word or a snippet
+ *    trigger; [ProtectedSpans] are masked inside the stage.
+ * 5. Style — but only for transcripts produced on this device. A gateway has
  *    already applied the writing style the session asked for, and applying it
  *    twice is how "Hello." becomes "Hello.." on one route and not the other.
- * 5. Custom vocabulary — after styling, so the user's own capitalization of a
+ * 6. Custom vocabulary — after styling, so the user's own capitalization of a
  *    name is the last word on it; before spoken emoji and digits. Every route,
  *    because only Whisper can be prompted with the list. Never for `RAW`.
  *    One-letter slips are corrected only in English text; other languages get
  *    spacing and case.
- * 6. Spoken emoji — after styling, because the styler has to see "emoji" as an
+ * 7. Spoken emoji — after styling, because the styler has to see "emoji" as an
  *    ordinary word to capitalize and terminate around it; before digits,
  *    because the table's keys are words — "hundred emoji" is 💯, and once
  *    digit conversion has made it "100 emoji" there is no key left to find.
  *    Applies whichever route produced the transcript: unlike styling, no
  *    gateway has done it already.
- * 7. Digits — after styling, so sentence capitalization can still see the
+ * 8. Digits — after styling, so sentence capitalization can still see the
  *    first word. Matching snippets are protected so a number-word trigger
  *    still expands literally after digit conversion finishes.
  */
@@ -51,6 +58,7 @@ object DictatedTranscript {
         snippets: List<Snippet> = emptyList(),
         vocabulary: List<String> = emptyList(),
         isDictionaryWord: (String) -> Boolean = { false },
+        grammar: GrammarStage? = null,
     ): String {
         val cleaned = TraditionalChinese.apply(TranscriptSanitizer.clean(raw), chineseScript, language)
         val repaired = if (repairSpeech && style != WritingStyle.RAW) {
@@ -58,7 +66,15 @@ object DictatedTranscript {
         } else {
             cleaned
         }
-        val styled = if (styledUpstream) repaired else TranscriptStyler.apply(repaired, style, language)
+        val corrected = if (
+            grammar != null && !styledUpstream && style != WritingStyle.RAW &&
+            TranscriptRepair.isEnglish(repaired, language, isDictionaryWord)
+        ) {
+            grammar.correct(repaired, grammarKeeps(vocabulary, snippets))
+        } else {
+            repaired
+        }
+        val styled = if (styledUpstream) corrected else TranscriptStyler.apply(corrected, style, language)
         // Never for RAW, on the same grounds as repair: raw promises the
         // model's own output, and a glyph is not something the model said.
         val spelled = if (style != WritingStyle.RAW) {
@@ -87,4 +103,11 @@ object DictatedTranscript {
         val protected = SnippetExpander.protect(emojified, snippets)
         return protected.restore(SpokenNumbers.digitsIn(protected.text))
     }
+
+    /** Every word of the user's vocabulary and snippet triggers, which grammar may not change. */
+    internal fun grammarKeeps(vocabulary: List<String>, snippets: List<Snippet>): Set<String> =
+        (vocabulary + snippets.map { it.trigger })
+            .flatMap { phrase -> phrase.split(Regex("[^\\p{L}\\p{N}'’]+")) }
+            .filter { it.isNotEmpty() }
+            .mapTo(HashSet()) { it.lowercase() }
 }

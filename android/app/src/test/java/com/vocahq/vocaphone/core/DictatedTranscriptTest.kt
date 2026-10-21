@@ -319,4 +319,77 @@ class DictatedTranscriptTest {
         assertTrue(spelled("frag voca phone danach", "de", "VocaPhone").contains("VocaPhone"))
         assertTrue(spelled("pregunta a whisper kit", "es", "WhisperKit").contains("WhisperKit"))
     }
+
+    // Grammar. Mirrors DictatedTranscriptTests.swift.
+
+    /** Records what the grammar stage saw, and swaps one phrase so its effect is visible. */
+    private class RecordingGrammar : GrammarStage {
+        val seen = ArrayList<Pair<String, Set<String>>>()
+        override fun correct(text: String, keep: Set<String>): String {
+            seen.add(text to keep)
+            return text.replace("he don't", "he doesn't")
+        }
+    }
+
+    @Test
+    fun `grammar runs after repair and before styling`() {
+        val grammar = RecordingGrammar()
+        assertEquals(
+            "I think he doesn't know.",
+            DictatedTranscript.finished(
+                "um I think he don't know",
+                style = WritingStyle.FORMAL,
+                repairSpeech = true,
+                grammar = grammar,
+            ),
+        )
+        // It saw repair's output, not the raw words and not the styled ones.
+        assertEquals(listOf("I think he don't know"), grammar.seen.map { it.first })
+    }
+
+    @Test
+    fun `grammar is skipped for raw, gateway transcripts and other languages`() {
+        val grammar = RecordingGrammar()
+        DictatedTranscript.finished("he don't know", style = WritingStyle.RAW, repairSpeech = true, grammar = grammar)
+        DictatedTranscript.finished(
+            "He don't know.",
+            style = WritingStyle.FORMAL,
+            styledUpstream = true,
+            repairSpeech = true,
+            grammar = grammar,
+        )
+        DictatedTranscript.finished(
+            "il ne sait pas",
+            style = WritingStyle.FORMAL,
+            language = "fr",
+            repairSpeech = true,
+            grammar = grammar,
+        )
+        assertTrue(grammar.seen.isEmpty())
+    }
+
+    @Test
+    fun `grammar runs for automatic and english and is handed the words it may not change`() {
+        val grammar = RecordingGrammar()
+        DictatedTranscript.finished(
+            "he don't know",
+            style = WritingStyle.FORMAL,
+            language = "auto",
+            repairSpeech = false,
+            snippets = listOf(Snippet("1", "my addy", "1 Main St")),
+            vocabulary = listOf("Vocagate", "kube ctl"),
+            grammar = grammar,
+        )
+        DictatedTranscript.finished("he don't know", style = WritingStyle.FORMAL, language = "en", repairSpeech = false, grammar = grammar)
+        assertEquals(2, grammar.seen.size)
+        assertEquals(setOf("vocagate", "kube", "ctl", "my", "addy"), grammar.seen[0].second)
+    }
+
+    @Test
+    fun `without a grammar stage nothing changes`() {
+        assertEquals(
+            "He don't know.",
+            DictatedTranscript.finished("he don't know", style = WritingStyle.FORMAL, repairSpeech = false),
+        )
+    }
 }
