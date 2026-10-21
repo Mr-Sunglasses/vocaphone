@@ -48,6 +48,8 @@ jobs:
         run: python3 tools/generate-emoji-catalog.py --check
       - name: Check native model catalogs and pins
         run: python3 tools/model-pins/check_catalogs.py
+      - name: Test the model-pin tooling
+        run: python3 -m unittest discover -s tools/model-pins -p 'test_*.py'
       # The model tests run in the iOS and Android jobs, which a change confined
       # to tools/model-e2e/ does not reach. This checks the tooling offline:
       # every pin resolves to a Hugging Face URL and a digest, and a scenario

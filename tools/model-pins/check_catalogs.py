@@ -12,10 +12,13 @@ This reads:
     ios/VocaPhoneShared/LocalModelCatalog.swift
     ios/VocaPhoneApp/Models/sherpa_model_pins.json
     ios/VocaPhoneApp/Models/local_model_pins.json
+    android/app/src/main/java/com/vocahq/vocaphone/local/GrammarModelCatalog.kt
+    ios/VocaPhoneApp/Models/grammar_model_pins.json
 
 and asserts that every sherpa id exists in all three with the same repository,
 revision, per-file size and SHA-256, and that each entry's `sizeBytes` is the
-sum of the files it pins. Offline and fast, so it is safe in CI -- use
+sum of the files it pins. The grammar model is checked the same way between
+its two files: it is not a speech model, so it is in neither catalog. Offline and fast, so it is safe in CI -- use
 `pin_models.py` when you need to check the pins against Hugging Face itself.
 
     tools/model-pins/check_catalogs.py        # from the repository root
@@ -34,6 +37,8 @@ KOTLIN_SHERPA = Path("android/app/src/main/java/com/vocahq/vocaphone/local/Sherp
 SWIFT_CATALOG = Path("ios/VocaPhoneShared/LocalModelCatalog.swift")
 SHERPA_PINS = Path("ios/VocaPhoneApp/Models/sherpa_model_pins.json")
 WHISPER_PINS = Path("ios/VocaPhoneApp/Models/local_model_pins.json")
+KOTLIN_GRAMMAR = Path("android/app/src/main/java/com/vocahq/vocaphone/local/GrammarModelCatalog.kt")
+GRAMMAR_PINS = Path("ios/VocaPhoneApp/Models/grammar_model_pins.json")
 
 
 def _int(text: str) -> int:
@@ -57,6 +62,50 @@ def read_android() -> dict[str, dict]:
             },
         }
     return models
+
+
+def read_android_grammar(source: str) -> dict[str, dict]:
+    models = {}
+    for block in re.findall(r"GrammarModelDescriptor\((.*?)\n    \)", source, re.S):
+        model_id = re.search(r'id = "([^"]+)"', block).group(1)
+        models[model_id] = {
+            "repository": re.search(r'repository = "([^"]+)"', block).group(1),
+            "revision": re.search(r'revision = "([^"]+)"', block).group(1),
+            "sizeBytes": _int(re.search(r"sizeBytes = ([\d_]+)L", block).group(1)),
+            "files": {
+                path: (_int(size), digest)
+                for path, size, digest in re.findall(
+                    r'PinnedFile\("([^"]+)", ([\d_]+)L,\s*"([0-9a-f]{64})"\)', block
+                )
+            },
+        }
+    return models
+
+
+def check_grammar(kotlin_source: str, pins: dict) -> list[str]:
+    """Android's GrammarModelCatalog against iOS's grammar_model_pins.json."""
+    android = read_android_grammar(kotlin_source)
+    ios = pins["models"]
+    problems = []
+    if not android:
+        problems.append("grammar: no GrammarModelDescriptor found in GrammarModelCatalog.kt")
+    for missing in sorted(set(android) - set(ios)):
+        problems.append(f"grammar: {missing} is on Android but not in grammar_model_pins")
+    for missing in sorted(set(ios) - set(android)):
+        problems.append(f"grammar: {missing} is in grammar_model_pins but not on Android")
+    for model_id in sorted(set(android) & set(ios)):
+        a, i = android[model_id], ios[model_id]
+        for field in ("repository", "revision"):
+            if a[field] != i[field]:
+                problems.append(f"{model_id}: {field} is {a[field]!r} on Android, {i[field]!r} on iOS")
+        pinned_total = sum(size for size, _ in a["files"].values())
+        if pinned_total != a["sizeBytes"]:
+            problems.append(
+                f"{model_id}: sizeBytes is {a['sizeBytes']} but the pinned files sum to {pinned_total}"
+            )
+        if {f["path"]: (f["size"], f["sha256"]) for f in i["files"]} != a["files"]:
+            problems.append(f"{model_id}: grammar_model_pins files disagree with the Android PinnedFile set")
+    return problems
 
 
 def read_ios() -> tuple[dict[str, dict], dict[str, dict]]:
@@ -121,6 +170,9 @@ def main() -> int:
         if pinned != a["files"]:
             problems.append(f"{model_id}: sherpa_model_pins files disagree with the Android PinnedFile set")
 
+    grammar_problems = check_grammar(KOTLIN_GRAMMAR.read_text(), json.loads(GRAMMAR_PINS.read_text()))
+    problems += grammar_problems
+
     if problems:
         print("\n".join(problems))
         print(f"\n{len(problems)} disagreement(s)")
@@ -128,7 +180,7 @@ def main() -> int:
 
     print(
         f"OK: {len(android)} sherpa models agree across Android, iOS and the pin manifests; "
-        f"{len(ios_whisper)} WhisperKit models pinned"
+        f"{len(ios_whisper)} WhisperKit models pinned; the grammar model agrees on both"
     )
     return 0
 

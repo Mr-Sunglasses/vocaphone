@@ -28,31 +28,52 @@ object LocalModelIntegrity {
         model: LocalModelDescriptor,
         directory: File,
         requireMarker: Boolean = true,
+    ) = verifySizes(model.displayName, model.files, directory, requireMarker)
+
+    /** Hashes every pinned file, then records the marker. */
+    fun verifyDigests(model: LocalModelDescriptor, directory: File) =
+        verifyDigests(model.id, model.displayName, model.files, directory)
+
+    fun fingerprint(model: LocalModelDescriptor): String = fingerprint(model.files)
+
+    fun markerMatches(model: LocalModelDescriptor, directory: File): Boolean =
+        markerMatches(model.files, directory)
+
+    fun writeMarker(model: LocalModelDescriptor, directory: File) = writeMarker(model.files, directory)
+
+    // The same checks over a bare pin list, for files that are not a speech
+    // model: the grammar model has no `LocalModelDescriptor` and must not get
+    // one, or it would appear in the speech catalog.
+
+    fun verifySizes(
+        displayName: String,
+        files: List<PinnedFile>,
+        directory: File,
+        requireMarker: Boolean = true,
     ) {
-        model.files.forEach { pinned ->
+        files.forEach { pinned ->
             val file = File(directory, pinned.path)
-            check(file.isFile) { "${model.displayName} is incomplete: ${pinned.path} is missing." }
+            check(file.isFile) { "$displayName is incomplete: ${pinned.path} is missing." }
             check(file.length() == pinned.sizeBytes) {
                 "${pinned.path} has ${file.length()} bytes; expected ${pinned.sizeBytes}."
             }
         }
         if (requireMarker) {
-            check(markerMatches(model, directory)) {
-                "${model.displayName} has not been verified on this device."
+            check(markerMatches(files, directory)) {
+                "$displayName has not been verified on this device."
             }
         }
     }
 
-    /** Hashes every pinned file, then records the marker. */
-    fun verifyDigests(model: LocalModelDescriptor, directory: File) {
-        verifySizes(model, directory, requireMarker = false)
-        model.files.forEach { pinned ->
+    fun verifyDigests(id: String, displayName: String, files: List<PinnedFile>, directory: File) {
+        verifySizes(displayName, files, directory, requireMarker = false)
+        files.forEach { pinned ->
             val actual = sha256(File(directory, pinned.path))
             if (!actual.equals(pinned.sha256, ignoreCase = true)) {
-                throw LocalModelIntegrityException(model.id, pinned.sha256, actual)
+                throw LocalModelIntegrityException(id, pinned.sha256, actual)
             }
         }
-        writeMarker(model, directory)
+        writeMarker(files, directory)
     }
 
     fun sha256(file: File): String {
@@ -72,23 +93,23 @@ object LocalModelIntegrity {
      * Identifies the pin set a directory was verified against, so a build that
      * changes a pin invalidates the marker instead of trusting stale bytes.
      */
-    fun fingerprint(model: LocalModelDescriptor): String {
+    fun fingerprint(files: List<PinnedFile>): String {
         val digest = MessageDigest.getInstance("SHA-256")
-        model.files.sortedBy { it.path }.forEach { pinned ->
+        files.sortedBy { it.path }.forEach { pinned ->
             digest.update("${pinned.path}|${pinned.sizeBytes}|${pinned.sha256}\n".toByteArray())
         }
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
-    fun markerMatches(model: LocalModelDescriptor, directory: File): Boolean {
+    fun markerMatches(files: List<PinnedFile>, directory: File): Boolean {
         val marker = File(directory, VERIFIED_MARKER)
         if (!marker.isFile) return false
         return runCatching { marker.readText().trim() }
             .getOrNull()
-            ?.equals(fingerprint(model), ignoreCase = true) == true
+            ?.equals(fingerprint(files), ignoreCase = true) == true
     }
 
-    fun writeMarker(model: LocalModelDescriptor, directory: File) {
-        File(directory, VERIFIED_MARKER).writeText(fingerprint(model))
+    fun writeMarker(files: List<PinnedFile>, directory: File) {
+        File(directory, VERIFIED_MARKER).writeText(fingerprint(files))
     }
 }

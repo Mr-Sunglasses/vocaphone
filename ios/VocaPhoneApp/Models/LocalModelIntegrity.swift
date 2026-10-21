@@ -73,6 +73,24 @@ enum LocalModelIntegrity {
         return try? JSONDecoder().decode(SherpaManifest.self, from: data)
     }()
 
+    /// The grammar model's pins share the sherpa manifest's shape: one
+    /// repository, one revision, a list of files.
+    typealias PinnedModelManifest = SherpaModelManifest
+
+    private static let grammarManifest: SherpaManifest? = {
+        guard let url = Bundle.main.url(forResource: "grammar_model_pins", withExtension: "json"),
+              let data = try? Data(contentsOf: url)
+        else { return nil }
+        return try? JSONDecoder().decode(SherpaManifest.self, from: data)
+    }()
+
+    static func grammarModel(for modelIdentifier: String) throws -> PinnedModelManifest {
+        guard let model = grammarManifest?.models[modelIdentifier] else {
+            throw LocalModelManagerError.integrityManifestMissing(modelIdentifier)
+        }
+        return model
+    }
+
     static var repository: String? { manifest?.repository }
     static var revision: String? { manifest?.revision }
 
