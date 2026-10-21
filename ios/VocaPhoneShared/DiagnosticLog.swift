@@ -32,6 +32,13 @@ enum DiagnosticEvent: String, Codable, Sendable {
     case quickDictationStale
     /// The loaded speech model was dropped, with how much room that left.
     case localEngineReleased
+    /// "Fix grammar" could not load its model, so dictation went on without
+    /// it. Recorded once per install of the files, not per dictation.
+    case grammarLoadFailed
+    /// The grammar model failed on one transcript, which was used as it was.
+    case grammarFailed
+    /// One sentence ran well past the grammar stage's time budget.
+    case grammarSlow
     /// An on-device engine finished building, with how long it took, whether
     /// the app was in front, and the headroom left. A cold load in the
     /// background is the usual story behind a first dictation that fails and a

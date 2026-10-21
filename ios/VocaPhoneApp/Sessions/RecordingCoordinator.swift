@@ -100,6 +100,10 @@ final class RecordingCoordinator {
     /// while the user is still speaking. See `WhisperIncrementalSession`.
     private var localWhisperSession: WhisperIncrementalSession?
     let localModels: LocalModelManager
+    /// "Fix grammar (English)": its downloaded model, and the stage that runs
+    /// it on on-device transcripts. Only this app loads it, never the keyboard.
+    let grammarModel: GrammarModelStore
+    let grammar: GrammarCorrector
 
     var isRecording: Bool {
 #if DEBUG
@@ -435,6 +439,12 @@ final class RecordingCoordinator {
     init() {
         KeyboardPreferences.migrateKeyboardPracticeIfNeeded()
         localModels = LocalModelManager()
+        let grammarModel = GrammarModelStore()
+        self.grammarModel = grammarModel
+        grammar = GrammarCorrector(
+            directory: { grammarModel.directory },
+            isReady: { grammarModel.isReady }
+        )
         // A process exit can leave an otherwise valid-looking availability
         // marker behind. The new app process is not warm until it arms audio.
         try? store.clearQuickDictationAvailability()
@@ -495,6 +505,9 @@ final class RecordingCoordinator {
         models: LocalModelManager = LocalModelManager(preview: [])
     ) {
         localModels = models
+        let grammarModel = GrammarModelStore(pins: nil, root: nil)
+        self.grammarModel = grammarModel
+        grammar = GrammarCorrector(directory: { nil }, isReady: { false })
         isPreviewFixture = true
         previewIsRecording = isRecording
         previewTranscripts = transcripts
@@ -1115,6 +1128,9 @@ final class RecordingCoordinator {
                 }
                 : nil
             let shouldUseSherpaIncremental = localEngine == .sherpaOnnx
+            // A few hundred milliseconds of tokenizer and session, loaded while
+            // the user is still talking rather than after.
+            if localEngine != nil, KeyboardPreferences.fixGrammar { grammar.warm() }
             // Stamped here, not at claim: permission prompts and a first
             // on-device model load sit between the two and can take seconds,
             // which would inflate every duration bucket by however long the
@@ -1333,6 +1349,7 @@ final class RecordingCoordinator {
         guard !isInert, pipelineTask == nil, !recorder.isRecording, startingSessionID == nil,
               activeRecord.map(\.state.isTerminal) ?? true
         else { return }
+        grammar.release()
         // Only when something was actually let go: a line saying a release
         // recovered nothing is a line that makes the log harder to read.
         guard localModels.releaseLoadedEngines() else { return }
@@ -1800,7 +1817,11 @@ final class RecordingCoordinator {
                 repairSpeech: KeyboardPreferences.repairSpeech,
                 numbersAsDigits: KeyboardPreferences.numbersAsDigits,
                 spokenEmoji: KeyboardPreferences.spokenEmoji,
-                chineseScript: KeyboardPreferences.chineseScript
+                chineseScript: KeyboardPreferences.chineseScript,
+                // The on-device route only: the gateway calls above pass
+                // `styledUpstream` and no grammar.
+                grammar: KeyboardPreferences.fixGrammar ? grammar : nil,
+                learnedWords: KeyboardPreferences.fixGrammar ? LearnedWordStore().snapshot().words : []
             )
             record.error = nil
             try record.transition(to: .readyToInsert)

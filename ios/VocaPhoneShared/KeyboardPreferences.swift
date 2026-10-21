@@ -59,6 +59,8 @@ enum KeyboardDefaults {
     static let numbersAsDigits = true
     static let spokenEmoji = true
     static let repairSpeech = true
+    /// Off: a 28 MB download that can change a sentence that was right.
+    static let fixGrammar = false
     static let liveWords = false
 }
 
@@ -576,6 +578,7 @@ enum KeyboardPreferences {
     static let numbersAsDigitsKey = "numbersAsDigitsEnabled"
     static let spokenEmojiKey = "spokenEmojiEnabled"
     static let repairSpeechKey = "speechRepairEnabled"
+    static let fixGrammarKey = "fixGrammarEnabled"
     static let liveWordsKey = "liveWordsEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let translateToKey = "translateTo"
@@ -933,6 +936,13 @@ enum KeyboardPreferences {
     static var repairSpeech: Bool {
         get { boolean(repairSpeechKey, default: KeyboardDefaults.repairSpeech) }
         set { defaults?.set(newValue, forKey: repairSpeechKey) }
+    }
+
+    /// "Fix grammar (English)". Only the containing app reads it: the keyboard
+    /// never runs the grammar model.
+    static var fixGrammar: Bool {
+        get { boolean(fixGrammarKey, default: KeyboardDefaults.fixGrammar) }
+        set { defaults?.set(newValue, forKey: fixGrammarKey) }
     }
 
     static let surfaceAnimationResponseKey = "surfaceAnimationResponse2"

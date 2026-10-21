@@ -35,8 +35,8 @@ final class GrammarModelStore {
 
     private(set) var phase: Phase = .absent
 
-    let pins: LocalModelIntegrity.PinnedModelManifest?
-    private let root: URL?
+    nonisolated let pins: LocalModelIntegrity.PinnedModelManifest?
+    private nonisolated let root: URL?
     private let fetch: Fetch
     private var downloadTask: Task<Void, Error>?
     /// Bumped by `delete()`. Work that started under an older value — a
@@ -44,10 +44,10 @@ final class GrammarModelStore {
     /// or publish `.ready` afterwards.
     private var generation = 0
 
-    var sizeBytes: Int64 { pins?.files.reduce(0) { $0 + $1.size } ?? 0 }
+    nonisolated var sizeBytes: Int64 { pins?.files.reduce(0) { $0 + $1.size } ?? 0 }
 
     /// Where the verified files live. Only meaningful while `isReady`.
-    var directory: URL? { root?.appendingPathComponent(Self.modelID, isDirectory: true) }
+    nonisolated var directory: URL? { root?.appendingPathComponent(Self.modelID, isDirectory: true) }
 
     init(
         pins: LocalModelIntegrity.PinnedModelManifest? = try? LocalModelIntegrity.grammarModel(
@@ -76,8 +76,8 @@ final class GrammarModelStore {
         }
     }
 
-    /// Stat-only: safe on any path that runs per dictation.
-    var isReady: Bool {
+    /// Stat-only: safe on any path that runs per dictation, from any thread.
+    nonisolated var isReady: Bool {
         guard let pins, let directory else { return false }
         return (try? LocalModelIntegrity.verifySizes(in: directory, files: pins.files)) != nil
     }

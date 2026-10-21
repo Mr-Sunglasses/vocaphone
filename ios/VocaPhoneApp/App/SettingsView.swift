@@ -558,6 +558,9 @@ struct DictationSettingsView: View {
             Toggle(isOn: $repairSpeech) {
                 SettingLabel("Clean up speech", detail: "Drops “um”, “uh” and false starts.")
             }
+            FixGrammarToggle(
+                store: coordinator.grammarModel, grammar: coordinator.grammar, style: selectedWritingStyle
+            )
             Toggle(isOn: $numbersAsDigits) {
                 SettingLabel("Write numbers as digits", detail: "“six pm” becomes “6 pm”. English only.")
             }
