@@ -3779,6 +3779,51 @@
    ]
   },
   {
+   "input": "He don’t know.",
+   "vocabulary": [
+    "don't"
+   ],
+   "output": "He don’t know.",
+   "sentences": [
+    [
+     {
+      "words": [
+       "He",
+       "don't",
+       "know",
+       "."
+      ],
+      "ids": [
+       1,
+       1677,
+       1372,
+       1309,
+       666,
+       1859
+      ],
+      "starts": [
+       1,
+       2,
+       4,
+       5
+      ],
+      "labels": [
+       "KEEP",
+       "REPLACE_doesn't",
+       "KEEP",
+       "KEEP"
+      ],
+      "chosen": [
+       "KEEP",
+       "KEEP",
+       "KEEP",
+       "KEEP"
+      ]
+     }
+    ]
+   ]
+  },
+  {
    "input": "今天天气很好。",
    "vocabulary": [],
    "output": "今天天气很好。",

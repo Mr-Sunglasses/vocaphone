@@ -223,7 +223,7 @@ class Tagger:
             return True
         if not LATIN_WORD.fullmatch(w.text):
             return w.text not in PUNCT  # digits, symbols, other scripts
-        if w.text.lower() in vocabulary:
+        if w.text.lower().replace("’", "'") in vocabulary:
             return True
         if self.protect_names and any(c.isupper() for c in w.text[1:]):
             return True  # "iPhone", "McDonald", "NASA"
@@ -314,7 +314,9 @@ class Tagger:
 
     def correct(self, text: str, vocabulary: frozenset[str] = frozenset()) -> Result:
         start = time.perf_counter()
-        vocabulary = frozenset(v.lower() for v in vocabulary)
+        # Apostrophes compared straight, as the model reads them: a word saved
+        # as "don't" also keeps "don’t".
+        vocabulary = frozenset(v.lower().replace("’", "'") for v in vocabulary)
         tokens: list[str] = []
 
         def stash(m: re.Match) -> str:

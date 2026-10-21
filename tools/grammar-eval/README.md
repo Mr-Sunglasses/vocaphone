@@ -99,7 +99,7 @@ as feeding the placeholder and reads as the sentence was said.
 anything else back into `KEEP` when:
 
 - the word is a protected span, has a digit or a non-Latin character, is in the
-  user's vocabulary, has a capital after its first letter (`iPhone`, `NASA`),
+  user's vocabulary (apostrophes compared straight, so `don't` also keeps `don’t`), has a capital after its first letter (`iPhone`, `NASA`),
   or is capitalized mid-sentence (a name; `I` and `I'm` are not names);
 - it is a preposition being replaced or deleted and the next word is
   capitalized, has a digit, is a protected span, or starts with `$ £ € # @`;
@@ -132,7 +132,7 @@ return the input.
 
 ## Parity fixtures
 
-`assets/grammar/parity_fixtures.json` holds 43 cases and 29 tokenizer-only
+`assets/grammar/parity_fixtures.json` holds 44 cases and 29 tokenizer-only
 words. For each pass of each sentence it records the words, the token ids, the
 first-subtoken positions, the label after the bias and the label the guard
 allowed, then the final text. The ports should match `ids` exactly, apply

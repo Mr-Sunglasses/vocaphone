@@ -68,6 +68,7 @@ CASES: list[tuple[str, list[str]]] = [
     ("He don't know about the party yet, so don't tell him. Its at Maria's place on Friday at 8.", []),
     ("Their going to be late!  I think its fine.", []),
     ("He don’t know.", []),
+    ("He don’t know.", ["don't"]),
     # Nothing the model may touch.
     ("今天天气很好。", []),
     ("👍 🎉", []),

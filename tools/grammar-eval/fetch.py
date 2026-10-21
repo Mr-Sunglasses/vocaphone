@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import hashlib
+import ssl
 import sys
 import urllib.request
 from pathlib import Path
@@ -22,6 +23,35 @@ PINS = {
 }
 
 
+def https_only() -> urllib.request.OpenerDirector:
+    """An opener that can speak HTTPS and nothing else.
+
+    urllib's default opener also opens file:// and plain http://, which a
+    pinned download has no use for; without those handlers a URL, or a
+    redirect, in any other scheme fails instead of being followed.
+    """
+    opener = urllib.request.OpenerDirector()
+    for handler in (
+        urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+        urllib.request.HTTPRedirectHandler(),
+        urllib.request.HTTPErrorProcessor(),
+        urllib.request.HTTPDefaultErrorHandler(),
+    ):
+        opener.add_handler(handler)
+    return opener
+
+
+def get(url: str) -> bytes:
+    if not url.startswith("https://"):
+        sys.exit(f"refusing to fetch {url}: only https is allowed")
+    response = https_only().open(url, timeout=120)
+    # No handler for the scheme: the opener answers None rather than raising.
+    if response is None:
+        sys.exit(f"refusing to fetch {url}: only https is allowed")
+    with response:
+        return response.read()
+
+
 def main() -> None:
     dest = Path(sys.argv[1]) if len(sys.argv) > 1 else \
         Path.home() / ".cache" / "vocaphone" / "mindtype-tagger-v1.5"
@@ -30,11 +60,8 @@ def main() -> None:
         target = dest / Path(path).name
         if target.exists() and hashlib.sha256(target.read_bytes()).hexdigest() == digest:
             continue
-        # Built only from the constants above, never from input, and always
-        # https: the pinned digest is checked before anything is written.
-        url = f"https://huggingface.co/{REPOSITORY}/resolve/{REVISION}/{path}"
-        assert url.startswith("https://huggingface.co/")
-        data = urllib.request.urlopen(url, timeout=120).read()  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+        # The pinned digest is checked before anything is written.
+        data = get(f"https://huggingface.co/{REPOSITORY}/resolve/{REVISION}/{path}")
         got = hashlib.sha256(data).hexdigest()
         if len(data) != size or got != digest:
             sys.exit(f"{path}: expected {size} bytes {digest}, got {len(data)} bytes {got}")
