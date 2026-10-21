@@ -43,25 +43,38 @@ class GrammarCorrector internal constructor(
     private val lock = Any()
     private var loaded: Loaded? = null
     private var loading = false
+    /**
+     * Bumped by [release]. A load that started before the release finishes
+     * into a session nobody wants any more, so it is closed instead of kept:
+     * otherwise a memory-trim release during a warm-up left the session in
+     * memory after Android asked for it back.
+     */
+    private var generation = 0
     /** Set after a load failed for these files, so a broken install is not retried per dictation. */
     private var failedFor: Long? = null
 
     /** Starts loading the model in the background, if it is downloaded and not loaded yet. */
     fun warm() {
         if (!available() || !store.isReady()) return
-        synchronized(lock) {
+        val started = synchronized(lock) {
             if (loaded != null || loading || failedFor == fingerprint()) return
             loading = true
+            generation
         }
         loader.execute {
             val result = runCatching { load(store.directory) }
-            synchronized(lock) {
+            val stale = synchronized(lock) {
                 loading = false
-                result.onSuccess { loaded = it }
-                result.onFailure {
-                    failedFor = fingerprint()
-                    log("grammar_load_failed")
+                val current = started == generation
+                if (current) {
+                    result.onSuccess { loaded = it }
+                    result.onFailure { failedFor = fingerprint() }
                 }
+                !current
+            }
+            when {
+                stale -> result.getOrNull()?.close?.invoke()
+                result.isFailure -> log("grammar_load_failed")
             }
         }
     }
@@ -94,9 +107,13 @@ class GrammarCorrector internal constructor(
         }
     }
 
+    /** Whether a session is loaded and in use. For tests, which otherwise race the loader. */
+    internal val isLoaded: Boolean get() = synchronized(lock) { loaded != null }
+
     /** Frees the session. The next [warm] loads it again. */
     fun release() {
         val previous = synchronized(lock) {
+            generation++
             loaded.also { loaded = null }
         } ?: return
         synchronized(previous) { previous.close() }

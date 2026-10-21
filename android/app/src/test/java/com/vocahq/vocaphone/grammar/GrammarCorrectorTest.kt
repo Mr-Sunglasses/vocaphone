@@ -40,6 +40,15 @@ class GrammarCorrectorTest {
         GrammarCorrector.Loaded(GrammarFixtures.tagger(logits)) {}
     }
 
+    /** Waits for the background load, which is all [GrammarCorrector.warm] starts. */
+    private fun awaitLoaded(corrector: GrammarCorrector) {
+        repeat(250) {
+            if (corrector.isLoaded) return
+            Thread.sleep(20)
+        }
+        error("the corrector never loaded")
+    }
+
     @Test
     fun withoutAModelTheTextIsUnchangedAndNothingLoads() {
         var loads = 0
@@ -96,7 +105,7 @@ class GrammarCorrectorTest {
         val throwing = GrammarTagger.Logits { _, _ -> throw IllegalStateException("ORT said no") }
         val corrector = GrammarCorrector(readyStore(), { log.add(it) }, available = { true }, load = loaded(throwing))
         corrector.warm()
-        Thread.sleep(100)
+        awaitLoaded(corrector)
         assertEquals("He don't know.", corrector.correct("He don't know.", emptySet()))
         assertEquals(listOf("grammar_failed"), log)
     }
@@ -110,11 +119,32 @@ class GrammarCorrectorTest {
             GrammarCorrector.Loaded(GrammarFixtures.tagger(fixing)) { closes++ }
         })
         corrector.warm()
-        Thread.sleep(100)
+        awaitLoaded(corrector)
         corrector.release()
         assertEquals(1, closes)
         corrector.warm()
-        Thread.sleep(100)
+        awaitLoaded(corrector)
         assertEquals(2, loads)
+    }
+
+    /** Greptile on #416: a release during a warm-up must not leave the session loaded. */
+    @Test
+    fun aReleaseDuringTheLoadClosesWhatTheLoadReturns() {
+        val loading = CountDownLatch(1)
+        val finish = CountDownLatch(1)
+        val closed = CountDownLatch(1)
+        var loads = 0
+        val corrector = GrammarCorrector(readyStore(), {}, available = { true }, load = {
+            loads++
+            loading.countDown()
+            finish.await(5, TimeUnit.SECONDS)
+            GrammarCorrector.Loaded(GrammarFixtures.tagger(fixing)) { closed.countDown() }
+        })
+        corrector.warm()
+        assertTrue(loading.await(5, TimeUnit.SECONDS))
+        corrector.release()
+        finish.countDown()
+        assertTrue("the stale session was closed", closed.await(5, TimeUnit.SECONDS))
+        assertEquals("He don't know.", corrector.correct("He don't know.", emptySet()))
     }
 }

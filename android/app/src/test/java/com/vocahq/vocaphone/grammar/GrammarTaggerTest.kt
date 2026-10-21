@@ -124,4 +124,64 @@ class GrammarTaggerTest {
         assertEquals(2, GrammarTagger.editDistance("recieve", "receive"))
         assertEquals(3, GrammarTagger.editDistance("kitten", "sitting"))
     }
+
+    // Greptile on #414 and #416.
+
+    /** A sentence long enough for two chunks, with a name opening the second. */
+    private fun boundarySentence(): Pair<String, Int> {
+        val tagger = model()
+        val words = mutableListOf("So")
+        var tokens = tagger.encodeWord("So").size
+        val filler = listOf("and", "then", "we", "went")
+        while (true) {
+            val next = filler[words.size % filler.size]
+            val count = tagger.encodeWord(next).size
+            if (tokens + count > GrammarTagger.MAX_TOKENS) break
+            words.add(next)
+            tokens += count
+        }
+        return (words + listOf("Mark", "left", "at", "noon.")).joinToString(" ") to words.size
+    }
+
+    @Test
+    fun aNameAtAChunkBoundaryIsStillAName() {
+        val (sentence, _) = boundarySentence()
+        val calls = ArrayList<Int>()
+        assertEquals(sentence, model("Mark" to "REPLACE_make", calls = calls).correct(sentence))
+        assertEquals("two chunks", 2, calls.size)
+    }
+
+    @Test
+    fun aWordTooLongForTheModelIsNeverSentToIt() {
+        val url = "https://example.com/" + (0 until 60).joinToString("/") { "segment$it" }
+        val calls = ArrayList<Int>()
+        val tagger = model("don't" to "REPLACE_doesn't", calls = calls)
+        assertEquals("He doesn't know where $url went.", tagger.correct("He don't know where $url went."))
+        // The URL alone never reached the model: every call stayed in bounds.
+        assertTrue(calls.isNotEmpty())
+    }
+
+    @Test
+    fun aDeadlineMidSentenceLeavesTheRemainingChunksAlone() {
+        val (sentence, _) = boundarySentence()
+        val long = sentence.removeSuffix("noon.") + "noon and he don't know."
+        var calls = 0
+        lateinit var tagger: GrammarTagger
+        val deadline = System.nanoTime() + 50_000_000
+        tagger = GrammarFixtures.tagger { ids, rows ->
+            calls++
+            // The first chunk eats the whole budget.
+            if (calls == 1) Thread.sleep(80)
+            Array(rows.size) { r ->
+                val end = if (r + 1 < rows.size) rows[r + 1] else ids.size
+                val word = ids.copyOfRange(rows[r], end).toList()
+                val dont = tagger.encodeWord("don't").map(Int::toLong)
+                FloatArray(labels.size).also {
+                    it[index.getValue(if (word == dont) "REPLACE_doesn't" else "KEEP")] = 10f
+                }
+            }
+        }
+        assertEquals(long, tagger.correct(long, deadline = deadline))
+        assertEquals(1, calls)
+    }
 }

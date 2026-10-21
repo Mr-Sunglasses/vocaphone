@@ -74,18 +74,18 @@ class GrammarTagger(
             // A later pass only refines the last one, so out of time it stops
             // with what the earlier passes already settled.
             if (pass > 0 && System.nanoTime() > deadline) return join(words, sentence)
-            val next = ArrayList<Word>()
-            var changed = false
-            for (chunk in chunk(words, spans)) {
-                val pass = tag(chunk, vocabulary, spans)
-                passes.add(pass)
-                val applied = apply(chunk, pass.decisions.map { it.chosen }).toMutableList()
-                if (applied.map { it.text } != chunk.map { it.text }) changed = true
-                if (next.isNotEmpty() && applied.isNotEmpty() && applied[0].space.isEmpty() && chunk[0].space.isNotEmpty()) {
-                    applied[0] = applied[0].copy(space = chunk[0].space)
-                }
-                next.addAll(applied)
+            val chosen = MutableList(words.size) { "KEEP" }
+            for (range in chunk(words, spans)) {
+                // Out of time mid-sentence: the rest of this pass keeps its words.
+                if (System.nanoTime() > deadline) break
+                // One word longer than the model can read: leave it.
+                if (range.last == range.first && oversized(words[range.first], spans)) continue
+                val tagged = tag(words, range, vocabulary, spans)
+                passes.add(tagged)
+                tagged.decisions.forEachIndexed { i, decision -> chosen[range.first + i] = decision.chosen }
             }
+            val next = apply(words, chosen)
+            val changed = next.map { it.text } != words.map { it.text }
             words = next
             if (!changed) return join(words, sentence)
         }
@@ -116,28 +116,48 @@ class GrammarTagger(
         return ids.toLongArray() to starts
     }
 
-    private fun chunk(words: List<Word>, spans: List<String>): List<List<Word>> {
-        val chunks = ArrayList<List<Word>>()
-        var current = ArrayList<Word>()
+    private fun oversized(word: Word, spans: List<String>): Boolean =
+        encodeWord(modelText(word, spans)).size > MAX_TOKENS
+
+    /**
+     * Word ranges of at most [MAX_TOKENS] tokens each. A word that alone is
+     * longer (a long URL fed as itself) gets a range of its own, which
+     * [correctSentence] leaves alone rather than overflow the model's 160
+     * positions.
+     */
+    private fun chunk(words: List<Word>, spans: List<String>): List<IntRange> {
+        val chunks = ArrayList<IntRange>()
+        var start = 0
         var tokens = 0
-        words.forEach { word ->
+        words.forEachIndexed { i, word ->
             val count = encodeWord(modelText(word, spans)).size
-            if (current.isNotEmpty() && tokens + count > MAX_TOKENS) {
-                chunks.add(current)
-                current = ArrayList()
+            if (i > start && tokens + count > MAX_TOKENS) {
+                chunks.add(start until i)
+                start = i
                 tokens = 0
             }
-            current.add(word)
-            tokens += count
+            if (count > MAX_TOKENS) {
+                if (i > start) chunks.add(start until i)
+                chunks.add(i..i)
+                start = i + 1
+                tokens = 0
+            } else {
+                tokens += count
+            }
         }
-        if (current.isNotEmpty()) chunks.add(current)
+        if (start < words.size) chunks.add(start until words.size)
         return chunks
     }
 
     // ── one pass ───────────────────────────────────────────────────────────
 
-    private fun tag(words: List<Word>, vocabulary: Set<String>, spans: List<String>): Pass {
-        val texts = words.map { modelText(it, spans) }
+    /**
+     * Runs the words in [range] through the model. The guard sees the whole
+     * sentence, so a name or a preposition at a chunk's edge keeps the
+     * protection it has anywhere else.
+     */
+    private fun tag(words: List<Word>, range: IntRange, vocabulary: Set<String>, spans: List<String>): Pass {
+        val texts = words.slice(range).map { modelText(it, spans) }
         val (ids, starts) = encode(texts)
         val rows = logits.run(ids, starts.toIntArray())
         val decisions = starts.indices.map { i ->
@@ -151,7 +171,7 @@ class GrammarTagger(
                 }
             }
             val label = labels[best]
-            Decision(texts[i], label, allow(words, i, label, vocabulary))
+            Decision(texts[i], label, allow(words, range.first + i, label, vocabulary))
         }
         return Pass(texts, ids.toList(), starts, decisions)
     }
@@ -251,9 +271,16 @@ class GrammarTagger(
         const val LABEL_COUNT = 15_000
 
         private val PLACEHOLDER = Regex("${ProtectedSpans.OPEN}(\\d+)${ProtectedSpans.CLOSE}")
-        private val WORD = Regex("(?U)${ProtectedSpans.OPEN}\\d+${ProtectedSpans.CLOSE}|[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*|\\S")
+        /**
+         * Python's `str.isspace()` set, spelled out. `\\s` means ASCII
+         * whitespace on the JVM and Unicode whitespace on Android, and the flag
+         * that would make them agree, `(?U)`, throws on Android. An explicit
+         * class reads the same everywhere, and the same as `infer.py`.
+         */
+        private const val SPACE = "\\t\\n\\u000B\\u000C\\r\\u001C-\\u001F \\u0085\\u00A0\\u1680\\u2000-\\u200A\\u2028\\u2029\\u202F\\u205F\\u3000"
+        private val WORD = Regex("${ProtectedSpans.OPEN}\\d+${ProtectedSpans.CLOSE}|[\\p{L}\\p{N}]+(?:['’][\\p{L}\\p{N}]+)*|[^$SPACE]")
         private val LATIN_WORD = Regex("[A-Za-z]+(?:['’][A-Za-z]+)*")
-        private val SENTENCE_END = Regex("(?U)(?<=[.!?])\\s+")
+        private val SENTENCE_END = Regex("(?<=[.!?])[$SPACE]+")
         private val PUNCT = setOf(".", ",", "!", "?", ";", ":")
         private val GUARD_NEXT = setOf('$', '£', '€', '#', '@')
         private val DELETABLE = setOf("more", "most", "of", "the", "a", "an", "to", "is", "are")
