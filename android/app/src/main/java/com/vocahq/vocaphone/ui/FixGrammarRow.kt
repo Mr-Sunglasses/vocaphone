@@ -26,6 +26,7 @@ internal fun FixGrammarRow(
     settings: VocaPhoneSettings,
     model: GrammarModelState,
     onFixGrammar: (Boolean) -> Unit,
+    onCancelDownload: () -> Unit,
 ) {
     var offering by remember { mutableStateOf(false) }
     val raw = settings.style == WritingStyle.RAW
@@ -51,6 +52,13 @@ internal fun FixGrammarRow(
             }
         },
     )
+    // The switch is disabled while the files arrive, so this is the one way to
+    // change your mind about a 28 MB download.
+    if (model.downloading) {
+        SettingsGroupContent {
+            TextButton(onClick = onCancelDownload) { Text("Cancel download") }
+        }
+    }
     if (offering) {
         AlertDialog(
             onDismissRequest = { offering = false },

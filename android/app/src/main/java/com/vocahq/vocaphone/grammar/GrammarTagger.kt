@@ -43,7 +43,9 @@ class GrammarTagger(
         deadline: Long = Long.MAX_VALUE,
         trace: MutableList<List<Pass>>? = null,
     ): String {
-        val lowered = vocabulary.mapTo(HashSet()) { it.lowercase() }
+        // Apostrophes compared straight, as the model reads them: a word saved
+        // as "don't" also keeps "don’t".
+        val lowered = vocabulary.mapTo(HashSet()) { it.lowercase().replace('’', '\'') }
         val masked = ProtectedSpans.mask(text)
         val spans = masked.tokens
         val out = StringBuilder()
@@ -182,7 +184,7 @@ class GrammarTagger(
         val word = words[i]
         if (word.protected) return true
         if (!LATIN_WORD.matches(word.text)) return word.text !in PUNCT
-        if (word.text.lowercase() in vocabulary) return true
+        if (word.text.lowercase().replace('’', '\'') in vocabulary) return true
         if (word.text.drop(1).any(Char::isUpperCase)) return true
         if (word.text[0].isUpperCase() && !sentenceStart(words, i)) return !isPronounI(word.text)
         return false

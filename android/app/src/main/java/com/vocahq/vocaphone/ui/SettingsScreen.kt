@@ -136,6 +136,7 @@ fun SettingsScreen(
     onRepairSpeech: (Boolean) -> Unit,
     grammarModel: GrammarModelState = GrammarModelState(),
     onFixGrammar: (Boolean) -> Unit = {},
+    onCancelGrammarDownload: () -> Unit = {},
     onNumbersAsDigits: (Boolean) -> Unit,
     onSpokenEmoji: (Boolean) -> Unit,
     onChineseScript: (ChineseScript) -> Unit,
@@ -599,7 +600,7 @@ fun SettingsScreen(
                     // Hidden where there is no ONNX Runtime to run it: the
                     // fdroid flavor and the x86_64 emulator.
                     if (GrammarModelCatalog.available) {
-                        FixGrammarRow(settings, grammarModel, onFixGrammar)
+                        FixGrammarRow(settings, grammarModel, onFixGrammar, onCancelGrammarDownload)
                         SettingsDivider()
                     }
                     SettingsSwitchRow(

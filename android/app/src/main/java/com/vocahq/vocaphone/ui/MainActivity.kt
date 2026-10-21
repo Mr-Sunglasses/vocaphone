@@ -430,6 +430,7 @@ fun VocaPhoneApp(
                 onRepairSpeech = { viewModel.setRepairSpeech(it) },
                 grammarModel = grammarModel,
                 onFixGrammar = { viewModel.setFixGrammar(it) },
+                onCancelGrammarDownload = { viewModel.cancelGrammarDownload() },
                 onNumbersAsDigits = { viewModel.setNumbersAsDigits(it) },
                 onSpokenEmoji = { viewModel.setSpokenEmoji(it) },
                 onChineseScript = { viewModel.setChineseScript(it) },

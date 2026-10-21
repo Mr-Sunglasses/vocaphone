@@ -59,6 +59,15 @@ class GrammarTaggerTest {
         assertEquals("See you tomorow.", tagger.correct("See you tomorow.", setOf("Tomorow")))
     }
 
+    /** Greptile on #417: a vocabulary word protects either apostrophe. */
+    @Test
+    fun vocabularyMatchesAcrossApostrophes() {
+        val tagger = model("don't" to "REPLACE_doesn't")
+        assertEquals("He don’t know.", tagger.correct("He don’t know.", setOf("don't")))
+        assertEquals("He don't know.", tagger.correct("He don't know.", setOf("don’t")))
+        assertEquals("He doesn’t know.", tagger.correct("He don’t know."))
+    }
+
     @Test
     fun nonLatinWordsAndPunctuationTheModelMayNotTouch() {
         val tagger = model("café" to "REPLACE_cafe", "👍" to "DELETE")

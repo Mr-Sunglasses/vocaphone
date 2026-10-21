@@ -410,6 +410,9 @@ class VocaPhoneViewModel @JvmOverloads constructor(
         }
     }
 
+    /** Stops a grammar model download and discards what it fetched; the setting stays off. */
+    fun cancelGrammarDownload() = container.grammarModel.cancel()
+
     fun setNumbersAsDigits(enabled: Boolean) =
         viewModelScope.launch { container.settings.setNumbersAsDigits(enabled) }
 
