@@ -66,7 +66,9 @@ final class GrammarTagger: @unchecked Sendable {
         deadline: UInt64 = .max,
         trace: ((_ passes: [Pass]) -> Void)? = nil
     ) throws -> String {
-        let lowered = Set(vocabulary.map { $0.lowercased() })
+        // Apostrophes compared straight, as the model reads them: a word saved
+        // as "don't" also keeps "don’t".
+        let lowered = Set(vocabulary.map { $0.lowercased().replacingOccurrences(of: "’", with: "'") })
         let masked = ProtectedSpans.mask(text)
         var out = ""
         for (lead, sentence) in Self.splitSentences(masked.text) {
@@ -199,7 +201,7 @@ final class GrammarTagger: @unchecked Sendable {
         let word = words[i]
         if word.isProtected { return true }
         if !Self.isLatinWord(word.text) { return !Self.punctuation.contains(word.text) }
-        if vocabulary.contains(word.text.lowercased()) { return true }
+        if vocabulary.contains(word.text.lowercased().replacingOccurrences(of: "’", with: "'")) { return true }
         if word.text.dropFirst().contains(where: \.isUppercase) { return true }
         if word.text.first?.isUppercase == true, !Self.sentenceStart(words, i) {
             return !Self.isPronounI(word.text)

@@ -44,6 +44,14 @@ struct GrammarTaggerTests {
         #expect(try tagger.correct("See you tomorow.", vocabulary: ["Tomorow"]) == "See you tomorow.")
     }
 
+    /// Greptile on #417: a vocabulary word protects either apostrophe.
+    @Test func vocabularyMatchesAcrossApostrophes() throws {
+        let tagger = model(["don't": "REPLACE_doesn't"])
+        #expect(try tagger.correct("He don’t know.", vocabulary: ["don't"]) == "He don’t know.")
+        #expect(try tagger.correct("He don't know.", vocabulary: ["don’t"]) == "He don't know.")
+        #expect(try tagger.correct("He don’t know.") == "He doesn’t know.")
+    }
+
     @Test func nonLatinWordsTheModelMayNotTouch() throws {
         let tagger = model(["café": "REPLACE_cafe", "👍": "DELETE"])
         #expect(try tagger.correct("Meet at the café 👍") == "Meet at the café 👍")

@@ -20,6 +20,15 @@ struct FixGrammarToggle: View {
     private var size: String { DownloadReadiness.byteLabel(store.sizeBytes) }
 
     var body: some View {
+        toggle
+        // The toggle is disabled while the files arrive, so this is the one
+        // way to change your mind about a 28 MB download.
+        if isDownloading {
+            Button("Cancel download", role: .cancel) { store.cancel() }
+        }
+    }
+
+    private var toggle: some View {
         Toggle(isOn: Binding(
             get: { fixGrammar && store.isReady && style != .raw },
             set: { on in
