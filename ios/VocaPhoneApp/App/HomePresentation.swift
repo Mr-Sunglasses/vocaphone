@@ -473,7 +473,7 @@ struct HomeSetupChecklist: Equatable {
                     title: title,
                     detail: "Recording happens in this app.",
                     isDone: false,
-                    action: Action(title: "Allow", kind: .allowMicrophone)
+                    action: Action(title: "Continue", kind: .allowMicrophone)
                 )
             case .denied:
                 return Row(

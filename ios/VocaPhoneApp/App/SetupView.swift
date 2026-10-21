@@ -976,8 +976,9 @@ struct SetupView: View {
         switch status.microphone {
         case .granted: return ("Continue", advance)
         case .undetermined:
-            // Named for what it does: the next thing on screen is iOS asking.
-            return ("Allow microphone", {
+            // App Review (5.1.1(iv)) rejects an "Allow" button ahead of the
+            // system prompt: the choice belongs to iOS, so this only moves on.
+            return ("Continue", {
                 coordinator.requestMicrophonePermission(armQuickDictationOnGrant: false)
             })
         case .denied: return ("Open Settings", openSystemSettings)
