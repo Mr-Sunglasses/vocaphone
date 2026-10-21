@@ -1806,23 +1806,46 @@ final class RecordingCoordinator {
             // When translating, that language is the target rather than the one
             // that was spoken — which is why the target has to be named here
             // and not left to the requested language to win.
-            record.transcript = DictatedTranscript.finished(
-                text,
-                style: WritingStyle(rawValue: record.style) ?? .casual,
-                language: ModelLanguageSupport.outputLanguage(
-                    requested: record.language,
-                    reported: transcribed.language,
-                    translateTo: KeyboardPreferences.translationTarget
-                ),
-                repairSpeech: KeyboardPreferences.repairSpeech,
-                numbersAsDigits: KeyboardPreferences.numbersAsDigits,
-                spokenEmoji: KeyboardPreferences.spokenEmoji,
-                chineseScript: KeyboardPreferences.chineseScript,
-                // The on-device route only: the gateway calls above pass
-                // `styledUpstream` and no grammar.
-                grammar: KeyboardPreferences.fixGrammar ? grammar : nil,
-                learnedWords: KeyboardPreferences.fixGrammar ? LearnedWordStore().snapshot().words : []
+            let style = WritingStyle(rawValue: record.style) ?? .casual
+            let language = ModelLanguageSupport.outputLanguage(
+                requested: record.language,
+                reported: transcribed.language,
+                translateTo: KeyboardPreferences.translationTarget
             )
+            let repairSpeech = KeyboardPreferences.repairSpeech
+            let numbersAsDigits = KeyboardPreferences.numbersAsDigits
+            let spokenEmoji = KeyboardPreferences.spokenEmoji
+            let chineseScript = KeyboardPreferences.chineseScript
+            let snippets = SnippetStore.snippets
+            let vocabulary = CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
+            // The on-device route only: the gateway calls above pass
+            // `styledUpstream` and no grammar.
+            let grammar: GrammarCorrector? = KeyboardPreferences.fixGrammar ? grammar : nil
+            let learnedWords = grammar == nil ? [] : LearnedWordStore().snapshot().words
+            let finish: @Sendable () -> String = {
+                DictatedTranscript.finished(
+                    text,
+                    style: style,
+                    language: language,
+                    repairSpeech: repairSpeech,
+                    numbersAsDigits: numbersAsDigits,
+                    spokenEmoji: spokenEmoji,
+                    chineseScript: chineseScript,
+                    snippets: snippets,
+                    vocabulary: vocabulary,
+                    grammar: grammar,
+                    learnedWords: learnedWords
+                )
+            }
+            // Grammar is model inference, up to its 150 ms budget and one call
+            // past it: off the main actor, so the app keeps drawing meanwhile.
+            // Without it the funnel stays as it was, a few string passes inline.
+            if grammar != nil {
+                record.transcript = await Task.detached(priority: .userInitiated, operation: finish).value
+                try Task.checkCancellation()
+            } else {
+                record.transcript = finish()
+            }
             record.error = nil
             try record.transition(to: .readyToInsert)
             try commit(&record)
