@@ -96,18 +96,18 @@ final class GrammarTagger: @unchecked Sendable {
             // A later pass only refines the last one, so out of time it stops
             // with what the earlier passes already settled.
             if pass > 0, DispatchTime.now().uptimeNanoseconds > deadline { break }
-            var next: [Word] = []
-            var changed = false
-            for chunk in chunk(words, spans: spans) {
-                let tagged = try tag(chunk, vocabulary: vocabulary, spans: spans)
+            var chosen = Array(repeating: "KEEP", count: words.count)
+            for range in chunk(words, spans: spans) {
+                // Out of time mid-sentence: the rest of this pass keeps its words.
+                if DispatchTime.now().uptimeNanoseconds > deadline { break }
+                // One word longer than the model can read: leave it.
+                if range.count == 1, oversized(words[range.lowerBound], spans: spans) { continue }
+                let tagged = try tag(words, range, vocabulary: vocabulary, spans: spans)
                 passes.append(tagged)
-                var applied = apply(chunk, chosen: tagged.decisions.map(\.chosen))
-                if applied.map(\.text) != chunk.map(\.text) { changed = true }
-                if !next.isEmpty, !applied.isEmpty, applied[0].space.isEmpty, !chunk[0].space.isEmpty {
-                    applied[0].space = chunk[0].space
-                }
-                next += applied
+                for (i, decision) in tagged.decisions.enumerated() { chosen[range.lowerBound + i] = decision.chosen }
             }
+            let next = apply(words, chosen: chosen)
+            let changed = next.map(\.text) != words.map(\.text)
             words = next
             if !changed { break }
         }
@@ -138,28 +138,45 @@ final class GrammarTagger: @unchecked Sendable {
         return (ids, starts)
     }
 
-    private func chunk(_ words: [Word], spans: [String]) -> [[Word]] {
-        var chunks: [[Word]] = []
-        var current: [Word] = []
+    private func oversized(_ word: Word, spans: [String]) -> Bool {
+        encodeWord(modelText(word, spans: spans)).count > Self.maxTokens
+    }
+
+    /// Word ranges of at most `maxTokens` tokens each. A word that alone is
+    /// longer (a long URL fed as itself) gets a range of its own, which
+    /// `correctSentence` leaves alone rather than overflow the model's 160
+    /// positions.
+    private func chunk(_ words: [Word], spans: [String]) -> [Range<Int>] {
+        var chunks: [Range<Int>] = []
+        var start = 0
         var tokens = 0
-        for word in words {
+        for (i, word) in words.enumerated() {
             let count = encodeWord(modelText(word, spans: spans)).count
-            if !current.isEmpty, tokens + count > Self.maxTokens {
-                chunks.append(current)
-                current = []
+            if i > start, tokens + count > Self.maxTokens {
+                chunks.append(start..<i)
+                start = i
                 tokens = 0
             }
-            current.append(word)
-            tokens += count
+            if count > Self.maxTokens {
+                if i > start { chunks.append(start..<i) }
+                chunks.append(i..<(i + 1))
+                start = i + 1
+                tokens = 0
+            } else {
+                tokens += count
+            }
         }
-        if !current.isEmpty { chunks.append(current) }
+        if start < words.count { chunks.append(start..<words.count) }
         return chunks
     }
 
     // MARK: - One pass
 
-    private func tag(_ words: [Word], vocabulary: Set<String>, spans: [String]) throws -> Pass {
-        let texts = words.map { modelText($0, spans: spans) }
+    /// Runs the words in `range` through the model. The guard sees the whole
+    /// sentence, so a name or a preposition at a chunk's edge keeps the
+    /// protection it has anywhere else.
+    private func tag(_ words: [Word], _ range: Range<Int>, vocabulary: Set<String>, spans: [String]) throws -> Pass {
+        let texts = words[range].map { modelText($0, spans: spans) }
         let (ids, starts) = encode(texts)
         let rows = try logits(ids, starts.map(Int32.init))
         let decisions = starts.indices.map { i -> Decision in
@@ -171,7 +188,7 @@ final class GrammarTagger: @unchecked Sendable {
                 best = k
             }
             let label = labels[best]
-            return Decision(word: texts[i], label: label, chosen: allow(words, i, label, vocabulary))
+            return Decision(word: texts[i], label: label, chosen: allow(words, range.lowerBound + i, label, vocabulary))
         }
         return Pass(words: texts, ids: ids, starts: starts, decisions: decisions)
     }

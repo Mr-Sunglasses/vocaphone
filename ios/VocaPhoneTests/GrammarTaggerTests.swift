@@ -100,4 +100,57 @@ struct GrammarTaggerTests {
         #expect(GrammarTagger.editDistance("kitten", "sitting") == 3)
         #expect(GrammarTagger.editDistance("", "abc") == 3)
     }
+
+    // MARK: - Greptile on #414 and #416
+
+    /// A sentence long enough for two chunks, with a name opening the second.
+    private func boundarySentence() -> String {
+        var words = ["So"]
+        var tokens = GrammarFixtures.tokenizer.encode(" So").count
+        let filler = ["and", "then", "we", "went"]
+        while true {
+            let next = filler[words.count % filler.count]
+            let count = GrammarFixtures.tokenizer.encode(" " + next).count
+            if tokens + count > GrammarTagger.maxTokens { break }
+            words.append(next)
+            tokens += count
+        }
+        return (words + ["Mark", "left", "at", "noon."]).joined(separator: " ")
+    }
+
+    @Test func aNameAtAChunkBoundaryIsStillAName() throws {
+        let sentence = boundarySentence()
+        let calls = Calls()
+        #expect(try model(["Mark": "REPLACE_make"], calls: calls).correct(sentence) == sentence)
+        #expect(calls.count == 2, "two chunks")
+    }
+
+    @Test func aWordTooLongForTheModelIsNeverSentToIt() throws {
+        let url = "https://example.com/" + (0..<60).map { "segment\($0)" }.joined(separator: "/")
+        let longest = Calls()
+        let tagger = GrammarFixtures.tagger { ids, rows in
+            longest.count = max(longest.count, ids.count)
+            return rows.map { _ in GrammarFixtures.row("KEEP") }
+        }
+        #expect(try tagger.correct("He don't know where \(url) went.") == "He don't know where \(url) went.")
+        #expect(longest.count <= GrammarTagger.maxTokens + 1)
+    }
+
+    @Test func aDeadlineMidSentenceLeavesTheRemainingChunksAlone() throws {
+        let long = boundarySentence().replacingOccurrences(of: "noon.", with: "noon and he don't know.")
+        let calls = Calls()
+        let dont = GrammarFixtures.tokenizer.encode(" don't").map(Int64.init)
+        let tagger = GrammarFixtures.tagger { ids, rows in
+            calls.count += 1
+            // The first chunk eats the whole budget.
+            if calls.count == 1 { Thread.sleep(forTimeInterval: 0.08) }
+            return rows.indices.map { r in
+                let end = r + 1 < rows.count ? Int(rows[r + 1]) : ids.count
+                return GrammarFixtures.row(Array(ids[Int(rows[r])..<end]) == dont ? "REPLACE_doesn't" : "KEEP")
+            }
+        }
+        let deadline = DispatchTime.now().uptimeNanoseconds + 50_000_000
+        #expect(try tagger.correct(long, deadline: deadline) == long)
+        #expect(calls.count == 1)
+    }
 }

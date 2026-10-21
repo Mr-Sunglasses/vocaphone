@@ -36,6 +36,11 @@ final class GrammarCorrector: GrammarStage, @unchecked Sendable {
     /// Set after a load failed for these files, so a broken install is not retried per dictation.
     private var failedFor: Date?
     private var hasFailed = false
+    /// Bumped by `release()`. A load that started before the release finishes
+    /// into a session nobody wants any more, so it is closed instead of kept:
+    /// otherwise a release during a warm-up left the session in memory after
+    /// the system asked for it back.
+    private var generation = 0
 
     init(
         directory: @escaping @Sendable () -> URL?,
@@ -56,24 +61,30 @@ final class GrammarCorrector: GrammarStage, @unchecked Sendable {
     func warm() {
         guard isReady(), let directory = directory() else { return }
         let stamp = Self.stamp(directory)
-        let start: Bool = lock.withLock {
-            guard loaded == nil, !loading, !(hasFailed && failedFor == stamp) else { return false }
+        let started: Int? = lock.withLock {
+            guard loaded == nil, !loading, !(hasFailed && failedFor == stamp) else { return nil }
             loading = true
-            return true
+            return generation
         }
-        guard start else { return }
+        guard let started else { return }
         queue.async { [self] in
             let result = Result { try load(directory) }
-            lock.withLock {
+            let stale = lock.withLock { () -> Bool in
                 loading = false
+                guard started == generation else { return true }
                 switch result {
                 case let .success(value): loaded = value
                 case .failure:
                     hasFailed = true
                     failedFor = stamp
                 }
+                return false
             }
-            if case .failure = result { log(.grammarLoadFailed) }
+            if stale {
+                if case let .success(value) = result { value.close() }
+            } else if case .failure = result {
+                log(.grammarLoadFailed)
+            }
         }
     }
 
@@ -99,9 +110,13 @@ final class GrammarCorrector: GrammarStage, @unchecked Sendable {
         }
     }
 
+    /// Whether a session is loaded and in use. For tests, which otherwise race the loader.
+    var isLoaded: Bool { lock.withLock { loaded != nil } }
+
     /// Frees the session. The next `warm()` loads it again.
     func release() {
         let previous = lock.withLock { () -> Loaded? in
+            generation += 1
             defer { loaded = nil }
             return loaded
         }

@@ -22,6 +22,10 @@ struct GrammarCorrectorTests {
     /// Waits for the background load, which is all `warm()` does.
     private func settle() async { try? await Task.sleep(for: .milliseconds(150)) }
 
+    private func awaitLoaded(_ corrector: GrammarCorrector) async {
+        for _ in 0..<250 where !corrector.isLoaded { try? await Task.sleep(for: .milliseconds(20)) }
+    }
+
     @Test func withoutAModelTheTextIsUnchangedAndNothingLoads() {
         let log = Log()
         let corrector = GrammarCorrector(directory: { nil }, isReady: { false }, log: log.record) { _ in
@@ -68,7 +72,7 @@ struct GrammarCorrectorTests {
             .init(tagger: throwing, close: {})
         }
         corrector.warm()
-        await settle()
+        await awaitLoaded(corrector)
         #expect(corrector.correct("He don't know.", keeping: []) == "He don't know.")
         #expect(log.all == [.grammarFailed])
     }
@@ -80,11 +84,30 @@ struct GrammarCorrectorTests {
             return .init(tagger: Self.keeping, close: log.closed)
         }
         corrector.warm()
-        await settle()
+        await awaitLoaded(corrector)
         corrector.release()
         #expect(log.closes == 1)
         corrector.warm()
-        await settle()
+        await awaitLoaded(corrector)
         #expect(log.loads == 2)
+    }
+
+    /// Greptile on #416: a release during a warm-up must not leave the session loaded.
+    @Test func aReleaseDuringTheLoadClosesWhatTheLoadReturns() {
+        let log = Log()
+        let loading = DispatchSemaphore(value: 0)
+        let finish = DispatchSemaphore(value: 0)
+        let corrector = GrammarCorrector(directory: { Self.directory }, isReady: { true }, log: log.record) { _ in
+            loading.signal()
+            _ = finish.wait(timeout: .now() + 5)
+            return .init(tagger: Self.keeping, close: log.closed)
+        }
+        corrector.warm()
+        _ = loading.wait(timeout: .now() + 5)
+        corrector.release()
+        finish.signal()
+        for _ in 0..<250 where log.closes == 0 { Thread.sleep(forTimeInterval: 0.02) }
+        #expect(log.closes == 1, "the stale session was closed")
+        #expect(corrector.correct("He don't know.", keeping: []) == "He don't know.")
     }
 }
