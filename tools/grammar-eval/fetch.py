@@ -29,9 +29,12 @@ def https_only() -> urllib.request.OpenerDirector:
     urllib's default opener also opens file:// and plain http://, which a
     pinned download has no use for; without those handlers a URL, or a
     redirect, in any other scheme fails instead of being followed.
+    ProxyHandler keeps what urlopen() gave for free: an https_proxy from the
+    environment is still used, by tunnelling the HTTPS request through it.
     """
     opener = urllib.request.OpenerDirector()
     for handler in (
+        urllib.request.ProxyHandler(),
         urllib.request.HTTPSHandler(context=ssl.create_default_context()),
         urllib.request.HTTPRedirectHandler(),
         urllib.request.HTTPErrorProcessor(),
