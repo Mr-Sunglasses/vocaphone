@@ -165,15 +165,25 @@ enum TypedGrammar {
         return body.hasSuffix(fix.checked) || fix.checked.hasSuffix(body)
     }
 
-    /// The words of `keep` that occur in `text`, compared the way the model's
-    /// guard compares them: lowercased, straight apostrophes.
+    /// The words of `keep` that occur in `text`, split the way the model's
+    /// tagger splits words — letters and digits, with an apostrophe only
+    /// *inside* a word — and compared the way its guard compares them:
+    /// lowercased, straight apostrophes. Splitting any other way loses a word
+    /// the tagger will see: `'their'` in quotes is the word `their` to it.
     static func wordsPresent(_ keep: [String], in text: String) -> [String] {
-        let present = Set(
-            text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
-                .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" })
-                .map(String.init)
-        )
-        return keep.filter { present.contains($0.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")) }
+        let normalized = normalize(text)
+        let range = NSRange(normalized.startIndex..., in: normalized)
+        let present = Set(modelWord.matches(in: normalized, range: range).compactMap {
+            Range($0.range, in: normalized).map { String(normalized[$0]) }
+        })
+        return keep.filter { present.contains(normalize($0)) }
+    }
+
+    /// `GrammarTagger`'s word pattern, less its placeholder alternative.
+    private static let modelWord = try! NSRegularExpression(pattern: "[\\p{L}\\p{N}]+(?:'[\\p{L}\\p{N}]+)*")
+
+    private static func normalize(_ text: String) -> String {
+        text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
     }
 
     // MARK: - Pieces

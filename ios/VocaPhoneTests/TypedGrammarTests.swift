@@ -123,6 +123,14 @@ struct TypedGrammarTests {
         #expect(TypedGrammar.wordsPresent(keep, in: "Ask Kubo, he don\u{2019}t know Anna.") == ["kubo", "don't"])
     }
 
+    /// Review finding: a protected word in quotes was dropped, because the
+    /// quotes stayed attached to it. The tagger sees the bare word.
+    @Test func aQuotedProtectedWordIsStillSent() {
+        #expect(TypedGrammar.wordsPresent(["their"], in: "I wrote 'their' here.") == ["their"])
+        #expect(TypedGrammar.wordsPresent(["their"], in: "I wrote \u{2018}their\u{2019} here.") == ["their"])
+        #expect(TypedGrammar.wordsPresent(["dogs"], in: "the dogs' bowls") == ["dogs"])
+    }
+
     /// The one place the ports count differently: an emoji is two UTF-16 units
     /// on Android and one `Character` here, which is what `deleteBackward()`
     /// removes. Only the text from the first change on is deleted, so it
