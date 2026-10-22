@@ -10,10 +10,8 @@ import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptionQuality
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.atomic.AtomicInteger
@@ -29,7 +27,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -38,7 +35,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import okhttp3.Call
 import okhttp3.OkHttpClient
-import okhttp3.Request
 
 /**
  * What an on-device engine produced, and the language that governs its output.
@@ -604,96 +600,28 @@ class LocalModelManager(
         ).withoutPendingUse(model.id)
     }
 
-    /**
-     * Streams one file to disk and returns its SHA-256.
-     *
-     * Continues a partial file left by an interrupted attempt with an HTTP
-     * Range request. The bytes already there are hashed first, so the digest
-     * returned -- and checked against the pin -- covers the whole file exactly
-     * as a fresh download's would. A server that ignores the range gets the
-     * file from the start.
-     */
+    /** One file of a speech model, reported into this manager's progress state. */
     private suspend fun downloadFile(
         url: String,
         destination: File,
         expectedBytes: Long,
         alreadyCompleted: Long,
         totalBytes: Long,
-    ): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val offset = resumeOffset(if (destination.isFile) destination.length() else 0L, expectedBytes)
-        if (offset == 0L) {
-            destination.delete()
-        } else {
-            hashInto(digest, destination)
-            _state.value = _state.value.copy(resumedBytes = _state.value.resumedBytes + offset)
-            reportProgress(alreadyCompleted + offset, totalBytes)
-            // Complete already; there is nothing left to ask the server for.
-            if (offset == expectedBytes) return digest.digest().joinToString("") { "%02x".format(it) }
-        }
-        val request = Request.Builder().url(url).apply {
-            if (offset > 0L) header("Range", "bytes=$offset-")
-        }.build()
-        val call = client.newCall(request)
-        activeDownloadCall.set(call)
-        // Tie coroutine cancellation to the blocking OkHttp call too. This
-        // closes the small race between finishing one file and starting the
-        // next one, where the UI could otherwise cancel the job while the
-        // synchronous request kept running.
-        val cancellationHandle = currentCoroutineContext()[Job]?.invokeOnCompletion {
-            call.cancel()
-        }
-        try {
-            val response = call.execute()
-            response.use { result ->
-                if (!result.isSuccessful) throw ModelDownloadHttpException(result.code)
-                val append = rangeHonoured(offset, result.code, result.header("Content-Range"))
-                var written = if (append) offset else 0L
-                if (!append && offset > 0L) {
-                    digest.reset()
-                    // The server sent the whole file: the bytes on disk are
-                    // being fetched again, not carried over.
-                    _state.value = _state.value.copy(resumedBytes = _state.value.resumedBytes - offset)
-                }
-                FileOutputStream(destination, append).use { output ->
-                    result.body.byteStream().use { input ->
-                        val buffer = ByteArray(1024 * 1024)
-                        while (true) {
-                            val count = input.read(buffer)
-                            if (count < 0) break
-                            if (count == 0) continue
-                            output.write(buffer, 0, count)
-                            digest.update(buffer, 0, count)
-                            written += count
-                            reportProgress(alreadyCompleted + written, totalBytes)
-                        }
-                    }
-                }
-                return digest.digest().joinToString("") { "%02x".format(it) }
-            }
-        } finally {
-            cancellationHandle?.dispose()
-            activeDownloadCall.compareAndSet(call, null)
-        }
-    }
+    ): String = fetchPinnedFile(
+        client = client,
+        url = url,
+        destination = destination,
+        expectedBytes = expectedBytes,
+        activeCall = activeDownloadCall,
+        onResumed = { bytes -> _state.value = _state.value.copy(resumedBytes = _state.value.resumedBytes + bytes) },
+        onProgress = { onDisk -> reportProgress(alreadyCompleted + onDisk, totalBytes) },
+    )
 
     private fun reportProgress(done: Long, totalBytes: Long) {
         _state.value = _state.value.copy(
             progress = ((done * 100) / totalBytes).toInt().coerceIn(0, 99),
             downloadedBytes = done.coerceAtMost(totalBytes),
         )
-    }
-
-    private suspend fun hashInto(digest: MessageDigest, file: File) {
-        FileInputStream(file).use { input ->
-            val buffer = ByteArray(1024 * 1024)
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                val count = input.read(buffer)
-                if (count < 0) break
-                digest.update(buffer, 0, count)
-            }
-        }
     }
 
     /**

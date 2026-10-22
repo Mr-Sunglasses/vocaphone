@@ -1,0 +1,35 @@
+{
+  "models": {
+    "mindtype-tagger-v1.5": {
+      "repository": "VocaHQ/mindtype-tagger-v1.5-onnx",
+      "revision": "5b6d7c3004677870122c10d84f78b35dcb760ff8",
+      "files": [
+        {
+          "path": "mindtype_tagger.onnx",
+          "size": 26700289,
+          "sha256": "f082574ef27d3d0e2929ef321ab7490c08002fc6475ea7d9edbe7e534777319b"
+        },
+        {
+          "path": "tokenizer.json",
+          "size": 1113060,
+          "sha256": "7430be0917758ae85b0322ed2686b9e14e7cb322e2cafa5f87f526544ccd829b"
+        },
+        {
+          "path": "labels.json",
+          "size": 296770,
+          "sha256": "62df98ed27d01c107c77690c73ec346c2a4a4e37cc850de5381a833589760891"
+        },
+        {
+          "path": "plausible_pairs.json",
+          "size": 4450,
+          "sha256": "201a30cd6fcc129070c0637b4566820c7cb4d77ef3969a7575af591a17e281f4"
+        },
+        {
+          "path": "config.json",
+          "size": 149,
+          "sha256": "dde7552bfb73798ead6fbc9e14bb5b4aee062bf168b21341e69a16152a571241"
+        }
+      ]
+    }
+  }
+}

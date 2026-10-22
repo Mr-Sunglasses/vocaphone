@@ -98,6 +98,9 @@ targets:
     resources:
       - VocaPhoneApp/Models/local_model_pins.json
       - VocaPhoneApp/Models/sherpa_model_pins.json
+      # The "Fix grammar (English)" model's pins. Its own file, because the
+      # grammar model is not a speech model and must not be read as one.
+      - VocaPhoneApp/Models/grammar_model_pins.json
       # Silero VAD (MIT), 644 KB. Bundled rather than downloaded because every
       # on-device route uses it, whichever model was downloaded. See
       # `SileroSpeechDetector`.
@@ -197,6 +200,7 @@ targets:
       # The errors SherpaRecognizer throws are declared beside the integrity
       # checks it shares them with.
       - path: VocaPhoneApp/Models/LocalModelIntegrity.swift
+      - path: VocaPhoneApp/Models/GrammarModelStore.swift
       - path: VocaPhoneApp/Models/RetiredModelFileCleanup.swift
       - path: VocaPhoneApp/Models/LocalModelFileRemoval.swift
       # Key geometry is worth regression tests; the controller itself needs a
