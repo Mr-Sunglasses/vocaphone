@@ -76,6 +76,10 @@ localEngineRetried                the first attempt failed; operationFailed just
 localTranscriptionTimed           milliseconds from transcribing to text,
                                   decodedEarly (the words were decoded during
                                   the pause before Finish), trimmedMilliseconds
+grammarLoadFailed / grammarFailed only with Fix grammar on: the model did not
+                                  load, or failed on this transcript, which
+                                  went in unchanged
+grammarSlow                       a sentence ran well past the grammar budget
 transcriptReady / readyToInsert   done
 ```
 

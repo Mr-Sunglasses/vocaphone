@@ -49,6 +49,28 @@ the transcript is stored. Diagnostics record only a duration, a yes/no for
 whether the text was decoded before Finish, and how many milliseconds of
 trailing silence were left out.
 
+**Fix grammar (English)** is off by default (Settings › Dictation › Output). It
+is only offered where the app already ships ONNX Runtime: the iOS app and the
+Android `full` and `x` builds, not the F-Droid build. Turning it on first
+downloads a 28 MB grammar model, MindType tagger v1.5 by Mindscend
+(Apache-2.0), from VocaHQ's byte-identical Hugging Face mirror
+[`VocaHQ/mindtype-tagger-v1.5-onnx`](https://huggingface.co/VocaHQ/mindtype-tagger-v1.5-onnx)
+at revision `5b6d7c3004677870122c10d84f78b35dcb760ff8`, a copy of
+`Mindscend/mindtype-tagger-v1.5@a737fbc7f563104d3d07cfeb198077950e223101`.
+Every file is checked against a pinned size and SHA-256 before it is used,
+the same way as a speech model; the model itself is
+`mindtype_tagger.onnx`, SHA-256
+`f082574ef27d3d0e2929ef321ab7490c08002fc6475ea7d9edbe7e534777319b`. The
+download sends nothing but the request for those files. Once it is on, the
+finished on-device English transcript is corrected on the phone, in memory,
+before it is styled; the text is never sent anywhere for this, and nothing
+the model produces is stored beyond the transcript itself. It never runs on a
+gateway transcript, on another language, or on the Raw style, and it never
+runs in the iOS keyboard extension. If the model cannot run, the transcript is
+used unchanged and the diagnostic log records only that it happened
+(`grammar_failed` and similar), never any text. It reports nothing to usage
+statistics.
+
 With **Show words while speaking** turned on (Settings › Dictation; off by
 default), while the recording is still going, the words those early decodes
 produced are written to a small file beside the session record in the App Group, so the

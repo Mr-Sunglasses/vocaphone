@@ -282,6 +282,37 @@ the warning takes precedence over "Insert here". `inserting` also expires after 
 counts as having an active writer within that window, so delete, Delete all and
 storage pruning can reclaim a record no keyboard came back for.
 
+## Transcript post-processing
+
+Every transcript, from every route, goes through one funnel before it is
+stored for insertion: `DictatedTranscript.finished` on both platforms
+(`android/.../core/DictatedTranscript.kt`, `ios/VocaPhoneShared/DictatedTranscript.swift`).
+The order is load-bearing, and the two files' comments say why each step sits
+where it does:
+
+1. **Sanitize** model annotations such as `[BLANK_AUDIO]`.
+2. **Chinese script**, when Traditional characters are chosen. Every route and
+   style.
+3. **Repair** (Clean up speech): hesitation sounds, false starts, missing
+   sentence punctuation. Not for Raw.
+4. **Grammar** (Fix grammar (English), off by default): the on-device
+   MindType tagger. On-device transcripts in English only, not for Raw, and
+   never a custom vocabulary word, a learned word (iOS) or a snippet trigger.
+   Fails safe to the text it was given. See
+   [tools/grammar-eval](../tools/grammar-eval/README.md) for the recipe.
+5. **Style**, for on-device transcripts only: a gateway has already styled its
+   own.
+6. **Custom vocabulary**. Not for Raw.
+7. **Spoken emoji**, when on. Not for Raw.
+8. **Digits**, when on.
+9. **Snippet expansion**, last.
+
+The grammar model runs in the containing app only. Android reaches the
+`libonnxruntime.so` that ships for sherpa-onnx through a small JNI bridge
+(`android/app/src/main/cpp/grammar`); iOS reaches the ONNX Runtime that
+sherpa-onnx links through `GrammarOnnxBridge.c`. Neither adds a second
+runtime, and the F-Droid flavor builds neither.
+
 ## Typing intelligence (iOS keyboard)
 
 Completion, correction and next-word prediction run entirely inside the keyboard

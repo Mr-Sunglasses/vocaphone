@@ -10,5 +10,11 @@
     "version": "1.28.0",
     "source": "https://github.com/csukuangfj/onnxruntime-libs/releases/tag/v1.28.0",
     "license": "MIT"
+  },
+  "libvocaphone_grammar.so": {
+    "name": "vocaphone-grammar-bridge",
+    "version": "in-tree",
+    "source": "https://github.com/VocaHQ/vocaphone/tree/main/android/app/src/main/cpp/grammar",
+    "license": "AGPL-3.0-only"
   }
 }

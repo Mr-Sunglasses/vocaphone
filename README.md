@@ -76,6 +76,11 @@ the active cursor. A gateway is never required for on-device mode.
   entirely on the phone with no model and no network call. Turn it off in
   Settings, or pick the Raw writing style, and the model's own words go in
   untouched
+- Optional Fix grammar (English), off by default: a 28 MB on-device model fixes
+  common grammar and spelling slips ("he don't know" becomes "he doesn't
+  know") in English dictation transcribed on the phone. The text never leaves
+  the phone, and it can occasionally change a sentence that was already right.
+  Not in the F-Droid build, which ships no ONNX Runtime
 - Optional on-device translation where the model was actually trained for it:
   Canary between English, German, Spanish and French, and the multilingual
   Whisper models into English. Language says what you are speaking; Translate to
