@@ -22,6 +22,8 @@ struct KeyboardDefaultsTests {
         // text can differ from is asked for, not assumed.
         #expect(!KeyboardDefaults.typingHaptics)
         #expect(!KeyboardDefaults.liveWords)
+        // A 28 MB download that can change a correct sentence is never on by itself.
+        #expect(!KeyboardDefaults.fixGrammar)
     }
 
     /// A key nobody has written reads as the default, which is what a fresh

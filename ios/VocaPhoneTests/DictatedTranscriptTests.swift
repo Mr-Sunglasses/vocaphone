@@ -342,4 +342,80 @@ struct DictatedTranscriptTests {
         #expect(spelled("frag voca phone danach", language: "de", ["VocaPhone"]).contains("VocaPhone"))
         #expect(spelled("pregunta a whisper kit", language: "es", ["WhisperKit"]).contains("WhisperKit"))
     }
+
+    // MARK: - Grammar. Mirrors DictatedTranscriptTest.kt.
+
+    /// Records what the grammar stage saw, and swaps one phrase so its effect is visible.
+    final class RecordingGrammar: GrammarStage, @unchecked Sendable {
+        private(set) var seen: [(String, Set<String>)] = []
+        func correct(_ text: String, keeping: Set<String>) -> String {
+            seen.append((text, keeping))
+            return text.replacingOccurrences(of: "he don't", with: "he doesn't")
+        }
+    }
+
+    private func finished(
+        _ raw: String,
+        style: WritingStyle = .formal,
+        language: String = "auto",
+        styledUpstream: Bool = false,
+        repairSpeech: Bool = false,
+        snippets: [Snippet] = [],
+        vocabulary: [String] = [],
+        learnedWords: [String] = [],
+        grammar: RecordingGrammar
+    ) -> String {
+        DictatedTranscript.finished(
+            raw,
+            style: style,
+            language: language,
+            styledUpstream: styledUpstream,
+            repairSpeech: repairSpeech,
+            numbersAsDigits: false,
+            spokenEmoji: false,
+            snippets: snippets,
+            vocabulary: vocabulary,
+            isDictionaryWord: { _ in false },
+            grammar: grammar,
+            learnedWords: learnedWords
+        )
+    }
+
+    @Test func grammarRunsAfterRepairAndBeforeStyling() {
+        let grammar = RecordingGrammar()
+        #expect(finished("um I think he don't know", repairSpeech: true, grammar: grammar) == "I think he doesn't know.")
+        // It saw repair's output, not the raw words and not the styled ones.
+        #expect(grammar.seen.map(\.0) == ["I think he don't know"])
+    }
+
+    @Test func grammarIsSkippedForRawGatewayTranscriptsAndOtherLanguages() {
+        let grammar = RecordingGrammar()
+        _ = finished("he don't know", style: .raw, repairSpeech: true, grammar: grammar)
+        _ = finished("He don't know.", styledUpstream: true, repairSpeech: true, grammar: grammar)
+        _ = finished("il ne sait pas", language: "fr", repairSpeech: true, grammar: grammar)
+        #expect(grammar.seen.isEmpty)
+    }
+
+    @Test func grammarRunsForAutomaticAndEnglishAndIsHandedTheWordsItMayNotChange() {
+        let grammar = RecordingGrammar()
+        _ = finished(
+            "he don't know",
+            snippets: [Snippet(trigger: "my addy", expansion: "1 Main St")],
+            vocabulary: ["Vocagate", "kube ctl"],
+            learnedWords: ["Biskit"],
+            grammar: grammar
+        )
+        _ = finished("he don't know", language: "en", grammar: grammar)
+        #expect(grammar.seen.count == 2)
+        #expect(grammar.seen.first?.1 == ["vocagate", "kube", "ctl", "biskit", "my", "addy"])
+    }
+
+    @Test func withoutAGrammarStageNothingChanges() {
+        #expect(
+            DictatedTranscript.finished(
+                "he don't know", style: .formal, repairSpeech: false, numbersAsDigits: false,
+                spokenEmoji: false, snippets: [], vocabulary: []
+            ) == "He don't know."
+        )
+    }
 }

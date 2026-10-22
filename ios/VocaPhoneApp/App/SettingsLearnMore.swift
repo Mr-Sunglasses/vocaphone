@@ -129,8 +129,8 @@ enum SettingsHelp {
             .init(heading: "Writing style", paragraphs: [
                 "Styles only change formatting. Your words, times, links and "
                     + "contractions are never altered by a style; words change only "
-                    + "through Clean up speech, Write numbers as digits and Spoken "
-                    + "emoji.",
+                    + "through Clean up speech, Fix grammar, Write numbers as digits "
+                    + "and Spoken emoji.",
             ] + WritingStyle.allCases.map { "\($0.displayName): \($0.detail)" }),
             .init(heading: "Clean up speech", paragraphs: [
                 "Hesitation sounds and false starts are dropped, and missing "
@@ -140,6 +140,17 @@ enum SettingsHelp {
                     + "stay, including “like”, “you know” and “I mean”, and so do "
                     + "“mhm” and “uh-huh”, which are answers.",
                 "Never applied to the Raw writing style.",
+            ]),
+            .init(heading: "Fix grammar (English)", paragraphs: [
+                "Common grammar and spelling slips are corrected after Clean up "
+                    + "speech: “he don't know” becomes “he doesn't know”, and “their "
+                    + "going” becomes “they're going”.",
+                "It runs on this iPhone with a 28 MB model you download once, and "
+                    + "your words are never sent anywhere. Names, numbers, links, your "
+                    + "custom words and words the keyboard has learned are left alone.",
+                "English only, and only for dictation transcribed on this iPhone. It "
+                    + "can occasionally change a sentence that was already right. Off by "
+                    + "default, and never applied to the Raw writing style.",
             ]),
             .init(heading: "Write numbers as digits", paragraphs: [
                 "Numbers you say are written as digits: “six pm at the office” "

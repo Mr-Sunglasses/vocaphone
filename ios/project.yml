@@ -201,6 +201,13 @@ targets:
       # checks it shares them with.
       - path: VocaPhoneApp/Models/LocalModelIntegrity.swift
       - path: VocaPhoneApp/Models/GrammarModelStore.swift
+      # The grammar recipe and its ONNX Runtime bridge, tested against the
+      # shared parity fixtures (and the real model, when downloaded).
+      - path: VocaPhoneApp/Models/ByteLevelBpe.swift
+      - path: VocaPhoneApp/Models/GrammarTagger.swift
+      - path: VocaPhoneApp/Models/GrammarSession.swift
+      - path: VocaPhoneApp/Models/GrammarOnnxBridge.c
+      - path: VocaPhoneApp/Models/GrammarCorrector.swift
       - path: VocaPhoneApp/Models/RetiredModelFileCleanup.swift
       - path: VocaPhoneApp/Models/LocalModelFileRemoval.swift
       # Key geometry is worth regression tests; the controller itself needs a

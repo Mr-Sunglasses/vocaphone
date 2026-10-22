@@ -152,6 +152,17 @@ model-test model="openai_whisper-small_216MB" sherpa="parakeet-tdt-ctc-110m-en":
         {{ just_executable() }} test VocaPhoneTests/LocalModelEndToEndTests \
         VocaPhoneTests/SherpaModelEndToEndTests
 
+# The grammar model through the real ONNX Runtime, against the reference outputs
+# in assets/grammar/parity_fixtures.json. Downloads the pinned 28 MB once.
+[group('test')]
+grammar-model-test:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir="$(pwd)/build/grammar-model"
+    python3 ../tools/grammar-eval/fetch.py "${dir}" >/dev/null
+    TEST_RUNNER_VOCA_GRAMMAR_MODEL_DIR="${dir}" \
+        {{ just_executable() }} test VocaPhoneTests/GrammarModelEndToEndTests
+
 # A Release build proves the same thing, but only by compiling WhisperKit twice.
 # This takes under a second, so it can run on every change instead of on the
 # ones somebody remembers.
