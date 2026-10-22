@@ -25,11 +25,14 @@ final class TypedGrammarClient {
     private let store: SharedStore
     private let isAppRunning: () -> Bool
     private let pause: Duration
+    private let now: () -> Date
     private let observe: (@escaping @Sendable () -> Void) -> VocaPhoneDarwinObservation?
     private var pending: Task<Void, Never>?
     private var observation: VocaPhoneDarwinObservation?
-    /// The question in flight, so an answer to an older one is dropped.
-    private var outstanding: (id: UUID, text: String)?
+    /// The question in flight, so an answer to an older one is dropped. It
+    /// expires with the request: an app that ended before answering, or that
+    /// dropped the request as stale, must not block that sentence for good.
+    private var outstanding: (id: UUID, text: String, sentAt: Date)?
     /// The text before the cursor at the last change, for judging whether an
     /// answer still describes the document when it lands.
     private var lastBefore = ""
@@ -44,6 +47,7 @@ final class TypedGrammarClient {
         store: SharedStore = .shared,
         isAppRunning: @escaping () -> Bool,
         pause: Duration = .milliseconds(700),
+        now: @escaping () -> Date = { Date() },
         observe: @escaping (@escaping @Sendable () -> Void) -> VocaPhoneDarwinObservation? = {
             VocaPhoneDarwinCenter.observe(.typedGrammarAnswered, handler: $0)
         }
@@ -51,6 +55,7 @@ final class TypedGrammarClient {
         self.store = store
         self.isAppRunning = isAppRunning
         self.pause = pause
+        self.now = now
         self.observe = observe
     }
 
@@ -60,7 +65,11 @@ final class TypedGrammarClient {
     func textChanged(before: String?, enabled: Bool, keep: @escaping () -> [String]) {
         pending?.cancel()
         guard enabled, let before else {
+            // An answer already on its way must not bring the fix back once
+            // checking is off, the layout has changed or the context is gone.
             pending = nil
+            abandonOutstanding()
+            lastBefore = ""
             publish(nil)
             return
         }
@@ -81,6 +90,9 @@ final class TypedGrammarClient {
             publish(nil)
             return
         }
+        if let outstanding, now().timeIntervalSince(outstanding.sentAt) > TypedGrammarRequest.maximumAge {
+            abandonOutstanding()
+        }
         guard region != settled, region != fix?.checked, region != outstanding?.text else { return }
         guard isEnglish(region) else {
             settled = region
@@ -88,10 +100,17 @@ final class TypedGrammarClient {
             return
         }
         guard isAppRunning() else { return }
-        let request = TypedGrammarRequest(text: region, keep: keep)
+        // Only the protected words this text contains. The list includes
+        // every contact name `UILexicon` offers, and those have no business
+        // in a file because one of them might have been typed.
+        let request = TypedGrammarRequest(
+            text: region,
+            keep: TypedGrammar.wordsPresent(keep, in: region),
+            createdAt: now()
+        )
         // No Full Access is no App Group, and so no way to ask.
         guard (try? store.saveTypedGrammarRequest(request)) != nil else { return }
-        outstanding = (request.id, region)
+        outstanding = (request.id, region, request.createdAt)
         if observation == nil {
             observation = observe { Task { @MainActor [weak self] in self?.collect() } }
         }
@@ -140,12 +159,19 @@ final class TypedGrammarClient {
         pending = nil
         observation?.invalidate()
         observation = nil
-        if outstanding != nil { store.clearTypedGrammarExchange() }
-        outstanding = nil
+        abandonOutstanding()
         settled = nil
         dismissed = []
         lastBefore = ""
         publish(nil)
+    }
+
+    /// Forgets the question in flight, and removes it and any answer from the
+    /// App Group so the typed text does not wait there for nobody.
+    private func abandonOutstanding() {
+        guard outstanding != nil else { return }
+        outstanding = nil
+        store.clearTypedGrammarExchange()
     }
 
     private func publish(_ fix: TypedGrammar.Fix?) {

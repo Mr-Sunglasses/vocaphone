@@ -918,6 +918,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
      * before the cursor, as one batch edit.
      */
     private fun applyGrammarFix() {
+        // commitText replaces a selection, so a fix applied over one would
+        // delete it. The strip hides the fix then; this is the backstop for a
+        // tap that lands as a selection is made.
+        if (lastSelStart != lastSelEnd) {
+            typedGrammar.reset()
+            return
+        }
         val fix = typedGrammar.take() ?: return
         val connection = currentInputConnection ?: return
         val before = runCatching {

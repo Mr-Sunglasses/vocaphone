@@ -165,6 +165,17 @@ enum TypedGrammar {
         return body.hasSuffix(fix.checked) || fix.checked.hasSuffix(body)
     }
 
+    /// The words of `keep` that occur in `text`, compared the way the model's
+    /// guard compares them: lowercased, straight apostrophes.
+    static func wordsPresent(_ keep: [String], in text: String) -> [String] {
+        let present = Set(
+            text.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")
+                .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" })
+                .map(String.init)
+        )
+        return keep.filter { present.contains($0.lowercased().replacingOccurrences(of: "\u{2019}", with: "'")) }
+    }
+
     // MARK: - Pieces
 
     private static let wordJoiners: Set<Character> = ["'", "\u{2019}", "-"]

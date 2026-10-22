@@ -118,6 +118,11 @@ struct TypedGrammarTests {
         #expect(TypedGrammar.region(before: "\(long) They was late. ", startKnown: true) == "They was late.")
     }
 
+    @Test func wordsPresentMatchesWholeWordsIgnoringCaseAndApostropheStyle() {
+        let keep = ["kubo", "don't", "ann", "zanele"]
+        #expect(TypedGrammar.wordsPresent(keep, in: "Ask Kubo, he don\u{2019}t know Anna.") == ["kubo", "don't"])
+    }
+
     /// The one place the ports count differently: an emoji is two UTF-16 units
     /// on Android and one `Character` here, which is what `deleteBackward()`
     /// removes. Only the text from the first change on is deleted, so it

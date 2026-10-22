@@ -569,9 +569,11 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         updateReturnKeyEnablement(for: snapshot)
         updateAutomaticShift(for: snapshot)
         // Restarts a timer and nothing else: the question waits for a pause.
+        // A selection is not a sentence being written, and a fix applied over
+        // one would delete it; the selection is only read when checking is on.
         grammarCheck.textChanged(
             before: snapshot.before,
-            enabled: isGrammarCheckEnabled,
+            enabled: isGrammarCheckEnabled && textDocumentProxy.selectedText?.isEmpty != false,
             keep: { [weak self] in self?.grammarKeeps() ?? [] }
         )
     }
@@ -588,7 +590,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func grammarKeeps() -> [String] {
         Array(DictatedTranscript.grammarKeeps(
             vocabulary: CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
-                + typing.learnedWords,
+                + typing.learnedWords
+                + typing.lexiconWords,
             snippets: SnippetStore.snippets
         ))
     }
@@ -2593,6 +2596,14 @@ extension KeyboardViewController: DictationBarViewDelegate {
             // Checked against the document as it is now, not as it was when
             // the app answered: a fix that no longer describes the text before
             // the cursor deletes nothing.
+            // With a selection, the first deleteBackward() removes the
+            // selection rather than a character, and every count after it is
+            // off by that much. The strip hides the fix then; this is the
+            // backstop for a tap that lands as a selection is made.
+            guard textDocumentProxy.selectedText?.isEmpty != false else {
+                grammarCheck.reset()
+                break
+            }
             guard let fix = grammarCheck.take(),
                   let edit = TypedGrammar.edit(fix, before: document.before ?? "")
             else { break }

@@ -348,6 +348,10 @@ final class TypingEngine {
     /// leave alone. Read after a pause, never per keystroke.
     var learnedWords: [String] { learned.snapshot().words }
 
+    /// The user's own text replacements and contact names, as they are
+    /// written in a document. The grammar check must leave them alone too.
+    var lexiconWords: [String] { lexiconEntries.map(\.documentText) }
+
     /// Whether `word` is in the shipped list, for telling English text apart.
     func isListedWord(_ word: String) -> Bool { wordList.rank(of: word) != nil }
 

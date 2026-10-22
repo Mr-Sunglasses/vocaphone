@@ -32,11 +32,15 @@ struct TypedGrammarExchangeTests {
         )
     }
 
-    private func client(appRunning: Bool = true) -> TypedGrammarClient {
+    private func client(
+        appRunning: Bool = true,
+        now: @escaping () -> Date = { Date() }
+    ) -> TypedGrammarClient {
         TypedGrammarClient(
             store: store,
             isAppRunning: { appRunning },
             pause: .milliseconds(10),
+            now: now,
             observe: { _ in nil }
         )
     }
@@ -208,6 +212,63 @@ struct TypedGrammarExchangeTests {
         client.collect()
         client.textChanged(before: "He don't know. ", enabled: false, keep: { [] })
         #expect(client.fix == nil)
+    }
+
+    /// Review finding: an answer computed while checking was being turned off
+    /// brought the fix back.
+    @Test func anAnswerLandingAfterCheckingStopsIsDropped() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client()
+        client.textChanged(before: "He don't know. ", enabled: true, keep: { [] })
+        try await pause()
+        let request = try #require(store.takeTypedGrammarRequest())
+        client.textChanged(before: "He don't know. ", enabled: false, keep: { [] })
+        try store.saveTypedGrammarAnswer(TypedGrammarAnswer(id: request.id, corrected: "He doesn't know."))
+        client.collect()
+        #expect(client.fix == nil)
+    }
+
+    @Test func turningItOffRemovesTheQuestionInFlight() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client()
+        client.textChanged(before: "He don't know. ", enabled: true, keep: { [] })
+        try await pause()
+        client.textChanged(before: nil, enabled: true, keep: { [] })
+        #expect(files().isEmpty)
+    }
+
+    /// Review finding: a question nobody answered blocked its sentence for good.
+    @Test func anUnansweredQuestionExpiresAndTheSentenceIsAskedAgain() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let clock = Box(Date())
+        let client = client(now: { clock.value })
+        client.textChanged(before: "He don't know. ", enabled: true, keep: { [] })
+        try await pause()
+        let first = try #require(store.takeTypedGrammarRequest())
+        // Asked again before it expires: still waiting, nothing written.
+        client.textChanged(before: "He don't know.  ", enabled: true, keep: { [] })
+        try await pause()
+        #expect(store.takeTypedGrammarRequest() == nil)
+        clock.value = clock.value.addingTimeInterval(TypedGrammarRequest.maximumAge + 1)
+        client.textChanged(before: "He don't know. ", enabled: true, keep: { [] })
+        try await pause()
+        let second = try #require(store.takeTypedGrammarRequest())
+        #expect(second.text == first.text)
+        #expect(second.id != first.id)
+    }
+
+    /// Review finding: personal words were not protected. They are now, but
+    /// only the ones in the sentence travel: the list includes every contact.
+    @Test func onlyTheProtectedWordsInTheSentenceAreSent() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client()
+        client.textChanged(
+            before: "Ask Kubo if he don't know. ",
+            enabled: true,
+            keep: { ["kubo", "zanele", "don't"] }
+        )
+        try await pause()
+        #expect(store.takeTypedGrammarRequest()?.keep == ["kubo", "don't"])
     }
 
     @Test func resetRemovesAnUncollectedQuestion() async throws {

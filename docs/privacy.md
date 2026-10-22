@@ -82,8 +82,9 @@ suggestion row; nothing in the field changes unless the user taps it, and
 dismissing it stops that fix being offered again in the field. It never runs
 in password, address, link, e-mail, name or search fields, in fields that
 turned suggestions or autocorrection off, with suggestions off, or on text
-that does not read as English. The user's own words (dictionary, custom
-vocabulary, learned words, snippet triggers) are never changed.
+that does not read as English, and not while text is selected. The user's own
+words (dictionary, custom vocabulary, learned words, snippet triggers, and on
+iOS their text replacements and contact names) are never changed.
 
 - **Android:** the keyboard runs in the app's own process, so the sentences go
   from the keyboard to the model in memory and nowhere else. The read happens
@@ -94,8 +95,10 @@ vocabulary, learned words, snippet triggers) are never changed.
   writes them to one file in the App Group (`typed-grammar-request.json`),
   which the app deletes as it reads it, and the app writes the corrected text
   back to `typed-grammar-answer.json`, which the keyboard deletes as it reads
-  it. A question nobody collects is deleted when the keyboard closes or the app
-  next starts. This needs Full Access (it is the App Group) and only works
+  it. The request carries only those of the user's protected words that occur
+  in the sentence, never the whole list, so the address book is not copied
+  into it. A question nobody collects is deleted when the keyboard closes,
+  when checking stops, or when the app next starts. This needs Full Access (it is the App Group) and only works
   while the app is running, which Quick Dictation keeps it doing in the
   background; otherwise nothing is written at all. The keyboard extension still
   never loads the model, makes no network call, and reports nothing.
