@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import com.vocahq.vocaphone.NotificationIds
 import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.core.OverlayNoticePolicy
+import com.vocahq.vocaphone.ui.MainActivity
 
 /**
  * The notification that explains a bubble which never arrived. See
@@ -52,14 +53,10 @@ class OverlayPermissionNotice(private val context: Context) {
         val manager = manager() ?: return false
         createChannel(manager)
 
-        val settings = Intent(
-            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-            Uri.fromParts("package", context.packageName, null),
-        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val tap = PendingIntent.getActivity(
             context,
             REQUEST_CODE,
-            settings,
+            tapIntent(),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
@@ -83,6 +80,28 @@ class OverlayPermissionNotice(private val context: Context) {
         // Notifications may be denied outright; a blocked bubble is not worth
         // crashing the accessibility service over.
         return runCatching { manager.notify(NOTIFICATION_ID, notification) }.isSuccess
+    }
+
+    /**
+     * An explicit intent for the notification to hold. The settings action is
+     * resolved to the activity that handles it here, so the system UI is never
+     * handed an implicit intent that whatever answers the action could claim.
+     * The `<queries>` entry in the manifest is what lets that lookup see the
+     * Settings app. If nothing answers, the tap opens VocaPhone instead, which
+     * walks the user through the same permission.
+     */
+    private fun tapIntent(): Intent {
+        val settings = Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.fromParts("package", context.packageName, null),
+        )
+        val handler = settings.resolveActivity(context.packageManager)
+        val explicit = if (handler != null) {
+            settings.setComponent(handler)
+        } else {
+            Intent(context, MainActivity::class.java)
+        }
+        return explicit.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
 
     private fun createChannel(manager: NotificationManager) {

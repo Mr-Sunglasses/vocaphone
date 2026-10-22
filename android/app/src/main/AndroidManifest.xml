@@ -22,9 +22,15 @@
         android:name="android.hardware.camera"
         android:required="false" />
 
-    <!-- Stats sharing checks only X's package before choosing the web fallback. -->
+    <!-- Stats sharing checks only X's package before choosing the web fallback.
+         The overlay notice resolves the Settings screen so its PendingIntent
+         can name that activity instead of carrying an implicit intent. -->
     <queries>
         <package android:name="com.twitter.android" />
+        <intent>
+            <action android:name="android.settings.action.MANAGE_OVERLAY_PERMISSION" />
+            <data android:scheme="package" />
+        </intent>
     </queries>
 
     <application
