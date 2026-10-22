@@ -75,6 +75,9 @@ android {
             buildConfigField("boolean", "FLOATING_INPUT", "false")
             buildConfigField("String", "APTABASE_HOST", "\"$aptabaseHost\"")
             buildConfigField("String", "APTABASE_KEY", "\"$aptabaseKey\"")
+            // The grammar model's JNI bridge to the ONNX Runtime above. See
+            // src/main/cpp/grammar/grammar_jni.c.
+            externalNativeBuild { cmake { arguments += "-DVOCAPHONE_GRAMMAR=ON" } }
         }
         // The floating-mic variant: same dictation pipeline, same engines and
         // same settings, but the VocaPhone keyboard is left out and text reaches
@@ -91,6 +94,7 @@ android {
             buildConfigField("boolean", "FLOATING_INPUT", "true")
             buildConfigField("String", "APTABASE_HOST", "\"$aptabaseHost\"")
             buildConfigField("String", "APTABASE_KEY", "\"$aptabaseKey\"")
+            externalNativeBuild { cmake { arguments += "-DVOCAPHONE_GRAMMAR=ON" } }
         }
         // F-Droid builds every byte it ships from source, which rules out the
         // prebuilt sherpa-onnx and ONNX Runtime libraries. This flavor drops

@@ -761,7 +761,12 @@ class LocalModelManager(
     private suspend fun releaseEnginesIfUnused() = engineMutex.withLock {
         if (engineUsers.get() > 0) return@withLock
         releaseEngines()
+        onIdleRelease?.invoke()
     }
+
+    /** Also released when the engines are dropped for being idle: the grammar session. */
+    @Volatile
+    var onIdleRelease: (() -> Unit)? = null
 
     private fun cancelIdleUnload() {
         idleUnloadJob?.cancel()

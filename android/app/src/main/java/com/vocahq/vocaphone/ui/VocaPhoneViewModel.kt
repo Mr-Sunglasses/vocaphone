@@ -31,6 +31,7 @@ import com.vocahq.vocaphone.dictation.DictationSource
 import com.vocahq.vocaphone.gateway.GatewayClient
 import com.vocahq.vocaphone.gateway.GatewayException
 import com.vocahq.vocaphone.local.DeviceProfile
+import com.vocahq.vocaphone.local.GrammarModelState
 import com.vocahq.vocaphone.local.LocalModelDescriptor
 import com.vocahq.vocaphone.local.ModelDownloadService
 import com.vocahq.vocaphone.local.LocalModelIntegrityException
@@ -386,6 +387,31 @@ class VocaPhoneViewModel @JvmOverloads constructor(
 
     fun setRepairSpeech(enabled: Boolean) =
         viewModelScope.launch { container.settings.setRepairSpeech(enabled) }
+
+    val grammarModel: StateFlow<GrammarModelState> = container.grammarModel.state
+
+    /**
+     * Turning Fix grammar on downloads the model first when it is missing, and
+     * writes the setting only once the files have been verified: it can never
+     * be on without a model. A failed download leaves it off and says why in
+     * [grammarModel]. The download outlives the screen, like a speech model's.
+     */
+    fun setFixGrammar(enabled: Boolean) {
+        if (!enabled) {
+            viewModelScope.launch { container.settings.setFixGrammar(false) }
+            return
+        }
+        container.workScope.launch {
+            val ready = runCatching { container.grammarModel.download() }.isSuccess
+            if (ready) {
+                container.grammar.modelChanged()
+                container.settings.setFixGrammar(true)
+            }
+        }
+    }
+
+    /** Stops a grammar model download and discards what it fetched; the setting stays off. */
+    fun cancelGrammarDownload() = container.grammarModel.cancel()
 
     fun setNumbersAsDigits(enabled: Boolean) =
         viewModelScope.launch { container.settings.setNumbersAsDigits(enabled) }

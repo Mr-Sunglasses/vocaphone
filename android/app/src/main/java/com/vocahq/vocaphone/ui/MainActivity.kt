@@ -117,6 +117,7 @@ fun VocaPhoneApp(
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val setup by viewModel.setup.collectAsStateWithLifecycle()
+    val grammarModel by viewModel.grammarModel.collectAsStateWithLifecycle()
     val dictation by viewModel.dictation.collectAsStateWithLifecycle()
     val history by viewModel.history.collectAsStateWithLifecycle()
     val connection by viewModel.connection.collectAsStateWithLifecycle()
@@ -427,6 +428,9 @@ fun VocaPhoneApp(
                 onTranslateTo = { viewModel.setTranslateTo(it) },
                 onStyle = { viewModel.setStyle(it) },
                 onRepairSpeech = { viewModel.setRepairSpeech(it) },
+                grammarModel = grammarModel,
+                onFixGrammar = { viewModel.setFixGrammar(it) },
+                onCancelGrammarDownload = { viewModel.cancelGrammarDownload() },
                 onNumbersAsDigits = { viewModel.setNumbersAsDigits(it) },
                 onSpokenEmoji = { viewModel.setSpokenEmoji(it) },
                 onChineseScript = { viewModel.setChineseScript(it) },

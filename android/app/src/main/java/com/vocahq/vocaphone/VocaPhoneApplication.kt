@@ -15,8 +15,10 @@ import com.vocahq.vocaphone.data.recentProcessExits
 import com.vocahq.vocaphone.data.UsageStatsRepository
 import com.vocahq.vocaphone.data.VocaPhoneDatabase
 import com.vocahq.vocaphone.dictation.DictationController
+import com.vocahq.vocaphone.grammar.GrammarCorrector
 import com.vocahq.vocaphone.ime.VoiceShortcutIme
 import com.vocahq.vocaphone.local.DeviceProfile
+import com.vocahq.vocaphone.local.GrammarModelStore
 import com.vocahq.vocaphone.local.LocalModelManager
 import com.vocahq.vocaphone.local.RetiredModels
 import com.vocahq.vocaphone.local.catalogLanguageCode
@@ -104,6 +106,14 @@ class AppContainer(context: Context) {
     val localModels = LocalModelManager(context.applicationContext)
 
     /**
+     * The optional "Fix grammar (English)" model and the stage that runs it.
+     * Its failures go to the diagnostic log as a closed set of event names;
+     * nothing about it reaches telemetry.
+     */
+    val grammarModel = GrammarModelStore(context.applicationContext)
+    val grammar = GrammarCorrector(grammarModel) { event -> diagnostics.recordError(event, null) }
+
+    /**
      * Anonymous usage reporting. Does nothing at all until the user turns it on,
      * and is compiled out of the F-Droid flavor.
      */
@@ -142,6 +152,7 @@ class AppContainer(context: Context) {
         diagnostics = diagnostics,
         audioDirectory = audioDirectory,
         localModels = localModels,
+        grammar = grammar,
         telemetry = telemetry,
         cues = dictationCues,
         usageStats = usageStats,
@@ -156,6 +167,10 @@ class AppContainer(context: Context) {
             settingsMigration.join()
             localModels.refresh()
         }
+        // The grammar session goes when the speech engines go: idle, or the
+        // system asking for memory back.
+        localModels.onIdleRelease = grammar::release
+        applicationScope.launch { grammarModel.refresh() }
         telemetryFlush.start()
     }
 

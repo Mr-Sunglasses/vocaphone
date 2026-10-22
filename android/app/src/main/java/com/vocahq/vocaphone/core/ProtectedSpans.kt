@@ -13,7 +13,8 @@ package com.vocahq.vocaphone.core
  */
 class ProtectedSpans private constructor(
     val text: String,
-    private val tokens: List<String>,
+    /** The spans the placeholders stand for, by index. */
+    val tokens: List<String>,
 ) {
     /**
      * Puts the original spans back. Takes the text rather than reading [text],
