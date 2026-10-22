@@ -29,6 +29,13 @@ struct TypingCandidate: Equatable {
         /// offer goes there — visible for exactly as long as the correction is
         /// still the last thing that happened.
         case revert
+        /// "Check grammar while typing": a fix for the sentence just typed,
+        /// labelled with the words and what they become. Offered between
+        /// words only, and applied only on a tap.
+        case grammarFix
+        /// Beside ``grammarFix``: keeps what was written and stops offering
+        /// that fix in this field.
+        case grammarDismiss
     }
 
     let text: String

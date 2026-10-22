@@ -344,6 +344,13 @@ final class TypingEngine {
 
     var learnedWordCount: Int { learned.snapshot().count }
 
+    /// The words this keyboard has learned, which the grammar check must
+    /// leave alone. Read after a pause, never per keystroke.
+    var learnedWords: [String] { learned.snapshot().words }
+
+    /// Whether `word` is in the shipped list, for telling English text apart.
+    func isListedWord(_ word: String) -> Bool { wordList.rank(of: word) != nil }
+
     /// For a process about to end: learned words are written behind the
     /// keystroke, and a queued write would not survive `exit`.
     @discardableResult

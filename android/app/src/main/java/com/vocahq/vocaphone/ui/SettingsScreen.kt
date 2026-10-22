@@ -157,6 +157,7 @@ fun SettingsScreen(
     onDynamicColor: (Boolean) -> Unit,
     onSuggestions: (Boolean) -> Unit,
     onCorrections: (Boolean) -> Unit,
+    onTypingGrammar: (Boolean) -> Unit = {},
     onNumberKeyHints: (Boolean) -> Unit,
     onLongPressSymbols: (Boolean) -> Unit,
     onAutoCapitalize: (Boolean) -> Unit,
@@ -469,6 +470,10 @@ fun SettingsScreen(
                         onCheckedChange = onCorrections,
                     )
                     SettingsDivider()
+                    if (GrammarModelCatalog.available) {
+                        TypingGrammarRow(settings, grammarModel, onTypingGrammar, onCancelGrammarDownload)
+                        SettingsDivider()
+                    }
                     SettingsSwitchRow(
                         title = "Capitalize sentences",
                         supporting = "Shift turns on at the start of a sentence.",

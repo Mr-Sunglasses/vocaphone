@@ -451,6 +451,7 @@ fun VocaPhoneApp(
                 onDynamicColor = { viewModel.setDynamicColorEnabled(it) },
                 onSuggestions = { viewModel.setSuggestionsEnabled(it) },
                 onCorrections = { viewModel.setCorrectionsEnabled(it) },
+                onTypingGrammar = { viewModel.setTypingGrammar(it) },
                 onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },
                 onLongPressSymbols = { viewModel.setLongPressSymbolsEnabled(it) },
                 onAutoCapitalize = { viewModel.setAutoCapitalizeEnabled(it) },

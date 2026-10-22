@@ -44,6 +44,22 @@ class ImeInputPolicyTest {
     }
 
     @Test
+    fun `grammar is checked in prose fields only`() {
+        val text = InputType.TYPE_CLASS_TEXT
+        assertTrue(ImeInputPolicy.acceptsGrammarCheck(text))
+        assertTrue(ImeInputPolicy.acceptsGrammarCheck(text or InputType.TYPE_TEXT_VARIATION_SHORT_MESSAGE))
+        assertTrue(ImeInputPolicy.acceptsGrammarCheck(text or InputType.TYPE_TEXT_VARIATION_EMAIL_SUBJECT))
+        assertTrue(ImeInputPolicy.acceptsGrammarCheck(text or InputType.TYPE_TEXT_FLAG_MULTI_LINE))
+        assertFalse(ImeInputPolicy.acceptsGrammarCheck(text or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS))
+        assertFalse(ImeInputPolicy.acceptsGrammarCheck(text or InputType.TYPE_TEXT_VARIATION_URI))
+        assertFalse(ImeInputPolicy.acceptsGrammarCheck(text or InputType.TYPE_TEXT_VARIATION_FILTER))
+        assertFalse(ImeInputPolicy.acceptsGrammarCheck(text or InputType.TYPE_TEXT_VARIATION_PERSON_NAME))
+        assertFalse(ImeInputPolicy.acceptsGrammarCheck(text or InputType.TYPE_TEXT_VARIATION_PASSWORD))
+        assertFalse(ImeInputPolicy.acceptsGrammarCheck(text or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS))
+        assertFalse(ImeInputPolicy.acceptsGrammarCheck(InputType.TYPE_CLASS_NUMBER))
+    }
+
+    @Test
     fun `number passwords are identified as sensitive`() {
         assertTrue(
             ImeInputPolicy.isSensitive(

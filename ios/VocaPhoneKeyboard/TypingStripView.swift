@@ -197,6 +197,7 @@ final class TypingStripView: UIScrollView {
         configuration.title = switch candidate.kind {
         case .literal: "“\(candidate.text)”"
         case .revert: "↩ “\(candidate.text)”"
+        case .grammarFix: "✓ \(candidate.text)"
         default: candidate.text
         }
         let isEmoji = candidate.kind == .emoji
@@ -237,7 +238,9 @@ final class TypingStripView: UIScrollView {
                 return outgoing
             }
         button.configuration = configuration
-        button.accessibilityLabel = candidate.text
+        button.accessibilityLabel = candidate.kind == .grammarFix
+            ? "Fix grammar: \(candidate.text)"
+            : candidate.text
         button.accessibilityHint = Self.hint(for: candidate)
     }
 
@@ -255,6 +258,8 @@ final class TypingStripView: UIScrollView {
         case .emoji: "Replaces the word with this emoji."
         case .swipeAlternate: "Replaces the swiped word."
         case .revert: "Undoes the autocorrect and restores what you typed."
+        case .grammarFix: "Fixes the grammar of what you just typed."
+        case .grammarDismiss: "Keeps what you wrote."
         }
     }
 

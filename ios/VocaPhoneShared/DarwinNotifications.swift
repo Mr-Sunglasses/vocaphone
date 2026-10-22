@@ -41,6 +41,11 @@ enum VocaPhoneDarwinNotification: String, Sendable {
     /// again, and a page waiting for a fresh write waits forever. This asks for
     /// one, and only a running extension can answer.
     case keyboardStatusRequested = "com.vocahq.vocaphone.keyboard-status-requested"
+    /// The keyboard wrote a ``TypedGrammarRequest``: "Check grammar while
+    /// typing" has a sentence for the app's grammar model.
+    case typedGrammarRequested = "com.vocahq.vocaphone.typed-grammar-requested"
+    /// The app wrote the ``TypedGrammarAnswer`` to it.
+    case typedGrammarAnswered = "com.vocahq.vocaphone.typed-grammar-answered"
 
     fileprivate var name: CFNotificationName {
         CFNotificationName(rawValue as CFString)

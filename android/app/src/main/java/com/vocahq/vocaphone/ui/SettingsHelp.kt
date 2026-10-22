@@ -85,6 +85,13 @@ internal object SettingsHelp {
                 "password fields.",
             "Corrections offer nearby dictionary words in the toolbar. Tap a word, or " +
                 "a swipe alternative, to replace it.",
+            "Check grammar (English) looks over the last sentence or two you typed when " +
+                "you pause, with the same 28 MB on-device model as Fix grammar, and offers " +
+                "a fix in the toolbar: \"he don't know\" → \"he doesn't know\". Nothing " +
+                "changes until you tap it; tap × to keep what you wrote. It reads only the " +
+                "text before the cursor, never leaves this phone, leaves your own words, " +
+                "names and links alone, and is off in passwords, addresses and links. Off " +
+                "by default.",
             "Hold for digits and symbols shows a punctuation mark or digit on each " +
                 "letter key. Hold the key to type it; slide for accents. It is off by " +
                 "default so a hold on E still types è.",

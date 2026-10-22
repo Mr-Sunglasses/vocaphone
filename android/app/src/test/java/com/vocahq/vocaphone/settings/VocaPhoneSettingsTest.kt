@@ -15,4 +15,10 @@ class VocaPhoneSettingsTest {
     fun fixGrammarDefaultsOff() {
         assertFalse(VocaPhoneSettings().fixGrammar)
     }
+
+    /** Same model, same reasons: reading what is typed is never on by itself. */
+    @Test
+    fun typingGrammarDefaultsOff() {
+        assertFalse(VocaPhoneSettings().typingGrammar)
+    }
 }

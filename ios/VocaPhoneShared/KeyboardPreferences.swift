@@ -61,6 +61,8 @@ enum KeyboardDefaults {
     static let repairSpeech = true
     /// Off: a 28 MB download that can change a sentence that was right.
     static let fixGrammar = false
+    /// Off: it reads what is typed, and needs the same 28 MB model.
+    static let typingGrammar = false
     static let liveWords = false
 }
 
@@ -579,6 +581,7 @@ enum KeyboardPreferences {
     static let spokenEmojiKey = "spokenEmojiEnabled"
     static let repairSpeechKey = "speechRepairEnabled"
     static let fixGrammarKey = "fixGrammarEnabled"
+    static let typingGrammarKey = "typingGrammarEnabled"
     static let liveWordsKey = "liveWordsEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let translateToKey = "translateTo"
@@ -943,6 +946,15 @@ enum KeyboardPreferences {
     static var fixGrammar: Bool {
         get { boolean(fixGrammarKey, default: KeyboardDefaults.fixGrammar) }
         set { defaults?.set(newValue, forKey: fixGrammarKey) }
+    }
+
+    /// "Check grammar (English)" for typed text. The keyboard reads it to
+    /// decide whether to ask; the app reads it again before it answers, so
+    /// turning it off in Settings stops the checks even from a keyboard that
+    /// has not been reopened since.
+    static var typingGrammar: Bool {
+        get { boolean(typingGrammarKey, default: KeyboardDefaults.typingGrammar) }
+        set { defaults?.set(newValue, forKey: typingGrammarKey) }
     }
 
     static let surfaceAnimationResponseKey = "surfaceAnimationResponse2"

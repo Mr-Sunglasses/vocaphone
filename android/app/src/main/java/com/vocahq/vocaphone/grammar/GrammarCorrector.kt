@@ -10,6 +10,9 @@ import org.json.JSONArray
 /** How long the whole stage may take for one transcript. */
 internal const val GRAMMAR_BUDGET_MILLIS = 150L
 
+/** How long one check of typed text may take; see [GrammarCorrector.correctTyped]. */
+internal const val TYPED_BUDGET_MILLIS = 400L
+
 /**
  * The "Fix grammar (English)" stage: [GrammarTagger] over a [GrammarSession],
  * fed from the verified files in [GrammarModelStore].
@@ -79,19 +82,29 @@ class GrammarCorrector internal constructor(
         }
     }
 
-    override fun correct(text: String, keep: Set<String>): String {
+    override fun correct(text: String, keep: Set<String>): String = run(text, keep, budgetMillis) ?: text
+
+    /**
+     * For "Check grammar while typing": [text] corrected, or null when the
+     * model is not loaded yet, which starts loading it. Nobody is waiting on
+     * an insertion here, so the budget is longer than dictation's; it still
+     * bounds a paragraph pasted into the field.
+     */
+    fun correctTyped(text: String, keep: Set<String>): String? = run(text, keep, TYPED_BUDGET_MILLIS)
+
+    private fun run(text: String, keep: Set<String>, budget: Long): String? {
         val current = synchronized(lock) { loaded }
         if (current == null) {
             // Not downloaded, not loaded yet, or failed to load: leave it.
             warm()
-            return text
+            return null
         }
         val start = System.nanoTime()
-        val deadline = start + budgetMillis * 1_000_000
+        val deadline = start + budget * 1_000_000
         return try {
             val corrected = synchronized(current) { current.tagger.correct(text, keep, deadline) }
             when {
-                System.nanoTime() > deadline + budgetMillis * 1_000_000 -> {
+                System.nanoTime() > deadline + budget * 1_000_000 -> {
                     // One sentence ran far past the budget (the tagger only
                     // checks between sentences and passes). Its result is still
                     // correct; the log says the phone is slower than assumed.

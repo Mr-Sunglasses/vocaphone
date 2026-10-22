@@ -302,6 +302,13 @@ data class VocaPhoneSettings(
     val dynamicColorEnabled: Boolean = false,
     val suggestionsEnabled: Boolean = true,
     val correctionsEnabled: Boolean = true,
+    /**
+     * Whether the keyboard checks the sentences just typed with the on-device
+     * grammar model and offers a fix in the strip. Off by default, for the
+     * same reasons as [fixGrammar], whose model it shares; never changes text
+     * without a tap. See [com.vocahq.vocaphone.grammar.TypedGrammar].
+     */
+    val typingGrammar: Boolean = false,
     val numberKeyHintsEnabled: Boolean = true,
     val longPressSymbolsEnabled: Boolean = false,
     /** Arm shift at the start of a field and after a sentence ends. */
@@ -595,6 +602,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setCorrectionsEnabled(enabled: Boolean) = put(Keys.CORRECTIONS, enabled)
 
+    suspend fun setTypingGrammar(enabled: Boolean) = put(Keys.TYPING_GRAMMAR, enabled)
+
     suspend fun setNumberKeyHintsEnabled(enabled: Boolean) = put(Keys.NUMBER_KEY_HINTS, enabled)
 
     suspend fun setLongPressSymbolsEnabled(enabled: Boolean) = put(Keys.LONG_PRESS_SYMBOLS, enabled)
@@ -812,6 +821,7 @@ class SettingsRepository(private val context: Context) {
         dynamicColorEnabled = this[Keys.DYNAMIC_COLOR] ?: false,
         suggestionsEnabled = this[Keys.SUGGESTIONS] ?: true,
         correctionsEnabled = this[Keys.CORRECTIONS] ?: true,
+        typingGrammar = this[Keys.TYPING_GRAMMAR] ?: false,
         numberKeyHintsEnabled = this[Keys.NUMBER_KEY_HINTS] ?: true,
         longPressSymbolsEnabled = this[Keys.LONG_PRESS_SYMBOLS] ?: false,
         autoCapitalizeEnabled = this[Keys.AUTO_CAPITALIZE] ?: true,
@@ -875,6 +885,7 @@ class SettingsRepository(private val context: Context) {
         val DYNAMIC_COLOR = booleanPreferencesKey("keyboard_dynamic_color")
         val SUGGESTIONS = booleanPreferencesKey("keyboard_suggestions")
         val CORRECTIONS = booleanPreferencesKey("keyboard_corrections")
+        val TYPING_GRAMMAR = booleanPreferencesKey("keyboard_typing_grammar")
         val NUMBER_KEY_HINTS = booleanPreferencesKey("keyboard_number_key_hints")
         val LONG_PRESS_SYMBOLS = booleanPreferencesKey("keyboard_long_press_symbols")
         val AUTO_CAPITALIZE = booleanPreferencesKey("keyboard_auto_capitalize")

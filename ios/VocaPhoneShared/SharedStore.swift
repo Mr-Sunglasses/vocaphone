@@ -543,6 +543,61 @@ final class SharedStore: @unchecked Sendable {
         return status
     }
 
+    // MARK: - Check grammar while typing
+
+    /// The keyboard's question for the app. One file, overwritten by the next
+    /// question: only the newest sentence is worth an answer.
+    func saveTypedGrammarRequest(_ request: TypedGrammarRequest) throws {
+        let root = try rootDirectory()
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        try encoder.encode(request).write(to: typedGrammarRequestURL(root: root), options: .atomic)
+        notify(.typedGrammarRequested)
+    }
+
+    /// Reads the keyboard's question and deletes it in the same breath, so the
+    /// typed text spends no longer on disk than it takes to read it.
+    func takeTypedGrammarRequest() -> TypedGrammarRequest? {
+        take(TypedGrammarRequest.self) { typedGrammarRequestURL(root: $0) }
+            .flatMap { $0.schemaVersion == TypedGrammarRequest.schemaVersion ? $0 : nil }
+    }
+
+    func saveTypedGrammarAnswer(_ answer: TypedGrammarAnswer) throws {
+        let root = try rootDirectory()
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        try encoder.encode(answer).write(to: typedGrammarAnswerURL(root: root), options: .atomic)
+        notify(.typedGrammarAnswered)
+    }
+
+    /// Reads the app's answer and deletes it.
+    func takeTypedGrammarAnswer() -> TypedGrammarAnswer? {
+        take(TypedGrammarAnswer.self) { typedGrammarAnswerURL(root: $0) }
+            .flatMap { $0.schemaVersion == TypedGrammarAnswer.schemaVersion ? $0 : nil }
+    }
+
+    /// Removes a question or answer nobody collected: a keyboard dismissed
+    /// mid-check, an app that ended before it answered.
+    func clearTypedGrammarExchange() {
+        guard let root = try? rootDirectory() else { return }
+        try? fileManager.removeItem(at: typedGrammarRequestURL(root: root))
+        try? fileManager.removeItem(at: typedGrammarAnswerURL(root: root))
+    }
+
+    private func take<T: Decodable>(_ type: T.Type, at location: (URL) -> URL) -> T? {
+        guard let root = try? rootDirectory() else { return nil }
+        let fileURL = location(root)
+        guard let data = try? Data(contentsOf: fileURL) else { return nil }
+        try? fileManager.removeItem(at: fileURL)
+        return try? decoder.decode(type, from: data)
+    }
+
+    private func typedGrammarRequestURL(root: URL) -> URL {
+        root.appendingPathComponent("typed-grammar-request.json")
+    }
+
+    private func typedGrammarAnswerURL(root: URL) -> URL {
+        root.appendingPathComponent("typed-grammar-answer.json")
+    }
+
     private func keyboardStatusURL(root: URL) -> URL {
         root.appendingPathComponent("keyboard-status.json")
     }

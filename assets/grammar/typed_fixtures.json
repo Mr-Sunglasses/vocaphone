@@ -1,0 +1,49 @@
+{
+  "about": "Cases for TypedGrammar (Check grammar while typing), read by both ports: android/.../grammar/TypedGrammarTest.kt and ios/VocaPhoneTests/TypedGrammarTests.swift. ASCII and single-unit punctuation only, so a character count means the same thing in UTF-16 and in Swift Characters.",
+  "region": [
+    { "name": "a finished sentence and a space", "before": "He don't know. ", "startKnown": true, "region": "He don't know." },
+    { "name": "mid-word is never checked", "before": "He don't kno", "startKnown": true, "region": null },
+    { "name": "an empty field", "before": "", "startKnown": true, "region": null },
+    { "name": "only spaces", "before": "   ", "startKnown": true, "region": null },
+    { "name": "the last two sentences", "before": "First one. Second one is here. Third they is going. ", "startKnown": true, "region": "Second one is here. Third they is going." },
+    { "name": "the cursor's own paragraph", "before": "Dear Sam,\nthey was late. ", "startKnown": true, "region": "they was late." },
+    { "name": "a cut-off first sentence is left out", "before": "ing the thing. They was late. ", "startKnown": false, "region": "They was late." },
+    { "name": "a cut-off fragment alone is not checked", "before": "of the they was late ", "startKnown": false, "region": null },
+    { "name": "an unknown start that reads like a sentence", "before": "They was late ", "startKnown": false, "region": "They was late" },
+    { "name": "one word is too little", "before": "Hello. ", "startKnown": true, "region": null },
+    { "name": "a closing quote ends a sentence", "before": "She said \"no.\" They was late. ", "startKnown": true, "region": "She said \"no.\" They was late." },
+    { "name": "right after the full stop", "before": "They was late.", "startKnown": true, "region": "They was late." },
+    { "name": "after a comma", "before": "They was late, ", "startKnown": true, "region": "They was late," },
+    { "name": "after an apostrophe is mid-word", "before": "the dogs'", "startKnown": true, "region": null },
+    { "name": "a sentence still being written", "before": "I has a ", "startKnown": true, "region": "I has a" }
+  ],
+  "fix": [
+    { "name": "a replaced word", "checked": "He don't know.", "corrected": "He doesn't know.", "fix": { "corrected": "He doesn't know.", "start": 2, "original": "don't", "replacement": "doesn't", "label": "don't → doesn't" } },
+    { "name": "nothing changed", "checked": "Fine by me.", "corrected": "Fine by me.", "fix": null },
+    { "name": "a capital on a lower-case first word is taken back", "checked": "hello there.", "corrected": "Hello there.", "fix": null },
+    { "name": "a full stop on an unfinished sentence is taken back", "checked": "he don't know", "corrected": "He doesn't know.", "fix": { "corrected": "he doesn't know", "start": 2, "original": "don't", "replacement": "doesn't", "label": "don't → doesn't" } },
+    { "name": "the pronoun I is a fix", "checked": "i think so.", "corrected": "I think so.", "fix": { "corrected": "I think so.", "start": 0, "original": "i", "replacement": "I", "label": "i → I" } },
+    { "name": "the pronoun I mid-sentence", "checked": "ok i think so.", "corrected": "Ok I think so.", "fix": { "corrected": "ok I think so.", "start": 2, "original": "i", "replacement": "I", "label": "i → I" } },
+    { "name": "a capital after a full stop alone is not offered", "checked": "ok. see you.", "corrected": "ok. See you.", "fix": null },
+    { "name": "a removed word", "checked": "I want to to go.", "corrected": "I want to go.", "fix": { "corrected": "I want to go.", "start": 9, "original": "to", "replacement": "", "label": "Remove “to”" } },
+    { "name": "an added word", "checked": "I going home.", "corrected": "I am going home.", "fix": { "corrected": "I am going home.", "start": 1, "original": "", "replacement": "am", "label": "Add “am”" } },
+    { "name": "the first word replaced", "checked": "Their going home.", "corrected": "They're going home.", "fix": { "corrected": "They're going home.", "start": 0, "original": "Their", "replacement": "They're", "label": "Their → They're" } },
+    { "name": "two changes become one span", "checked": "She have a apple.", "corrected": "She has an apple.", "fix": { "corrected": "She has an apple.", "start": 3, "original": "have a", "replacement": "has an", "label": "have a → has an" } },
+    { "name": "a curly apostrophe is kept", "checked": "He don’t know.", "corrected": "He doesn’t know.", "fix": { "corrected": "He doesn’t know.", "start": 2, "original": "don’t", "replacement": "doesn’t", "label": "don’t → doesn’t" } }
+  ],
+  "edit": [
+    { "name": "a space typed after the check is kept", "checked": "He don't know.", "corrected": "He doesn't know.", "before": "He don't know. ", "edit": { "deleteBefore": 13, "insert": " doesn't know. " } },
+    { "name": "earlier text is left alone", "checked": "He don't know.", "corrected": "He doesn't know.", "before": "Hi there. He don't know.", "edit": { "deleteBefore": 12, "insert": " doesn't know." } },
+    { "name": "typing on retires the fix", "checked": "He don't know.", "corrected": "He doesn't know.", "before": "He don't know. And", "edit": null },
+    { "name": "an edited sentence retires the fix", "checked": "He don't know.", "corrected": "He doesn't know.", "before": "He doesn't know. ", "edit": null },
+    { "name": "a new line after the check is kept", "checked": "I want to to go.", "corrected": "I want to go.", "before": "I want to to go.\n", "edit": { "deleteBefore": 8, "insert": " go.\n" } },
+    { "name": "the first word", "checked": "Their going home.", "corrected": "They're going home.", "before": "Their going home. ", "edit": { "deleteBefore": 18, "insert": "They're going home. " } }
+  ],
+  "stillDescribes": [
+    { "name": "the same text", "checked": "He don't know.", "corrected": "He doesn't know.", "window": "He don't know. ", "expected": true },
+    { "name": "a window shorter than the check", "checked": "He don't know.", "corrected": "He doesn't know.", "window": "know. ", "expected": true },
+    { "name": "a window longer than the check", "checked": "He don't know.", "corrected": "He doesn't know.", "window": "Yes. He don't know.", "expected": true },
+    { "name": "a new word", "checked": "He don't know.", "corrected": "He doesn't know.", "window": "know. A", "expected": false },
+    { "name": "an empty window", "checked": "He don't know.", "corrected": "He doesn't know.", "window": "", "expected": false }
+  ]
+}

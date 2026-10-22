@@ -71,6 +71,38 @@ used unchanged and the diagnostic log records only that it happened
 (`grammar_failed` and similar), never any text. It reports nothing to usage
 statistics.
 
+**Check grammar (English)** for typed text is a separate switch, also off by
+default (Android: Settings › Keyboard › Typing; iOS: Keyboard › Typing). It
+uses the same model and the same download, and is offered in the same builds.
+When it is on and the user pauses in an ordinary text field, the keyboard
+takes the last one or two sentences before the cursor in the cursor's
+paragraph (never more than 400 characters, never the text after the cursor)
+and has the model check them. A fix is only *offered*, as a chip in the
+suggestion row; nothing in the field changes unless the user taps it, and
+dismissing it stops that fix being offered again in the field. It never runs
+in password, address, link, e-mail, name or search fields, in fields that
+turned suggestions or autocorrection off, with suggestions off, or on text
+that does not read as English. The user's own words (dictionary, custom
+vocabulary, learned words, snippet triggers) are never changed.
+
+- **Android:** the keyboard runs in the app's own process, so the sentences go
+  from the keyboard to the model in memory and nowhere else. The read happens
+  once per pause (`getTextBeforeCursor(600)`), not per keystroke. The model is
+  released a minute after the keyboard closes.
+- **iOS:** a keyboard extension is not given enough memory to run the model, so
+  the keyboard hands the sentences to the vocaphone app on the same iPhone: it
+  writes them to one file in the App Group (`typed-grammar-request.json`),
+  which the app deletes as it reads it, and the app writes the corrected text
+  back to `typed-grammar-answer.json`, which the keyboard deletes as it reads
+  it. A question nobody collects is deleted when the keyboard closes or the app
+  next starts. This needs Full Access (it is the App Group) and only works
+  while the app is running, which Quick Dictation keeps it doing in the
+  background; otherwise nothing is written at all. The keyboard extension still
+  never loads the model, makes no network call, and reports nothing.
+
+Neither platform logs, stores beyond those transient files, or reports any of
+the text. Failures are recorded only as the content-free grammar events above.
+
 With **Show words while speaking** turned on (Settings › Dictation; off by
 default), while the recording is still going, the words those early decodes
 produced are written to a small file beside the session record in the App Group, so the
@@ -196,7 +228,9 @@ inspect unrelated keystrokes, or use clipboard insertion. iOS still controls
 whether a third-party keyboard is available in a field.
 
 Typing intelligence does **not** need Full Access, and must not: a keyboard that
-cannot type without it is not a keyboard. Without Full Access, completions,
+cannot type without it is not a keyboard. The one exception is the optional
+Check grammar, which reaches the containing app through the App Group (see
+above) and simply does nothing without Full Access. Without Full Access, completions,
 corrections and predictions all still work; only learned words stop persisting,
 and the Keyboard settings screen says so rather than pretending otherwise.
 Keyboard haptics are also unavailable without it, because iOS gives an extension
@@ -216,6 +250,8 @@ The iOS keyboard completes, corrects and predicts entirely on the device.
   itself, and `documentContextBeforeInput` to reconcile that word after the
   cursor moves. iOS gives a keyboard extension no composing region, so this is
   the only way to know which word to replace. Neither is logged or stored.
+  With Check grammar on, the last sentence or two of that context goes to the
+  containing app after a pause, as described above.
 - **Sensitive fields.** Suggestions, correction, prediction and learning are all
   switched off — not merely hidden — in password, new-password, one-time-code,
   card-number and number-pad fields.
@@ -250,8 +286,12 @@ is never logged, and is not sent to the gateway. With Suggestions enabled, the
 keyboard may call `getTextBeforeCursor(32)`
 and `getTextAfterCursor(32)` in non-password fields so next-word guesses and
 corrections have a token. That window stays in memory, is never logged, and is
-not sent to the gateway. Swipe typing matches the finger path against the same
-on-phone English word list and does not read the field. Swipe and suggestions
+not sent to the gateway. With Check grammar on, the keyboard also reads up to
+600 characters before the cursor once the user pauses, and checks the last
+sentence or two of it with the on-device grammar model in the same process;
+that text is never logged, stored or sent anywhere. Swipe typing matches the
+finger path against the same on-phone English word list and does not read the
+field. Swipe and suggestions
 are English only; the app does not download other keyboard language packs. The clipboard chip and
 optional clipboard history read
 clips only while the input view is showing; history stays on the phone. Neither

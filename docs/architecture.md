@@ -313,11 +313,51 @@ The grammar model runs in the containing app only. Android reaches the
 sherpa-onnx links through `GrammarOnnxBridge.c`. Neither adds a second
 runtime, and the F-Droid flavor builds neither.
 
+## Check grammar while typing
+
+The same model, offered for typed text: after a pause, the keyboard checks the
+last sentence or two before the cursor and offers one fix as a chip in the
+suggestion row. Nothing changes until the chip is tapped. The decisions about
+*what* to check and *how* a fix becomes an edit are pure and shared by both
+keyboards: `TypedGrammar` (`android/.../grammar/TypedGrammar.kt`,
+`ios/VocaPhoneShared/TypedGrammar.swift`), tested against one set of cases in
+`assets/grammar/typed_fixtures.json`.
+
+```
+pause (700 ms) ─▶ TypedGrammar.region ─▶ grammar model ─▶ TypedGrammar.fix ─▶ chip
+                  last ≤2 sentences,                        words → words
+                  word boundary only
+tap ─▶ re-read text before cursor ─▶ TypedGrammar.edit ─▶ delete n, insert once
+```
+
+- `region` only checks at a word boundary, in the cursor's paragraph, at most
+  400 characters. `fix` takes back a full stop added to an unfinished sentence
+  and a capital put on a first word typed in lower case, and offers a change
+  of case alone only for the pronoun "I". `edit` applies only if the text
+  before the cursor still ends with what was checked.
+- **Android** (`ime/TypedGrammarCheck.kt`): the IME is in the app's process and
+  calls `GrammarCorrector.correctTyped` directly, on `Dispatchers.Default`. The
+  pause timer is restarted from the coalesced editor read, so the only
+  per-keystroke cost is cancelling a timer; the 600-character
+  `getTextBeforeCursor` happens once per pause. The session is released a
+  minute after the input view finishes.
+- **iOS**: the extension cannot hold the model (it peaks near 40 MB against a
+  limit measured at 77 MB, and the model and runtime need 30–50 MB more), so
+  `TypedGrammarClient` (keyboard) writes a `TypedGrammarRequest` to the App
+  Group and posts `typedGrammarRequested`; `TypedGrammarResponder` (app) takes
+  and deletes it, runs `GrammarCorrector.correctTyped`, writes a
+  `TypedGrammarAnswer` and posts `typedGrammarAnswered`; the keyboard takes and
+  deletes that. The app only hears the ping while it is running, so the
+  keyboard asks only while the Quick Dictation availability marker is fresh.
+  An answer for an older question, or one that no longer describes the
+  document, is dropped.
+
 ## Typing intelligence (iOS keyboard)
 
 Completion, correction and next-word prediction run entirely inside the keyboard
 extension. Nothing about them touches the gateway, the App Group session record,
-or the network.
+or the network. (The optional grammar check is separate; see
+[Check grammar while typing](#check-grammar-while-typing).)
 
 ```
 keystroke ─▶ WordComposer ─▶ TypingEngine ─▶ TypingCandidates ─▶ TypingStripView
