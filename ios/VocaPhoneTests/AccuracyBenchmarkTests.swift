@@ -92,7 +92,10 @@ enum AccuracyBenchmark {
         let manifest = configuration.root.appendingPathComponent("sets/\(set)/manifest.jsonl")
         let lines = try String(contentsOf: manifest, encoding: .utf8).split(separator: "\n")
         let clips = try lines.map { try JSONDecoder().decode(Clip.self, from: Data($0.utf8)) }
-        return limit.map { Array(clips.prefix($0)) } ?? clips
+        // Spread across the set, as prepare.py spreads the set across the
+        // corpus, so a short run still hears every speaker.
+        guard let limit, limit < clips.count else { return clips }
+        return (0..<limit).map { clips[$0 * clips.count / limit] }
     }
 
     static func transcribes(_ model: String, language: String) -> Bool {

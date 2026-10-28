@@ -84,7 +84,10 @@ class WhisperAccuracyBenchmarkTest {
     private fun clips(set: String): List<JSONObject> {
         val lines = File(root, "sets/$set/manifest.jsonl").readLines().filter { it.isNotBlank() }
         val all = lines.map(::JSONObject)
-        return limit?.let { all.take(it) } ?: all
+        // Spread across the set, as prepare.py spreads the set across the
+        // corpus, so a short run still hears every speaker.
+        val count = limit?.takeIf { it < all.size } ?: return all
+        return (0 until count).map { all[it * all.size / count] }
     }
 
     /** The prepared WAVs are 32-bit float, mono, 16 kHz. */
