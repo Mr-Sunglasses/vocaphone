@@ -410,6 +410,12 @@ object TranscriptRepair {
         // A repeat with nothing after it was said twice on purpose. A false
         // start is the beginning of a sentence the speaker then finishes.
         if (length > 1 && index + length * 2 >= words.size) return false
+        // So is one the speaker paused after: "Sir Camel, Sir Camel, cried
+        // the Brahmin" and "cries of a Nottingham, a Nottingham." A false
+        // start runs straight on from the second copy into the rest of the
+        // sentence — "we should, we should probably ship" — so a mark after
+        // that copy means it was not the start of anything.
+        if (length > 1 && words[index + length * 2 - 1].trailing.any(::isPunctuation)) return false
         // Neither is a repeat containing [SpokenEmoji]'s trigger. Nobody
         // abandons a sentence on the one word this app treats as a command, so
         // "crying emoji crying emoji crying emoji" is three emoji — and unlike
@@ -435,6 +441,16 @@ object TranscriptRepair {
             if (key !in FUNCTION_WORDS || key in LEGITIMATE_DOUBLES) return false
         }
         return true
+    }
+
+    /** A Unicode punctuation mark, as Swift's `Character.isPunctuation` reads one. */
+    private fun isPunctuation(character: Char): Boolean = when (character.category) {
+        CharCategory.CONNECTOR_PUNCTUATION, CharCategory.DASH_PUNCTUATION,
+        CharCategory.START_PUNCTUATION, CharCategory.END_PUNCTUATION,
+        CharCategory.INITIAL_QUOTE_PUNCTUATION, CharCategory.FINAL_QUOTE_PUNCTUATION,
+        CharCategory.OTHER_PUNCTUATION,
+        -> true
+        else -> false
     }
 
     private fun ends(word: Word, punctuation: SentencePunctuation): Boolean =

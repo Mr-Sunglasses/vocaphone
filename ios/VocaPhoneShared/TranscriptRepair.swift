@@ -411,6 +411,14 @@ enum TranscriptRepair {
         // A repeat with nothing after it was said twice on purpose. A false
         // start is the beginning of a sentence the speaker then finishes.
         if length > 1, index + length * 2 >= words.count { return false }
+        // So is one the speaker paused after: "Sir Camel, Sir Camel, cried
+        // the Brahmin" and "cries of a Nottingham, a Nottingham." A false
+        // start runs straight on from the second copy into the rest of the
+        // sentence — "we should, we should probably ship" — so a mark after
+        // that copy means it was not the start of anything.
+        if length > 1, words[index + length * 2 - 1].trailing.contains(where: \.isPunctuation) {
+            return false
+        }
         // Neither is a repeat containing ``SpokenEmoji``'s trigger. Nobody
         // abandons a sentence on the one word this app treats as a command, so
         // "crying emoji crying emoji crying emoji" is three emoji — and unlike

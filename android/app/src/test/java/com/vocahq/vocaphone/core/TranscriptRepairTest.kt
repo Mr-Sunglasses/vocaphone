@@ -210,6 +210,25 @@ class TranscriptRepairTest {
     }
 
     /** A sentence ended between the copies, so the second starts a new thought. */
+    /**
+     * A pause after the second copy too means the phrase was said twice on
+     * purpose. Both are from LibriSpeech, where the model heard them right and
+     * this stage used to delete the second copy.
+     */
+    @Test
+    fun `a repeat that is paused after survives`() {
+        assertEquals(
+            "Sir Camel, Sir Camel, cried the Brahmin, hear and give judgment",
+            TranscriptRepair.apply("Sir Camel, Sir Camel, cried the Brahmin, hear and give judgment"),
+        )
+        assertEquals(
+            "Cries of a Nottingham, a Nottingham. Before them fled the stroller",
+            TranscriptRepair.apply("Cries of a Nottingham, a Nottingham. Before them fled the stroller"),
+        )
+        // A doubled function word is still a stutter, whatever follows it.
+        assertEquals("Well I would apply", TranscriptRepair.apply("Well I I would apply"))
+    }
+
     @Test
     fun `a repeat across a sentence boundary survives`() {
         assertEquals(

@@ -176,6 +176,22 @@ struct TranscriptRepairTests {
         #expect(TranscriptRepair.apply("I can can peaches") == "I can can peaches")
     }
 
+    /// A pause after the second copy too means the phrase was said twice on
+    /// purpose. Both are from LibriSpeech, where the model heard them right and
+    /// this stage used to delete the second copy.
+    @Test func aRepeatThatIsPausedAfterSurvives() {
+        #expect(
+            TranscriptRepair.apply("Sir Camel, Sir Camel, cried the Brahmin, hear and give judgment")
+                == "Sir Camel, Sir Camel, cried the Brahmin, hear and give judgment"
+        )
+        #expect(
+            TranscriptRepair.apply("Cries of a Nottingham, a Nottingham. Before them fled the stroller")
+                == "Cries of a Nottingham, a Nottingham. Before them fled the stroller"
+        )
+        // A doubled function word is still a stutter, whatever follows it.
+        #expect(TranscriptRepair.apply("Well I I would apply") == "Well I would apply")
+    }
+
     /// A sentence ended between the copies, so the second starts a new thought.
     @Test func aRepeatAcrossASentenceBoundarySurvives() {
         #expect(TranscriptRepair.apply("I went home. Home is quiet") == "I went home. Home is quiet")

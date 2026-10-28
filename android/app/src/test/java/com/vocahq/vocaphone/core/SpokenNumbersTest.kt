@@ -112,4 +112,25 @@ class SpokenNumbersTest {
         assertEquals("someone told me", converted("someone told me"))
         assertEquals("20\n3", converted("twenty\nthree"))
     }
+
+    /**
+     * "a" is the one of "one hundred". It used to stop the run opening at all,
+     * so LibriSpeech's "a hundred and twenty six" became "a hundred and 26".
+     */
+    @Test
+    fun `an article before a hundred is one`() {
+        assertEquals("126 for admission", converted("A hundred and twenty six for admission"))
+        assertEquals("1500 people", converted("a thousand five hundred people"))
+        assertEquals("it is 100 percent done", converted("it is a hundred percent done"))
+    }
+
+    /** Bare, it is as idiomatic as a lone "one", and stays a word for the same reason. */
+    @Test
+    fun `a bare hundred stays a word`() {
+        assertEquals("I told you a hundred times", converted("I told you a hundred times"))
+        assertEquals("a million thanks", converted("a million thanks"))
+        assertEquals("a hundred and the rest", converted("a hundred and the rest"))
+        assertEquals("a hundredth of a second", converted("a hundredth of a second"))
+        assertEquals("a 20 minute walk", converted("a twenty minute walk"))
+    }
 }
