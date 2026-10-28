@@ -932,7 +932,7 @@ class LocalModelManager(
             resolvedTranslateTo,
             quality,
             CustomVocabulary.whisperPrompt(vocabulary),
-            model.cropsAudioContext,
+            model.cropsAudioContext && quality.whisperCropsAudioContext,
             WhisperCpuConfig.preferredThreadCount(model.id),
         ) ?: error("Local transcription engine is not loaded")
     }

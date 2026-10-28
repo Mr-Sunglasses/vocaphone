@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.local
 
+import com.vocahq.vocaphone.core.TranscriptionQuality
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -106,6 +107,13 @@ class LocalPerformancePolicyTest {
         assertTrue(LocalModelCatalog.find("base-q8_0")!!.cropsAudioContext)
         assertTrue(LocalModelCatalog.find("small-q8_0")!!.cropsAudioContext)
         assertFalse(LocalModelCatalog.find("large-v3-turbo-q8_0")!!.cropsAudioContext)
+    }
+
+    @Test
+    fun `only fast trades whisper accuracy for a cropped window`() {
+        assertTrue(TranscriptionQuality.FAST.whisperCropsAudioContext)
+        assertFalse(TranscriptionQuality.BALANCED.whisperCropsAudioContext)
+        assertFalse(TranscriptionQuality.ACCURATE.whisperCropsAudioContext)
     }
 
     @Test

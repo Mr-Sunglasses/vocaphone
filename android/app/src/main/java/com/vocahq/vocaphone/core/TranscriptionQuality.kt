@@ -66,6 +66,20 @@ enum class TranscriptionQuality(val storedValue: String) {
         }
 
     /**
+     * Whether a short recording may use a cropped whisper encoder window, on a
+     * model whose catalog row allows it ([com.vocahq.vocaphone.local.LocalModelDescriptor.cropsAudioContext]).
+     *
+     * Fast only. The crop is the biggest single saving on a short dictation,
+     * and it costs accuracy: on LibriSpeech, Whisper Small Q8 made about a
+     * quarter more word errors with it — WER 3.73 against 2.81 on test-clean
+     * and 10.63 against 8.75 on test-other, 100 clips each, measured with
+     * `just android accuracy`. The loss is in five- to fifteen-second
+     * recordings, which is most dictation.
+     */
+    val whisperCropsAudioContext: Boolean
+        get() = this == FAST
+
+    /**
      * Temperature step for a window whose first decode looks degenerate.
      *
      * whisper.cpp keeps adding this value until it reaches 1.0. Its usual 0.2
