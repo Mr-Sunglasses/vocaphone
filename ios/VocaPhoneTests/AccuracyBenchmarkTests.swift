@@ -50,6 +50,9 @@ enum AccuracyBenchmark {
         let paths: [String]
         let limit: Int?
         let tag: String
+        /// Balanced unless `VOCA_ASR_BENCH_QUALITY` says otherwise. Fast never
+        /// re-samples a window, which makes two runs comparable clip by clip.
+        let quality: TranscriptionQuality
     }
 
     struct Clip: Decodable {
@@ -83,7 +86,8 @@ enum AccuracyBenchmark {
             sets: words("VOCA_ASR_BENCH_SETS", "librispeech-clean librispeech-other librispeech-long fleurs-hi"),
             paths: words("VOCA_ASR_BENCH_PATHS", "file streamed"),
             limit: environment["VOCA_ASR_BENCH_LIMIT"].flatMap(Int.init),
-            tag: environment["VOCA_ASR_BENCH_TAG"].flatMap { $0.isEmpty ? nil : $0 } ?? "current"
+            tag: environment["VOCA_ASR_BENCH_TAG"].flatMap { $0.isEmpty ? nil : $0 } ?? "current",
+            quality: environment["VOCA_ASR_BENCH_QUALITY"].flatMap(TranscriptionQuality.init(rawValue:)) ?? .default
         )
     }()
 
@@ -194,9 +198,13 @@ enum AccuracyBenchmark {
             return loaded
         }
 
+        private static var quality: TranscriptionQuality {
+            AccuracyBenchmark.configuration?.quality ?? .default
+        }
+
         private static func options(_ language: String) -> DecodingOptions {
             WhisperTranscription.decodingOptions(
-                language: language, translate: false, quality: .balanced, promptTokens: nil
+                language: language, translate: false, quality: quality, promptTokens: nil
             )
         }
 
@@ -210,7 +218,7 @@ enum AccuracyBenchmark {
             let results = try await WhisperTranscription.transcribe(
                 samples: SpeechAudioConditioning.condition(samples),
                 options: options(language),
-                retries: TranscriptionQuality.balanced.whisperRetryCount,
+                retries: quality.whisperRetryCount,
                 emptyWindow: { _ in empty += 1 }
             ) {
                 try await engine.transcribe(audioArray: $0, decodeOptions: $1)
@@ -232,7 +240,7 @@ enum AccuracyBenchmark {
                 _ = try? await WhisperTranscription.transcribe(
                     samples: levelled.samples,
                     options: options,
-                    retries: TranscriptionQuality.balanced.whisperRetryCount,
+                    retries: quality.whisperRetryCount,
                     cache: cache,
                     levelling: WhisperWindowCache.Levelling(levelled)
                 ) {
@@ -250,7 +258,7 @@ enum AccuracyBenchmark {
             let results = try await WhisperTranscription.transcribe(
                 samples: levelled.samples,
                 options: options,
-                retries: TranscriptionQuality.balanced.whisperRetryCount,
+                retries: quality.whisperRetryCount,
                 cache: cache,
                 levelling: WhisperWindowCache.Levelling(levelled),
                 emptyWindow: { _ in empty += 1 }
@@ -279,7 +287,7 @@ enum AccuracyBenchmark {
                 directory: configuration.modelRoot.appendingPathComponent(configuration.model),
                 language: language,
                 threads: SherpaThreads.count,
-                quality: family.effectiveQuality(.balanced)
+                quality: family.effectiveQuality(configuration.quality)
             )
             loaded = (language, recognizer)
             return recognizer

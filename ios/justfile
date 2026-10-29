@@ -163,7 +163,7 @@ model-test model="openai_whisper-small_216MB" sherpa="parakeet-tdt-ctc-110m-en":
 #
 # Measure a pinned model's word error rate on public speech test sets.
 [group('test')]
-accuracy model tag="current" sets="librispeech-clean librispeech-other librispeech-long fleurs-hi" paths="file streamed" limit="":
+accuracy model tag="current" sets="librispeech-clean librispeech-other librispeech-long fleurs-hi" paths="file streamed" limit="" quality="balanced":
     #!/usr/bin/env bash
     set -euo pipefail
     root="${VOCA_ASR_BENCH_DIR:-$HOME/.cache/vocaphone/asr-bench}"
@@ -183,7 +183,7 @@ accuracy model tag="current" sets="librispeech-clean librispeech-other librispee
     TEST_RUNNER_VOCA_ASR_BENCH_DIR="${root}" TEST_RUNNER_VOCA_ASR_BENCH_MODEL_DIR="${models}" \
     TEST_RUNNER_VOCA_ASR_BENCH_MODEL='{{ model }}' TEST_RUNNER_VOCA_ASR_BENCH_TAG='{{ tag }}' \
     TEST_RUNNER_VOCA_ASR_BENCH_SETS='{{ sets }}' TEST_RUNNER_VOCA_ASR_BENCH_PATHS='{{ paths }}' \
-    TEST_RUNNER_VOCA_ASR_BENCH_LIMIT='{{ limit }}' \
+    TEST_RUNNER_VOCA_ASR_BENCH_LIMIT='{{ limit }}' TEST_RUNNER_VOCA_ASR_BENCH_QUALITY='{{ quality }}' \
         {{ just_executable() }} test VocaPhoneTests/AccuracyBenchmarkTests
     uv run --quiet --with-requirements ../tools/asr-bench/requirements.txt \
         python ../tools/asr-bench/score.py --dir "${root}" --tag '{{ tag }}'
