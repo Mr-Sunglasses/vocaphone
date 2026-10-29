@@ -95,11 +95,7 @@ internal class WhisperContext private constructor(@Volatile private var pointer:
                 "Try the Fast or Balanced accuracy setting, or a smaller model."
         }
         return LocalTranscription(
-            text = buildString {
-                repeat(WhisperLib.getTextSegmentCount(pointer)) { index ->
-                    append(WhisperLib.getTextSegment(pointer, index))
-                }
-            }.trim(),
+            text = WhisperText.decode(WhisperLib.getText(pointer)).trim(),
             // Detection is meaningful only for Automatic. With an explicit
             // selection, the user's requested output language remains the
             // contract even if the engine reports something contradictory.
