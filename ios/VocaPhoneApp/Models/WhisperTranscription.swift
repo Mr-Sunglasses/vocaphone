@@ -199,15 +199,6 @@ enum WhisperTranscription {
         var results: [TranscriptionResult] = []
         for (index, chunk) in chunks.enumerated() {
             try Task.checkCancellation()
-            var samples = chunk.audioSamples
-            // Whisper's seek loop skips clips shorter than windowClipTime.
-            // Pad an audible short final window so its last word is decoded.
-            let minimumSamples = Int((windowOptions.windowClipTime + 0.1) * Float(WhisperKit.sampleRate))
-            if samples.count < minimumSamples {
-                samples += [Float](repeating: 0, count: minimumSamples - samples.count)
-            }
-            var bounded = windowOptions
-            bounded.sampleLength = sampleLength(forWindowSamples: chunk.audioSamples.count)
             let key = WhisperWindowCache.Key(
                 start: chunk.seekOffsetIndex,
                 count: chunk.audioSamples.count,
@@ -218,7 +209,9 @@ enum WhisperTranscription {
             if let cached = cache?.results(for: key) {
                 decoded = cached
             } else {
-                decoded = try await decodeBest(samples, options: bounded, retries: retries, decode: decode)
+                decoded = try await decodeWindow(
+                    chunk.audioSamples, options: windowOptions, retries: retries, decode: decode
+                )
                 cache?.store(decoded, for: key)
             }
             try Task.checkCancellation()
@@ -247,6 +240,99 @@ enum WhisperTranscription {
             for result in results { result.language = locked }
         }
         return results
+    }
+
+    /// Decodes one window, and carries on from where the decode stopped when it
+    /// stopped before the speech did.
+    ///
+    /// A window may produce ``sampleLength(forWindowSamples:)`` tokens and no
+    /// more, and Whisper's context caps that at 224 whatever the window's
+    /// length. English rarely comes near it. Devanagari costs about a token a
+    /// character, so twelve seconds of continuous Hindi can run out — and
+    /// WhisperKit 1.1.0 then keeps the cut-off segment and moves on to the end
+    /// of the window, so the rest of the speech is never decoded and the text
+    /// can stop halfway through a character. On FLEURS Hindi that was four
+    /// clips in fifty, each losing the end of its sentence.
+    ///
+    /// Whisper's own reference decoder drops the unfinished segment and seeks
+    /// to where it began. This does the same: the window is decoded again from
+    /// the start of the cut-off segment, up to ``maximumContinuations`` times,
+    /// and only while each pass gets at least ``minimumContinuationSeconds``
+    /// further.
+    static func decodeWindow(
+        _ audio: [Float],
+        options: DecodingOptions,
+        retries: Int,
+        decode: ([Float], DecodingOptions) async throws -> [TranscriptionResult]
+    ) async throws -> [TranscriptionResult] {
+        let rate = Float(WhisperKit.sampleRate)
+        // Whisper's seek loop skips clips shorter than windowClipTime.
+        // Pad an audible short final window so its last word is decoded.
+        let minimumSamples = Int((options.windowClipTime + 0.1) * rate)
+        var finished: [TranscriptionResult] = []
+        var start = 0
+        var passOptions = options
+        for pass in 0...maximumContinuations {
+            let remaining = Array(audio[start...])
+            var samples = remaining
+            if samples.count < minimumSamples {
+                samples += [Float](repeating: 0, count: minimumSamples - samples.count)
+            }
+            passOptions.sampleLength = sampleLength(forWindowSamples: remaining.count)
+            let decoded = try await decodeBest(samples, options: passOptions, retries: retries, decode: decode)
+            let offset = Float(start) / rate
+            if offset > 0 {
+                for result in decoded {
+                    result.segments = result.segments.map { segment in
+                        var shifted = segment
+                        shifted.start += offset
+                        shifted.end += offset
+                        return shifted
+                    }
+                }
+            }
+            guard pass < maximumContinuations,
+                  let resume = cutOff(decoded, windowSeconds: Float(remaining.count) / rate + offset, offset: offset)
+            else {
+                finished += decoded
+                break
+            }
+            finished += decoded
+            start = min(audio.count, Int(resume * rate))
+            // The rest of the window is the same speech: keep its language
+            // rather than detecting again from a fragment.
+            if passOptions.language == nil, let heard = decoded.first?.language, !heard.isEmpty {
+                passOptions.language = heard
+                passOptions.detectLanguage = false
+            }
+        }
+        return finished
+    }
+
+    static let maximumContinuations = 4
+
+    /// Less progress than this and a continuation is a loop, not a rescue.
+    static let minimumContinuationSeconds: Float = 1
+
+    /// Where to carry on from when `results` end in a segment the decoder
+    /// stopped writing because it ran out of tokens, or nil when they do not.
+    /// The cut-off segment is removed from `results`.
+    ///
+    /// WhisperKit 1.1.0 (`SegmentSeeker`) builds that segment from its opening
+    /// timestamp and the text after it, with no closing timestamp, so it starts
+    /// and ends at the same moment. A finished segment never does. It has to
+    /// follow a finished one, too: a window that ran out within its first
+    /// segment has no point to resume from that is not the start again.
+    static func cutOff(_ results: [TranscriptionResult], windowSeconds: Float, offset: Float = 0) -> Float? {
+        guard let last = results.last, last.segments.count >= 2, let segment = last.segments.last,
+              segment.start == segment.end,
+              !segment.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              segment.start - offset >= minimumContinuationSeconds,
+              segment.start <= windowSeconds - minimumContinuationSeconds
+        else { return nil }
+        last.segments.removeLast()
+        last.text = last.segments.map(\.text).joined().trimmingCharacters(in: .whitespaces)
+        return segment.start
     }
 
     /// The temperature a retry samples at.
