@@ -26,6 +26,45 @@ Primary sources: [Sherpa Moonshine exports](https://k2-fsa.github.io/sherpa/onnx
 [Distil-Whisper](https://huggingface.co/distil-whisper/distil-large-v3), and the
 vendored `android/third_party/whisper.cpp/ggml/src/ggml-cpu/arch/arm/repack.cpp`.
 
+## Real-speech baseline
+
+Measured 2026-10-29 with [`tools/asr-bench`](../tools/asr-bench/README.md)
+(`just ios accuracy`, `just android accuracy`) on `main` at `98a7859d`. Word
+error rate (WER) in percent, Open ASR Leaderboard English normaliser, on the
+text the keyboard types (after repair, digits and styling). iOS models ran in
+the simulator, Android whisper.cpp on the Mac through the app's JNI glue. Both
+are the Mac's CPU, so no timing is reported. `file` is a finished recording;
+`streamed` is a dictation decoded while recording.
+
+| Model | Path | LibriSpeech clean | LibriSpeech other | 45–90 s long-form |
+| --- | --- | --- | --- | --- |
+| Parakeet 110M (iOS) | file | 3.13 | 6.28 | 4.01 |
+| Parakeet 110M (iOS) | streamed | 3.20 | 5.94 | 3.56 |
+| Parakeet 0.6B v2 (iOS) | file | 1.79 | 4.20 | 2.15 |
+| Parakeet 0.6B v2 (iOS) | streamed | 1.79 | 3.85 | 2.08 |
+| Whisper Small (iOS) | file | 3.06 | 7.73 | 3.71 |
+| Whisper Small Q8 (Android) | file | 3.73 | 10.63 | — |
+
+200 clips per short set and 24 long clips, except Whisper: 50 clips per short
+set and 12 long on iOS, 100 per short set on Android. FLEURS Hindi (50 clips):
+Whisper Small 67.3 WER / 36.5 CER on iOS and 85.1 / 66.5 on Android.
+
+What it showed:
+
+- Parakeet 0.6B v2 makes about 45% fewer errors than 110M at every length.
+- Streamed and whole-file decodes differ by up to half a point. The 110M int8
+  model changes words with small changes in input level ("Nature" and
+  "NatTure" at gains 1.5 and 3, no clipping), so this is input sensitivity,
+  not a chunking defect.
+- The finishing stage deleted words the model heard right: a phrase said
+  twice on purpose, and "a hundred and twenty six" typed as "a hundred and 26".
+- Android's cropped encoder window costs Whisper Small about a quarter more
+  errors on English and most of its Hindi.
+- iOS Whisper loses the end of long Hindi windows: 224 tokens run out, and
+  WhisperKit 1.1.0 skips the rest of the window.
+- Android Whisper Hindi text is decoded per segment, and a character split
+  between segments comes out as mojibake.
+
 ## Added: Omnilingual ASR 300M CTC INT8
 
 This adds a non-Whisper option for Arabic, Swahili, and the supported Indic/Asian
