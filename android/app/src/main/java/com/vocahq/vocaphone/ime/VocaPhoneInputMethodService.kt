@@ -163,22 +163,6 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     private val autoFixed = MutableStateFlow<AutoFix?>(null)
 
     /**
-     * One automatic fix: [typed] at editor [position] became [wrote]. [tail]
-     * is the text from [position] to where the fix left the cursor, so Undo
-     * restores this occurrence and no other, and only while the field there
-     * still reads as the fix left it. [key] is dismissed on Undo; the
-     * suggestion itself has already left the report.
-     */
-    private data class AutoFix(
-        val label: String,
-        val position: Int,
-        val wrote: String,
-        val typed: String,
-        val key: String,
-        val tail: String,
-    )
-
-    /**
      * Writing check: the rules everywhere, and the app's own grammar model
      * ([com.vocahq.vocaphone.grammar.GrammarCorrector], shared with
      * dictation's Fix grammar) once it is downloaded. This keyboard runs in
@@ -929,8 +913,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         // An edit or a cursor move after an automatic fix ends its Undo: the
         // text before the cursor must still end with what the fix left.
         autoFixed.value?.let { fix ->
-            val same = if (fix.tail.length <= before.length) before.endsWith(fix.tail) else fix.tail.endsWith(before)
-            if (hasSelection || !same) autoFixed.value = null
+            if (!fix.stillOffered(before, hasSelection)) autoFixed.value = null
         }
         // Restarts the pause timer only. The read the check needs, and the
         // model, wait until the typing stops.
@@ -1008,39 +991,42 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     /**
-     * Applies [suggestions] from the current report to the field, and takes
-     * off the report only the ones the editor accepted. Returns the field as
-     * read just before the edit and what was committed; null when nothing
-     * was attempted.
+     * Applies [suggestions] from the current report to the field, each moved
+     * to where its words now are and kept only if they still say what was
+     * checked. When none still does, the field is checked again.
      */
-    private fun applyWritingAll(suggestions: List<WritingSuggestion>): Pair<WritingCheckSession.Field, WritingCommit>? {
+    private fun applyWritingAll(suggestions: List<WritingSuggestion>) {
         // commitText replaces a selection, so a fix applied over one would
         // delete it. Checks stop while there is a selection; this is the
         // backstop for a tap that lands as one is made.
-        if (lastSelStart != lastSelEnd || suggestions.isEmpty()) return null
-        val report = writingCheck.report.value ?: return null
-        val connection = currentInputConnection ?: return null
-        val fresh = readWritingField() ?: return null
-        // Each one moved to where its words now are, and kept only if they
-        // still say what was checked.
-        val fixes = suggestions.mapNotNull { suggestion ->
-            val replacement = suggestion.replacement ?: return@mapNotNull null
-            val moved = WritingCheck.rebase(listOf(suggestion), report.field.text, fresh.text).singleOrNull()
-                ?: return@mapNotNull null
-            if (!fresh.text.regionMatches(moved.start, moved.original, 0, moved.original.length)) return@mapNotNull null
-            WritingFix(fresh.offset + moved.start, fresh.offset + moved.end, replacement, suggestion)
-        }
+        if (lastSelStart != lastSelEnd || suggestions.isEmpty()) return
+        val report = writingCheck.report.value ?: return
+        val connection = currentInputConnection ?: return
+        val fresh = readWritingField() ?: return
+        val fixes = writingFixesFor(suggestions, report.field.text, fresh)
         if (fixes.isEmpty()) {
             writingCheck.checkNow(writingOptions())
-            return null
+            return
         }
+        commitWriting(connection, fresh, fixes)
+    }
+
+    /**
+     * Commits [fixes] to [fresh], the field as just read, and takes off the
+     * report only the ones the editor accepted.
+     */
+    private fun commitWriting(
+        connection: InputConnection,
+        fresh: WritingCheckSession.Field,
+        fixes: List<WritingFix>,
+    ): WritingCommit {
         val commit = commitWritingFixes(connection, fixes, fresh.offset + fresh.cursor, composingRegionActive)
         composingRegionActive = false
         writingCheck.applied(commit.applied.mapNotNull { it.suggestion })
         editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
         syncShiftFromCursor()
         scheduleEditorTextRefresh()
-        return fresh to commit
+        return commit
     }
 
     /** "Add to dictionary": the word is the user's from now on, here and in dictation. */
@@ -1056,25 +1042,17 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
      * on its own.
      */
     private fun maybeAutoFix(report: WritingCheckSession.Report) {
-        if (!visibleSettings.value.typoAutoFix || !writingEnabled()) return
-        val fixes = report.suggestions.filter {
-            it.source == WritingSuggestion.Source.RULE && it.kind in AUTO_FIX_KINDS && it.isActionable &&
-                it.end < report.field.cursor
-        }
-        val last = fixes.maxByOrNull { it.start } ?: return
-        val (fresh, commit) = applyWritingAll(listOf(last)) ?: return
-        // Undo is offered only for a fix the editor took, before the cursor.
-        val fix = commit.applied.singleOrNull() ?: return
-        val end = fix.end - fresh.offset
-        if (end > fresh.cursor) return
-        autoFixed.value = AutoFix(
-            label = last.label,
-            position = fix.start,
-            wrote = fix.replacement,
-            typed = fresh.text.substring(fix.start - fresh.offset, end),
-            key = last.key,
-            tail = fix.replacement + fresh.text.substring(end, fresh.cursor),
-        )
+        if (!visibleSettings.value.typoAutoFix || !writingEnabled() || lastSelStart != lastSelEnd) return
+        // One fix per Undo. The fix's edit republishes the report, still
+        // holding any other typos; it is collected once this call has
+        // recorded the Undo, and waits until that offer ends.
+        val candidate = autoFixCandidate(report, undoPending = autoFixed.value != null) ?: return
+        val connection = currentInputConnection ?: return
+        val fresh = readWritingField() ?: return
+        // Checked against where the cursor is now, before anything is edited.
+        val fix = autoFixFor(report, candidate, fresh) ?: return
+        val commit = commitWriting(connection, fresh, listOf(fix))
+        autoFixed.value = commit.applied.singleOrNull()?.let { AutoFix.of(it, fresh) }
     }
 
     private fun undoAutoFix() {
@@ -1084,16 +1062,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         val field = readWritingField() ?: return
         // The occurrence that was fixed, still as the fix left it, with the
         // cursor still where the fix put it; anything else is left alone.
-        val at = fix.position - field.offset
-        val cursor = field.offset + field.cursor
-        if (at < 0 || cursor != fix.position + fix.tail.length) return
-        if (!field.text.regionMatches(at, fix.tail, 0, fix.tail.length)) return
-        val commit = commitWritingFixes(
-            connection,
-            listOf(WritingFix(fix.position, fix.position + fix.wrote.length, fix.typed)),
-            cursor,
-            composingRegionActive,
-        )
+        val undo = fix.undoIn(field) ?: return
+        val commit = commitWritingFixes(connection, listOf(undo), field.offset + field.cursor, composingRegionActive)
         composingRegionActive = false
         // Undone means "I meant that": the same fix is not made again here.
         if (commit.applied.isNotEmpty()) writingCheck.dismissKey(fix.key)
@@ -1552,8 +1522,5 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
         /** How long the grammar session outlives the keyboard going away. */
         const val TYPED_GRAMMAR_RELEASE_DELAY_MS = 60_000L
-
-        /** What "Fix obvious typos as I type" may change without a tap. */
-        val AUTO_FIX_KINDS = setOf("spelling", "apostrophe")
     }
 }
