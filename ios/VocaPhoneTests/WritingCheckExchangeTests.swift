@@ -33,20 +33,31 @@ struct WritingCheckExchangeTests {
         )
     }
 
-    private func client(appRunning: Bool = true, modelReady: Bool = true) -> WritingCheckClient {
+    private func client(
+        appRunning: Bool = true,
+        modelReady: Bool = true,
+        now: @escaping () -> Date = { Date() }
+    ) -> WritingCheckClient {
         WritingCheckClient(
             store: store,
             isAppRunning: { appRunning },
             modelReady: { modelReady },
             checker: { Self.checker },
             pause: .milliseconds(10),
+            now: now,
             observe: { _ in nil }
         )
     }
 
     private func type(_ client: WritingCheckClient, _ text: String) async throws {
         client.textChanged(before: text, after: "", enabled: true) { WritingCheckClient.Options() }
-        try await Task.sleep(for: .milliseconds(80))
+        await client.settle()
+    }
+
+    /// The app's answer read, and the report rebuilt from it.
+    private func collect(_ client: WritingCheckClient) async {
+        client.collect()
+        await client.settle()
     }
 
     private func labels(_ client: WritingCheckClient) -> [String] {
@@ -134,7 +145,7 @@ struct WritingCheckExchangeTests {
         #expect(labels(client) == ["of → have"])
         #expect(client.report?.modelPending == true)
         responder().answerPendingRequest()
-        client.collect()
+        await collect(client)
         #expect(labels(client) == ["go → goes", "of → have"])
         #expect(files().isEmpty)
     }
@@ -144,9 +155,115 @@ struct WritingCheckExchangeTests {
         let client = client()
         try await type(client, "She go home. ")
         responder().answerPendingRequest()
-        client.collect()
+        await collect(client)
         try await type(client, "She go home. They are fine. ")
         #expect(store.takeTypedGrammarRequest()?.sentences == ["They are fine."])
+    }
+
+    @Test func anExpiredQuestionIsAskedAgain() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let clock = Box(Date())
+        let client = client(now: { clock.value })
+        try await type(client, "She go home. ")
+        // The app never answered, and the question went unread.
+        store.clearTypedGrammarExchange()
+        clock.value = clock.value.addingTimeInterval(TypedGrammarRequest.maximumAge + 1)
+        try await type(client, "She go home. ")
+        #expect(store.takeTypedGrammarRequest()?.sentences == ["She go home."])
+    }
+
+    @Test func anEmptyAnswerWaitsForThePauseAndIsNotAskedForever() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client()
+        try await type(client, "She go home. ")
+        // A model that fails to load answers with nothing.
+        responder(enabled: false).answerPendingRequest()
+        await collect(client)
+        #expect(labels(client).isEmpty)
+        #expect(files().isEmpty)
+        // The next pause asks once more, and then the rules are left to it.
+        try await type(client, "She go home. ")
+        responder(enabled: false).answerPendingRequest()
+        await collect(client)
+        try await type(client, "She go home. ")
+        #expect(files().isEmpty)
+    }
+
+    @Test func aStaleCheckIsNotPublished() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client(appRunning: false)
+        client.checkNow(WritingCheckClient.Field(text: "I could of told you. ", cursor: 21), options: .init())
+        client.reset()
+        await client.settle()
+        #expect(client.report == nil)
+        #expect(!client.isChecking)
+    }
+
+    @Test func aDismissedKeyStaysAwayWithoutItsSuggestion() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client(appRunning: false)
+        try await type(client, "I could of told you. ")
+        let key = try #require(client.report?.suggestions.first).key
+        client.applied(try #require(client.report?.suggestions.first))
+        #expect(labels(client).isEmpty)
+        // Undo: the words are back, and the fix is not offered again.
+        client.dismiss(key: key)
+        try await type(client, "I could of told you. ")
+        #expect(labels(client).isEmpty)
+    }
+
+    @Test func fixesBeyondTheWindowCannotBeAccepted() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client(appRunning: false)
+        let text = "I could of told you. Sure. They could of known."
+        let cursor = ("I could of told you. Sure. " as NSString).length
+        client.checkNow(
+            WritingCheckClient.Field(text: text, cursor: cursor, reach: (cursor - 6)..<text.utf16.count),
+            options: .init()
+        )
+        await client.settle()
+        let report = try #require(client.report)
+        #expect(report.suggestions.count == 2)
+        #expect(report.suggestions.filter(report.canApply).map(\.start) == [cursor + 11])
+        #expect(report.chips.map(\.start) == [cursor + 11])
+    }
+
+    @Test func aWindowOntoTheWholeMessageKeepsItsReport() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client(appRunning: false)
+        let before = "I could of told you. Sure. "
+        let after = "They could of known."
+        let cursor = (before as NSString).length
+        client.checkNow(WritingCheckClient.Field(text: before + after, cursor: cursor, reach: 0..<cursor), options: .init())
+        await client.settle()
+        #expect(client.report?.count == 2)
+        client.textChanged(before: "Sure. ", after: "They could", enabled: true) { WritingCheckClient.Options() }
+        await client.settle()
+        let report = try #require(client.report)
+        #expect(report.count == 2)
+        #expect(report.field.reach == (cursor - 6)..<(cursor + 10))
+    }
+
+    @Test func undoFindsTheFixWhereItWasMade() throws {
+        let text = "thier car is their responsibility "
+        let field = WritingCheckClient.Field(text: text, cursor: (text as NSString).length)
+        let fix = try #require(WritingAutoFix(suggestion(text, "thier", "their", at: 0), in: field))
+        let fixed = "their car is their responsibility "
+        #expect(fix.isCurrent(before: fixed))
+        // Back from the cursor to the end of the first "their", not the second.
+        #expect(fix.distance == ((" car is their responsibility ") as NSString).length)
+        #expect(!fix.isCurrent(before: fixed + "x"))
+        #expect(!fix.isCurrent(before: "their car is their"))
+        #expect(!fix.isCurrent(before: nil))
+    }
+
+    private func suggestion(_ text: String, _ original: String, _ replacement: String, at start: Int) -> WritingSuggestion {
+        let end = start + (original as NSString).length
+        return WritingSuggestion(
+            start: start, end: end, original: original, replacement: replacement,
+            markStart: start, markEnd: end, kind: "spelling", category: .correctness,
+            title: "Spelling", message: "", mechanical: true, source: .rule, rule: nil
+        )
     }
 
     @Test func aDismissedSuggestionStaysAway() async throws {

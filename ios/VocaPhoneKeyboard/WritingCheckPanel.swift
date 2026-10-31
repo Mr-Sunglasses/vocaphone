@@ -16,8 +16,10 @@ final class WritingPanelModel: ObservableObject {
     var onCheckWholeMessage: (() -> Void)?
     var onOpenApp: (() -> Void)?
 
+    /// The mechanical fixes Accept all would make: those within the cursor's reach.
     var acceptAllCount: Int {
-        report?.suggestions.filter { $0.isActionable && $0.mechanical }.count ?? 0
+        guard let report else { return 0 }
+        return report.suggestions.filter { report.canApply($0) && $0.mechanical }.count
     }
 }
 
@@ -100,10 +102,18 @@ struct WritingPanelView: View {
             Text(s.message)
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
+            let reachable = model.report?.canApply(s) ?? s.isActionable
+            if s.isActionable, !reachable {
+                // Read by "Whole message", beyond what the keyboard can edit.
+                Text("Move the cursor nearer to fix this.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(foreground.opacity(0.6))
+            }
             HStack(spacing: 14) {
                 if s.isActionable {
                     Button("Accept") { model.onApply?(s) }
                         .fontWeight(.semibold)
+                        .disabled(!reachable)
                 }
                 Button("Ignore") { model.onDismiss?(s) }
                 if s.kind == "spelling", !s.shownOriginal.contains(where: \.isWhitespace) {

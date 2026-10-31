@@ -81,7 +81,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         checker: { [weak self] in self?.writingChecker }
     )
     /// "Fixed: teh → the", and what Undo needs, until the next edit.
-    private var autoFixed: (label: String, wrote: String, typed: String, key: String)?
+    private var autoFixed: WritingAutoFix?
+    /// "Whole message" walking the cursor through the document. Cancelled when
+    /// the field changes or the keyboard goes away.
+    private var wholeMessage: Task<Void, Never>?
     /// Whether the field's traits allow the grammar check, decided with the
     /// rest of the field's traits rather than per keystroke.
     private var fieldAllowsGrammarCheck = false
@@ -406,6 +409,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         isKeyboardVisible = false
         announcesStateChanges = false
         typing.suspend()
+        stopReadingWholeMessage()
         writingCheck.reset()
         autoFixed = nil
         super.viewWillDisappear(animated)
@@ -562,6 +566,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if documentID != lastDocumentID {
             lastDocumentID = documentID
             lastSpaceInsertedAt = nil
+            stopReadingWholeMessage()
             writingCheck.reset()
             autoFixed = nil
             applyDocumentTraits()
@@ -582,8 +587,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         releaseUndoIfDetached()
         updateReturnKeyEnablement(for: snapshot)
         updateAutomaticShift(for: snapshot)
-        // An edit after an automatic fix ends its Undo.
-        if let fix = autoFixed, !(snapshot.before ?? "").contains(fix.wrote) { autoFixed = nil }
+        // An edit after an automatic fix ends its Undo: the fixed words can
+        // no longer be found for certain.
+        if let fix = autoFixed, !fix.isCurrent(before: snapshot.before) { autoFixed = nil }
         // Restarts a timer and nothing else: the check waits for a pause.
         // A selection is not a sentence being written, and a fix applied over
         // one would delete it; the selection is only read when checking is on.
@@ -628,15 +634,20 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// between words, the typing candidates otherwise. The fixes wait while a
     /// word is being typed.
     private func stripCandidates(_ strip: TypingStrip) -> [TypingCandidate] {
-        guard isWritingCheckEnabled, typing.composer.text.isEmpty,
-              let report = writingCheck.report, report.count > 0
-        else { return strip.candidates }
-        var chips = [TypingCandidate(text: "\(report.count)", kind: .writingReview)]
+        guard isWritingCheckEnabled, typing.composer.text.isEmpty else { return strip.candidates }
+        let report = writingCheck.report
+        var chips: [TypingCandidate] = []
+        if let report, report.count > 0 {
+            chips.append(TypingCandidate(text: "\(report.count)", kind: .writingReview))
+        }
+        // Undo stays even when the fix it takes back was the last suggestion.
         if let fix = autoFixed {
             chips.append(TypingCandidate(text: "Undo \(fix.label)", kind: .writingFix, payload: Self.undoPayload))
         }
-        chips += report.chips.map { TypingCandidate(text: $0.label, kind: .writingFix, payload: $0.key) }
-        return chips
+        // `identity`, not `key`: the same change can be offered at two places,
+        // and the chip must make the one it was shown for.
+        chips += (report?.chips ?? []).map { TypingCandidate(text: $0.label, kind: .writingFix, payload: $0.identity) }
+        return chips.isEmpty ? strip.candidates : chips
     }
 
     // MARK: - Writing check
@@ -654,7 +665,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         panel.onAcceptAll = { [weak self] in
             guard let self, let report = writingCheck.report else { return }
-            documentEvent { self.applyWriting(report.suggestions.filter { $0.isActionable && $0.mechanical }) }
+            documentEvent { self.applyWriting(report.suggestions.filter { report.canApply($0) && $0.mechanical }) }
         }
         panel.onCheckWholeMessage = { [weak self] in self?.checkWholeMessage() }
         panel.onOpenApp = { [weak self] in self?.openWritingInApp() }
@@ -673,20 +684,34 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// again and each one moved; any whose words no longer say what was
     /// checked is skipped. From the last back, so each edit leaves the earlier
     /// offsets alone, and the cursor goes back where the user left it.
-    private func applyWriting(_ suggestions: [WritingSuggestion]) {
+    @discardableResult
+    private func applyWriting(_ suggestions: [WritingSuggestion]) -> [WritingSuggestion] {
         // With a selection, the first deleteBackward() removes the selection
         // rather than a character, and every count after it is off by that much.
-        guard textDocumentProxy.selectedText?.isEmpty != false, !suggestions.isEmpty,
+        guard textDocumentProxy.selectedText?.isEmpty != false, wholeMessage == nil, !suggestions.isEmpty,
               let report = writingCheck.report
-        else { return }
+        else { return [] }
         let document = readDocument()
-        guard let before = document.before else { return }
+        guard let before = document.before else { return [] }
         let text = before + (document.after ?? "")
-        let moved = WritingCheck.rebase(suggestions, old: report.field.text, new: text).filter {
-            $0.end <= text.utf16Length && text.utf16Slice($0.start, $0.end) == $0.original
+        // A whole message reaches past the window the keyboard can edit; only
+        // what lies within it is compared with the document, from where it starts.
+        let field = report.field
+        let reach = field.reach ?? 0..<field.text.utf16Length
+        let checked = field.text.utf16Slice(reach.lowerBound, reach.upperBound)
+        let moved: [(original: WritingSuggestion, now: WritingSuggestion)] = suggestions.filter(report.canApply).compactMap { s in
+            var local = s
+            local.start -= reach.lowerBound
+            local.end -= reach.lowerBound
+            local.markStart -= reach.lowerBound
+            local.markEnd -= reach.lowerBound
+            guard let now = WritingCheck.rebase([local], old: checked, new: text).first,
+                  now.end <= text.utf16Length, text.utf16Slice(now.start, now.end) == now.original
+            else { return nil }
+            return (s, now)
         }
         var cursor = before.utf16Length
-        for s in moved.sorted(by: { $0.start > $1.start }) {
+        for (original, s) in moved.sorted(by: { $0.now.start > $1.now.start }) {
             guard let replacement = s.replacement else { continue }
             // To the end of the words, take them back, write the replacement.
             textDocumentProxy.adjustTextPosition(byCharacterOffset: s.end - cursor)
@@ -702,12 +727,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             }
             if target != written { textDocumentProxy.adjustTextPosition(byCharacterOffset: target - written) }
             cursor = target
-            writingCheck.applied(s)
+            writingCheck.applied(original)
         }
         typing.reconcile(document: refreshDocument())
         if !moved.isEmpty {
             UIAccessibility.post(notification: .announcement, argument: moved.count == 1 ? "Fixed" : "Fixed \(moved.count)")
         }
+        return moved.map(\.original)
     }
 
     /// "Fix obvious typos as I type": a known misspelling or missing
@@ -715,34 +741,43 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// with Undo in the strip until the next edit. Nothing else is ever
     /// applied on its own.
     private func maybeAutoFix() {
-        guard KeyboardPreferences.typoAutoFix, isWritingCheckEnabled, autoFixed == nil,
+        guard KeyboardPreferences.typoAutoFix, isWritingCheckEnabled, autoFixed == nil, wholeMessage == nil,
               let report = writingCheck.report
         else { return }
         guard let fix = report.suggestions.filter({
-            $0.source == .rule && ($0.kind == "spelling" || $0.kind == "apostrophe") && $0.isActionable
+            $0.source == .rule && ($0.kind == "spelling" || $0.kind == "apostrophe") && report.canApply($0)
                 && $0.end < report.field.cursor
-        }).max(by: { $0.start < $1.start }) else { return }
-        autoFixed = (fix.label, fix.replacement ?? "", fix.original, fix.key)
-        applyWriting([fix])
+        }).max(by: { $0.start < $1.start }),
+            let made = WritingAutoFix(fix, in: report.field)
+        else { return }
+        let apply = { [self] in
+            guard !applyWriting([fix]).isEmpty else { return }
+            // Undo is offered only for the fix exactly where it was made.
+            autoFixed = made.isCurrent(before: document.before) ? made : nil
+        }
+        // Reached from a check finishing, outside any event, or from an edit
+        // already inside one; only the first takes its own snapshot.
+        if currentDocument == nil { documentEvent(apply) } else { apply() }
     }
 
     private func undoAutoFix() {
         guard let fix = autoFixed else { return }
         autoFixed = nil
-        let document = readDocument()
-        guard let before = document.before, let range = before.range(of: fix.wrote, options: .backwards) else { return }
-        let end = before[..<range.upperBound].utf16.count
-        let cursor = before.utf16Length
-        textDocumentProxy.adjustTextPosition(byCharacterOffset: end - cursor)
+        // The fixed words are where the fix left them, right before what was
+        // typed after them, or Undo does nothing: a search could find the
+        // same word somewhere it was correct.
+        guard textDocumentProxy.selectedText?.isEmpty != false, fix.isCurrent(before: readDocument().before) else {
+            renderStrip(typing.strip)
+            return
+        }
+        let back = fix.distance
+        if back > 0 { textDocumentProxy.adjustTextPosition(byCharacterOffset: -back) }
         for _ in 0..<fix.wrote.count { textDocumentProxy.deleteBackward() }
         textDocumentProxy.insertText(fix.typed)
-        let after = cursor + fix.typed.utf16Length - fix.wrote.utf16Length
-        let now = end - fix.wrote.utf16Length + fix.typed.utf16Length
-        if after != now { textDocumentProxy.adjustTextPosition(byCharacterOffset: after - now) }
+        if back > 0 { textDocumentProxy.adjustTextPosition(byCharacterOffset: back) }
         // Undone means "I meant that": the same fix is not made again here.
-        if let suggestion = writingCheck.report?.suggestions.first(where: { $0.key == fix.key }) {
-            writingCheck.dismiss(suggestion)
-        }
+        // By its saved key, since applying it already took it out of the report.
+        writingCheck.dismiss(key: fix.key)
         typing.reconcile(document: refreshDocument())
     }
 
@@ -752,16 +787,40 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// never while the user types.
     private func checkWholeMessage() {
         let panel = dictationSurfaceState.writing
-        guard !panel.isReadingMessage, textDocumentProxy.selectedText?.isEmpty != false else { return }
+        guard wholeMessage == nil, !panel.isReadingMessage, textDocumentProxy.selectedText?.isEmpty != false,
+              let documentID = currentDocumentID
+        else { return }
         panel.isReadingMessage = true
-        Task { @MainActor [weak self] in
-            defer { self?.dictationSurfaceState.writing.isReadingMessage = false }
-            guard let self, let field = await readWholeMessage() else { return }
+        wholeMessage = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let field = await readWholeMessage(of: documentID)
+            // Cancelled: the field changed or the keyboard went away, and
+            // whatever stopped it has already tidied up.
+            guard !Task.isCancelled else { return }
+            wholeMessage = nil
+            dictationSurfaceState.writing.isReadingMessage = false
+            guard let field, isReading(documentID) else { return }
             writingCheck.checkNow(field, options: writingOptions())
         }
     }
 
-    private func readWholeMessage() async -> WritingCheckClient.Field? {
+    /// Stops a "Whole message" walk where it is. The cursor is not moved
+    /// again: the document it was walking may no longer be the one in front.
+    private func stopReadingWholeMessage() {
+        wholeMessage?.cancel()
+        wholeMessage = nil
+        dictationSurfaceState.writing.isReadingMessage = false
+    }
+
+    /// Whether the walk may go on: not cancelled, and still in its document.
+    private func isReading(_ documentID: String) -> Bool {
+        !Task.isCancelled && currentDocumentID == documentID
+    }
+
+    /// Reads the document around the cursor by walking it to each end and
+    /// back. After every wait it checks the field is still `documentID` and
+    /// gives up, without another move, when it is not.
+    private func readWholeMessage(of documentID: String) async -> WritingCheckClient.Field? {
         guard var before = textDocumentProxy.documentContextBeforeInput else { return nil }
         var after = textDocumentProxy.documentContextAfterInput ?? ""
         var moved = 0
@@ -772,6 +831,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             textDocumentProxy.adjustTextPosition(byCharacterOffset: -step)
             moved -= step
             try? await Task.sleep(for: .milliseconds(60))
+            guard isReading(documentID) else { return nil }
             let more = textDocumentProxy.documentContextBeforeInput ?? ""
             guard !more.isEmpty else { break }
             before = more + before
@@ -779,6 +839,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         textDocumentProxy.adjustTextPosition(byCharacterOffset: -moved)
         moved = 0
         try? await Task.sleep(for: .milliseconds(60))
+        guard isReading(documentID) else { return nil }
         // Forward the same way, from where the cursor really is.
         for _ in 0..<Self.walkSteps {
             let step = (textDocumentProxy.documentContextAfterInput ?? "").utf16Length
@@ -786,16 +847,29 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             textDocumentProxy.adjustTextPosition(byCharacterOffset: step)
             moved += step
             try? await Task.sleep(for: .milliseconds(60))
+            guard isReading(documentID) else { return nil }
             let more = textDocumentProxy.documentContextAfterInput ?? ""
             guard !more.isEmpty else { break }
             after += more
         }
         textDocumentProxy.adjustTextPosition(byCharacterOffset: -moved)
         try? await Task.sleep(for: .milliseconds(60))
+        guard isReading(documentID) else { return nil }
         // The walk must leave the cursor where it found it; if the document
         // says otherwise, what was read is not trusted.
-        guard let check = textDocumentProxy.documentContextBeforeInput, before.hasSuffix(check) else { return nil }
-        return WritingCheckClient.Field(text: before + after, cursor: before.utf16Length)
+        let window = (
+            before: textDocumentProxy.documentContextBeforeInput ?? "",
+            after: textDocumentProxy.documentContextAfterInput ?? ""
+        )
+        guard before.hasSuffix(window.before), after.hasPrefix(window.after) else { return nil }
+        // Only the window iOS hands the keyboard can be edited from here; a
+        // fix past it is shown but cannot be accepted.
+        let cursor = before.utf16Length
+        return WritingCheckClient.Field(
+            text: before + after,
+            cursor: cursor,
+            reach: (cursor - window.before.utf16Length)..<(cursor + window.after.utf16Length)
+        )
     }
 
     private static let walkSteps = 20
@@ -2804,7 +2878,7 @@ extension KeyboardViewController: DictationBarViewDelegate {
             // nothing.
             if candidate.payload == Self.undoPayload {
                 undoAutoFix()
-            } else if let suggestion = writingCheck.report?.suggestions.first(where: { $0.key == candidate.payload }) {
+            } else if let suggestion = writingCheck.report?.suggestions.first(where: { $0.identity == candidate.payload }) {
                 applyWriting([suggestion])
             }
         case .writingReview:
