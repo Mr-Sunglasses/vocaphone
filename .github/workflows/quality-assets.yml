@@ -46,6 +46,8 @@ jobs:
 
       - name: Fail if the emoji catalog or suggestions do not match the generator
         run: python3 tools/generate-emoji-catalog.py --check
+      - name: Fail if the Writing check rules do not match their generator
+        run: python3 tools/writing-rules/build_rules.py --check
       - name: Check native model catalogs and pins
         run: python3 tools/model-pins/check_catalogs.py
       - name: Test the model-pin tooling

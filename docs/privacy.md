@@ -73,43 +73,72 @@ used unchanged and the diagnostic log records only that it happened
 (`grammar_failed` and similar), never any text. It reports nothing to usage
 statistics.
 
-**Check grammar (English)** for typed text is a separate switch, also off by
-default (Android: Settings › Keyboard › Typing; iOS: Keyboard › Typing). It
-uses the same model and the same download, and is offered in the same builds.
-When it is on and the user pauses in an ordinary text field, the keyboard
-takes the last one or two sentences before the cursor in the cursor's
-paragraph (never more than 400 characters, never the text after the cursor)
-and has the model check them. A fix is only *offered*, as a chip in the
-suggestion row; nothing in the field changes unless the user taps it, and
-dismissing it stops that fix being offered again in the field. It never runs
-in password, address, link, e-mail, name or search fields, in fields that
-turned suggestions or autocorrection off, with suggestions off, or on text
-that does not read as English, and not while text is selected. The user's own
-words (dictionary, custom vocabulary, learned words, snippet triggers, and on
-iOS their text replacements and contact names) are never changed.
+**Writing check (English)** is VocaPhone's Grammarly-style checker for typed
+text. It has four ways in, and every one of them checks on the phone:
 
-- **Android:** the keyboard runs in the app's own process, so the sentences go
-  from the keyboard to the model in memory and nowhere else. The read happens
-  once per pause (`getTextBeforeCursor(600)`), not per keystroke. The model is
-  released a minute after the keyboard closes.
-- **iOS:** a keyboard extension is not given enough memory to run the model, so
-  the keyboard hands the sentences to the vocaphone app on the same iPhone: it
-  writes them to one file in the App Group (`typed-grammar-request.json`),
-  which the app deletes as it reads it, and the app writes the corrected text
-  back to `typed-grammar-answer.json`, which the keyboard deletes as it reads
-  it. The request carries only those of the user's protected words that occur
-  in the sentence, never the whole list, so the address book is not copied
-  into it. A question nobody collects is deleted when the keyboard closes,
-  when checking stops, or when the app next starts. An answer nobody collects
-  — the keyboard closed while the app was checking — is deleted by the app
-  five seconds after it is written, when the keyboard would no longer take it,
-  and the app writes none at all for a question older than that. This needs Full Access (it is the App Group) and only works
-  while the app is running, which Quick Dictation keeps it doing in the
-  background; otherwise nothing is written at all. The keyboard extension still
-  never loads the model, makes no network call, and reports nothing.
+- **Check while typing** in the keyboard (off by default; Android: Settings ›
+  Keyboard › Writing check; iOS: Keyboard › Writing check).
+- **The Writing check screen** in the app, which opens on text the user pastes
+  or writes, on a History transcript, or on the field's text when the
+  keyboard's "Open app" is tapped.
+- **Android's text selection menu and Share sheet** ("Writing check"): the
+  selected or shared text is handed to the app by the system, and when the
+  field is editable "Replace" hands the corrected text back to that app.
+- **Android's system spell checker**, only if the user picks VocaPhone under
+  the system's spell checker setting.
+
+There are two checkers. The **rules** (`assets/keyboard/writing-rules.json`)
+ship inside the app and the keyboard and need no download, no ONNX Runtime and
+no network, so they also run in the F-Droid build and inside the iOS keyboard
+extension. The **grammar model** is the Fix grammar model above, used only
+once it has been downloaded. Neither sends the text anywhere. Suggestions are
+only *offered*: nothing in a field changes unless the user taps one, with one
+exception the user has to turn on, **Fix obvious typos as I type**, which
+corrects known misspellings and missing apostrophes after a pause and offers
+Undo. It never runs in password, address, link, e-mail, name or search fields,
+in fields that turned suggestions or autocorrection off, with suggestions off,
+or on text that does not read as English, and not while text is selected. The
+user's own words (dictionary, custom vocabulary, learned words, snippet
+triggers, and on iOS their text replacements and contact names) are never
+flagged or changed.
+
+- **Android keyboard:** the keyboard runs in the app's own process. After a
+  pause it reads the field around the cursor once
+  (`getSurroundingText`, at most 2,000 characters on each side), checks it in
+  memory, and keeps the model's answer for each sentence only for as long as
+  the user stays in that field. The model is released a minute after the
+  keyboard closes.
+- **Android spell checker:** the system binds to it (`BIND_TEXT_SERVICE`) and
+  hands it the text of the field being edited, a sentence at a time, as it
+  does for any spell checker; it is checked in the app's process and only
+  correctness is reported back to the field. It replaces the phone's own
+  spell checker for as long as it is chosen.
+- **iOS keyboard:** the rules run in the extension. A keyboard extension is not
+  given enough memory to run the model, so sentences the model has not seen
+  are handed to the vocaphone app on the same iPhone: the keyboard writes them
+  to one file in the App Group (`typed-grammar-request.json`, at most twelve
+  sentences), which the app deletes as it reads it, and the app writes the
+  model's text back to `typed-grammar-answer.json`, which the keyboard deletes
+  as it reads it. The request carries only those of the user's protected
+  words that occur in the sentences, never the whole list, so the address
+  book is not copied into it. A question nobody collects is deleted when the
+  keyboard closes, when checking stops, or when the app next starts; an answer
+  nobody collects is deleted by the app five seconds after it is written. This
+  needs Full Access (it is the App Group) and only works while the app is
+  running, which Quick Dictation keeps it doing in the background; otherwise
+  only the rules run and nothing is written. "Whole message" reads past the
+  window iOS gives a keyboard by moving the cursor to each end of the field
+  and back, only when tapped. "Open app" writes the field's text to
+  `writing-draft.json` in the App Group, which the app deletes as it opens it
+  and ignores after a minute. The keyboard extension still never loads the
+  model, makes no network call, and reports nothing.
 
 Neither platform logs, stores beyond those transient files, or reports any of
 the text. Failures are recorded only as the content-free grammar events above.
+
+**History** keeps, beside a transcript Fix grammar changed, the same
+transcript without the grammar stage, so the change can be seen and undone. It
+lives and is deleted with the transcript.
 
 With **Show words while speaking** turned on (Settings › Dictation; off by
 default), while the recording is still going, the words those early decodes
