@@ -152,6 +152,42 @@ model-test model="openai_whisper-small_216MB" sherpa="parakeet-tdt-ctc-110m-en":
         {{ just_executable() }} test VocaPhoneTests/LocalModelEndToEndTests \
         VocaPhoneTests/SherpaModelEndToEndTests
 
+# Word error rate for one pinned model on real speech: LibriSpeech clean,
+# other and 45-90 s long-form, and FLEURS Hindi, through the app's own
+# finished-recording and streamed-dictation paths. Not a CI gate. Sets and
+# results live in ~/.cache/vocaphone/asr-bench (about 1 GB once), never in the
+# repository; see tools/asr-bench/README.md. An interrupted run resumes.
+#
+#   just ios accuracy parakeet-tdt-ctc-110m-en
+#   just ios accuracy openai_whisper-small_216MB baseline "librispeech-long" "file" 10
+#
+# Measure a pinned model's word error rate on public speech test sets.
+[group('test')]
+accuracy model tag="current" sets="librispeech-clean librispeech-other librispeech-long fleurs-hi" paths="file streamed" limit="" quality="balanced":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="${VOCA_ASR_BENCH_DIR:-$HOME/.cache/vocaphone/asr-bench}"
+    models="$(pwd)/build/model-e2e"
+    if grep -q '"{{ model }}"' VocaPhoneApp/Models/sherpa_model_pins.json; then
+        python3 ../tools/model-e2e/fetch_sherpa.py '{{ model }}' "${models}" >/dev/null
+    else
+        python3 ../tools/model-e2e/fetch_whisper.py '{{ model }}' "${models}" >/dev/null
+    fi
+    missing=()
+    for set in {{ sets }}; do
+        [ -f "${root}/sets/${set}/manifest.jsonl" ] || missing+=("${set}")
+    done
+    if [ ${#missing[@]} -gt 0 ]; then
+        python3 ../tools/asr-bench/prepare.py --out "${root}" --sets "${missing[@]}"
+    fi
+    TEST_RUNNER_VOCA_ASR_BENCH_DIR="${root}" TEST_RUNNER_VOCA_ASR_BENCH_MODEL_DIR="${models}" \
+    TEST_RUNNER_VOCA_ASR_BENCH_MODEL='{{ model }}' TEST_RUNNER_VOCA_ASR_BENCH_TAG='{{ tag }}' \
+    TEST_RUNNER_VOCA_ASR_BENCH_SETS='{{ sets }}' TEST_RUNNER_VOCA_ASR_BENCH_PATHS='{{ paths }}' \
+    TEST_RUNNER_VOCA_ASR_BENCH_LIMIT='{{ limit }}' TEST_RUNNER_VOCA_ASR_BENCH_QUALITY='{{ quality }}' \
+        {{ just_executable() }} test VocaPhoneTests/AccuracyBenchmarkTests
+    uv run --quiet --with-requirements ../tools/asr-bench/requirements.txt \
+        python ../tools/asr-bench/score.py --dir "${root}" --tag '{{ tag }}'
+
 # The grammar model through the real ONNX Runtime, against the reference outputs
 # in assets/grammar/parity_fixtures.json. Downloads the pinned 28 MB once.
 [group('test')]

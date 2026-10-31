@@ -222,6 +222,11 @@ android {
             System.getProperty("vocaphone.modelE2E.report")?.let {
                 test.systemProperty("vocaphone.modelE2E.report", it)
             }
+            // WhisperAccuracyBenchmarkTest: `just accuracy` names the test sets,
+            // the run and the settings to measure.
+            System.getProperties().stringPropertyNames()
+                .filter { it.startsWith("vocaphone.asrBench") }
+                .forEach { test.systemProperty(it, System.getProperty(it)) }
             System.getProperty("vocaphone.whisperLibrary")?.let {
                 test.systemProperty("java.library.path", it)
             }

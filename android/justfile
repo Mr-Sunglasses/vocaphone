@@ -138,6 +138,50 @@ model-test model="base-q8_0":
         -Dvocaphone.modelE2E.model='{{ model }}' \
         -Dvocaphone.whisperLibrary="${root}/build/host-whisper"
 
+# Word error rate for one pinned whisper.cpp model on real speech, through the
+# app's JNI glue on this computer: LibriSpeech clean, other and 45-90 s
+# long-form, and FLEURS Hindi. Not a CI gate. Sets and results live in
+# ~/.cache/vocaphone/asr-bench; see tools/asr-bench/README.md. `crop` is
+# on / off / model (the catalog's choice); `quality` is fast / balanced /
+# accurate. An interrupted run resumes.
+#
+#   just android accuracy small-q8_0
+#   just android accuracy small-q8_0 crop-off "librispeech-clean" off
+#
+# Measure a pinned whisper.cpp model's word error rate on public speech test sets.
+[group('test')]
+accuracy model="small-q8_0" tag="current" sets="librispeech-clean librispeech-other librispeech-long fleurs-hi" crop="model" quality="balanced" limit="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export ANDROID_HOME="$({{ just_executable() }} _sdk)"
+    root="{{ justfile_directory() }}"
+    bench="${VOCA_ASR_BENCH_DIR:-$HOME/.cache/vocaphone/asr-bench}"
+    dir="${root}/build/model-e2e"
+    cmake -S "${root}/app/src/test/cpp" -B "${root}/build/host-whisper" \
+        -DCMAKE_BUILD_TYPE=Release >/dev/null
+    cmake --build "${root}/build/host-whisper" --parallel >/dev/null
+    python3 "${root}/../tools/model-e2e/fetch_ggml.py" '{{ model }}' "${dir}" >/dev/null
+    missing=()
+    for set in {{ sets }}; do
+        [ -f "${bench}/sets/${set}/manifest.jsonl" ] || missing+=("${set}")
+    done
+    if [ ${#missing[@]} -gt 0 ]; then
+        python3 "${root}/../tools/asr-bench/prepare.py" --out "${bench}" --sets "${missing[@]}"
+    fi
+    ./gradlew :app:testFullDebugUnitTest --rerun \
+        --tests 'com.vocahq.vocaphone.local.WhisperAccuracyBenchmarkTest' \
+        -Dvocaphone.asrBench="${bench}" \
+        -Dvocaphone.asrBench.models="${dir}" \
+        -Dvocaphone.asrBench.model='{{ model }}' \
+        -Dvocaphone.asrBench.tag='{{ tag }}' \
+        -Dvocaphone.asrBench.sets='{{ sets }}' \
+        -Dvocaphone.asrBench.crop='{{ crop }}' \
+        -Dvocaphone.asrBench.quality='{{ quality }}' \
+        -Dvocaphone.asrBench.limit='{{ limit }}' \
+        -Dvocaphone.whisperLibrary="${root}/build/host-whisper"
+    uv run --quiet --with-requirements "${root}/../tools/asr-bench/requirements.txt" \
+        python "${root}/../tools/asr-bench/score.py" --dir "${bench}" --tag '{{ tag }}'
+
 # Run Android Lint over the debug variant.
 [group('test')]
 lint:

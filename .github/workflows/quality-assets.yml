@@ -56,5 +56,7 @@ jobs:
       # WAV reads back unchanged.
       - name: Check the model-test tooling
         run: python3 tools/model-e2e/selftest.py
+      - name: Check the accuracy benchmark tooling
+        run: python3 -m unittest discover -s tools/asr-bench -p 'test_*.py'
       - name: Check generated brand assets
         run: python3 assets/generate.py --check
