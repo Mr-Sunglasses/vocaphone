@@ -153,7 +153,7 @@ class WhisperAccuracyBenchmarkTest {
             when (System.getProperty("vocaphone.asrBench.crop")) {
                 "on" -> true
                 "off" -> false
-                else -> model.cropsAudioContext
+                else -> model.cropsAudioContext && quality.whisperCropsAudioContext
             }
         }
         private var context: WhisperContext? = null

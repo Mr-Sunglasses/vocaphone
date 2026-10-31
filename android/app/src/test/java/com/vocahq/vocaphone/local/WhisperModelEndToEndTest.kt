@@ -111,7 +111,7 @@ class WhisperModelEndToEndTest {
                 translateTo = "",
                 quality = TranscriptionQuality.DEFAULT,
                 prompt = "",
-                cropAudioContext = model.cropsAudioContext,
+                cropAudioContext = model.cropsAudioContext && TranscriptionQuality.DEFAULT.whisperCropsAudioContext,
                 threads = WhisperCpuConfig.preferredThreadCount(model.id),
             )
         }
@@ -185,7 +185,7 @@ class WhisperModelEndToEndTest {
             translateTo = "",
             quality = TranscriptionQuality.DEFAULT,
             prompt = CustomVocabulary.whisperPrompt(vocabulary),
-            cropAudioContext = model.cropsAudioContext,
+            cropAudioContext = model.cropsAudioContext && TranscriptionQuality.DEFAULT.whisperCropsAudioContext,
             threads = WhisperCpuConfig.preferredThreadCount(model.id),
         )
         return DictatedTranscript.finished(
