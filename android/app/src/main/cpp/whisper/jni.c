@@ -6,6 +6,7 @@
 #include <time.h>
 #include "whisper.h"
 #include "ggml-backend.h"
+#include "segment_text.h"
 
 #define TAG "VocaPhoneWhisper"
 #define UNUSED(value) (void)(value)
@@ -259,20 +260,17 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
     return status;
 }
 
-JNIEXPORT jint JNICALL
-Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_getTextSegmentCount(
-        JNIEnv *env, jobject thiz, jlong context_ptr) {
-    UNUSED(env);
-    UNUSED(thiz);
-    return whisper_full_n_segments(context_of(context_ptr));
+static const char *whisper_segment_text(void *context, int index) {
+    return whisper_full_get_segment_text((struct whisper_context *) context, index);
 }
 
-JNIEXPORT jstring JNICALL
-Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_getTextSegment(
-        JNIEnv *env, jobject thiz, jlong context_ptr, jint index) {
+/** Every segment's text, joined as bytes; see joined_segment_text. */
+JNIEXPORT jbyteArray JNICALL
+Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_getText(
+        JNIEnv *env, jobject thiz, jlong context_ptr) {
     UNUSED(thiz);
-    const char *text = whisper_full_get_segment_text(context_of(context_ptr), index);
-    return (*env)->NewStringUTF(env, text == NULL ? "" : text);
+    struct whisper_context *context = context_of(context_ptr);
+    return joined_segment_text(env, context, whisper_full_n_segments(context), whisper_segment_text);
 }
 
 /**

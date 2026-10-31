@@ -31,10 +31,16 @@ set(GGML_METAL OFF CACHE BOOL "" FORCE)
 set(GGML_BLAS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${WHISPER_LIB_DIR}/ggml" ggml)
 
-add_library(whisper SHARED "${WHISPER_LIB_DIR}/src/whisper.cpp" "${APP_JNI_DIR}/jni.c")
+add_library(whisper SHARED
+    "${WHISPER_LIB_DIR}/src/whisper.cpp"
+    "${APP_JNI_DIR}/jni.c"
+    # A test-only entry point into the segment join; see the file.
+    "${CMAKE_CURRENT_SOURCE_DIR}/segment_text_test.c"
+)
 target_compile_definitions(whisper PRIVATE WHISPER_VERSION="host" GGML_USE_CPU)
 target_include_directories(whisper PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/shim"
+    "${APP_JNI_DIR}"
     "${WHISPER_LIB_DIR}/include"
     "${WHISPER_LIB_DIR}/src"
     "${WHISPER_LIB_DIR}/ggml/include"

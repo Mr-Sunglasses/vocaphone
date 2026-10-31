@@ -109,11 +109,7 @@ class LocalEngineEndToEndTest {
                         ) == 0,
                     ) { "${model.displayName} could not decode the reference audio" }
                 }
-                val transcript = buildString {
-                    repeat(WhisperLib.getTextSegmentCount(pointer)) { index ->
-                        append(WhisperLib.getTextSegment(pointer, index))
-                    }
-                }.trim()
+                val transcript = WhisperText.decode(WhisperLib.getText(pointer)).trim()
                 assertTrue("empty transcript from ${model.displayName}", transcript.isNotBlank())
                 assertTrue(
                     "unexpected transcript: $transcript",
