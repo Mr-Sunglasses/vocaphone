@@ -467,8 +467,11 @@ final class RecordingCoordinator {
             }
             if downloaded { grammar.modelChanged() }
         }
+        // The keyboard asks only while "Check while typing" is on or when the
+        // user taps its Writing check button, so a downloaded model answers
+        // either; the setting is the keyboard's to apply, not the app's.
         typedGrammar = TypedGrammarResponder(
-            isEnabled: { KeyboardPreferences.typingGrammar && grammarModel.isReady },
+            isEnabled: { grammarModel.isReady },
             correct: { text, keep in grammar.correctTyped(text, keeping: keep) }
         )
         // A process exit can leave an otherwise valid-looking availability

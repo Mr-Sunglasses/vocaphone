@@ -866,9 +866,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let field = WritingCheckClient.Field(text: before + (document.after ?? ""), cursor: before.utf16Length)
         panel.isRunning = true
         dictationSurfaceState.present(.writing)
+        let documentID = currentDocumentID
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(450))
             guard let self else { return }
+            // The field read before the pause is only this field's: a field
+            // change or a hidden keyboard in between drops it.
+            guard isKeyboardVisible, currentDocumentID == documentID else {
+                dictationSurfaceState.writing.isRunning = false
+                return
+            }
             writingCheck.checkNow(field, options: writingOptions())
             dictationSurfaceState.writing.isRunning = false
             writingChanged()

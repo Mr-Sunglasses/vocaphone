@@ -76,8 +76,11 @@ statistics.
 **Writing check (English)** is VocaPhone's Grammarly-style checker for typed
 text. It has four ways in, and every one of them checks on the phone:
 
+- **The Writing check button** at the start of the keyboard's suggestion row,
+  which checks the field's text when tapped.
 - **Check while typing** in the keyboard (off by default; Android: Settings ›
-  Keyboard › Writing check; iOS: Keyboard › Writing check).
+  Keyboard › Writing check; iOS: Keyboard › Writing check), which checks after
+  each pause in typing and shows the count on the same button.
 - **The Writing check screen** in the app, which opens on text the user pastes
   or writes, on a History transcript, or on the field's text when the
   keyboard's "Open app" is tapped.
@@ -97,7 +100,10 @@ exception the user has to turn on, **Fix obvious typos as I type**, which
 corrects known misspellings and missing apostrophes after a pause and offers
 Undo. It never runs in password, address, link, e-mail, name or search fields,
 in fields that turned suggestions or autocorrection off, with suggestions off,
-or on text that does not read as English, and not while text is selected. The
+or on text that does not read as English, and not while text is selected.
+Tapping the Writing check button is the user asking, so on iOS it also checks a
+field that turned autocorrection off, as many chat apps do; it still never
+reads password, one-time code, number, link, e-mail or address fields. The
 user's own words (dictionary, custom vocabulary, learned words, snippet
 triggers, and on iOS their text replacements and contact names) are never
 flagged or changed.
