@@ -236,6 +236,21 @@ Whisper large off first run. Qwen3-ASR also accepts hotwords, which could carry
 the custom word list in a follow-up. Needs phone latency and memory
 measurement before any ranking changes.
 
+## Replaced: MindType tagger v1.5 → v2.0 (grammar, optional, 2026-10-31)
+
+Mindscend's v2.0 keeps v1.5's architecture, tokenizer, plausible pairs and
+input and output names; the weights are a "model soup" of three fine-tunes
+with phone-typing slips and more already-correct text, and `labels.json`
+swaps 1,523 multi-word `APPEND_` labels the guard vetoes anyway. On our
+dictation set at its recommended KEEP bias of 3 it scores precision 0.991,
+recall 0.626, F0.5 0.887 and 0 false positives on correct sentences, against
+v1.5's 0.944 / 0.596 / 0.846 / 0; a call costs the same. It is pinned
+straight from `Mindscend/mindtype-tagger-v2.0@e58cbb68` (the `onnx/` folder)
+rather than through a VocaHQ mirror. KEEP bias 4 backs an "Only sure fixes"
+preference (F0.5 0.870, recall 0.585); its settings control arrives with
+Writing check. Numbers and ablations:
+[tools/grammar-eval](../tools/grammar-eval/README.md).
+
 ## Added: MindType tagger v1.5 (grammar, optional)
 
 Not a speech model and not in the speech catalog: the optional "Fix grammar

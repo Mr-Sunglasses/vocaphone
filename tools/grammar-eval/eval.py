@@ -121,9 +121,10 @@ def main() -> None:
     lines = [HEADER, row("shipped recipe", main_score)]
     if args.compare:
         variants = {
-            "no guard or protections, KEEP bias 2.0": dict(guard=False),
+            "no guard or protections, KEEP bias 3.0": dict(guard=False),
             "guard, KEEP bias 0": dict(keep_bias=0.0),
-            "guard, KEEP bias 3.0": dict(keep_bias=3.0),
+            "guard, KEEP bias 2.0 (the v1.5 recipe)": dict(keep_bias=2.0),
+            "guard, KEEP bias 4.0 (Only sure fixes)": dict(keep_bias=4.0),
             "alignment: no [BOS]": dict(alignment="nobos-space-first"),
             "alignment: first word without Ġ": dict(alignment="bos-nospace-first"),
             "alignment: last subtoken": dict(alignment="bos-space-last"),

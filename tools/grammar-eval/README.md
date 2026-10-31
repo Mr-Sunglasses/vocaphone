@@ -1,7 +1,8 @@
 # Grammar eval
 
-The go/no-go spike for an optional, on-device "Fix grammar (English)" stage. It
-scores the [MindType tagger v1.5](https://huggingface.co/Mindscend/mindtype-tagger-v1.5)
+The go/no-go spike for an optional, on-device "Fix grammar (English)" stage,
+and the bench every model change has to pass. It scores the
+[MindType tagger v2.0](https://huggingface.co/Mindscend/mindtype-tagger-v2.0)
 (Apache-2.0, 26.2M parameters, int8 ONNX) on dictation-style English, and
 `infer.py` is the reference recipe the Android and iOS ports must match.
 Nothing here ships in either app.
@@ -9,21 +10,43 @@ Nothing here ships in either app.
 ```bash
 cd tools/grammar-eval
 uv run --with-requirements requirements.txt python fetch.py         # ~28 MB, SHA-256 checked
-uv run --with-requirements requirements.txt python eval.py ~/.cache/vocaphone/mindtype-tagger-v1.5 --compare
-uv run --with-requirements requirements.txt python fixtures.py ~/.cache/vocaphone/mindtype-tagger-v1.5 --check
-uv run --with-requirements requirements.txt python infer.py ~/.cache/vocaphone/mindtype-tagger-v1.5 "He don't know."
+uv run --with-requirements requirements.txt python eval.py ~/.cache/vocaphone/mindtype-tagger-v2.0 --compare
+uv run --with-requirements requirements.txt python fixtures.py ~/.cache/vocaphone/mindtype-tagger-v2.0 --check
+uv run --with-requirements requirements.txt python infer.py ~/.cache/vocaphone/mindtype-tagger-v2.0 "He don't know."
 ```
 
 | File | What it is |
 | --- | --- |
-| `fetch.py` | Downloads the five pinned files at revision `a737fbc7…` and checks size and SHA-256 |
+| `fetch.py` | Downloads the five pinned files at revision `e58cbb68…` and checks size and SHA-256 |
 | `infer.py` | The reference recipe: tokenize, run, KEEP bias, guard, apply, repeat |
 | `eval.py` | Scores `infer.py` on `dictation_en.jsonl` and writes `results.md` |
 | `dictation_en.jsonl` | 337 hand-written lines: 174 correct, 163 with errors |
 | `results.md` | Generated: every false positive, protected-span loss and miss |
 | `fixtures.py` | Writes `assets/grammar/parity_fixtures.json` for both apps' tests |
 
-## Decision: GO
+## v2.0 replaces v1.5 (2026-10-31)
+
+Mindscend's v2.0 has v1.5's architecture, tokenizer, plausible pairs, input
+and output names and label count; only the weights and the order and content
+of `labels.json` changed (1,523 multi-word `APPEND_` labels swapped, which the
+guard vetoes anyway). Its card recommends a KEEP bias of 3 ("Balanced") and 4
+("Only sure fixes"), so the recipe moved from 2.0 to 3.0. Both apps store a
+`grammarSureOnly` preference that applies 4.0; the "Only sure fixes" control
+that sets it arrives with Writing check.
+
+| Model, KEEP bias | Precision | Recall | F0.5 | Exact (errors) | False positives (correct) | Protected-span damage |
+|---|---|---|---|---|---|---|
+| v1.5, 2.0 (the old recipe) | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 |
+| **v2.0, 3.0 (Balanced)** | **0.991** | **0.626** | **0.887** | **63.2%** | **0.0%** | **0** |
+| v2.0, 4.0 (Only sure fixes) | 0.990 | 0.585 | 0.870 | 58.9% | 0.0% | 0 |
+
+On this set v2.0 fixes `Its at 7:30` and `its all there` and no longer fixes
+`there car` or `a orange`; a model call costs the same, since only the weights
+changed. Mindscend's own suite reports the larger gains on phone-typing slips
+(F0.5 0.689 → 0.912). The table below is the v1.5 decision, kept for its
+ablations.
+
+## Decision: GO (v1.5, 2026-10-22)
 
 | Configuration | Precision | Recall | F0.5 | Exact (errors) | False-positive rate (correct) | Protected-span damage | p50 ms | p95 ms |
 |---|---|---|---|---|---|---|---|---|

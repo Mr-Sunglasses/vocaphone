@@ -4,14 +4,15 @@
 
 | Configuration | Precision | Recall | F0.5 | Exact (errors) | False-positive rate (correct) | Protected-span damage | p50 ms | p95 ms |
 |---|---|---|---|---|---|---|---|---|
-| shipped recipe | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 | 1.9 | 3.4 |
-| no guard or protections, KEEP bias 2.0 | 0.903 | 0.596 | 0.819 | 59.5% | 1.7% | 0 | 1.9 | 4.1 |
-| guard, KEEP bias 0 | 0.883 | 0.620 | 0.814 | 62.6% | 1.1% | 0 | 1.9 | 3.7 |
-| guard, KEEP bias 3.0 | 0.960 | 0.567 | 0.843 | 57.1% | 0.0% | 0 | 1.9 | 3.6 |
-| alignment: no [BOS] | 0.827 | 0.363 | 0.658 | 35.6% | 4.0% | 0 | 1.6 | 3.3 |
-| alignment: first word without Ġ | 0.959 | 0.544 | 0.832 | 54.6% | 0.0% | 0 | 1.8 | 3.5 |
-| alignment: last subtoken | 0.951 | 0.456 | 0.782 | 46.6% | 0.0% | 0 | 2.3 | 4.4 |
-| protected spans fed as placeholders | 0.944 | 0.596 | 0.846 | 60.1% | 0.0% | 0 | 2.1 | 3.9 |
+| shipped recipe | 0.991 | 0.626 | 0.887 | 63.2% | 0.0% | 0 | 2.3 | 4.4 |
+| no guard or protections, KEEP bias 3.0 | 0.964 | 0.632 | 0.872 | 63.2% | 0.6% | 0 | 2.3 | 4.5 |
+| guard, KEEP bias 0 | 0.896 | 0.702 | 0.849 | 70.6% | 1.7% | 0 | 2.3 | 4.4 |
+| guard, KEEP bias 2.0 (the v1.5 recipe) | 0.956 | 0.637 | 0.869 | 64.4% | 0.0% | 0 | 2.3 | 4.8 |
+| guard, KEEP bias 4.0 (Only sure fixes) | 0.990 | 0.585 | 0.870 | 58.9% | 0.0% | 0 | 2.2 | 4.5 |
+| alignment: no [BOS] | 0.984 | 0.363 | 0.733 | 37.4% | 0.6% | 0 | 2.0 | 4.0 |
+| alignment: first word without Ġ | 0.980 | 0.561 | 0.853 | 57.1% | 0.0% | 0 | 2.3 | 4.5 |
+| alignment: last subtoken | 0.988 | 0.480 | 0.815 | 49.1% | 0.0% | 0 | 2.2 | 4.5 |
+| protected spans fed as placeholders | 0.991 | 0.620 | 0.885 | 62.6% | 0.0% | 0 | 2.3 | 4.8 |
 
 ### Correct sentences the stage changed (0)
 
@@ -19,34 +20,31 @@
 ### Protected spans lost (0)
 
 
-### Error sentences not fixed exactly (65)
+### Error sentences not fixed exactly (60)
 
+- `My brother don't eat meat.` → `My brother don't eat meat.` (expected `My brother doesn't eat meat.`)
 - `I is going to the store.` → `I is going to the store.` (expected `I am going to the store.`)
 - `The dogs barks all night.` → `The dogs barks all night.` (expected `The dogs bark all night.`)
 - `My friends lives in Denver.` → `My friends lives in Denver.` (expected `My friends live in Denver.`)
-- `I left my jacket over their.` → `I left my jacket over their.` (expected `I left my jacket over there.`)
-- `They're house is huge.` → `There house is huge.` (expected `Their house is huge.`)
-- `We parked over they're.` → `We parked over their.` (expected `We parked over there.`)
+- `Can you grab me a orange?` → `Can you grab me a orange?` (expected `Can you grab me an orange?`)
+- `I think there car broke down.` → `I think there car broke down.` (expected `I think their car broke down.`)
+- `They're house is huge.` → `They're house is huge.` (expected `Their house is huge.`)
 - `Your welcome.` → `Your welcome.` (expected `You're welcome.`)
-- `I think your right.` → `I think your right.` (expected `I think you're right.`)
 - `I'd rather walk then drive.` → `I'd rather walk then drive.` (expected `I'd rather walk than drive.`)
 - `I want to come to.` → `I want to come to.` (expected `I want to come too.`)
+- `I should of known.` → `I should of known.` (expected `I should have known.`)
 - `I going to the store.` → `I am going to the store.` (expected `I'm going to the store.`)
 - `She coming over later.` → `She coming over later.` (expected `She's coming over later.`)
-- `We going to be late.` → `We are going to be late.` (expected `We're going to be late.`)
+- `We going to be late.` → `We going to be late.` (expected `We're going to be late.`)
 - `Where you going?` → `Where you going?` (expected `Where are you going?`)
-- `He said he coming tomorrow.` → `He said he was coming tomorrow.` (expected `He said he's coming tomorrow.`)
+- `He said he coming tomorrow.` → `He said he coming tomorrow.` (expected `He said he's coming tomorrow.`)
 - `I'm going to store.` → `I'm going to store.` (expected `I'm going to the store.`)
-- `I have ate already.` → `I have ate already.` (expected `I have eaten already.`)
+- `She is best player on the team.` → `She is best player on the team.` (expected `She is the best player on the team.`)
 - `He has came back.` → `He has came back.` (expected `He has come back.`)
-- `I didn't knew that.` → `I didn't knew that.` (expected `I didn't know that.`)
 - `Did you went to the party?` → `Did you went to the party?` (expected `Did you go to the party?`)
-- `He doesn't likes it.` → `He doesn't likes it.` (expected `He doesn't like it.`)
 - `She can sings really well.` → `She can sings really well.` (expected `She can sing really well.`)
-- `I will calls you later.` → `I will calls you later.` (expected `I will call you later.`)
 - `We should goes now.` → `We should goes now.` (expected `We should go now.`)
 - `They didn't came.` → `They didn't came.` (expected `They didn't come.`)
-- `Does she knows about it?` → `Does she knows about it?` (expected `Does she know about it?`)
 - `I am agree with you.` → `I am agree with you.` (expected `I agree with you.`)
 - `He is work at the bank.` → `He is work at the bank.` (expected `He works at the bank.`)
 - `I am live in Boston.` → `I am live in Boston.` (expected `I live in Boston.`)
@@ -55,6 +53,7 @@
 - `I enjoy to cook.` → `I enjoy to cook.` (expected `I enjoy cooking.`)
 - `I'm used to wake up early.` → `I'm used to wake up early.` (expected `I'm used to waking up early.`)
 - `She suggested to go out.` → `She suggested to go out.` (expected `She suggested going out.`)
+- `He is more taller than me.` → `He is more taller than me.` (expected `He is taller than me.`)
 - `This is the most easiest way.` → `This is the most easiest way.` (expected `This is the easiest way.`)
 - `I have less friends than you.` → `I have less friends than you.` (expected `I have fewer friends than you.`)
 - `Me and him went to the game.` → `Me and him went to the game.` (expected `He and I went to the game.`)
@@ -69,7 +68,7 @@
 - `Whose coming tonight?` → `Whose coming tonight?` (expected `Who's coming tonight?`)
 - `Were going to the beach.` → `Were going to the beach.` (expected `We're going to the beach.`)
 - `Where going to be late.` → `Where going to be late.` (expected `We're going to be late.`)
-- `I no what you mean.` → `I have no what you mean.` (expected `I know what you mean.`)
+- `I no what you mean.` → `I no what you mean.` (expected `I know what you mean.`)
 - `I new it was true.` → `I new it was true.` (expected `I knew it was true.`)
 - `Can you here me?` → `Can you here me?` (expected `Can you hear me?`)
 - `Come over hear.` → `Come over hear.` (expected `Come over here.`)
@@ -78,10 +77,7 @@
 - `We past the exit.` → `We past the exit.` (expected `We passed the exit.`)
 - `I'm going to right an email.` → `I'm going to right an email.` (expected `I'm going to write an email.`)
 - `I won the hole game.` → `I won the hole game.` (expected `I won the whole game.`)
-- `Check example.com, its all there.` → `Check example.com, its all there.` (expected `Check example.com, it's all there.`)
-- `Their meeting Mohammed at 4 pm.` → `Their meeting Mohammed at 4 pm.` (expected `They're meeting Mohammed at 4 pm.`)
 - `Mike have the tickets for Friday.` → `Mike have the tickets for Friday.` (expected `Mike has the tickets for Friday.`)
-- `Tell Kevin its at 7:30.` → `Tell Kevin its at 7:30.` (expected `Tell Kevin it's at 7:30.`)
 - `Version 2.3 fix the crash.` → `Version 2.3 fix the crash.` (expected `Version 2.3 fixes the crash.`)
 - `Me and Luis are driving to Chicago on the 12th.` → `Me and Luis are driving to Chicago on the 12th.` (expected `Luis and I are driving to Chicago on the 12th.`)
 - `Their going to be late because the train was delayed. I think we should start without them, its fine.` → `They're going to be late because the train was delayed. I think we should start without them, its fine.` (expected `They're going to be late because the train was delayed. I think we should start without them, it's fine.`)

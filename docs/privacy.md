@@ -52,15 +52,17 @@ trailing silence were left out.
 **Fix grammar (English)** is off by default (Settings › Dictation › Output). It
 is only offered where the app already ships ONNX Runtime: the iOS app and the
 Android `full` and `x` builds, not the F-Droid build. Turning it on first
-downloads a 28 MB grammar model, MindType tagger v1.5 by Mindscend
-(Apache-2.0), from VocaHQ's byte-identical Hugging Face mirror
-[`VocaHQ/mindtype-tagger-v1.5-onnx`](https://huggingface.co/VocaHQ/mindtype-tagger-v1.5-onnx)
-at revision `5b6d7c3004677870122c10d84f78b35dcb760ff8`, a copy of
-`Mindscend/mindtype-tagger-v1.5@a737fbc7f563104d3d07cfeb198077950e223101`.
+downloads a 28 MB grammar model, MindType tagger v2.0 by Mindscend
+(Apache-2.0), from the `onnx/` folder of
+[`Mindscend/mindtype-tagger-v2.0`](https://huggingface.co/Mindscend/mindtype-tagger-v2.0)
+at revision `e58cbb68c382a894a9f6de704fe385ec260f0949`.
 Every file is checked against a pinned size and SHA-256 before it is used,
 the same way as a speech model; the model itself is
-`mindtype_tagger.onnx`, SHA-256
-`f082574ef27d3d0e2929ef321ab7490c08002fc6475ea7d9edbe7e534777319b`. The
+`onnx/mindtype_tagger.onnx`, SHA-256
+`cde26b40d62216c0b5680725b5e3f3b438f50cb6d02e05c395bf13059467da76`. An update
+from a build that used v1.5 deletes the old model and, if a grammar setting
+was on, downloads v2.0 in its place; a download that fails is tried again at
+each app start while a grammar setting is on and the model is missing. The
 download sends nothing but the request for those files. Once it is on, the
 finished on-device English transcript is corrected on the phone, in memory,
 before it is styled; the text is never sent anywhere for this, and nothing

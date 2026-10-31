@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reference inference for the MindType v1.5 grammar tagger.
+"""Reference inference for the MindType v2.0 grammar tagger.
 
 This is the recipe both apps port. Nothing upstream publishes inference code,
 so every rule below was settled by running the model; README.md records how.
@@ -27,7 +27,9 @@ import numpy as np
 import onnxruntime as ort
 from tokenizers import Tokenizer
 
-KEEP_BIAS = 2.0
+# "Balanced". v2.0 is tuned for 3 (its card's default); 4 is "Only sure fixes".
+KEEP_BIAS = 3.0
+SURE_KEEP_BIAS = 4.0
 MAX_PASSES = 3
 # The model's position table holds 160; one goes to [BOS].
 MAX_TOKENS = 150

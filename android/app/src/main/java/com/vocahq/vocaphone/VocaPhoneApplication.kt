@@ -18,6 +18,7 @@ import com.vocahq.vocaphone.dictation.DictationController
 import com.vocahq.vocaphone.grammar.GrammarCorrector
 import com.vocahq.vocaphone.ime.VoiceShortcutIme
 import com.vocahq.vocaphone.local.DeviceProfile
+import com.vocahq.vocaphone.local.GrammarModelCatalog
 import com.vocahq.vocaphone.local.GrammarModelStore
 import com.vocahq.vocaphone.local.LocalModelManager
 import com.vocahq.vocaphone.local.RetiredModels
@@ -32,7 +33,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -170,8 +173,30 @@ class AppContainer(context: Context) {
         // The grammar session goes when the speech engines go: idle, or the
         // system asking for memory back.
         localModels.onIdleRelease = grammar::release
-        applicationScope.launch { grammarModel.refresh() }
+        applicationScope.launch { refreshGrammarModel() }
+        applicationScope.launch {
+            settings.settings.map { it.grammarSureOnly }.distinctUntilChanged().collect { grammar.sureOnly = it }
+        }
         telemetryFlush.start()
+    }
+
+    /**
+     * Checks the grammar model, replacing one an earlier build downloaded.
+     *
+     * A new pin is a new folder, so after an update the old model's files are
+     * dead weight and the current one is missing. Whoever had Fix grammar or
+     * Check grammar on agreed to this download already; leaving the switch on
+     * over a missing model would quietly stop correcting anything. A failed
+     * download (offline, or the app stopped mid-way) is retried on every start
+     * while a grammar setting is on and the model is still missing.
+     */
+    private suspend fun refreshGrammarModel() {
+        val downloaded = grammarModel.restore(
+            wanted = {
+                GrammarModelCatalog.available && settings.current().let { it.fixGrammar || it.typingGrammar }
+            },
+        )
+        if (downloaded) grammar.modelChanged()
     }
 
     /**

@@ -60,14 +60,17 @@ enum GrammarFixtures {
         labels.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first }
     )
 
-    static func tagger(_ logits: @escaping GrammarTagger.Logits) -> GrammarTagger {
-        GrammarTagger(tokenizer: tokenizer, labels: labels, plausiblePairs: pairs, logits: logits)
+    static func tagger(
+        keepBias: Float = GrammarTagger.keepBias,
+        _ logits: @escaping GrammarTagger.Logits
+    ) -> GrammarTagger {
+        GrammarTagger(tokenizer: tokenizer, labels: labels, plausiblePairs: pairs, keepBias: keepBias, logits: logits)
     }
 
-    /// One row per requested position, with all the weight on `label`.
-    static func row(_ label: String) -> [Float] {
+    /// One row per requested position, with all the weight (`score`) on `label`.
+    static func row(_ label: String, score: Float = 10) -> [Float] {
         var row = [Float](repeating: 0, count: labels.count)
-        row[index[label]!] = 10
+        row[index[label]!] = score
         return row
     }
 

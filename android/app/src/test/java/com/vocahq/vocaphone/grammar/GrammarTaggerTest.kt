@@ -193,4 +193,57 @@ class GrammarTaggerTest {
         assertEquals(long, tagger.correct(long, deadline = deadline))
         assertEquals(1, calls)
     }
+
+    /**
+     * A model that scores "tomorow" → "tomorrow" between the two KEEP biases:
+     * Balanced (3) makes the fix, Only sure fixes (4) keeps the word. The
+     * fixtures replay labels at a score of 10, which pass under either bias.
+     */
+    private fun contested(keepBias: Float = GrammarTagger.KEEP_BIAS): GrammarTagger {
+        lateinit var tagger: GrammarTagger
+        val logits = GrammarTagger.Logits { ids, rows ->
+            val typo = tagger.encodeWord("tomorow").map(Int::toLong)
+            Array(rows.size) { r ->
+                val end = if (r + 1 < rows.size) rows[r + 1] else ids.size
+                FloatArray(labels.size).also { row ->
+                    if (ids.copyOfRange(rows[r], end).toList() == typo) {
+                        row[index.getValue("REPLACE_tomorrow")] = CONTESTED_SCORE
+                    } else {
+                        row[index.getValue("KEEP")] = 10f
+                    }
+                }
+            }
+        }
+        tagger = GrammarTagger(GrammarFixtures.tokenizer, labels, GrammarFixtures.pairs, logits, keepBias)
+        return tagger
+    }
+
+    /** Greptile on #435: the per-call bias decides, and only for that call. */
+    @Test
+    fun theBiasPassedToACallDecidesThatCallOnly() {
+        val typo = "See you tomorow."
+        val fixed = "See you tomorrow."
+        val tagger = contested()
+
+        assertEquals(fixed, tagger.correct(typo))
+        assertEquals(typo, tagger.correct(typo, bias = GrammarTagger.SURE_KEEP_BIAS))
+        assertEquals(fixed, tagger.correct(typo))
+        assertEquals(fixed, tagger.correct(typo, bias = GrammarTagger.KEEP_BIAS))
+    }
+
+    @Test
+    fun aTaggerBuiltForSureFixesCanStillBeAskedForBalanced() {
+        val typo = "See you tomorow."
+        val fixed = "See you tomorrow."
+        val tagger = contested(keepBias = GrammarTagger.SURE_KEEP_BIAS)
+
+        assertEquals(typo, tagger.correct(typo))
+        assertEquals(fixed, tagger.correct(typo, bias = GrammarTagger.KEEP_BIAS))
+        assertEquals(typo, tagger.correct(typo))
+    }
+
+    private companion object {
+        /** Above [GrammarTagger.KEEP_BIAS], below [GrammarTagger.SURE_KEEP_BIAS]. */
+        const val CONTESTED_SCORE = 3.5f
+    }
 }

@@ -18,7 +18,13 @@ import Observation
 @MainActor
 @Observable
 final class GrammarModelStore {
-    nonisolated static let modelID = "mindtype-tagger-v1.5"
+    nonisolated static let modelID = "mindtype-tagger-v2.0"
+
+    /// Grammar models an earlier build downloaded. `removeRetired()` deletes
+    /// their folders, and the app downloads the current model in their place
+    /// for anyone whose grammar setting is on. Mirrors
+    /// `GrammarModelCatalog.retiredIds` on Android.
+    nonisolated static let retiredModelIDs = ["mindtype-tagger-v1.5"]
 
     enum Phase: Equatable {
         case absent
@@ -48,6 +54,56 @@ final class GrammarModelStore {
 
     /// Where the verified files live. Only meaningful while `isReady`.
     nonisolated var directory: URL? { root?.appendingPathComponent(Self.modelID, isDirectory: true) }
+
+    /// The folder inside `directory` holding the model's own files, in the
+    /// repository's layout (`onnx/`). This is what a loader opens.
+    nonisolated var modelDirectory: URL? {
+        guard let directory else { return nil }
+        guard let first = pins?.files.first?.path, let slash = first.lastIndex(of: "/") else { return directory }
+        return directory.appendingPathComponent(String(first[..<slash]), isDirectory: true)
+    }
+
+    /// What app launch does: sweeps retired models, re-reads the folder, and
+    /// downloads the current model when `wanted` says a grammar setting is on
+    /// over missing files. Returns whether it downloaded one.
+    ///
+    /// The settings can only be turned on once the files are verified, so on
+    /// over missing files means an update moved the pin or an earlier attempt
+    /// at this download failed. Whoever turned the setting on agreed to the
+    /// download already, so it is retried on every launch until it succeeds,
+    /// not only on the launch that removed the old folder. `wanted` is asked
+    /// only when the files are missing, and nobody who never turned grammar on
+    /// gets a download. Mirrors `GrammarModelStore.restore` on Android.
+    func restore(
+        retired: [String] = GrammarModelStore.retiredModelIDs,
+        wanted: () -> Bool
+    ) async -> Bool {
+        removeRetired(retired)
+        await refresh()
+        guard !isReady, wanted() else { return false }
+        return (try? await download()) != nil
+    }
+
+    /// Deletes the folders of grammar models this build no longer pins, and
+    /// says whether there was one.
+    @discardableResult
+    func removeRetired(_ retired: [String] = GrammarModelStore.retiredModelIDs) -> Bool {
+        guard let root else { return false }
+        var found = false
+        for id in retired where id != Self.modelID {
+            let folder = root.appendingPathComponent(id, isDirectory: true)
+            if FileManager.default.fileExists(atPath: folder.path) {
+                found = true
+                try? FileManager.default.removeItem(at: folder)
+            }
+            if let names = try? FileManager.default.contentsOfDirectory(atPath: root.path) {
+                for name in names where name.hasPrefix(".download-\(id)-") {
+                    try? FileManager.default.removeItem(at: root.appendingPathComponent(name))
+                }
+            }
+        }
+        return found
+    }
 
     init(
         pins: LocalModelIntegrity.PinnedModelManifest? = try? LocalModelIntegrity.grammarModel(

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Downloads the five pinned tagger files and checks their SHA-256.
 
-    python3 fetch.py [DEST]   # default: ~/.cache/vocaphone/mindtype-tagger-v1.5
+    python3 fetch.py [DEST]   # default: ~/.cache/vocaphone/mindtype-tagger-v2.0
 """
 
 from __future__ import annotations
@@ -12,12 +12,12 @@ import sys
 import urllib.request
 from pathlib import Path
 
-REPOSITORY = "Mindscend/mindtype-tagger-v1.5"
-REVISION = "a737fbc7f563104d3d07cfeb198077950e223101"
+REPOSITORY = "Mindscend/mindtype-tagger-v2.0"
+REVISION = "e58cbb68c382a894a9f6de704fe385ec260f0949"
 PINS = {
-    "onnx/mindtype_tagger.onnx": (26_700_289, "f082574ef27d3d0e2929ef321ab7490c08002fc6475ea7d9edbe7e534777319b"),
+    "onnx/mindtype_tagger.onnx": (26_700_289, "cde26b40d62216c0b5680725b5e3f3b438f50cb6d02e05c395bf13059467da76"),
     "onnx/tokenizer.json": (1_113_060, "7430be0917758ae85b0322ed2686b9e14e7cb322e2cafa5f87f526544ccd829b"),
-    "onnx/labels.json": (296_770, "62df98ed27d01c107c77690c73ec346c2a4a4e37cc850de5381a833589760891"),
+    "onnx/labels.json": (297_669, "1a8f56abf4ecf5adebf726c561c36c6f634309e2fca1857658df0ed22e504abd"),
     "onnx/plausible_pairs.json": (4_450, "201a30cd6fcc129070c0637b4566820c7cb4d77ef3969a7575af591a17e281f4"),
     "onnx/config.json": (149, "dde7552bfb73798ead6fbc9e14bb5b4aee062bf168b21341e69a16152a571241"),
 }
@@ -57,7 +57,7 @@ def get(url: str) -> bytes:
 
 def main() -> None:
     dest = Path(sys.argv[1]) if len(sys.argv) > 1 else \
-        Path.home() / ".cache" / "vocaphone" / "mindtype-tagger-v1.5"
+        Path.home() / ".cache" / "vocaphone" / "mindtype-tagger-v2.0"
     dest.mkdir(parents=True, exist_ok=True)
     for path, (size, digest) in PINS.items():
         target = dest / Path(path).name

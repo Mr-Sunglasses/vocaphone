@@ -63,6 +63,8 @@ enum KeyboardDefaults {
     static let fixGrammar = false
     /// Off: it reads what is typed, and needs the same 28 MB model.
     static let typingGrammar = false
+    /// Off: "Balanced" is what v2.0 was tuned for.
+    static let grammarSureOnly = false
     static let liveWords = false
 }
 
@@ -582,6 +584,7 @@ enum KeyboardPreferences {
     static let repairSpeechKey = "speechRepairEnabled"
     static let fixGrammarKey = "fixGrammarEnabled"
     static let typingGrammarKey = "typingGrammarEnabled"
+    static let grammarSureOnlyKey = "grammarSureOnly"
     static let liveWordsKey = "liveWordsEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let translateToKey = "translateTo"
@@ -946,6 +949,13 @@ enum KeyboardPreferences {
     static var fixGrammar: Bool {
         get { boolean(fixGrammarKey, default: KeyboardDefaults.fixGrammar) }
         set { defaults?.set(newValue, forKey: fixGrammarKey) }
+    }
+
+    /// "Only sure fixes": the grammar model offers and applies only the edits
+    /// it is surest of. Off means "Balanced". Only the app reads it.
+    static var grammarSureOnly: Bool {
+        get { boolean(grammarSureOnlyKey, default: KeyboardDefaults.grammarSureOnly) }
+        set { defaults?.set(newValue, forKey: grammarSureOnlyKey) }
     }
 
     /// "Check grammar (English)" for typed text. The keyboard reads it to

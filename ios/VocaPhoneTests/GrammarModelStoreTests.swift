@@ -219,15 +219,15 @@ struct GrammarModelStoreTests {
 
     @Test func bundledPinsNameEveryFileAtAFixedRevision() throws {
         let pins = try Self.bundledPins
-        #expect(pins.repository == "VocaHQ/mindtype-tagger-v1.5-onnx")
+        #expect(pins.repository == "Mindscend/mindtype-tagger-v2.0")
         #expect(pins.revision.count == 40)
-        #expect(Set(pins.files.map(\.path)) == [
+        #expect(Set(pins.files.map(\.path)) == Set([
             "mindtype_tagger.onnx", "tokenizer.json", "labels.json", "plausible_pairs.json", "config.json",
-        ])
+        ].map { "onnx/\($0)" }))
         for file in pins.files {
             #expect(file.sha256?.count == 64, "\(file.path)")
         }
-        #expect(pins.files.reduce(0) { $0 + $1.size } == 28_114_718)
+        #expect(pins.files.reduce(0) { $0 + $1.size } == 28_115_617)
     }
 
     /// The grammar model transcribes nothing; it must never reach the speech picker.
@@ -242,5 +242,108 @@ struct GrammarModelStoreTests {
             GrammarModelStore.url(repository: "VocaHQ/x", revision: "abc", path: "tokenizer.json").absoluteString
                 == "https://huggingface.co/VocaHQ/x/resolve/abc/tokenizer.json?download=true"
         )
+    }
+
+    /// The pinned v2.0 files live in the repository's `onnx/` folder, and keep it on disk.
+    @Test func filesInAFolderLandInThatFolder() async throws {
+        let root = try Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let nested = LocalModelIntegrity.PinnedModelManifest(
+            repository: Self.pins.repository,
+            revision: Self.pins.revision,
+            files: Self.pins.files.map {
+                LocalModelIntegrity.ManifestFile(path: "onnx/\($0.path)", size: $0.size, sha256: $0.sha256)
+            }
+        )
+        let store = GrammarModelStore(pins: nested, root: root, fetch: Self.fetch())
+
+        try await store.download()
+
+        #expect(store.isReady)
+        let folder = try #require(store.modelDirectory)
+        #expect(folder.standardizedFileURL == root
+            .appendingPathComponent("\(GrammarModelStore.modelID)/onnx", isDirectory: true).standardizedFileURL)
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("model.onnx").path))
+    }
+
+    @Test func aRetiredModelsFolderIsRemovedAndReported() throws {
+        let root = try Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let old = root.appendingPathComponent("grammar-old", isDirectory: true)
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: old.appendingPathComponent("model.onnx"))
+        let store = GrammarModelStore(pins: Self.pins, root: root, fetch: Self.fetch())
+
+        #expect(store.removeRetired(["grammar-old"]))
+        #expect(!FileManager.default.fileExists(atPath: old.path))
+        #expect(!store.removeRetired(["grammar-old"]))
+    }
+
+    @Test func theCurrentModelIsNeverRemovedAsRetired() async throws {
+        let root = try Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = GrammarModelStore(pins: Self.pins, root: root, fetch: Self.fetch())
+        try await store.download()
+
+        #expect(!store.removeRetired([GrammarModelStore.modelID]))
+        #expect(store.isReady)
+        #expect(!GrammarModelStore.retiredModelIDs.contains(GrammarModelStore.modelID))
+    }
+
+    /// Greptile on #435: the first launch after an update removes the old
+    /// folder; if that download fails, the next launch has no old folder to
+    /// find and must still retry.
+    @Test func aFailedUpgradeDownloadIsRetriedOnTheNextLaunch() async throws {
+        let root = try Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let old = root.appendingPathComponent("grammar-old", isDirectory: true)
+        try FileManager.default.createDirectory(at: old, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: old.appendingPathComponent("model.onnx"))
+        let offline = GrammarModelStore(pins: Self.pins, root: root) { _, _ in
+            throw URLError(.notConnectedToInternet)
+        }
+
+        let firstLaunch = await offline.restore(retired: ["grammar-old"]) { true }
+        #expect(!firstLaunch)
+        #expect(!FileManager.default.fileExists(atPath: old.path))
+        #expect(!offline.isReady)
+
+        let nextLaunch = GrammarModelStore(pins: Self.pins, root: root, fetch: Self.fetch())
+        let retried = await nextLaunch.restore(retired: ["grammar-old"]) { true }
+        #expect(retried)
+        #expect(nextLaunch.isReady)
+    }
+
+    @Test func noGrammarSettingOnMeansNoDownloadAtLaunch() async throws {
+        let root = try Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let requests = Requests()
+        let store = GrammarModelStore(pins: Self.pins, root: root, fetch: Self.fetch(requested: requests))
+
+        let downloaded = await store.restore(retired: []) { false }
+        #expect(!downloaded)
+
+        #expect(!store.isReady)
+        #expect(requests.all.isEmpty)
+    }
+
+    @Test func aReadyModelIsNotDownloadedAgainOrTheSettingsAsked() async throws {
+        let root = try Self.temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let requests = Requests()
+        let store = GrammarModelStore(pins: Self.pins, root: root, fetch: Self.fetch(requested: requests))
+        try await store.download()
+        let before = requests.all.count
+        var asked = false
+
+        let downloaded = await store.restore(retired: []) {
+            asked = true
+            return true
+        }
+        #expect(!downloaded)
+
+        #expect(store.isReady)
+        #expect(!asked)
+        #expect(requests.all.count == before)
     }
 }

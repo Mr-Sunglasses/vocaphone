@@ -445,10 +445,21 @@ final class RecordingCoordinator {
         let grammarModel = GrammarModelStore()
         self.grammarModel = grammarModel
         let grammar = GrammarCorrector(
-            directory: { grammarModel.directory },
+            directory: { grammarModel.modelDirectory },
             isReady: { grammarModel.isReady }
         )
         self.grammar = grammar
+        // An update that moved the grammar pin leaves the old model behind
+        // and the new one missing. Whoever had a grammar setting on already
+        // agreed to this download; a switch left on over a missing model would
+        // quietly stop correcting anything. A download that failed (offline,
+        // or the app killed mid-way) is retried on every launch until it lands.
+        Task { @MainActor in
+            let downloaded = await grammarModel.restore {
+                KeyboardPreferences.fixGrammar || KeyboardPreferences.typingGrammar
+            }
+            if downloaded { grammar.modelChanged() }
+        }
         typedGrammar = TypedGrammarResponder(
             isEnabled: { KeyboardPreferences.typingGrammar && grammarModel.isReady },
             correct: { text, keep in grammar.correctTyped(text, keeping: keep) }

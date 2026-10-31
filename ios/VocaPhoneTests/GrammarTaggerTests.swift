@@ -161,4 +161,45 @@ struct GrammarTaggerTests {
         #expect(try tagger.correct(long, deadline: deadline) == long)
         #expect(calls.count == 1)
     }
+
+    /// Above `GrammarTagger.keepBias`, below `GrammarTagger.sureKeepBias`.
+    private static let contestedScore: Float = 3.5
+
+    /// A model that scores "tomorow" → "tomorrow" between the two KEEP biases:
+    /// Balanced (3) makes the fix, Only sure fixes (4) keeps the word. The
+    /// fixtures replay labels at a score of 10, which pass under either bias.
+    private func contested(keepBias: Float = GrammarTagger.keepBias) -> GrammarTagger {
+        let typo = GrammarFixtures.tokenizer.encode(" tomorow").map(Int64.init)
+        return GrammarFixtures.tagger(keepBias: keepBias) { ids, rows in
+            rows.indices.map { r in
+                let start = Int(rows[r])
+                let end = r + 1 < rows.count ? Int(rows[r + 1]) : ids.count
+                return Array(ids[start..<end]) == typo
+                    ? GrammarFixtures.row("REPLACE_tomorrow", score: Self.contestedScore)
+                    : GrammarFixtures.row("KEEP")
+            }
+        }
+    }
+
+    /// Greptile on #435: the per-call bias decides, and only for that call.
+    @Test func theBiasPassedToACallDecidesThatCallOnly() throws {
+        let typo = "See you tomorow."
+        let fixed = "See you tomorrow."
+        let tagger = contested()
+
+        #expect(try tagger.correct(typo) == fixed)
+        #expect(try tagger.correct(typo, bias: GrammarTagger.sureKeepBias) == typo)
+        #expect(try tagger.correct(typo) == fixed)
+        #expect(try tagger.correct(typo, bias: GrammarTagger.keepBias) == fixed)
+    }
+
+    @Test func aTaggerBuiltForSureFixesCanStillBeAskedForBalanced() throws {
+        let typo = "See you tomorow."
+        let fixed = "See you tomorrow."
+        let tagger = contested(keepBias: GrammarTagger.sureKeepBias)
+
+        #expect(try tagger.correct(typo) == typo)
+        #expect(try tagger.correct(typo, bias: GrammarTagger.keepBias) == fixed)
+        #expect(try tagger.correct(typo) == typo)
+    }
 }

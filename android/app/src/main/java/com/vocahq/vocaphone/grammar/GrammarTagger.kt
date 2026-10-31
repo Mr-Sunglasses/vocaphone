@@ -3,7 +3,7 @@ package com.vocahq.vocaphone.grammar
 import com.vocahq.vocaphone.core.ProtectedSpans
 
 /**
- * The MindType v1.5 recipe, ported from `tools/grammar-eval/infer.py`.
+ * The MindType v2.0 recipe, ported from `tools/grammar-eval/infer.py`.
  *
  * Pure Kotlin: the model is a [Logits] function, so everything here — word
  * split, alignment, KEEP bias, guard, edits and passes — is unit-tested against
@@ -36,12 +36,15 @@ class GrammarTagger(
      * Corrects [text]. [vocabulary] words are never changed. [deadline] is a
      * `System.nanoTime()` value; a sentence that would start after it is left
      * as it was, so a long dictation keeps every sentence finished in time.
+     * [bias] is added to KEEP's score: [KEEP_BIAS] is "Balanced",
+     * [SURE_KEEP_BIAS] "Only sure fixes".
      */
     fun correct(
         text: String,
         vocabulary: Set<String> = emptySet(),
         deadline: Long = Long.MAX_VALUE,
         trace: MutableList<List<Pass>>? = null,
+        bias: Float = keepBias,
     ): String {
         // Apostrophes compared straight, as the model reads them: a word saved
         // as "don't" also keeps "don’t".
@@ -56,7 +59,7 @@ class GrammarTagger(
                 continue
             }
             val passes = ArrayList<Pass>()
-            out.append(correctSentence(sentence, lowered, spans, passes, deadline))
+            out.append(correctSentence(sentence, lowered, spans, passes, deadline, bias))
             trace?.add(passes)
         }
         val restored = masked.restore(out.toString())
@@ -69,6 +72,7 @@ class GrammarTagger(
         spans: List<String>,
         passes: MutableList<Pass>,
         deadline: Long = Long.MAX_VALUE,
+        bias: Float = keepBias,
     ): String {
         var words = splitWords(sentence)
         if (words.none { LATIN_WORD.containsMatchIn(it.text) }) return sentence
@@ -82,7 +86,7 @@ class GrammarTagger(
                 if (System.nanoTime() > deadline) break
                 // One word longer than the model can read: leave it.
                 if (range.last == range.first && oversized(words[range.first], spans)) continue
-                val tagged = tag(words, range, vocabulary, spans)
+                val tagged = tag(words, range, vocabulary, spans, bias)
                 passes.add(tagged)
                 tagged.decisions.forEachIndexed { i, decision -> chosen[range.first + i] = decision.chosen }
             }
@@ -158,14 +162,14 @@ class GrammarTagger(
      * sentence, so a name or a preposition at a chunk's edge keeps the
      * protection it has anywhere else.
      */
-    private fun tag(words: List<Word>, range: IntRange, vocabulary: Set<String>, spans: List<String>): Pass {
+    private fun tag(words: List<Word>, range: IntRange, vocabulary: Set<String>, spans: List<String>, bias: Float): Pass {
         val texts = words.slice(range).map { modelText(it, spans) }
         val (ids, starts) = encode(texts)
         val rows = logits.run(ids, starts.toIntArray())
         val decisions = starts.indices.map { i ->
             val row = rows[i]
             var best = 0
-            var bestScore = row[0] + keepBias
+            var bestScore = row[0] + bias
             for (k in 1 until row.size) {
                 if (row[k] > bestScore) {
                     bestScore = row[k]
@@ -265,7 +269,10 @@ class GrammarTagger(
     }
 
     companion object {
-        const val KEEP_BIAS = 2.0f
+        /** "Balanced": the bias v2.0 was tuned for. */
+        const val KEEP_BIAS = 3.0f
+        /** "Only sure fixes": fewer, safer edits. */
+        const val SURE_KEEP_BIAS = 4.0f
         const val MAX_PASSES = 3
         /** The position table holds 160; one goes to [BOS]. */
         const val MAX_TOKENS = 150

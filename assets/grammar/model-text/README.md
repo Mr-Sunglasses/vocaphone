@@ -1,8 +1,8 @@
 # Grammar model text files, for tests
 
-`tokenizer.json`, `labels.json` and `plausible_pairs.json` from
-[MindType tagger v1.5](https://huggingface.co/Mindscend/mindtype-tagger-v1.5)
-by Mindscend, revision `a737fbc7f563104d3d07cfeb198077950e223101`, unchanged.
+`tokenizer.json`, `labels.json` and `plausible_pairs.json` from the `onnx/`
+folder of [MindType tagger v2.0](https://huggingface.co/Mindscend/mindtype-tagger-v2.0)
+by Mindscend, revision `e58cbb68c382a894a9f6de704fe385ec260f0949`, unchanged.
 Licensed under the Apache License 2.0
 (<https://www.apache.org/licenses/LICENSE-2.0>).
 

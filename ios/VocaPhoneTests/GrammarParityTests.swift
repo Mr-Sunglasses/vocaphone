@@ -14,7 +14,7 @@ struct GrammarParityTests {
 
     @Test func testCopiesOfTheModelTextMatchThePins() throws {
         for name in ["tokenizer.json", "labels.json", "plausible_pairs.json"] {
-            let pinned = try #require(Self.pins.files.first { $0.path == name })
+            let pinned = try #require(Self.pins.files.first { $0.path == "onnx/\(name)" })
             let copy = GrammarFixtures.root.appendingPathComponent("model-text/\(name)")
             #expect(try LocalModelIntegrity.sha256(of: copy) == pinned.sha256, "\(name)")
         }
@@ -22,7 +22,7 @@ struct GrammarParityTests {
 
     @Test func fixturesWereMadeFromThePinnedModel() {
         for file in Self.pins.files {
-            #expect(GrammarFixtures.document.model.sha256["onnx/\(file.path)"] == file.sha256, "\(file.path)")
+            #expect(GrammarFixtures.document.model.sha256[file.path] == file.sha256, "\(file.path)")
         }
     }
 

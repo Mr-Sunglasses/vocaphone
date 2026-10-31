@@ -56,6 +56,13 @@ class GrammarCorrector internal constructor(
     /** Set after a load failed for these files, so a broken install is not retried per dictation. */
     private var failedFor: Long? = null
 
+    /**
+     * "Only sure fixes": a higher KEEP bias, so only edits the model is surer
+     * of get through. Follows the setting; read once per check.
+     */
+    @Volatile
+    var sureOnly: Boolean = false
+
     /** Starts loading the model in the background, if it is downloaded and not loaded yet. */
     fun warm() {
         if (!available() || !store.isReady()) return
@@ -65,7 +72,7 @@ class GrammarCorrector internal constructor(
             generation
         }
         loader.execute {
-            val result = runCatching { load(store.directory) }
+            val result = runCatching { load(store.modelDirectory) }
             val stale = synchronized(lock) {
                 loading = false
                 val current = started == generation
@@ -102,7 +109,8 @@ class GrammarCorrector internal constructor(
         val start = System.nanoTime()
         val deadline = start + budget * 1_000_000
         return try {
-            val corrected = synchronized(current) { current.tagger.correct(text, keep, deadline) }
+            val bias = if (sureOnly) GrammarTagger.SURE_KEEP_BIAS else GrammarTagger.KEEP_BIAS
+            val corrected = synchronized(current) { current.tagger.correct(text, keep, deadline, bias = bias) }
             when {
                 System.nanoTime() > deadline + budget * 1_000_000 -> {
                     // One sentence ran far past the budget (the tagger only
@@ -138,7 +146,7 @@ class GrammarCorrector internal constructor(
         release()
     }
 
-    private fun fingerprint(): Long = File(store.directory, "mindtype_tagger.onnx").lastModified()
+    private fun fingerprint(): Long = File(store.modelDirectory, "mindtype_tagger.onnx").lastModified()
 
     companion object {
         internal fun loadFrom(directory: File): Loaded {

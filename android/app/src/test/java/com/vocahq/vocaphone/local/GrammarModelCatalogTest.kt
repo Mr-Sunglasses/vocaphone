@@ -19,7 +19,8 @@ class GrammarModelCatalogTest {
         assertEquals(40, tagger.revision.length)
         tagger.files.forEach { assertTrue(it.path, Regex("[0-9a-f]{64}").matches(it.sha256)) }
         assertEquals(
-            setOf("mindtype_tagger.onnx", "tokenizer.json", "labels.json", "plausible_pairs.json", "config.json"),
+            setOf("mindtype_tagger.onnx", "tokenizer.json", "labels.json", "plausible_pairs.json", "config.json")
+                .map { "onnx/$it" }.toSet(),
             tagger.files.map { it.path }.toSet(),
         )
     }
@@ -34,9 +35,20 @@ class GrammarModelCatalogTest {
     @Test
     fun downloadUrlPinsTheRevision() {
         assertEquals(
-            "https://huggingface.co/VocaHQ/mindtype-tagger-v1.5-onnx/resolve/" +
-                "5b6d7c3004677870122c10d84f78b35dcb760ff8/tokenizer.json",
-            GrammarModelCatalog.downloadUrl(tagger, tagger.files.first { it.path == "tokenizer.json" }),
+            "https://huggingface.co/Mindscend/mindtype-tagger-v2.0/resolve/" +
+                "e58cbb68c382a894a9f6de704fe385ec260f0949/onnx/tokenizer.json",
+            GrammarModelCatalog.downloadUrl(tagger, tagger.files.first { it.path == "onnx/tokenizer.json" }),
         )
+    }
+
+    /** The loader opens the files where the repository's layout put them. */
+    @Test
+    fun theModelFolderIsTheRepositorysOnnxFolder() {
+        assertEquals("onnx", GrammarModelCatalog.modelFolder(tagger))
+    }
+
+    @Test
+    fun theCurrentModelIsNeverRetired() {
+        assertFalse(tagger.id in GrammarModelCatalog.retiredIds)
     }
 }

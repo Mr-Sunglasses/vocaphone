@@ -1,6 +1,6 @@
 import Foundation
 
-/// The MindType v1.5 recipe, ported from `tools/grammar-eval/infer.py`.
+/// The MindType v2.0 recipe, ported from `tools/grammar-eval/infer.py`.
 ///
 /// Pure Swift: the model is a `Logits` closure, so everything here — word
 /// split, alignment, KEEP bias, guard, edits and passes — is tested against
@@ -11,7 +11,10 @@ final class GrammarTagger: @unchecked Sendable {
     /// Label scores for the tokens at `rows` of `ids`, one row each.
     typealias Logits = (_ ids: [Int64], _ rows: [Int32]) throws -> [[Float]]
 
-    static let keepBias: Float = 2.0
+    /// "Balanced": the bias v2.0 was tuned for.
+    static let keepBias: Float = 3.0
+    /// "Only sure fixes": fewer, safer edits.
+    static let sureKeepBias: Float = 4.0
     static let maxPasses = 3
     /// The position table holds 160; one goes to `[BOS]`.
     static let maxTokens = 150
@@ -60,12 +63,16 @@ final class GrammarTagger: @unchecked Sendable {
     /// Corrects `text`. `vocabulary` words are never changed. A sentence
     /// that would start after `deadline` (an uptime in nanoseconds) is left
     /// as it was, so a long dictation keeps every sentence finished in time.
+    /// `bias` is added to KEEP's score: `keepBias` is "Balanced",
+    /// `sureKeepBias` "Only sure fixes"; nil uses the one this tagger was made with.
     func correct(
         _ text: String,
         vocabulary: Set<String> = [],
         deadline: UInt64 = .max,
+        bias: Float? = nil,
         trace: ((_ passes: [Pass]) -> Void)? = nil
     ) throws -> String {
+        let bias = bias ?? keepBias
         // Apostrophes compared straight, as the model reads them: a word saved
         // as "don't" also keeps "don’t".
         let lowered = Set(vocabulary.map { $0.lowercased().replacingOccurrences(of: "’", with: "'") })
@@ -78,7 +85,9 @@ final class GrammarTagger: @unchecked Sendable {
                 continue
             }
             var passes: [Pass] = []
-            out += try correctSentence(sentence, vocabulary: lowered, spans: masked.tokens, passes: &passes, deadline: deadline)
+            out += try correctSentence(
+                sentence, vocabulary: lowered, spans: masked.tokens, passes: &passes, deadline: deadline, bias: bias
+            )
             trace?(passes)
         }
         let restored = masked.restore(out)
@@ -90,7 +99,8 @@ final class GrammarTagger: @unchecked Sendable {
         vocabulary: Set<String>,
         spans: [String],
         passes: inout [Pass],
-        deadline: UInt64
+        deadline: UInt64,
+        bias: Float
     ) throws -> String {
         var words = Self.splitWords(sentence)
         guard words.contains(where: { Self.containsLatinWord($0.text) }) else { return sentence }
@@ -104,7 +114,7 @@ final class GrammarTagger: @unchecked Sendable {
                 if DispatchTime.now().uptimeNanoseconds > deadline { break }
                 // One word longer than the model can read: leave it.
                 if range.count == 1, oversized(words[range.lowerBound], spans: spans) { continue }
-                let tagged = try tag(words, range, vocabulary: vocabulary, spans: spans)
+                let tagged = try tag(words, range, vocabulary: vocabulary, spans: spans, bias: bias)
                 passes.append(tagged)
                 for (i, decision) in tagged.decisions.enumerated() { chosen[range.lowerBound + i] = decision.chosen }
             }
@@ -177,14 +187,16 @@ final class GrammarTagger: @unchecked Sendable {
     /// Runs the words in `range` through the model. The guard sees the whole
     /// sentence, so a name or a preposition at a chunk's edge keeps the
     /// protection it has anywhere else.
-    private func tag(_ words: [Word], _ range: Range<Int>, vocabulary: Set<String>, spans: [String]) throws -> Pass {
+    private func tag(
+        _ words: [Word], _ range: Range<Int>, vocabulary: Set<String>, spans: [String], bias: Float
+    ) throws -> Pass {
         let texts = words[range].map { modelText($0, spans: spans) }
         let (ids, starts) = encode(texts)
         let rows = try logits(ids, starts.map(Int32.init))
         let decisions = starts.indices.map { i -> Decision in
             let row = rows[i]
             var best = 0
-            var bestScore = row[0] + keepBias
+            var bestScore = row[0] + bias
             for k in 1..<row.count where row[k] > bestScore {
                 bestScore = row[k]
                 best = k

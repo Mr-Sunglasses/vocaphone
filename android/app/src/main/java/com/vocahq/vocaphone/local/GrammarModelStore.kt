@@ -67,6 +67,13 @@ class GrammarModelStore internal constructor(
     /** Where the verified files live. Only meaningful while [isReady]. */
     val directory: File get() = File(root, model.id)
 
+    /**
+     * The folder inside [directory] that holds the model's own files, keeping
+     * the repository's layout (`onnx/`). This is what a loader opens.
+     */
+    val modelDirectory: File
+        get() = GrammarModelCatalog.modelFolder(model).let { if (it.isEmpty()) directory else File(directory, it) }
+
     private val staging: File get() = File(root, ".${model.id}.staging")
 
     /** Stat-only: safe on any path that runs per dictation. */
@@ -125,6 +132,7 @@ class GrammarModelStore internal constructor(
                     // reaches nothing.
                     throwIfCancelled()
                     val destination = File(staging, pinned.path)
+                    destination.parentFile?.mkdirs()
                     val actual = fetchPinnedFile(
                         client = client,
                         url = downloadUrl(pinned),
@@ -191,6 +199,47 @@ class GrammarModelStore internal constructor(
             removed
         }
     }
+
+    /**
+     * What app start does: sweeps retired models, re-reads the folder, and
+     * downloads the current model when [wanted] says a grammar setting is on
+     * over missing files. Returns whether it downloaded one.
+     *
+     * The settings can only be turned on once the files are verified, so on
+     * over missing files means an update moved the pin or an earlier attempt
+     * at this download failed. Whoever turned the setting on agreed to the
+     * download already, so it is retried on every start until it succeeds,
+     * not only on the start that removed the old folder. [wanted] is asked
+     * only when the files are missing, and nobody who never turned grammar on
+     * gets a download.
+     */
+    suspend fun restore(
+        retired: List<String> = GrammarModelCatalog.retiredIds,
+        wanted: suspend () -> Boolean,
+    ): Boolean {
+        removeRetired(retired)
+        refresh()
+        if (state.value.ready || !wanted()) return false
+        return runCatching { download() }.isSuccess
+    }
+
+    /**
+     * Removes the folders of grammar models this build no longer pins.
+     * Returns whether there was one.
+     */
+    suspend fun removeRetired(retired: List<String> = GrammarModelCatalog.retiredIds): Boolean =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                retired.filter { it != model.id }.fold(false) { found, id ->
+                    val folder = File(root, id)
+                    val staged = File(root, ".$id.staging")
+                    val existed = folder.exists() || staged.exists()
+                    folder.deleteRecursively()
+                    staged.deleteRecursively()
+                    found || existed
+                }
+            }
+        }
 
     private fun deleteAbandonedStaging(now: Long = System.currentTimeMillis()) {
         if (!staging.exists()) return

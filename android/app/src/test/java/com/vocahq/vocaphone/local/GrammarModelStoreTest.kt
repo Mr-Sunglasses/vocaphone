@@ -160,4 +160,103 @@ class GrammarModelStoreTest {
             assertEquals(1, server.requestCount)
         }
     }
+
+    /** The pinned v2.0 files live in the repository's `onnx/` folder, and keep it on disk. */
+    @Test
+    fun filesInAFolderLandInThatFolder() = runBlocking {
+        val nested = model.copy(files = model.files.map { it.copy(path = "onnx/${it.path}") })
+        MockWebServer().use { server ->
+            server.start()
+            bodies.values.forEach { server.enqueue(ok(it)) }
+            val store = GrammarModelStore(
+                root = temp.root,
+                model = nested,
+                client = OkHttpClient.Builder().readTimeout(5, TimeUnit.SECONDS).build(),
+                downloadUrl = { server.url("/${it.path}").toString() },
+            )
+
+            store.download()
+
+            assertTrue(store.isReady())
+            assertEquals(File(temp.root, "${model.id}/onnx"), store.modelDirectory)
+            assertTrue(File(store.modelDirectory, "model.onnx").isFile)
+        }
+    }
+
+    @Test
+    fun aRetiredModelsFolderIsRemovedAndReported() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val old = File(temp.root, "grammar-old").apply { mkdirs() }
+            File(old, "model.onnx").writeText("old weights")
+            val store = store(server)
+
+            assertTrue(store.removeRetired(listOf("grammar-old")))
+            assertFalse(old.exists())
+            assertFalse(store.removeRetired(listOf("grammar-old")))
+        }
+    }
+
+    @Test
+    fun theCurrentModelIsNeverRemovedAsRetired() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            bodies.values.forEach { server.enqueue(ok(it)) }
+            val store = store(server)
+            store.download()
+
+            assertFalse(store.removeRetired(listOf(model.id)))
+            assertTrue(store.isReady())
+        }
+    }
+
+    /**
+     * Greptile on #435: the first start after an update removes the old
+     * folder; if that download fails, the next start has no old folder to
+     * find and must still retry.
+     */
+    @Test
+    fun aFailedUpgradeDownloadIsRetriedOnTheNextStart() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val old = File(temp.root, "grammar-old").apply { mkdirs() }
+            File(old, "model.onnx").writeText("old weights")
+            server.enqueue(MockResponse.Builder().code(404).build())
+
+            assertFalse(store(server).restore(retired = listOf("grammar-old")) { true })
+            assertFalse(old.exists())
+
+            bodies.values.forEach { server.enqueue(ok(it)) }
+            val nextStart = store(server)
+            assertTrue(nextStart.restore(retired = listOf("grammar-old")) { true })
+            assertTrue(nextStart.isReady())
+        }
+    }
+
+    @Test
+    fun noGrammarSettingOnMeansNoDownloadAtStart() = runBlocking {
+        MockWebServer().use { server ->
+            server.start()
+            val store = store(server)
+
+            assertFalse(store.restore(retired = emptyList()) { false })
+
+            assertFalse(store.isReady())
+            assertEquals(0, server.requestCount)
+        }
+    }
+
+    @Test
+    fun aReadyModelIsNotDownloadedAgainOrTheSettingsAsked() = runBlocking {
+        MockWebServer().use { server ->
+            val directory = File(temp.root, model.id).also { it.mkdirs() }
+            bodies.forEach { (path, body) -> File(directory, path).writeText(body) }
+            val store = store(server)
+
+            assertFalse(store.restore(retired = emptyList()) { error("asked although the model is ready") })
+
+            assertTrue(store.isReady())
+            assertEquals(0, server.requestCount)
+        }
+    }
 }

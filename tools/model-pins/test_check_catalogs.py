@@ -1,4 +1,5 @@
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -7,11 +8,13 @@ from check_catalogs import check_grammar
 ROOT = Path(__file__).resolve().parents[2]
 KOTLIN = (ROOT / "android/app/src/main/java/com/vocahq/vocaphone/local/GrammarModelCatalog.kt").read_text()
 PINS = json.loads((ROOT / "ios/VocaPhoneApp/Models/grammar_model_pins.json").read_text())
+# Whichever grammar model is pinned, so a model upgrade does not break the tests.
+MODEL_ID = next(iter(PINS["models"]))
 
 
 def pins(**changes) -> dict:
     copy = json.loads(json.dumps(PINS))
-    model = copy["models"]["mindtype-tagger-v1.5"]
+    model = copy["models"][MODEL_ID]
     model.update(changes)
     return copy
 
@@ -26,17 +29,18 @@ class GrammarPinTests(unittest.TestCase):
 
     def test_a_changed_digest_is_caught(self):
         changed = pins()
-        changed["models"]["mindtype-tagger-v1.5"]["files"][0]["sha256"] = "0" * 64
+        changed["models"][MODEL_ID]["files"][0]["sha256"] = "0" * 64
         problems = check_grammar(KOTLIN, changed)
         self.assertTrue(any("files disagree" in p for p in problems), problems)
 
     def test_a_model_on_one_side_only_is_caught(self):
-        renamed = {"models": {"other-tagger": PINS["models"]["mindtype-tagger-v1.5"]}}
+        renamed = {"models": {"other-tagger": PINS["models"][MODEL_ID]}}
         problems = check_grammar(KOTLIN, renamed)
         self.assertEqual(2, len(problems), problems)
 
     def test_a_wrong_total_is_caught(self):
-        source = KOTLIN.replace("sizeBytes = 28_114_718L", "sizeBytes = 28_114_719L")
+        source = re.sub(r"sizeBytes = ([\d_]+)L", lambda m: f"sizeBytes = {int(m[1].replace('_', '')) + 1}L", KOTLIN)
+        self.assertNotEqual(KOTLIN, source)
         problems = check_grammar(source, PINS)
         self.assertTrue(any("sum to" in p for p in problems), problems)
 

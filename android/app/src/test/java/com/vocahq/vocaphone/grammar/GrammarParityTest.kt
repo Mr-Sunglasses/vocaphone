@@ -14,7 +14,7 @@ class GrammarParityTest {
     @Test
     fun testCopiesOfTheModelTextMatchThePins() {
         listOf("tokenizer.json", "labels.json", "plausible_pairs.json").forEach { name ->
-            val pinned = GrammarModelCatalog.tagger.files.first { it.path == name }
+            val pinned = GrammarModelCatalog.tagger.files.first { it.path == "onnx/$name" }
             val copy = File(fixtures.root, "model-text/$name")
             assertEquals(name, pinned.sha256, LocalModelIntegrity.sha256(copy))
         }
@@ -24,7 +24,7 @@ class GrammarParityTest {
     fun fixturesWereMadeFromThePinnedModel() {
         val sha = fixtures.document.getJSONObject("model").getJSONObject("sha256")
         GrammarModelCatalog.tagger.files.forEach { pinned ->
-            assertEquals(pinned.path, pinned.sha256, sha.getString("onnx/${pinned.path}"))
+            assertEquals(pinned.path, pinned.sha256, sha.getString(pinned.path))
         }
     }
 

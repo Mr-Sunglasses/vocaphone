@@ -46,14 +46,19 @@ final class GrammarCorrector: GrammarStage, @unchecked Sendable {
     /// otherwise a release during a warm-up left the session in memory after
     /// the system asked for it back.
     private var generation = 0
+    /// "Only sure fixes": a higher KEEP bias, so only the edits the model is
+    /// surer of get through. Read once per check.
+    private let sureOnly: @Sendable () -> Bool
 
     init(
         directory: @escaping @Sendable () -> URL?,
         isReady: @escaping @Sendable () -> Bool,
         log: @escaping @Sendable (DiagnosticEvent) -> Void = { DiagnosticLog.record($0) },
         budget: Duration = GrammarCorrector.budget,
-        load: @escaping Load = GrammarCorrector.loadFrom
+        load: @escaping Load = GrammarCorrector.loadFrom,
+        sureOnly: @escaping @Sendable () -> Bool = { KeyboardPreferences.grammarSureOnly }
     ) {
+        self.sureOnly = sureOnly
         self.directory = directory
         self.isReady = isReady
         self.log = log
@@ -117,7 +122,8 @@ final class GrammarCorrector: GrammarStage, @unchecked Sendable {
         let start = DispatchTime.now().uptimeNanoseconds
         let deadline = start + budgetNanoseconds
         do {
-            let corrected = try current.tagger.correct(text, vocabulary: keeping, deadline: deadline)
+            let bias = sureOnly() ? GrammarTagger.sureKeepBias : GrammarTagger.keepBias
+            let corrected = try current.tagger.correct(text, vocabulary: keeping, deadline: deadline, bias: bias)
             if DispatchTime.now().uptimeNanoseconds > deadline + budgetNanoseconds {
                 // One sentence ran far past the budget (the tagger only checks
                 // between sentences and passes). Its result is still correct.
