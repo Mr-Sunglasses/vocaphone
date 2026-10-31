@@ -4,15 +4,7 @@
 
 | Configuration | Precision | Recall | F0.5 | Exact (errors) | False-positive rate (correct) | Protected-span damage | p50 ms | p95 ms |
 |---|---|---|---|---|---|---|---|---|
-| shipped recipe | 0.991 | 0.626 | 0.887 | 63.2% | 0.0% | 0 | 2.3 | 4.4 |
-| no guard or protections, KEEP bias 3.0 | 0.964 | 0.632 | 0.872 | 63.2% | 0.6% | 0 | 2.3 | 4.5 |
-| guard, KEEP bias 0 | 0.896 | 0.702 | 0.849 | 70.6% | 1.7% | 0 | 2.3 | 4.4 |
-| guard, KEEP bias 2.0 (the v1.5 recipe) | 0.956 | 0.637 | 0.869 | 64.4% | 0.0% | 0 | 2.3 | 4.8 |
-| guard, KEEP bias 4.0 (Only sure fixes) | 0.990 | 0.585 | 0.870 | 58.9% | 0.0% | 0 | 2.2 | 4.5 |
-| alignment: no [BOS] | 0.984 | 0.363 | 0.733 | 37.4% | 0.6% | 0 | 2.0 | 4.0 |
-| alignment: first word without Ġ | 0.980 | 0.561 | 0.853 | 57.1% | 0.0% | 0 | 2.3 | 4.5 |
-| alignment: last subtoken | 0.988 | 0.480 | 0.815 | 49.1% | 0.0% | 0 | 2.2 | 4.5 |
-| protected spans fed as placeholders | 0.991 | 0.620 | 0.885 | 62.6% | 0.0% | 0 | 2.3 | 4.8 |
+| shipped recipe | 0.991 | 0.626 | 0.887 | 63.2% | 0.0% | 0 | 2.3 | 4.5 |
 
 ### Correct sentences the stage changed (0)
 

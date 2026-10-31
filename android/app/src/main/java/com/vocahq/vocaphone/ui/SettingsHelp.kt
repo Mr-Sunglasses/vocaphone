@@ -85,13 +85,6 @@ internal object SettingsHelp {
                 "password fields.",
             "Corrections offer nearby dictionary words in the toolbar. Tap a word, or " +
                 "a swipe alternative, to replace it.",
-            "Check grammar (English) looks over the last sentence or two you typed when " +
-                "you pause, with the same 28 MB on-device model as Fix grammar, and offers " +
-                "a fix in the toolbar: \"he don't know\" → \"he doesn't know\". Nothing " +
-                "changes until you tap it; tap × to keep what you wrote. It reads only the " +
-                "text before the cursor, never leaves this phone, leaves your own words, " +
-                "names and links alone, and is off in passwords, addresses and links. Off " +
-                "by default.",
             "Hold for digits and symbols shows a punctuation mark or digit on each " +
                 "letter key. Hold the key to type it; slide for accents. It is off by " +
                 "default so a hold on E still types è.",
@@ -99,6 +92,28 @@ internal object SettingsHelp {
                 "¯\\_(ツ)_/¯.",
             "Swipe typing: glide across letter keys to enter a word. English only; " +
                 "there is no language pack to download.",
+        ),
+    )
+
+    val writing = LearnMore(
+        title = "About Writing check",
+        paragraphs = listOf(
+            "Writing check is a grammar and style checker that runs on this phone. When " +
+                "you pause, the keyboard reads the text around the cursor and puts a count at " +
+                "the start of the toolbar: tap a suggestion to apply it, or tap the count to " +
+                "see each one with its reason, and Accept, Ignore or Add to dictionary.",
+            "Suggestions come in four colours: red for correctness (spelling, grammar, " +
+                "punctuation), blue for clarity (wordy phrases, passive voice), green for " +
+                "engagement (weak intensifiers, repeated words) and purple for delivery " +
+                "(hedging). Correctness is always on; the others have their own switches.",
+            "It works without a download. The optional 28 MB grammar model, shared with " +
+                "Fix grammar for dictation, catches more slips like \"he don't know\". " +
+                "\"Only sure fixes\" makes it offer fewer, safer changes.",
+            "Nothing you type is sent anywhere, there is no account, and nothing changes " +
+                "until you tap, unless you turn on \"Fix obvious typos as I type\", which " +
+                "corrects known misspellings and offers Undo. It is off in passwords, " +
+                "addresses and links, leaves your own words, names and links alone, and " +
+                "checks English only.",
         ),
     )
 

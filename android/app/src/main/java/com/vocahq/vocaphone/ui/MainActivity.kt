@@ -78,6 +78,9 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPEN_SETTINGS = "open_settings"
         const val EXTRA_OPEN_MODELS = "open_models"
         const val EXTRA_SETTINGS_PAGE = "settings_page"
+
+        /** Text to open in the Writing check screen, from the keyboard's "Open in app". */
+        const val EXTRA_WRITING_TEXT = "writing_text"
     }
 }
 
@@ -451,7 +454,16 @@ fun VocaPhoneApp(
                 onDynamicColor = { viewModel.setDynamicColorEnabled(it) },
                 onSuggestions = { viewModel.setSuggestionsEnabled(it) },
                 onCorrections = { viewModel.setCorrectionsEnabled(it) },
-                onTypingGrammar = { viewModel.setTypingGrammar(it) },
+                writing = WritingSettingsActions(
+                    onCheckWhileTyping = { viewModel.setTypingGrammar(it) },
+                    onDownloadModel = { viewModel.downloadGrammarModel() },
+                    onSureOnly = { viewModel.setGrammarSureOnly(it) },
+                    onClarity = { viewModel.setWritingClarity(it) },
+                    onEngagement = { viewModel.setWritingEngagement(it) },
+                    onDelivery = { viewModel.setWritingDelivery(it) },
+                    onTone = { viewModel.setWritingTone(it) },
+                    onTypoAutoFix = { viewModel.setTypoAutoFix(it) },
+                ),
                 onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },
                 onLongPressSymbols = { viewModel.setLongPressSymbolsEnabled(it) },
                 onAutoCapitalize = { viewModel.setAutoCapitalizeEnabled(it) },

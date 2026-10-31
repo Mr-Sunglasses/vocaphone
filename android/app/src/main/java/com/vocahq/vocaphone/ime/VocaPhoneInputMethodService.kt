@@ -35,11 +35,14 @@ import com.vocahq.vocaphone.dictation.DictationSource
 import com.vocahq.vocaphone.dictation.InsertionOutcome
 import com.vocahq.vocaphone.dictation.InsertionReport
 import com.vocahq.vocaphone.dictation.TranscriptInserter
-import com.vocahq.vocaphone.grammar.TypedGrammar
 import com.vocahq.vocaphone.local.GrammarModelCatalog
 import com.vocahq.vocaphone.settings.ClipboardHistory
 import com.vocahq.vocaphone.settings.ClipboardImages
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
+import com.vocahq.vocaphone.writing.WritingCheck
+import com.vocahq.vocaphone.writing.WritingRules
+import com.vocahq.vocaphone.writing.WritingSuggestion
+import com.vocahq.vocaphone.writing.writingCategories
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -153,20 +156,27 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private val editorTextRefresh = Runnable { refreshEditorText() }
 
+    /** Writing check's rules, parsed off the main thread in [onCreate]. */
+    private val writingChecker = MutableStateFlow<WritingCheck?>(null)
+
+    /** "Fixed: teh → the", with what Undo needs, until the next edit. */
+    private val autoFixed = MutableStateFlow<AutoFix?>(null)
+
+    private data class AutoFix(val label: String, val position: Int, val wrote: String, val typed: String, val key: String)
+
     /**
-     * "Check grammar while typing". The model is the app's own
-     * [com.vocahq.vocaphone.grammar.GrammarCorrector], shared with dictation's
-     * Fix grammar; this keyboard runs in the app's process, so the typed text
-     * never leaves it.
+     * Writing check: the rules everywhere, and the app's own grammar model
+     * ([com.vocahq.vocaphone.grammar.GrammarCorrector], shared with
+     * dictation's Fix grammar) once it is downloaded. This keyboard runs in
+     * the app's process, so the typed text never leaves it.
      */
-    private val typedGrammar by lazy {
-        TypedGrammarCheck(
+    private val writingCheck by lazy {
+        WritingCheckSession(
             scope = scope,
             worker = Dispatchers.Default,
-            readBefore = { limit ->
-                runCatching { currentInputConnection?.getTextBeforeCursor(limit, 0)?.toString() }.getOrNull()
-            },
-            correct = { text, keep -> container.grammar.correctTyped(text, keep) },
+            read = ::readWritingField,
+            checker = { writingChecker.value },
+            model = ::writingModel,
             isEnglish = { text ->
                 TranscriptRepair.isEnglish(text, "auto") { suggestionDictionary.value?.isKnown(it) == true }
             },
@@ -212,6 +222,12 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             suggestionDictionary.value = runCatching { SuggestionDictionary.load(assets) }.getOrNull()
             emojiCatalog.value = runCatching { EmojiCatalog.load(assets) }.getOrNull().orEmpty()
             runCatching { EmojiSuggestions.load(assets) }
+            writingChecker.value = runCatching {
+                WritingCheck(WritingRules.parse(assets.open("writing-rules.json").bufferedReader().use { it.readText() }))
+            }.getOrNull()
+        }
+        scope.launch {
+            writingCheck.report.collect { report -> if (report != null) maybeAutoFix(report) }
         }
     }
 
@@ -238,7 +254,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             val editorText by visibleEditorText.collectAsState()
             val dictionary by suggestionDictionary.collectAsState()
             val emojis by emojiCatalog.collectAsState()
-            val grammarFix by typedGrammar.fix.collectAsState()
+            val writingReport by writingCheck.report.collectAsState()
+            val writingChecking by writingCheck.checking.collectAsState()
+            val writingAutoFix by autoFixed.collectAsState()
+            val writing = WritingStripState(writingReport, writingChecking, writingAutoFix?.label)
+                .takeIf { writingEnabled() }
             VocaPhoneKeyboard(
                 dictationState = dictationState,
                 editor = editorConfig,
@@ -248,7 +268,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 editorText = editorText,
                 suggestions = dictionary,
                 emojiCatalog = emojis,
-                grammarFix = grammarFix,
+                writing = writing,
                 onCommand = ::handleCommand,
                 onMicTap = ::toggleDictation,
                 onMicLongPress = ::cancelDictationFromMic,
@@ -266,8 +286,13 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onClearClipboardHistory = ::clearClipboardHistory,
                 onEmojiUsed = ::recordEmojiRecent,
                 onSpaceLongPress = ::showKeyboardPicker,
-                onApplyGrammarFix = ::applyGrammarFix,
-                onDismissGrammarFix = ::dismissGrammarFix,
+                onWritingApply = ::applyWriting,
+                onWritingDismiss = writingCheck::dismiss,
+                onWritingAddWord = ::addWritingWord,
+                onWritingAcceptAll = ::acceptAllWriting,
+                onWritingRecheck = { writingCheck.checkNow(writingOptions()) },
+                onWritingUndoAutoFix = ::undoAutoFix,
+                onWritingOpenApp = ::openWritingEditor,
             )
         }
     }
@@ -335,7 +360,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         mainHandler.removeCallbacks(releaseTypedGrammar)
         // Loaded while the user types their first sentence, so the first
         // pause has a model to ask.
-        if (typedGrammarEnabled()) container.grammar.warm()
+        if (writingModel() != null) container.grammar.warm()
         // Auto-start waits for VoiceShortcutListeningChrome's first frame.
         // A microphone FGS is not eligible on this handoff (targetSdk 36).
         maybeHandBackVoiceShortcut()
@@ -373,7 +398,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         }
         stopClipboardWatch()
         visibleClipboard.value = null
-        typedGrammar.reset()
+        writingCheck.reset()
+        autoFixed.value = null
         mainHandler.removeCallbacks(releaseTypedGrammar)
         mainHandler.postDelayed(releaseTypedGrammar, TYPED_GRAMMAR_RELEASE_DELAY_MS)
         super.onFinishInputView(finishingInput)
@@ -481,7 +507,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         caseCycleEmitted = null
         composingRegionActive = false
         mainHandler.removeCallbacks(editorTextRefresh)
-        typedGrammar.reset()
+        writingCheck.reset()
+        autoFixed.value = null
         editorConfig = KeyboardEditorConfig.empty().copy(sessionId = editorSession)
         super.onFinishInput()
     }
@@ -875,7 +902,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 selected = selected,
                 hasSelection = hasSelection,
             )
-            typedGrammar.textChanged("", enabled = false, keep = ::typedGrammarKeeps)
+            writingCheck.textChanged("", enabled = false, options = ::writingOptions)
             return
         }
         val before = runCatching {
@@ -885,20 +912,56 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             currentInputConnection?.getTextAfterCursor(32, 0)?.toString().orEmpty()
         }.getOrDefault("")
         visibleEditorText.value = EditorTextWindow(before, after, selected, hasSelection)
+        // An edit after an automatic fix ends its Undo.
+        autoFixed.value?.let { fix -> if (!before.contains(fix.wrote)) autoFixed.value = null }
         // Restarts the pause timer only. The read the check needs, and the
         // model, wait until the typing stops.
-        typedGrammar.textChanged(
+        writingCheck.textChanged(
             before,
-            enabled = typedGrammarEnabled() && !hasSelection,
-            keep = ::typedGrammarKeeps,
+            enabled = writingEnabled() && !hasSelection,
+            options = ::writingOptions,
         )
     }
 
-    private fun typedGrammarEnabled(): Boolean {
+    /** "Check while typing" is on, and this is a field worth checking. */
+    private fun writingEnabled(): Boolean {
         val settings = visibleSettings.value
         return settings.typingGrammar && settings.suggestionsEnabled && !voiceShortcutActive &&
-            GrammarModelCatalog.available && container.grammarModel.state.value.ready &&
-            ImeInputPolicy.acceptsGrammarCheck(currentInputType)
+            !editorConfig.sensitive && ImeInputPolicy.acceptsGrammarCheck(currentInputType)
+    }
+
+    /** The grammar model, when it is downloaded; the rules work without it. */
+    private fun writingModel(): ((String, Set<String>) -> String?)? {
+        if (!GrammarModelCatalog.available || !container.grammarModel.state.value.ready) return null
+        return { text, keep -> container.grammar.correctTyped(text, keep) }
+    }
+
+    private fun writingOptions(): WritingCheckSession.Options {
+        val settings = visibleSettings.value
+        return WritingCheckSession.Options(
+            categories = settings.writingCategories(),
+            keep = typedGrammarKeeps(),
+            tone = settings.writingTone,
+        )
+    }
+
+    /**
+     * The field around the cursor in one Binder call, with where it starts in
+     * the editor, so a suggestion anywhere in it can be applied in place.
+     */
+    private fun readWritingField(): WritingCheckSession.Field? {
+        val connection = currentInputConnection ?: return null
+        val surrounding = runCatching {
+            connection.getSurroundingText(WritingCheckSession.READ_EACH_SIDE, WritingCheckSession.READ_EACH_SIDE, 0)
+        }.getOrNull() ?: return null
+        if (surrounding.selectionStart != surrounding.selectionEnd) return null
+        val text = surrounding.text.toString()
+        // Some editors do not say where the text starts; the cursor's own
+        // position, from onUpdateSelection, gives it back.
+        val offset = surrounding.offset.takeIf { it >= 0 }
+            ?: (lastSelStart - surrounding.selectionStart).takeIf { lastSelStart >= 0 && it >= 0 }
+            ?: return null
+        return WritingCheckSession.Field(text, offset, surrounding.selectionStart)
     }
 
     /** Words the grammar model may not change: the user's own, as for dictation. */
@@ -910,36 +973,118 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         )
     }
 
-    private fun dismissGrammarFix() = typedGrammar.dismiss()
-
     /**
-     * The grammar chip, tapped. The text is read again first: the fix is
-     * applied only if the sentence it was worked out for is still the one
-     * before the cursor, as one batch edit.
+     * A suggestion, accepted from a chip or a card. The field is read again
+     * first and the suggestion moved to where its words now are; it is
+     * applied only if they still say what was checked, as one batch edit
+     * that puts the cursor back where the user left it.
      */
-    private fun applyGrammarFix() {
+    private fun applyWriting(suggestion: WritingSuggestion) {
+        applyWritingAll(listOf(suggestion))
+    }
+
+    /** "Accept all": every mechanical fix (spelling, punctuation, capitals) in one edit. */
+    private fun acceptAllWriting() {
+        val report = writingCheck.report.value ?: return
+        applyWritingAll(report.suggestions.filter { it.isActionable && it.mechanical })
+    }
+
+    private fun applyWritingAll(suggestions: List<WritingSuggestion>) {
         // commitText replaces a selection, so a fix applied over one would
-        // delete it. The strip hides the fix then; this is the backstop for a
-        // tap that lands as a selection is made.
-        if (lastSelStart != lastSelEnd) {
-            typedGrammar.reset()
+        // delete it. Checks stop while there is a selection; this is the
+        // backstop for a tap that lands as one is made.
+        if (lastSelStart != lastSelEnd || suggestions.isEmpty()) return
+        val report = writingCheck.report.value ?: return
+        val connection = currentInputConnection ?: return
+        val fresh = readWritingField() ?: return
+        val moved = WritingCheck.rebase(suggestions, report.field.text, fresh.text)
+            .filter { fresh.text.regionMatches(it.start, it.original, 0, it.original.length) && it.end <= fresh.text.length }
+        if (moved.isEmpty()) {
+            writingCheck.checkNow(writingOptions())
             return
         }
-        val fix = typedGrammar.take() ?: return
-        val connection = currentInputConnection ?: return
-        val before = runCatching {
-            connection.getTextBeforeCursor(TypedGrammar.READ_LIMIT, 0)?.toString()
-        }.getOrNull() ?: return
-        val edit = TypedGrammar.edit(fix, before) ?: return
+        var cursor = fresh.offset + fresh.cursor
         connection.beginBatchEdit()
         if (composingRegionActive) connection.finishComposingText()
-        connection.deleteSurroundingText(edit.deleteBefore, 0)
-        connection.commitText(edit.insert, 1)
+        // From the end back, so each edit leaves the earlier offsets alone.
+        for (s in moved.sortedByDescending { it.start }) {
+            val start = fresh.offset + s.start
+            val end = fresh.offset + s.end
+            val replacement = s.replacement ?: continue
+            connection.setSelection(start, end)
+            connection.commitText(replacement, 1)
+            cursor = when {
+                cursor >= end -> cursor + replacement.length - (end - start)
+                cursor > start -> start + replacement.length
+                else -> cursor
+            }
+        }
+        connection.setSelection(cursor, cursor)
         connection.endBatchEdit()
         composingRegionActive = false
+        suggestions.forEach(writingCheck::applied)
         editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
         syncShiftFromCursor()
         scheduleEditorTextRefresh()
+    }
+
+    /** "Add to dictionary": the word is the user's from now on, here and in dictation. */
+    private fun addWritingWord(suggestion: WritingSuggestion) {
+        addPersonalWord(suggestion.shownOriginal)
+        writingCheck.dismiss(suggestion)
+    }
+
+    /**
+     * "Fix obvious typos as I type": a known misspelling or a missing
+     * apostrophe the user has finished typing is corrected without a tap, and
+     * the strip offers Undo until the next edit. Nothing else is ever applied
+     * on its own.
+     */
+    private fun maybeAutoFix(report: WritingCheckSession.Report) {
+        if (!visibleSettings.value.typoAutoFix || !writingEnabled()) return
+        val fixes = report.suggestions.filter {
+            it.source == WritingSuggestion.Source.RULE && it.kind in AUTO_FIX_KINDS && it.isActionable &&
+                it.end < report.field.cursor
+        }
+        val last = fixes.maxByOrNull { it.start } ?: return
+        applyWritingAll(listOf(last))
+        autoFixed.value = AutoFix(
+            label = last.label,
+            position = report.field.offset + last.start,
+            wrote = last.replacement.orEmpty(),
+            typed = last.original,
+            key = last.key,
+        )
+    }
+
+    private fun undoAutoFix() {
+        val fix = autoFixed.value ?: return
+        autoFixed.value = null
+        val connection = currentInputConnection ?: return
+        val field = readWritingField() ?: return
+        val at = fix.position - field.offset
+        if (at < 0 || !field.text.regionMatches(at, fix.wrote, 0, fix.wrote.length)) return
+        val cursor = field.offset + field.cursor
+        connection.beginBatchEdit()
+        if (composingRegionActive) connection.finishComposingText()
+        connection.setSelection(fix.position, fix.position + fix.wrote.length)
+        connection.commitText(fix.typed, 1)
+        val restored = if (cursor >= fix.position + fix.wrote.length) cursor + fix.typed.length - fix.wrote.length else cursor
+        connection.setSelection(restored, restored)
+        connection.endBatchEdit()
+        composingRegionActive = false
+        // Undone means "I meant that": the same fix is not made again here.
+        writingCheck.report.value?.suggestions?.firstOrNull { it.key == fix.key }?.let(writingCheck::dismiss)
+        scheduleEditorTextRefresh()
+    }
+
+    /** "Open in app": the field's text in VocaPhone's Writing check screen. */
+    private fun openWritingEditor() {
+        val text = writingCheck.report.value?.field?.text ?: readWritingField()?.text ?: return
+        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        intent.putExtra(com.vocahq.vocaphone.ui.MainActivity.EXTRA_WRITING_TEXT, text)
+        startActivity(intent)
     }
 
     /**
@@ -1385,5 +1530,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
         /** How long the grammar session outlives the keyboard going away. */
         const val TYPED_GRAMMAR_RELEASE_DELAY_MS = 60_000L
+
+        /** What "Fix obvious typos as I type" may change without a tap. */
+        val AUTO_FIX_KINDS = setOf("spelling", "apostrophe")
     }
 }

@@ -157,7 +157,7 @@ fun SettingsScreen(
     onDynamicColor: (Boolean) -> Unit,
     onSuggestions: (Boolean) -> Unit,
     onCorrections: (Boolean) -> Unit,
-    onTypingGrammar: (Boolean) -> Unit = {},
+    writing: WritingSettingsActions = WritingSettingsActions(),
     onNumberKeyHints: (Boolean) -> Unit,
     onLongPressSymbols: (Boolean) -> Unit,
     onAutoCapitalize: (Boolean) -> Unit,
@@ -470,10 +470,6 @@ fun SettingsScreen(
                         onCheckedChange = onCorrections,
                     )
                     SettingsDivider()
-                    if (GrammarModelCatalog.available) {
-                        TypingGrammarRow(settings, grammarModel, onTypingGrammar, onCancelGrammarDownload)
-                        SettingsDivider()
-                    }
                     SettingsSwitchRow(
                         title = "Capitalize sentences",
                         supporting = "Shift turns on at the start of a sentence.",
@@ -509,6 +505,7 @@ fun SettingsScreen(
                         onCheckedChange = onAsciiEmoji,
                     )
                 }
+                WritingCheckSettingsGroup(settings, grammarModel, writing, onCancelGrammarDownload)
                 SettingsGroup(title = "Clipboard", learnMore = SettingsHelp.clipboard) {
                     SettingsSwitchRow(
                         title = "Clipboard chip",

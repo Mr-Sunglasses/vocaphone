@@ -9,6 +9,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.vocahq.vocaphone.core.WritingStyle
+import com.vocahq.vocaphone.local.GrammarModelCatalog
 import com.vocahq.vocaphone.local.GrammarModelState
 import com.vocahq.vocaphone.local.byteLabel
 import com.vocahq.vocaphone.local.downloadSizeProgress
@@ -40,27 +41,169 @@ internal fun FixGrammarRow(
     )
 }
 
+/** What the Writing check group can ask for; one value rather than nine parameters. */
+data class WritingSettingsActions(
+    val onCheckWhileTyping: (Boolean) -> Unit = {},
+    val onDownloadModel: () -> Unit = {},
+    val onSureOnly: (Boolean) -> Unit = {},
+    val onClarity: (Boolean) -> Unit = {},
+    val onEngagement: (Boolean) -> Unit = {},
+    val onDelivery: (Boolean) -> Unit = {},
+    val onTone: (Boolean) -> Unit = {},
+    val onTypoAutoFix: (Boolean) -> Unit = {},
+    /** The system spell checker setting; null where it cannot be opened. */
+    val onOpenSpellChecker: (() -> Unit)? = null,
+    val onOpenEditor: () -> Unit = {},
+)
+
 /**
- * "Check grammar" in the keyboard's Typing group: the same model, offered
- * for what is typed. It shares [FixGrammarRow]'s download, so whichever is
- * turned on first fetches the model and the other is then a plain switch.
+ * "Writing check (English)": Grammarly's keyboard, on this phone. Checking
+ * while typing needs no download (the rules ship in the app); the grammar
+ * model is an optional download that catches more, shared with dictation's
+ * Fix grammar.
  */
 @Composable
-internal fun TypingGrammarRow(
+internal fun WritingCheckSettingsGroup(
     settings: VocaPhoneSettings,
     model: GrammarModelState,
-    onTypingGrammar: (Boolean) -> Unit,
+    actions: WritingSettingsActions,
     onCancelDownload: () -> Unit,
 ) {
-    GrammarModelSwitchRow(
-        title = "Check grammar (English)",
-        description = "Offers a fix in the toolbar when you pause. Nothing changes until you tap it.",
-        unavailable = "Needs suggestions turned on.".takeIf { !settings.suggestionsEnabled },
-        on = settings.typingGrammar,
-        model = model,
-        onChange = onTypingGrammar,
-        onCancelDownload = onCancelDownload,
-    )
+    SettingsGroup(
+        title = "Writing check (English)",
+        footer = "Runs on this phone. Nothing you type is sent anywhere.",
+        learnMore = SettingsHelp.writing,
+    ) {
+        SettingsSwitchRow(
+            title = "Check while typing",
+            supporting = when {
+                !settings.suggestionsEnabled -> "Needs suggestions turned on."
+                else -> "Suggestions in the toolbar when you pause. Nothing changes until you tap."
+            },
+            checked = settings.typingGrammar && settings.suggestionsEnabled,
+            enabled = settings.suggestionsEnabled,
+            onCheckedChange = actions.onCheckWhileTyping,
+        )
+        SettingsDivider()
+        SettingsActionRow(
+            title = "Check text in VocaPhone",
+            supporting = "Paste or write something and see every suggestion, a score and how it sounds.",
+            onClick = actions.onOpenEditor,
+        )
+        if (GrammarModelCatalog.available) {
+            SettingsDivider()
+            GrammarModelRow(model, actions.onDownloadModel, onCancelDownload)
+            SettingsDivider()
+            SettingsSwitchRow(
+                title = "Only sure fixes",
+                supporting = "Fewer grammar suggestions, each more likely to be right.",
+                checked = settings.grammarSureOnly,
+                onCheckedChange = actions.onSureOnly,
+            )
+        }
+        SettingsDivider()
+        SettingsSwitchRow(
+            title = "Clarity",
+            supporting = "Wordy phrases, passive voice, long sentences.",
+            checked = settings.writingClarity,
+            onCheckedChange = actions.onClarity,
+        )
+        SettingsDivider()
+        SettingsSwitchRow(
+            title = "Engagement",
+            supporting = "“Very good” → “great”, and words used too often.",
+            checked = settings.writingEngagement,
+            onCheckedChange = actions.onEngagement,
+        )
+        SettingsDivider()
+        SettingsSwitchRow(
+            title = "Delivery",
+            supporting = "Hedging like “I just wanted to”.",
+            checked = settings.writingDelivery,
+            onCheckedChange = actions.onDelivery,
+        )
+        SettingsDivider()
+        SettingsSwitchRow(
+            title = "Tone",
+            supporting = "Says how your text sounds: friendly, formal, urgent…",
+            checked = settings.writingTone,
+            onCheckedChange = actions.onTone,
+        )
+        SettingsDivider()
+        SettingsSwitchRow(
+            title = "Fix obvious typos as I type",
+            supporting = "“recieve” → “receive”, “dont” → “don't”, with Undo in the toolbar.",
+            checked = settings.typoAutoFix,
+            enabled = settings.typingGrammar,
+            onCheckedChange = actions.onTypoAutoFix,
+        )
+        actions.onOpenSpellChecker?.let { open ->
+            SettingsDivider()
+            SettingsActionRow(
+                title = "Underline mistakes in other apps",
+                supporting = "Choose VocaPhone as the system spell checker. Works with any keyboard.",
+                onClick = open,
+                external = true,
+            )
+        }
+    }
+}
+
+/**
+ * The grammar model as its own row: what it adds, its size, and a download
+ * that asks first. Turning it off is Fix grammar's and Check grammar's
+ * business, so there is no delete here.
+ */
+@Composable
+private fun GrammarModelRow(
+    model: GrammarModelState,
+    onDownload: () -> Unit,
+    onCancelDownload: () -> Unit,
+) {
+    var offering by remember { mutableStateOf(false) }
+    when {
+        model.downloading -> SettingsActionRow(
+            title = "Grammar model",
+            supporting = listOfNotNull(
+                "Downloading",
+                downloadSizeProgress(model.downloadedBytes, model.totalBytes),
+            ).joinToString(" · "),
+            onClick = onCancelDownload,
+        )
+        model.ready -> SettingsInfoRow(label = "Grammar model", value = "On this phone")
+        else -> SettingsActionRow(
+            title = "Download the grammar model",
+            supporting = model.failure ?: "Catches more grammar slips. ${byteLabel(model.totalBytes)}, runs on this phone.",
+            onClick = { offering = true },
+        )
+    }
+    if (model.downloading) {
+        SettingsGroupContent {
+            TextButton(onClick = onCancelDownload) { Text("Cancel download") }
+        }
+    }
+    if (offering) {
+        AlertDialog(
+            onDismissRequest = { offering = false },
+            title = { Text("Download the grammar model?") },
+            text = {
+                Text(
+                    "Writing check works without it. The ${byteLabel(model.totalBytes)} model runs on " +
+                        "this phone and catches more grammar slips, like “he don't know”. Your words " +
+                        "are checked here and never sent anywhere.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    offering = false
+                    onDownload()
+                }) { Text("Download") }
+            },
+            dismissButton = {
+                TextButton(onClick = { offering = false }) { Text("Not now") }
+            },
+        )
+    }
 }
 
 @Composable

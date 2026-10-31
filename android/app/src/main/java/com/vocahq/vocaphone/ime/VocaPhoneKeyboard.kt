@@ -119,7 +119,7 @@ import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.ModelTranslationSupport
 import com.vocahq.vocaphone.core.TranscriptionLanguage
 import com.vocahq.vocaphone.core.WritingStyle
-import com.vocahq.vocaphone.grammar.TypedGrammar
+import com.vocahq.vocaphone.writing.WritingSuggestion
 import com.vocahq.vocaphone.settings.ClipboardHistory
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import java.io.File
@@ -142,6 +142,7 @@ private enum class PreferencePanel {
     LANGUAGE,
     STYLE,
     CLIPBOARD,
+    WRITING,
 }
 
 @Composable
@@ -154,7 +155,7 @@ internal fun VocaPhoneKeyboard(
     editorText: EditorTextWindow,
     suggestions: SuggestionDictionary?,
     emojiCatalog: List<EmojiEntry>,
-    grammarFix: TypedGrammar.Fix? = null,
+    writing: WritingStripState? = null,
     onCommand: (KeyboardCommand) -> Unit,
     onMicTap: () -> Unit,
     onMicLongPress: () -> Unit,
@@ -172,8 +173,13 @@ internal fun VocaPhoneKeyboard(
     onClearClipboardHistory: () -> Unit,
     onEmojiUsed: (String) -> Unit,
     onSpaceLongPress: () -> Unit = {},
-    onApplyGrammarFix: () -> Unit = {},
-    onDismissGrammarFix: () -> Unit = {},
+    onWritingApply: (WritingSuggestion) -> Unit = {},
+    onWritingDismiss: (WritingSuggestion) -> Unit = {},
+    onWritingAddWord: (WritingSuggestion) -> Unit = {},
+    onWritingAcceptAll: () -> Unit = {},
+    onWritingRecheck: () -> Unit = {},
+    onWritingUndoAutoFix: () -> Unit = {},
+    onWritingOpenApp: () -> Unit = {},
 ) {
     // One set of state holders for the life of the composition, reset when the
     // editor changes rather than rebuilt.
@@ -373,11 +379,11 @@ internal fun VocaPhoneKeyboard(
         KeyboardChrome.suggestionsForStrip(suggestionStrip.items, startedTyping)
     }
     val swipeReplacesWord = swipeChoicesActive
-    // Between words only: once a new word is under way the strip is for it,
-    // and the fix waits for the next pause.
-    val stripGrammarFix = grammarFix.takeIf {
-        composeWords && keyboardState.composing.isEmpty() && !swipeChoicesActive
-    }
+    // The badge stays while a word is typed; its chips only between words:
+    // once a new word is under way the strip is for it, and the fixes wait.
+    val stripWriting = writing?.takeIf { composeWords && it.showsBadge }
+    val writingChipsVisible = keyboardState.composing.isEmpty() && !swipeChoicesActive
+    val acceptAllCount = writing?.report?.suggestions?.count { it.isActionable && it.mechanical } ?: 0
 
     fun clearSwipe() {
         swipeChoices = emptyList()
@@ -618,11 +624,13 @@ internal fun VocaPhoneKeyboard(
                     clipboard = stripClipboard.takeIf {
                         preferencePanel == null && keyboardState.layer != KeyboardLayer.EMOJI
                     },
-                    grammarFix = stripGrammarFix.takeIf {
+                    writing = stripWriting.takeIf {
                         preferencePanel == null && keyboardState.layer != KeyboardLayer.EMOJI
                     },
-                    onApplyGrammarFix = onApplyGrammarFix,
-                    onDismissGrammarFix = onDismissGrammarFix,
+                    writingChips = writingChipsVisible,
+                    onWritingBadge = { preferencePanel = PreferencePanel.WRITING },
+                    onWritingApply = onWritingApply,
+                    onWritingUndoAutoFix = onWritingUndoAutoFix,
                     suggestions = stripSuggestions.takeIf {
                         preferencePanel == null && keyboardState.layer != KeyboardLayer.EMOJI
                     }.orEmpty(),
@@ -642,6 +650,7 @@ internal fun VocaPhoneKeyboard(
                         PreferencePanel.LANGUAGE -> "Language"
                         PreferencePanel.STYLE -> "Style"
                         PreferencePanel.CLIPBOARD -> "Clipboard"
+                        PreferencePanel.WRITING -> "Writing check"
                         null -> null
                     },
                     panelActionLabel = if (
@@ -649,12 +658,16 @@ internal fun VocaPhoneKeyboard(
                             settings.clipboardHistory.isNotEmpty()
                     ) {
                         if (confirmingClipboardClear) "Clear all?" else "Clear"
+                    } else if (preferencePanel == PreferencePanel.WRITING && acceptAllCount >= 2) {
+                        "Accept all $acceptAllCount"
                     } else {
                         null
                     },
-                    panelActionDestructive = true,
+                    panelActionDestructive = preferencePanel != PreferencePanel.WRITING,
                     onPanelAction = {
-                        if (confirmingClipboardClear) {
+                        if (preferencePanel == PreferencePanel.WRITING) {
+                            onWritingAcceptAll()
+                        } else if (confirmingClipboardClear) {
                             confirmingClipboardClear = false
                             onClearClipboardHistory()
                         } else {
@@ -742,6 +755,18 @@ internal fun VocaPhoneKeyboard(
                             onLanguageSelected(language)
                         },
                         onClose = { preferencePanel = null },
+                    )
+                    PreferencePanel.WRITING -> WritingCheckPanel(
+                        state = writing ?: WritingStripState(report = null, checking = false),
+                        height = keyAreaHeight,
+                        onApply = onWritingApply,
+                        onDismiss = onWritingDismiss,
+                        onAddWord = onWritingAddWord,
+                        onRecheck = onWritingRecheck,
+                        onOpenApp = {
+                            preferencePanel = null
+                            onWritingOpenApp()
+                        },
                     )
                     PreferencePanel.STYLE -> StylePreferencePanel(
                         selected = settings.style,
@@ -954,8 +979,6 @@ private const val CLIPBOARD_CLEAR_CONFIRM_MILLIS = 4_000L
 private val ClipboardChipMinWidth = 148.dp
 private val ClipboardChipMaxWidth = 220.dp
 private val ClipboardChipHeight = 32.dp
-/** Wider than a clip: "their going → they're going" has to be readable to be judged. */
-private val GrammarChipMaxWidth = 280.dp
 
 @Composable
 private fun DictationBar(
@@ -965,9 +988,11 @@ private fun DictationBar(
     barHeight: Dp,
     isPreferenceWritePending: Boolean,
     clipboard: ClipboardChip?,
-    grammarFix: TypedGrammar.Fix? = null,
-    onApplyGrammarFix: () -> Unit = {},
-    onDismissGrammarFix: () -> Unit = {},
+    writing: WritingStripState? = null,
+    writingChips: Boolean = false,
+    onWritingBadge: () -> Unit = {},
+    onWritingApply: (WritingSuggestion) -> Unit = {},
+    onWritingUndoAutoFix: () -> Unit = {},
     suggestions: List<SuggestionItem>,
     emojiCategory: EmojiCategory?,
     hasEmojiRecents: Boolean,
@@ -1066,6 +1091,11 @@ private fun DictationBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            // Grammarly's "G": always first, so it never jumps as the strip changes.
+            if (writing != null && panelTitle == null && idle && emojiCategory == null) {
+                WritingBadge(state = writing, onClick = onWritingBadge)
+            }
+            val writingChipList = writing?.report?.chips.orEmpty()
             when {
                 panelTitle != null -> {
                     Text(
@@ -1092,21 +1122,18 @@ private fun DictationBar(
                     onSelect = onEmojiCategory,
                     modifier = Modifier.weight(1f),
                 )
-                // Ahead of the predictions: it is about what was just written,
-                // and it only shows between words, when a prediction is the
-                // least of what the strip could say.
-                grammarFix != null -> Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    GrammarFixChip(
-                        fix = grammarFix,
-                        onClick = onApplyGrammarFix,
-                        onDismiss = onDismissGrammarFix,
-                    )
-                }
+                // Ahead of the predictions: they are about what was just
+                // written, and show only between words, when a prediction is
+                // the least of what the strip could say.
+                writing?.autoFixed != null && writingChips -> AutoFixNotice(
+                    label = writing.autoFixed,
+                    onUndo = onWritingUndoAutoFix,
+                )
+                writingChips && writingChipList.isNotEmpty() -> WritingChips(
+                    chips = writingChipList,
+                    onApply = onWritingApply,
+                    onOpen = onWritingBadge,
+                )
                 suggestions.isNotEmpty() -> SuggestionStripRow(
                     suggestions = suggestions,
                     onSuggestion = onSuggestion,
@@ -2126,87 +2153,6 @@ private fun ClipboardChipButton(
                 contentDescription = null,
                 modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/**
- * "Check grammar while typing": the words as typed and what they become, in
- * the clipboard chip's shape so the strip has one kind of chip, not two.
- * Tapping applies the fix; the trailing X, a full touch target like the
- * clipboard's, waves it away for this sentence.
- */
-@Composable
-private fun GrammarFixChip(
-    fix: TypedGrammar.Fix,
-    onClick: () -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val view = LocalView.current
-    val label = fix.label
-    Box(
-        modifier = Modifier
-            .height(MinimumTouchTarget)
-            .widthIn(min = ClipboardChipMinWidth, max = GrammarChipMaxWidth),
-        contentAlignment = Alignment.CenterStart,
-    ) {
-        Surface(
-            modifier = Modifier
-                .height(ClipboardChipHeight)
-                .widthIn(min = ClipboardChipMinWidth, max = GrammarChipMaxWidth),
-            shape = RoundedCornerShape(percent = 50),
-            color = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics {
-                        role = Role.Button
-                        contentDescription = "Fix grammar: $label"
-                    }
-                    .clickable {
-                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                        onClick()
-                    }
-                    .padding(start = 12.dp, end = MinimumTouchTarget),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_check),
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
-                Text(
-                    text = label,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .size(MinimumTouchTarget)
-                .semantics {
-                    role = Role.Button
-                    contentDescription = "Dismiss grammar fix"
-                }
-                .clickable {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    onDismiss()
-                },
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_cancel),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = MaterialTheme.colorScheme.onPrimaryContainer,
             )
         }
     }

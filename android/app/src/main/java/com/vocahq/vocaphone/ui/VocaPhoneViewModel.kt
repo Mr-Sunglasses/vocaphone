@@ -405,17 +405,33 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     }
 
     /**
-     * "Check grammar" for typed text: the same model as [setFixGrammar], so
-     * the same rule. On only once the files are verified, downloading first
-     * when they are missing.
+     * "Check while typing": Writing check in the keyboard. The rules ship in
+     * the app, so this needs no download; the grammar model joins in once it
+     * is downloaded ([downloadGrammarModel]).
      */
-    fun setTypingGrammar(enabled: Boolean) {
-        if (!enabled) {
-            viewModelScope.launch { container.settings.setTypingGrammar(false) }
-            return
-        }
-        afterGrammarModel { container.settings.setTypingGrammar(true) }
-    }
+    fun setTypingGrammar(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setTypingGrammar(enabled) }
+
+    /** Fetches and verifies the grammar model; [grammarModel] says how it went. */
+    fun downloadGrammarModel() = afterGrammarModel {}
+
+    fun setGrammarSureOnly(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setGrammarSureOnly(enabled) }
+
+    fun setWritingClarity(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setWritingClarity(enabled) }
+
+    fun setWritingEngagement(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setWritingEngagement(enabled) }
+
+    fun setWritingDelivery(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setWritingDelivery(enabled) }
+
+    fun setWritingTone(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setWritingTone(enabled) }
+
+    fun setTypoAutoFix(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setTypoAutoFix(enabled) }
 
     private fun afterGrammarModel(enable: suspend () -> Unit) {
         container.workScope.launch {

@@ -4,7 +4,7 @@
 
 | Configuration | Precision | Recall | F0.5 | Exact (errors) | False-positive rate (correct) | Protected-span damage | p50 ms | p95 ms |
 |---|---|---|---|---|---|---|---|---|
-| shipped recipe | 0.000 | 0.000 | 0.000 | 0.0% | 0.3% | 0 | 1.9 | 2.9 |
+| shipped recipe | 0.000 | 0.000 | 0.000 | 0.0% | 0.3% | 0 | 1.9 | 2.5 |
 
 ### Correct sentences the stage changed (1)
 
