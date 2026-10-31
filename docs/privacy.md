@@ -128,9 +128,11 @@ flagged or changed.
   running, which Quick Dictation keeps it doing in the background; otherwise
   only the rules run and nothing is written. "Whole message" reads past the
   window iOS gives a keyboard by moving the cursor to each end of the field
-  and back, only when tapped. "Open app" writes the field's text to
-  `writing-draft.json` in the App Group, which the app deletes as it opens it
-  and ignores after a minute. The keyboard extension still never loads the
+  and back, only when tapped, and stops if the user taps or types in the
+  field meanwhile. "Open app" writes the field's text to
+  `writing-draft.json` in the App Group, which the app deletes as it opens it.
+  The keyboard deletes it if the app does not open, and the app and keyboard
+  delete one left a minute or more on their next start. The keyboard extension still never loads the
   model, makes no network call, and reports nothing.
 
 Neither platform logs, stores beyond those transient files, or reports any of
