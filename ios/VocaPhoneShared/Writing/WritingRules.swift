@@ -43,6 +43,10 @@ final class WritingRules: @unchecked Sendable {
     let verbs: Verbs
     let classes: [String: Set<String>]
     let rules: [WritingRule]
+    /// Rule indices by the word their pattern starts with, so a token is tried against only those.
+    let rulesByFirstWord: [String: [Int]]
+    /// Rule indices whose pattern starts with a class: tried at every token.
+    let rulesStartingWithClass: [Int]
     let tones: [Tone]
     let toneMinimumCharacters: Int
     let toneMinimumScore: Int
@@ -103,6 +107,17 @@ final class WritingRules: @unchecked Sendable {
         }
         self.classes = classes
         rules = try ((json["rules"] as? [[String: Any]]) ?? []).map(WritingRule.compile)
+        var byWord: [String: [Int]] = [:]
+        var byClass: [Int] = []
+        for (i, rule) in rules.enumerated() {
+            if let words = rule.firstWords {
+                for word in words { byWord[word, default: []].append(i) }
+            } else {
+                byClass.append(i)
+            }
+        }
+        rulesByFirstWord = byWord
+        rulesStartingWithClass = byClass
         let tone = try object("tone")
         toneMinimumCharacters = tone["minimumCharacters"] as? Int ?? 90
         toneMinimumScore = tone["minimumScore"] as? Int ?? 4

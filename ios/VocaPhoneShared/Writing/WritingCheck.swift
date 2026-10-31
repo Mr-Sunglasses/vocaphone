@@ -112,8 +112,10 @@ struct WritingCheck: Sendable {
         var i = sentence.first
         while i <= sentence.last {
             var advanced = false
-            for rule in rules.rules {
-                let count = rule.match(tokens, sentence, i, rules)
+            let start = WritingText.isSentenceStart(tokens, sentence, i)
+            for index in candidates(tokens[i]) {
+                let rule = rules.rules[index]
+                let count = rule.match(tokens, sentence, i, rules, start: start)
                 if count == 0 { continue }
                 let matched = Array(tokens[i..<(i + count)])
                 let touchesProtected = matched.contains { t in
@@ -127,6 +129,26 @@ struct WritingCheck: Sendable {
                 break
             }
             if !advanced { i += 1 }
+        }
+        return out
+    }
+
+    /// The rules that could start at `token`, in the file's order.
+    private func candidates(_ token: WritingToken) -> [Int] {
+        let b = rules.rulesStartingWithClass
+        guard let a = rules.rulesByFirstWord[token.key] else { return b }
+        var out: [Int] = []
+        out.reserveCapacity(a.count + b.count)
+        var i = 0
+        var j = 0
+        while i < a.count || j < b.count {
+            if j >= b.count || (i < a.count && a[i] < b[j]) {
+                out.append(a[i])
+                i += 1
+            } else {
+                out.append(b[j])
+                j += 1
+            }
         }
         return out
     }
@@ -300,7 +322,7 @@ struct WritingCheck: Sendable {
         if text.utf16Length < rules.toneMinimumCharacters { return [] }
         let words = tokens.filter(\.hasLetter)
         let keys = words.map(\.key)
-        let joined = " " + keys.joined(separator: " ") + " "
+        let joined = Array((" " + keys.joined(separator: " ") + " ").utf16)
         let exclamations = min(tokens.filter { $0.text == "!" }.count, 2)
         let questions = min(tokens.filter { $0.text == "?" }.count, 2)
         let smileys = min(text.unicodeScalars.filter { Self.smileys.contains($0.value) }.count, 2)
@@ -309,7 +331,7 @@ struct WritingCheck: Sendable {
         }.count, 2)
         let scored = rules.tones.map { tone -> Tone in
             var score = keys.filter { tone.words.contains($0) }.count * 2
-            score += tone.phrases.reduce(0) { $0 + Self.occurrences(joined, " \(WritingToken.normalize($1)) ") * 4 }
+            score += tone.phrases.reduce(0) { $0 + Self.occurrences(joined, Array(" \(WritingToken.normalize($1)) ".utf16)) * 4 }
             switch tone.id {
             case "excited": score += exclamations * 2
             case "friendly": score += exclamations + smileys * 2
@@ -323,14 +345,12 @@ struct WritingCheck: Sendable {
         return Array(Self.stableSorted(strong) { $0.score > $1.score }.prefix(3))
     }
 
-    private static func occurrences(_ haystack: String, _ needle: String) -> Int {
-        let h = Array(haystack.utf16)
-        let n = Array(needle.utf16)
+    private static func occurrences(_ h: [UInt16], _ n: [UInt16]) -> Int {
         guard !n.isEmpty, n.count <= h.count else { return 0 }
         var count = 0
         var at = 0
         while at + n.count <= h.count {
-            if Array(h[at..<(at + n.count)]) == n {
+            if h[at..<(at + n.count)].elementsEqual(n) {
                 count += 1
                 at += n.count - 1
             } else {

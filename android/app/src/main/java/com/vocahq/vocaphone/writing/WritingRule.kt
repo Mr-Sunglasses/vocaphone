@@ -33,14 +33,17 @@ class WritingRule private constructor(
         data class Class(val name: String) : Element
     }
 
-    /** How many tokens match from [index], or 0. */
+    /** The words the pattern can start with, or null when it starts with a class. */
+    internal val firstWords: Set<String>? get() = (elements.firstOrNull() as? Element.Words)?.options
+
+    /** How many tokens match from [index], or 0. [start]: whether [index] opens the sentence. */
     internal fun match(
         tokens: List<WritingToken>,
         sentence: WritingSentence,
         index: Int,
         rules: WritingRules,
+        start: Boolean,
     ): Int {
-        val start = WritingText.isSentenceStart(tokens, sentence, index)
         if (atStart && !start) return 0
         if (notAtStart && start) return 0
         val before = if (index > sentence.first) tokens[index - 1] else null

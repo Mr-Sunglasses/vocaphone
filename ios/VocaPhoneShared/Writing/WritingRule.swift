@@ -54,9 +54,16 @@ struct WritingRule: Sendable {
         )
     }
 
-    /// How many tokens match from `index`, or 0.
-    func match(_ tokens: [WritingToken], _ sentence: WritingSentence, _ index: Int, _ rules: WritingRules) -> Int {
-        let start = WritingText.isSentenceStart(tokens, sentence, index)
+    /// The words the pattern can start with, or nil when it starts with a class.
+    var firstWords: Set<String>? {
+        if case let .words(options) = elements.first { return options }
+        return nil
+    }
+
+    /// How many tokens match from `index`, or 0. `start`: whether `index` opens the sentence.
+    func match(
+        _ tokens: [WritingToken], _ sentence: WritingSentence, _ index: Int, _ rules: WritingRules, start: Bool
+    ) -> Int {
         if atStart, !start { return 0 }
         if notAtStart, start { return 0 }
         let before = index > sentence.first ? tokens[index - 1] : nil

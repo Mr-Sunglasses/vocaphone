@@ -40,6 +40,10 @@ class WritingRules private constructor(json: JSONObject) {
     val verbs: Verbs
     val classes: Map<String, Set<String>>
     val rules: List<WritingRule>
+    /** Rule indices by the word their pattern starts with, so a token is tried against only those. */
+    internal val rulesByFirstWord: Map<String, IntArray>
+    /** Rule indices whose pattern starts with a class: tried at every token. */
+    internal val rulesStartingWithClass: IntArray
     val tones: List<Tone>
     val toneMinimumCharacters: Int
     val toneMinimumScore: Int
@@ -78,6 +82,14 @@ class WritingRules private constructor(json: JSONObject) {
             o.keys().asSequence().associateWith { o.getJSONArray(it).stringList().map(WritingToken::normalize).toSet() }
         }
         rules = json.getJSONArray("rules").let { a -> List(a.length()) { WritingRule.compile(a.getJSONObject(it)) } }
+        val byWord = HashMap<String, MutableList<Int>>()
+        val byClass = ArrayList<Int>()
+        rules.forEachIndexed { i, rule ->
+            val words = rule.firstWords
+            if (words == null) byClass.add(i) else words.forEach { byWord.getOrPut(it) { ArrayList() }.add(i) }
+        }
+        rulesByFirstWord = byWord.mapValues { it.value.toIntArray() }
+        rulesStartingWithClass = byClass.toIntArray()
         json.getJSONObject("tone").let { t ->
             toneMinimumCharacters = t.getInt("minimumCharacters")
             toneMinimumScore = t.getInt("minimumScore")

@@ -107,8 +107,10 @@ class WritingCheck(val rules: WritingRules) {
         var i = sentence.first
         while (i <= sentence.last) {
             var advanced = false
-            for (rule in rules.rules) {
-                val count = rule.match(tokens, sentence, i, rules)
+            val start = WritingText.isSentenceStart(tokens, sentence, i)
+            for (index in candidates(tokens[i])) {
+                val rule = rules.rules[index]
+                val count = rule.match(tokens, sentence, i, rules, start)
                 if (count == 0) continue
                 val matched = tokens.subList(i, i + count)
                 if (matched.any { t -> protected.any { t.start <= it.last && it.first < t.end } }) continue
@@ -119,6 +121,20 @@ class WritingCheck(val rules: WritingRules) {
                 break
             }
             if (!advanced) i++
+        }
+        return out
+    }
+
+    /** The rules that could start at [token], in the file's order. */
+    private fun candidates(token: WritingToken): IntArray {
+        val a = rules.rulesByFirstWord[token.key] ?: return rules.rulesStartingWithClass
+        val b = rules.rulesStartingWithClass
+        val out = IntArray(a.size + b.size)
+        var i = 0
+        var j = 0
+        var k = 0
+        while (i < a.size || j < b.size) {
+            out[k++] = if (j >= b.size || (i < a.size && a[i] < b[j])) a[i++] else b[j++]
         }
         return out
     }
