@@ -3,10 +3,10 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
 #include <time.h>
 #include "whisper.h"
 #include "ggml-backend.h"
+#include "segment_text.h"
 
 #define TAG "VocaPhoneWhisper"
 #define UNUSED(value) (void)(value)
@@ -260,39 +260,17 @@ Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_fullTranscribe(
     return status;
 }
 
-/**
- * Every segment's text, joined, as the raw bytes whisper produced.
- *
- * Bytes rather than a string, because whisper splits segments between tokens,
- * not characters. A Devanagari or CJK character is several UTF-8 bytes and
- * often several tokens, so one segment can end halfway through a character
- * that the next segment finishes. Each half is invalid UTF-8, and
- * NewStringUTF on it is undefined: CheckJNI aborts the process, and a desktop
- * JVM decodes the bytes as Latin-1 ("à¤"). Joined first, the halves are one
- * character again, and the caller decodes the whole as UTF-8.
- */
+static const char *whisper_segment_text(void *context, int index) {
+    return whisper_full_get_segment_text((struct whisper_context *) context, index);
+}
+
+/** Every segment's text, joined as bytes; see joined_segment_text. */
 JNIEXPORT jbyteArray JNICALL
 Java_com_vocahq_vocaphone_local_WhisperLib_00024Companion_getText(
         JNIEnv *env, jobject thiz, jlong context_ptr) {
     UNUSED(thiz);
     struct whisper_context *context = context_of(context_ptr);
-    const int segments = whisper_full_n_segments(context);
-    size_t length = 0;
-    for (int index = 0; index < segments; index++) {
-        const char *text = whisper_full_get_segment_text(context, index);
-        if (text != NULL) length += strlen(text);
-    }
-    jbyteArray bytes = (*env)->NewByteArray(env, (jsize) length);
-    if (bytes == NULL) return NULL;
-    jsize offset = 0;
-    for (int index = 0; index < segments; index++) {
-        const char *text = whisper_full_get_segment_text(context, index);
-        if (text == NULL) continue;
-        const jsize count = (jsize) strlen(text);
-        (*env)->SetByteArrayRegion(env, bytes, offset, count, (const jbyte *) text);
-        offset += count;
-    }
-    return bytes;
+    return joined_segment_text(env, context, whisper_full_n_segments(context), whisper_segment_text);
 }
 
 /**
