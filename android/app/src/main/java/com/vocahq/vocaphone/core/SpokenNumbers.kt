@@ -50,7 +50,8 @@ object SpokenNumbers {
         var copied = 0
         var index = 0
         while (index < words.size) {
-            val first = wordFor(words[index].value)
+            val article = articleOne(index, words, text)
+            val first = article ?: wordFor(words[index].value)
             if (first?.opensANumber != true) {
                 index += 1
                 continue
@@ -73,7 +74,7 @@ object SpokenNumbers {
             }
 
             val phrase = tokens.takeIf { it.isNotEmpty() }?.let(::parse)
-            if (phrase == null || !isWorthConverting(tokens, last, words, text)) {
+            if (phrase == null || !isWorthConverting(tokens, article != null, last, words, text)) {
                 // Keep an invalid run whole rather than converting pieces of it.
                 index = last + 1
                 continue
@@ -90,6 +91,7 @@ object SpokenNumbers {
 
     private fun isWorthConverting(
         tokens: List<Token>,
+        openedByArticle: Boolean,
         last: Int,
         words: List<MatchResult>,
         text: String,
@@ -101,8 +103,27 @@ object SpokenNumbers {
             following.first in ordinalWords
         ) return false
 
-        if (tokens != listOf(UnitValue(1))) return true
+        // A lone "one" needs a unit after it to read as a quantity, and so does
+        // a bare "a hundred" or "a million": "a hundred times" and "a million
+        // thanks" are figures of speech.
+        val bare = tokens == listOf(UnitValue(1)) || (openedByArticle && tokens.size == 2)
+        if (!bare) return true
         return following?.let { (word, gap) -> gap == " " && word in quantifyingUnits } == true
+    }
+
+    /**
+     * The one of "one hundred" when the word at [index] is the article in
+     * "a hundred", "a thousand", "a million" or "a billion", or null.
+     *
+     * Without it a run could never open on "a", so "a hundred and twenty six"
+     * opened at "twenty" instead, and the transcript read "a hundred and 26".
+     */
+    private fun articleOne(index: Int, words: List<MatchResult>, text: String): Token? {
+        if (index + 1 >= words.size || words[index].value.lowercase(Locale.ROOT) != "a") return null
+        val gap = text.substring(words[index].range.last + 1, words[index + 1].range.first)
+        if (gap != " ") return null
+        val next = wordFor(words[index + 1].value)
+        return if (next is Hundred || next is Scale) UnitValue(1) else null
     }
 
     private fun isJoiner(index: Int, words: List<MatchResult>, text: String): Boolean {

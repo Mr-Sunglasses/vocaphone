@@ -378,8 +378,19 @@ enum TranscriptRepair {
             var collapsed = false
             // Longest first, so "we should we should" is one phrase twice over
             // rather than two separate doubled words.
-            for length in stride(from: min(maximumStutterWords, (words.count - index) / 2), through: 1, by: -1)
-            where matchesRepeat(words, at: index, length: length, punctuation: punctuation) {
+            for length in stride(from: min(maximumStutterWords, (words.count - index) / 2), through: 1, by: -1) {
+                // A phrase said twice on purpose is kept whole, and the walk
+                // moves past its first copy. Stepping one word at a time would
+                // re-enter it and find the copies again, shifted: "please stop,
+                // please stop, please listen" read from "stop" is "stop, please"
+                // twice, which collapses and loses a request.
+                if isPausedRepeat(words, at: index, length: length, punctuation: punctuation) {
+                    result.append(contentsOf: words[index..<(index + length)])
+                    index += length
+                    collapsed = true
+                    break
+                }
+                guard matchesRepeat(words, at: index, length: length, punctuation: punctuation) else { continue }
                 if let leading = words[index].leading.isEmpty ? nil : words[index].leading,
                    words[index + length].leading.isEmpty {
                     var carried = words[index + length]
@@ -411,6 +422,8 @@ enum TranscriptRepair {
         // A repeat with nothing after it was said twice on purpose. A false
         // start is the beginning of a sentence the speaker then finishes.
         if length > 1, index + length * 2 >= words.count { return false }
+        // So is one the speaker paused after; see ``isPausedRepeat(_:at:length:punctuation:)``.
+        if isPausedRepeat(words, at: index, length: length, punctuation: punctuation) { return false }
         // Neither is a repeat containing ``SpokenEmoji``'s trigger. Nobody
         // abandons a sentence on the one word this app treats as a command, so
         // "crying emoji crying emoji crying emoji" is three emoji — and unlike
@@ -436,6 +449,30 @@ enum TranscriptRepair {
         if length == 1 {
             let key = words[index].key
             guard functionWords.contains(key), !legitimateDoubles.contains(key) else { return false }
+        }
+        return true
+    }
+
+    /// A phrase said twice with a mark after the second copy too: "Sir Camel,
+    /// Sir Camel, cried the Brahmin", "cries of a Nottingham, a Nottingham."
+    /// A false start runs straight on from the second copy into the rest of
+    /// the sentence — "we should, we should probably ship" — so a mark after
+    /// that copy means it was not the start of anything.
+    private static func isPausedRepeat(
+        _ words: [Word],
+        at index: Int,
+        length: Int,
+        punctuation: SentencePunctuation
+    ) -> Bool {
+        guard length > 1, index + length * 2 <= words.count,
+              words[index + length * 2 - 1].trailing.contains(where: \.isPunctuation)
+        else { return false }
+        for offset in 0..<length {
+            let first = words[index + offset]
+            let second = words[index + length + offset]
+            guard !first.isProtected, !first.key.isEmpty, first.key == second.key,
+                  !ends(first, punctuation: punctuation)
+            else { return false }
         }
         return true
     }

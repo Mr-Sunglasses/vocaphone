@@ -195,6 +195,23 @@ struct SpokenNumbersTests {
         #expect(converted("tennis at noon") == "tennis at noon")
     }
 
+    /// "a" is the one of "one hundred". It used to stop the run opening at
+    /// all, so LibriSpeech's "a hundred and twenty six" became "a hundred and 26".
+    @Test func anArticleBeforeAHundredIsOne() {
+        #expect(converted("A hundred and twenty six for admission") == "126 for admission")
+        #expect(converted("a thousand five hundred people") == "1500 people")
+        #expect(converted("it is a hundred percent done") == "it is 100 percent done")
+    }
+
+    /// Bare, it is as idiomatic as a lone "one", and stays a word for the same reason.
+    @Test func aBareHundredStaysAWord() {
+        #expect(converted("I told you a hundred times") == "I told you a hundred times")
+        #expect(converted("a million thanks") == "a million thanks")
+        #expect(converted("a hundred and the rest") == "a hundred and the rest")
+        #expect(converted("a hundredth of a second") == "a hundredth of a second")
+        #expect(converted("a twenty minute walk") == "a 20 minute walk")
+    }
+
     @Test func lineBreaksEndARun() {
         #expect(converted("twenty\nthree") == "20\n3")
     }
