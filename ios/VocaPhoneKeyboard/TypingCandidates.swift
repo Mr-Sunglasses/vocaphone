@@ -33,8 +33,8 @@ struct TypingCandidate: Equatable {
         /// they become; `payload` is its key. Offered between words only, and
         /// applied only on a tap.
         case writingFix
-        /// Writing check's count, Grammarly's "G": opens the panel with every
-        /// suggestion and its reason.
+        /// Writing check's count: opens the panel with every suggestion and
+        /// its reason. Only on the older bar; the surface has its own button.
         case writingReview
     }
 
@@ -42,6 +42,11 @@ struct TypingCandidate: Equatable {
     let kind: Kind
     /// For ``Kind/writingFix``: which suggestion, by `WritingSuggestion.key`.
     var payload: String?
+    /// For ``Kind/writingFix``: what kind of fix, shown small above it.
+    var caption: String?
+    /// For ``Kind/writingFix``: the words it replaces, shown struck through
+    /// before `text`. Nil when it only adds.
+    var struck: String?
     /// The one chip a boundary key would apply on its own. At most one chip is
     /// emphasised, and only when something really would be applied — an
     /// emphasised chip that space does not apply is a lie the user only catches

@@ -93,6 +93,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Whether the field's traits allow the grammar check, decided with the
     /// rest of the field's traits rather than per keystroke.
     private var fieldAllowsGrammarCheck = false
+    /// The same for the Writing check button, which a field that turned
+    /// autocorrection off still gets.
+    private var fieldAllowsWritingCheck = false
     /// The record the bar is currently drawn from, so a strip update can
     /// re-render without another read of the shared container. A file read per
     /// keystroke is exactly the cost typing intelligence must not add.
@@ -600,21 +603,40 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Restarts a timer and nothing else: the check waits for a pause.
         // A selection is not a sentence being written, and a fix applied over
         // one would delete it; the selection is only read when checking is on.
-        let enabled = isWritingCheckEnabled
+        let eligible = isWritingCheckAvailable
         writingCheck.textChanged(
             before: snapshot.before,
             after: snapshot.after,
-            enabled: enabled && textDocumentProxy.selectedText?.isEmpty != false,
+            enabled: eligible && textDocumentProxy.selectedText?.isEmpty != false,
+            autoCheck: isWritingCheckEnabled,
             options: { [weak self] in self?.writingOptions() ?? WritingCheckClient.Options() }
         )
+        updateWritingButton(snapshot, eligible: eligible)
     }
 
+    /// Whether Writing check may read this field at all, on a tap of its
+    /// button: English, and prose. Not a password, a number, a link or an
+    /// address.
+    private var isWritingCheckAvailable: Bool {
+        typing.policy.allowsTypingIntelligence
+            && fieldAllowsWritingCheck
+            && typing.layout.id == "en"
+    }
+
+    /// Whether it also checks on its own at each pause ("Check while typing").
     private var isWritingCheckEnabled: Bool {
         KeyboardPreferences.typingGrammar
             && KeyboardPreferences.typingSuggestionsEnabled
-            && typing.policy.allowsTypingIntelligence
+            && isWritingCheckAvailable
             && fieldAllowsGrammarCheck
-            && typing.layout.id == "en"
+    }
+
+    /// The button shows once the field has words in it.
+    private func updateWritingButton(_ snapshot: DocumentSnapshot, eligible: Bool) {
+        let hasWords = eligible
+            && ((snapshot.before?.contains(where: \.isLetter) ?? false)
+                || (snapshot.after?.contains(where: \.isLetter) ?? false))
+        dictationSurfaceState.showsWritingButton = hasWords
     }
 
     private func writingOptions() -> WritingCheckClient.Options {
@@ -641,20 +663,31 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// between words, the typing candidates otherwise. The fixes wait while a
     /// word is being typed.
     private func stripCandidates(_ strip: TypingStrip) -> [TypingCandidate] {
-        guard isWritingCheckEnabled, typing.composer.text.isEmpty else { return strip.candidates }
+        guard isWritingCheckAvailable else { return strip.candidates }
         let report = writingCheck.report
         var chips: [TypingCandidate] = []
-        if let report, report.count > 0 {
+        // The surface leads with the Writing check button; the older bar has
+        // no room for it, so the count is a chip there.
+        if let report, report.count > 0, dictationSurfaceHosting?.view.isHidden != false {
             chips.append(TypingCandidate(text: "\(report.count)", kind: .writingReview))
         }
         // Undo stays even when the fix it takes back was the last suggestion.
         if let fix = autoFixer.offer {
             chips.append(TypingCandidate(text: "Undo \(fix.label)", kind: .writingFix, payload: Self.undoPayload))
         }
+        // The nearest fix, then the words. The report already leaves out the
+        // word under the cursor, so a fix can show while a word is typed.
         // `identity`, not `key`: the same change can be offered at two places,
         // and the chip must make the one it was shown for.
-        chips += (report?.chips ?? []).map { TypingCandidate(text: $0.label, kind: .writingFix, payload: $0.identity) }
-        return chips.isEmpty ? strip.candidates : chips
+        if let fix = report?.chips.first {
+            let replacement = fix.shownReplacement ?? ""
+            let text = replacement.isEmpty ? "Remove" : replacement
+            chips.append(TypingCandidate(
+                text: text, kind: .writingFix, payload: fix.identity,
+                caption: fix.title, struck: fix.shownOriginal.isEmpty ? nil : fix.shownOriginal
+            ))
+        }
+        return chips + strip.candidates
     }
 
     // MARK: - Writing check
@@ -663,6 +696,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
 
     private func configureWritingPanel() {
         let panel = dictationSurfaceState.writing
+        panel.onCheck = { [weak self] in self?.runWritingCheck() }
         panel.onApply = { [weak self] s in self?.documentEvent { self?.applyWriting([s]) } }
         panel.onDismiss = { [weak self] s in self?.writingCheck.dismiss(s) }
         panel.onAddWord = { [weak self] s in
@@ -784,6 +818,34 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // By its saved key, since applying it already took it out of the report.
         writingCheck.dismiss(key: fix.key)
         typing.reconcile(document: refreshDocument())
+    }
+
+    /// The Writing check button: opens the panel and checks the field now,
+    /// whether or not "Check while typing" is on. The pulse shows for a beat
+    /// even when the rules answer at once, so the result reads as an answer.
+    private func runWritingCheck() {
+        // Not while "Whole message" is walking the cursor through the field.
+        guard wholeMessage == nil else { return }
+        guard isWritingCheckAvailable, textDocumentProxy.selectedText?.isEmpty != false else {
+            flash(textDocumentProxy.selectedText?.isEmpty == false
+                ? "Deselect the text to check it."
+                : "Writing check reads English in a text field.")
+            return
+        }
+        KeyboardHaptics.shared.action()
+        let panel = dictationSurfaceState.writing
+        let document = readDocument()
+        guard let before = document.before else { return }
+        let field = WritingCheckClient.Field(text: before + (document.after ?? ""), cursor: before.utf16Length)
+        panel.isRunning = true
+        dictationSurfaceState.present(.writing)
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(450))
+            guard let self else { return }
+            writingCheck.checkNow(field, options: writingOptions())
+            dictationSurfaceState.writing.isRunning = false
+            writingChanged()
+        }
     }
 
     /// "Whole message": reads past the window iOS hands the keyboard by
@@ -2598,6 +2660,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         let policy = TypingFieldPolicy.resolve(for: proxy)
         typing.documentChanged(policy: policy)
         fieldAllowsGrammarCheck = TypingFieldPolicy.allowsGrammarCheck(for: proxy)
+        fieldAllowsWritingCheck = TypingFieldPolicy.allowsWritingCheck(for: proxy)
         // The trace writes which key was pressed, and a character key's name is
         // the character. Not in a field that has asked for no intelligence.
         keyGrid.traceNamesKeys = policy.allowsTypingIntelligence

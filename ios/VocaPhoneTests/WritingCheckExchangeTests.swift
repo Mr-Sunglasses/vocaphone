@@ -64,6 +64,35 @@ struct WritingCheckExchangeTests {
         client.report?.suggestions.map(\.label) ?? []
     }
 
+    @Test func theButtonChecksWithoutCheckWhileTyping() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client(appRunning: false)
+        let text = "what is you doing"
+        client.checkNow(WritingCheckClient.Field(text: text, cursor: text.utf16.count), options: .init())
+        #expect(labels(client).contains("is → are"))
+        // Typing on with "Check while typing" off moves the report along and
+        // checks nothing new until the next tap.
+        let more = "what is you doing. They was here"
+        client.textChanged(before: more, after: "", enabled: true, autoCheck: false) { WritingCheckClient.Options() }
+        try await Task.sleep(for: .milliseconds(80))
+        #expect(labels(client) == ["is → are"])
+        #expect(client.report?.field.text == more)
+        client.checkNow(options: .init())
+        #expect(labels(client).contains("was → were"))
+    }
+
+    @Test func theCardShowsTheChangeInItsSentence() {
+        let text = "Hi there. what is you doing now? Bye."
+        let report = Self.checker.check(text, model: nil, options: .init(typed: true))
+        let s = try! #require(report.suggestions.first { $0.kind == "agreement" })
+        let context = WritingPanelView.context(of: s, in: text)
+        #expect(context.before + s.shownOriginal + context.after == "what is you doing now?")
+        let long = String(repeating: "word ", count: 30) + "they is here"
+        let t = Self.checker.check(long, model: nil, options: .init(typed: true))
+        let u = try! #require(t.suggestions.first { $0.kind == "agreement" })
+        #expect(WritingPanelView.context(of: u, in: long).before.hasPrefix("…"))
+    }
+
     @Test func theQuestionIsDeletedAsItIsRead() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["She go home."], keep: []))

@@ -118,6 +118,14 @@ final class DictationSurfaceState: ObservableObject {
     let typing = TypingRowState()
     /// What the Writing check panel shows; the controller keeps it current.
     let writing = WritingPanelModel()
+    /// Whether the Writing check button leads the row: an English layout, a
+    /// field Writing check may read, and some words in it. Changes per field
+    /// and per first or last letter, not per keystroke.
+    private var storedShowsWritingButton = false
+    var showsWritingButton: Bool {
+        get { storedShowsWritingButton }
+        set { change(&storedShowsWritingButton, to: newValue) }
+    }
 
     /// Whether there is anything to suggest. Separate from the list because the
     /// surface's own layout only cares about empty or not, and that answer
@@ -853,6 +861,9 @@ struct DictationSurfaceView: View {
     private var standardControlsRow: some View {
         HStack(spacing: 8) {
             leadingGlassContainer
+            if !isOpen, state.showsWritingButton {
+                writingButton
+            }
             // A passing message outranks the suggestions for its few seconds:
             // it is the answer to something just tapped, and the words come
             // back on the next keystroke anyway.
@@ -905,6 +916,9 @@ struct DictationSurfaceView: View {
                         .id("compactSwitchSlot")
                         .accessibilityHidden(true)
                 } else {
+                    if state.showsWritingButton {
+                        writingButton
+                    }
                     // Candidates swap with the spacer only. The action stays
                     // in this trailing slot so appearing predictions do not
                     // destroy and recreate the glass.
@@ -938,6 +952,18 @@ struct DictationSurfaceView: View {
         }
         .animation(nil, value: state.presentedPanel)
         .animation(nil, value: state.quickDictationReady)
+    }
+
+    /// Writing check's button. Observes the panel's model only, so a new
+    /// report redraws the button and not the surface.
+    private var writingButton: some View {
+        WritingCheckButton(
+            model: state.writing,
+            isDark: state.isDark,
+            foreground: controlForeground,
+            diameter: Self.buttonDiameter
+        )
+        .transition(.scale(scale: 0.6).combined(with: .opacity))
     }
 
     private var dashboardSettingsButton: some View {
@@ -1769,12 +1795,18 @@ private struct CandidateRow: View {
                     state.tap()
                     state.onCandidate?(candidate)
                 } label: {
-                    Text(Self.title(for: candidate))
-                        .font(.system(
-                            size: 17,
-                            weight: candidate.isEmphasised ? .semibold : .regular
-                        ))
-                        .foregroundStyle(state.isDark ? Color.white : Color.black)
+                    Group {
+                        if candidate.kind == .writingFix, candidate.payload != nil {
+                            WritingFixChipLabel(candidate: candidate, isDark: state.isDark)
+                        } else {
+                            Text(Self.title(for: candidate))
+                                .font(.system(
+                                    size: 17,
+                                    weight: candidate.isEmphasised ? .semibold : .regular
+                                ))
+                                .foregroundStyle(state.isDark ? Color.white : Color.black)
+                        }
+                    }
                         .lineLimit(1)
                         // No truncation and no equal shares: each word takes
                         // the width it needs, and the row scrolls. An ellipsis

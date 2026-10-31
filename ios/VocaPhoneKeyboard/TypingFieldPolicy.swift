@@ -99,6 +99,18 @@ struct TypingFieldPolicy: Equatable {
         )
     }
 
+    /// Whether the Writing check button may offer to read this field: prose,
+    /// as above, but a field that turned autocorrection off still gets the
+    /// button. Many chat apps do, and tapping the button is the user asking.
+    @MainActor
+    static func allowsWritingCheck(for proxy: UITextDocumentProxy) -> Bool {
+        allowsGrammarCheck(
+            keyboardType: proxy.keyboardType ?? .default,
+            contentType: proxy.textContentType,
+            autocorrectionType: .default
+        )
+    }
+
     @MainActor
     static func resolve(for proxy: UITextDocumentProxy) -> TypingFieldPolicy {
         resolve(

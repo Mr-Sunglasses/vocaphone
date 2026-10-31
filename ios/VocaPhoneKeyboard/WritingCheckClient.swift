@@ -119,9 +119,15 @@ final class WritingCheckClient {
     }
 
     /// The document changed. Suggestions that still fit it are moved to where
-    /// their words now are; a new check waits for the pause. `enabled` false
-    /// clears everything.
-    func textChanged(before: String?, after: String?, enabled: Bool, options: @escaping () -> Options) {
+    /// their words now are; a new check waits for the pause when `autoCheck`
+    /// ("Check while typing") is on. Off, a report the user asked for with the
+    /// Writing check button keeps following the text, and nothing new is
+    /// checked until the next tap. `enabled` false (a field Writing check does
+    /// not read) clears everything.
+    func textChanged(
+        before: String?, after: String?, enabled: Bool, autoCheck: Bool = true,
+        options: @escaping () -> Options
+    ) {
         let field = before.map { Field(text: $0 + (after ?? ""), cursor: $0.utf16Length) }
         // A whole message the keyboard read, seen again through the window:
         // nothing in it changed, so neither does the report.
@@ -150,6 +156,10 @@ final class WritingCheckClient {
             } else {
                 publish(nil)
             }
+        }
+        guard autoCheck else {
+            pending = nil
+            return
         }
         pending = Task { [weak self, pause] in
             try? await Task.sleep(for: pause)
