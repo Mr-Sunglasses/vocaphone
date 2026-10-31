@@ -81,10 +81,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         checker: { [weak self] in self?.writingChecker }
     )
     /// "Fixed: teh → the", and what Undo needs, until the next edit.
-    private var autoFixed: WritingAutoFix?
-    /// "Whole message" walking the cursor through the document. Cancelled when
-    /// the field changes or the keyboard goes away.
-    private var wholeMessage: Task<Void, Never>?
+    private let autoFixer = WritingAutoFixer()
+    /// Writing check suggestions being written into the field. Applying one
+    /// changes the report, which can ask for another fix while the first is
+    /// still being made; that one waits for the next report.
+    private var isApplyingWriting = false
+    /// "Whole message" walking the cursor through `documentID`. Stopped when
+    /// the field changes, the cursor or text changes under it, the keys come
+    /// back, or the keyboard goes away.
+    private var wholeMessage: (task: Task<Void, Never>, walk: WholeMessageWalk, documentID: String)?
     /// Whether the field's traits allow the grammar check, decided with the
     /// rest of the field's traits rather than per keystroke.
     private var fieldAllowsGrammarCheck = false
@@ -354,6 +359,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         notice = nil
         installDarwinObservers()
         publishKeyboardStatus()
+        // An "Open app" hand-off the app never took is past its use by now.
+        store.removeExpiredWritingDraft()
         // Full Access can be granted or revoked in Settings while this instance
         // stays alive, and a warm engine is what makes the first key of the
         // session land as a tap rather than as nothing.
@@ -411,7 +418,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         typing.suspend()
         stopReadingWholeMessage()
         writingCheck.reset()
-        autoFixed = nil
+        autoFixer.clear()
         super.viewWillDisappear(animated)
         pollingTimer?.invalidate()
         pollingTimer = nil
@@ -568,7 +575,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             lastSpaceInsertedAt = nil
             stopReadingWholeMessage()
             writingCheck.reset()
-            autoFixed = nil
+            autoFixer.clear()
             applyDocumentTraits()
             // A waiting transcript parks itself when the cursor leaves its field
             // and re-arms when it comes back. Both were left to the next poll,
@@ -589,7 +596,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         updateAutomaticShift(for: snapshot)
         // An edit after an automatic fix ends its Undo: the fixed words can
         // no longer be found for certain.
-        if let fix = autoFixed, !fix.isCurrent(before: snapshot.before) { autoFixed = nil }
+        if let fix = autoFixer.offer, !fix.isCurrent(before: snapshot.before) { autoFixer.clear() }
         // Restarts a timer and nothing else: the check waits for a pause.
         // A selection is not a sentence being written, and a fix applied over
         // one would delete it; the selection is only read when checking is on.
@@ -641,7 +648,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             chips.append(TypingCandidate(text: "\(report.count)", kind: .writingReview))
         }
         // Undo stays even when the fix it takes back was the last suggestion.
-        if let fix = autoFixed {
+        if let fix = autoFixer.offer {
             chips.append(TypingCandidate(text: "Undo \(fix.label)", kind: .writingFix, payload: Self.undoPayload))
         }
         // `identity`, not `key`: the same change can be offered at two places,
@@ -688,9 +695,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func applyWriting(_ suggestions: [WritingSuggestion]) -> [WritingSuggestion] {
         // With a selection, the first deleteBackward() removes the selection
         // rather than a character, and every count after it is off by that much.
-        guard textDocumentProxy.selectedText?.isEmpty != false, wholeMessage == nil, !suggestions.isEmpty,
-              let report = writingCheck.report
+        guard !isApplyingWriting, textDocumentProxy.selectedText?.isEmpty != false, wholeMessage == nil,
+              !suggestions.isEmpty, let report = writingCheck.report
         else { return [] }
+        // Each fix below is reported to the check as it is made, and the
+        // report it changes asks for an automatic fix; edits made from in
+        // here would land at offsets this loop has already worked out.
+        isApplyingWriting = true
+        defer { isApplyingWriting = false }
         let document = readDocument()
         guard let before = document.before else { return [] }
         let text = before + (document.after ?? "")
@@ -741,28 +753,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// with Undo in the strip until the next edit. Nothing else is ever
     /// applied on its own.
     private func maybeAutoFix() {
-        guard KeyboardPreferences.typoAutoFix, isWritingCheckEnabled, autoFixed == nil, wholeMessage == nil,
-              let report = writingCheck.report
+        guard KeyboardPreferences.typoAutoFix, isWritingCheckEnabled, autoFixer.offer == nil, !isApplyingWriting,
+              wholeMessage == nil, let report = writingCheck.report, report.autoFix != nil
         else { return }
-        guard let fix = report.suggestions.filter({
-            $0.source == .rule && ($0.kind == "spelling" || $0.kind == "apostrophe") && report.canApply($0)
-                && $0.end < report.field.cursor
-        }).max(by: { $0.start < $1.start }),
-            let made = WritingAutoFix(fix, in: report.field)
-        else { return }
-        let apply = { [self] in
-            guard !applyWriting([fix]).isEmpty else { return }
-            // Undo is offered only for the fix exactly where it was made.
-            autoFixed = made.isCurrent(before: document.before) ? made : nil
+        // One fix per Undo: the fixer turns away the fix this one's own
+        // report change asks for, until this one's Undo is saved.
+        let fix = { [self] in
+            autoFixer.fix(in: report, apply: { !applyWriting([$0]).isEmpty }, before: { document.before })
         }
         // Reached from a check finishing, outside any event, or from an edit
         // already inside one; only the first takes its own snapshot.
-        if currentDocument == nil { documentEvent(apply) } else { apply() }
+        if currentDocument == nil { documentEvent(fix) } else { fix() }
     }
 
     private func undoAutoFix() {
-        guard let fix = autoFixed else { return }
-        autoFixed = nil
+        guard let fix = autoFixer.clear() else { return }
         // The fixed words are where the fix left them, right before what was
         // typed after them, or Undo does nothing: a search could find the
         // same word somewhere it was correct.
@@ -781,33 +786,51 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         typing.reconcile(document: refreshDocument())
     }
 
-    /// "Whole message": iOS hands a keyboard a window onto the document,
-    /// often just the paragraph. This walks the cursor to each end, reading as
-    /// it goes, puts it back, and checks everything it read. Only on a tap,
-    /// never while the user types.
+    /// "Whole message": reads past the window iOS hands the keyboard by
+    /// walking the cursor to each end and back (``WholeMessageWalk``), and
+    /// checks everything it read. Only on a tap, never while the user types.
     private func checkWholeMessage() {
         let panel = dictationSurfaceState.writing
         guard wholeMessage == nil, !panel.isReadingMessage, textDocumentProxy.selectedText?.isEmpty != false,
               let documentID = currentDocumentID
         else { return }
         panel.isReadingMessage = true
-        wholeMessage = Task { @MainActor [weak self] in
-            guard let self else { return }
-            let field = await readWholeMessage(of: documentID)
-            // Cancelled: the field changed or the keyboard went away, and
-            // whatever stopped it has already tidied up.
-            guard !Task.isCancelled else { return }
+        let walk = WholeMessageWalk(
+            window: { [weak self] in
+                guard let proxy = self?.textDocumentProxy else { return .init(hasSelection: true) }
+                return .init(
+                    before: proxy.documentContextBeforeInput,
+                    after: proxy.documentContextAfterInput,
+                    hasSelection: proxy.selectedText?.isEmpty == false
+                )
+            },
+            move: { [weak self] in self?.textDocumentProxy.adjustTextPosition(byCharacterOffset: $0) },
+            wait: { [weak self] in
+                try? await Task.sleep(for: .milliseconds(60))
+                return self?.isReading(documentID) == true
+            }
+        )
+        let task = Task { @MainActor [weak self] in
+            let field = await walk.read()
+            // Cancelled: the field changed, the keys came back or the keyboard
+            // went away, and whatever stopped it has already tidied up.
+            guard let self, !Task.isCancelled else { return }
             wholeMessage = nil
             dictationSurfaceState.writing.isReadingMessage = false
             guard let field, isReading(documentID) else { return }
             writingCheck.checkNow(field, options: writingOptions())
         }
+        wholeMessage = (task, walk, documentID)
     }
 
-    /// Stops a "Whole message" walk where it is. The cursor is not moved
-    /// again: the document it was walking may no longer be the one in front.
-    private func stopReadingWholeMessage() {
-        wholeMessage?.cancel()
+    /// Stops a "Whole message" walk. With `restoringCursor`, the cursor goes
+    /// back to where the walk found it, as long as the field is the one it was
+    /// walking and nothing else has moved it; otherwise it stays where it is.
+    private func stopReadingWholeMessage(restoringCursor: Bool = false) {
+        if let message = wholeMessage {
+            if restoringCursor, currentDocumentID == message.documentID { message.walk.restore() } else { message.walk.stop() }
+            message.task.cancel()
+        }
         wholeMessage = nil
         dictationSurfaceState.writing.isReadingMessage = false
     }
@@ -816,64 +839,6 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private func isReading(_ documentID: String) -> Bool {
         !Task.isCancelled && currentDocumentID == documentID
     }
-
-    /// Reads the document around the cursor by walking it to each end and
-    /// back. After every wait it checks the field is still `documentID` and
-    /// gives up, without another move, when it is not.
-    private func readWholeMessage(of documentID: String) async -> WritingCheckClient.Field? {
-        guard var before = textDocumentProxy.documentContextBeforeInput else { return nil }
-        var after = textDocumentProxy.documentContextAfterInput ?? ""
-        var moved = 0
-        // Back, a window at a time, while there is more.
-        for _ in 0..<Self.walkSteps {
-            let step = (textDocumentProxy.documentContextBeforeInput ?? "").utf16Length
-            guard step > 0, before.utf16Length < Self.walkLimit else { break }
-            textDocumentProxy.adjustTextPosition(byCharacterOffset: -step)
-            moved -= step
-            try? await Task.sleep(for: .milliseconds(60))
-            guard isReading(documentID) else { return nil }
-            let more = textDocumentProxy.documentContextBeforeInput ?? ""
-            guard !more.isEmpty else { break }
-            before = more + before
-        }
-        textDocumentProxy.adjustTextPosition(byCharacterOffset: -moved)
-        moved = 0
-        try? await Task.sleep(for: .milliseconds(60))
-        guard isReading(documentID) else { return nil }
-        // Forward the same way, from where the cursor really is.
-        for _ in 0..<Self.walkSteps {
-            let step = (textDocumentProxy.documentContextAfterInput ?? "").utf16Length
-            guard step > 0, after.utf16Length < Self.walkLimit else { break }
-            textDocumentProxy.adjustTextPosition(byCharacterOffset: step)
-            moved += step
-            try? await Task.sleep(for: .milliseconds(60))
-            guard isReading(documentID) else { return nil }
-            let more = textDocumentProxy.documentContextAfterInput ?? ""
-            guard !more.isEmpty else { break }
-            after += more
-        }
-        textDocumentProxy.adjustTextPosition(byCharacterOffset: -moved)
-        try? await Task.sleep(for: .milliseconds(60))
-        guard isReading(documentID) else { return nil }
-        // The walk must leave the cursor where it found it; if the document
-        // says otherwise, what was read is not trusted.
-        let window = (
-            before: textDocumentProxy.documentContextBeforeInput ?? "",
-            after: textDocumentProxy.documentContextAfterInput ?? ""
-        )
-        guard before.hasSuffix(window.before), after.hasPrefix(window.after) else { return nil }
-        // Only the window iOS hands the keyboard can be edited from here; a
-        // fix past it is shown but cannot be accepted.
-        let cursor = before.utf16Length
-        return WritingCheckClient.Field(
-            text: before + after,
-            cursor: cursor,
-            reach: (cursor - window.before.utf16Length)..<(cursor + window.after.utf16Length)
-        )
-    }
-
-    private static let walkSteps = 20
-    private static let walkLimit = 8_000
 
     /// "Open app": the text goes to VocaPhone's Writing check screen through
     /// the App Group, and VocaPhone opens on it.
@@ -884,7 +849,13 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             return
         }
         dictationSurfaceState.dismissPanel()
-        openContainingAppAction("writing")
+        // Nothing will take the text if vocaphone did not open, so it does not
+        // wait on disk for a hand-off that is not coming. Only while the
+        // keyboard is still up: an app that did open has it to read.
+        openContainingAppAction("writing") { [weak self] in
+            guard let self, isKeyboardVisible else { return }
+            store.removeWritingDraft()
+        }
     }
 
     // MARK: - Dictation actions
@@ -2284,6 +2255,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         dictationSurfaceState.onPanelVisibilityChanged = { [weak self] presented in
             guard let self else { return }
+            // The keys are coming back. A "Whole message" walk still moving
+            // the cursor puts it back first, so the next key lands where the
+            // user left it rather than wherever the walk had got to.
+            if !presented { stopReadingWholeMessage(restoringCursor: true) }
             panelOwnsKeyboard = presented
             render(lastRecord)
         }
@@ -2351,11 +2326,12 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     /// Opens a user-requested destination in the containing app. These actions
     /// carry no transcript or token; they only foreground VocaPhone so it can
     /// arm its own microphone session or show its own Settings screen.
-    private func openContainingAppAction(_ action: String) {
+    private func openContainingAppAction(_ action: String, failed: (@MainActor @Sendable () -> Void)? = nil) {
         guard let url = URL(string: "\(AppConfiguration.urlScheme)://\(action)") else { return }
         openURLFromKeyboard(url) { [weak self] opened in
             DispatchQueue.main.async {
                 guard let self, !opened else { return }
+                failed?()
                 self.flash("Open vocaphone to continue.")
             }
         }

@@ -304,6 +304,221 @@ struct WritingCheckExchangeTests {
         try store.saveWritingDraft("Old.")
         #expect(store.takeWritingDraft(now: Date().addingTimeInterval(WritingDraft.maximumAge + 1)) == nil)
     }
+
+    @Test func aFailedHandOffRemovesTheDraft() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try store.saveWritingDraft("She go home.")
+        store.removeWritingDraft()
+        #expect(files().isEmpty)
+        // Nothing there is nothing to do.
+        store.removeWritingDraft()
+        store.removeExpiredWritingDraft()
+    }
+
+    @Test func anExpiredDraftIsSweptAndAFreshOneKept() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try store.saveWritingDraft("She go home.")
+        store.removeExpiredWritingDraft()
+        #expect(files() == ["writing-draft.json"])
+        store.removeExpiredWritingDraft(now: Date().addingTimeInterval(WritingDraft.maximumAge + 1))
+        #expect(files().isEmpty)
+    }
+
+    @Test func aDraftSavedAgainIsNotSweptForTheOldDate() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        try store.saveWritingDraft("Old.")
+        let url = root.appendingPathComponent("writing-draft.json")
+        let old = Date().addingTimeInterval(-WritingDraft.maximumAge - 1)
+        try FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: url.path)
+        // The file looks old, but the draft in it is not: it stays, and can be taken.
+        store.removeExpiredWritingDraft()
+        #expect(store.takeWritingDraft() == "Old.")
+    }
+
+    // MARK: - Chips and automatic fixes
+
+    @Test func goingBackIntoAFlaggedWordTakesItsChipAway() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client(appRunning: false)
+        let text = "I definately could of told you. "
+        try await type(client, text)
+        #expect(labels(client).count == 2)
+        // The cursor taps into "definately": the report is moved at once, and
+        // neither the chip nor the card for that word stays.
+        let inside = ("I defin" as NSString).length
+        client.textChanged(
+            before: text.utf16Slice(0, inside), after: text.utf16Slice(inside, text.utf16Length), enabled: true
+        ) { WritingCheckClient.Options() }
+        #expect(client.report?.chips.map(\.original) == ["of"])
+        #expect(labels(client) == ["of → have"])
+        await client.settle()
+        #expect(client.report?.chips.map(\.original) == ["of"])
+    }
+
+    @Test func oneAutomaticFixPerUndo() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client(appRunning: false)
+        var document = "I definately recieve it. "
+        try await type(client, document)
+        #expect(client.report?.suggestions.count == 2)
+        let fixer = WritingAutoFixer()
+        var made: [String] = []
+        // What the keyboard does on every report change; applying a fix is
+        // itself one.
+        func autoFix() {
+            guard let report = client.report else { return }
+            fixer.fix(in: report, apply: { fix in
+                guard let edited = WritingCheck.apply(document, fix) else { return false }
+                document = edited
+                made.append(fix.original)
+                client.applied(fix)
+                return true
+            }, before: { document })
+        }
+        client.onChange = { autoFix() }
+        autoFix()
+        // The latest typo only, and Undo takes back exactly that one.
+        #expect(made == ["recieve"])
+        #expect(document == "I definately receive it. ")
+        #expect(fixer.offer?.typed == "recieve")
+        // Still one while that Undo is offered, however often the report changes.
+        autoFix()
+        #expect(made == ["recieve"])
+        // Once it is gone, the next one is made with its own Undo.
+        fixer.clear()
+        autoFix()
+        #expect(made == ["recieve", "definately"])
+        #expect(fixer.offer?.typed == "definately")
+    }
+}
+
+/// "Whole message" walking the cursor through a field that hands over eight
+/// characters either side of it.
+@MainActor
+struct WholeMessageWalkTests {
+    private static let text = "One two three. Four five six. Seven eight nine."
+
+    @MainActor
+    private final class Field {
+        var text: String
+        var cursor: Int
+        var hasSelection = false
+        private(set) var moves: [Int] = []
+        let size = 8
+
+        init(_ text: String, cursor: Int) {
+            self.text = text
+            self.cursor = cursor
+        }
+
+        var window: WholeMessageWalk.Window {
+            let length = text.utf16Length
+            return .init(
+                before: text.utf16Slice(max(0, cursor - size), cursor),
+                after: text.utf16Slice(cursor, min(length, cursor + size)),
+                hasSelection: hasSelection
+            )
+        }
+
+        func move(_ offset: Int) {
+            moves.append(offset)
+            cursor = min(max(cursor + offset, 0), text.utf16Length)
+        }
+    }
+
+    /// A walk over `field`; `onWait` runs at each wait, numbered from 1, and
+    /// says whether the walk may go on.
+    private func makeWalk(_ field: Field, onWait: @escaping (Int, WholeMessageWalk) -> Bool = { _, _ in true }) -> WholeMessageWalk {
+        var waits = 0
+        var walk: WholeMessageWalk?
+        let made = WholeMessageWalk(
+            window: { field.window },
+            move: { field.move($0) },
+            wait: {
+                waits += 1
+                return onWait(waits, walk!)
+            }
+        )
+        walk = made
+        return made
+    }
+
+    @Test func readsPastTheWindowAndPutsTheCursorBack() async throws {
+        let field = Field(Self.text, cursor: 20)
+        let walk = makeWalk(field)
+        let read = try #require(await walk.read())
+        #expect(read.text == Self.text)
+        #expect(read.cursor == 20)
+        #expect(read.reach == 12..<28)
+        #expect(field.cursor == 20)
+        #expect(!walk.wasInterrupted)
+    }
+
+    @Test func aTapElsewhereStopsTheWalkWhereTheUserPutIt() async throws {
+        let field = Field(Self.text, cursor: 20)
+        let walk = makeWalk(field) { wait, _ in
+            if wait == 2 { field.cursor = 40 }
+            return true
+        }
+        #expect(await walk.read() == nil)
+        #expect(walk.wasInterrupted)
+        #expect(field.cursor == 40)
+        #expect(field.moves.count == 2)
+        // Closing the panel afterwards leaves it there too.
+        walk.restore()
+        #expect(field.cursor == 40)
+    }
+
+    @Test func anEditStopsTheWalk() async throws {
+        let field = Field(Self.text, cursor: 20)
+        let walk = makeWalk(field) { wait, _ in
+            if wait == 1 { field.text = field.text.replacingOccurrences(of: "Four", with: "4") }
+            return true
+        }
+        #expect(await walk.read() == nil)
+        #expect(walk.wasInterrupted)
+        #expect(field.moves.count == 1)
+    }
+
+    @Test func aSelectionStopsTheWalk() async throws {
+        let field = Field(Self.text, cursor: 20)
+        let walk = makeWalk(field) { wait, _ in
+            if wait == 3 { field.hasSelection = true }
+            return true
+        }
+        #expect(await walk.read() == nil)
+        #expect(walk.wasInterrupted)
+        #expect(field.moves.count == 3)
+    }
+
+    @Test func closingThePanelPutsTheCursorBackBeforeTheKeysReturn() async throws {
+        let field = Field(Self.text, cursor: 20)
+        // The keys come back mid-walk, past the start on the way forward.
+        let walk = makeWalk(field) { wait, walk in
+            guard wait == 5 else { return true }
+            walk.restore()
+            #expect(field.cursor == 20)
+            return false
+        }
+        #expect(await walk.read() == nil)
+        #expect(!walk.wasInterrupted)
+        #expect(field.cursor == 20)
+        // Once stopped, nothing moves it again.
+        walk.restore()
+        #expect(field.cursor == 20)
+    }
+
+    @Test func aRestoredWalkMakesNoFurtherMoves() async throws {
+        let field = Field(Self.text, cursor: 20)
+        let walk = makeWalk(field) { wait, walk in
+            if wait == 2 { walk.restore() }
+            // Even told to go on, it does not.
+            return true
+        }
+        #expect(await walk.read() == nil)
+        #expect(field.cursor == 20)
+        #expect(field.moves.count == 3)
+    }
 }
 
 /// A mutable cell a `@Sendable` closure can write to in a test.

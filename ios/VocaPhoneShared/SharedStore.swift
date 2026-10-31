@@ -631,6 +631,37 @@ final class SharedStore: @unchecked Sendable {
         return draft.text
     }
 
+    /// Removes the hand-off: "Open app" did not open the app, so nothing will
+    /// take it.
+    func removeWritingDraft() {
+        guard let root = try? rootDirectory() else { return }
+        try? fileManager.removeItem(at: writingDraftURL(root: root))
+    }
+
+    /// Removes a hand-off nobody took once it is too old to be taken, so the
+    /// text does not wait on disk indefinitely. Run as the app and the
+    /// keyboard come up; with no file there, it is one existence check.
+    func removeExpiredWritingDraft(now: Date = Date()) {
+        guard let root = try? rootDirectory() else { return }
+        let fileURL = writingDraftURL(root: root)
+        // Saving rewrites the file, so its date is the draft's: a fresh one is
+        // left alone without being read.
+        guard let modified = (try? fileManager.attributesOfItem(atPath: fileURL.path))?[.modificationDate] as? Date,
+              now.timeIntervalSince(modified) >= WritingDraft.maximumAge
+        else { return }
+        // Claimed before it is judged, as `take` does, so a draft saved in
+        // between is never the one deleted.
+        let claimed = root.appendingPathComponent("writing-draft.\(UUID().uuidString).taking")
+        guard (try? fileManager.moveItem(at: fileURL, to: claimed)) != nil else { return }
+        defer { try? fileManager.removeItem(at: claimed) }
+        guard let data = try? Data(contentsOf: claimed),
+              let draft = try? decoder.decode(WritingDraft.self, from: data),
+              now.timeIntervalSince(draft.createdAt) < WritingDraft.maximumAge
+        else { return }
+        // Not expired after all. Put back unless a newer one has taken its place.
+        try? fileManager.moveItem(at: claimed, to: fileURL)
+    }
+
     private func writingDraftURL(root: URL) -> URL {
         root.appendingPathComponent("writing-draft.json")
     }

@@ -118,6 +118,9 @@ struct VocaPhoneApp: App {
                     KeyboardPreferences.migrateTypingHapticsIfNeeded()
                     KeyboardPreferences.removeRetiredEmojiRecents()
                     KeyboardPreferences.markQuickDictationRecoveryOfferIfNeeded()
+                    // Text the keyboard's "Open app" left behind and nobody
+                    // took. A fresh one is this launch's, and is left for it.
+                    SharedStore.shared.removeExpiredWritingDraft()
                     Telemetry.shared.appFirstOpen()
                     // Started once here rather than lazily from the setup card:
                     // the first path update has to have landed by the time that

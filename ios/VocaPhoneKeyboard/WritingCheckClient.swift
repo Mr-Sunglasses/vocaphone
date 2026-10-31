@@ -50,6 +50,16 @@ final class WritingCheckClient {
         func canApply(_ suggestion: WritingSuggestion) -> Bool {
             suggestion.isActionable && field.isReachable(suggestion)
         }
+
+        /// The fix "Fix obvious typos as I type" may make without a tap: a
+        /// known misspelling or missing apostrophe the user has finished
+        /// typing, the latest one before the cursor.
+        var autoFix: WritingSuggestion? {
+            suggestions.filter {
+                $0.source == .rule && ($0.kind == "spelling" || $0.kind == "apostrophe") && canApply($0)
+                    && $0.end < field.cursor
+            }.max(by: { $0.start < $1.start })
+        }
     }
 
     private(set) var report: Report?
@@ -220,11 +230,7 @@ final class WritingCheckClient {
     }
 
     private func makeReport(_ field: Field, _ result: WritingCheck.Report, tone: Bool) -> Report {
-        let word = Self.wordAt(field.text, field.cursor)
-        let suggestions = result.suggestions.filter { s in
-            // Not the word being typed: it is not finished.
-            !dismissed.contains(s.key) && (word == nil || s.markEnd < word!.0 || s.markStart > word!.1)
-        }
+        let suggestions = Self.outsideCurrentWord(result.suggestions.filter { !dismissed.contains($0.key) }, in: field)
         return Report(
             field: field,
             suggestions: suggestions,
@@ -248,6 +254,14 @@ final class WritingCheckClient {
             return da != db ? da < db : a.offset < b.offset
         }
         return Array(actionable.prefix(3).map(\.element))
+    }
+
+    /// `suggestions` without those touching the word the cursor is in: it is
+    /// being typed, or the user has just gone back into it, and is not
+    /// finished.
+    private static func outsideCurrentWord(_ suggestions: [WritingSuggestion], in field: Field) -> [WritingSuggestion] {
+        guard let word = wordAt(field.text, field.cursor) else { return suggestions }
+        return suggestions.filter { $0.markEnd < word.0 || $0.markStart > word.1 }
     }
 
     /// The word the cursor touches, as `(start, end)`; nil between words.
@@ -276,10 +290,12 @@ final class WritingCheckClient {
         return Field(text: last.text, cursor: last.cursor, reach: start..<end)
     }
 
+    /// `report` moved onto `field`, as a new check would leave it: nothing
+    /// in the word the cursor is now in. Nil when none of it could be placed.
     private func rebase(_ report: Report, to field: Field) -> Report? {
         let moved = WritingCheck.rebase(report.suggestions, old: report.field.text, new: field.text)
         guard !moved.isEmpty else { return nil }
-        return Self.report(report, field: field, suggestions: moved)
+        return Self.report(report, field: field, suggestions: Self.outsideCurrentWord(moved, in: field))
     }
 
     // MARK: - The model, through the app
@@ -472,4 +488,175 @@ struct WritingAutoFix: Equatable, Sendable {
 
     /// How far back from the cursor the fixed words end, in UTF-16 units.
     var distance: Int { tail.utf16Length - wrote.utf16Length }
+}
+
+/// "Fix obvious typos as I type": one automatic fix at a time, each with its
+/// own Undo.
+///
+/// Making a fix changes the report, and a changed report asks for the next
+/// automatic fix. Without the guard that nested ask fixed a second typo while
+/// the first was still being made, and the first then saved its Undo over the
+/// second's: two words changed, one of them for good.
+@MainActor
+final class WritingAutoFixer {
+    /// The fix Undo takes back, until the next edit.
+    private(set) var offer: WritingAutoFix?
+    private var isFixing = false
+
+    /// Makes `report`'s automatic fix, unless one is being made or its Undo
+    /// is still offered. `apply` makes the edit and says whether it did; it
+    /// may come back here, and is then turned away. `before` is the text
+    /// before the cursor once it has. Undo is offered only for the fix exactly
+    /// where it was made.
+    func fix(in report: WritingCheckClient.Report, apply: (WritingSuggestion) -> Bool, before: () -> String?) {
+        guard !isFixing, offer == nil, let fix = report.autoFix, let made = WritingAutoFix(fix, in: report.field)
+        else { return }
+        isFixing = true
+        defer { isFixing = false }
+        guard apply(fix) else { return }
+        offer = made.isCurrent(before: before()) ? made : nil
+    }
+
+    /// Ends the Undo offer, and hands back what it was.
+    @discardableResult
+    func clear() -> WritingAutoFix? {
+        defer { offer = nil }
+        return offer
+    }
+}
+
+/// "Whole message": iOS hands a keyboard a window onto the document, often
+/// just the paragraph. This reads past it by moving the cursor to each end, a
+/// window at a time, waiting for the field to catch up after every move, and
+/// then puts the cursor back where it found it.
+///
+/// The user can still tap in the field, or the app change its text, during
+/// any of those waits. After every move the window the field shows must fit
+/// what has been read, at the place the walk put the cursor; if it does not,
+/// someone else moved the cursor or changed the text, and the walk stops on
+/// the spot. It does not move the cursor again: the user put it where it is.
+@MainActor
+final class WholeMessageWalk {
+    /// The text either side of the cursor, as the field hands it over.
+    struct Window {
+        var before: String?
+        var after: String?
+        var hasSelection = false
+    }
+
+    /// Whether the walk ended because something else moved the cursor or
+    /// changed the text.
+    private(set) var wasInterrupted = false
+    /// How far the cursor is from where the walk found it, in UTF-16 units.
+    private(set) var moved = 0
+
+    private let window: () -> Window
+    private let move: (Int) -> Void
+    private let wait: () async -> Bool
+    private var isStopped = false
+    /// What has been read, either side of where the cursor started.
+    private var before = ""
+    private var after = ""
+
+    /// `wait` lets the field catch up after a move, and says whether the walk
+    /// may go on: false when it was cancelled or the field changed.
+    init(window: @escaping () -> Window, move: @escaping (Int) -> Void, wait: @escaping () async -> Bool) {
+        self.window = window
+        self.move = move
+        self.wait = wait
+    }
+
+    /// Reads the document around the cursor, and leaves the cursor where it
+    /// was. Nil when the walk was stopped or interrupted on the way.
+    func read() async -> WritingCheckClient.Field? {
+        let start = window()
+        guard !isStopped, !start.hasSelection, let first = start.before else { return nil }
+        before = first
+        after = start.after ?? ""
+        var current = (before: first, after: after)
+        // Back, a window at a time, while there is more.
+        for _ in 0..<Self.steps {
+            let step = current.before.utf16Length
+            guard step > 0, before.utf16Length < Self.limit else { break }
+            guard let now = await go(by: -step) else { return nil }
+            current = now
+            guard !now.before.isEmpty else { break }
+            before = now.before + before
+        }
+        guard let home = await go(by: -moved) else { return nil }
+        current = home
+        // Forward the same way.
+        for _ in 0..<Self.steps {
+            let step = current.after.utf16Length
+            guard step > 0, after.utf16Length < Self.limit else { break }
+            guard let now = await go(by: step) else { return nil }
+            current = now
+            guard !now.after.isEmpty else { break }
+            after += now.after
+        }
+        guard let end = await go(by: -moved) else { return nil }
+        isStopped = true
+        // Only the window iOS hands the keyboard can be edited from here; a
+        // fix past it is shown but cannot be accepted.
+        let cursor = before.utf16Length
+        return WritingCheckClient.Field(
+            text: before + after,
+            cursor: cursor,
+            reach: (cursor - end.before.utf16Length)..<(cursor + end.after.utf16Length)
+        )
+    }
+
+    /// Stops the walk and puts the cursor back where it found it, before the
+    /// keys can type again: a key pressed mid-walk would land wherever the walk
+    /// had got to. Not after an interruption, which put the cursor where the
+    /// user wants it.
+    func restore() {
+        guard !isStopped else { return }
+        isStopped = true
+        if moved != 0 { move(-moved) }
+        moved = 0
+    }
+
+    /// Stops the walk where it is, without moving the cursor again.
+    func stop() {
+        isStopped = true
+    }
+
+    /// Moves the cursor by `offset`, waits, and reads the window there. Nil
+    /// when the walk must end: stopped, or the window does not fit what was
+    /// read.
+    private func go(by offset: Int) async -> (before: String, after: String)? {
+        guard !isStopped else { return nil }
+        if offset != 0 {
+            move(offset)
+            moved += offset
+            guard await wait(), !isStopped else { return nil }
+        }
+        let now = window()
+        let shown = (before: now.before ?? "", after: now.after ?? "")
+        guard !now.hasSelection, fits(shown) else {
+            wasInterrupted = true
+            isStopped = true
+            return nil
+        }
+        return shown
+    }
+
+    /// Whether `shown` agrees with what has been read, around where the walk
+    /// put the cursor. Only the overlap is compared: a window can reach past
+    /// what has been read, or stop short of it.
+    private func fits(_ shown: (before: String, after: String)) -> Bool {
+        let text = Array((before + after).utf16)
+        let at = before.utf16Length + moved
+        guard at >= 0, at <= text.count else { return false }
+        let left = Array(shown.before.utf16)
+        let right = Array(shown.after.utf16)
+        let leftOverlap = min(left.count, at)
+        let rightOverlap = min(right.count, text.count - at)
+        return left.suffix(leftOverlap).elementsEqual(text[(at - leftOverlap)..<at])
+            && right.prefix(rightOverlap).elementsEqual(text[at..<(at + rightOverlap)])
+    }
+
+    private static let steps = 20
+    private static let limit = 8_000
 }
