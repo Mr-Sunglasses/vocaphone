@@ -273,6 +273,9 @@ enum WhisperTranscription {
         var start = 0
         var passOptions = options
         for pass in 0...maximumContinuations {
+            // A continuation is another full decode; a cancelled dictation
+            // must not start one.
+            try Task.checkCancellation()
             let remaining = Array(audio[start...])
             var samples = remaining
             if samples.count < minimumSamples {
