@@ -18,6 +18,8 @@ struct WritingCheckView: View {
     @State private var text: String
     @State private var report: WritingCheck.Report?
     @State private var isChecking = false
+    /// The text last found not to be English: nothing is suggested for it.
+    @State private var notEnglish: String?
     @State private var selected: String?
     @State private var filter: WritingCategory?
     @State private var didCopy = false
@@ -63,7 +65,12 @@ struct WritingCheckView: View {
                         Text("Paste or write something. It is checked on this iPhone and never sent anywhere.")
                     }
                 }
-                if report != nil, !text.isEmpty {
+                if notEnglish == text, !text.isEmpty {
+                    Section {
+                        Text("Writing check works on English text.")
+                            .foregroundStyle(.secondary)
+                    }
+                } else if report != nil, !text.isEmpty {
                     if let current {
                         Section { summary(current) }
                         if !current.suggestions.isEmpty {
@@ -118,6 +125,8 @@ struct WritingCheckView: View {
                 }.value
             }
         }
+        // Keyed on the text, so an edit, a paste or leaving the screen cancels
+        // the check under way, and `check()` passes that on to its work.
         .task(id: TaskKey(text: text, ready: checker != nil)) {
             didCopy = false
             try? await Task.sleep(for: .milliseconds(450))
@@ -133,9 +142,16 @@ struct WritingCheckView: View {
 
     // MARK: - Checking
 
+    private enum Outcome: Sendable {
+        case checked(WritingCheck.Report)
+        case notEnglish
+        case cancelled
+    }
+
     private func check() async {
         guard let checker, !text.isEmpty else {
             report = nil
+            notEnglish = nil
             return
         }
         isChecking = true
@@ -150,17 +166,36 @@ struct WritingCheckView: View {
         )
         let options = WritingCheck.Options(categories: Self.categories(), keep: keep, typed: true)
         let tone = KeyboardPreferences.writingTone
-        let result = await Task.detached(priority: .userInitiated) {
+        let work = Task.detached(priority: .userInitiated) { () -> Outcome in
+            // The rules are English ones; on another language they would
+            // "correct" words that are right. As the keyboard does.
+            guard WritingCheck.applies(to: snapshot) else { return .notEnglish }
             let model: WritingCheck.Model? = modelReady ? { grammar.correctTyped($0, keeping: keep) } : nil
-            var first = checker.check(snapshot, model: model, options: options)
-            // The model was loading: once more, after it has had a moment.
-            if first.modelPending {
-                try? await Task.sleep(for: .milliseconds(1200))
-                first = checker.check(snapshot, model: model, options: options)
+            guard let report = await checker.checkUntilCancelled(snapshot, model: model, options: options) else {
+                return .cancelled
             }
-            return first
-        }.value
-        guard snapshot == text else { return }
+            return .checked(report)
+        }
+        // A detached task does not inherit this one's cancellation: passed on,
+        // so a check of text that has since changed stops asking the model.
+        let outcome = await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
+        }
+        guard !Task.isCancelled, snapshot == text else { return }
+        let result: WritingCheck.Report
+        switch outcome {
+        case .cancelled:
+            return
+        case .notEnglish:
+            report = nil
+            notEnglish = snapshot
+            return
+        case let .checked(checked):
+            notEnglish = nil
+            result = checked
+        }
         // Tone off in Settings: how the text sounds is not shown, as in the
         // keyboard and on Android.
         report = tone ? result : WritingCheck.Report(

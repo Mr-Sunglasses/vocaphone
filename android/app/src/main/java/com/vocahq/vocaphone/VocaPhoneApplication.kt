@@ -130,6 +130,19 @@ class AppContainer(context: Context) {
     }
 
     /**
+     * The keyboard's shipped English word list, for the Writing check screen's
+     * question of whether a text is English at all. Read once, off the main
+     * thread, on first use.
+     */
+    val englishWords: Set<String> by lazy {
+        runCatching {
+            appContext.assets.open("en.txt").bufferedReader().useLines { lines ->
+                lines.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.toHashSet()
+            }
+        }.getOrDefault(emptySet())
+    }
+
+    /**
      * Anonymous usage reporting. Does nothing at all until the user turns it on,
      * and is compiled out of the F-Droid flavor.
      */

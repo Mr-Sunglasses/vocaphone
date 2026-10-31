@@ -61,6 +61,7 @@ import com.vocahq.vocaphone.R
 import com.vocahq.vocaphone.VocaPhoneApplication
 import com.vocahq.vocaphone.core.CustomVocabulary
 import com.vocahq.vocaphone.core.DictatedTranscript
+import com.vocahq.vocaphone.core.TranscriptRepair
 import com.vocahq.vocaphone.ime.PersonalDictionary
 import com.vocahq.vocaphone.ime.WritingColors
 import com.vocahq.vocaphone.local.GrammarModelCatalog
@@ -69,7 +70,10 @@ import com.vocahq.vocaphone.writing.WritingCheck
 import com.vocahq.vocaphone.writing.WritingSuggestion
 import com.vocahq.vocaphone.writing.writingCategories
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -97,11 +101,16 @@ internal fun WritingCheckScreen(
     }
     var report by remember { mutableStateOf<WritingCheck.Report?>(null) }
     var checking by remember { mutableStateOf(false) }
+    // The text last found not to be English: nothing is suggested for it.
+    var notEnglish by remember { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf<WritingCategory?>(null) }
     var dismissed by rememberSaveable { mutableStateOf(setOf<String>()) }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val text = value.text
 
+    // Keyed on the text, so an edit, a paste or leaving the screen cancels the
+    // check under way: it stops before its next model call or its retry
+    // rather than running on over a document nobody is looking at.
     LaunchedEffect(text) {
         delay(CHECK_PAUSE_MILLIS)
         if (text.isBlank()) {
@@ -110,6 +119,15 @@ internal fun WritingCheckScreen(
         }
         checking = true
         try {
+            val english = withContext(Dispatchers.Default) {
+                writingCheckApplies(text) { it in container.englishWords }
+            }
+            if (!english) {
+                report = null
+                notEnglish = text
+                return@LaunchedEffect
+            }
+            notEnglish = null
             val result = withContext(Dispatchers.Default) { check(container, text) }
             if (result?.text == value.text) report = result
         } finally {
@@ -219,6 +237,9 @@ internal fun WritingCheckScreen(
                 }
             }
             report?.takeIf { it.text == text && text.isNotBlank() }?.let { Summary(it, checking) }
+            if (notEnglish == text && text.isNotBlank()) {
+                Text("Writing check works on English text.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (visible.isNotEmpty()) {
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -279,13 +300,46 @@ private suspend fun check(container: com.vocahq.vocaphone.AppContainer, text: St
         null
     }
     val options = WritingCheck.Options(settings.writingCategories(), keep, typed = true)
-    var report = checker.check(text, model, options)
+    val report = checkUntilCancelled(checker, text, model, options)
+    return if (settings.writingTone) report else report.copy(tones = emptyList())
+}
+
+/**
+ * Whether the Writing check screen checks [text] at all. Its rules are
+ * English ones: on French, "dont" would be "corrected" to "don't". The same
+ * test the keyboards make, with the keyboard's word list as [isDictionaryWord].
+ */
+internal fun writingCheckApplies(text: String, isDictionaryWord: (String) -> Boolean): Boolean =
+    text.any(Char::isLetter) && TranscriptRepair.isEnglish(text, "auto", isDictionaryWord)
+
+/**
+ * [checker] over [text], with a second pass after [retryMillis] if the model
+ * was still loading. Cancellable: the rules run without suspending, so the
+ * model is asked nothing once the caller's coroutine is cancelled, and the
+ * retry never starts. The check throws CancellationException instead.
+ */
+internal suspend fun checkUntilCancelled(
+    checker: WritingCheck,
+    text: String,
+    model: WritingCheck.Model?,
+    options: WritingCheck.Options,
+    retryMillis: Long = 1_200,
+): WritingCheck.Report {
+    val job = currentCoroutineContext().job
+    val asked = model?.let { m ->
+        WritingCheck.Model { sentence ->
+            job.ensureActive()
+            m.correct(sentence)
+        }
+    }
+    var report = checker.check(text, asked, options)
     if (report.modelPending) {
         // The model was loading; asking started it. Once more, a moment later.
-        delay(1_200)
-        report = checker.check(text, model, options)
+        delay(retryMillis)
+        report = checker.check(text, asked, options)
     }
-    return if (settings.writingTone) report else report.copy(tones = emptyList())
+    currentCoroutineContext().ensureActive()
+    return report
 }
 
 @Composable
