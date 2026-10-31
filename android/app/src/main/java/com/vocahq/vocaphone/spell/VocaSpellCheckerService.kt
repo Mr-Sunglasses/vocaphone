@@ -75,7 +75,12 @@ class VocaSpellCheckerService : SpellCheckerService() {
             } else {
                 null
             }
-            val report = checker.check(text, model, WritingCheck.Options(setOf(WritingCategory.CORRECTNESS), keep, typed = true))
+            val options = WritingCheck.Options(setOf(WritingCategory.CORRECTNESS), keep, typed = true)
+            val report = ModelWait.check(
+                check = { checker.check(text, model, options) },
+                loading = { container.grammar.isLoading },
+                loaded = { container.grammar.isLoaded },
+            )
             return SpellCheckSpans.of(text, report)
         }
 

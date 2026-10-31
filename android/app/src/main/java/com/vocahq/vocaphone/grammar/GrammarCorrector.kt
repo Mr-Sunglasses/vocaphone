@@ -128,8 +128,11 @@ class GrammarCorrector internal constructor(
         }
     }
 
-    /** Whether a session is loaded and in use. For tests, which otherwise race the loader. */
+    /** Whether a session is loaded and in use. The spell checker waits on it; tests would otherwise race the loader. */
     internal val isLoaded: Boolean get() = synchronized(lock) { loaded != null }
+
+    /** Whether a load is under way. Once it is not, [isLoaded] says how it ended. */
+    internal val isLoading: Boolean get() = synchronized(lock) { loading }
 
     /** Frees the session. The next [warm] loads it again. */
     fun release() {
