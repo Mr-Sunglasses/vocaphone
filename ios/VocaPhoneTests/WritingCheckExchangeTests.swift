@@ -69,6 +69,7 @@ struct WritingCheckExchangeTests {
         let client = client(appRunning: false)
         let text = "what is you doing"
         client.checkNow(WritingCheckClient.Field(text: text, cursor: text.utf16.count), options: .init())
+        await client.settle()
         #expect(labels(client).contains("is → are"))
         // Typing on with "Check while typing" off moves the report along and
         // checks nothing new until the next tap.
@@ -78,6 +79,7 @@ struct WritingCheckExchangeTests {
         #expect(labels(client) == ["is → are"])
         #expect(client.report?.field.text == more)
         client.checkNow(options: .init())
+        await client.settle()
         #expect(labels(client).contains("was → were"))
     }
 
