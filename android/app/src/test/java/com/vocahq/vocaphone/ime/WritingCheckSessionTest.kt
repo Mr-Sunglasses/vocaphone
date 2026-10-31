@@ -27,6 +27,8 @@ class WritingCheckSessionTest {
     private var loaded = true
     private var modelOn = true
     private var english = true
+    /** Runs inside the model's call, as something on the main thread could while the worker is busy. */
+    private var duringAsk: (() -> Unit)? = null
     // Model-only slips: the rules alone catch neither "She go" nor "cars was".
     private val checker = WritingCheck(WritingFixtures.rules)
     private val options = WritingCheckSession.Options(WritingCategory.entries.toSet(), emptySet(), tone = true)
@@ -45,6 +47,7 @@ class WritingCheckSessionTest {
             } else {
                 { sentence, _ ->
                     asked.add(sentence)
+                    duringAsk?.also { duringAsk = null }?.invoke()
                     if (!loaded) null else sentence.replace("She go ", "She goes ").replace(" was ", " were ")
                 }
             }
@@ -185,5 +188,86 @@ class WritingCheckSessionTest {
         type("She go home. ")
         pause()
         assertEquals(listOf("She go home.", "She go home."), asked)
+    }
+
+    @Test
+    fun `moving the cursor checks again for where it now is`() = scope.runTest {
+        type("I definately agree. ")
+        pause()
+        assertEquals(listOf("definately → definitely"), labels())
+        // Into the misspelt word: the text is the same, but it is now being typed.
+        cursor = 6
+        session.textChanged("I defi", true) { options }
+        pause()
+        assertEquals(6, session.report.value?.field?.cursor)
+        assertEquals(emptyList<String>(), labels())
+        cursor = -1
+        session.textChanged(editor, true) { options }
+        pause()
+        assertEquals(listOf("definately → definitely"), labels())
+    }
+
+    @Test
+    fun `ending a selection brings the suggestions back`() = scope.runTest {
+        type("I definately agree. ")
+        pause()
+        type("I definately agree. ", enabled = false)
+        assertNull(session.report.value)
+        type("I definately agree. ")
+        pause()
+        assertEquals(listOf("definately → definitely"), labels())
+    }
+
+    @Test
+    fun `a model that never answered is asked again at the next pause`() = scope.runTest {
+        loaded = false
+        type("She go home. ")
+        pause()
+        advanceTimeBy(WritingCheckSession.LOAD_RETRY_MILLIS + 1)
+        runCurrent()
+        assertEquals(emptyList<String>(), labels())
+        loaded = true
+        session.textChanged("She go home. ", true) { options }
+        pause()
+        assertEquals(listOf("go → goes"), labels())
+    }
+
+    @Test
+    fun `accepting several fixes takes each off the report`() = scope.runTest {
+        type("I definately recieve it. ")
+        pause()
+        val fixes = session.report.value!!.suggestions
+        assertEquals(listOf("definately → definitely", "recieve → receive"), fixes.map { it.label })
+        // In reading order, as Accept all collects them; the first one changes length.
+        session.applied(fixes)
+        assertEquals("I definitely receive it. ", session.report.value!!.field.text)
+        assertEquals(emptyList<String>(), labels())
+    }
+
+    @Test
+    fun `an undone fix is not offered again although it left the report`() = scope.runTest {
+        type("I definately agree. ")
+        pause()
+        val fix = session.report.value!!.suggestions.single()
+        session.applied(fix)
+        assertEquals(emptyList<String>(), labels())
+        session.dismissKey(fix.key)
+        type("I definately agree. ")
+        pause()
+        assertEquals(emptyList<String>(), labels())
+    }
+
+    @Test
+    fun `a check overtaken by a reset leaves nothing behind`() = scope.runTest {
+        duringAsk = { session.reset() }
+        type("She go home. ")
+        pause()
+        assertNull(session.report.value)
+        assertFalse(session.checking.value)
+        type("She go home. ")
+        pause()
+        // The old check's answer was not kept for the new field.
+        assertEquals(listOf("She go home.", "She go home."), asked)
+        assertEquals(listOf("go → goes"), labels())
     }
 }

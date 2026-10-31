@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Writing check inside the keyboard: after the user pauses, the field around
@@ -24,6 +25,12 @@ import kotlinx.coroutines.withContext
  * time and its answers are kept, so a pause after typing one more word costs
  * one sentence, not the whole field. All four dependencies are injected so the
  * timing and the bookkeeping are tested without a keyboard or a model.
+ *
+ * Everything but the check itself runs on [scope]'s thread (the keyboard's
+ * main thread): the worker gets copies of the answers it may reuse and hands
+ * back the ones it used, which are kept only if the field has not been reset
+ * since. A cancelled check cannot stop a model call already running, so it
+ * must not be able to write anything shared.
  */
 internal class WritingCheckSession(
     private val scope: CoroutineScope,
@@ -66,18 +73,30 @@ internal class WritingCheckSession(
     val checking: StateFlow<Boolean> = busy
 
     private var job: Job? = null
-    private var options = Options(WritingCategory.entries.toSet(), emptySet(), tone = true)
 
-    /** Suggestions waved away in this field, by [WritingSuggestion.key]. */
+    /** Suggestions waved away in this field, by [WritingSuggestion.key]. Main thread only. */
     private val dismissed = HashSet<String>()
 
-    /** The model's answer per sentence, for this field. */
+    /** The model's answer per sentence, for this field. Main thread only. */
     private val answers = object : LinkedHashMap<String, String>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > ANSWER_CACHE
     }
 
-    /** The field text the last check read, so a pause that changed nothing does not check again. */
-    private var settled: String? = null
+    /** Bumped whenever [answers] stop holding: answers from an older check are dropped. */
+    private var era = 0
+
+    /** The latest check started; only it may clear [checking]. */
+    private var checks = 0
+
+    /** What a check reads: the field, where the cursor is in it, and the options. */
+    private data class Settled(val text: String, val cursor: Int, val options: Options)
+
+    /**
+     * What the last finished check saw, so a pause that changed nothing does
+     * not check again. Cleared whenever the report shown no longer comes from
+     * it, and left clear while the model has not answered.
+     */
+    private var settled: Settled? = null
 
     /**
      * The keyboard re-read its short [window] of text before the cursor. A
@@ -88,12 +107,16 @@ internal class WritingCheckSession(
         job?.cancel()
         if (!enabled) {
             current.value = null
+            settled = null
             busy.value = false
             return
         }
         current.value?.let { report ->
             val before = report.field.text.substring(0, report.field.cursor)
-            if (!before.trimEnd().endsWith(window.trimEnd().takeLast(MATCH_TAIL))) current.value = null
+            if (!before.trimEnd().endsWith(window.trimEnd().takeLast(MATCH_TAIL))) {
+                current.value = null
+                settled = null
+            }
         }
         job = scope.launch {
             delay(pauseMillis)
@@ -110,28 +133,53 @@ internal class WritingCheckSession(
 
     private suspend fun check(options: Options) {
         val field = read() ?: return
-        if (field.text == settled && options == this.options) return
-        this.options = options
+        val state = Settled(field.text, field.cursor, options)
+        if (state == settled) return
         val checker = checker() ?: return
         if (field.text.isBlank() || !isEnglish(field.text)) {
-            settled = field.text
+            settled = state
             current.value = null
             return
         }
+        val token = ++checks
         busy.value = true
         try {
             val model = model()
-            var report = withContext(worker) { run(checker, field, options, model) }
+            var report = ask(checker, field, options, model)
             if (report.modelPending) {
                 // The model was loading, and asking started the load. One more
-                // try once it has had time; after that the next pause asks.
+                // try once it has had time.
                 delay(LOAD_RETRY_MILLIS)
-                report = withContext(worker) { run(checker, field, options, model) }
+                report = ask(checker, field, options, model)
             }
-            settled = field.text
-            current.value = report
+            // A sentence the model still has not answered keeps the check
+            // open: the next pause asks again, even if nothing changed.
+            settled = if (report.modelPending) null else state
+            current.value = shown(report.field, report.suggestions, report)
         } finally {
-            busy.value = false
+            if (token == checks) busy.value = false
+        }
+    }
+
+    /**
+     * One pass on the worker. It reads a copy of [answers] and writes only its
+     * own map; what it used comes back here and is kept if no reset or
+     * [forgetAnswers] came in between. `withContext` throws once the check
+     * was cancelled, so a cancelled pass never publishes a report.
+     */
+    private suspend fun ask(
+        checker: WritingCheck,
+        field: Field,
+        options: Options,
+        model: ((String, Set<String>) -> String?)?,
+    ): Report {
+        val known = HashMap(answers)
+        val used = ConcurrentHashMap<String, String>()
+        val era = this.era
+        try {
+            return withContext(worker) { run(checker, field, options, model, known, used) }
+        } finally {
+            if (era == this.era) answers.putAll(used)
         }
     }
 
@@ -140,20 +188,28 @@ internal class WritingCheckSession(
         field: Field,
         options: Options,
         model: ((String, Set<String>) -> String?)?,
+        known: Map<String, String>,
+        used: MutableMap<String, String>,
     ): Report {
         val cached = model?.let { ask ->
             WritingCheck.Model { sentence ->
-                answers[sentence] ?: ask(sentence, options.keep)?.also { answers[sentence] = it }
+                (known[sentence] ?: ask(sentence, options.keep))?.also { used[sentence] = it }
             }
         }
         val result = checker.check(field.text, cached, WritingCheck.Options(options.categories, options.keep, typed = true))
         val word = wordAt(field.text, field.cursor)
         val suggestions = result.suggestions.filter { s ->
             // Not the word being typed: it is not finished.
-            s.key !in dismissed && (word == null || s.markEnd < word.first || s.markStart > word.second)
+            word == null || s.markEnd < word.first || s.markStart > word.second
         }
-        val chips = suggestions.filter { it.isActionable }.sortedBy { kotlin.math.abs(it.markEnd - field.cursor) }.take(MAX_CHIPS)
-        return Report(field, suggestions, if (options.tone) result.tones else emptyList(), chips, result.modelPending)
+        return Report(field, suggestions, if (options.tone) result.tones else emptyList(), emptyList(), result.modelPending)
+    }
+
+    /** [report] with [field] and [suggestions], less the dismissed, and the chips nearest the cursor. */
+    private fun shown(field: Field, suggestions: List<WritingSuggestion>, report: Report): Report {
+        val kept = suggestions.filter { it.key !in dismissed }
+        val chips = kept.filter { it.isActionable }.sortedBy { kotlin.math.abs(it.markEnd - field.cursor) }.take(MAX_CHIPS)
+        return report.copy(field = field, suggestions = kept, chips = chips)
     }
 
     /** The word the cursor touches, as `[start, end)`; null when it sits between words. */
@@ -168,32 +224,44 @@ internal class WritingCheckSession(
     private fun isWordChar(c: Char) = c.isLetterOrDigit() || c == '\'' || c == '’'
 
     /**
-     * [suggestion] is being applied: it leaves the report, and the others are
-     * moved to where they now sit in the edited text, so the panel stays
-     * usable before the next check.
+     * [suggestions], all from the current report, were applied to the field:
+     * they leave the report, and the others are moved to where they now sit
+     * in the edited text, so the panel stays usable before the next check.
+     * They are taken from the end back, as the editor was edited, so each
+     * one's offsets still hold when its turn comes.
      */
-    fun applied(suggestion: WritingSuggestion) {
+    fun applied(suggestions: List<WritingSuggestion>) {
         val report = current.value ?: return
-        val edited = WritingCheck.apply(report.field.text, suggestion) ?: return
-        val delta = edited.length - report.field.text.length
-        val cursor = if (report.field.cursor >= suggestion.end) report.field.cursor + delta else report.field.cursor
-        val field = report.field.copy(text = edited, cursor = cursor)
-        val rest = WritingCheck.rebase(report.suggestions.filter { it != suggestion }, report.field.text, edited)
+        var field = report.field
+        var rest = report.suggestions
+        for (suggestion in suggestions.sortedByDescending { it.start }) {
+            val edited = WritingCheck.apply(field.text, suggestion) ?: continue
+            val delta = edited.length - field.text.length
+            val cursor = if (field.cursor >= suggestion.end) field.cursor + delta else field.cursor
+            rest = WritingCheck.rebase(rest.filter { it != suggestion }, field.text, edited)
+            field = field.copy(text = edited, cursor = cursor)
+        }
+        if (field == report.field) return
         settled = null
-        current.value = report.copy(
-            field = field,
-            suggestions = rest,
-            chips = rest.filter { it.isActionable }.sortedBy { kotlin.math.abs(it.markEnd - cursor) }.take(MAX_CHIPS),
-        )
+        current.value = shown(field, rest, report)
     }
 
+    fun applied(suggestion: WritingSuggestion) = applied(listOf(suggestion))
+
     /** The user waved [suggestion] away: it is not offered again in this field. */
-    fun dismiss(suggestion: WritingSuggestion) {
-        dismissed.add(suggestion.key)
+    fun dismiss(suggestion: WritingSuggestion) = dismissKey(suggestion.key)
+
+    /**
+     * The change with this [WritingSuggestion.key] is not offered again in
+     * this field, whether or not the report still holds it: an undone
+     * automatic fix has already left the report by the time it is undone.
+     */
+    fun dismissKey(key: String) {
+        dismissed.add(key)
         val report = current.value ?: return
         current.value = report.copy(
-            suggestions = report.suggestions.filter { it.key != suggestion.key },
-            chips = report.chips.filter { it.key != suggestion.key },
+            suggestions = report.suggestions.filter { it.key != key },
+            chips = report.chips.filter { it.key != key },
         )
     }
 
@@ -204,6 +272,7 @@ internal class WritingCheckSession(
         settled = null
         dismissed.clear()
         answers.clear()
+        era++
         busy.value = false
         current.value = null
     }
@@ -211,6 +280,7 @@ internal class WritingCheckSession(
     /** The grammar setting or the model changed: its old answers no longer hold. */
     fun forgetAnswers() {
         answers.clear()
+        era++
         settled = null
     }
 
