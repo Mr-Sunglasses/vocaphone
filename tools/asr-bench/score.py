@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import unicodedata
 from collections import defaultdict
@@ -32,7 +33,7 @@ from pathlib import Path
 import jiwer
 from whisper_normalizer.english import EnglishTextNormalizer
 
-DEFAULT_DIR = Path.home() / ".cache/vocaphone/asr-bench"
+DEFAULT_DIR = Path(os.environ.get("VOCA_ASR_BENCH_DIR") or Path.home() / ".cache/vocaphone/asr-bench")
 ENGLISH = EnglishTextNormalizer()
 
 
@@ -46,12 +47,22 @@ def normalise(text: str, language: str) -> str:
 
 
 def load_jsonl(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    """Every complete record. A last line cut short by an interrupted run is
+    skipped; the runner trims it before it resumes."""
+    lines = [line for line in path.read_text().splitlines() if line.strip()]
+    records = []
+    for index, line in enumerate(lines):
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            if index != len(lines) - 1:
+                raise
+    return records
 
 
-def score(results: Path, manifest: Path) -> dict | None:
+def score(results: Path, manifest: Path, only: set[str] | None = None) -> dict | None:
     references = {clip["id"]: clip for clip in load_jsonl(manifest)}
-    hypotheses = [h for h in load_jsonl(results) if h["id"] in references]
+    hypotheses = [h for h in load_jsonl(results) if h["id"] in references and (only is None or h["id"] in only)]
     if not hypotheses:
         return None
     language = references[hypotheses[0]["id"]]["language"]
@@ -100,13 +111,29 @@ def print_table(tag: str, table: dict) -> None:
         )
 
 
-def print_comparison(base_tag: str, base: dict, new_tag: str, new: dict) -> None:
-    print(f"\n### {base_tag} vs {new_tag} (WER finished)\n")
-    print(f"| Model | Set | Path | {base_tag} | {new_tag} | Change |")
-    print("|---|---|---|---|---|---|")
-    for key in sorted(set(base) & set(new)):
-        before, after = base[key]["finished_wer"], new[key]["finished_wer"]
-        print(f"| {' | '.join(key)} | {before:.2f} | {after:.2f} | {after - before:+.2f} |")
+def clip_ids(path: Path) -> set[str]:
+    return {record["id"] for record in load_jsonl(path)}
+
+
+def print_comparison(root: Path, base_tag: str, new_tag: str) -> None:
+    """Both runs scored on the clips both decoded, so a limited or unfinished
+    run cannot look better for having heard easier speech."""
+    print(f"\n### {base_tag} vs {new_tag} (WER finished, shared clips only)\n")
+    print(f"| Model | Set | Path | Clips | {base_tag} | {new_tag} | Change |")
+    print("|---|---|---|---|---|---|---|")
+    base_files = {p.relative_to(root / "results" / base_tag) for p in (root / "results" / base_tag).glob("*/*.jsonl")}
+    new_files = {p.relative_to(root / "results" / new_tag) for p in (root / "results" / new_tag).glob("*/*.jsonl")}
+    for relative in sorted(base_files & new_files):
+        model = relative.parent.name
+        set_name, path = relative.name.removesuffix(".jsonl").rsplit(".", 1)
+        base_path, new_path = root / "results" / base_tag / relative, root / "results" / new_tag / relative
+        shared = clip_ids(base_path) & clip_ids(new_path)
+        manifest = root / "sets" / set_name / "manifest.jsonl"
+        before, after = score(base_path, manifest, shared), score(new_path, manifest, shared)
+        if not before or not after:
+            continue
+        b, a = before["finished_wer"], after["finished_wer"]
+        print(f"| {model} | {set_name} | {path} | {len(shared)} | {b:.2f} | {a:.2f} | {a - b:+.2f} |")
 
 
 def worst(root: Path, tag: str, model: str, set_name: str, path: str, count: int) -> None:
@@ -141,7 +168,7 @@ def main() -> None:
     for tag, table in tables.items():
         print_table(tag, table)
     if args.tag and args.compare:
-        print_comparison(args.tag, tables[args.tag], args.compare, tables[args.compare])
+        print_comparison(args.dir, args.tag, args.compare)
 
 
 if __name__ == "__main__":

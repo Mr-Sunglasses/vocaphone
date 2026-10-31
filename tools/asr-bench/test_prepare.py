@@ -38,6 +38,21 @@ class PrepareTest(unittest.TestCase):
         self.assertEqual((audio_format, channels, rate), (3, 1, prepare.RATE))
         self.assertEqual(list(struct.unpack("<4f", data[44:])), samples)
 
+    def test_long_clips_are_shared_between_sources(self) -> None:
+        clean = [[f"1-{c}-0"] for c in range(40)]
+        other = [[f"2-{c}-0"] for c in range(40)]
+        picked = prepare.pick_long([clean, other], 24, lambda source, chapter: {"source": source})
+        self.assertEqual([clip["source"] for clip in picked].count(0), 12)
+        self.assertEqual([clip["source"] for clip in picked].count(1), 12)
+
+    def test_a_short_chapter_is_replaced_from_the_same_source(self) -> None:
+        clean = [[f"1-{c}-0"] for c in range(10)]
+        other = [[f"2-{c}-0"] for c in range(10)]
+        # Every even chapter is too short to make a clip.
+        make = lambda source, chapter: None if int(chapter[0].split("-")[1]) % 2 == 0 else {"source": source}
+        picked = prepare.pick_long([clean, other], 8, make)
+        self.assertEqual([clip["source"] for clip in picked], [0, 0, 0, 0, 1, 1, 1, 1])
+
     def test_every_download_is_pinned(self) -> None:
         for name, (url, size, digest) in prepare.ARCHIVES.items():
             self.assertTrue(url.startswith("https://"), name)

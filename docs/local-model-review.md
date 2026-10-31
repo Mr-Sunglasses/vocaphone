@@ -46,7 +46,11 @@ are the Mac's CPU, so no timing is reported. `file` is a finished recording;
 | Whisper Small Q8 (Android) | file | 3.73 | 10.63 | — |
 
 200 clips per short set and 24 long clips, except Whisper: 50 clips per short
-set and 12 long on iOS, 100 per short set on Android. FLEURS Hindi (50 clips):
+set and 12 long on iOS, 100 per short set on Android. The long-form column was
+measured on a set that came out entirely test-clean: the first version of
+`prepare.py` drew from both corpora at once and filled up on test-clean's
+chapters. It now takes half from each, so re-measure before comparing a new
+long-form number with this column. FLEURS Hindi (50 clips):
 Whisper Small 67.3 WER / 36.5 CER on iOS and 85.1 / 66.5 on Android.
 
 What it showed:

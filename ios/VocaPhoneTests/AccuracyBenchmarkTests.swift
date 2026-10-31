@@ -113,7 +113,9 @@ enum AccuracyBenchmark {
         let output = configuration.root
             .appendingPathComponent("results/\(configuration.tag)/\(configuration.model)", isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+        try checkSettings(in: output, ["quality": configuration.quality.rawValue])
         let file = output.appendingPathComponent("\(set).\(path).jsonl")
+        try trimIncompleteRecord(file)
         let done = Set(
             ((try? String(contentsOf: file, encoding: .utf8)) ?? "")
                 .split(separator: "\n")
@@ -157,6 +159,33 @@ enum AccuracyBenchmark {
         print("asr-bench: \(configuration.model) \(set).\(path): decoded \(decoded), \(done.count) already done")
     }
 
+    /// A run resumed with different settings would mix two measurements under
+    /// one name, so the settings are written once and every resume must match.
+    static func checkSettings(in output: URL, _ settings: [String: String]) throws {
+        let file = output.appendingPathComponent("settings.json")
+        if let data = try? Data(contentsOf: file) {
+            let recorded = try JSONDecoder().decode([String: String].self, from: data)
+            guard recorded == settings else {
+                Issue.record("\(output.path) was recorded with \(recorded), not \(settings); use another tag")
+                throw CancellationError()
+            }
+        } else {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            try encoder.encode(settings).write(to: file)
+        }
+    }
+
+    /// An interrupted write leaves a last line with no newline. It is cut off
+    /// before resuming, so the next record does not run on from it.
+    static func trimIncompleteRecord(_ file: URL) throws {
+        guard let data = try? Data(contentsOf: file), let last = data.last, last != UInt8(ascii: "\n") else { return }
+        let keep = (data.lastIndex(of: UInt8(ascii: "\n")).map { $0 + 1 }) ?? 0
+        let handle = try FileHandle(forWritingTo: file)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: UInt64(keep))
+    }
+
     private static func decode(
         _ samples: [Float], model: String, language: String, path: String
     ) async throws -> (String, Int) {
@@ -198,7 +227,7 @@ enum AccuracyBenchmark {
             return loaded
         }
 
-        private static var quality: TranscriptionQuality {
+        static var quality: TranscriptionQuality {
             AccuracyBenchmark.configuration?.quality ?? .default
         }
 
@@ -226,8 +255,10 @@ enum AccuracyBenchmark {
             return (text(results), empty)
         }
 
-        /// As `ModelEndToEnd.dictateStreaming`: early decodes at each pause into
-        /// the dictation's cache, then the trimmed recording at Finish.
+        /// As `LocalModelManager` decodes a dictation: early decodes at each pause
+        /// into the dictation's cache, each levelled keeping the gain the last
+        /// one settled on, then the trimmed recording at Finish, levelled the
+        /// same way.
         static func streamed(_ captured: [Float], language: String) async throws -> (String, Int) {
             nonisolated(unsafe) let engine = try await loaded()
             let options = options(language)
@@ -236,16 +267,7 @@ enum AccuracyBenchmark {
             let session = WhisperIncrementalSession(chunks: chunks) {
                 SileroSpeechDetector(model: SileroSpeechDetector.repositoryModel)
             } decodeEarly: { prefix in
-                let levelled = SpeechAudioConditioning.levelled(prefix)
-                _ = try? await WhisperTranscription.transcribe(
-                    samples: levelled.samples,
-                    options: options,
-                    retries: quality.whisperRetryCount,
-                    cache: cache,
-                    levelling: WhisperWindowCache.Levelling(levelled)
-                ) {
-                    try await engine.transcribe(audioArray: $0, decodeOptions: $1)
-                }
+                await AccuracyBenchmark.decodeEarly(prefix, cache: cache, options: options, engine: engine)
             }
             for start in stride(from: 0, to: captured.count, by: 1_600) {
                 let chunk = Array(captured[start..<min(captured.count, start + 1_600)])
@@ -253,7 +275,7 @@ enum AccuracyBenchmark {
             }
             continuation.finish()
             let audio = await session.finish()
-            let levelled = SpeechAudioConditioning.levelled(audio.samples)
+            let levelled = SpeechAudioConditioning.levelled(audio.samples, keeping: cache.levelling?.kept)
             var empty = 0
             let results = try await WhisperTranscription.transcribe(
                 samples: levelled.samples,
@@ -266,6 +288,25 @@ enum AccuracyBenchmark {
                 try await engine.transcribe(audioArray: $0, decodeOptions: $1)
             }
             return (text(results), empty)
+        }
+    }
+
+    /// `LocalModelManager.decodeEarly`, less the preview.
+    private static func decodeEarly(
+        _ prefix: [Float], cache: WhisperWindowCache, options: DecodingOptions, engine: WhisperKit
+    ) async {
+        nonisolated(unsafe) let engine = engine
+        let levelled = SpeechAudioConditioning.levelled(prefix, keeping: cache.levelling?.kept)
+        let levelling = WhisperWindowCache.Levelling(levelled)
+        cache.levelling = levelling
+        _ = try? await WhisperTranscription.transcribe(
+            samples: levelled.samples,
+            options: options,
+            retries: Whisper.quality.whisperRetryCount,
+            cache: cache,
+            levelling: levelling
+        ) {
+            try await engine.transcribe(audioArray: $0, decodeOptions: $1)
         }
     }
 

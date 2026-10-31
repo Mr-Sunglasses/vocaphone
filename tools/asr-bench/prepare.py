@@ -13,7 +13,7 @@ float32 WAV the app captures:
 | `fleurs-hi` | FLEURS Hindi test | Hindi in Devanagari |
 
     tools/asr-bench/prepare.py                       # every set, default sizes
-    tools/asr-bench/prepare.py --sets librispeech-long --limit 40
+    tools/asr-bench/prepare.py --sets librispeech-long --long-limit 40
 
 Writes `<out>/sets/<set>/manifest.jsonl`, one line per clip with its file,
 length, language and reference text. Nothing here is checked in: AGENTS.md
@@ -29,6 +29,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import struct
 import subprocess
 import sys
@@ -37,7 +38,7 @@ from collections import defaultdict
 from pathlib import Path
 
 RATE = 16_000
-DEFAULT_OUT = Path.home() / ".cache/vocaphone/asr-bench"
+DEFAULT_OUT = Path(os.environ.get("VOCA_ASR_BENCH_DIR") or Path.home() / ".cache/vocaphone/asr-bench")
 
 # LibriSpeech and FLEURS are CC BY 4.0. The SHA-256 values were taken from
 # complete downloads whose MD5 matched openslr's own `md5sum.txt`; FLEURS is
@@ -186,25 +187,50 @@ def short_set(out: Path, name: str, audio: dict[str, bytes], text: dict[str, str
     write_set(out, name, clips)
 
 
-def long_set(out: Path, sources: list[tuple[dict[str, bytes], dict[str, str]]], limit: int) -> None:
-    chapters: list[list[tuple[str, dict[str, bytes], dict[str, str]]]] = []
-    for audio, text in sources:
-        grouped: dict[str, list[str]] = defaultdict(list)
-        for key in audio:
-            speaker, chapter, _ = key.split("-")
-            grouped[f"{speaker}-{chapter}"].append(key)
-        for chapter in sorted(grouped, key=lambda c: tuple(map(int, c.split("-")))):
-            chapters.append([(key, audio, text) for key in sorted(grouped[chapter], key=utterance_order)])
+def chapters_of(audio: dict[str, bytes]) -> list[list[str]]:
+    """Each chapter's utterance ids, in reading order, chapters sorted."""
+    grouped: dict[str, list[str]] = defaultdict(list)
+    for key in audio:
+        speaker, chapter, _ = key.split("-")
+        grouped[f"{speaker}-{chapter}"].append(key)
+    return [
+        sorted(grouped[chapter], key=utterance_order)
+        for chapter in sorted(grouped, key=lambda c: tuple(map(int, c.split("-"))))
+    ]
 
-    gap = [0.0] * int(LONG_GAP_SECONDS * RATE)
+
+def pick_long(sources: list[list[list[str]]], limit: int, make_clip) -> list[dict]:
+    """`limit` clips shared evenly between the sources, `make_clip(source,
+    chapter)` building one or returning None for a chapter too short.
+
+    Each source gets its own quota. Drawing from all chapters at once took
+    the first clips that worked, and test-clean's chapters come first, so the
+    set came out entirely clean.
+    """
     clips = []
-    for chapter in evenly(chapters, limit * 2):
-        if len(clips) == limit:
-            break
+    for index, chapters in enumerate(sources):
+        quota = limit // len(sources) + (1 if index < limit % len(sources) else 0)
+        preferred = evenly(chapters, quota * 2)
+        candidates = preferred + [chapter for chapter in chapters if chapter not in preferred]
+        taken = 0
+        for chapter in candidates:
+            if taken == quota:
+                break
+            clip = make_clip(index, chapter)
+            if clip is not None:
+                clips.append(clip)
+                taken += 1
+    return clips
+
+
+def long_set(out: Path, sources: list[tuple[dict[str, bytes], dict[str, str]]], limit: int) -> None:
+    gap = [0.0] * int(LONG_GAP_SECONDS * RATE)
+
+    def make_clip(index: int, chapter: list[str]) -> dict | None:
+        audio, text = sources[index]
         samples: list[float] = []
         words: list[str] = []
-        first = chapter[0][0]
-        for key, audio, text in chapter:
+        for key in chapter:
             utterance = decode_flac(audio[key])
             if (len(samples) + len(gap) + len(utterance)) / RATE > LONG_MAX_SECONDS:
                 break
@@ -213,11 +239,12 @@ def long_set(out: Path, sources: list[tuple[dict[str, bytes], dict[str, str]]], 
             samples += utterance
             words.append(text[key])
         if len(samples) / RATE < LONG_MIN_SECONDS:
-            continue
-        file = f"{first}-long.wav"
+            return None
+        file = f"{chapter[0]}-long.wav"
         write_wav(out / "sets" / "librispeech-long" / file, samples)
-        clips.append({"id": f"{first}-long", "file": file, "seconds": round(len(samples) / RATE, 3), "language": "en", "text": " ".join(words)})
-    write_set(out, "librispeech-long", clips)
+        return {"id": f"{chapter[0]}-long", "file": file, "seconds": round(len(samples) / RATE, 3), "language": "en", "text": " ".join(words)}
+
+    write_set(out, "librispeech-long", pick_long([chapters_of(audio) for audio, _ in sources], limit, make_clip))
 
 
 def fleurs_hindi(out: Path, downloads: Path, limit: int) -> None:

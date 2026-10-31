@@ -39,6 +39,8 @@ class WhisperAccuracyBenchmarkTest {
             if (model.englishOnly && language != "en") continue
             val output = File(root, "results/$tag/android-${model.id}/$set.file.jsonl")
             output.parentFile.mkdirs()
+            checkSettings(output.parentFile)
+            trimIncompleteRecord(output)
             val done = if (output.exists()) {
                 output.readLines().filter { it.isNotBlank() }.map { JSONObject(it).getString("id") }.toSet()
             } else {
@@ -79,6 +81,33 @@ class WhisperAccuracyBenchmarkTest {
             }
             println("asr-bench: android-${model.id} $set.file: decoded $decoded, ${done.size} already done")
         }
+    }
+
+    /**
+     * A run resumed with a different crop or quality would mix two
+     * measurements under one name, so the settings are written once and every
+     * resume must match.
+     */
+    private fun checkSettings(directory: File) {
+        val settings = JSONObject().put("crop", crop.toString()).put("quality", quality.storedValue)
+        val file = File(directory, "settings.json")
+        if (!file.exists()) {
+            file.writeText(settings.toString())
+            return
+        }
+        val recorded = JSONObject(file.readText())
+        val same = recorded.length() == settings.length() &&
+            settings.keys().asSequence().all { recorded.optString(it) == settings.getString(it) }
+        check(same) { "$directory was recorded with $recorded, not $settings; use another tag" }
+    }
+
+    /** An interrupted write leaves a last line with no newline; cut it off before resuming. */
+    private fun trimIncompleteRecord(file: File) {
+        if (!file.exists() || file.length() == 0L) return
+        val bytes = file.readBytes()
+        if (bytes.last() == '\n'.code.toByte()) return
+        val keep = bytes.lastIndexOf('\n'.code.toByte()) + 1
+        file.writeBytes(bytes.copyOf(keep))
     }
 
     private fun clips(set: String): List<JSONObject> {
