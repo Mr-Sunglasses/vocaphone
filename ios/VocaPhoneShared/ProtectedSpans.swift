@@ -61,6 +61,15 @@ struct ProtectedSpans {
         pattern: "\u{E000}(\\d+)\u{E001}"
     )
 
+    /// Where the spans `mask` would hide sit in `text`, in UTF-16 units. For
+    /// checks that read the text in place rather than rewrite it, such as
+    /// Writing check's rules.
+    static func ranges(_ text: String) -> [NSRange] {
+        guard let expression else { return [] }
+        let length = (text as NSString).length
+        return expression.matches(in: text, range: NSRange(location: 0, length: length)).map(\.range)
+    }
+
     static func mask(_ text: String) -> ProtectedSpans {
         guard let expression else { return ProtectedSpans(text: text, tokens: []) }
         let string = text as NSString

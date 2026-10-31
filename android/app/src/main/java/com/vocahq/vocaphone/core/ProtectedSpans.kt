@@ -77,6 +77,13 @@ class ProtectedSpans private constructor(
 
         private val PLACEHOLDER = Regex("$OPEN(\\d+)$CLOSE")
 
+        /**
+         * Where the spans [mask] would hide sit in [text], as UTF-16 offsets
+         * `[start, end)`. For checks that read the text in place rather than
+         * rewrite it, such as Writing check's rules.
+         */
+        fun ranges(text: String): List<IntRange> = SPANS.findAll(text).map { it.range }.toList()
+
         fun mask(text: String): ProtectedSpans {
             val matches = SPANS.findAll(text).toList()
             var result = text

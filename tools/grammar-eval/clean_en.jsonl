@@ -1,0 +1,300 @@
+{"input": "Hey, are you free for lunch tomorrow?", "expected": "Hey, are you free for lunch tomorrow?"}
+{"input": "Can you send me the slides before the meeting?", "expected": "Can you send me the slides before the meeting?"}
+{"input": "I'll be there in ten minutes.", "expected": "I'll be there in ten minutes."}
+{"input": "Thanks for the update, that's really helpful.", "expected": "Thanks for the update, that's really helpful."}
+{"input": "No worries, take your time.", "expected": "No worries, take your time."}
+{"input": "I think we should push the launch to Friday.", "expected": "I think we should push the launch to Friday."}
+{"input": "Let me know if you need anything else.", "expected": "Let me know if you need anything else."}
+{"input": "Sounds good to me!", "expected": "Sounds good to me!"}
+{"input": "The meeting got moved to 3 pm.", "expected": "The meeting got moved to 3 pm."}
+{"input": "I'm running a bit late, sorry.", "expected": "I'm running a bit late, sorry."}
+{"input": "Did you see the game last night?", "expected": "Did you see the game last night?"}
+{"input": "We're out of milk again.", "expected": "We're out of milk again."}
+{"input": "Could you pick up the kids at five?", "expected": "Could you pick up the kids at five?"}
+{"input": "I'd rather not talk about it right now.", "expected": "I'd rather not talk about it right now."}
+{"input": "Their house is the blue one on the corner.", "expected": "Their house is the blue one on the corner."}
+{"input": "There's a coffee shop near the station.", "expected": "There's a coffee shop near the station."}
+{"input": "They're coming over after dinner.", "expected": "They're coming over after dinner."}
+{"input": "It's going to rain all weekend.", "expected": "It's going to rain all weekend."}
+{"input": "The company changed its logo last year.", "expected": "The company changed its logo last year."}
+{"input": "Who's bringing the snacks?", "expected": "Who's bringing the snacks?"}
+{"input": "Whose turn is it to cook?", "expected": "Whose turn is it to cook?"}
+{"input": "Were you at the party on Saturday?", "expected": "Were you at the party on Saturday?"}
+{"input": "We were stuck in traffic for an hour.", "expected": "We were stuck in traffic for an hour."}
+{"input": "Where did you park the car?", "expected": "Where did you park the car?"}
+{"input": "You're welcome to stay as long as you like.", "expected": "You're welcome to stay as long as you like."}
+{"input": "Your right hand is bleeding, let me get a bandage.", "expected": "Your right hand is bleeding, let me get a bandage."}
+{"input": "Is that your phone ringing?", "expected": "Is that your phone ringing?"}
+{"input": "I could have sworn I left my keys here.", "expected": "I could have sworn I left my keys here."}
+{"input": "She should have called first.", "expected": "She should have called first."}
+{"input": "He would have loved this place.", "expected": "He would have loved this place."}
+{"input": "I have less time than I thought.", "expected": "I have less time than I thought."}
+{"input": "There were fewer people than last year.", "expected": "There were fewer people than last year."}
+{"input": "I used to live in Chicago.", "expected": "I used to live in Chicago."}
+{"input": "I'm used to waking up early.", "expected": "I'm used to waking up early."}
+{"input": "It's used to cut wood.", "expected": "It's used to cut wood."}
+{"input": "Between you and me, I didn't like the movie.", "expected": "Between you and me, I didn't like the movie."}
+{"input": "He and I went to the same school.", "expected": "He and I went to the same school."}
+{"input": "Sarah and I are planning a trip.", "expected": "Sarah and I are planning a trip."}
+{"input": "What kind of music do you like?", "expected": "What kind of music do you like?"}
+{"input": "That sort of thing happens all the time.", "expected": "That sort of thing happens all the time."}
+{"input": "I'm better than I was yesterday.", "expected": "I'm better than I was yesterday."}
+{"input": "This one is more expensive than the other.", "expected": "This one is more expensive than the other."}
+{"input": "We ate, then we went for a walk.", "expected": "We ate, then we went for a walk."}
+{"input": "Back then, nobody had a phone.", "expected": "Back then, nobody had a phone."}
+{"input": "I want to come too.", "expected": "I want to come too."}
+{"input": "That's too much sugar for me.", "expected": "That's too much sugar for me."}
+{"input": "Two coffees, please.", "expected": "Two coffees, please."}
+{"input": "I'll lose my mind if this keeps up.", "expected": "I'll lose my mind if this keeps up."}
+{"input": "My jeans are a little loose.", "expected": "My jeans are a little loose."}
+{"input": "The weather is perfect today.", "expected": "The weather is perfect today."}
+{"input": "I don't know whether to laugh or cry.", "expected": "I don't know whether to laugh or cry."}
+{"input": "We passed the exit a mile ago.", "expected": "We passed the exit a mile ago."}
+{"input": "In the past, we did things differently.", "expected": "In the past, we did things differently."}
+{"input": "I knew it would work.", "expected": "I knew it would work."}
+{"input": "That's a whole new idea.", "expected": "That's a whole new idea."}
+{"input": "Can you hear me now?", "expected": "Can you hear me now?"}
+{"input": "Come over here and look at this.", "expected": "Come over here and look at this."}
+{"input": "I need to buy groceries on the way home.", "expected": "I need to buy groceries on the way home."}
+{"input": "Bye for now!", "expected": "Bye for now!"}
+{"input": "I'll write the email tonight.", "expected": "I'll write the email tonight."}
+{"input": "You're right, I was wrong.", "expected": "You're right, I was wrong."}
+{"input": "Please accept my apologies.", "expected": "Please accept my apologies."}
+{"input": "Everyone except Tom showed up.", "expected": "Everyone except Tom showed up."}
+{"input": "The new policy will affect everyone.", "expected": "The new policy will affect everyone."}
+{"input": "The effect was immediate.", "expected": "The effect was immediate."}
+{"input": "I don't have any money on me.", "expected": "I don't have any money on me."}
+{"input": "I didn't do anything wrong.", "expected": "I didn't do anything wrong."}
+{"input": "Nobody told me about the change.", "expected": "Nobody told me about the change."}
+{"input": "This is the easiest way to get there.", "expected": "This is the easiest way to get there."}
+{"input": "It was the best day of my life.", "expected": "It was the best day of my life."}
+{"input": "I have fewer excuses than you.", "expected": "I have fewer excuses than you."}
+{"input": "I enjoy cooking on weekends.", "expected": "I enjoy cooking on weekends."}
+{"input": "I look forward to seeing you.", "expected": "I look forward to seeing you."}
+{"input": "Thanks for inviting me.", "expected": "Thanks for inviting me."}
+{"input": "Me too.", "expected": "Me too."}
+{"input": "It's me.", "expected": "It's me."}
+{"input": "Can I borrow your charger?", "expected": "Can I borrow your charger?"}
+{"input": "I'll lend you my umbrella.", "expected": "I'll lend you my umbrella."}
+{"input": "She can sing really well.", "expected": "She can sing really well."}
+{"input": "I will call you later.", "expected": "I will call you later."}
+{"input": "I didn't know that.", "expected": "I didn't know that."}
+{"input": "Did you go to the party?", "expected": "Did you go to the party?"}
+{"input": "He doesn't like it.", "expected": "He doesn't like it."}
+{"input": "I have eaten already.", "expected": "I have eaten already."}
+{"input": "He has come back.", "expected": "He has come back."}
+{"input": "The cake was delicious.", "expected": "The cake was delicious."}
+{"input": "The dog barked at the mailman.", "expected": "The dog barked at the mailman."}
+{"input": "The project was finished on time.", "expected": "The project was finished on time."}
+{"input": "The report was written by the whole team.", "expected": "The report was written by the whole team."}
+{"input": "He seems really tired today.", "expected": "He seems really tired today."}
+{"input": "This is very important, please read it.", "expected": "This is very important, please read it."}
+{"input": "I just finished the report.", "expected": "I just finished the report."}
+{"input": "It just works.", "expected": "It just works."}
+{"input": "Just a heads up, the office is closed Monday.", "expected": "Just a heads up, the office is closed Monday."}
+{"input": "I think it's a good idea.", "expected": "I think it's a good idea."}
+{"input": "Maybe we can try again next week.", "expected": "Maybe we can try again next week."}
+{"input": "Honestly, I loved it.", "expected": "Honestly, I loved it."}
+{"input": "lol that's hilarious", "expected": "lol that's hilarious"}
+{"input": "ok see you at 8", "expected": "ok see you at 8"}
+{"input": "omg I can't believe it", "expected": "omg I can't believe it"}
+{"input": "brb grabbing coffee", "expected": "brb grabbing coffee"}
+{"input": "yeah that works for me", "expected": "yeah that works for me"}
+{"input": "nah I'm good, thanks", "expected": "nah I'm good, thanks"}
+{"input": "haha no way", "expected": "haha no way"}
+{"input": "gonna be late, sorry", "expected": "gonna be late, sorry"}
+{"input": "idk what happened tbh", "expected": "idk what happened tbh"}
+{"input": "can't wait for the weekend", "expected": "can't wait for the weekend"}
+{"input": "Happy birthday! Hope you have a great day.", "expected": "Happy birthday! Hope you have a great day."}
+{"input": "Congrats on the new job!", "expected": "Congrats on the new job!"}
+{"input": "Good luck with the interview tomorrow.", "expected": "Good luck with the interview tomorrow."}
+{"input": "Drive safe and text me when you get home.", "expected": "Drive safe and text me when you get home."}
+{"input": "Don't forget to water the plants.", "expected": "Don't forget to water the plants."}
+{"input": "I left the keys under the mat.", "expected": "I left the keys under the mat."}
+{"input": "The package should arrive by Thursday.", "expected": "The package should arrive by Thursday."}
+{"input": "My flight lands at 7:45 tomorrow morning.", "expected": "My flight lands at 7:45 tomorrow morning."}
+{"input": "Check example.com for the details.", "expected": "Check example.com for the details."}
+{"input": "Email me at jane@example.com when you can.", "expected": "Email me at jane@example.com when you can."}
+{"input": "The total came to $42.50 with tip.", "expected": "The total came to $42.50 with tip."}
+{"input": "Meet me at gate B12.", "expected": "Meet me at gate B12."}
+{"input": "The deadline is March 31st.", "expected": "The deadline is March 31st."}
+{"input": "We need 3.5 kg of flour.", "expected": "We need 3.5 kg of flour."}
+{"input": "He works at NASA now.", "expected": "He works at NASA now."}
+{"input": "I bought a new iPhone yesterday.", "expected": "I bought a new iPhone yesterday."}
+{"input": "Let's grab tacos on Tuesday.", "expected": "Let's grab tacos on Tuesday."}
+{"input": "Are we still on for Friday?", "expected": "Are we still on for Friday?"}
+{"input": "I'm not sure what you mean.", "expected": "I'm not sure what you mean."}
+{"input": "Could you explain that again?", "expected": "Could you explain that again?"}
+{"input": "I'm so proud of you.", "expected": "I'm so proud of you."}
+{"input": "That was a close call.", "expected": "That was a close call."}
+{"input": "It is what it is.", "expected": "It is what it is."}
+{"input": "Better late than never.", "expected": "Better late than never."}
+{"input": "I had had enough by then.", "expected": "I had had enough by then."}
+{"input": "That that is, is.", "expected": "That that is, is."}
+{"input": "The more, the merrier.", "expected": "The more, the merrier."}
+{"input": "Long time no see!", "expected": "Long time no see!"}
+{"input": "I've been meaning to call you.", "expected": "I've been meaning to call you."}
+{"input": "We'll figure it out together.", "expected": "We'll figure it out together."}
+{"input": "I'm on my way.", "expected": "I'm on my way."}
+{"input": "The kids are asleep finally.", "expected": "The kids are asleep finally."}
+{"input": "Do you want to grab a drink later?", "expected": "Do you want to grab a drink later?"}
+{"input": "I already paid the rent.", "expected": "I already paid the rent."}
+{"input": "She speaks three languages.", "expected": "She speaks three languages."}
+{"input": "They live near the beach.", "expected": "They live near the beach."}
+{"input": "He forgot his umbrella again.", "expected": "He forgot his umbrella again."}
+{"input": "The printer is out of paper.", "expected": "The printer is out of paper."}
+{"input": "I found your wallet in the car.", "expected": "I found your wallet in the car."}
+{"input": "Please close the door behind you.", "expected": "Please close the door behind you."}
+{"input": "Turn left at the next light.", "expected": "Turn left at the next light."}
+{"input": "I'll take the train instead.", "expected": "I'll take the train instead."}
+{"input": "We should leave by six to beat traffic.", "expected": "We should leave by six to beat traffic."}
+{"input": "I'm allergic to peanuts.", "expected": "I'm allergic to peanuts."}
+{"input": "The soup needs more salt.", "expected": "The soup needs more salt."}
+{"input": "Did anyone feed the cat?", "expected": "Did anyone feed the cat?"}
+{"input": "I can't find my glasses anywhere.", "expected": "I can't find my glasses anywhere."}
+{"input": "I'll be working from home tomorrow.", "expected": "I'll be working from home tomorrow."}
+{"input": "The Wi-Fi password is on the fridge.", "expected": "The Wi-Fi password is on the fridge."}
+{"input": "Let me check my calendar.", "expected": "Let me check my calendar."}
+{"input": "I'm free after 4.", "expected": "I'm free after 4."}
+{"input": "We had a great time, thank you!", "expected": "We had a great time, thank you!"}
+{"input": "The baby finally slept through the night.", "expected": "The baby finally slept through the night."}
+{"input": "I'm thinking about getting a dog.", "expected": "I'm thinking about getting a dog."}
+{"input": "Have you tried the new pizza place?", "expected": "Have you tried the new pizza place?"}
+{"input": "The traffic was terrible this morning.", "expected": "The traffic was terrible this morning."}
+{"input": "I'll send you the link.", "expected": "I'll send you the link."}
+{"input": "Can you resend the invite?", "expected": "Can you resend the invite?"}
+{"input": "I agree with you completely.", "expected": "I agree with you completely."}
+{"input": "That makes sense.", "expected": "That makes sense."}
+{"input": "I'm sorry to hear that.", "expected": "I'm sorry to hear that."}
+{"input": "Feel better soon!", "expected": "Feel better soon!"}
+{"input": "I'm heading out now.", "expected": "I'm heading out now."}
+{"input": "See you soon.", "expected": "See you soon."}
+{"input": "Talk to you later.", "expected": "Talk to you later."}
+{"input": "Call me when you're free.", "expected": "Call me when you're free."}
+{"input": "I'll think about it.", "expected": "I'll think about it."}
+{"input": "Not today, maybe tomorrow.", "expected": "Not today, maybe tomorrow."}
+{"input": "It's been a long week.", "expected": "It's been a long week."}
+{"input": "Let's keep it simple.", "expected": "Let's keep it simple."}
+{"input": "I appreciate your help with this.", "expected": "I appreciate your help with this."}
+{"input": "Please review the attached document.", "expected": "Please review the attached document."}
+{"input": "I wanted to follow up on my last email.", "expected": "I wanted to follow up on my last email."}
+{"input": "Kind regards, Priya", "expected": "Kind regards, Priya"}
+{"input": "Best, Mohammed", "expected": "Best, Mohammed"}
+{"input": "Dear Mr. Lee, thank you for your time today.", "expected": "Dear Mr. Lee, thank you for your time today."}
+{"input": "Our team will reach out next week.", "expected": "Our team will reach out next week."}
+{"input": "We are pleased to offer you the position.", "expected": "We are pleased to offer you the position."}
+{"input": "The invoice is attached for your records.", "expected": "The invoice is attached for your records."}
+{"input": "Please let us know if you have any questions.", "expected": "Please let us know if you have any questions."}
+{"input": "I would like to schedule a call.", "expected": "I would like to schedule a call."}
+{"input": "The results were better than expected.", "expected": "The results were better than expected."}
+{"input": "Sales grew by 12% last quarter.", "expected": "Sales grew by 12% last quarter."}
+{"input": "The server went down at noon.", "expected": "The server went down at noon."}
+{"input": "Restart the app and try again.", "expected": "Restart the app and try again."}
+{"input": "I fixed the bug in the login screen.", "expected": "I fixed the bug in the login screen."}
+{"input": "The build passed on the second try.", "expected": "The build passed on the second try."}
+{"input": "Merge the branch when you're ready.", "expected": "Merge the branch when you're ready."}
+{"input": "The tests are flaky on CI.", "expected": "The tests are flaky on CI."}
+{"input": "Let's ship it.", "expected": "Let's ship it."}
+{"input": "It works on my machine.", "expected": "It works on my machine."}
+{"input": "The update is live now.", "expected": "The update is live now."}
+{"input": "I'll be offline for an hour.", "expected": "I'll be offline for an hour."}
+{"input": "Thanks again for everything.", "expected": "Thanks again for everything."}
+{"input": "Have a nice weekend!", "expected": "Have a nice weekend!"}
+{"input": "Love you, see you soon.", "expected": "Love you, see you soon."}
+{"input": "Miss you already.", "expected": "Miss you already."}
+{"input": "Good night, sleep well.", "expected": "Good night, sleep well."}
+{"input": "Morning! Coffee?", "expected": "Morning! Coffee?"}
+{"input": "On my way, five minutes.", "expected": "On my way, five minutes."}
+{"input": "Running late, start without me.", "expected": "Running late, start without me."}
+{"input": "Which one do you prefer?", "expected": "Which one do you prefer?"}
+{"input": "How was your trip?", "expected": "How was your trip?"}
+{"input": "What time is it there?", "expected": "What time is it there?"}
+{"input": "Why did they cancel the show?", "expected": "Why did they cancel the show?"}
+{"input": "When does the store open?", "expected": "When does the store open?"}
+{"input": "Who called earlier?", "expected": "Who called earlier?"}
+{"input": "How much does it cost?", "expected": "How much does it cost?"}
+{"input": "Is it okay if I bring a friend?", "expected": "Is it okay if I bring a friend?"}
+{"input": "Would you mind closing the window?", "expected": "Would you mind closing the window?"}
+{"input": "Shall we order pizza?", "expected": "Shall we order pizza?"}
+{"input": "May I ask a question?", "expected": "May I ask a question?"}
+{"input": "Might be a good idea to leave early.", "expected": "Might be a good idea to leave early."}
+{"input": "Must be nice!", "expected": "Must be nice!"}
+{"input": "I wonder what happened to him.", "expected": "I wonder what happened to him."}
+{"input": "It's not my fault.", "expected": "It's not my fault."}
+{"input": "It wasn't me.", "expected": "It wasn't me."}
+{"input": "She's been there before.", "expected": "She's been there before."}
+{"input": "He's never been to Paris.", "expected": "He's never been to Paris."}
+{"input": "We've already eaten.", "expected": "We've already eaten."}
+{"input": "They've just left.", "expected": "They've just left."}
+{"input": "I'd love to come.", "expected": "I'd love to come."}
+{"input": "You'd better hurry.", "expected": "You'd better hurry."}
+{"input": "He'd already gone home.", "expected": "He'd already gone home."}
+{"input": "It'll be fine.", "expected": "It'll be fine."}
+{"input": "That'll do.", "expected": "That'll do."}
+{"input": "Who'd have thought?", "expected": "Who'd have thought?"}
+{"input": "There's no place like home.", "expected": "There's no place like home."}
+{"input": "Here's the thing.", "expected": "Here's the thing."}
+{"input": "What's up?", "expected": "What's up?"}
+{"input": "How's it going?", "expected": "How's it going?"}
+{"input": "Let's go.", "expected": "Let's go."}
+{"input": "Don't worry about it.", "expected": "Don't worry about it."}
+{"input": "Doesn't matter.", "expected": "Doesn't matter."}
+{"input": "Didn't see that coming.", "expected": "Didn't see that coming."}
+{"input": "Isn't it beautiful?", "expected": "Isn't it beautiful?"}
+{"input": "Aren't you coming?", "expected": "Aren't you coming?"}
+{"input": "Wasn't that fun?", "expected": "Wasn't that fun?"}
+{"input": "Weren't they here yesterday?", "expected": "Weren't they here yesterday?"}
+{"input": "Hasn't she called?", "expected": "Hasn't she called?"}
+{"input": "Haven't you heard?", "expected": "Haven't you heard?"}
+{"input": "Hadn't we met before?", "expected": "Hadn't we met before?"}
+{"input": "Couldn't be happier.", "expected": "Couldn't be happier."}
+{"input": "Wouldn't miss it.", "expected": "Wouldn't miss it."}
+{"input": "Shouldn't take long.", "expected": "Shouldn't take long."}
+{"input": "Mustn't grumble.", "expected": "Mustn't grumble."}
+{"input": "The children's toys are everywhere.", "expected": "The children's toys are everywhere."}
+{"input": "James's car is in the shop.", "expected": "James's car is in the shop."}
+{"input": "The dogs' bowls are empty.", "expected": "The dogs' bowls are empty."}
+{"input": "Its battery died, so I charged it.", "expected": "Its battery died, so I charged it."}
+{"input": "The team lost its best player.", "expected": "The team lost its best player."}
+{"input": "It's raining, bring a jacket.", "expected": "It's raining, bring a jacket."}
+{"input": "It's been ages!", "expected": "It's been ages!"}
+{"input": "You're the best.", "expected": "You're the best."}
+{"input": "Your idea is great.", "expected": "Your idea is great."}
+{"input": "They're right behind you.", "expected": "They're right behind you."}
+{"input": "Their dog is so friendly.", "expected": "Their dog is so friendly."}
+{"input": "There it is!", "expected": "There it is!"}
+{"input": "Than what?", "expected": "Than what?"}
+{"input": "Then what?", "expected": "Then what?"}
+{"input": "I lay down for a nap.", "expected": "I lay down for a nap."}
+{"input": "I'm lying on the couch.", "expected": "I'm lying on the couch."}
+{"input": "Lay the book on the table.", "expected": "Lay the book on the table."}
+{"input": "The hen laid an egg.", "expected": "The hen laid an egg."}
+{"input": "He lied about it.", "expected": "He lied about it."}
+{"input": "I have to choose between them.", "expected": "I have to choose between them."}
+{"input": "I chose the red one.", "expected": "I chose the red one."}
+{"input": "The principal called a meeting.", "expected": "The principal called a meeting."}
+{"input": "It's a matter of principle.", "expected": "It's a matter of principle."}
+{"input": "Peace and quiet at last.", "expected": "Peace and quiet at last."}
+{"input": "A piece of cake, please.", "expected": "A piece of cake, please."}
+{"input": "I'm quite sure about that.", "expected": "I'm quite sure about that."}
+{"input": "We'll go through it together.", "expected": "We'll go through it together."}
+{"input": "She threw the ball.", "expected": "She threw the ball."}
+{"input": "Read it out loud.", "expected": "Read it out loud."}
+{"input": "Advice is cheap.", "expected": "Advice is cheap."}
+{"input": "I'd advise against it.", "expected": "I'd advise against it."}
+{"input": "Take a deep breath.", "expected": "Take a deep breath."}
+{"input": "Breathe in slowly.", "expected": "Breathe in slowly."}
+{"input": "The desert is beautiful at night.", "expected": "The desert is beautiful at night."}
+{"input": "What's for dessert?", "expected": "What's for dessert?"}
+{"input": "Hit the brakes!", "expected": "Hit the brakes!"}
+{"input": "Let's take a break.", "expected": "Let's take a break."}
+{"input": "Make sure you lock the door.", "expected": "Make sure you lock the door."}
+{"input": "Did you insure the car?", "expected": "Did you insure the car?"}
+{"input": "That's a nice compliment.", "expected": "That's a nice compliment."}
+{"input": "The colors complement each other.", "expected": "The colors complement each other."}
+{"input": "Every single time!", "expected": "Every single time!"}
+{"input": "Each and every one of them deserves it.", "expected": "Each and every one of them deserves it."}
+{"input": "In order to apply, fill out the form.", "expected": "In order to apply, fill out the form."}
+{"input": "I'll have the salmon, please.", "expected": "I'll have the salmon, please."}
+{"input": "Nobody's perfect.", "expected": "Nobody's perfect."}
+{"input": "It doesn't matter to me.", "expected": "It doesn't matter to me."}

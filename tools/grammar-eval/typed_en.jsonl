@@ -1,0 +1,195 @@
+{"input": "teh meeting is at 3", "expected": "the meeting is at 3"}
+{"input": "i think your right", "expected": "I think you're right"}
+{"input": "your welcome!", "expected": "you're welcome!"}
+{"input": "its going to rain later", "expected": "it's going to rain later"}
+{"input": "the dog wagged it's tail", "expected": "the dog wagged its tail"}
+{"input": "their going to be late", "expected": "they're going to be late"}
+{"input": "I left my jacket over their.", "expected": "I left my jacket over there."}
+{"input": "who's car is this?", "expected": "whose car is this?"}
+{"input": "whose coming tonight?", "expected": "who's coming tonight?"}
+{"input": "were going to the beach", "expected": "we're going to the beach"}
+{"input": "she can sings really well", "expected": "she can sing really well"}
+{"input": "I will calls you later", "expected": "I will call you later"}
+{"input": "I didnt knew that", "expected": "I didn't know that"}
+{"input": "did you went to the party?", "expected": "did you go to the party?"}
+{"input": "he doesn't likes it", "expected": "he doesn't like it"}
+{"input": "I have ate already", "expected": "I have eaten already"}
+{"input": "he has came back", "expected": "he has come back"}
+{"input": "I don't have no money", "expected": "I don't have any money"}
+{"input": "I didn't do nothing", "expected": "I didn't do anything"}
+{"input": "this is the most easiest way", "expected": "this is the easiest way"}
+{"input": "I have less friends than you", "expected": "I have fewer friends than you"}
+{"input": "I enjoy to cook", "expected": "I enjoy cooking"}
+{"input": "I look forward to see you", "expected": "I look forward to seeing you"}
+{"input": "thanks for invite me", "expected": "thanks for inviting me"}
+{"input": "im used to wake up early", "expected": "I'm used to waking up early"}
+{"input": "between you and I its fine", "expected": "between you and me it's fine"}
+{"input": "me and him went to the game", "expected": "he and I went to the game"}
+{"input": "I could of told you", "expected": "I could have told you"}
+{"input": "she would of known", "expected": "she would have known"}
+{"input": "I'd rather walk then drive", "expected": "I'd rather walk than drive"}
+{"input": "she is taller then me", "expected": "she is taller than me"}
+{"input": "dont worry about it", "expected": "don't worry about it"}
+{"input": "thats so funny", "expected": "that's so funny"}
+{"input": "I definately agree", "expected": "I definitely agree"}
+{"input": "I recieved your message", "expected": "I received your message"}
+{"input": "see you tommorow", "expected": "see you tomorrow"}
+{"input": "I got alot of work", "expected": "I got a lot of work"}
+{"input": "he dont know", "expected": "he doesn't know"}
+{"input": "she go to school every day", "expected": "she goes to school every day"}
+{"input": "we was at the park", "expected": "we were at the park"}
+{"input": "I need a umbrella", "expected": "I need an umbrella"}
+{"input": "he bought an new car", "expected": "he bought a new car"}
+{"input": "the dogs barks all night", "expected": "the dogs bark all night"}
+{"input": "my friends lives in Denver", "expected": "my friends live in Denver"}
+{"input": "can you grab me a orange?", "expected": "can you grab me an orange?"}
+{"input": "I seen that movie", "expected": "I saw that movie"}
+{"input": "he brung his guitar", "expected": "he brought his guitar"}
+{"input": "i has a apple", "expected": "I have an apple"}
+{"input": "I want go home", "expected": "I want to go home"}
+{"input": "I going to the store", "expected": "I'm going to the store"}
+{"input": "she coming over later", "expected": "she's coming over later"}
+{"input": "where you going?", "expected": "where are you going?"}
+{"input": "I'm going to store", "expected": "I'm going to the store"}
+{"input": "Did you finished the report?", "expected": "Did you finish the report?"}
+{"input": "He doesn't wants to come", "expected": "He doesn't want to come"}
+{"input": "They didn't came", "expected": "They didn't come"}
+{"input": "I can't went today", "expected": "I can't go today"}
+{"input": "We should goes now", "expected": "We should go now"}
+{"input": "I'll see you their", "expected": "I'll see you there"}
+{"input": "Your so funny", "expected": "You're so funny"}
+{"input": "Its not fair", "expected": "It's not fair"}
+{"input": "Their is a problem", "expected": "There is a problem"}
+{"input": "The the meeting is cancelled", "expected": "The meeting is cancelled"}
+{"input": "I was laying on the couch", "expected": "I was lying on the couch"}
+{"input": "lets meet at 5", "expected": "let's meet at 5"}
+{"input": "I'm so tired lol", "expected": "I'm so tired lol"}
+{"input": "we need to talk abotu it", "expected": "we need to talk about it"}
+{"input": "can u send me the file", "expected": "can u send me the file"}
+{"input": "whats the plan for tonight", "expected": "what's the plan for tonight"}
+{"input": "I wil be there soon", "expected": "I will be there soon"}
+{"input": "she has went home", "expected": "she has gone home"}
+{"input": "I hope your doing well", "expected": "I hope you're doing well"}
+{"input": "thank you for you help", "expected": "thank you for your help"}
+{"input": "I'm looking forward to hear from you", "expected": "I'm looking forward to hearing from you"}
+{"input": "he is more taller than me", "expected": "he is taller than me"}
+{"input": "this is more better", "expected": "this is better"}
+{"input": "I didn't saw it", "expected": "I didn't see it"}
+{"input": "does she knows about it?", "expected": "does she know about it?"}
+{"input": "I should of called", "expected": "I should have called"}
+{"input": "we're going to there house", "expected": "we're going to their house"}
+{"input": "they're car broke down", "expected": "their car broke down"}
+{"input": "I'm going to by groceries", "expected": "I'm going to buy groceries"}
+{"input": "can you here me?", "expected": "can you hear me?"}
+{"input": "I new it was true", "expected": "I knew it was true"}
+{"input": "I won the hole game", "expected": "I won the whole game"}
+{"input": "the whether is nice", "expected": "the weather is nice"}
+{"input": "I'm going to right an email", "expected": "I'm going to write an email"}
+{"input": "who's turn is it?", "expected": "whose turn is it?"}
+{"input": "I'll except the offer", "expected": "I'll accept the offer"}
+{"input": "it effects everyone", "expected": "it affects everyone"}
+{"input": "don't loose your keys", "expected": "don't lose your keys"}
+{"input": "we past the exit", "expected": "we passed the exit"}
+{"input": "I am agree with you", "expected": "I agree with you"}
+{"input": "he is work at the bank", "expected": "he works at the bank"}
+{"input": "I am live in Boston", "expected": "I live in Boston"}
+{"input": "she suggested to go out", "expected": "she suggested going out"}
+{"input": "thanks for help me", "expected": "thanks for helping me"}
+{"input": "I avoid to drive at night", "expected": "I avoid driving at night"}
+{"input": "I hate when this happen", "expected": "I hate when this happens"}
+{"input": "everyone are here", "expected": "everyone is here"}
+{"input": "nobody know the answer", "expected": "nobody knows the answer"}
+{"input": "there is many reasons", "expected": "there are many reasons"}
+{"input": "there was three of us", "expected": "there were three of us"}
+{"input": "the list of items are long", "expected": "the list of items is long"}
+{"input": "each of them have a car", "expected": "each of them has a car"}
+{"input": "one of my friend is here", "expected": "one of my friends is here"}
+{"input": "I has been waiting", "expected": "I have been waiting"}
+{"input": "we has a meeting", "expected": "we have a meeting"}
+{"input": "you was right", "expected": "you were right"}
+{"input": "they is coming", "expected": "they are coming"}
+{"input": "he don't care", "expected": "he doesn't care"}
+{"input": "it don't matter", "expected": "it doesn't matter"}
+{"input": "she don't like it", "expected": "she doesn't like it"}
+{"input": "I'm exited for the trip", "expected": "I'm excited for the trip"}
+{"input": "I'm so exiting", "expected": "I'm so excited"}
+{"input": "the resturant was great", "expected": "the restaurant was great"}
+{"input": "it was realy good", "expected": "it was really good"}
+{"input": "I'm not sure wich one", "expected": "I'm not sure which one"}
+{"input": "thank you so much for you're help", "expected": "thank you so much for your help"}
+{"input": "please let me know weather you can come", "expected": "please let me know whether you can come"}
+{"input": "he's a better player then me", "expected": "he's a better player than me"}
+{"input": "I'll call you than", "expected": "I'll call you then"}
+{"input": "it's to late", "expected": "it's too late"}
+{"input": "I want to come to", "expected": "I want to come too"}
+{"input": "that's to much", "expected": "that's too much"}
+{"input": "I have two many emails", "expected": "I have too many emails"}
+{"input": "we have a lot of thing to do", "expected": "we have a lot of things to do"}
+{"input": "I bought two book", "expected": "I bought two books"}
+{"input": "there are many problem", "expected": "there are many problems"}
+{"input": "she have two cats", "expected": "she has two cats"}
+{"input": "my sister live in London", "expected": "my sister lives in London"}
+{"input": "the bus come at 8", "expected": "the bus comes at 8"}
+{"input": "he always forget his keys", "expected": "he always forgets his keys"}
+{"input": "I seen him yesterday", "expected": "I saw him yesterday"}
+{"input": "we done it already", "expected": "we did it already"}
+{"input": "I been there before", "expected": "I've been there before"}
+{"input": "she been working hard", "expected": "she's been working hard"}
+{"input": "I goes to the gym", "expected": "I go to the gym"}
+{"input": "they goes home", "expected": "they go home"}
+{"input": "you is the best", "expected": "you are the best"}
+{"input": "I'm waiting for you since an hour", "expected": "I've been waiting for you for an hour"}
+{"input": "can you borrow me your pen?", "expected": "can you lend me your pen?"}
+{"input": "I'm agree", "expected": "I agree"}
+{"input": "he speak English very good", "expected": "he speaks English very well"}
+{"input": "I didn't knew him", "expected": "I didn't know him"}
+{"input": "why you didn't call?", "expected": "why didn't you call?"}
+{"input": "how much it costs?", "expected": "how much does it cost?"}
+{"input": "what you want for dinner?", "expected": "what do you want for dinner?"}
+{"input": "I very like it", "expected": "I really like it"}
+{"input": "I'm boring in this meeting", "expected": "I'm bored in this meeting"}
+{"input": "the movie was very bored", "expected": "the movie was very boring"}
+{"input": "I'm interesting in the job", "expected": "I'm interested in the job"}
+{"input": "he is interesting in music", "expected": "he is interested in music"}
+{"input": "I'll meet you in monday", "expected": "I'll meet you on Monday"}
+{"input": "see you on the morning", "expected": "see you in the morning"}
+{"input": "I'm good in math", "expected": "I'm good at math"}
+{"input": "it depends of the weather", "expected": "it depends on the weather"}
+{"input": "I'm married with him", "expected": "I'm married to him"}
+{"input": "we discussed about it", "expected": "we discussed it"}
+{"input": "call me when you will arrive", "expected": "call me when you arrive"}
+{"input": "if I will see him I'll tell him", "expected": "if I see him I'll tell him"}
+{"input": "I'm here since Monday", "expected": "I've been here since Monday"}
+{"input": "I've seen him yesterday", "expected": "I saw him yesterday"}
+{"input": "she said me the truth", "expected": "she told me the truth"}
+{"input": "he explained me the problem", "expected": "he explained the problem to me"}
+{"input": "I have a doubt about this", "expected": "I have a question about this"}
+{"input": "please revert back to me", "expected": "please get back to me"}
+{"input": "I'll do it on tomorrow", "expected": "I'll do it tomorrow"}
+{"input": "let's discuss about the plan", "expected": "let's discuss the plan"}
+{"input": "I'm having a headache", "expected": "I have a headache"}
+{"input": "I'm knowing the answer", "expected": "I know the answer"}
+{"input": "this informations are useful", "expected": "this information is useful"}
+{"input": "I need some advices", "expected": "I need some advice"}
+{"input": "the furnitures are new", "expected": "the furniture is new"}
+{"input": "I have many homeworks", "expected": "I have a lot of homework"}
+{"input": "he give me the book", "expected": "he gave me the book"}
+{"input": "yesterday I go to the mall", "expected": "yesterday I went to the mall"}
+{"input": "last week we visit Paris", "expected": "last week we visited Paris"}
+{"input": "I was very tired so I sleep early", "expected": "I was very tired so I slept early"}
+{"input": "she buyed a new dress", "expected": "she bought a new dress"}
+{"input": "he catched the ball", "expected": "he caught the ball"}
+{"input": "I teached him to swim", "expected": "I taught him to swim"}
+{"input": "we eated pizza", "expected": "we ate pizza"}
+{"input": "they runned fast", "expected": "they ran fast"}
+{"input": "I thinked about it", "expected": "I thought about it"}
+{"input": "the childs are playing", "expected": "the children are playing"}
+{"input": "two mans came in", "expected": "two men came in"}
+{"input": "the womans are here", "expected": "the women are here"}
+{"input": "my foots hurt", "expected": "my feet hurt"}
+{"input": "I brushed my tooths", "expected": "I brushed my teeth"}
+{"input": "a hour ago", "expected": "an hour ago"}
+{"input": "an university", "expected": "a university"}
+{"input": "a honest man", "expected": "an honest man"}
+{"input": "an useful tip", "expected": "a useful tip"}
+{"input": "he is a engineer", "expected": "he is an engineer"}

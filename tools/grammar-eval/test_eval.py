@@ -5,7 +5,7 @@
 
 import unittest
 
-from eval import damaged, edits
+from eval import as_typed, damaged, edits
 
 
 class DamageTests(unittest.TestCase):
@@ -27,6 +27,26 @@ class EditTests(unittest.TestCase):
 
     def test_identical_text_has_no_edits(self):
         self.assertEqual(set(), edits("All good.", "All good."))
+
+
+class TypedTests(unittest.TestCase):
+    """`as_typed` filters word edits the way `WritingCheck.offeredOnTypedText` does."""
+
+    def test_a_mark_replacing_one_the_text_has_is_kept(self):
+        self.assertEqual("Where are you going?", as_typed("Where you going.", "Where are you going?"))
+
+    def test_a_mark_added_where_the_text_stops_is_dropped(self):
+        self.assertEqual("He doesn't know", as_typed("He don't know", "He doesn't know."))
+        self.assertEqual("Hi there\nBye", as_typed("Hi there\nBye", "Hi there.\nBye."))
+
+    def test_a_mark_added_mid_text_is_kept_even_when_the_text_shrinks(self):
+        self.assertEqual("Yes. I can't", as_typed("Yes I cannot not", "Yes. I can't"))
+
+    def test_capitals_follow_the_typing_style(self):
+        self.assertEqual("they were late", as_typed("they was late", "They were late."))
+        self.assertEqual("I think you're right", as_typed("i think your right", "I think you're right."))
+        self.assertEqual("We met. Then we left", as_typed("We met. then we left", "We met. Then we left."))
+        self.assertEqual("I met john", as_typed("I met john", "I met John"))
 
 
 if __name__ == "__main__":
