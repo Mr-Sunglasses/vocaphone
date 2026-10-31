@@ -382,8 +382,19 @@ object TranscriptRepair {
         while (index < words.size) {
             // Longest first, so "we should we should" is one phrase twice over
             // rather than two separate doubled words.
-            val length = (minOf(MAX_STUTTER_WORDS, (words.size - index) / 2) downTo 1)
-                .firstOrNull { matchesRepeat(words, index, it, punctuation) }
+            val lengths = minOf(MAX_STUTTER_WORDS, (words.size - index) / 2) downTo 1
+            // A phrase said twice on purpose is kept whole, and the walk moves
+            // past its first copy. Stepping one word at a time would re-enter
+            // it and find the copies again, shifted: "please stop, please stop,
+            // please listen" read from "stop" is "stop, please" twice, which
+            // collapses and loses a request.
+            val kept = lengths.firstOrNull { isPausedRepeat(words, index, it, punctuation) }
+            val length = lengths.firstOrNull { matchesRepeat(words, index, it, punctuation) }
+            if (kept != null && (length == null || kept >= length)) {
+                result += words.subList(index, index + kept)
+                index += kept
+                continue
+            }
             if (length == null) {
                 result += words[index]
                 index++
@@ -410,12 +421,8 @@ object TranscriptRepair {
         // A repeat with nothing after it was said twice on purpose. A false
         // start is the beginning of a sentence the speaker then finishes.
         if (length > 1 && index + length * 2 >= words.size) return false
-        // So is one the speaker paused after: "Sir Camel, Sir Camel, cried
-        // the Brahmin" and "cries of a Nottingham, a Nottingham." A false
-        // start runs straight on from the second copy into the rest of the
-        // sentence — "we should, we should probably ship" — so a mark after
-        // that copy means it was not the start of anything.
-        if (length > 1 && words[index + length * 2 - 1].trailing.any(::isPunctuation)) return false
+        // So is one the speaker paused after; see [isPausedRepeat].
+        if (isPausedRepeat(words, index, length, punctuation)) return false
         // Neither is a repeat containing [SpokenEmoji]'s trigger. Nobody
         // abandons a sentence on the one word this app treats as a command, so
         // "crying emoji crying emoji crying emoji" is three emoji — and unlike
@@ -441,6 +448,28 @@ object TranscriptRepair {
             if (key !in FUNCTION_WORDS || key in LEGITIMATE_DOUBLES) return false
         }
         return true
+    }
+
+    /**
+     * A phrase said twice with a mark after the second copy too: "Sir Camel,
+     * Sir Camel, cried the Brahmin", "cries of a Nottingham, a Nottingham." A
+     * false start runs straight on from the second copy into the rest of the
+     * sentence — "we should, we should probably ship" — so a mark after that
+     * copy means it was not the start of anything.
+     */
+    private fun isPausedRepeat(
+        words: List<Word>,
+        index: Int,
+        length: Int,
+        punctuation: SentencePunctuation,
+    ): Boolean {
+        if (length < 2 || index + length * 2 > words.size) return false
+        if (!words[index + length * 2 - 1].trailing.any(::isPunctuation)) return false
+        return (0 until length).all { offset ->
+            val first = words[index + offset]
+            val second = words[index + length + offset]
+            !first.isProtected && first.key.isNotEmpty() && first.key == second.key && !ends(first, punctuation)
+        }
     }
 
     /** A Unicode punctuation mark, as Swift's `Character.isPunctuation` reads one. */

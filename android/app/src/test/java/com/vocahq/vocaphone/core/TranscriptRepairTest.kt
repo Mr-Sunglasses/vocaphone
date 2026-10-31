@@ -225,6 +225,12 @@ class TranscriptRepairTest {
             "Cries of a Nottingham, a Nottingham. Before them fled the stroller",
             TranscriptRepair.apply("Cries of a Nottingham, a Nottingham. Before them fled the stroller"),
         )
+        // Read from inside the first copy, the phrase pairs up again shifted
+        // ("stop, please" twice). That must not collapse either.
+        assertEquals(
+            "please stop, please stop, please listen",
+            TranscriptRepair.apply("please stop, please stop, please listen"),
+        )
         // A doubled function word is still a stutter, whatever follows it.
         assertEquals("Well I would apply", TranscriptRepair.apply("Well I I would apply"))
     }

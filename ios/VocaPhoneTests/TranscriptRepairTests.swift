@@ -188,6 +188,12 @@ struct TranscriptRepairTests {
             TranscriptRepair.apply("Cries of a Nottingham, a Nottingham. Before them fled the stroller")
                 == "Cries of a Nottingham, a Nottingham. Before them fled the stroller"
         )
+        // Read from inside the first copy, the phrase pairs up again shifted
+        // ("stop, please" twice). That must not collapse either.
+        #expect(
+            TranscriptRepair.apply("please stop, please stop, please listen")
+                == "please stop, please stop, please listen"
+        )
         // A doubled function word is still a stutter, whatever follows it.
         #expect(TranscriptRepair.apply("Well I I would apply") == "Well I would apply")
     }
