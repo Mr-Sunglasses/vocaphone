@@ -81,6 +81,22 @@ struct WritingCheckExchangeTests {
         #expect(labels(client).contains("was → were"))
     }
 
+    @Test func theButtonDoesNotBlinkWhenIOSDoesNotAnswer() {
+        let words = DocumentSnapshot(before: "what is you", after: "")
+        let empty = DocumentSnapshot(before: "", after: "")
+        let decide = WritingButtonVisibility.decide
+        #expect(decide(words, true, false, false) == .show)
+        // An unanswered read leaves it as it is; it is not an empty field.
+        #expect(decide(.unknown, true, false, true) == .keep)
+        #expect(decide(.unknown, true, false, false) == .keep)
+        // Wordless hides only after a second look, except in a new field.
+        #expect(decide(empty, true, false, true) == .hideAfterPause)
+        #expect(decide(empty, true, true, true) == .hide)
+        #expect(decide(.unknown, true, true, true) == .hide)
+        #expect(decide(DocumentSnapshot(before: "123 ", after: nil), true, false, false) == .keep)
+        #expect(decide(words, false, false, true) == .hide)
+    }
+
     @Test func theCardShowsTheChangeInItsSentence() {
         let text = "Hi there. what is you doing now? Bye."
         let report = Self.checker.check(text, model: nil, options: .init(typed: true))

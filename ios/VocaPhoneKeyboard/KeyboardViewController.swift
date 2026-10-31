@@ -325,7 +325,10 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // so Start does not sit on top of regenerated candidates. A reused
         // instance may be in another app's field, so an unanswered read starts
         // over rather than keeping the last field's latch.
-        dictationSurfaceState.noteDocument(readDocument(), isNewField: true)
+        let appearing = readDocument()
+        dictationSurfaceState.noteDocument(appearing, isNewField: true)
+        // The button for text already in the field, without a keystroke first.
+        updateWritingButton(appearing, eligible: isWritingCheckAvailable, isNewField: true)
         startQuickDictationReadinessPolling()
         // A new appearance is a new field as far as this keyboard can tell.
         //
@@ -570,6 +573,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Moving to a different field brings different traits with it, and the
         // plane should reset so a number pad never leaves the user on letters.
         let documentID = currentDocumentID
+        let isNewField = documentID != lastDocumentID
         // Start follows the field: a dictation or emoji with no keystroke moves
         // it aside, and a field cleared by the host brings it back.
         dictationSurfaceState.noteDocument(snapshot, isNewField: documentID != lastDocumentID)
@@ -611,7 +615,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             autoCheck: isWritingCheckEnabled,
             options: { [weak self] in self?.writingOptions() ?? WritingCheckClient.Options() }
         )
-        updateWritingButton(snapshot, eligible: eligible)
+        updateWritingButton(snapshot, eligible: eligible, isNewField: isNewField)
     }
 
     /// Whether Writing check may read this field at all, on a tap of its
@@ -631,13 +635,36 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             && fieldAllowsGrammarCheck
     }
 
-    /// The button shows once the field has words in it.
-    private func updateWritingButton(_ snapshot: DocumentSnapshot, eligible: Bool) {
-        let hasWords = eligible
-            && ((snapshot.before?.contains(where: \.isLetter) ?? false)
-                || (snapshot.after?.contains(where: \.isLetter) ?? false))
-        dictationSurfaceState.showsWritingButton = hasWords
+    /// The button shows once the field has words in it, and does not blink
+    /// when iOS is slow to answer; see ``WritingButtonVisibility``.
+    private func updateWritingButton(_ snapshot: DocumentSnapshot, eligible: Bool, isNewField: Bool) {
+        let decision = WritingButtonVisibility.decide(
+            snapshot, eligible: eligible, isNewField: isNewField,
+            showing: dictationSurfaceState.showsWritingButton
+        )
+        if decision != .hideAfterPause && decision != .keep {
+            writingButtonHide?.cancel()
+            writingButtonHide = nil
+        }
+        switch decision {
+        case .show: dictationSurfaceState.showsWritingButton = true
+        case .hide: dictationSurfaceState.showsWritingButton = false
+        case .keep: break
+        case .hideAfterPause:
+            guard writingButtonHide == nil else { return }
+            writingButtonHide = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: WritingButtonVisibility.pause)
+                guard let self, !Task.isCancelled else { return }
+                writingButtonHide = nil
+                if WritingButtonVisibility.hasWords(readDocument()) == false {
+                    dictationSurfaceState.showsWritingButton = false
+                }
+            }
+        }
     }
+
+    /// A hide waiting to see whether the field really is empty.
+    private var writingButtonHide: Task<Void, Never>?
 
     private func writingOptions() -> WritingCheckClient.Options {
         var categories: Set<WritingCategory> = [.correctness]

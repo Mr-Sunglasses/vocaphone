@@ -670,3 +670,35 @@ final class WholeMessageWalk {
     private static let steps = 20
     private static let limit = 8_000
 }
+
+/// Whether the Writing check button shows, read from the field on each text
+/// change. iOS often answers a keyboard's read with nothing for a moment — in
+/// chat apps above all — and taking that as "the field is empty" made the
+/// button blink in and out while the user typed. So an unanswered read keeps
+/// the button as it is, words show it at once, and a field that reads as
+/// wordless hides it only once it still reads that way after a pause.
+enum WritingButtonVisibility: Equatable {
+    case show
+    case hide
+    /// Leave it as it is.
+    case keep
+    /// Read the field again after a pause, and hide only if it is still wordless.
+    case hideAfterPause
+
+    static func decide(_ snapshot: DocumentSnapshot, eligible: Bool, isNewField: Bool, showing: Bool) -> Self {
+        guard eligible else { return .hide }
+        guard let hasWords = hasWords(snapshot) else { return isNewField ? .hide : .keep }
+        if hasWords { return .show }
+        if isNewField { return .hide }
+        return showing ? .hideAfterPause : .keep
+    }
+
+    /// Whether the field has a letter in it; nil when iOS did not answer.
+    static func hasWords(_ snapshot: DocumentSnapshot) -> Bool? {
+        guard snapshot.hasContent != nil else { return nil }
+        return (snapshot.before?.contains(where: \.isLetter) ?? false)
+            || (snapshot.after?.contains(where: \.isLetter) ?? false)
+    }
+
+    static let pause: Duration = .milliseconds(700)
+}
