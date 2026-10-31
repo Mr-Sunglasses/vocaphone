@@ -104,6 +104,13 @@ final class RecordingCoordinator {
     /// it on on-device transcripts. Only this app loads it, never the keyboard.
     let grammarModel: GrammarModelStore
     let grammar: GrammarCorrector
+    /// A Writing check screen to show, with the text it opens on: from the
+    /// keyboard's "Open app", Settings or a transcript.
+    var writingCheckRequest: WritingCheckRequest?
+
+    func openWritingCheck(text: String?) {
+        writingCheckRequest = WritingCheckRequest(text: text ?? "")
+    }
     /// "Check grammar while typing": answers the keyboard's questions with the
     /// same model, while this app is running to hear them.
     private let typedGrammar: TypedGrammarResponder

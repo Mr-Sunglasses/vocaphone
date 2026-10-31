@@ -79,6 +79,12 @@ struct VocaPhoneApp: App {
                     case "settings":
                         isShowingQuickDictationReturnGuide = false
                         isShowingSettings = true
+                    case "writing":
+                        // The keyboard's "Open app": its text, handed over
+                        // through the App Group, in the Writing check screen.
+                        isShowingQuickDictationReturnGuide = false
+                        isShowingSettings = false
+                        coordinator.openWritingCheck(text: SharedStore.shared.takeWritingDraft())
                     case "home":
                         // The keyboard's "Voice model needed": Home is where
                         // the missing model is offered for download, so

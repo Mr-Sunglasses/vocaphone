@@ -31,6 +31,7 @@
 		0B939DE9494D3B8F14F18142 /* ModelLanguageSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C6476FC82C4B74D01F4358 /* ModelLanguageSupport.swift */; };
 		0C6945FEB60335EF614ADD0C /* ModelEdits.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC1B54FCEDED6AC3AD5F3BBE /* ModelEdits.swift */; };
 		0D07EBF90CE481AE0C1976CF /* SetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 346B6558EE5557A35C916067 /* SetupView.swift */; };
+		0D2A67DE9D070123955B6C5E /* WritingCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 104F6E90AA05F2EDA25A4E74 /* WritingCheckView.swift */; };
 		0E4F6A827869289078B1F4D5 /* DesignSystem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 491DFC2F5F017E14BF64E308 /* DesignSystem.swift */; };
 		108C096B9C0FB4861FC26437 /* StopQuickDictationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 332854D2644CFCE5843E3F31 /* StopQuickDictationIntent.swift */; };
 		10B0CDB7F0FC74F851AF7644 /* TypedGrammarResponder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52A3CB77B6D680259A21B686 /* TypedGrammarResponder.swift */; };
@@ -652,6 +653,7 @@
 		0D81A0D2EC42372D38309B87 /* GatewayUploadAudioTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GatewayUploadAudioTests.swift; sourceTree = "<group>"; };
 		0DFD83D2BCB84400E7981A4B /* SwipeTrailTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwipeTrailTests.swift; sourceTree = "<group>"; };
 		0F8F5499118EF044F9EC6A07 /* EngineWarmPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineWarmPolicy.swift; sourceTree = "<group>"; };
+		104F6E90AA05F2EDA25A4E74 /* WritingCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritingCheckView.swift; sourceTree = "<group>"; };
 		105FC942932DAFE80242473E /* StatsPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsPresentation.swift; sourceTree = "<group>"; };
 		106F19B6F4C9573FF8C8E377 /* GrammarTaggerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GrammarTaggerTests.swift; sourceTree = "<group>"; };
 		1074265CEFE1234855FC1996 /* TraditionalChineseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraditionalChineseTests.swift; sourceTree = "<group>"; };
@@ -1404,6 +1406,7 @@
 				28ECEDA044D2B1021710F205 /* TranscriptHistoryView.swift */,
 				5995603DDA33014FFA52B079 /* TranscriptionSourceStatus.swift */,
 				934F25D30F7D00565D83CAA0 /* VocaPhoneApp.swift */,
+				104F6E90AA05F2EDA25A4E74 /* WritingCheckView.swift */,
 				802F6A112F76E45FF7DBEA97 /* Previews */,
 			);
 			path = App;
@@ -1878,6 +1881,7 @@
 				34D1369A649BFBD98C7C9BDD /* WritingCheck.swift in Sources */,
 				DC62A52A7CA6F03BD4EAE95B /* WritingCheckClient.swift in Sources */,
 				D4C1786015037FBD64BE4892 /* WritingCheckPanel.swift in Sources */,
+				0D2A67DE9D070123955B6C5E /* WritingCheckView.swift in Sources */,
 				E9DD041BF7CBBA17C57074BE /* WritingRule.swift in Sources */,
 				1BCC9CE1EDAF119F29E224C7 /* WritingRules.swift in Sources */,
 				23C58A919F0B577A00027260 /* WritingSuggestion.swift in Sources */,

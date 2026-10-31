@@ -68,14 +68,17 @@ struct WritingPanelView: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: 6) {
+                        toneLine
                         ForEach(suggestions, id: \.identity) { suggestion in
                             card(suggestion)
                         }
                     }
                     .padding(.horizontal, 2)
                 }
+                .frame(maxHeight: .infinity)
             }
             footer
+                .layoutPriority(1)
         }
         .foregroundStyle(foreground)
         .padding(.horizontal, 8)
@@ -154,24 +157,35 @@ struct WritingPanelView: View {
             .accessibilityLabel(replacement.isEmpty ? "Remove \(original)" : "\(original) becomes \(replacement)")
     }
 
-    private var footer: some View {
-        HStack(spacing: 12) {
-            let tones = model.report?.tones ?? []
-            Text(tones.isEmpty ? "" : "Sounds " + tones.map { "\($0.emoji) \($0.label)" }.joined(separator: " · "))
+    @ViewBuilder
+    private var toneLine: some View {
+        let tones = model.report?.tones ?? []
+        if !tones.isEmpty {
+            Text("Sounds " + tones.map { "\($0.emoji) \($0.label)" }.joined(separator: " · "))
                 .font(.system(size: 13))
                 .foregroundStyle(foreground.opacity(0.7))
-                .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 4)
+        }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 0) {
             if model.acceptAllCount >= 2 {
                 Button("Accept all \(model.acceptAllCount)") { model.onAcceptAll?() }
+                    .frame(maxWidth: .infinity)
             }
             Button(model.isReadingMessage ? "Reading…" : "Whole message") { model.onCheckWholeMessage?() }
                 .disabled(model.isReadingMessage)
+                .frame(maxWidth: .infinity)
             Button("Open app") { model.onOpenApp?() }
+                .frame(maxWidth: .infinity)
         }
-        .font(.system(size: 14, weight: .medium))
+        .font(.system(size: 15, weight: .medium))
+        .lineLimit(1)
+        .minimumScaleFactor(0.85)
         .foregroundStyle(Color(BrandPalette.accent(isDark: isDark)))
-        .frame(minHeight: 36)
+        .frame(height: 40)
     }
 }
 

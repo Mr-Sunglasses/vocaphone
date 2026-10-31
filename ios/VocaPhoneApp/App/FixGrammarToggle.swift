@@ -38,8 +38,6 @@ struct WritingCheckSettingsSection: View {
     let grammar: GrammarCorrector
     let suggestionsEnabled: Bool
     @Binding var learnMore: LearnMoreTopic?
-    /// The Writing check screen; nil hides the row.
-    var onOpenEditor: (() -> Void)?
 
     @AppStorage(KeyboardPreferences.typingGrammarKey, store: KeyboardPreferences.defaults)
     private var checkWhileTyping = KeyboardDefaults.typingGrammar
@@ -71,13 +69,13 @@ struct WritingCheckSettingsSection: View {
                 )
             }
             .disabled(!suggestionsEnabled)
-            if let onOpenEditor {
-                Button(action: onOpenEditor) {
-                    SettingLabel(
-                        "Check text in vocaphone",
-                        detail: "Paste or write something and see every suggestion, a score and how it sounds."
-                    )
-                }
+            NavigationLink {
+                WritingCheckView()
+            } label: {
+                SettingLabel(
+                    "Check text in vocaphone",
+                    detail: "Paste or write something and see every suggestion, a score and how it sounds."
+                )
             }
             modelRow
             Toggle(isOn: $sureOnly) {

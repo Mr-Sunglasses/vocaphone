@@ -212,6 +212,13 @@ struct ContentView: View {
                 .environment(coordinator)
                 .tint(.brand)
             }
+            .sheet(item: Bindable(coordinator).writingCheckRequest) { request in
+                NavigationStack {
+                    WritingCheckView(initialText: request.text)
+                }
+                .environment(coordinator)
+                .tint(.brand)
+            }
         }
         .overlay {
             // The hand-off itself is drawn once, by the overlay on `body`, which

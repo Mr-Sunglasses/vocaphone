@@ -40,7 +40,6 @@ import com.vocahq.vocaphone.settings.ClipboardHistory
 import com.vocahq.vocaphone.settings.ClipboardImages
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
 import com.vocahq.vocaphone.writing.WritingCheck
-import com.vocahq.vocaphone.writing.WritingRules
 import com.vocahq.vocaphone.writing.WritingSuggestion
 import com.vocahq.vocaphone.writing.writingCategories
 import kotlinx.coroutines.CoroutineScope
@@ -220,9 +219,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             suggestionDictionary.value = runCatching { SuggestionDictionary.load(assets) }.getOrNull()
             emojiCatalog.value = runCatching { EmojiCatalog.load(assets) }.getOrNull().orEmpty()
             runCatching { EmojiSuggestions.load(assets) }
-            writingChecker.value = runCatching {
-                WritingCheck(WritingRules.parse(assets.open("writing-rules.json").bufferedReader().use { it.readText() }))
-            }.getOrNull()
+            writingChecker.value = container.writingCheck
         }
         scope.launch {
             writingCheck.report.collect { report -> if (report != null) maybeAutoFix(report) }
@@ -1073,10 +1070,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     /** "Open in app": the field's text in VocaPhone's Writing check screen. */
     private fun openWritingEditor() {
         val text = writingCheck.report.value?.field?.text ?: readWritingField()?.text ?: return
-        val intent = packageManager.getLaunchIntentForPackage(packageName) ?: return
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        intent.putExtra(com.vocahq.vocaphone.ui.MainActivity.EXTRA_WRITING_TEXT, text)
-        startActivity(intent)
+        startActivity(
+            Intent(this, com.vocahq.vocaphone.ui.WritingCheckActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .putExtra(com.vocahq.vocaphone.ui.WritingCheckActivity.EXTRA_TEXT, text),
+        )
     }
 
     /**

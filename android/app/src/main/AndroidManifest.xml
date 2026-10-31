@@ -67,6 +67,29 @@
             android:taskAffinity=""
             android:theme="@style/Theme.VocaPhone.Invisible" />
 
+        <!-- Writing check on its own: from the text selection menu of any app
+             (and back into the field when it is editable), from Share, and from
+             the keyboard, Settings and History. Checked in this process. -->
+        <activity
+            android:name=".ui.WritingCheckActivity"
+            android:exported="true"
+            android:label="@string/writing_check_name"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.VocaPhone">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".ui.QrPairingActivity"
             android:exported="false"

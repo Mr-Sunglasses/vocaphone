@@ -81,8 +81,6 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPEN_MODELS = "open_models"
         const val EXTRA_SETTINGS_PAGE = "settings_page"
 
-        /** Text to open in the Writing check screen, from the keyboard's "Open in app". */
-        const val EXTRA_WRITING_TEXT = "writing_text"
     }
 }
 
@@ -472,6 +470,7 @@ fun VocaPhoneApp(
                     onTone = { viewModel.setWritingTone(it) },
                     onTypoAutoFix = { viewModel.setTypoAutoFix(it) },
                     onOpenSpellChecker = { SpellCheckerSettings.open(appContext) },
+                    onOpenEditor = { WritingCheckActivity.open(appContext) },
                     spellCheckerActive = spellCheckerActive,
                 ),
                 onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },

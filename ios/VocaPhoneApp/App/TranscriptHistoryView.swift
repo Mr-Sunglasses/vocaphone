@@ -234,6 +234,14 @@ struct TranscriptDetailView: View {
                         didCopy = true
                     }
                     if let transcript = record.transcript {
+                        NavigationLink {
+                            WritingCheckView(initialText: transcript)
+                        } label: {
+                            Label("Check writing", systemImage: "text.badge.checkmark")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
                         ShareLink(item: transcript) {
                             Label("Share", systemImage: "square.and.arrow.up")
                                 .frame(maxWidth: .infinity)

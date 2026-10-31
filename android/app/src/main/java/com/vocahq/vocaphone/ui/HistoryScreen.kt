@@ -404,6 +404,12 @@ private fun HistoryDetailSheet(
                         onClick = { context.shareText(transcript) },
                     )
                     SettingsDivider(inset = true)
+                    SettingsActionRow(
+                        title = "Check writing",
+                        icon = R.drawable.ic_dictionary,
+                        onClick = { WritingCheckActivity.open(context, transcript) },
+                    )
+                    SettingsDivider(inset = true)
                 }
                 if (canRetry) {
                     SettingsActionRow(
@@ -444,12 +450,12 @@ private fun HistoryDetailSheet(
     }
 }
 
-private fun Context.copyToClipboard(text: String) {
+internal fun Context.copyToClipboard(text: String) {
     val clipboard = getSystemService(ClipboardManager::class.java) ?: return
     clipboard.setPrimaryClip(ClipData.newPlainText("VocaPhone transcript", text))
 }
 
-private fun Context.shareText(text: String) {
+internal fun Context.shareText(text: String) {
     val send = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)

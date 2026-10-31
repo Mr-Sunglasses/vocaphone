@@ -55,7 +55,8 @@ data class WritingSettingsActions(
     val onOpenSpellChecker: (() -> Unit)? = null,
     /** VocaPhone is the spell checker every app is using. */
     val spellCheckerActive: Boolean = false,
-    val onOpenEditor: () -> Unit = {},
+    /** The Writing check screen; null hides the row. */
+    val onOpenEditor: (() -> Unit)? = null,
 )
 
 /**
@@ -86,12 +87,14 @@ internal fun WritingCheckSettingsGroup(
             enabled = settings.suggestionsEnabled,
             onCheckedChange = actions.onCheckWhileTyping,
         )
-        SettingsDivider()
-        SettingsActionRow(
-            title = "Check text in VocaPhone",
-            supporting = "Paste or write something and see every suggestion, a score and how it sounds.",
-            onClick = actions.onOpenEditor,
-        )
+        actions.onOpenEditor?.let { open ->
+            SettingsDivider()
+            SettingsActionRow(
+                title = "Check text in VocaPhone",
+                supporting = "Paste or write something and see every suggestion, a score and how it sounds.",
+                onClick = open,
+            )
+        }
         if (GrammarModelCatalog.available) {
             SettingsDivider()
             GrammarModelRow(model, actions.onDownloadModel, onCancelDownload)
