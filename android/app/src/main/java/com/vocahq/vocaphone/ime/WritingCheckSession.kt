@@ -98,14 +98,24 @@ internal class WritingCheckSession(
      */
     private var settled: Settled? = null
 
+    /** The user asked for a check in this field: later pauses check it too. */
+    private var following = false
+
     /**
-     * The keyboard re-read its short [window] of text before the cursor. A
-     * report that no longer matches it goes at once; a new check starts after
-     * the pause, unless [enabled] is false, which also clears the strip.
+     * The keyboard re-read its short [window] of text before the cursor.
+     *
+     * [enabled] false (a field Writing check does not belong in) clears
+     * everything. Otherwise a report the window no longer matches keeps its
+     * count for the button but loses its chips, which might point at words
+     * that have moved; applying from it reads the field again first anyway.
+     * A new check starts after the pause when [auto] ("Check while typing")
+     * is on, or once the user has asked for a check in this field with the
+     * button, which follows the field from then on.
      */
-    fun textChanged(window: String, enabled: Boolean, options: () -> Options) {
+    fun textChanged(window: String, enabled: Boolean, auto: Boolean = true, options: () -> Options) {
         job?.cancel()
         if (!enabled) {
+            following = false
             current.value = null
             settled = null
             busy.value = false
@@ -114,21 +124,34 @@ internal class WritingCheckSession(
         current.value?.let { report ->
             val before = report.field.text.substring(0, report.field.cursor)
             if (!before.trimEnd().endsWith(window.trimEnd().takeLast(MATCH_TAIL))) {
-                current.value = null
                 settled = null
+                if (report.chips.isNotEmpty()) current.value = report.copy(chips = emptyList())
             }
         }
+        if (!auto && !following) return
         job = scope.launch {
             delay(pauseMillis)
             check(options())
         }
     }
 
-    /** Checks now, without waiting for a pause: the panel's "Check again". */
+    /**
+     * Checks now, without waiting for a pause: the Writing check button and
+     * the panel's "Check again". Works whether or not "Check while typing" is
+     * on, and the field is followed after it until the keyboard leaves it.
+     */
     fun checkNow(options: Options) {
         job?.cancel()
         settled = null
-        job = scope.launch { check(options) }
+        following = true
+        busy.value = true
+        job = scope.launch {
+            try {
+                check(options)
+            } finally {
+                busy.value = false
+            }
+        }
     }
 
     private suspend fun check(options: Options) {
@@ -270,6 +293,7 @@ internal class WritingCheckSession(
         job?.cancel()
         job = null
         settled = null
+        following = false
         dismissed.clear()
         answers.clear()
         era++

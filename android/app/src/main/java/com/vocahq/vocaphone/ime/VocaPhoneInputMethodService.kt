@@ -252,8 +252,11 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             val writingReport by writingCheck.report.collectAsState()
             val writingChecking by writingCheck.checking.collectAsState()
             val writingAutoFix by autoFixed.collectAsState()
+            // The button is there in every field it can check, whether or not
+            // "Check while typing" is on; that setting only decides whether
+            // the check also runs by itself.
             val writing = WritingStripState(writingReport, writingChecking, writingAutoFix?.label)
-                .takeIf { writingEnabled() }
+                .takeIf { writingAvailable() }
             VocaPhoneKeyboard(
                 dictationState = dictationState,
                 editor = editorConfig,
@@ -286,6 +289,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onWritingAddWord = ::addWritingWord,
                 onWritingAcceptAll = ::acceptAllWriting,
                 onWritingRecheck = { writingCheck.checkNow(writingOptions()) },
+                onWritingCheckNow = ::checkWritingNow,
                 onWritingUndoAutoFix = ::undoAutoFix,
                 onWritingOpenApp = ::openWritingEditor,
             )
@@ -916,16 +920,29 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         // model, wait until the typing stops.
         writingCheck.textChanged(
             before,
-            enabled = writingEnabled() && !hasSelection,
+            enabled = writingAvailable() && !hasSelection,
+            auto = visibleSettings.value.typingGrammar,
             options = ::writingOptions,
         )
     }
 
-    /** "Check while typing" is on, and this is a field worth checking. */
-    private fun writingEnabled(): Boolean {
+    /**
+     * A field worth checking: prose, not a password or an address, in a field
+     * that has not asked for no suggestions. The button shows here.
+     */
+    private fun writingAvailable(): Boolean {
         val settings = visibleSettings.value
-        return settings.typingGrammar && settings.suggestionsEnabled && !voiceShortcutActive &&
+        return settings.suggestionsEnabled && !voiceShortcutActive &&
             !editorConfig.sensitive && ImeInputPolicy.acceptsGrammarCheck(currentInputType)
+    }
+
+    /** "Check while typing" is on, and this is a field worth checking. */
+    private fun writingEnabled(): Boolean = visibleSettings.value.typingGrammar && writingAvailable()
+
+    /** The Writing check button: check the field now, setting or no setting. */
+    private fun checkWritingNow() {
+        if (!writingAvailable() || lastSelStart != lastSelEnd) return
+        writingCheck.checkNow(writingOptions())
     }
 
     /** The grammar model, when it is downloaded; the rules work without it. */

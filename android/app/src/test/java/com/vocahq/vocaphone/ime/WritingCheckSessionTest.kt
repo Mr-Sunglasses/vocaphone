@@ -55,9 +55,9 @@ class WritingCheckSessionTest {
         isEnglish = { english },
     )
 
-    private fun type(text: String, enabled: Boolean = true) {
+    private fun type(text: String, enabled: Boolean = true, auto: Boolean = true) {
         editor = text
-        session.textChanged(text.takeLast(32), enabled) { options }
+        session.textChanged(text.takeLast(32), enabled, auto) { options }
     }
 
     private fun TestScope.pause() {
@@ -269,5 +269,49 @@ class WritingCheckSessionTest {
         // The old check's answer was not kept for the new field.
         assertEquals(listOf("She go home.", "She go home."), asked)
         assertEquals(listOf("go → goes"), labels())
+    }
+
+    @Test
+    fun `the button checks a field whatever the setting`() = scope.runTest {
+        type("She go home. ", auto = false)
+        pause()
+        assertNull(session.report.value)
+        assertEquals(0, reads)
+        session.checkNow(options)
+        assertTrue(session.checking.value)
+        runCurrent()
+        assertEquals(listOf("go → goes"), labels())
+        assertFalse(session.checking.value)
+    }
+
+    @Test
+    fun `after the button the field is followed`() = scope.runTest {
+        type("She go home. ", auto = false)
+        session.checkNow(options)
+        runCurrent()
+        type("She go home. The cars was late. ", auto = false)
+        pause()
+        assertEquals(listOf("go → goes", "was → were"), labels())
+    }
+
+    @Test
+    fun `typing on keeps the count but not the chips`() = scope.runTest {
+        type("She go home. ")
+        pause()
+        assertEquals(1, session.report.value?.chips?.size)
+        type("She go home. Then")
+        assertEquals(listOf("go → goes"), labels())
+        assertEquals(emptyList<Any>(), session.report.value?.chips)
+    }
+
+    @Test
+    fun `a new field stops following`() = scope.runTest {
+        type("She go home. ", auto = false)
+        session.checkNow(options)
+        runCurrent()
+        session.reset()
+        type("The cars was late. ", auto = false)
+        pause()
+        assertNull(session.report.value)
     }
 }

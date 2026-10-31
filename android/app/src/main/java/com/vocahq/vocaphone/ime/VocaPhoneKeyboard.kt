@@ -180,6 +180,7 @@ internal fun VocaPhoneKeyboard(
     onWritingRecheck: () -> Unit = {},
     onWritingUndoAutoFix: () -> Unit = {},
     onWritingOpenApp: () -> Unit = {},
+    onWritingCheckNow: () -> Unit = {},
 ) {
     // One set of state holders for the life of the composition, reset when the
     // editor changes rather than rebuilt.
@@ -379,11 +380,16 @@ internal fun VocaPhoneKeyboard(
         KeyboardChrome.suggestionsForStrip(suggestionStrip.items, startedTyping)
     }
     val swipeReplacesWord = swipeChoicesActive
-    // The badge stays while a word is typed; its chips only between words:
-    // once a new word is under way the strip is for it, and the fixes wait.
-    val stripWriting = writing?.takeIf { composeWords && it.showsBadge }
-    val writingChipsVisible = keyboardState.composing.isEmpty() && !swipeChoicesActive
-    val acceptAllCount = writing?.report?.suggestions?.count { it.isActionable && it.mechanical } ?: 0
+    // The button is there whenever the field has words to check, typing or
+    // not, and so is the one fix chip beside it: the session never flags the
+    // word under the cursor. The automatic-fix Undo waits for a word break.
+    val fieldHasWords = keyboardState.composing.any(Char::isLetter) ||
+        editorText.before.any(Char::isLetter) || editorText.after.any(Char::isLetter)
+    val stripWriting = writing?.takeIf {
+        composeWords && (fieldHasWords || it.report != null || it.checking || it.autoFixed != null)
+    }
+    val writingChipsVisible = !swipeChoicesActive
+    val writingAutoFixVisible = keyboardState.composing.isEmpty() && !swipeChoicesActive
 
     fun clearSwipe() {
         swipeChoices = emptyList()
@@ -628,7 +634,11 @@ internal fun VocaPhoneKeyboard(
                         preferencePanel == null && keyboardState.layer != KeyboardLayer.EMOJI
                     },
                     writingChips = writingChipsVisible,
-                    onWritingBadge = { preferencePanel = PreferencePanel.WRITING },
+                    writingAutoFixVisible = writingAutoFixVisible,
+                    onWritingBadge = {
+                        preferencePanel = PreferencePanel.WRITING
+                        onWritingCheckNow()
+                    },
                     onWritingApply = onWritingApply,
                     onWritingUndoAutoFix = onWritingUndoAutoFix,
                     suggestions = stripSuggestions.takeIf {
@@ -658,16 +668,12 @@ internal fun VocaPhoneKeyboard(
                             settings.clipboardHistory.isNotEmpty()
                     ) {
                         if (confirmingClipboardClear) "Clear all?" else "Clear"
-                    } else if (preferencePanel == PreferencePanel.WRITING && acceptAllCount >= 2) {
-                        "Accept all $acceptAllCount"
                     } else {
                         null
                     },
-                    panelActionDestructive = preferencePanel != PreferencePanel.WRITING,
+                    panelActionDestructive = true,
                     onPanelAction = {
-                        if (preferencePanel == PreferencePanel.WRITING) {
-                            onWritingAcceptAll()
-                        } else if (confirmingClipboardClear) {
+                        if (confirmingClipboardClear) {
                             confirmingClipboardClear = false
                             onClearClipboardHistory()
                         } else {
@@ -762,6 +768,7 @@ internal fun VocaPhoneKeyboard(
                         onApply = onWritingApply,
                         onDismiss = onWritingDismiss,
                         onAddWord = onWritingAddWord,
+                        onAcceptAll = onWritingAcceptAll,
                         onRecheck = onWritingRecheck,
                         onOpenApp = {
                             preferencePanel = null
@@ -990,6 +997,7 @@ private fun DictationBar(
     clipboard: ClipboardChip?,
     writing: WritingStripState? = null,
     writingChips: Boolean = false,
+    writingAutoFixVisible: Boolean = false,
     onWritingBadge: () -> Unit = {},
     onWritingApply: (WritingSuggestion) -> Unit = {},
     onWritingUndoAutoFix: () -> Unit = {},
@@ -1125,15 +1133,20 @@ private fun DictationBar(
                 // Ahead of the predictions: they are about what was just
                 // written, and show only between words, when a prediction is
                 // the least of what the strip could say.
-                writing?.autoFixed != null && writingChips -> AutoFixNotice(
+                writing?.autoFixed != null && writingAutoFixVisible -> AutoFixNotice(
                     label = writing.autoFixed,
                     onUndo = onWritingUndoAutoFix,
                 )
-                writingChips && writingChipList.isNotEmpty() -> WritingChips(
-                    chips = writingChipList,
-                    onApply = onWritingApply,
-                    onOpen = onWritingBadge,
-                )
+                // One fix, nearest the cursor, then the words as usual.
+                writingChips && writingChipList.isNotEmpty() -> {
+                    WritingFixChip(suggestion = writingChipList.first(), onApply = onWritingApply)
+                    if (suggestions.isNotEmpty()) {
+                        // Two words beside the fix: three left each too narrow to read.
+                        SuggestionStripRow(suggestions = suggestions.take(2), onSuggestion = onSuggestion)
+                    } else {
+                        Spacer(Modifier.weight(1f))
+                    }
+                }
                 suggestions.isNotEmpty() -> SuggestionStripRow(
                     suggestions = suggestions,
                     onSuggestion = onSuggestion,
