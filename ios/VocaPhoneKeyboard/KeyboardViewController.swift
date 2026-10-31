@@ -72,11 +72,16 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var sessionTargetConfirmed = false
     private var palette = KeyboardPalette(isDark: false)
     private lazy var typing = TypingEngine()
-    /// "Check grammar while typing". The model lives in the app, which
-    /// answers only while it is running; see ``TypedGrammarClient``.
-    private lazy var grammarCheck = TypedGrammarClient(isAppRunning: { [store] in
-        (try? store.loadQuickDictationAvailability())?.isReady() == true
-    })
+    /// Writing check's rules, parsed off the main thread when the keyboard loads.
+    private var writingChecker: WritingCheck?
+    /// Writing check. The rules run here; the grammar model lives in the app,
+    /// which answers only while it is running; see ``WritingCheckClient``.
+    private lazy var writingCheck = WritingCheckClient(
+        isAppRunning: { [store] in (try? store.loadQuickDictationAvailability())?.isReady() == true },
+        checker: { [weak self] in self?.writingChecker }
+    )
+    /// "Fixed: teh → the", and what Undo needs, until the next edit.
+    private var autoFixed: (label: String, wrote: String, typed: String, key: String)?
     /// Whether the field's traits allow the grammar check, decided with the
     /// rest of the field's traits rather than per keystroke.
     private var fieldAllowsGrammarCheck = false
@@ -158,14 +163,21 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             renderStrip(strip)
             noteAvailableMemory(.firstCandidates)
         }
-        grammarCheck.onChange = { [weak self] in
+        writingCheck.onChange = { [weak self] in
             guard let self else { return }
-            renderStrip(typing.strip)
+            writingChanged()
         }
         // The English layout is not proof of English: someone may type another
         // language on it. The same test dictation's grammar stage uses.
-        grammarCheck.isEnglish = { [weak self] text in
+        writingCheck.isEnglish = { [weak self] text in
             TranscriptRepair.isEnglish(text) { self?.typing.isListedWord($0) ?? false }
+        }
+        configureWritingPanel()
+        Task.detached(priority: .utility) {
+            let rules = WritingRules.bundled()
+            await MainActor.run { [weak self] in
+                self?.writingChecker = rules.map { WritingCheck(rules: $0) }
+            }
         }
         typing.onWordListLoaded = { [weak self] list in
             self?.keyGrid.swipeWordList = list
@@ -394,7 +406,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         isKeyboardVisible = false
         announcesStateChanges = false
         typing.suspend()
-        grammarCheck.reset()
+        writingCheck.reset()
+        autoFixed = nil
         super.viewWillDisappear(animated)
         pollingTimer?.invalidate()
         pollingTimer = nil
@@ -549,7 +562,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if documentID != lastDocumentID {
             lastDocumentID = documentID
             lastSpaceInsertedAt = nil
-            grammarCheck.reset()
+            writingCheck.reset()
+            autoFixed = nil
             applyDocumentTraits()
             // A waiting transcript parks itself when the cursor leaves its field
             // and re-arms when it comes back. Both were left to the next poll,
@@ -568,22 +582,36 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         releaseUndoIfDetached()
         updateReturnKeyEnablement(for: snapshot)
         updateAutomaticShift(for: snapshot)
-        // Restarts a timer and nothing else: the question waits for a pause.
+        // An edit after an automatic fix ends its Undo.
+        if let fix = autoFixed, !(snapshot.before ?? "").contains(fix.wrote) { autoFixed = nil }
+        // Restarts a timer and nothing else: the check waits for a pause.
         // A selection is not a sentence being written, and a fix applied over
         // one would delete it; the selection is only read when checking is on.
-        grammarCheck.textChanged(
+        let enabled = isWritingCheckEnabled
+        writingCheck.textChanged(
             before: snapshot.before,
-            enabled: isGrammarCheckEnabled && textDocumentProxy.selectedText?.isEmpty != false,
-            keep: { [weak self] in self?.grammarKeeps() ?? [] }
+            after: snapshot.after,
+            enabled: enabled && textDocumentProxy.selectedText?.isEmpty != false,
+            options: { [weak self] in self?.writingOptions() ?? WritingCheckClient.Options() }
         )
     }
 
-    private var isGrammarCheckEnabled: Bool {
+    private var isWritingCheckEnabled: Bool {
         KeyboardPreferences.typingGrammar
             && KeyboardPreferences.typingSuggestionsEnabled
             && typing.policy.allowsTypingIntelligence
             && fieldAllowsGrammarCheck
             && typing.layout.id == "en"
+    }
+
+    private func writingOptions() -> WritingCheckClient.Options {
+        var categories: Set<WritingCategory> = [.correctness]
+        if KeyboardPreferences.writingClarity { categories.insert(.clarity) }
+        if KeyboardPreferences.writingEngagement { categories.insert(.engagement) }
+        if KeyboardPreferences.writingDelivery { categories.insert(.delivery) }
+        return WritingCheckClient.Options(
+            categories: categories, keep: grammarKeeps(), tone: KeyboardPreferences.writingTone
+        )
     }
 
     /// Words the grammar model may not change: the user's own, as for dictation.
@@ -596,15 +624,193 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         ))
     }
 
-    /// The chips the strip shows: a grammar fix between words, the typing
-    /// candidates otherwise. The fix waits while a word is being typed, and
-    /// goes once it no longer describes the text before the cursor.
+    /// The chips the strip shows: Writing check's count and its nearest fixes
+    /// between words, the typing candidates otherwise. The fixes wait while a
+    /// word is being typed.
     private func stripCandidates(_ strip: TypingStrip) -> [TypingCandidate] {
-        guard let fix = grammarCheck.fix, typing.composer.text.isEmpty else { return strip.candidates }
-        return [
-            TypingCandidate(text: fix.label, kind: .grammarFix),
-            TypingCandidate(text: "Ignore", kind: .grammarDismiss),
-        ]
+        guard isWritingCheckEnabled, typing.composer.text.isEmpty,
+              let report = writingCheck.report, report.count > 0
+        else { return strip.candidates }
+        var chips = [TypingCandidate(text: "\(report.count)", kind: .writingReview)]
+        if let fix = autoFixed {
+            chips.append(TypingCandidate(text: "Undo \(fix.label)", kind: .writingFix, payload: Self.undoPayload))
+        }
+        chips += report.chips.map { TypingCandidate(text: $0.label, kind: .writingFix, payload: $0.key) }
+        return chips
+    }
+
+    // MARK: - Writing check
+
+    private static let undoPayload = "undo-auto-fix"
+
+    private func configureWritingPanel() {
+        let panel = dictationSurfaceState.writing
+        panel.onApply = { [weak self] s in self?.documentEvent { self?.applyWriting([s]) } }
+        panel.onDismiss = { [weak self] s in self?.writingCheck.dismiss(s) }
+        panel.onAddWord = { [weak self] s in
+            guard let self else { return }
+            typing.learn(s.shownOriginal)
+            writingCheck.dismiss(s)
+        }
+        panel.onAcceptAll = { [weak self] in
+            guard let self, let report = writingCheck.report else { return }
+            documentEvent { self.applyWriting(report.suggestions.filter { $0.isActionable && $0.mechanical }) }
+        }
+        panel.onCheckWholeMessage = { [weak self] in self?.checkWholeMessage() }
+        panel.onOpenApp = { [weak self] in self?.openWritingInApp() }
+    }
+
+    /// The report changed: the strip, the panel, and an automatic typo fix.
+    private func writingChanged() {
+        let panel = dictationSurfaceState.writing
+        panel.report = writingCheck.report
+        panel.isChecking = writingCheck.isChecking
+        maybeAutoFix()
+        renderStrip(typing.strip)
+    }
+
+    /// Applies `suggestions` where their words are now: the document is read
+    /// again and each one moved; any whose words no longer say what was
+    /// checked is skipped. From the last back, so each edit leaves the earlier
+    /// offsets alone, and the cursor goes back where the user left it.
+    private func applyWriting(_ suggestions: [WritingSuggestion]) {
+        // With a selection, the first deleteBackward() removes the selection
+        // rather than a character, and every count after it is off by that much.
+        guard textDocumentProxy.selectedText?.isEmpty != false, !suggestions.isEmpty,
+              let report = writingCheck.report
+        else { return }
+        let document = readDocument()
+        guard let before = document.before else { return }
+        let text = before + (document.after ?? "")
+        let moved = WritingCheck.rebase(suggestions, old: report.field.text, new: text).filter {
+            $0.end <= text.utf16Length && text.utf16Slice($0.start, $0.end) == $0.original
+        }
+        var cursor = before.utf16Length
+        for s in moved.sorted(by: { $0.start > $1.start }) {
+            guard let replacement = s.replacement else { continue }
+            // To the end of the words, take them back, write the replacement.
+            textDocumentProxy.adjustTextPosition(byCharacterOffset: s.end - cursor)
+            for _ in 0..<s.original.count { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(replacement)
+            let written = s.start + replacement.utf16Length
+            let target: Int = if cursor >= s.end {
+                cursor + replacement.utf16Length - (s.end - s.start)
+            } else if cursor > s.start {
+                written
+            } else {
+                cursor
+            }
+            if target != written { textDocumentProxy.adjustTextPosition(byCharacterOffset: target - written) }
+            cursor = target
+            writingCheck.applied(s)
+        }
+        typing.reconcile(document: refreshDocument())
+        if !moved.isEmpty {
+            UIAccessibility.post(notification: .announcement, argument: moved.count == 1 ? "Fixed" : "Fixed \(moved.count)")
+        }
+    }
+
+    /// "Fix obvious typos as I type": a known misspelling or missing
+    /// apostrophe the user has finished typing is corrected without a tap,
+    /// with Undo in the strip until the next edit. Nothing else is ever
+    /// applied on its own.
+    private func maybeAutoFix() {
+        guard KeyboardPreferences.typoAutoFix, isWritingCheckEnabled, autoFixed == nil,
+              let report = writingCheck.report
+        else { return }
+        guard let fix = report.suggestions.filter({
+            $0.source == .rule && ($0.kind == "spelling" || $0.kind == "apostrophe") && $0.isActionable
+                && $0.end < report.field.cursor
+        }).max(by: { $0.start < $1.start }) else { return }
+        autoFixed = (fix.label, fix.replacement ?? "", fix.original, fix.key)
+        applyWriting([fix])
+    }
+
+    private func undoAutoFix() {
+        guard let fix = autoFixed else { return }
+        autoFixed = nil
+        let document = readDocument()
+        guard let before = document.before, let range = before.range(of: fix.wrote, options: .backwards) else { return }
+        let end = before[..<range.upperBound].utf16.count
+        let cursor = before.utf16Length
+        textDocumentProxy.adjustTextPosition(byCharacterOffset: end - cursor)
+        for _ in 0..<fix.wrote.count { textDocumentProxy.deleteBackward() }
+        textDocumentProxy.insertText(fix.typed)
+        let after = cursor + fix.typed.utf16Length - fix.wrote.utf16Length
+        let now = end - fix.wrote.utf16Length + fix.typed.utf16Length
+        if after != now { textDocumentProxy.adjustTextPosition(byCharacterOffset: after - now) }
+        // Undone means "I meant that": the same fix is not made again here.
+        if let suggestion = writingCheck.report?.suggestions.first(where: { $0.key == fix.key }) {
+            writingCheck.dismiss(suggestion)
+        }
+        typing.reconcile(document: refreshDocument())
+    }
+
+    /// "Whole message": iOS hands a keyboard a window onto the document,
+    /// often just the paragraph. This walks the cursor to each end, reading as
+    /// it goes, puts it back, and checks everything it read. Only on a tap,
+    /// never while the user types.
+    private func checkWholeMessage() {
+        let panel = dictationSurfaceState.writing
+        guard !panel.isReadingMessage, textDocumentProxy.selectedText?.isEmpty != false else { return }
+        panel.isReadingMessage = true
+        Task { @MainActor [weak self] in
+            defer { self?.dictationSurfaceState.writing.isReadingMessage = false }
+            guard let self, let field = await readWholeMessage() else { return }
+            writingCheck.checkNow(field, options: writingOptions())
+        }
+    }
+
+    private func readWholeMessage() async -> WritingCheckClient.Field? {
+        guard var before = textDocumentProxy.documentContextBeforeInput else { return nil }
+        var after = textDocumentProxy.documentContextAfterInput ?? ""
+        var moved = 0
+        // Back, a window at a time, while there is more.
+        for _ in 0..<Self.walkSteps {
+            let step = (textDocumentProxy.documentContextBeforeInput ?? "").utf16Length
+            guard step > 0, before.utf16Length < Self.walkLimit else { break }
+            textDocumentProxy.adjustTextPosition(byCharacterOffset: -step)
+            moved -= step
+            try? await Task.sleep(for: .milliseconds(60))
+            let more = textDocumentProxy.documentContextBeforeInput ?? ""
+            guard !more.isEmpty else { break }
+            before = more + before
+        }
+        textDocumentProxy.adjustTextPosition(byCharacterOffset: -moved)
+        moved = 0
+        try? await Task.sleep(for: .milliseconds(60))
+        // Forward the same way, from where the cursor really is.
+        for _ in 0..<Self.walkSteps {
+            let step = (textDocumentProxy.documentContextAfterInput ?? "").utf16Length
+            guard step > 0, after.utf16Length < Self.walkLimit else { break }
+            textDocumentProxy.adjustTextPosition(byCharacterOffset: step)
+            moved += step
+            try? await Task.sleep(for: .milliseconds(60))
+            let more = textDocumentProxy.documentContextAfterInput ?? ""
+            guard !more.isEmpty else { break }
+            after += more
+        }
+        textDocumentProxy.adjustTextPosition(byCharacterOffset: -moved)
+        try? await Task.sleep(for: .milliseconds(60))
+        // The walk must leave the cursor where it found it; if the document
+        // says otherwise, what was read is not trusted.
+        guard let check = textDocumentProxy.documentContextBeforeInput, before.hasSuffix(check) else { return nil }
+        return WritingCheckClient.Field(text: before + after, cursor: before.utf16Length)
+    }
+
+    private static let walkSteps = 20
+    private static let walkLimit = 8_000
+
+    /// "Open app": the text goes to VocaPhone's Writing check screen through
+    /// the App Group, and VocaPhone opens on it.
+    private func openWritingInApp() {
+        guard let text = writingCheck.report?.field.text ?? readDocument().before else { return }
+        guard (try? store.saveWritingDraft(text)) != nil else {
+            flash("Allow Full Access to open text in vocaphone.")
+            return
+        }
+        dictationSurfaceState.dismissPanel()
+        openContainingAppAction("writing")
     }
 
     // MARK: - Dictation actions
@@ -2592,27 +2798,17 @@ extension KeyboardViewController: DictationBarViewDelegate {
             // keyboard vocabulary, and an emoji is not a word it should start
             // completing letters into.
             typing.resetComposition(origin: .suggestion, document: refreshDocument())
-        case .grammarFix:
+        case .writingFix:
             // Checked against the document as it is now, not as it was when
-            // the app answered: a fix that no longer describes the text before
-            // the cursor deletes nothing.
-            // With a selection, the first deleteBackward() removes the
-            // selection rather than a character, and every count after it is
-            // off by that much. The strip hides the fix then; this is the
-            // backstop for a tap that lands as a selection is made.
-            guard textDocumentProxy.selectedText?.isEmpty != false else {
-                grammarCheck.reset()
-                break
+            // the check ran: a suggestion whose words have changed applies to
+            // nothing.
+            if candidate.payload == Self.undoPayload {
+                undoAutoFix()
+            } else if let suggestion = writingCheck.report?.suggestions.first(where: { $0.key == candidate.payload }) {
+                applyWriting([suggestion])
             }
-            guard let fix = grammarCheck.take(),
-                  let edit = TypedGrammar.edit(fix, before: document.before ?? "")
-            else { break }
-            for _ in 0..<edit.deleteBefore { textDocumentProxy.deleteBackward() }
-            textDocumentProxy.insertText(edit.insert)
-            typing.reconcile(document: refreshDocument())
-            UIAccessibility.post(notification: .announcement, argument: "Grammar fixed")
-        case .grammarDismiss:
-            grammarCheck.dismiss()
+        case .writingReview:
+            dictationSurfaceState.present(.writing)
         }
         lastSpaceInsertedAt = nil
         releaseUndoIfDetached()

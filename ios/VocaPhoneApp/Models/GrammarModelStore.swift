@@ -39,7 +39,10 @@ final class GrammarModelStore {
         _ url: URL, _ progress: @escaping @Sendable (Int64) -> Void
     ) async throws -> URL
 
-    private(set) var phase: Phase = .absent
+    private(set) var phase: Phase = .absent {
+        // The keyboard reads this to decide whether asking the app is worth it.
+        didSet { if (phase == .ready) != (oldValue == .ready) { KeyboardPreferences.grammarModelReady = phase == .ready } }
+    }
 
     nonisolated let pins: LocalModelIntegrity.PinnedModelManifest?
     private nonisolated let root: URL?
@@ -119,6 +122,7 @@ final class GrammarModelStore {
         self.fetch = fetch
         removeAbandonedStaging()
         if isReady { phase = .ready }
+        if pins != nil { KeyboardPreferences.grammarModelReady = isReady }
     }
 
     /// Staging folders left by an attempt the system killed mid-download. Each

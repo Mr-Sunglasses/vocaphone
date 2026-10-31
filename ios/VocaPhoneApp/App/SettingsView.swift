@@ -239,6 +239,12 @@ struct KeyboardSettingsView: View {
             heightSection
             feedbackSection
             suggestionsSection
+            WritingCheckSettingsSection(
+                store: coordinator.grammarModel,
+                grammar: coordinator.grammar,
+                suggestionsEnabled: suggestionsEnabled,
+                learnMore: $learnMore
+            )
             learningSection
             typingDetailSection
         }
@@ -381,11 +387,6 @@ struct KeyboardSettingsView: View {
                 .disabled(!suggestionsEnabled)
             Toggle("Predict the next word", isOn: $predictionEnabled)
                 .disabled(!suggestionsEnabled)
-            TypingGrammarToggle(
-                store: coordinator.grammarModel,
-                grammar: coordinator.grammar,
-                suggestionsEnabled: suggestionsEnabled
-            )
         } header: {
             LearnMoreHeader(title: "Typing", topic: SettingsHelp.typing, presented: $learnMore)
         } footer: {

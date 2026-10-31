@@ -116,6 +116,8 @@ final class DictationSurfaceState: ObservableObject {
     /// exactly that reason. In its own object, a keystroke redraws the row of
     /// words and nothing else.
     let typing = TypingRowState()
+    /// What the Writing check panel shows; the controller keeps it current.
+    let writing = WritingPanelModel()
 
     /// Whether there is anything to suggest. Separate from the list because the
     /// surface's own layout only cares about empty or not, and that answer
@@ -437,6 +439,8 @@ enum SurfacePanel: Equatable, Sendable {
     case style
     /// Dictation languages, for the same reason.
     case language
+    /// Writing check: every suggestion, with its reason, in place of the keys.
+    case writing
 }
 
 /// The honest, local-only numbers the compact keyboard dashboard can show.
@@ -839,6 +843,7 @@ struct DictationSurfaceView: View {
             case .dashboard: compactControlsRow
             case .style: pickerControlsRow(title: "Writing style")
             case .language: pickerControlsRow(title: "Dictation language")
+            case .writing: pickerControlsRow(title: "Writing check")
             }
         } else {
             standardControlsRow
@@ -1191,7 +1196,7 @@ struct DictationSurfaceView: View {
     private var compactMenuSymbol: String {
         switch state.presentedPanel {
         case .language, .style: "chevron.left"
-        case .dashboard: "xmark"
+        case .dashboard, .writing: "xmark"
         case nil: "ellipsis"
         }
     }
@@ -1199,7 +1204,7 @@ struct DictationSurfaceView: View {
     private var compactMenuAccessibilityLabel: String {
         switch state.presentedPanel {
         case .language, .style: "Back"
-        case .dashboard: "Close"
+        case .dashboard, .writing: "Close"
         case nil: "More"
         }
     }
@@ -1312,6 +1317,7 @@ struct DictationSurfaceView: View {
         case .dashboard: compactDashboard
         case .style: stylePicker
         case .language: languagePicker
+        case .writing: WritingPanelView(model: state.writing, isDark: state.isDark, foreground: controlForeground)
         }
     }
 
@@ -1803,7 +1809,8 @@ private struct CandidateRow: View {
         switch candidate.kind {
         case .literal: "Keep \(candidate.text)"
         case .revert: "Put \(candidate.text) back"
-        case .grammarFix: "Fix grammar: \(candidate.text)"
+        case .writingFix: "Writing check: \(candidate.text)"
+        case .writingReview: "Writing check, \(candidate.text) suggestions"
         default: candidate.text
         }
     }
@@ -1812,7 +1819,8 @@ private struct CandidateRow: View {
         switch candidate.kind {
         case .literal: "\u{201C}\(candidate.text)\u{201D}"
         case .revert: "\u{21A9} \u{201C}\(candidate.text)\u{201D}"
-        case .grammarFix: "\u{2713} \(candidate.text)"
+        case .writingFix: candidate.text
+        case .writingReview: "\u{2713} \(candidate.text)"
         default: candidate.text
         }
     }

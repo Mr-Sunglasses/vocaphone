@@ -29,17 +29,19 @@ struct TypingCandidate: Equatable {
         /// offer goes there — visible for exactly as long as the correction is
         /// still the last thing that happened.
         case revert
-        /// "Check grammar while typing": a fix for the sentence just typed,
-        /// labelled with the words and what they become. Offered between
-        /// words only, and applied only on a tap.
-        case grammarFix
-        /// Beside ``grammarFix``: keeps what was written and stops offering
-        /// that fix in this field.
-        case grammarDismiss
+        /// Writing check: one suggestion, labelled with the words and what
+        /// they become; `payload` is its key. Offered between words only, and
+        /// applied only on a tap.
+        case writingFix
+        /// Writing check's count, Grammarly's "G": opens the panel with every
+        /// suggestion and its reason.
+        case writingReview
     }
 
     let text: String
     let kind: Kind
+    /// For ``Kind/writingFix``: which suggestion, by `WritingSuggestion.key`.
+    var payload: String?
     /// The one chip a boundary key would apply on its own. At most one chip is
     /// emphasised, and only when something really would be applied — an
     /// emphasised chip that space does not apply is a lie the user only catches
@@ -51,7 +53,7 @@ struct TypingCandidate: Equatable {
     /// The row is rebuilt on every keystroke, and identifying a chip by its
     /// position means the suggestion for a new prefix inherits the identity —
     /// and the running animation — of the word that was there before it.
-    var identity: String { "\(kind)-\(text)" }
+    var identity: String { "\(kind)-\(text)-\(payload ?? "")" }
 }
 
 /// Everything the strip needs to draw itself for one keystroke.

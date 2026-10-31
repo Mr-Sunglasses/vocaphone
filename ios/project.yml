@@ -76,6 +76,9 @@ targets:
       # lab show the thing the extension actually draws.
       - path: VocaPhoneKeyboard/DictationSurfaceView.swift
       - path: VocaPhoneKeyboard/DictationBarComponents.swift
+      # The surface hosts Writing check's panel, which draws the client's report.
+      - path: VocaPhoneKeyboard/WritingCheckPanel.swift
+      - path: VocaPhoneKeyboard/WritingCheckClient.swift
       - path: VocaPhoneKeyboard/TypingStripView.swift
       - path: VocaPhoneKeyboard/TypingCandidates.swift
       - path: VocaPhoneKeyboard/WordComposer.swift
@@ -211,7 +214,7 @@ targets:
       # Both halves of "Check grammar while typing": the app answering through
       # the App Group, and the keyboard asking.
       - path: VocaPhoneApp/Models/TypedGrammarResponder.swift
-      - path: VocaPhoneKeyboard/TypedGrammarClient.swift
+      - path: VocaPhoneKeyboard/WritingCheckClient.swift
       - path: VocaPhoneApp/Models/RetiredModelFileCleanup.swift
       - path: VocaPhoneApp/Models/LocalModelFileRemoval.swift
       # Key geometry is worth regression tests; the controller itself needs a
@@ -267,6 +270,7 @@ targets:
       # lab show the thing the extension actually draws.
       - path: VocaPhoneKeyboard/DictationSurfaceView.swift
       - path: VocaPhoneKeyboard/DictationBarComponents.swift
+      - path: VocaPhoneKeyboard/WritingCheckPanel.swift
       - path: VocaPhoneKeyboard/TypingStripView.swift
       # The realtime capture path is the highest-risk code in the app.
       - path: VocaPhoneApp/Audio/AudioCapturePipeline.swift

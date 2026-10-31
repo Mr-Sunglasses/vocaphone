@@ -65,6 +65,14 @@ enum KeyboardDefaults {
     static let typingGrammar = false
     /// Off: "Balanced" is what v2.0 was tuned for.
     static let grammarSureOnly = false
+    static let writingClarity = true
+    /// Off: a style opinion, not a mistake.
+    static let writingEngagement = false
+    /// Off: a style opinion, not a mistake.
+    static let writingDelivery = false
+    static let writingTone = true
+    /// Off: it changes text without a tap.
+    static let typoAutoFix = false
     static let liveWords = false
 }
 
@@ -585,6 +593,12 @@ enum KeyboardPreferences {
     static let fixGrammarKey = "fixGrammarEnabled"
     static let typingGrammarKey = "typingGrammarEnabled"
     static let grammarSureOnlyKey = "grammarSureOnly"
+    static let grammarModelReadyKey = "grammarModelReady"
+    static let writingClarityKey = "writingClarity"
+    static let writingEngagementKey = "writingEngagement"
+    static let writingDeliveryKey = "writingDelivery"
+    static let writingToneKey = "writingTone"
+    static let typoAutoFixKey = "typoAutoFix"
     static let liveWordsKey = "liveWordsEnabled"
     static let transcriptionLanguageKey = "transcriptionLanguage"
     static let translateToKey = "translateTo"
@@ -958,7 +972,45 @@ enum KeyboardPreferences {
         set { defaults?.set(newValue, forKey: grammarSureOnlyKey) }
     }
 
-    /// "Check grammar (English)" for typed text. The keyboard reads it to
+    /// Whether the app has a verified grammar model, so the keyboard knows
+    /// it is worth asking. Written by the app; read by the keyboard.
+    static var grammarModelReady: Bool {
+        get { boolean(grammarModelReadyKey, default: false) }
+        set { defaults?.set(newValue, forKey: grammarModelReadyKey) }
+    }
+
+    /// Writing check's blue group: wordy phrases, passive voice, long sentences.
+    static var writingClarity: Bool {
+        get { boolean(writingClarityKey, default: KeyboardDefaults.writingClarity) }
+        set { defaults?.set(newValue, forKey: writingClarityKey) }
+    }
+
+    /// Writing check's green group: weak intensifiers, a word used too often.
+    static var writingEngagement: Bool {
+        get { boolean(writingEngagementKey, default: KeyboardDefaults.writingEngagement) }
+        set { defaults?.set(newValue, forKey: writingEngagementKey) }
+    }
+
+    /// Writing check's purple group: hedging.
+    static var writingDelivery: Bool {
+        get { boolean(writingDeliveryKey, default: KeyboardDefaults.writingDelivery) }
+        set { defaults?.set(newValue, forKey: writingDeliveryKey) }
+    }
+
+    /// Whether Writing check says how the text sounds.
+    static var writingTone: Bool {
+        get { boolean(writingToneKey, default: KeyboardDefaults.writingTone) }
+        set { defaults?.set(newValue, forKey: writingToneKey) }
+    }
+
+    /// "Fix obvious typos as I type": the one change Writing check makes
+    /// without a tap, with Undo in the strip.
+    static var typoAutoFix: Bool {
+        get { boolean(typoAutoFixKey, default: KeyboardDefaults.typoAutoFix) }
+        set { defaults?.set(newValue, forKey: typoAutoFixKey) }
+    }
+
+    /// "Check while typing" (Writing check) for typed text. The keyboard reads it to
     /// decide whether to ask; the app reads it again before it answers, so
     /// turning it off in Settings stops the checks even from a keyboard that
     /// has not been reopened since.

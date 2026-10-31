@@ -613,6 +613,28 @@ final class SharedStore: @unchecked Sendable {
         return try? decoder.decode(type, from: data)
     }
 
+    /// Text the keyboard hands to the app's Writing check screen ("Open
+    /// app"). One file, taken and deleted by the app as it opens, so the text
+    /// waits on disk only as long as the hand-off.
+    func saveWritingDraft(_ text: String) throws {
+        let root = try rootDirectory()
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        try encoder.encode(WritingDraft(text: text, createdAt: Date())).write(to: writingDraftURL(root: root), options: .atomic)
+    }
+
+    /// The keyboard's hand-off, read and deleted in one step; nil when there
+    /// is none or it is too old to be what the user just asked for.
+    func takeWritingDraft(now: Date = Date()) -> String? {
+        guard let draft = take(WritingDraft.self, at: { writingDraftURL(root: $0) }),
+              now.timeIntervalSince(draft.createdAt) < WritingDraft.maximumAge
+        else { return nil }
+        return draft.text
+    }
+
+    private func writingDraftURL(root: URL) -> URL {
+        root.appendingPathComponent("writing-draft.json")
+    }
+
     private func typedGrammarRequestURL(root: URL) -> URL {
         root.appendingPathComponent("typed-grammar-request.json")
     }

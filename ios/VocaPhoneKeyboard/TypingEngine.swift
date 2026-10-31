@@ -575,6 +575,13 @@ final class TypingEngine {
         learned.update { $0.note(word) }
     }
 
+    /// "Add to dictionary" from Writing check: the word is the user's from
+    /// now on, completed and never corrected.
+    func learn(_ word: String) {
+        guard policy.allowsTypingIntelligence, !word.isEmpty else { return }
+        learned.update { $0.learn(word) }
+    }
+
     func resetLearnedWords() {
         learned.removeAll()
     }

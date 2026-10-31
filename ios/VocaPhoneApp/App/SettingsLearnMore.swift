@@ -225,6 +225,44 @@ enum SettingsHelp {
         ]
     )
 
+    static let writing = LearnMoreTopic(
+        title: "About Writing check",
+        parts: [
+            .init(heading: "What it does", paragraphs: [
+                "Writing check is a grammar and style checker that runs on this iPhone. "
+                    + "When you pause, the keyboard reads the text around the cursor and "
+                    + "puts a count at the start of the suggestion row: tap a suggestion to "
+                    + "apply it, or tap the count to see each one with its reason, and "
+                    + "Accept, Ignore or Add to dictionary.",
+                "Suggestions come in four colours: red for correctness (spelling, grammar, "
+                    + "punctuation), blue for clarity (wordy phrases, passive voice), green "
+                    + "for engagement (weak intensifiers, repeated words) and purple for "
+                    + "delivery (hedging). Correctness is always on; the others have their "
+                    + "own switches.",
+            ]),
+            .init(heading: "The grammar model", paragraphs: [
+                "Writing check works without a download. The optional 28 MB grammar model, "
+                    + "shared with Fix grammar for dictation, catches more slips like “he "
+                    + "don't know”. A keyboard is not allowed enough memory to run it, so "
+                    + "the keyboard hands sentences to the vocaphone app on this iPhone "
+                    + "through the shared container, and the app hands back the model's "
+                    + "text. Each is deleted as soon as it is read. This only works while "
+                    + "vocaphone is running in the background, which Quick Dictation keeps "
+                    + "it doing; without it, the rules still check.",
+                "iOS gives a keyboard only part of a long message. “Whole message” in the "
+                    + "panel moves the cursor to each end to read the rest, then puts it "
+                    + "back.",
+            ]),
+            .init(heading: "Privacy", paragraphs: [
+                "Nothing you type is sent anywhere, there is no account, and nothing "
+                    + "changes until you tap — unless you turn on “Fix obvious typos as I "
+                    + "type”, which corrects known misspellings and offers Undo. It is off "
+                    + "in passwords, addresses and links, leaves your own words, names and "
+                    + "links alone, and checks English only.",
+            ]),
+        ]
+    )
+
     static let typing = LearnMoreTopic(
         title: "About typing",
         parts: [
@@ -232,25 +270,10 @@ enum SettingsHelp {
                 "Suggestions are worked out on this iPhone, by the same dictionary "
                     + "iOS uses everywhere else, plus your own words. Nothing you type "
                     + "is sent anywhere, logged, or included in a diagnostics export — "
-                    + "not even to your gateway. Check grammar, when it is on, is the "
-                    + "one exception, and it stays on this iPhone: see below.",
+                    + "not even to your gateway. Writing check, when it is on, stays on "
+                    + "this iPhone too: see its own section.",
                 "Nothing is suggested in password, passcode or one-time-code fields, "
                     + "and nothing is learned from them.",
-            ]),
-            .init(heading: "Check grammar", paragraphs: [
-                "Check grammar (English) looks over the last sentence or two you typed "
-                    + "when you pause, with the same 28 MB on-device model as Fix grammar, "
-                    + "and offers a fix in the suggestion row: “he don't know” → “he "
-                    + "doesn't know”. Nothing changes until you tap it; tap Ignore to keep "
-                    + "what you wrote. Off by default.",
-                "A keyboard is not allowed enough memory to run the model, so the "
-                    + "keyboard hands those sentences to the vocaphone app on this iPhone "
-                    + "through the shared container, and the app hands back the fix. Each "
-                    + "is deleted as soon as it is read. It only works while vocaphone is "
-                    + "running in the background, which Quick Dictation keeps it doing.",
-                "It reads only the text before the cursor, never leaves this iPhone, "
-                    + "leaves your own words alone, and is off in passwords, addresses, "
-                    + "links and anywhere suggestions are off.",
             ]),
             .init(heading: "Learn as I type", paragraphs: [
                 "Words you type three times without undoing a correction, and words "
