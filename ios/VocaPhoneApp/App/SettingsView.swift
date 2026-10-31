@@ -172,6 +172,7 @@ struct SettingsView: View {
 // MARK: - Keyboard
 
 struct KeyboardSettingsView: View {
+    @Environment(RecordingCoordinator.self) private var coordinator
     @AppStorage(
         KeyboardPreferences.keyboardHeightKey,
         store: KeyboardPreferences.defaults
@@ -380,6 +381,11 @@ struct KeyboardSettingsView: View {
                 .disabled(!suggestionsEnabled)
             Toggle("Predict the next word", isOn: $predictionEnabled)
                 .disabled(!suggestionsEnabled)
+            TypingGrammarToggle(
+                store: coordinator.grammarModel,
+                grammar: coordinator.grammar,
+                suggestionsEnabled: suggestionsEnabled
+            )
         } header: {
             LearnMoreHeader(title: "Typing", topic: SettingsHelp.typing, presented: $learnMore)
         } footer: {

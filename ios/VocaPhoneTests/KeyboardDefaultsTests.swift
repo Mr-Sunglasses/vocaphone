@@ -24,6 +24,8 @@ struct KeyboardDefaultsTests {
         #expect(!KeyboardDefaults.liveWords)
         // A 28 MB download that can change a correct sentence is never on by itself.
         #expect(!KeyboardDefaults.fixGrammar)
+        // Same model, and it reads what is typed: never on by itself either.
+        #expect(!KeyboardDefaults.typingGrammar)
     }
 
     /// A key nobody has written reads as the default, which is what a fresh

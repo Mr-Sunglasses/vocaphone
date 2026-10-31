@@ -63,6 +63,42 @@ struct TypingFieldPolicy: Equatable {
     }
 
     /// The same decision, read from a live document proxy.
+    /// Whether "Check grammar while typing" may read this field: prose only.
+    /// Not an address, a link, a search, a name or a field that turned
+    /// autocorrection off — the app knows its field better than a grammar
+    /// model does. On top of ``allowsTypingIntelligence``, never instead of it.
+    static func allowsGrammarCheck(
+        keyboardType: UIKeyboardType,
+        contentType: UITextContentType?,
+        autocorrectionType: UITextAutocorrectionType
+    ) -> Bool {
+        if autocorrectionType == .no { return false }
+        if nonProseKeyboardTypes.contains(keyboardType) { return false }
+        if let contentType, nonProseContentTypes.contains(contentType) { return false }
+        return true
+    }
+
+    static let nonProseKeyboardTypes: Set<UIKeyboardType> = [
+        .URL, .emailAddress, .webSearch, .namePhonePad, .numbersAndPunctuation,
+    ]
+
+    static let nonProseContentTypes: Set<UITextContentType> = [
+        .URL, .emailAddress, .username, .name, .givenName, .middleName, .familyName,
+        .nickname, .namePrefix, .nameSuffix, .organizationName, .jobTitle,
+        .fullStreetAddress, .streetAddressLine1, .streetAddressLine2, .addressCity,
+        .addressState, .addressCityAndState, .sublocality, .countryName, .postalCode,
+        .telephoneNumber, .location,
+    ]
+
+    @MainActor
+    static func allowsGrammarCheck(for proxy: UITextDocumentProxy) -> Bool {
+        allowsGrammarCheck(
+            keyboardType: proxy.keyboardType ?? .default,
+            contentType: proxy.textContentType,
+            autocorrectionType: proxy.autocorrectionType ?? .default
+        )
+    }
+
     @MainActor
     static func resolve(for proxy: UITextDocumentProxy) -> TypingFieldPolicy {
         resolve(

@@ -401,11 +401,34 @@ class VocaPhoneViewModel @JvmOverloads constructor(
             viewModelScope.launch { container.settings.setFixGrammar(false) }
             return
         }
+        afterGrammarModel { container.settings.setFixGrammar(true) }
+    }
+
+    /**
+     * "Check grammar" for typed text: the same model as [setFixGrammar], so
+     * the same rule. On only once the files are verified, downloading first
+     * when they are missing.
+     */
+    fun setTypingGrammar(enabled: Boolean) {
+        if (!enabled) {
+            viewModelScope.launch { container.settings.setTypingGrammar(false) }
+            return
+        }
+        afterGrammarModel { container.settings.setTypingGrammar(true) }
+    }
+
+    private fun afterGrammarModel(enable: suspend () -> Unit) {
         container.workScope.launch {
+            // Already verified: no download, and the session the other
+            // setting may have loaded is kept rather than thrown away.
+            if (container.grammarModel.state.value.ready) {
+                enable()
+                return@launch
+            }
             val ready = runCatching { container.grammarModel.download() }.isSuccess
             if (ready) {
                 container.grammar.modelChanged()
-                container.settings.setFixGrammar(true)
+                enable()
             }
         }
     }

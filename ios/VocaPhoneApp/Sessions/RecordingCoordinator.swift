@@ -104,6 +104,9 @@ final class RecordingCoordinator {
     /// it on on-device transcripts. Only this app loads it, never the keyboard.
     let grammarModel: GrammarModelStore
     let grammar: GrammarCorrector
+    /// "Check grammar while typing": answers the keyboard's questions with the
+    /// same model, while this app is running to hear them.
+    private let typedGrammar: TypedGrammarResponder
 
     var isRecording: Bool {
 #if DEBUG
@@ -441,9 +444,14 @@ final class RecordingCoordinator {
         localModels = LocalModelManager()
         let grammarModel = GrammarModelStore()
         self.grammarModel = grammarModel
-        grammar = GrammarCorrector(
+        let grammar = GrammarCorrector(
             directory: { grammarModel.directory },
             isReady: { grammarModel.isReady }
+        )
+        self.grammar = grammar
+        typedGrammar = TypedGrammarResponder(
+            isEnabled: { KeyboardPreferences.typingGrammar && grammarModel.isReady },
+            correct: { text, keep in grammar.correctTyped(text, keeping: keep) }
         )
         // A process exit can leave an otherwise valid-looking availability
         // marker behind. The new app process is not warm until it arms audio.
@@ -508,6 +516,7 @@ final class RecordingCoordinator {
         let grammarModel = GrammarModelStore(pins: nil, root: nil)
         self.grammarModel = grammarModel
         grammar = GrammarCorrector(directory: { nil }, isReady: { false })
+        typedGrammar = TypedGrammarResponder(isEnabled: { false }, correct: { _, _ in nil })
         isPreviewFixture = true
         previewIsRecording = isRecording
         previewTranscripts = transcripts
@@ -2228,6 +2237,7 @@ final class RecordingCoordinator {
     }
 
     private func installDarwinObservers() {
+        typedGrammar.start()
         darwinObservations.append(
             VocaPhoneDarwinCenter.observe(.sessionChanged) { [weak self] in
                 Task { @MainActor [weak self] in

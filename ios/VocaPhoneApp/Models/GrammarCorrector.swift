@@ -17,6 +17,11 @@ final class GrammarCorrector: GrammarStage, @unchecked Sendable {
     /// How long the whole stage may take for one transcript.
     static let budget: Duration = .milliseconds(150)
 
+    /// How long one check of typed text may take. Nobody is waiting on an
+    /// insertion, so it is longer than dictation's; it still bounds a
+    /// paragraph pasted into the field.
+    static let typedBudget: Duration = .milliseconds(400)
+
     struct Loaded {
         let tagger: GrammarTagger
         let close: () -> Void
@@ -89,10 +94,25 @@ final class GrammarCorrector: GrammarStage, @unchecked Sendable {
     }
 
     func correct(_ text: String, keeping: Set<String>) -> String {
+        run(text, keeping: keeping, budget: budgetNanoseconds) ?? text
+    }
+
+    /// For "Check grammar while typing": `text` corrected, or `nil` when the
+    /// model is not loaded yet, which starts loading it.
+    func correctTyped(_ text: String, keeping: Set<String>) -> String? {
+        let (seconds, attoseconds) = Self.typedBudget.components
+        return run(
+            text,
+            keeping: keeping,
+            budget: UInt64(seconds) * 1_000_000_000 + UInt64(attoseconds / 1_000_000_000)
+        )
+    }
+
+    private func run(_ text: String, keeping: Set<String>, budget budgetNanoseconds: UInt64) -> String? {
         guard let current = lock.withLock({ loaded }) else {
             // Not downloaded, not loaded yet, or failed to load: leave it.
             warm()
-            return text
+            return nil
         }
         let start = DispatchTime.now().uptimeNanoseconds
         let deadline = start + budgetNanoseconds

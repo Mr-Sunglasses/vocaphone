@@ -543,6 +543,84 @@ final class SharedStore: @unchecked Sendable {
         return status
     }
 
+    // MARK: - Check grammar while typing
+
+    /// The keyboard's question for the app. One file, overwritten by the next
+    /// question: only the newest sentence is worth an answer.
+    func saveTypedGrammarRequest(_ request: TypedGrammarRequest) throws {
+        let root = try rootDirectory()
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        try encoder.encode(request).write(to: typedGrammarRequestURL(root: root), options: .atomic)
+        notify(.typedGrammarRequested)
+    }
+
+    /// Reads the keyboard's question and deletes it in the same breath, so the
+    /// typed text spends no longer on disk than it takes to read it.
+    func takeTypedGrammarRequest() -> TypedGrammarRequest? {
+        take(TypedGrammarRequest.self) { typedGrammarRequestURL(root: $0) }
+            .flatMap { $0.schemaVersion == TypedGrammarRequest.schemaVersion ? $0 : nil }
+    }
+
+    func saveTypedGrammarAnswer(_ answer: TypedGrammarAnswer) throws {
+        let root = try rootDirectory()
+        try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
+        try encoder.encode(answer).write(to: typedGrammarAnswerURL(root: root), options: .atomic)
+        notify(.typedGrammarAnswered)
+    }
+
+    /// Reads the app's answer and deletes it.
+    func takeTypedGrammarAnswer() -> TypedGrammarAnswer? {
+        take(TypedGrammarAnswer.self) { typedGrammarAnswerURL(root: $0) }
+            .flatMap { $0.schemaVersion == TypedGrammarAnswer.schemaVersion ? $0 : nil }
+    }
+
+    /// Removes the answer to `id` if it is still waiting: the keyboard went
+    /// away, or moved on, before collecting it.
+    func removeTypedGrammarAnswer(id: UUID) {
+        guard let root = try? rootDirectory() else { return }
+        let fileURL = typedGrammarAnswerURL(root: root)
+        guard let data = try? Data(contentsOf: fileURL),
+              (try? decoder.decode(TypedGrammarAnswer.self, from: data))?.id == id
+        else { return }
+        try? fileManager.removeItem(at: fileURL)
+    }
+
+    /// Removes a question or answer nobody collected: a keyboard dismissed
+    /// mid-check, an app that ended before it answered. A file a process was
+    /// reading when it ended goes too.
+    func clearTypedGrammarExchange() {
+        guard let root = try? rootDirectory() else { return }
+        try? fileManager.removeItem(at: typedGrammarRequestURL(root: root))
+        try? fileManager.removeItem(at: typedGrammarAnswerURL(root: root))
+        let names = (try? fileManager.contentsOfDirectory(atPath: root.path)) ?? []
+        for name in names where name.hasPrefix("typed-grammar-") && name.hasSuffix(".taking") {
+            try? fileManager.removeItem(at: root.appendingPathComponent(name))
+        }
+    }
+
+    /// Reads a file and deletes it. It is claimed first by renaming it, which
+    /// is atomic: read then delete in place would delete, unread, a newer file
+    /// the other process saved at that path in between.
+    private func take<T: Decodable>(_ type: T.Type, at location: (URL) -> URL) -> T? {
+        guard let root = try? rootDirectory() else { return nil }
+        let fileURL = location(root)
+        let claimed = root.appendingPathComponent(
+            "\(fileURL.deletingPathExtension().lastPathComponent).\(UUID().uuidString).taking"
+        )
+        guard (try? fileManager.moveItem(at: fileURL, to: claimed)) != nil else { return nil }
+        defer { try? fileManager.removeItem(at: claimed) }
+        guard let data = try? Data(contentsOf: claimed) else { return nil }
+        return try? decoder.decode(type, from: data)
+    }
+
+    private func typedGrammarRequestURL(root: URL) -> URL {
+        root.appendingPathComponent("typed-grammar-request.json")
+    }
+
+    private func typedGrammarAnswerURL(root: URL) -> URL {
+        root.appendingPathComponent("typed-grammar-answer.json")
+    }
+
     private func keyboardStatusURL(root: URL) -> URL {
         root.appendingPathComponent("keyboard-status.json")
     }

@@ -1803,6 +1803,7 @@ private struct CandidateRow: View {
         switch candidate.kind {
         case .literal: "Keep \(candidate.text)"
         case .revert: "Put \(candidate.text) back"
+        case .grammarFix: "Fix grammar: \(candidate.text)"
         default: candidate.text
         }
     }
@@ -1811,6 +1812,7 @@ private struct CandidateRow: View {
         switch candidate.kind {
         case .literal: "\u{201C}\(candidate.text)\u{201D}"
         case .revert: "\u{21A9} \u{201C}\(candidate.text)\u{201D}"
+        case .grammarFix: "\u{2713} \(candidate.text)"
         default: candidate.text
         }
     }

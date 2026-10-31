@@ -232,9 +232,25 @@ enum SettingsHelp {
                 "Suggestions are worked out on this iPhone, by the same dictionary "
                     + "iOS uses everywhere else, plus your own words. Nothing you type "
                     + "is sent anywhere, logged, or included in a diagnostics export — "
-                    + "not even to your gateway.",
+                    + "not even to your gateway. Check grammar, when it is on, is the "
+                    + "one exception, and it stays on this iPhone: see below.",
                 "Nothing is suggested in password, passcode or one-time-code fields, "
                     + "and nothing is learned from them.",
+            ]),
+            .init(heading: "Check grammar", paragraphs: [
+                "Check grammar (English) looks over the last sentence or two you typed "
+                    + "when you pause, with the same 28 MB on-device model as Fix grammar, "
+                    + "and offers a fix in the suggestion row: “he don't know” → “he "
+                    + "doesn't know”. Nothing changes until you tap it; tap Ignore to keep "
+                    + "what you wrote. Off by default.",
+                "A keyboard is not allowed enough memory to run the model, so the "
+                    + "keyboard hands those sentences to the vocaphone app on this iPhone "
+                    + "through the shared container, and the app hands back the fix. Each "
+                    + "is deleted as soon as it is read. It only works while vocaphone is "
+                    + "running in the background, which Quick Dictation keeps it doing.",
+                "It reads only the text before the cursor, never leaves this iPhone, "
+                    + "leaves your own words alone, and is off in passwords, addresses, "
+                    + "links and anywhere suggestions are off.",
             ]),
             .init(heading: "Learn as I type", paragraphs: [
                 "Words you type three times without undoing a correction, and words "

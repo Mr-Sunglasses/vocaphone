@@ -72,6 +72,14 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
     private var sessionTargetConfirmed = false
     private var palette = KeyboardPalette(isDark: false)
     private lazy var typing = TypingEngine()
+    /// "Check grammar while typing". The model lives in the app, which
+    /// answers only while it is running; see ``TypedGrammarClient``.
+    private lazy var grammarCheck = TypedGrammarClient(isAppRunning: { [store] in
+        (try? store.loadQuickDictationAvailability())?.isReady() == true
+    })
+    /// Whether the field's traits allow the grammar check, decided with the
+    /// rest of the field's traits rather than per keystroke.
+    private var fieldAllowsGrammarCheck = false
     /// The record the bar is currently drawn from, so a strip update can
     /// re-render without another read of the shared container. A file read per
     /// keystroke is exactly the cost typing intelligence must not add.
@@ -149,6 +157,15 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
             guard let self else { return }
             renderStrip(strip)
             noteAvailableMemory(.firstCandidates)
+        }
+        grammarCheck.onChange = { [weak self] in
+            guard let self else { return }
+            renderStrip(typing.strip)
+        }
+        // The English layout is not proof of English: someone may type another
+        // language on it. The same test dictation's grammar stage uses.
+        grammarCheck.isEnglish = { [weak self] text in
+            TranscriptRepair.isEnglish(text) { self?.typing.isListedWord($0) ?? false }
         }
         typing.onWordListLoaded = { [weak self] list in
             self?.keyGrid.swipeWordList = list
@@ -377,6 +394,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         isKeyboardVisible = false
         announcesStateChanges = false
         typing.suspend()
+        grammarCheck.reset()
         super.viewWillDisappear(animated)
         pollingTimer?.invalidate()
         pollingTimer = nil
@@ -531,6 +549,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if documentID != lastDocumentID {
             lastDocumentID = documentID
             lastSpaceInsertedAt = nil
+            grammarCheck.reset()
             applyDocumentTraits()
             // A waiting transcript parks itself when the cursor leaves its field
             // and re-arms when it comes back. Both were left to the next poll,
@@ -549,6 +568,43 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         releaseUndoIfDetached()
         updateReturnKeyEnablement(for: snapshot)
         updateAutomaticShift(for: snapshot)
+        // Restarts a timer and nothing else: the question waits for a pause.
+        // A selection is not a sentence being written, and a fix applied over
+        // one would delete it; the selection is only read when checking is on.
+        grammarCheck.textChanged(
+            before: snapshot.before,
+            enabled: isGrammarCheckEnabled && textDocumentProxy.selectedText?.isEmpty != false,
+            keep: { [weak self] in self?.grammarKeeps() ?? [] }
+        )
+    }
+
+    private var isGrammarCheckEnabled: Bool {
+        KeyboardPreferences.typingGrammar
+            && KeyboardPreferences.typingSuggestionsEnabled
+            && typing.policy.allowsTypingIntelligence
+            && fieldAllowsGrammarCheck
+            && typing.layout.id == "en"
+    }
+
+    /// Words the grammar model may not change: the user's own, as for dictation.
+    private func grammarKeeps() -> [String] {
+        Array(DictatedTranscript.grammarKeeps(
+            vocabulary: CustomVocabulary.terms(LocalTranscriptionPreferences.customVocabulary)
+                + typing.learnedWords
+                + typing.lexiconWords,
+            snippets: SnippetStore.snippets
+        ))
+    }
+
+    /// The chips the strip shows: a grammar fix between words, the typing
+    /// candidates otherwise. The fix waits while a word is being typed, and
+    /// goes once it no longer describes the text before the cursor.
+    private func stripCandidates(_ strip: TypingStrip) -> [TypingCandidate] {
+        guard let fix = grammarCheck.fix, typing.composer.text.isEmpty else { return strip.candidates }
+        return [
+            TypingCandidate(text: fix.label, kind: .grammarFix),
+            TypingCandidate(text: "Ignore", kind: .grammarDismiss),
+        ]
     }
 
     // MARK: - Dictation actions
@@ -1690,7 +1746,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // change of body rather than a change of chips — that belongs to the
         // full render, which owns the crossfade between the two.
         guard barLayout == .strip,
-              !strip.candidates.isEmpty,
+              !stripCandidates(strip).isEmpty,
               lastRecord == nil || lastRecord?.state == .idle
         else {
             render(lastRecord)
@@ -1699,7 +1755,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // Whichever of the two is on screen gets the chips; the other is not
         // laid out for a row nobody is looking at.
         if dictationSurfaceHosting?.view.isHidden == false {
-            dictationSurfaceState.candidates = strip.candidates
+            dictationSurfaceState.candidates = stripCandidates(strip)
 #if DEBUG
             FrameMonitor.noteStateChange("surface.candidates")
 #endif
@@ -1707,7 +1763,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         }
         // The bar may still be showing its controls, in which case arriving at
         // the strip is a change of body and the full render owns the crossfade.
-        if !dictationBar.updateCandidates(strip.candidates) { render(lastRecord) }
+        if !dictationBar.updateCandidates(stripCandidates(strip)) { render(lastRecord) }
     }
 
     private func render(_ record: SessionRecord?) {
@@ -1726,7 +1782,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
                 // Undo is offered only while the transcript is still the tail of
                 // the document, and only once the session it came from is over.
                 canUndo: lastInsertedText != nil,
-                candidates: typing.strip.candidates,
+                candidates: stripCandidates(typing.strip),
                 prefersQuickDictation: record?.prefersQuickDictation == true,
                 processingLocation: record?.processingLocation,
                 insertionWasInterrupted: record?.insertionInterrupted == true
@@ -1776,7 +1832,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // The same candidates the strip was drawing. Typing intelligence is not
         // a feature of the old bar; it is a feature of the keyboard, and the
         // surface replaced the bar, not the engine behind it.
-        dictationSurfaceState.candidates = typing.strip.candidates
+        dictationSurfaceState.candidates = stripCandidates(typing.strip)
         // The state's own copy and its own action, taken from the model the old
         // bar was already built from. Two wordings for one failure is how a
         // product ends up telling a person two different things about it.
@@ -2285,6 +2341,7 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         // still be running the user's password through a dictionary.
         let policy = TypingFieldPolicy.resolve(for: proxy)
         typing.documentChanged(policy: policy)
+        fieldAllowsGrammarCheck = TypingFieldPolicy.allowsGrammarCheck(for: proxy)
         // The trace writes which key was pressed, and a character key's name is
         // the character. Not in a field that has asked for no intelligence.
         keyGrid.traceNamesKeys = policy.allowsTypingIntelligence
@@ -2535,6 +2592,27 @@ extension KeyboardViewController: DictationBarViewDelegate {
             // keyboard vocabulary, and an emoji is not a word it should start
             // completing letters into.
             typing.resetComposition(origin: .suggestion, document: refreshDocument())
+        case .grammarFix:
+            // Checked against the document as it is now, not as it was when
+            // the app answered: a fix that no longer describes the text before
+            // the cursor deletes nothing.
+            // With a selection, the first deleteBackward() removes the
+            // selection rather than a character, and every count after it is
+            // off by that much. The strip hides the fix then; this is the
+            // backstop for a tap that lands as a selection is made.
+            guard textDocumentProxy.selectedText?.isEmpty != false else {
+                grammarCheck.reset()
+                break
+            }
+            guard let fix = grammarCheck.take(),
+                  let edit = TypedGrammar.edit(fix, before: document.before ?? "")
+            else { break }
+            for _ in 0..<edit.deleteBefore { textDocumentProxy.deleteBackward() }
+            textDocumentProxy.insertText(edit.insert)
+            typing.reconcile(document: refreshDocument())
+            UIAccessibility.post(notification: .announcement, argument: "Grammar fixed")
+        case .grammarDismiss:
+            grammarCheck.dismiss()
         }
         lastSpaceInsertedAt = nil
         releaseUndoIfDetached()

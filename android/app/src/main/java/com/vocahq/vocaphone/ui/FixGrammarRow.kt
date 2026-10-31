@@ -28,26 +28,70 @@ internal fun FixGrammarRow(
     onFixGrammar: (Boolean) -> Unit,
     onCancelDownload: () -> Unit,
 ) {
-    var offering by remember { mutableStateOf(false) }
     val raw = settings.style == WritingStyle.RAW
-    SettingsSwitchRow(
+    GrammarModelSwitchRow(
         title = "Fix grammar (English)",
+        description = "Common grammar slips, on this phone.",
+        unavailable = "Not applied to the Raw style.".takeIf { raw },
+        on = settings.fixGrammar,
+        model = model,
+        onChange = onFixGrammar,
+        onCancelDownload = onCancelDownload,
+    )
+}
+
+/**
+ * "Check grammar" in the keyboard's Typing group: the same model, offered
+ * for what is typed. It shares [FixGrammarRow]'s download, so whichever is
+ * turned on first fetches the model and the other is then a plain switch.
+ */
+@Composable
+internal fun TypingGrammarRow(
+    settings: VocaPhoneSettings,
+    model: GrammarModelState,
+    onTypingGrammar: (Boolean) -> Unit,
+    onCancelDownload: () -> Unit,
+) {
+    GrammarModelSwitchRow(
+        title = "Check grammar (English)",
+        description = "Offers a fix in the toolbar when you pause. Nothing changes until you tap it.",
+        unavailable = "Needs suggestions turned on.".takeIf { !settings.suggestionsEnabled },
+        on = settings.typingGrammar,
+        model = model,
+        onChange = onTypingGrammar,
+        onCancelDownload = onCancelDownload,
+    )
+}
+
+@Composable
+private fun GrammarModelSwitchRow(
+    title: String,
+    description: String,
+    unavailable: String?,
+    on: Boolean,
+    model: GrammarModelState,
+    onChange: (Boolean) -> Unit,
+    onCancelDownload: () -> Unit,
+) {
+    var offering by remember { mutableStateOf(false) }
+    SettingsSwitchRow(
+        title = title,
         supporting = when {
-            raw -> "Not applied to the Raw style."
+            unavailable != null -> unavailable
             model.downloading -> listOfNotNull(
                 "Downloading the grammar model",
                 downloadSizeProgress(model.downloadedBytes, model.totalBytes),
             ).joinToString(" · ")
             model.failure != null -> model.failure
-            model.ready -> "Common grammar slips, on this phone."
-            else -> "Common grammar slips, on this phone. ${byteLabel(model.totalBytes)} download."
+            model.ready -> description
+            else -> "$description ${byteLabel(model.totalBytes)} download."
         },
-        checked = settings.fixGrammar && model.ready && !raw,
-        enabled = !raw && !model.downloading,
-        onCheckedChange = { on ->
+        checked = on && model.ready && unavailable == null,
+        enabled = unavailable == null && !model.downloading,
+        onCheckedChange = { checked ->
             when {
-                !on -> onFixGrammar(false)
-                model.ready -> onFixGrammar(true)
+                !checked -> onChange(false)
+                model.ready -> onChange(true)
                 else -> offering = true
             }
         },
@@ -65,8 +109,8 @@ internal fun FixGrammarRow(
             title = { Text("Download the grammar model?") },
             text = {
                 Text(
-                    "Fix grammar uses a ${byteLabel(model.totalBytes)} model that runs on this phone. " +
-                        "Your words are corrected here and never sent anywhere. It fixes common " +
+                    "Grammar checking uses a ${byteLabel(model.totalBytes)} model that runs on this " +
+                        "phone. Your words are checked here and never sent anywhere. It fixes common " +
                         "English grammar and spelling slips, and can occasionally change a " +
                         "sentence that was already right.",
                 )
@@ -74,7 +118,7 @@ internal fun FixGrammarRow(
             confirmButton = {
                 TextButton(onClick = {
                     offering = false
-                    onFixGrammar(true)
+                    onChange(true)
                 }) { Text("Download") }
             },
             dismissButton = {

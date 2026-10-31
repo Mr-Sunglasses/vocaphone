@@ -81,6 +81,12 @@ the active cursor. A gateway is never required for on-device mode.
   know") in English dictation transcribed on the phone. The text never leaves
   the phone, and it can occasionally change a sentence that was already right.
   Not in the F-Droid build, which ships no ONNX Runtime
+- Optional Check grammar (English) for what you type, off by default: the same
+  model looks over the sentence you just typed when you pause and offers a fix
+  in the keyboard's suggestion row; nothing changes until you tap it. On
+  Android it runs in the keyboard's own process. On iOS the keyboard is not
+  allowed enough memory for the model, so it asks the vocaphone app on the same
+  iPhone, which works while Quick Dictation keeps the app running
 - Optional on-device translation where the model was actually trained for it:
   Canary between English, German, Spanish and French, and the multilingual
   Whisper models into English. Language says what you are speaking; Translate to

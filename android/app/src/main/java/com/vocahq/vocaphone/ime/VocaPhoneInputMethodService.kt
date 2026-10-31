@@ -19,11 +19,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.vocahq.vocaphone.VocaPhoneApplication
+import com.vocahq.vocaphone.core.CustomVocabulary
+import com.vocahq.vocaphone.core.DictatedTranscript
 import com.vocahq.vocaphone.core.DictationPhase
 import com.vocahq.vocaphone.core.DictationState
 import com.vocahq.vocaphone.core.ImeInputPolicy
 import com.vocahq.vocaphone.core.ModelLanguageSupport
 import com.vocahq.vocaphone.core.TranscriptionLanguage
+import com.vocahq.vocaphone.core.TranscriptRepair
 import com.vocahq.vocaphone.core.TranscriptSanitizer
 import com.vocahq.vocaphone.core.WritingStyle
 import com.vocahq.vocaphone.dictation.AppliedInsertion
@@ -32,6 +35,8 @@ import com.vocahq.vocaphone.dictation.DictationSource
 import com.vocahq.vocaphone.dictation.InsertionOutcome
 import com.vocahq.vocaphone.dictation.InsertionReport
 import com.vocahq.vocaphone.dictation.TranscriptInserter
+import com.vocahq.vocaphone.grammar.TypedGrammar
+import com.vocahq.vocaphone.local.GrammarModelCatalog
 import com.vocahq.vocaphone.settings.ClipboardHistory
 import com.vocahq.vocaphone.settings.ClipboardImages
 import com.vocahq.vocaphone.settings.VocaPhoneSettings
@@ -148,6 +153,35 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
 
     private val editorTextRefresh = Runnable { refreshEditorText() }
 
+    /**
+     * "Check grammar while typing". The model is the app's own
+     * [com.vocahq.vocaphone.grammar.GrammarCorrector], shared with dictation's
+     * Fix grammar; this keyboard runs in the app's process, so the typed text
+     * never leaves it.
+     */
+    private val typedGrammar by lazy {
+        TypedGrammarCheck(
+            scope = scope,
+            worker = Dispatchers.Default,
+            readBefore = { limit ->
+                runCatching { currentInputConnection?.getTextBeforeCursor(limit, 0)?.toString() }.getOrNull()
+            },
+            correct = { text, keep -> container.grammar.correctTyped(text, keep) },
+            isEnglish = { text ->
+                TranscriptRepair.isEnglish(text, "auto") { suggestionDictionary.value?.isKnown(it) == true }
+            },
+        )
+    }
+
+    /**
+     * Gives the grammar session back a while after the keyboard goes away.
+     * Dictation's idle release only runs after a dictation, and somebody who
+     * only types would otherwise keep tens of megabytes loaded for nothing.
+     */
+    private val releaseTypedGrammar = Runnable {
+        if (!lastState.phase.isBusy) container.grammar.release()
+    }
+
     override fun onCreate() {
         super.onCreate()
         publishVoiceShortcutSubtypes()
@@ -204,6 +238,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             val editorText by visibleEditorText.collectAsState()
             val dictionary by suggestionDictionary.collectAsState()
             val emojis by emojiCatalog.collectAsState()
+            val grammarFix by typedGrammar.fix.collectAsState()
             VocaPhoneKeyboard(
                 dictationState = dictationState,
                 editor = editorConfig,
@@ -213,6 +248,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 editorText = editorText,
                 suggestions = dictionary,
                 emojiCatalog = emojis,
+                grammarFix = grammarFix,
                 onCommand = ::handleCommand,
                 onMicTap = ::toggleDictation,
                 onMicLongPress = ::cancelDictationFromMic,
@@ -230,6 +266,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 onClearClipboardHistory = ::clearClipboardHistory,
                 onEmojiUsed = ::recordEmojiRecent,
                 onSpaceLongPress = ::showKeyboardPicker,
+                onApplyGrammarFix = ::applyGrammarFix,
+                onDismissGrammarFix = ::dismissGrammarFix,
             )
         }
     }
@@ -294,6 +332,10 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             startClipboardWatch()
             refreshEditorText()
         }
+        mainHandler.removeCallbacks(releaseTypedGrammar)
+        // Loaded while the user types their first sentence, so the first
+        // pause has a model to ask.
+        if (typedGrammarEnabled()) container.grammar.warm()
         // Auto-start waits for VoiceShortcutListeningChrome's first frame.
         // A microphone FGS is not eligible on this handoff (targetSdk 36).
         maybeHandBackVoiceShortcut()
@@ -331,6 +373,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         }
         stopClipboardWatch()
         visibleClipboard.value = null
+        typedGrammar.reset()
+        mainHandler.removeCallbacks(releaseTypedGrammar)
+        mainHandler.postDelayed(releaseTypedGrammar, TYPED_GRAMMAR_RELEASE_DELAY_MS)
         super.onFinishInputView(finishingInput)
     }
 
@@ -436,6 +481,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         caseCycleEmitted = null
         composingRegionActive = false
         mainHandler.removeCallbacks(editorTextRefresh)
+        typedGrammar.reset()
         editorConfig = KeyboardEditorConfig.empty().copy(sessionId = editorSession)
         super.onFinishInput()
     }
@@ -455,6 +501,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
         voiceShortcutRejectGuidance = false
         stopClipboardWatch()
         releaseOwnedDictation("keyboard_destroyed")
+        // The delayed release was just removed with everything else posted.
+        if (!lastState.phase.isBusy) container.grammar.release()
         if (container.dictation.imeInserter === this) {
             container.dictation.imeInserter = null
         }
@@ -827,6 +875,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
                 selected = selected,
                 hasSelection = hasSelection,
             )
+            typedGrammar.textChanged("", enabled = false, keep = ::typedGrammarKeeps)
             return
         }
         val before = runCatching {
@@ -836,6 +885,61 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             currentInputConnection?.getTextAfterCursor(32, 0)?.toString().orEmpty()
         }.getOrDefault("")
         visibleEditorText.value = EditorTextWindow(before, after, selected, hasSelection)
+        // Restarts the pause timer only. The read the check needs, and the
+        // model, wait until the typing stops.
+        typedGrammar.textChanged(
+            before,
+            enabled = typedGrammarEnabled() && !hasSelection,
+            keep = ::typedGrammarKeeps,
+        )
+    }
+
+    private fun typedGrammarEnabled(): Boolean {
+        val settings = visibleSettings.value
+        return settings.typingGrammar && settings.suggestionsEnabled && !voiceShortcutActive &&
+            GrammarModelCatalog.available && container.grammarModel.state.value.ready &&
+            ImeInputPolicy.acceptsGrammarCheck(currentInputType)
+    }
+
+    /** Words the grammar model may not change: the user's own, as for dictation. */
+    private fun typedGrammarKeeps(): Set<String> {
+        val settings = visibleSettings.value
+        return DictatedTranscript.grammarKeeps(
+            PersonalDictionary.terms(settings.personalDictionary) + CustomVocabulary.terms(settings.customVocabulary),
+            settings.snippets,
+        )
+    }
+
+    private fun dismissGrammarFix() = typedGrammar.dismiss()
+
+    /**
+     * The grammar chip, tapped. The text is read again first: the fix is
+     * applied only if the sentence it was worked out for is still the one
+     * before the cursor, as one batch edit.
+     */
+    private fun applyGrammarFix() {
+        // commitText replaces a selection, so a fix applied over one would
+        // delete it. The strip hides the fix then; this is the backstop for a
+        // tap that lands as a selection is made.
+        if (lastSelStart != lastSelEnd) {
+            typedGrammar.reset()
+            return
+        }
+        val fix = typedGrammar.take() ?: return
+        val connection = currentInputConnection ?: return
+        val before = runCatching {
+            connection.getTextBeforeCursor(TypedGrammar.READ_LIMIT, 0)?.toString()
+        }.getOrNull() ?: return
+        val edit = TypedGrammar.edit(fix, before) ?: return
+        connection.beginBatchEdit()
+        if (composingRegionActive) connection.finishComposingText()
+        connection.deleteSurroundingText(edit.deleteBefore, 0)
+        connection.commitText(edit.insert, 1)
+        connection.endBatchEdit()
+        composingRegionActive = false
+        editorConfig = editorConfig.copy(cursorSync = editorConfig.cursorSync + 1)
+        syncShiftFromCursor()
+        scheduleEditorTextRefresh()
     }
 
     /**
@@ -1278,5 +1382,8 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
          * enough that it has landed before anyone who paused looks up.
          */
         const val EDITOR_TEXT_REFRESH_DELAY_MS = 50L
+
+        /** How long the grammar session outlives the keyboard going away. */
+        const val TYPED_GRAMMAR_RELEASE_DELAY_MS = 60_000L
     }
 }
