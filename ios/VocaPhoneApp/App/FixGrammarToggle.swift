@@ -119,21 +119,25 @@ struct WritingCheckSettingsSection: View {
             Button("Cancel download", role: .cancel) { store.cancel() }
             ProgressView(value: fraction) { Text("Downloading the grammar model") }
         case let .failed(reason):
-            Button { offering = true } label: {
-                SettingLabel("Download the grammar model", detail: reason.plainText)
-            }
+            downloadButton(detail: reason.plainText)
         case .absent:
-            Button { offering = true } label: {
-                SettingLabel("Download the grammar model", detail: "Catches more grammar slips. \(size), runs on this iPhone.")
-            }
-            .confirmationDialog("Download the grammar model?", isPresented: $offering, titleVisibility: .visible) {
-                Button("Download \(size)") { download() }
-                Button("Not now", role: .cancel) {}
-            } message: {
-                Text("Writing check works without it. The \(size) model runs on this iPhone and catches "
-                    + "more grammar slips, like “he don't know”. Your words are checked here and never "
-                    + "sent anywhere.")
-            }
+            downloadButton(detail: "Catches more grammar slips. \(size), runs on this iPhone.")
+        }
+    }
+
+    /// The offer to download, first time or again after a failure. The dialog
+    /// travels with the button, so whichever phase shows it can open it.
+    private func downloadButton(detail: String) -> some View {
+        Button { offering = true } label: {
+            SettingLabel("Download the grammar model", detail: detail)
+        }
+        .confirmationDialog("Download the grammar model?", isPresented: $offering, titleVisibility: .visible) {
+            Button("Download \(size)") { download() }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("Writing check works without it. The \(size) model runs on this iPhone and catches "
+                + "more grammar slips, like “he don't know”. Your words are checked here and never "
+                + "sent anywhere.")
         }
     }
 
