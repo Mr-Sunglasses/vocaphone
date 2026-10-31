@@ -27,6 +27,7 @@ class WritingCheckSessionTest {
     private var loaded = true
     private var modelOn = true
     private var english = true
+    // Model-only slips: the rules alone catch neither "She go" nor "cars was".
     private val checker = WritingCheck(WritingFixtures.rules)
     private val options = WritingCheckSession.Options(WritingCategory.entries.toSet(), emptySet(), tone = true)
 
@@ -44,7 +45,7 @@ class WritingCheckSessionTest {
             } else {
                 { sentence, _ ->
                     asked.add(sentence)
-                    if (!loaded) null else sentence.replace("don't", "doesn't").replace("was", "were")
+                    if (!loaded) null else sentence.replace("She go ", "She goes ").replace(" was ", " were ")
                 }
             }
         },
@@ -65,17 +66,17 @@ class WritingCheckSessionTest {
 
     @Test
     fun `a pause checks the field with the rules and the model`() = scope.runTest {
-        type("He don't know. I could of told you. ")
+        type("She go home. I could of told you. ")
         pause()
-        assertEquals(listOf("don't → doesn't", "of → have"), labels())
+        assertEquals(listOf("go → goes", "of → have"), labels())
         assertEquals(2, session.report.value?.chips?.size)
     }
 
     @Test
     fun `typing before the pause ends checks nothing`() = scope.runTest {
-        type("He don't know. ")
+        type("She go home. ")
         advanceTimeBy(WritingCheckSession.PAUSE_MILLIS / 2)
-        type("He don't know. A")
+        type("She go home. A")
         advanceTimeBy(WritingCheckSession.PAUSE_MILLIS / 2)
         runCurrent()
         assertEquals(0, reads)
@@ -94,29 +95,29 @@ class WritingCheckSessionTest {
 
     @Test
     fun `each sentence goes to the model once`() = scope.runTest {
-        type("He don't know. ")
+        type("She go home. ")
         pause()
-        type("He don't know. They was late. ")
+        type("She go home. The cars was late. ")
         pause()
-        assertEquals(listOf("He don't know.", "They was late."), asked)
-        assertEquals(listOf("don't → doesn't", "was → were"), labels())
+        assertEquals(listOf("She go home.", "The cars was late."), asked)
+        assertEquals(listOf("go → goes", "was → were"), labels())
     }
 
     @Test
     fun `the same text is not checked twice`() = scope.runTest {
-        type("They was late. ")
+        type("The cars was late. ")
         pause()
         val reads = this@WritingCheckSessionTest.reads
-        session.textChanged("They was late. ", true) { options }
+        session.textChanged("The cars was late. ", true) { options }
         pause()
         assertEquals(reads + 1, this@WritingCheckSessionTest.reads)
-        assertEquals(listOf("They was late."), asked)
+        assertEquals(listOf("The cars was late."), asked)
     }
 
     @Test
     fun `without the model the rules still check`() = scope.runTest {
         modelOn = false
-        type("He don't know. I could of told you. ")
+        type("She go home. I could of told you. ")
         pause()
         assertEquals(listOf("of → have"), labels())
         assertEquals(emptyList<String>(), asked)
@@ -125,42 +126,42 @@ class WritingCheckSessionTest {
     @Test
     fun `a model still loading is asked once more`() = scope.runTest {
         loaded = false
-        type("He don't know. ")
+        type("She go home. ")
         pause()
         assertNull(session.report.value)
         loaded = true
         advanceTimeBy(WritingCheckSession.LOAD_RETRY_MILLIS + 1)
         runCurrent()
-        assertEquals(listOf("don't → doesn't"), labels())
+        assertEquals(listOf("go → goes"), labels())
     }
 
     @Test
     fun `turning it off clears the strip`() = scope.runTest {
-        type("He don't know. ")
+        type("She go home. ")
         pause()
-        type("He don't know. ", enabled = false)
+        type("She go home. ", enabled = false)
         assertNull(session.report.value)
     }
 
     @Test
     fun `a dismissed suggestion stays away in this field`() = scope.runTest {
-        type("He don't know. ")
+        type("She go home. ")
         pause()
         session.dismiss(session.report.value!!.suggestions.single())
         assertEquals(emptyList<String>(), labels())
-        type("He don't know. Fine. ")
+        type("She go home. Fine. ")
         pause()
         assertEquals(emptyList<String>(), labels())
     }
 
     @Test
     fun `applying moves the others to where they now are`() = scope.runTest {
-        type("He don't know. I could of told you. ")
+        type("She go home. I could of told you. ")
         pause()
         val first = session.report.value!!.suggestions.first()
         session.applied(first)
         val report = session.report.value!!
-        assertEquals("He doesn't know. I could of told you. ", report.field.text)
+        assertEquals("She goes home. I could of told you. ", report.field.text)
         val rest = report.suggestions.single()
         assertEquals("of", report.field.text.substring(rest.start, rest.end))
     }
@@ -176,13 +177,13 @@ class WritingCheckSessionTest {
 
     @Test
     fun `reset forgets everything`() = scope.runTest {
-        type("He don't know. ")
+        type("She go home. ")
         pause()
         session.reset()
         assertNull(session.report.value)
         assertFalse(session.checking.value)
-        type("He don't know. ")
+        type("She go home. ")
         pause()
-        assertEquals(listOf("He don't know.", "He don't know."), asked)
+        assertEquals(listOf("She go home.", "She go home."), asked)
     }
 }
