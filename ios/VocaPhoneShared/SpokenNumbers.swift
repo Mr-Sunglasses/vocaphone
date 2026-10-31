@@ -85,7 +85,8 @@ enum SpokenNumbers {
             // "point" — those are "hundreds of people", "you and I", "to the
             // point", and starting a run on one would swallow the number that
             // follows it.
-            guard let first = word(for: string.substring(with: words[index].range)),
+            let article = articleOne(at: index, in: words, text: string)
+            guard let first = article ?? word(for: string.substring(with: words[index].range)),
                   first.opensANumber
             else {
                 index += 1
@@ -114,7 +115,9 @@ enum SpokenNumbers {
 
             guard !tokens.isEmpty,
                   let phrase = parse(tokens),
-                  isWorthConverting(tokens: tokens, endingAt: last, in: words, text: string)
+                  isWorthConverting(
+                      tokens: tokens, openedByArticle: article != nil, endingAt: last, in: words, text: string
+                  )
             else {
                 // Left exactly as dictated — including a run that did not parse,
                 // which stays whole rather than being picked apart into the
@@ -140,6 +143,7 @@ enum SpokenNumbers {
     /// ordinal after the number, and a lone "one".
     private static func isWorthConverting(
         tokens: [Token],
+        openedByArticle: Bool,
         endingAt last: Int,
         in words: [NSTextCheckingResult],
         text: NSString
@@ -163,12 +167,39 @@ enum SpokenNumbers {
             return false
         }
 
-        // A lone "one" needs a unit after it to read as a quantity. Everything
-        // else that parsed is a number the user said out loud.
-        guard tokens == [.unit(1)] else { return true }
+        // A lone "one" needs a unit after it to read as a quantity, and so does
+        // a bare "a hundred" or "a million": "a hundred times" and "a million
+        // thanks" are figures of speech. Everything else that parsed is a
+        // number the user said out loud.
+        let bare = tokens == [.unit(1)] || (openedByArticle && tokens.count == 2)
+        guard bare else { return true }
         // "one, pm" is not a time; only a plain space keeps the unit attached.
         guard let following, following.gap == " " else { return false }
         return quantifyingUnits.contains(following.word)
+    }
+
+    /// The one of "one hundred" when the word at `index` is the article in
+    /// "a hundred", "a thousand", "a million" or "a billion", or nil.
+    ///
+    /// Without it a run could never open on "a", so "a hundred and twenty six"
+    /// opened at "twenty" instead, and the transcript read "a hundred and 26".
+    private static func articleOne(
+        at index: Int,
+        in words: [NSTextCheckingResult],
+        text: NSString
+    ) -> Token? {
+        guard index + 1 < words.count,
+              text.substring(with: words[index].range).lowercased() == "a"
+        else { return nil }
+        let gap = text.substring(with: NSRange(
+            location: words[index].range.upperBound,
+            length: words[index + 1].range.location - words[index].range.upperBound
+        ))
+        guard gap == " ", let next = word(for: text.substring(with: words[index + 1].range)) else { return nil }
+        switch next {
+        case .hundred, .scale: return .unit(1)
+        default: return nil
+        }
     }
 
     /// What may sit between two words of one number: a single space, or the

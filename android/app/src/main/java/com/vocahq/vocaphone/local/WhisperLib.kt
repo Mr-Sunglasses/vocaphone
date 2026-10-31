@@ -85,8 +85,21 @@ internal class WhisperLib {
         /** The language actually decoded, or empty when the model reported none. */
         external fun getDetectedLanguage(contextPtr: Long): String
 
-        external fun getTextSegmentCount(contextPtr: Long): Int
-        external fun getTextSegment(contextPtr: Long, index: Int): String
+        /**
+         * The transcript as UTF-8 bytes, every segment joined in native code.
+         * Decode it with [WhisperText.decode]: a segment can end mid-character.
+         */
+        external fun getText(contextPtr: Long): ByteArray
         external fun getSystemInfo(): String
     }
+}
+
+/** Text from whisper.cpp, kept apart from [WhisperLib] so it needs no native library. */
+internal object WhisperText {
+    /**
+     * [WhisperLib.getText] as a string. A byte sequence that is still not
+     * UTF-8 once the segments are joined — a decode cut off mid-character — is
+     * dropped rather than typed as a replacement character.
+     */
+    fun decode(bytes: ByteArray): String = String(bytes, Charsets.UTF_8).replace("\uFFFD", "")
 }

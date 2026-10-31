@@ -600,6 +600,96 @@ struct WhisperTranscriptionTests {
         #expect(budgets == [90])
     }
 
+    // MARK: - A window that ran out of tokens
+
+    private static func segment(_ text: String, _ start: Float, _ end: Float) -> TranscriptionSegment {
+        TranscriptionSegment(
+            start: start,
+            end: end,
+            text: text,
+            tokens: Array(repeating: 1, count: 10),
+            avgLogprob: -0.2,
+            compressionRatio: 1.5,
+            noSpeechProb: 0.01
+        )
+    }
+
+    private static func decoded(_ segments: [TranscriptionSegment], language: String = "hi") -> [TranscriptionResult] {
+        [TranscriptionResult(
+            text: segments.map(\.text).joined().trimmingCharacters(in: .whitespaces),
+            segments: segments,
+            language: language,
+            timings: TranscriptionTimings()
+        )]
+    }
+
+    /// From FLEURS Hindi: 224 tokens covered the first eleven seconds of
+    /// twenty-one, and WhisperKit kept the cut-off segment and skipped the
+    /// rest. The rest is decoded from where the cut-off segment began.
+    @Test func aWindowThatRanOutOfTokensCarriesOn() async throws {
+        var decodedLengths: [Int] = []
+        var languages: [String?] = []
+        let results = try await WhisperTranscription.decodeWindow(
+            [Float](repeating: 0.2, count: 20 * 16_000),
+            options: Self.options,
+            retries: 0
+        ) { samples, options in
+            decodedLengths.append(samples.count)
+            languages.append(options.language)
+            if decodedLengths.count == 1 {
+                return Self.decoded([Self.segment(" पहला वाक्य", 0, 11), Self.segment(" दूसरा कट", 11, 11)])
+            }
+            return Self.decoded([Self.segment(" दूसरा वाक्य पूरा", 0, 8.5)])
+        }
+        #expect(decodedLengths == [20 * 16_000, 9 * 16_000])
+        #expect(languages == [nil, "hi"])
+        #expect(results.map(\.text) == ["पहला वाक्य", "दूसरा वाक्य पूरा"])
+        #expect(results.last?.segments.first?.start == 11)
+    }
+
+    /// Cut off within its first segment there is no earlier point to resume
+    /// from, and starting again would decode the same thing.
+    @Test func aCutOffFirstSegmentIsKept() async throws {
+        var calls = 0
+        let results = try await WhisperTranscription.decodeWindow(
+            [Float](repeating: 0.2, count: 12 * 16_000),
+            options: Self.options,
+            retries: 0
+        ) { _, _ in
+            calls += 1
+            return Self.decoded([Self.segment(" अधूरा", 0, 0)])
+        }
+        #expect(calls == 1)
+        #expect(results.map(\.text) == ["अधूरा"])
+    }
+
+    @Test func aFinishedWindowIsDecodedOnce() async throws {
+        var calls = 0
+        _ = try await WhisperTranscription.decodeWindow(
+            [Float](repeating: 0.2, count: 20 * 16_000),
+            options: Self.options,
+            retries: 0
+        ) { _, _ in
+            calls += 1
+            return Self.decoded([Self.segment(" one", 0, 9), Self.segment(" two", 9, 19.5)], language: "en")
+        }
+        #expect(calls == 1)
+    }
+
+    /// Every pass cut off again: the continuations stop at their limit.
+    @Test func continuationsAreBounded() async throws {
+        var calls = 0
+        _ = try await WhisperTranscription.decodeWindow(
+            [Float](repeating: 0.2, count: 30 * 16_000),
+            options: Self.options,
+            retries: 0
+        ) { _, _ in
+            calls += 1
+            return Self.decoded([Self.segment(" कुछ", 0, 2), Self.segment(" कट", 2, 2)])
+        }
+        #expect(calls == WhisperTranscription.maximumContinuations + 1)
+    }
+
     // MARK: - Windows decoded early
 
     @Test func aWindowDecodedEarlyIsNotDecodedAgain() async throws {

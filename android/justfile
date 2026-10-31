@@ -133,6 +133,7 @@ model-test model="base-q8_0":
     python3 "${root}/../tools/model-e2e/make_scenarios.py" "${dir}/scenarios"
     ./gradlew :app:testFullDebugUnitTest --rerun \
         --tests 'com.vocahq.vocaphone.local.WhisperModelEndToEndTest' \
+        --tests 'com.vocahq.vocaphone.local.WhisperSegmentTextTest' \
         -Dvocaphone.modelE2E="${dir}" \
         -Dvocaphone.modelE2E.model='{{ model }}' \
         -Dvocaphone.whisperLibrary="${root}/build/host-whisper"
