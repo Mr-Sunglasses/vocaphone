@@ -3,6 +3,8 @@ package com.vocahq.vocaphone.ime
 import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -141,16 +143,19 @@ internal fun RowScope.WritingChips(
     onOpen: () -> Unit,
 ) {
     val view = LocalView.current
+    // At their own width and scrolling, nearest the cursor first: three
+    // chips squeezed into the strip each truncated to "defin…".
     Row(
-        modifier = Modifier.weight(1f),
+        modifier = Modifier
+            .weight(1f)
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         chips.forEach { s ->
             Surface(
                 modifier = Modifier
-                    .weight(1f, fill = false)
-                    .widthIn(max = 220.dp)
+                    .widthIn(max = 260.dp)
                     .height(32.dp)
                     .semantics {
                         role = Role.Button
