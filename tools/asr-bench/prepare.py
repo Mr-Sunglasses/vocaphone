@@ -135,6 +135,8 @@ def write_wav(path: Path, samples: list[float]) -> None:
 def evenly(items: list, count: int) -> list:
     """`count` items spread across the sorted list, so every speaker is drawn
     from rather than the first few, and the same ones every run."""
+    if count <= 0:
+        return []
     if count >= len(items):
         return list(items)
     step = len(items) / count

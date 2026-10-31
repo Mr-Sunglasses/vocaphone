@@ -53,6 +53,12 @@ class PrepareTest(unittest.TestCase):
         picked = prepare.pick_long([clean, other], 8, make)
         self.assertEqual([clip["source"] for clip in picked], [0, 0, 0, 0, 1, 1, 1, 1])
 
+    def test_one_long_clip_comes_from_the_first_source(self) -> None:
+        clean = [[f"1-{c}-0"] for c in range(10)]
+        other = [[f"2-{c}-0"] for c in range(10)]
+        picked = prepare.pick_long([clean, other], 1, lambda source, chapter: {"source": source})
+        self.assertEqual([clip["source"] for clip in picked], [0])
+
     def test_every_download_is_pinned(self) -> None:
         for name, (url, size, digest) in prepare.ARCHIVES.items():
             self.assertTrue(url.startswith("https://"), name)
