@@ -5,7 +5,8 @@ import Testing
 /// container: the keyboard's `WritingCheckClient` running the rules and asking
 /// for the model, the app's `TypedGrammarResponder` answering. Darwin pings
 /// are skipped for a store with a root override, so each test calls the
-/// other side by hand.
+/// other side by hand. "She go home." stands for a slip only the model
+/// catches; the rules alone do not.
 @MainActor
 struct WritingCheckExchangeTests {
     private let root = FileManager.default.temporaryDirectory
@@ -20,7 +21,7 @@ struct WritingCheckExchangeTests {
     private func responder(
         enabled: Bool = true,
         correct: @escaping TypedGrammarResponder.Correct = { text, _ in
-            text.replacingOccurrences(of: "don't", with: "doesn't")
+            text.replacingOccurrences(of: "She go ", with: "She goes ")
         }
     ) -> TypedGrammarResponder {
         TypedGrammarResponder(
@@ -54,9 +55,9 @@ struct WritingCheckExchangeTests {
 
     @Test func theQuestionIsDeletedAsItIsRead() throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["He don't know."], keep: []))
+        try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["She go home."], keep: []))
         #expect(files() == ["typed-grammar-request.json"])
-        #expect(store.takeTypedGrammarRequest()?.sentences == ["He don't know."])
+        #expect(store.takeTypedGrammarRequest()?.sentences == ["She go home."])
         #expect(files().isEmpty)
         #expect(store.takeTypedGrammarRequest() == nil)
     }
@@ -65,17 +66,17 @@ struct WritingCheckExchangeTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         try Data("{}".utf8).write(to: root.appendingPathComponent("typed-grammar-request.\(UUID().uuidString).taking"))
-        try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["He don't know."], keep: []))
+        try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["She go home."], keep: []))
         store.clearTypedGrammarExchange()
         #expect(files().isEmpty)
     }
 
     @Test func theAppAnswersEachSentence() throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let request = TypedGrammarRequest(sentences: ["He don't know.", "Fine."], keep: [])
+        let request = TypedGrammarRequest(sentences: ["She go home.", "Fine."], keep: [])
         try store.saveTypedGrammarRequest(request)
         responder().answerPendingRequest()
-        #expect(store.takeTypedGrammarAnswer() == TypedGrammarAnswer(id: request.id, corrected: ["He doesn't know.", "Fine."]))
+        #expect(store.takeTypedGrammarAnswer() == TypedGrammarAnswer(id: request.id, corrected: ["She goes home.", "Fine."]))
         #expect(files().isEmpty)
     }
 
@@ -93,14 +94,14 @@ struct WritingCheckExchangeTests {
     @Test func aStaleQuestionIsDroppedUnanswered() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let old = Date().addingTimeInterval(-TypedGrammarRequest.maximumAge - 1)
-        try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["He don't know."], keep: [], createdAt: old))
+        try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["She go home."], keep: [], createdAt: old))
         responder().answerPendingRequest()
         #expect(files().isEmpty)
     }
 
     @Test func turnedOffInTheAppAnswersWithNothing() throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        let request = TypedGrammarRequest(sentences: ["He don't know.", "Fine."], keep: [])
+        let request = TypedGrammarRequest(sentences: ["She go home.", "Fine."], keep: [])
         try store.saveTypedGrammarRequest(request)
         responder(enabled: false).answerPendingRequest()
         #expect(store.takeTypedGrammarAnswer() == TypedGrammarAnswer(id: request.id, corrected: [nil, nil]))
@@ -109,19 +110,19 @@ struct WritingCheckExchangeTests {
     @Test func aModelStillLoadingIsWaitedFor() throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let calls = Box(0)
-        let request = TypedGrammarRequest(sentences: ["He don't know."], keep: [])
+        let request = TypedGrammarRequest(sentences: ["She go home."], keep: [])
         try store.saveTypedGrammarRequest(request)
         responder(correct: { text, _ in
             calls.value += 1
-            return calls.value < 3 ? nil : text.replacingOccurrences(of: "don't", with: "doesn't")
+            return calls.value < 3 ? nil : text.replacingOccurrences(of: "She go ", with: "She goes ")
         }).answerPendingRequest()
-        #expect(store.takeTypedGrammarAnswer()?.corrected == ["He doesn't know."])
+        #expect(store.takeTypedGrammarAnswer()?.corrected == ["She goes home."])
     }
 
     @Test func theRulesAnswerWithoutTheApp() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let client = client(appRunning: false)
-        try await type(client, "He don't know. I could of told you. ")
+        try await type(client, "She go home. I could of told you. ")
         #expect(labels(client) == ["of → have"])
         #expect(files().isEmpty)
     }
@@ -129,22 +130,22 @@ struct WritingCheckExchangeTests {
     @Test func sentencesTheModelHasNotSeenGoToTheApp() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let client = client()
-        try await type(client, "He don't know. I could of told you. ")
+        try await type(client, "She go home. I could of told you. ")
         #expect(labels(client) == ["of → have"])
         #expect(client.report?.modelPending == true)
         responder().answerPendingRequest()
         client.collect()
-        #expect(labels(client) == ["don't → doesn't", "of → have"])
+        #expect(labels(client) == ["go → goes", "of → have"])
         #expect(files().isEmpty)
     }
 
     @Test func answeredSentencesAreNotAskedAgain() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let client = client()
-        try await type(client, "He don't know. ")
+        try await type(client, "She go home. ")
         responder().answerPendingRequest()
         client.collect()
-        try await type(client, "He don't know. They are fine. ")
+        try await type(client, "She go home. They are fine. ")
         #expect(store.takeTypedGrammarRequest()?.sentences == ["They are fine."])
     }
 
@@ -171,7 +172,7 @@ struct WritingCheckExchangeTests {
     @Test func resetRemovesTheQuestionFromTheAppGroup() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let client = client()
-        try await type(client, "He don't know. ")
+        try await type(client, "She go home. ")
         #expect(files() == ["typed-grammar-request.json"])
         client.reset()
         #expect(files().isEmpty)
@@ -180,8 +181,8 @@ struct WritingCheckExchangeTests {
 
     @Test func theWritingDraftIsTakenOnce() throws {
         defer { try? FileManager.default.removeItem(at: root) }
-        try store.saveWritingDraft("He don't know.")
-        #expect(store.takeWritingDraft() == "He don't know.")
+        try store.saveWritingDraft("She go home.")
+        #expect(store.takeWritingDraft() == "She go home.")
         #expect(store.takeWritingDraft() == nil)
         try store.saveWritingDraft("Old.")
         #expect(store.takeWritingDraft(now: Date().addingTimeInterval(WritingDraft.maximumAge + 1)) == nil)
