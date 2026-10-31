@@ -1,5 +1,6 @@
 package com.vocahq.vocaphone.data
 
+import androidx.room.AutoMigration
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -34,6 +35,12 @@ data class DictationRecordEntity(
     val audioExpiresAt: Long? = null,
     val targetPackage: String? = null,
     val insertedIntoField: Boolean = false,
+    /**
+     * The transcript as it would have been without Fix grammar, kept only
+     * when the grammar model changed something, so History can show what it
+     * changed and give the original back.
+     */
+    val transcriptWithoutGrammar: String? = null,
 )
 
 @Dao
@@ -75,7 +82,13 @@ interface DictationRecordDao {
     suspend fun markInserted(sessionId: String, targetPackage: String?, now: Long, state: String)
 }
 
-@Database(entities = [DictationRecordEntity::class], version = 1, exportSchema = true)
+@Database(
+    entities = [DictationRecordEntity::class],
+    version = 2,
+    exportSchema = true,
+    // 2: transcriptWithoutGrammar, a nullable column; old rows read as null.
+    autoMigrations = [AutoMigration(from = 1, to = 2)],
+)
 abstract class VocaPhoneDatabase : RoomDatabase() {
     abstract fun dictationRecordDao(): DictationRecordDao
 }

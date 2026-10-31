@@ -387,6 +387,28 @@ private fun HistoryDetailSheet(
                     }
                 }
             }
+            record.transcriptWithoutGrammar?.takeIf { transcript != null }?.let { original ->
+                SettingsGroup(title = "Before Fix grammar") {
+                    SettingsGroupContent {
+                        SelectionContainer {
+                            Text(
+                                original,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    SettingsDivider()
+                    SettingsActionRow(
+                        title = "Copy without grammar fixes",
+                        icon = R.drawable.ic_copy,
+                        onClick = {
+                            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                            context.copyToClipboard(original)
+                        },
+                    )
+                }
+            }
             SettingsGroup {
                 if (transcript != null) {
                     SettingsActionRow(

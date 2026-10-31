@@ -123,6 +123,10 @@ struct SessionRecord: Codable, Equatable, Identifiable, Sendable {
     var localAudioReference: String?
     var serverJobID: String?
     var transcript: String?
+    /// The transcript as it would have been without Fix grammar, kept only
+    /// when the grammar model changed something, so History can show what it
+    /// changed and give the original back. Optional so older records decode.
+    var transcriptWithoutGrammar: String?
     var error: SessionFailure?
     /// Set when the keyboard was hosted by vocaphone itself. Such a session has
     /// no other app to return to, so the hand-off guidance must be suppressed.

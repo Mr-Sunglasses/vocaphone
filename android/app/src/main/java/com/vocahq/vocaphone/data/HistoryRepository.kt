@@ -22,6 +22,7 @@ class HistoryRepository(private val dao: DictationRecordDao) {
         transcript: String,
         targetPackage: String?,
         insertedIntoField: Boolean,
+        transcriptWithoutGrammar: String? = null,
         now: Long = System.currentTimeMillis(),
     ) {
         val existing = dao.find(sessionId)
@@ -38,6 +39,7 @@ class HistoryRepository(private val dao: DictationRecordDao) {
                 transcript = transcript,
                 targetPackage = targetPackage ?: existing?.targetPackage,
                 insertedIntoField = insertedIntoField,
+                transcriptWithoutGrammar = transcriptWithoutGrammar?.takeIf { it != transcript },
             )
         )
     }

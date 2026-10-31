@@ -1572,6 +1572,8 @@ final class RecordingCoordinator {
             if let transcript = await streamingBridge.finish(
                 droppedChunks: recorder.lastDroppedChunkCount
             ) {
+                // A gateway transcript: Fix grammar is on-device only.
+                record.transcriptWithoutGrammar = nil
                 record.transcript = DictatedTranscript.finished(
                     transcript,
                     style: WritingStyle(rawValue: record.style) ?? .casual,
@@ -1652,6 +1654,8 @@ final class RecordingCoordinator {
             guard let transcript = finished.transcript, !transcript.isEmpty else {
                 throw GatewayError.api(status: 500, code: finished.errorCode ?? "empty_transcript")
             }
+            // A gateway transcript: Fix grammar is on-device only.
+            record.transcriptWithoutGrammar = nil
             record.transcript = DictatedTranscript.finished(
                 transcript,
                 style: WritingStyle(rawValue: record.style) ?? .casual,
@@ -1849,7 +1853,7 @@ final class RecordingCoordinator {
             // `styledUpstream` and no grammar.
             let grammar: GrammarCorrector? = KeyboardPreferences.fixGrammar ? grammar : nil
             let learnedWords = grammar == nil ? [] : LearnedWordStore().snapshot().words
-            let finish: @Sendable () -> String = {
+            let finish: @Sendable (GrammarCorrector?) -> String = { grammar in
                 DictatedTranscript.finished(
                     text,
                     style: style,
@@ -1867,11 +1871,16 @@ final class RecordingCoordinator {
             // Grammar is model inference, up to its 150 ms budget and one call
             // past it: off the main actor, so the app keeps drawing meanwhile.
             // Without it the funnel stays as it was, a few string passes inline.
-            if grammar != nil {
-                record.transcript = await Task.detached(priority: .userInitiated, operation: finish).value
+            if let grammar {
+                let finished = await Task.detached(priority: .userInitiated) { finish(grammar) }.value
                 try Task.checkCancellation()
+                record.transcript = finished
+                // The same funnel without the model, for History to offer back.
+                let without = finish(nil)
+                record.transcriptWithoutGrammar = without == finished ? nil : without
             } else {
-                record.transcript = finish()
+                record.transcript = finish(nil)
+                record.transcriptWithoutGrammar = nil
             }
             record.error = nil
             try record.transition(to: .readyToInsert)

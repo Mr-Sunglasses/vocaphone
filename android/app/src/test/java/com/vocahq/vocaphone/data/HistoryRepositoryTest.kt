@@ -84,4 +84,15 @@ class HistoryRepositoryTest {
         history.recordInserted("failed", targetPackage = "com.example.chat")
         assertFalse(dao.records.getValue("failed").insertedIntoField)
     }
+
+    @Test
+    fun `the transcript without Fix grammar is kept only when the model changed it`() = runBlocking {
+        val dao = MemoryDao()
+        val history = HistoryRepository(dao)
+        history.recordSuccess("a", "en", "clean", "He doesn't know.", null, false, transcriptWithoutGrammar = "He don't know.")
+        history.recordSuccess("b", "en", "clean", "Fine.", null, false, transcriptWithoutGrammar = "Fine.")
+
+        assertEquals("He don't know.", dao.records.getValue("a").transcriptWithoutGrammar)
+        assertNull(dao.records.getValue("b").transcriptWithoutGrammar)
+    }
 }

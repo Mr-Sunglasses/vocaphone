@@ -210,6 +210,23 @@ struct TranscriptDetailView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                if let original = record.transcriptWithoutGrammar, record.transcript != nil {
+                    VocaCard {
+                        VStack(alignment: .leading, spacing: VocaMetrics.related) {
+                            VocaSectionHeader(title: "Before Fix grammar")
+                            Text(original)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Button("Copy without grammar fixes") {
+                                UIPasteboard.general.string = original
+                            }
+                            .font(.subheadline)
+                        }
+                    }
+                }
+
                 VocaCard {
                     VStack(alignment: .leading, spacing: VocaMetrics.related + 2) {
                         VocaSectionHeader(title: "About this transcript")

@@ -1574,8 +1574,15 @@ class DictationController(
         if (transcript.isEmpty()) {
             throw GatewayException.emptyTranscript()
         }
+        // The same funnel without Fix grammar: string passes only, and what
+        // History offers back when the model changed something.
+        val withoutGrammar = if (grammar != null && configuration.fixGrammar) {
+            styleLocalTranscript(local, configuration, useGrammar = false)
+        } else {
+            null
+        }
         wavFile.delete()
-        deliver(transcript, sessionId, configuration, source)
+        deliver(transcript, sessionId, configuration, source, withoutGrammar)
     }
 
     /**
@@ -1588,6 +1595,7 @@ class DictationController(
     private fun styleLocalTranscript(
         local: LocalTranscription,
         configuration: VocaPhoneSettings,
+        useGrammar: Boolean = true,
     ): String = DictatedTranscript.finished(
         local.text,
         style = configuration.style,
@@ -1604,7 +1612,7 @@ class DictationController(
         vocabulary = CustomVocabulary.terms(configuration.whisperVocabulary),
         isDictionaryWord = ::isEnglishWord,
         // Gateway routes never get here; they pass styledUpstream instead.
-        grammar = grammar?.takeIf { configuration.fixGrammar },
+        grammar = grammar?.takeIf { configuration.fixGrammar && useGrammar },
     )
 
     /**
@@ -1626,6 +1634,7 @@ class DictationController(
         sessionId: UUID,
         configuration: VocaPhoneSettings,
         source: DictationSource,
+        transcriptWithoutGrammar: String? = null,
     ) {
         diagnostics.recordTiming("transcript_ready", source.name)
         // Reported here rather than after insertion: the transcript exists and
@@ -1662,6 +1671,7 @@ class DictationController(
                 transcript = transcript,
                 targetPackage = target?.currentTargetPackage(),
                 insertedIntoField = false,
+                transcriptWithoutGrammar = transcriptWithoutGrammar,
             )
             diagnostics.recordAction("ready_to_insert", source.name)
             lingerSavedTranscript(sessionId, source)
@@ -1682,6 +1692,7 @@ class DictationController(
             transcript = transcript,
             targetPackage = report.applied?.packageName ?: target.currentTargetPackage(),
             insertedIntoField = report.outcome == InsertionOutcome.INSERTED,
+            transcriptWithoutGrammar = transcriptWithoutGrammar,
         )
         diagnostics.recordAction(
             if (report.outcome == InsertionOutcome.INSERTED) "inserted" else "insertion_failed",
