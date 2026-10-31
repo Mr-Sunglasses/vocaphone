@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- VocaPhone as the system spell checker: Writing check's correctness
+     suggestions, English only. See spell/VocaSpellCheckerService.kt. -->
+<spell-checker xmlns:android="http://schemas.android.com/apk/res/android"
+    android:label="@string/spell_checker_name"
+    android:settingsActivity="com.vocahq.vocaphone.ui.MainActivity">
+    <subtype
+        android:label="@string/spell_checker_english"
+        android:languageTag="en"
+        android:subtypeLocale="en" />
+</spell-checker>

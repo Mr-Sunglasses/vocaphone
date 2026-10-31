@@ -42,6 +42,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.vocahq.vocaphone.spell.SpellCheckerSettings
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -134,9 +136,15 @@ fun VocaPhoneApp(
     // The selected keyboard is a system setting, so its state can change while
     // the app is in the background; re-read setup on every resume.
     val lifecycleOwner = LocalLifecycleOwner.current
+    val appContext = LocalContext.current.applicationContext
+    // Chosen in the system's Settings, so it too is read again on resume.
+    var spellCheckerActive by remember { mutableStateOf(SpellCheckerSettings.isActive(appContext)) }
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshSetup()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshSetup()
+                spellCheckerActive = SpellCheckerSettings.isActive(appContext)
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -463,6 +471,8 @@ fun VocaPhoneApp(
                     onDelivery = { viewModel.setWritingDelivery(it) },
                     onTone = { viewModel.setWritingTone(it) },
                     onTypoAutoFix = { viewModel.setTypoAutoFix(it) },
+                    onOpenSpellChecker = { SpellCheckerSettings.open(appContext) },
+                    spellCheckerActive = spellCheckerActive,
                 ),
                 onNumberKeyHints = { viewModel.setNumberKeyHintsEnabled(it) },
                 onLongPressSymbols = { viewModel.setLongPressSymbolsEnabled(it) },

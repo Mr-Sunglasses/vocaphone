@@ -53,6 +53,8 @@ data class WritingSettingsActions(
     val onTypoAutoFix: (Boolean) -> Unit = {},
     /** The system spell checker setting; null where it cannot be opened. */
     val onOpenSpellChecker: (() -> Unit)? = null,
+    /** VocaPhone is the spell checker every app is using. */
+    val spellCheckerActive: Boolean = false,
     val onOpenEditor: () -> Unit = {},
 )
 
@@ -141,7 +143,11 @@ internal fun WritingCheckSettingsGroup(
             SettingsDivider()
             SettingsActionRow(
                 title = "Underline mistakes in other apps",
-                supporting = "Choose VocaPhone as the system spell checker. Works with any keyboard.",
+                supporting = if (actions.spellCheckerActive) {
+                    "On: VocaPhone is the system spell checker."
+                } else {
+                    "Choose VocaPhone as the system spell checker. Works with any keyboard."
+                },
                 onClick = open,
                 external = true,
             )

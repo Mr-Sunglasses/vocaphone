@@ -3,6 +3,8 @@
     <string name="app_name">VocaPhone</string>
 
     <string name="ime_name">VocaPhone keyboard</string>
+    <string name="spell_checker_name">VocaPhone Writing check</string>
+    <string name="spell_checker_english">English</string>
     <string name="voice_input_label">VocaPhone voice input</string>
 
     <string name="bubble_dictate">Dictate</string>

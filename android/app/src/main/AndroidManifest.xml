@@ -97,6 +97,22 @@
                 android:resource="@xml/method" />
         </service>
 
+        <!-- Writing check as the system spell checker: underlines in any app's
+             text field, checked in this process, nothing sent anywhere. Only the
+             system binds to it, and only once the user picks it in Settings. -->
+        <service
+            android:name=".spell.VocaSpellCheckerService"
+            android:exported="true"
+            android:label="@string/spell_checker_name"
+            android:permission="android.permission.BIND_TEXT_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.textservice.SpellCheckerService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.textservice.scs"
+                android:resource="@xml/spellchecker" />
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.clipboard"
