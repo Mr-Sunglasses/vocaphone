@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -89,11 +90,15 @@ internal fun WritingCheckScreen(
     val context = LocalContext.current
     val container = remember { VocaPhoneApplication.container(context) }
     val scope = rememberCoroutineScope()
-    var value by remember { mutableStateOf(TextFieldValue(initialText, TextRange(initialText.length))) }
+    // Saved, so rotating the phone keeps what the user wrote and accepted
+    // rather than going back to the text the screen was opened on.
+    var value by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(initialText, TextRange(initialText.length)))
+    }
     var report by remember { mutableStateOf<WritingCheck.Report?>(null) }
     var checking by remember { mutableStateOf(false) }
-    var filter by remember { mutableStateOf<WritingCategory?>(null) }
-    var dismissed by remember { mutableStateOf(setOf<String>()) }
+    var filter by rememberSaveable { mutableStateOf<WritingCategory?>(null) }
+    var dismissed by rememberSaveable { mutableStateOf(setOf<String>()) }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val text = value.text
 
@@ -116,7 +121,8 @@ internal fun WritingCheckScreen(
     val shown = visible.filter { filter == null || it.category == filter }
 
     fun accept(chosen: List<WritingSuggestion>) {
-        val current = report ?: return
+        // Only a report on the text as it is: its offsets are into that text.
+        val current = report?.takeIf { it.text == value.text } ?: return
         var edited = value.text
         var remaining = current.suggestions
         for (s in chosen.sortedByDescending { it.start }) {

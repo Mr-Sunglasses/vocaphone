@@ -30,8 +30,16 @@ struct WritingCheckView: View {
 
     private var isDark: Bool { colorScheme == .dark }
 
+    /// The report, only while it describes the text on screen. Its offsets
+    /// are into the text it checked, so after an edit or a paste its marks
+    /// would land on other words and Accept would edit the wrong place; until
+    /// the next check finishes there is nothing to show. As on Android.
+    private var current: WritingCheck.Report? {
+        report.flatMap { $0.text == text ? $0 : nil }
+    }
+
     private var suggestions: [WritingSuggestion] {
-        (report?.suggestions ?? []).filter { !dismissed.contains($0.key) && (filter == nil || $0.category == filter) }
+        (current?.suggestions ?? []).filter { !dismissed.contains($0.key) && (filter == nil || $0.category == filter) }
     }
 
     var body: some View {
@@ -40,10 +48,10 @@ struct WritingCheckView: View {
                 Section {
                     UnderlinedTextView(
                         text: $text,
-                        marks: (report?.suggestions ?? []).filter { !dismissed.contains($0.key) },
+                        marks: (current?.suggestions ?? []).filter { !dismissed.contains($0.key) },
                         isDark: isDark,
                         onCaret: { caret in
-                            guard let hit = report?.suggestions.first(where: { $0.markStart <= caret && caret <= $0.markEnd }) else { return }
+                            guard let hit = current?.suggestions.first(where: { $0.markStart <= caret && caret <= $0.markEnd }) else { return }
                             selected = hit.identity
                             withAnimation { proxy.scrollTo(hit.identity, anchor: .center) }
                         }
@@ -55,14 +63,16 @@ struct WritingCheckView: View {
                         Text("Paste or write something. It is checked on this iPhone and never sent anywhere.")
                     }
                 }
-                if let report, !text.isEmpty {
-                    Section { summary(report) }
-                    if !(report.suggestions.isEmpty) {
-                        Section { filterBar(report) }
+                if report != nil, !text.isEmpty {
+                    if let current {
+                        Section { summary(current) }
+                        if !current.suggestions.isEmpty {
+                            Section { filterBar(current) }
+                        }
                     }
                     Section {
                         if suggestions.isEmpty {
-                            Text(isChecking ? "Checking…" : "No issues found")
+                            Text(isChecking || current == nil ? "Checking…" : "No issues found")
                                 .foregroundStyle(.secondary)
                         }
                         ForEach(suggestions, id: \.identity) { s in
@@ -139,6 +149,7 @@ struct WritingCheckView: View {
             snippets: SnippetStore.snippets
         )
         let options = WritingCheck.Options(categories: Self.categories(), keep: keep, typed: true)
+        let tone = KeyboardPreferences.writingTone
         let result = await Task.detached(priority: .userInitiated) {
             let model: WritingCheck.Model? = modelReady ? { grammar.correctTyped($0, keeping: keep) } : nil
             var first = checker.check(snapshot, model: model, options: options)
@@ -150,7 +161,12 @@ struct WritingCheckView: View {
             return first
         }.value
         guard snapshot == text else { return }
-        report = result
+        // Tone off in Settings: how the text sounds is not shown, as in the
+        // keyboard and on Android.
+        report = tone ? result : WritingCheck.Report(
+            text: result.text, suggestions: result.suggestions, tones: [], stats: result.stats,
+            modelPending: result.modelPending
+        )
     }
 
     private static func categories() -> Set<WritingCategory> {
@@ -164,7 +180,7 @@ struct WritingCheckView: View {
     /// Applies `chosen` from the last back, so each leaves the earlier
     /// offsets alone, and moves the rest of the report with the text.
     private func accept(_ chosen: [WritingSuggestion]) {
-        guard let report else { return }
+        guard let report = current else { return }
         var edited = text
         var remaining = report.suggestions
         for s in chosen.sorted(by: { $0.start > $1.start }) {
