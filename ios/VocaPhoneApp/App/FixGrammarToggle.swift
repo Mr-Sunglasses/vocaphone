@@ -49,6 +49,8 @@ struct WritingCheckSettingsSection: View {
     private var engagement = KeyboardDefaults.writingEngagement
     @AppStorage(KeyboardPreferences.writingDeliveryKey, store: KeyboardPreferences.defaults)
     private var delivery = KeyboardDefaults.writingDelivery
+    @AppStorage(KeyboardPreferences.writingSerialCommaKey, store: KeyboardPreferences.defaults)
+    private var serialComma = KeyboardDefaults.writingSerialComma
     @AppStorage(KeyboardPreferences.writingToneKey, store: KeyboardPreferences.defaults)
     private var tone = KeyboardDefaults.writingTone
     @AppStorage(KeyboardPreferences.typoAutoFixKey, store: KeyboardPreferences.defaults)
@@ -89,6 +91,9 @@ struct WritingCheckSettingsSection: View {
             }
             Toggle(isOn: $delivery) {
                 SettingLabel("Delivery", detail: "Hedging like “I just wanted to”.")
+            }
+            Toggle(isOn: $serialComma) {
+                SettingLabel("Serial comma", detail: "Suggest the comma before “and” in a list: “eggs, milk, and bread”.")
             }
             Toggle(isOn: $tone) {
                 SettingLabel("Tone", detail: "Says how your text sounds: friendly, formal, urgent…")

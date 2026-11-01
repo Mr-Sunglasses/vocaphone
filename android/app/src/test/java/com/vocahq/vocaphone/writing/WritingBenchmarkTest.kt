@@ -211,18 +211,18 @@ class WritingBenchmarkTest {
 
         /** Share of error lines that must come out exactly as meant: what each configuration reached. */
         val FLOORS = mapOf(
-            "everyday · rules" to 0.300,
-            "everyday · balanced" to 0.528,
-            "everyday · thorough" to 0.614,
-            "heldout · rules" to 0.280,
-            "heldout · balanced" to 0.575,
-            "heldout · thorough" to 0.650,
-            "typed · rules" to 0.331,
-            "typed · balanced" to 0.595,
-            "typed · thorough" to 0.637,
-            "dictation · rules" to 0.417,
-            "dictation · balanced" to 0.797,
-            "dictation · thorough" to 0.816,
+            "everyday · rules" to 0.528,
+            "everyday · balanced" to 0.714,
+            "everyday · thorough" to 0.785,
+            "heldout · rules" to 0.420,
+            "heldout · balanced" to 0.685,
+            "heldout · thorough" to 0.750,
+            "typed · rules" to 0.528,
+            "typed · balanced" to 0.751,
+            "typed · thorough" to 0.787,
+            "dictation · rules" to 0.453,
+            "dictation · balanced" to 0.815,
+            "dictation · thorough" to 0.840,
         )
 
         /** Share of correct lines that may get a correctness suggestion. */

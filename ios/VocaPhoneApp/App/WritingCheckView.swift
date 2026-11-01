@@ -172,7 +172,9 @@ struct WritingCheckView: View {
                 + LearnedWordStore().snapshot().words,
             snippets: SnippetStore.snippets
         )
-        let options = WritingCheck.Options(categories: Self.categories(), keep: keep, typed: true)
+        let options = WritingCheck.Options(
+            categories: Self.categories(), keep: keep, typed: true, optIn: KeyboardPreferences.writingOptIn
+        )
         let tone = KeyboardPreferences.writingTone
         let work = Task.detached(priority: .userInitiated) { () -> Outcome in
             // The rules are English ones; on another language they would

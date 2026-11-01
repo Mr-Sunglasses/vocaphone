@@ -9,3 +9,8 @@ fun VocaPhoneSettings.writingCategories(): Set<WritingCategory> = buildSet {
     if (writingEngagement) add(WritingCategory.ENGAGEMENT)
     if (writingDelivery) add(WritingCategory.DELIVERY)
 }
+
+/** The rules the user turned on that are off by default ([WritingCheck.Options.optIn]). */
+fun VocaPhoneSettings.writingOptIn(): Set<String> = buildSet {
+    if (writingSerialComma) add("serial_comma")
+}

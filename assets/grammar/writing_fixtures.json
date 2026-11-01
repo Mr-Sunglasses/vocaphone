@@ -1,8 +1,4503 @@
 {
+ "rebase": [
+  {
+   "new": "teh cat sat down",
+   "spans": [[
+    0,
+    3
+   ]],
+   "old": "teh cat sat",
+   "expected": [[
+    0,
+    3
+   ]]
+  },
+  {
+   "new": "the cat sat",
+   "spans": [
+    [
+     0,
+     3
+    ],
+    [
+     8,
+     11
+    ]
+   ],
+   "old": "teh cat sat",
+   "expected": [[
+    8,
+    11
+   ]]
+  },
+  {
+   "new": "a big teh cat",
+   "spans": [[
+    2,
+    5
+   ]],
+   "old": "a teh cat",
+   "expected": [[
+    6,
+    9
+   ]]
+  },
+  {
+   "new": "tehx cat",
+   "spans": [[
+    0,
+    3
+   ]],
+   "old": "teh cat",
+   "expected": []
+  },
+  {
+   "new": "I has a dog",
+   "spans": [[
+    2,
+    5
+   ]],
+   "old": "I has a",
+   "expected": [[
+    2,
+    5
+   ]]
+  },
+  {
+   "new": "go to stores",
+   "spans": [[
+    5,
+    5
+   ]],
+   "old": "go to store",
+   "expected": [[
+    5,
+    5
+   ]]
+  }
+ ],
+ "apply": [
+  {
+   "original": "don't",
+   "expected": "He doesn't know.",
+   "start": 3,
+   "end": 8,
+   "text": "He don't know.",
+   "replacement": "doesn't"
+  },
+  {
+   "original": "",
+   "expected": "I am going.",
+   "start": 1,
+   "end": 1,
+   "text": "I going.",
+   "replacement": " am"
+  },
+  {
+   "original": " the",
+   "expected": "the cat",
+   "start": 3,
+   "end": 7,
+   "text": "the the cat",
+   "replacement": ""
+  },
+  {
+   "original": "won't",
+   "expected": null,
+   "start": 3,
+   "end": 8,
+   "text": "He don't know.",
+   "replacement": "doesn't"
+  }
+ ],
+ "sentences": [
+  {
+   "sentences": [
+    [
+     0,
+     4,
+     0
+    ],
+    [
+     5,
+     9,
+     0
+    ],
+    [
+     10,
+     16,
+     0
+    ]
+   ],
+   "text": "One. Two! Three?"
+  },
+  {
+   "sentences": [
+    [
+     0,
+     14,
+     0
+    ],
+    [
+     15,
+     25,
+     0
+    ]
+   ],
+   "text": "She said \"no.\" They left."
+  },
+  {
+   "sentences": [
+    [
+     0,
+     9,
+     0
+    ],
+    [
+     10,
+     24,
+     1
+    ],
+    [
+     25,
+     28,
+     1
+    ]
+   ],
+   "text": "Dear Sam,\nthey was late. Bye"
+  },
+  {
+   "sentences": [
+    [
+     0,
+     3,
+     0
+    ],
+    [
+     4,
+     17,
+     0
+    ]
+   ],
+   "text": "Mr. Smith left..."
+  },
+  {
+   "sentences": [[
+    0,
+    6,
+    0
+   ]],
+   "text": "No end"
+  }
+ ],
  "about": "Cases for Writing check, read by both ports: android/.../writing/WritingCheckTest.kt and ios/VocaPhoneTests/WritingCheckTests.swift. Offsets are UTF-16 units. Expected values were recorded from the Kotlin port, reviewed, and are binding on both. `model` maps a sentence to what the grammar model returns for it (null: still loading); a sentence not listed comes back unchanged. `accept` is the text left once every suggestion is accepted.",
+ "verbs": [
+  {
+   "participle": false,
+   "lemma": "sing",
+   "word": "sings",
+   "forms": [
+    "sings",
+    "sang",
+    "sung",
+    "singing"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "call",
+   "word": "calls",
+   "forms": [
+    "calls",
+    "called",
+    "called",
+    "calling"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "go",
+   "word": "went",
+   "forms": [
+    "goes",
+    "went",
+    "gone",
+    "going"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "know",
+   "word": "knew",
+   "forms": [
+    "knows",
+    "knew",
+    "known",
+    "knowing"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "see",
+   "word": "seeing",
+   "forms": [
+    "sees",
+    "saw",
+    "seen",
+    "seeing"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "stop",
+   "word": "stopping",
+   "forms": [
+    "stops",
+    "stopped",
+    "stopped",
+    "stopping"
+   ]
+  },
+  {
+   "participle": true,
+   "lemma": "try",
+   "word": "tried",
+   "forms": [
+    "tries",
+    "tried",
+    "tried",
+    "trying"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "go",
+   "word": "goes",
+   "forms": [
+    "goes",
+    "went",
+    "gone",
+    "going"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "do",
+   "word": "does",
+   "forms": [
+    "does",
+    "did",
+    "done",
+    "doing"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "hope",
+   "word": "hoping",
+   "forms": [
+    "hopes",
+    "hoped",
+    "hoped",
+    "hoping"
+   ]
+  },
+  {
+   "participle": true,
+   "lemma": "eat",
+   "word": "eaten",
+   "forms": [
+    "eats",
+    "ate",
+    "eaten",
+    "eating"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "come",
+   "word": "came",
+   "forms": [
+    "comes",
+    "came",
+    "come",
+    "coming"
+   ]
+  },
+  {
+   "participle": true,
+   "lemma": "be",
+   "word": "been",
+   "forms": [
+    "is",
+    "was",
+    "been",
+    "being"
+   ]
+  },
+  {
+   "participle": true,
+   "lemma": "finish",
+   "word": "finished",
+   "forms": [
+    "finishes",
+    "finished",
+    "finished",
+    "finishing"
+   ]
+  },
+  {
+   "participle": true,
+   "lemma": "visit",
+   "word": "visited",
+   "forms": [
+    "visits",
+    "visited",
+    "visited",
+    "visiting"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "watch",
+   "word": "watch",
+   "forms": [
+    "watches",
+    "watched",
+    "watched",
+    "watching"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "lie",
+   "word": "lie",
+   "forms": [
+    "lies",
+    "lay",
+    "lain",
+    "lying"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "make",
+   "word": "make",
+   "forms": [
+    "makes",
+    "made",
+    "made",
+    "making"
+   ]
+  },
+  {
+   "participle": true,
+   "lemma": "run",
+   "word": "run",
+   "forms": [
+    "runs",
+    "ran",
+    "run",
+    "running"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "go",
+   "word": "went",
+   "forms": [
+    "goes",
+    "went",
+    "gone",
+    "going"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "buy",
+   "word": "buys",
+   "forms": [
+    "buys",
+    "bought",
+    "bought",
+    "buying"
+   ]
+  },
+  {
+   "participle": false,
+   "lemma": "agree",
+   "word": "agree",
+   "forms": [
+    "agrees",
+    "agreed",
+    "agreed",
+    "agreeing"
+   ]
+  }
+ ],
+ "check": [
+  {
+   "stats": [
+    5,
+    27,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 1",
+   "suggestions": [{
+    "original": "then",
+    "kind": "confused_words",
+    "start": 16,
+    "rule": "rather-then",
+    "mechanical": false,
+    "end": 20,
+    "label": "then → than",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cthan\u201d compares two things; \u201cthen\u201d is about time or order.",
+    "replacement": "than",
+    "mark": [
+     16,
+     20
+    ]
+   }],
+   "modelPending": false,
+   "text": "I'd rather walk then drive."
+  },
+  {
+   "stats": [
+    5,
+    22,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 2",
+   "suggestions": [{
+    "original": "then",
+    "kind": "confused_words",
+    "start": 14,
+    "rule": "then-than",
+    "mechanical": false,
+    "end": 18,
+    "label": "then → than",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cthan\u201d compares two things; \u201cthen\u201d is about time or order.",
+    "replacement": "than",
+    "mark": [
+     14,
+     18
+    ]
+   }],
+   "modelPending": false,
+   "text": "She is taller then me."
+  },
+  {
+   "stats": [
+    6,
+    25,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 3",
+   "suggestions": [{
+    "original": "of",
+    "kind": "confused_words",
+    "start": 8,
+    "rule": "could-of",
+    "mechanical": false,
+    "end": 10,
+    "label": "of → have",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201chave\u201d is the verb in \u201ccould have\u201d, \u201cshould have\u201d and \u201cwould have\u201d; \u201cof\u201d is a preposition.",
+    "replacement": "have",
+    "mark": [
+     8,
+     10
+    ]
+   }],
+   "modelPending": false,
+   "text": "I could of told you that."
+  },
+  {
+   "stats": [
+    2,
+    13,
+    1,
+    1,
+    1,
+    78,
+    92
+   ],
+   "tones": [],
+   "name": "rules 4",
+   "suggestions": [{
+    "original": "Your",
+    "kind": "confused_words",
+    "start": 0,
+    "rule": "your-welcome",
+    "mechanical": false,
+    "end": 4,
+    "label": "Your → You're",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cYou're\u201d means \u201cyou are\u201d; \u201cYour\u201d means belonging to you.",
+    "replacement": "You're",
+    "mark": [
+     0,
+     4
+    ]
+   }],
+   "modelPending": false,
+   "text": "Your welcome!"
+  },
+  {
+   "stats": [
+    7,
+    30,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 5",
+   "suggestions": [{
+    "original": "your",
+    "kind": "confused_words",
+    "start": 8,
+    "rule": "your-youre",
+    "mechanical": false,
+    "end": 12,
+    "label": "your → you're",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cyou're\u201d means \u201cyou are\u201d; \u201cyour\u201d means belonging to you.",
+    "replacement": "you're",
+    "mark": [
+     8,
+     12
+    ]
+   }],
+   "modelPending": false,
+   "text": "I think your going to love it."
+  },
+  {
+   "stats": [
+    5,
+    24,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 6",
+   "suggestions": [{
+    "original": "Its",
+    "kind": "confused_words",
+    "start": 0,
+    "rule": "its-it-s",
+    "mechanical": false,
+    "end": 3,
+    "label": "Its → It's",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cIt's\u201d means \u201cit is\u201d or \u201cit has\u201d; \u201cIts\u201d means belonging to it.",
+    "replacement": "It's",
+    "mark": [
+     0,
+     3
+    ]
+   }],
+   "modelPending": false,
+   "text": "Its going to rain later."
+  },
+  {
+   "stats": [
+    5,
+    25,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 7",
+   "suggestions": [{
+    "original": "it's",
+    "kind": "confused_words",
+    "start": 15,
+    "rule": "its-possessed",
+    "mechanical": false,
+    "end": 19,
+    "label": "it's → its",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cits\u201d means belonging to it; \u201cit's\u201d means \u201cit is\u201d or \u201cit has\u201d.",
+    "replacement": "its",
+    "mark": [
+     15,
+     19
+    ]
+   }],
+   "modelPending": false,
+   "text": "The dog wagged it's tail."
+  },
+  {
+   "stats": [
+    7,
+    34,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 8",
+   "suggestions": [{
+    "original": "Their",
+    "kind": "confused_words",
+    "start": 0,
+    "rule": "their-is",
+    "mechanical": false,
+    "end": 5,
+    "label": "Their → There",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cThere\u201d refers to a place or starts a sentence like \u201cthere is\u201d; \u201cTheir\u201d means belonging to them.",
+    "replacement": "There",
+    "mark": [
+     0,
+     5
+    ]
+   }],
+   "modelPending": false,
+   "text": "Their is a problem with the build."
+  },
+  {
+   "stats": [
+    5,
+    23,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 9",
+   "suggestions": [{
+    "original": "Their",
+    "kind": "confused_words",
+    "start": 0,
+    "rule": "their-going",
+    "mechanical": false,
+    "end": 5,
+    "label": "Their → They're",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cThey're\u201d means \u201cthey are\u201d; \u201cTheir\u201d means belonging to them.",
+    "replacement": "They're",
+    "mark": [
+     0,
+     5
+    ]
+   }],
+   "modelPending": false,
+   "text": "Their going to be late."
+  },
+  {
+   "stats": [
+    6,
+    28,
+    1,
+    2,
+    3,
+    88,
+    92
+   ],
+   "tones": [],
+   "name": "rules 10",
+   "suggestions": [{
+    "original": "their",
+    "kind": "confused_words",
+    "start": 22,
+    "rule": "over-their",
+    "mechanical": false,
+    "end": 27,
+    "label": "their → there",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cthere\u201d refers to a place or starts a sentence like \u201cthere is\u201d; \u201ctheir\u201d means belonging to them.",
+    "replacement": "there",
+    "mark": [
+     22,
+     27
+    ]
+   }],
+   "modelPending": false,
+   "text": "I left my jacket over their."
+  },
+  {
+   "stats": [
+    4,
+    18,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 11",
+   "suggestions": [{
+    "original": "Who's",
+    "kind": "confused_words",
+    "start": 0,
+    "rule": "whos-car",
+    "mechanical": false,
+    "end": 5,
+    "label": "Who's → Whose",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cWhose\u201d means belonging to whom; \u201cWho's\u201d means \u201cwho is\u201d or \u201cwho has\u201d.",
+    "replacement": "Whose",
+    "mark": [
+     0,
+     5
+    ]
+   }],
+   "modelPending": false,
+   "text": "Who's car is this?"
+  },
+  {
+   "stats": [
+    3,
+    21,
+    1,
+    1,
+    2,
+    63,
+    92
+   ],
+   "tones": [],
+   "name": "rules 12",
+   "suggestions": [{
+    "original": "Whose",
+    "kind": "confused_words",
+    "start": 0,
+    "rule": "whose-coming",
+    "mechanical": false,
+    "end": 5,
+    "label": "Whose → Who's",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cWho's\u201d means \u201cwho is\u201d or \u201cwho has\u201d; \u201cWhose\u201d means belonging to whom.",
+    "replacement": "Who's",
+    "mark": [
+     0,
+     5
+    ]
+   }],
+   "modelPending": false,
+   "text": "Whose coming tonight?"
+  },
+  {
+   "stats": [
+    5,
+    24,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 13",
+   "suggestions": [{
+    "original": "Were",
+    "kind": "confused_words",
+    "start": 0,
+    "rule": "were-going",
+    "mechanical": false,
+    "end": 4,
+    "label": "Were → We're",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cWe're\u201d means \u201cwe are\u201d; \u201cWere\u201d is the past of \u201care\u201d.",
+    "replacement": "We're",
+    "mark": [
+     0,
+     4
+    ]
+   }],
+   "modelPending": false,
+   "text": "Were going to the beach."
+  },
+  {
+   "stats": [
+    5,
+    26,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 14",
+   "suggestions": [{
+    "original": "sings",
+    "kind": "verb_form",
+    "start": 8,
+    "rule": "modal-base",
+    "mechanical": false,
+    "end": 13,
+    "label": "sings → sing",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201ccan\u201d, use \u201csing\u201d.",
+    "replacement": "sing",
+    "mark": [
+     8,
+     13
+    ]
+   }],
+   "modelPending": false,
+   "text": "She can sings really well."
+  },
+  {
+   "stats": [
+    5,
+    23,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 15",
+   "suggestions": [{
+    "original": "calls",
+    "kind": "verb_form",
+    "start": 7,
+    "rule": "modal-base",
+    "mechanical": false,
+    "end": 12,
+    "label": "calls → call",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cwill\u201d, use \u201ccall\u201d.",
+    "replacement": "call",
+    "mark": [
+     7,
+     12
+    ]
+   }],
+   "modelPending": false,
+   "text": "I will calls you later."
+  },
+  {
+   "stats": [
+    4,
+    19,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 16",
+   "suggestions": [{
+    "original": "knew",
+    "kind": "verb_form",
+    "start": 9,
+    "rule": "neg-base",
+    "mechanical": false,
+    "end": 13,
+    "label": "knew → know",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cdidn't\u201d, use \u201cknow\u201d.",
+    "replacement": "know",
+    "mark": [
+     9,
+     13
+    ]
+   }],
+   "modelPending": false,
+   "text": "I didn't knew that."
+  },
+  {
+   "stats": [
+    6,
+    26,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 17",
+   "suggestions": [{
+    "original": "went",
+    "kind": "verb_form",
+    "start": 8,
+    "rule": "do-question-base",
+    "mechanical": false,
+    "end": 12,
+    "label": "went → go",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cDid\u201d, use the base form \u201cgo\u201d.",
+    "replacement": "go",
+    "mark": [
+     8,
+     12
+    ]
+   }],
+   "modelPending": false,
+   "text": "Did you went to the party?"
+  },
+  {
+   "stats": [
+    4,
+    20,
+    1,
+    2,
+    2,
+    97,
+    92
+   ],
+   "tones": [],
+   "name": "rules 18",
+   "suggestions": [{
+    "original": "likes",
+    "kind": "verb_form",
+    "start": 11,
+    "rule": "neg-base",
+    "mechanical": false,
+    "end": 16,
+    "label": "likes → like",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cdoesn't\u201d, use \u201clike\u201d.",
+    "replacement": "like",
+    "mark": [
+     11,
+     16
+    ]
+   }],
+   "modelPending": false,
+   "text": "He doesn't likes it."
+  },
+  {
+   "stats": [
+    4,
+    19,
+    1,
+    2,
+    2,
+    76,
+    92
+   ],
+   "tones": [],
+   "name": "rules 19",
+   "suggestions": [{
+    "original": "ate",
+    "kind": "verb_form",
+    "start": 7,
+    "rule": "have-participle",
+    "mechanical": false,
+    "end": 10,
+    "label": "ate → eaten",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201chave\u201d, use \u201ceaten\u201d.",
+    "replacement": "eaten",
+    "mark": [
+     7,
+     10
+    ]
+   }],
+   "modelPending": false,
+   "text": "I have ate already."
+  },
+  {
+   "stats": [
+    4,
+    17,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 20",
+   "suggestions": [{
+    "original": "came",
+    "kind": "verb_form",
+    "start": 7,
+    "rule": "have-participle",
+    "mechanical": false,
+    "end": 11,
+    "label": "came → come",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201chas\u201d, use \u201ccome\u201d.",
+    "replacement": "come",
+    "mark": [
+     7,
+     11
+    ]
+   }],
+   "modelPending": false,
+   "text": "He has came back."
+  },
+  {
+   "stats": [
+    5,
+    22,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 21",
+   "suggestions": [{
+    "original": "no",
+    "kind": "double_negative",
+    "start": 13,
+    "rule": "double-negative",
+    "mechanical": false,
+    "end": 15,
+    "label": "no → any",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Two negatives cancel each other out. Use \u201cany\u201d.",
+    "replacement": "any",
+    "mark": [
+     13,
+     15
+    ]
+   }],
+   "modelPending": false,
+   "text": "I don't have no money."
+  },
+  {
+   "stats": [
+    4,
+    20,
+    1,
+    2,
+    2,
+    97,
+    92
+   ],
+   "tones": [],
+   "name": "rules 22",
+   "suggestions": [{
+    "original": "nothing",
+    "kind": "double_negative",
+    "start": 12,
+    "rule": "double-negative",
+    "mechanical": false,
+    "end": 19,
+    "label": "nothing → anything",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Two negatives cancel each other out. Use \u201canything\u201d.",
+    "replacement": "anything",
+    "mark": [
+     12,
+     19
+    ]
+   }],
+   "modelPending": false,
+   "text": "I didn't do nothing."
+  },
+  {
+   "stats": [
+    6,
+    29,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 23",
+   "suggestions": [{
+    "original": " most",
+    "kind": "comparison",
+    "start": 11,
+    "rule": "most-superlative",
+    "mechanical": false,
+    "end": 16,
+    "label": "Remove \u201cmost\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201ceasiest\u201d already compares, so \u201cmost\u201d isn't needed.",
+    "replacement": "",
+    "mark": [
+     12,
+     16
+    ]
+   }],
+   "modelPending": false,
+   "text": "This is the most easiest way."
+  },
+  {
+   "stats": [
+    6,
+    29,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 24",
+   "suggestions": [{
+    "original": "less",
+    "kind": "word_choice",
+    "start": 7,
+    "rule": "less-fewer",
+    "mechanical": false,
+    "end": 11,
+    "label": "less → fewer",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cFewer\u201d is for things you can count, like \u201cfriends\u201d.",
+    "replacement": "fewer",
+    "mark": [
+     7,
+     11
+    ]
+   }],
+   "modelPending": false,
+   "text": "I have less friends than you."
+  },
+  {
+   "stats": [
+    4,
+    16,
+    1,
+    2,
+    2,
+    97,
+    92
+   ],
+   "tones": [],
+   "name": "rules 25",
+   "suggestions": [{
+    "original": "to cook",
+    "kind": "verb_form",
+    "start": 8,
+    "rule": "gerund-after",
+    "mechanical": false,
+    "end": 15,
+    "label": "to cook → cooking",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cenjoy\u201d, use the -ing form: \u201ccooking\u201d.",
+    "replacement": "cooking",
+    "mark": [
+     8,
+     15
+    ]
+   }],
+   "modelPending": false,
+   "text": "I enjoy to cook."
+  },
+  {
+   "stats": [
+    6,
+    26,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 26",
+   "suggestions": [{
+    "original": "see",
+    "kind": "verb_form",
+    "start": 18,
+    "rule": "look-forward",
+    "mechanical": false,
+    "end": 21,
+    "label": "see → seeing",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201clook forward to\u201d, use the -ing form: \u201cseeing\u201d.",
+    "replacement": "seeing",
+    "mark": [
+     18,
+     21
+    ]
+   }],
+   "modelPending": false,
+   "text": "I look forward to see you."
+  },
+  {
+   "stats": [
+    4,
+    21,
+    1,
+    2,
+    2,
+    97,
+    92
+   ],
+   "tones": [],
+   "name": "rules 27",
+   "suggestions": [{
+    "original": "invite",
+    "kind": "verb_form",
+    "start": 11,
+    "rule": "thanks-for-ing",
+    "mechanical": false,
+    "end": 17,
+    "label": "invite → inviting",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cfor\u201d, use the -ing form: \u201cinviting\u201d.",
+    "replacement": "inviting",
+    "mark": [
+     11,
+     17
+    ]
+   }],
+   "modelPending": false,
+   "text": "Thanks for invite me."
+  },
+  {
+   "stats": [
+    6,
+    26,
+    1,
+    2,
+    3,
+    88,
+    92
+   ],
+   "tones": [],
+   "name": "rules 28",
+   "suggestions": [{
+    "original": "wake",
+    "kind": "verb_form",
+    "start": 12,
+    "rule": "used-to-ing",
+    "mechanical": false,
+    "end": 16,
+    "label": "wake → waking",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cUsed to\u201d meaning \u201caccustomed to\u201d takes the -ing form: \u201cwaking\u201d.",
+    "replacement": "waking",
+    "mark": [
+     12,
+     16
+    ]
+   }],
+   "modelPending": false,
+   "text": "I'm used to wake up early."
+  },
+  {
+   "stats": [
+    6,
+    29,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 29",
+   "suggestions": [{
+    "original": "I",
+    "kind": "pronoun",
+    "start": 16,
+    "rule": "between-you-and-me",
+    "mechanical": false,
+    "end": 17,
+    "label": "I → me",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use the object form \u201cme\u201d here.",
+    "replacement": "me",
+    "mark": [
+     16,
+     17
+    ]
+   }],
+   "modelPending": false,
+   "text": "Between you and I, it's fine."
+  },
+  {
+   "stats": [
+    7,
+    28,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 30",
+   "suggestions": [{
+    "original": "Me and him",
+    "kind": "pronoun",
+    "start": 0,
+    "rule": "me-and-him",
+    "mechanical": false,
+    "end": 10,
+    "label": "Me and him → He and I",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use the subject forms when they start the sentence: \u201cHe and I\u201d.",
+    "replacement": "He and I",
+    "mark": [
+     0,
+     10
+    ]
+   }],
+   "modelPending": false,
+   "text": "Me and him went to the game."
+  },
+  {
+   "stats": [
+    5,
+    21,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 31",
+   "suggestions": [{
+    "original": "Him and me",
+    "kind": "pronoun",
+    "start": 0,
+    "rule": "him-and-me",
+    "mechanical": false,
+    "end": 10,
+    "label": "Him and me → He and I",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use the subject forms when they start the sentence: \u201cHe and I\u201d.",
+    "replacement": "He and I",
+    "mark": [
+     0,
+     10
+    ]
+   }],
+   "modelPending": false,
+   "text": "Him and me are going."
+  },
+  {
+   "stats": [
+    5,
+    24,
+    1,
+    2,
+    2,
+    83,
+    92
+   ],
+   "tones": [],
+   "name": "rules 32",
+   "suggestions": [{
+    "original": "Me and Sarah",
+    "kind": "pronoun",
+    "start": 0,
+    "rule": "me-and-name",
+    "mechanical": false,
+    "end": 12,
+    "label": "Me and Sarah → Sarah and I",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201cI\u201d when it is part of the subject, and put yourself last: \u201cSarah and I\u201d.",
+    "replacement": "Sarah and I",
+    "mark": [
+     0,
+     12
+    ]
+   }],
+   "modelPending": false,
+   "text": "Me and Sarah are coming."
+  },
+  {
+   "stats": [
+    4,
+    16,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 33",
+   "suggestions": [{
+    "original": " the",
+    "kind": "repeated_word",
+    "start": 3,
+    "rule": "repeated-word",
+    "mechanical": true,
+    "end": 7,
+    "label": "Remove \u201cthe\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "You typed \u201cthe\u201d twice.",
+    "replacement": "",
+    "mark": [
+     4,
+     7
+    ]
+   }],
+   "modelPending": false,
+   "text": "the the cat sat."
+  },
+  {
+   "stats": [
+    4,
+    15,
+    1,
+    2,
+    2,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "rules 34",
+   "suggestions": [
+    {
+     "original": "i",
+     "kind": "capitalization",
+     "start": 0,
+     "rule": "cap-i",
+     "mechanical": true,
+     "end": 1,
+     "label": "i → I",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Always capitalize \u201cI\u201d.",
+     "replacement": "I",
+     "mark": [
+      0,
+      1
+     ]
+    },
+    {
+     "original": "i",
+     "kind": "capitalization",
+     "start": 8,
+     "rule": "cap-i",
+     "mechanical": true,
+     "end": 9,
+     "label": "i → I",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Always capitalize \u201cI\u201d.",
+     "replacement": "I",
+     "mark": [
+      8,
+      9
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "i think i know."
+  },
+  {
+   "stats": [
+    9,
+    42,
+    1,
+    3,
+    4,
+    94,
+    96
+   ],
+   "tones": [],
+   "name": "rules 35",
+   "suggestions": [{
+    "original": " in order",
+    "kind": "wordiness",
+    "start": 14,
+    "rule": "wordy-in-order-to",
+    "mechanical": false,
+    "end": 23,
+    "label": "Remove \u201cin order\u201d",
+    "source": "rule",
+    "category": "clarity",
+    "message": "\u201cto\u201d says the same thing in fewer words.",
+    "replacement": "",
+    "mark": [
+     15,
+     23
+    ]
+   }],
+   "modelPending": false,
+   "text": "Please do this in order to finish on time."
+  },
+  {
+   "stats": [
+    10,
+    45,
+    1,
+    3,
+    4,
+    100,
+    96
+   ],
+   "tones": [],
+   "name": "rules 36",
+   "suggestions": [{
+    "original": "Due to the fact that",
+    "kind": "wordiness",
+    "start": 0,
+    "rule": "wordy-due-to-the-fact-that",
+    "mechanical": false,
+    "end": 20,
+    "label": "Due to the fact that → Because",
+    "source": "rule",
+    "category": "clarity",
+    "message": "\u201cBecause\u201d says the same thing in fewer words.",
+    "replacement": "Because",
+    "mark": [
+     0,
+     20
+    ]
+   }],
+   "modelPending": false,
+   "text": "Due to the fact that it rained, we stayed in."
+  },
+  {
+   "stats": [
+    7,
+    28,
+    1,
+    2,
+    3,
+    100,
+    96
+   ],
+   "tones": [],
+   "name": "rules 37",
+   "suggestions": [{
+    "original": " free",
+    "kind": "redundancy",
+    "start": 9,
+    "rule": "redundant-free-gift",
+    "mechanical": false,
+    "end": 14,
+    "label": "Remove \u201cfree\u201d",
+    "source": "rule",
+    "category": "clarity",
+    "message": "\u201cfree gift\u201d repeats itself; \u201cgift\u201d is enough.",
+    "replacement": "",
+    "mark": [
+     10,
+     14
+    ]
+   }],
+   "modelPending": false,
+   "text": "This is a free gift for you."
+  },
+  {
+   "stats": [
+    7,
+    30,
+    1,
+    2,
+    3,
+    100,
+    96
+   ],
+   "tones": [],
+   "name": "rules 38",
+   "suggestions": [{
+    "original": "was eaten by",
+    "kind": "passive_voice",
+    "start": 9,
+    "rule": "passive-by",
+    "mechanical": false,
+    "end": 21,
+    "label": "Passive voice",
+    "source": "rule",
+    "category": "clarity",
+    "message": "This is in the passive voice. Saying who does what can make it clearer.",
+    "replacement": null,
+    "mark": [
+     9,
+     21
+    ]
+   }],
+   "modelPending": false,
+   "text": "The cake was eaten by the dog."
+  },
+  {
+   "stats": [
+    8,
+    45,
+    1,
+    3,
+    4,
+    61,
+    96
+   ],
+   "tones": [],
+   "name": "rules 39",
+   "suggestions": [
+    {
+     "original": "very good",
+     "kind": "intensifier",
+     "start": 14,
+     "rule": "intensifier-good",
+     "mechanical": false,
+     "end": 23,
+     "label": "very good → great",
+     "source": "rule",
+     "category": "engagement",
+     "message": "\u201cgreat\u201d is stronger than \u201cvery good\u201d.",
+     "replacement": "great",
+     "mark": [
+      14,
+      23
+     ]
+    },
+    {
+     "original": "very interesting",
+     "kind": "intensifier",
+     "start": 28,
+     "rule": "intensifier-interesting",
+     "mechanical": false,
+     "end": 44,
+     "label": "very interesting → fascinating",
+     "source": "rule",
+     "category": "engagement",
+     "message": "\u201cfascinating\u201d is stronger than \u201cvery interesting\u201d.",
+     "replacement": "fascinating",
+     "mark": [
+      28,
+      44
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "The movie was very good and very interesting."
+  },
+  {
+   "stats": [
+    9,
+    43,
+    1,
+    3,
+    4,
+    85,
+    98
+   ],
+   "tones": [],
+   "name": "rules 40",
+   "suggestions": [{
+    "original": " just",
+    "kind": "hedging",
+    "start": 1,
+    "rule": "hedge-i-just-wanted-to",
+    "mechanical": false,
+    "end": 6,
+    "label": "Remove \u201cjust\u201d",
+    "source": "rule",
+    "category": "delivery",
+    "message": "\u201cI wanted to\u201d sounds more confident.",
+    "replacement": "",
+    "mark": [
+     2,
+     6
+    ]
+   }],
+   "modelPending": false,
+   "text": "I just wanted to check in about the report."
+  },
+  {
+   "stats": [
+    3,
+    14,
+    1,
+    1,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 41",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Can dogs swim?"
+  },
+  {
+   "stats": [
+    9,
+    39,
+    1,
+    3,
+    4,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 42",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Can you call me back when you get this?"
+  },
+  {
+   "stats": [
+    5,
+    19,
+    1,
+    2,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 43",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "I want to come too."
+  },
+  {
+   "stats": [
+    9,
+    42,
+    1,
+    3,
+    4,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 44",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Their house is the blue one on the corner."
+  },
+  {
+   "stats": [
+    7,
+    34,
+    1,
+    2,
+    3,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 45",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "I'd rather walk than take the bus."
+  },
+  {
+   "stats": [
+    5,
+    22,
+    1,
+    2,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 46",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Lol okay see you then."
+  },
+  {
+   "stats": [
+    6,
+    34,
+    1,
+    2,
+    3,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 47",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "The total came to $42.50 with tip."
+  },
+  {
+   "stats": [
+    4,
+    23,
+    1,
+    2,
+    2,
+    97,
+    100
+   ],
+   "tones": [],
+   "name": "rules 48",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Tell Kevin its at 7:30."
+  },
+  {
+   "stats": [
+    7,
+    37,
+    1,
+    2,
+    3,
+    91,
+    100
+   ],
+   "tones": [],
+   "name": "rules 49",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Check www.dont-panic.com for details."
+  },
+  {
+   "stats": [
+    5,
+    26,
+    1,
+    2,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 50",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "You're welcome to join us."
+  },
+  {
+   "stats": [
+    5,
+    28,
+    1,
+    2,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 51",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Your right hand is bleeding."
+  },
+  {
+   "stats": [
+    22,
+    116,
+    2,
+    6,
+    9,
+    84,
+    100
+   ],
+   "tones": [
+    "friendly",
+    "apologetic",
+    "appreciative"
+   ],
+   "name": "rules 52",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "I'm sorry for the delay. Thanks so much for your patience, I really appreciate it and hope you have a great weekend!"
+  },
+  {
+   "stats": [
+    19,
+    108,
+    2,
+    5,
+    8,
+    73,
+    100
+   ],
+   "tones": [
+    "urgent",
+    "frustrated"
+   ],
+   "name": "rules 53",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "URGENT: please send the report ASAP, the deadline is today and we still don't have it. This is unacceptable."
+  },
+  {
+   "stats": [
+    42,
+    231,
+    1,
+    11,
+    17,
+    43,
+    96
+   ],
+   "tones": [],
+   "name": "rules 54",
+   "suggestions": [{
+    "original": "The report, which was written over several weeks by a team of analysts who worked late into the night and through the weekend to meet the deadline set by the board, finally landed on my desk this morning before the meeting started.",
+    "kind": "long_sentence",
+    "start": 0,
+    "rule": null,
+    "mechanical": false,
+    "end": 231,
+    "label": "Long sentence",
+    "source": "text",
+    "category": "clarity",
+    "message": "This sentence has 42 words. Splitting it can make it easier to read.",
+    "replacement": null,
+    "mark": [
+     0,
+     231
+    ]
+   }],
+   "modelPending": false,
+   "text": "The report, which was written over several weeks by a team of analysts who worked late into the night and through the weekend to meet the deadline set by the board, finally landed on my desk this morning before the meeting started."
+  },
+  {
+   "stats": [
+    17,
+    83,
+    3,
+    5,
+    7,
+    100,
+    96
+   ],
+   "tones": [],
+   "name": "rules 55",
+   "suggestions": [
+    {
+     "original": "launch",
+     "kind": "overused_word",
+     "start": 57,
+     "rule": null,
+     "mechanical": false,
+     "end": 63,
+     "label": "Repetitive word",
+     "source": "text",
+     "category": "engagement",
+     "message": "You've used \u201claunch\u201d 3 times here. A different word could keep it fresh.",
+     "replacement": null,
+     "mark": [
+      57,
+      63
+     ]
+    },
+    {
+     "original": "plan",
+     "kind": "overused_word",
+     "start": 64,
+     "rule": null,
+     "mechanical": false,
+     "end": 68,
+     "label": "Repetitive word",
+     "source": "text",
+     "category": "engagement",
+     "message": "You've used \u201cplan\u201d 3 times here. A different word could keep it fresh.",
+     "replacement": null,
+     "mark": [
+      64,
+      68
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "We need to plan the launch. The launch needs a plan. Our launch plan is the launch."
+  },
+  {
+   "stats": [
+    14,
+    67,
+    3,
+    4,
+    6,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 56",
+   "suggestions": [{
+    "original": "of",
+    "kind": "confused_words",
+    "start": 58,
+    "rule": "could-of",
+    "mechanical": false,
+    "end": 60,
+    "label": "of → have",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201chave\u201d is the verb in \u201ccould have\u201d, \u201cshould have\u201d and \u201cwould have\u201d; \u201cof\u201d is a preposition.",
+    "replacement": "have",
+    "mark": [
+     58,
+     60
+    ]
+   }],
+   "modelPending": false,
+   "text": "It will be finished soon. He said he will come. She would of known."
+  },
+  {
+   "stats": [
+    7,
+    30,
+    1,
+    2,
+    3,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "rules 57",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "What kind of car do you drive?"
+  },
+  {
+   "stats": [
+    7,
+    27,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 58",
+   "suggestions": [{
+    "original": "cut",
+    "kind": "verb_form",
+    "start": 14,
+    "rule": "be-used-to-ing",
+    "mechanical": false,
+    "end": 17,
+    "label": "cut → cutting",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cUsed to\u201d meaning \u201caccustomed to\u201d takes the -ing form: \u201ccutting\u201d.",
+    "replacement": "cutting",
+    "mark": [
+     14,
+     17
+    ]
+   }],
+   "modelPending": false,
+   "text": "He is used to cut the wood."
+  },
+  {
+   "stats": [
+    6,
+    27,
+    1,
+    2,
+    3,
+    88,
+    100
+   ],
+   "tones": [],
+   "name": "rules 59",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "It's used to open the door."
+  },
+  {
+   "stats": [
+    6,
+    36,
+    1,
+    2,
+    3,
+    17,
+    76
+   ],
+   "tones": [],
+   "name": "rules 60",
+   "suggestions": [
+    {
+     "original": "definately",
+     "kind": "spelling",
+     "start": 2,
+     "rule": "spell-definately",
+     "mechanical": true,
+     "end": 12,
+     "label": "definately → definitely",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cdefinately\u201d looks misspelled. Did you mean \u201cdefinitely\u201d?",
+     "replacement": "definitely",
+     "mark": [
+      2,
+      12
+     ]
+    },
+    {
+     "original": "recieve",
+     "kind": "spelling",
+     "start": 13,
+     "rule": "spell-recieve",
+     "mechanical": true,
+     "end": 20,
+     "label": "recieve → receive",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201crecieve\u201d looks misspelled. Did you mean \u201creceive\u201d?",
+     "replacement": "receive",
+     "mark": [
+      13,
+      20
+     ]
+    },
+    {
+     "original": "alot",
+     "kind": "spelling",
+     "start": 21,
+     "rule": "spell-alot",
+     "mechanical": true,
+     "end": 25,
+     "label": "alot → a lot",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201calot\u201d looks misspelled. Did you mean \u201ca lot\u201d?",
+     "replacement": "a lot",
+     "mark": [
+      21,
+      25
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I definately recieve alot of emails."
+  },
+  {
+   "stats": [
+    6,
+    28,
+    1,
+    2,
+    3,
+    100,
+    76
+   ],
+   "tones": [],
+   "name": "rules 61",
+   "suggestions": [
+    {
+     "original": "dont",
+     "kind": "apostrophe",
+     "start": 0,
+     "rule": "apos-dont",
+     "mechanical": true,
+     "end": 4,
+     "label": "dont → don't",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cdon't\u201d needs an apostrophe.",
+     "replacement": "don't",
+     "mark": [
+      0,
+      4
+     ]
+    },
+    {
+     "original": "im",
+     "kind": "apostrophe",
+     "start": 11,
+     "rule": "apos-im",
+     "mechanical": true,
+     "end": 13,
+     "label": "im → I'm",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cI'm\u201d needs an apostrophe.",
+     "replacement": "I'm",
+     "mark": [
+      11,
+      13
+     ]
+    },
+    {
+     "original": "thats",
+     "kind": "apostrophe",
+     "start": 19,
+     "rule": "apos-thats",
+     "mechanical": true,
+     "end": 24,
+     "label": "thats → that's",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cthat's\u201d needs an apostrophe.",
+     "replacement": "that's",
+     "mark": [
+      19,
+      24
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "dont worry im fine thats ok."
+  },
+  {
+   "stats": [
+    7,
+    36,
+    1,
+    2,
+    3,
+    100,
+    98
+   ],
+   "tones": [],
+   "name": "rules 62",
+   "suggestions": [{
+    "original": "I'm no expert, but ",
+    "kind": "hedging",
+    "start": 0,
+    "rule": "hedge-im-no-expert-but",
+    "mechanical": false,
+    "end": 19,
+    "label": "Remove \u201cI'm no expert, but\u201d",
+    "source": "rule",
+    "category": "delivery",
+    "message": "Dropping \u201cI'm no expert, but\u201d sounds more confident.",
+    "replacement": "",
+    "mark": [
+     0,
+     18
+    ]
+   }],
+   "modelPending": false,
+   "text": "I'm no expert, but this looks right."
+  },
+  {
+   "stats": [
+    5,
+    25,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 63",
+   "suggestions": [{
+    "original": "it's",
+    "kind": "confused_words",
+    "start": 15,
+    "rule": "its-possessed",
+    "mechanical": false,
+    "end": 19,
+    "label": "it's → its",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cits\u201d means belonging to it; \u201cit's\u201d means \u201cit is\u201d or \u201cit has\u201d.",
+    "replacement": "its",
+    "mark": [
+     15,
+     19
+    ]
+   }],
+   "modelPending": false,
+   "text": "The dog wagged it's tail."
+  },
+  {
+   "stats": [
+    6,
+    31,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "rules 64",
+   "suggestions": [{
+    "original": "then",
+    "kind": "confused_words",
+    "start": 20,
+    "rule": "rather-then",
+    "mechanical": false,
+    "end": 24,
+    "label": "then → than",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cthan\u201d compares two things; \u201cthen\u201d is about time or order.",
+    "replacement": "than",
+    "mark": [
+     20,
+     24
+    ]
+   }],
+   "modelPending": false,
+   "text": "I would rather walk then drive."
+  },
+  {
+   "stats": [
+    8,
+    37,
+    2,
+    3,
+    4,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "rules 65",
+   "suggestions": [
+    {
+     "original": "knew",
+     "kind": "verb_form",
+     "start": 12,
+     "rule": "do-not-base",
+     "mechanical": false,
+     "end": 16,
+     "label": "knew → know",
+     "source": "rule",
+     "category": "correctness",
+     "message": "After \u201cdid not\u201d, use \u201cknow\u201d.",
+     "replacement": "know",
+     "mark": [
+      12,
+      16
+     ]
+    },
+    {
+     "original": "went",
+     "kind": "verb_form",
+     "start": 32,
+     "rule": "modal-not-base",
+     "mechanical": false,
+     "end": 36,
+     "label": "went → go",
+     "source": "rule",
+     "category": "correctness",
+     "message": "After \u201cwould not\u201d, use \u201cgo\u201d.",
+     "replacement": "go",
+     "mark": [
+      32,
+      36
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "She did not knew. She would not went."
+  },
+  {
+   "stats": [
+    7,
+    34,
+    1,
+    2,
+    3,
+    91,
+    96
+   ],
+   "tones": [],
+   "name": "rules 66",
+   "suggestions": [{
+    "original": "In order to",
+    "kind": "wordiness",
+    "start": 0,
+    "rule": "wordy-in-order-to",
+    "mechanical": false,
+    "end": 11,
+    "label": "In order to → To",
+    "source": "rule",
+    "category": "clarity",
+    "message": "\u201cTo\u201d says the same thing in fewer words.",
+    "replacement": "To",
+    "mark": [
+     0,
+     11
+    ]
+   }],
+   "modelPending": false,
+   "text": "In order to win, we must practice."
+  },
+  {
+   "stats": [
+    3,
+    14,
+    1,
+    1,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a replaced word",
+   "model": {"He don't know.": "He doesn't know."},
+   "suggestions": [{
+    "original": "don't",
+    "kind": "agreement",
+    "start": 3,
+    "rule": "he-dont",
+    "mechanical": false,
+    "end": 8,
+    "label": "don't → doesn't",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201cdoesn't\u201d with \u201cHe\u201d.",
+    "replacement": "doesn't",
+    "mark": [
+     3,
+     8
+    ]
+   }],
+   "modelPending": false,
+   "text": "He don't know."
+  },
+  {
+   "stats": [
+    5,
+    25,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "agreement after a plural subject",
+   "model": {"The dogs barks all night.": "The dogs bark all night."},
+   "suggestions": [{
+    "original": "barks",
+    "kind": "agreement",
+    "start": 9,
+    "rule": null,
+    "mechanical": false,
+    "end": 14,
+    "label": "barks → bark",
+    "source": "model",
+    "category": "correctness",
+    "message": "\u201cbark\u201d agrees with \u201cdogs\u201d.",
+    "replacement": "bark",
+    "mark": [
+     9,
+     14
+    ]
+   }],
+   "modelPending": false,
+   "text": "The dogs barks all night."
+  },
+  {
+   "stats": [
+    4,
+    18,
+    1,
+    2,
+    2,
+    76,
+    92
+   ],
+   "tones": [],
+   "name": "an article before a vowel sound",
+   "model": {"I need a umbrella.": "I need an umbrella."},
+   "suggestions": [{
+    "original": "a",
+    "kind": "article",
+    "start": 7,
+    "rule": null,
+    "mechanical": false,
+    "end": 8,
+    "label": "a → an",
+    "source": "model",
+    "category": "correctness",
+    "message": "Use \u201can\u201d before a word that starts with a vowel sound, like \u201cumbrella\u201d.",
+    "replacement": "an",
+    "mark": [
+     7,
+     8
+    ]
+   }],
+   "modelPending": false,
+   "text": "I need a umbrella."
+  },
+  {
+   "stats": [
+    5,
+    21,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a missing helper verb",
+   "model": {"I going to the store.": "I am going to the store."},
+   "suggestions": [{
+    "original": "",
+    "kind": "missing_word",
+    "start": 1,
+    "rule": null,
+    "mechanical": false,
+    "end": 1,
+    "label": "Add \u201cam\u201d",
+    "source": "model",
+    "category": "correctness",
+    "message": "A verb seems to be missing: add \u201cam\u201d.",
+    "replacement": " am",
+    "mark": [
+     0,
+     1
+    ]
+   }],
+   "modelPending": false,
+   "text": "I going to the store."
+  },
+  {
+   "stats": [
+    4,
+    19,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a missing article",
+   "model": {"I'm going to store.": "I'm going to the store."},
+   "suggestions": [{
+    "original": "",
+    "kind": "article",
+    "start": 12,
+    "rule": null,
+    "mechanical": false,
+    "end": 12,
+    "label": "Add \u201cthe\u201d",
+    "source": "model",
+    "category": "correctness",
+    "message": "It looks like \u201cthe\u201d is missing before \u201cstore\u201d.",
+    "replacement": " the",
+    "mark": [
+     10,
+     12
+    ]
+   }],
+   "modelPending": false,
+   "text": "I'm going to store."
+  },
+  {
+   "stats": [
+    7,
+    29,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "an extra article",
+   "model": {"I like the music of the Bach.": "I like the music of Bach."},
+   "suggestions": [{
+    "original": " the",
+    "kind": "article",
+    "start": 19,
+    "rule": null,
+    "mechanical": false,
+    "end": 23,
+    "label": "Remove \u201cthe\u201d",
+    "source": "model",
+    "category": "correctness",
+    "message": "\u201cthe\u201d isn't needed before \u201cBach\u201d.",
+    "replacement": "",
+    "mark": [
+     20,
+     23
+    ]
+   }],
+   "modelPending": false,
+   "text": "I like the music of the Bach."
+  },
+  {
+   "stats": [
+    4,
+    18,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a verb form",
+   "model": {"I seen that movie.": "I saw that movie."},
+   "suggestions": [{
+    "original": "seen",
+    "kind": "verb_form",
+    "start": 2,
+    "rule": "seen-as-past",
+    "mechanical": false,
+    "end": 6,
+    "label": "seen → saw",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201csaw\u201d, or \u201chave seen\u201d.",
+    "replacement": "saw",
+    "mark": [
+     2,
+     6
+    ]
+   }],
+   "modelPending": false,
+   "text": "I seen that movie."
+  },
+  {
+   "stats": [
+    4,
+    23,
+    1,
+    2,
+    2,
+    55,
+    84
+   ],
+   "tones": [],
+   "name": "a spelling slip",
+   "model": {"I recieved teh package.": "I received the package."},
+   "suggestions": [
+    {
+     "original": "recieved",
+     "kind": "spelling",
+     "start": 2,
+     "rule": "spell-recieved",
+     "mechanical": true,
+     "end": 10,
+     "label": "recieved → received",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201crecieved\u201d looks misspelled. Did you mean \u201creceived\u201d?",
+     "replacement": "received",
+     "mark": [
+      2,
+      10
+     ]
+    },
+    {
+     "original": "teh",
+     "kind": "spelling",
+     "start": 11,
+     "rule": null,
+     "mechanical": true,
+     "end": 14,
+     "label": "teh → the",
+     "source": "model",
+     "category": "correctness",
+     "message": "\u201cteh\u201d looks misspelled. Did you mean \u201cthe\u201d?",
+     "replacement": "the",
+     "mark": [
+      11,
+      14
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I recieved teh package."
+  },
+  {
+   "stats": [
+    3,
+    16,
+    1,
+    1,
+    2,
+    63,
+    100
+   ],
+   "tones": [],
+   "name": "a full stop added where the text stops is not offered",
+   "model": {"see you tomorrow": "See you tomorrow."},
+   "suggestions": [],
+   "modelPending": false,
+   "text": "see you tomorrow"
+  },
+  {
+   "stats": [
+    3,
+    13,
+    1,
+    1,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a capital on a lower-case start is not offered",
+   "model": {"they was late": "They were late"},
+   "suggestions": [{
+    "original": "was",
+    "kind": "agreement",
+    "start": 5,
+    "rule": "they-was",
+    "mechanical": false,
+    "end": 8,
+    "label": "was → were",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201cwere\u201d with \u201cthey\u201d.",
+    "replacement": "were",
+    "mark": [
+     5,
+     8
+    ]
+   }],
+   "modelPending": false,
+   "text": "they was late"
+  },
+  {
+   "stats": [
+    5,
+    21,
+    2,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a capital on a sentence start in capitalised text",
+   "model": {
+    "then we left.": "Then we left.",
+    "We met.": "We met."
+   },
+   "suggestions": [{
+    "original": "then",
+    "kind": "capitalization",
+    "start": 8,
+    "rule": null,
+    "mechanical": true,
+    "end": 12,
+    "label": "then → Then",
+    "source": "model",
+    "category": "correctness",
+    "message": "Start a sentence with a capital letter.",
+    "replacement": "Then",
+    "mark": [
+     8,
+     12
+    ]
+   }],
+   "modelPending": false,
+   "text": "We met. then we left."
+  },
+  {
+   "stats": [
+    3,
+    10,
+    1,
+    1,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "i is capitalised",
+   "model": {"Yes i can.": "Yes I can."},
+   "suggestions": [{
+    "original": "i",
+    "kind": "capitalization",
+    "start": 4,
+    "rule": "cap-i",
+    "mechanical": true,
+    "end": 5,
+    "label": "i → I",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Always capitalize \u201cI\u201d.",
+    "replacement": "I",
+    "mark": [
+     4,
+     5
+    ]
+   }],
+   "modelPending": false,
+   "text": "Yes i can."
+  },
+  {
+   "stats": [
+    5,
+    19,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a comma added",
+   "model": {"Hi Sam how are you?": "Hi Sam, how are you?"},
+   "suggestions": [{
+    "original": "",
+    "kind": "punctuation",
+    "start": 6,
+    "rule": null,
+    "mechanical": true,
+    "end": 6,
+    "label": "Add \u201c,\u201d",
+    "source": "model",
+    "category": "correctness",
+    "message": "Add a comma here.",
+    "replacement": ",",
+    "mark": [
+     3,
+     6
+    ]
+   }],
+   "modelPending": false,
+   "text": "Hi Sam how are you?"
+  },
+  {
+   "stats": [
+    6,
+    30,
+    2,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a question mark added mid-text",
+   "model": {
+    "Where are you going.": "Where are you going?",
+    "I'm home.": "I'm home."
+   },
+   "suggestions": [{
+    "original": ".",
+    "kind": "punctuation",
+    "start": 19,
+    "rule": null,
+    "mechanical": true,
+    "end": 20,
+    "label": ". → ?",
+    "source": "model",
+    "category": "correctness",
+    "message": "This reads like a question, so end it with a question mark.",
+    "replacement": "?",
+    "mark": [
+     19,
+     20
+    ]
+   }],
+   "modelPending": false,
+   "text": "Where are you going. I'm home."
+  },
+  {
+   "stats": [
+    5,
+    20,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "pronoun case",
+   "model": {"Her and I went home.": "She and I went home."},
+   "suggestions": [{
+    "original": "Her",
+    "kind": "pronoun",
+    "start": 0,
+    "rule": null,
+    "mechanical": false,
+    "end": 3,
+    "label": "Her → She",
+    "source": "model",
+    "category": "correctness",
+    "message": "Use the subject form \u201cShe\u201d here.",
+    "replacement": "She",
+    "mark": [
+     0,
+     3
+    ]
+   }],
+   "modelPending": false,
+   "text": "Her and I went home."
+  },
+  {
+   "stats": [
+    5,
+    18,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a preposition",
+   "model": {"I am good in math.": "I am good at math."},
+   "suggestions": [{
+    "original": "in",
+    "kind": "preposition",
+    "start": 10,
+    "rule": "good-at",
+    "mechanical": false,
+    "end": 12,
+    "label": "in → at",
+    "source": "rule",
+    "category": "correctness",
+    "message": "You are good \u201cat\u201d something.",
+    "replacement": "at",
+    "mark": [
+     10,
+     12
+    ]
+   }],
+   "modelPending": false,
+   "text": "I am good in math."
+  },
+  {
+   "stats": [
+    4,
+    15,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "noun number",
+   "model": {"I have two dog.": "I have two dogs."},
+   "suggestions": [{
+    "original": "dog",
+    "kind": "noun_number",
+    "start": 11,
+    "rule": null,
+    "mechanical": false,
+    "end": 14,
+    "label": "dog → dogs",
+    "source": "model",
+    "category": "correctness",
+    "message": "Use \u201cdogs\u201d to match the rest of the sentence.",
+    "replacement": "dogs",
+    "mark": [
+     11,
+     14
+    ]
+   }],
+   "modelPending": false,
+   "text": "I have two dog."
+  },
+  {
+   "stats": [
+    2,
+    13,
+    1,
+    1,
+    1,
+    78,
+    92
+   ],
+   "tones": [],
+   "name": "a rule and the model on the same word: the rule wins",
+   "model": {"Your welcome.": "You're welcome."},
+   "suggestions": [{
+    "original": "Your",
+    "kind": "confused_words",
+    "start": 0,
+    "rule": "your-welcome",
+    "mechanical": false,
+    "end": 4,
+    "label": "Your → You're",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cYou're\u201d means \u201cyou are\u201d; \u201cYour\u201d means belonging to you.",
+    "replacement": "You're",
+    "mark": [
+     0,
+     4
+    ]
+   }],
+   "modelPending": false,
+   "text": "Your welcome."
+  },
+  {
+   "stats": [
+    6,
+    27,
+    2,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "the model still loading",
+   "model": {"He don't know.": null},
+   "suggestions": [{
+    "original": "don't",
+    "kind": "agreement",
+    "start": 3,
+    "rule": "he-dont",
+    "mechanical": false,
+    "end": 8,
+    "label": "don't → doesn't",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201cdoesn't\u201d with \u201cHe\u201d.",
+    "replacement": "doesn't",
+    "mark": [
+     3,
+     8
+    ]
+   }],
+   "modelPending": true,
+   "text": "He don't know. She go home."
+  },
+  {
+   "stats": [
+    7,
+    34,
+    1,
+    2,
+    3,
+    67,
+    100
+   ],
+   "tones": [],
+   "name": "custom vocabulary is never flagged",
+   "options": {"keep": [
+    "vocagate",
+    "alot"
+   ]},
+   "model": {"I pushed the fix to vocagate alot.": "I pushed the fix to Vocagate a lot."},
+   "suggestions": [],
+   "modelPending": false,
+   "text": "I pushed the fix to vocagate alot."
+  },
+  {
+   "stats": [
+    10,
+    40,
+    1,
+    3,
+    4,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "only correctness",
+   "options": {"categories": ["correctness"]},
+   "model": {},
+   "suggestions": [],
+   "modelPending": false,
+   "text": "This is a free gift and it is very good."
+  },
+  {
+   "stats": [
+    7,
+    35,
+    1,
+    2,
+    3,
+    91,
+    92
+   ],
+   "tones": [],
+   "name": "a style rule that is off leaves its words to a fix that is on",
+   "options": {"categories": ["correctness"]},
+   "model": {},
+   "suggestions": [{
+    "original": "helps",
+    "kind": "verb_form",
+    "start": 29,
+    "rule": "modal-base",
+    "mechanical": false,
+    "end": 34,
+    "label": "helps → help",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201ccould\u201d, use \u201chelp\u201d.",
+    "replacement": "help",
+    "mark": [
+     29,
+     34
+    ]
+   }],
+   "modelPending": false,
+   "text": "I was wondering if you could helps."
+  },
+  {
+   "stats": [
+    3,
+    16,
+    1,
+    1,
+    2,
+    63,
+    84
+   ],
+   "tones": [],
+   "name": "whole text, not typed",
+   "options": {"typed": false},
+   "model": {"see you tomorrow": "See you tomorrow."},
+   "suggestions": [
+    {
+     "original": "see",
+     "kind": "capitalization",
+     "start": 0,
+     "rule": null,
+     "mechanical": true,
+     "end": 3,
+     "label": "see → See",
+     "source": "model",
+     "category": "correctness",
+     "message": "Start a sentence with a capital letter.",
+     "replacement": "See",
+     "mark": [
+      0,
+      3
+     ]
+    },
+    {
+     "original": "",
+     "kind": "punctuation",
+     "start": 16,
+     "rule": null,
+     "mechanical": true,
+     "end": 16,
+     "label": "Add \u201c.\u201d",
+     "source": "model",
+     "category": "correctness",
+     "message": "End the sentence with a full stop.",
+     "replacement": ".",
+     "mark": [
+      8,
+      16
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "see you tomorrow"
+  },
+  {
+   "stats": [
+    4,
+    17,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "agreement in a question, without the model",
+   "suggestions": [{
+    "original": "is",
+    "kind": "agreement",
+    "start": 5,
+    "rule": "wh-is-you",
+    "mechanical": false,
+    "end": 7,
+    "label": "is → are",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201care\u201d with \u201cyou\u201d.",
+    "replacement": "are",
+    "mark": [
+     5,
+     7
+    ]
+   }],
+   "modelPending": false,
+   "text": "what is you doing"
+  },
+  {
+   "stats": [
+    9,
+    40,
+    1,
+    3,
+    4,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "agreement after a plural pronoun, without the model",
+   "suggestions": [{
+    "original": "was",
+    "kind": "agreement",
+    "start": 12,
+    "rule": "you-was",
+    "mechanical": false,
+    "end": 15,
+    "label": "was → were",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201cwere\u201d with \u201cyou\u201d.",
+    "replacement": "were",
+    "mark": [
+     12,
+     15
+    ]
+   }],
+   "modelPending": false,
+   "text": "I think you was right and he don't care."
+  },
+  {
+   "stats": [
+    7,
+    39,
+    1,
+    2,
+    3,
+    67,
+    100
+   ],
+   "tones": [],
+   "name": "an end-anchored rule needs the sentence to end there",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "I went over their (very detailed) plan."
+  },
+  {
+   "stats": [
+    3,
+    18,
+    1,
+    1,
+    2,
+    91,
+    100
+   ],
+   "tones": [],
+   "name": "a contraction before a hyphenated compound is left alone",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "It's name-calling."
+  },
+  {
+   "stats": [
+    7,
+    38,
+    1,
+    2,
+    3,
+    79,
+    100
+   ],
+   "tones": [],
+   "name": "a possessive before a hyphenated compound is left alone",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "We are planning your going-away party."
+  },
+  {
+   "stats": [
+    4,
+    27,
+    1,
+    2,
+    2,
+    55,
+    100
+   ],
+   "tones": [],
+   "name": "a modal in a wh-question is followed by its subject",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "How can understanding help?"
+  },
+  {
+   "stats": [
+    6,
+    25,
+    1,
+    2,
+    3,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "you as an object is not a subject",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "What I told you was true."
+  },
+  {
+   "stats": [
+    6,
+    33,
+    1,
+    2,
+    3,
+    74,
+    100
+   ],
+   "tones": [],
+   "name": "it as an object is not a subject",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "The people behind it are waiting."
+  },
+  {
+   "stats": [
+    5,
+    20,
+    1,
+    2,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "a joined subject with I",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "You and I are ready."
+  },
+  {
+   "stats": [
+    5,
+    22,
+    1,
+    2,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "a joined subject with she",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "He and she are coming."
+  },
+  {
+   "stats": [
+    7,
+    34,
+    1,
+    2,
+    3,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "you as an object before doesn't",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "The thing I gave you doesn't work."
+  },
+  {
+   "stats": [
+    3,
+    14,
+    1,
+    1,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "agreement after they, without the model",
+   "suggestions": [{
+    "original": "was",
+    "kind": "agreement",
+    "start": 5,
+    "rule": "they-was",
+    "mechanical": false,
+    "end": 8,
+    "label": "was → were",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201cwere\u201d with \u201cThey\u201d.",
+    "replacement": "were",
+    "mark": [
+     5,
+     8
+    ]
+   }],
+   "modelPending": false,
+   "text": "They was here."
+  },
+  {
+   "stats": [
+    3,
+    14,
+    1,
+    1,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "agreement after he, without the model",
+   "suggestions": [{
+    "original": "don't",
+    "kind": "agreement",
+    "start": 3,
+    "rule": "he-dont",
+    "mechanical": false,
+    "end": 8,
+    "label": "don't → doesn't",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201cdoesn't\u201d with \u201cHe\u201d.",
+    "replacement": "doesn't",
+    "mark": [
+     3,
+     8
+    ]
+   }],
+   "modelPending": false,
+   "text": "He don't know."
+  },
+  {
+   "stats": [
+    12,
+    58,
+    2,
+    4,
+    5,
+    100,
+    76
+   ],
+   "tones": [],
+   "name": "agreement after a clause start, without the model",
+   "suggestions": [
+    {
+     "original": "was",
+     "kind": "agreement",
+     "start": 12,
+     "rule": "you-was",
+     "mechanical": false,
+     "end": 15,
+     "label": "was → were",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201cwere\u201d with \u201cyou\u201d.",
+     "replacement": "were",
+     "mark": [
+      12,
+      15
+     ]
+    },
+    {
+     "original": "don't",
+     "kind": "agreement",
+     "start": 30,
+     "rule": "he-dont",
+     "mechanical": false,
+     "end": 35,
+     "label": "don't → doesn't",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201cdoesn't\u201d with \u201che\u201d.",
+     "replacement": "doesn't",
+     "mark": [
+      30,
+      35
+     ]
+    },
+    {
+     "original": "don't",
+     "kind": "agreement",
+     "start": 45,
+     "rule": "it-dont",
+     "mechanical": false,
+     "end": 50,
+     "label": "don't → doesn't",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201cdoesn't\u201d with \u201cIt\u201d.",
+     "replacement": "doesn't",
+     "mark": [
+      45,
+      50
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I think you was right, but he don't care. It don't matter."
+  },
+  {
+   "stats": [
+    8,
+    54,
+    1,
+    3,
+    4,
+    30,
+    100
+   ],
+   "tones": [],
+   "name": "a kept word is never overused",
+   "options": {"keep": ["vocagate"]},
+   "suggestions": [],
+   "modelPending": false,
+   "text": "I pushed vocagate, then vocagate, then vocagate again."
+  },
+  {
+   "stats": [
+    8,
+    37,
+    1,
+    3,
+    4,
+    100,
+    96
+   ],
+   "tones": [],
+   "name": "a phrase removed between commas takes them along",
+   "suggestions": [{
+    "original": ", needless to say,",
+    "kind": "wordiness",
+    "start": 6,
+    "rule": "wordy-needless-to-say",
+    "mechanical": false,
+    "end": 24,
+    "label": "Remove \u201cneedless to say\u201d",
+    "source": "rule",
+    "category": "clarity",
+    "message": "You can drop \u201cneedless to say\u201d without changing the meaning.",
+    "replacement": "",
+    "mark": [
+     8,
+     23
+    ]
+   }],
+   "modelPending": false,
+   "text": "It was, needless to say, a great day."
+  },
+  {
+   "stats": [
+    6,
+    24,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a contraction without its apostrophe still agrees",
+   "suggestions": [{
+    "original": "dont",
+    "kind": "agreement",
+    "start": 3,
+    "rule": "he-dont",
+    "mechanical": false,
+    "end": 7,
+    "label": "dont → doesn't",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201cdoesn't\u201d with \u201che\u201d.",
+    "replacement": "doesn't",
+    "mark": [
+     3,
+     7
+    ]
+   }],
+   "modelPending": false,
+   "text": "he dont know where it is"
+  },
+  {
+   "stats": [
+    4,
+    19,
+    1,
+    2,
+    2,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "two fixes on one match: the apostrophe and the verb",
+   "suggestions": [
+    {
+     "original": "didnt",
+     "kind": "apostrophe",
+     "start": 2,
+     "rule": "apos-didnt",
+     "mechanical": true,
+     "end": 7,
+     "label": "didnt → didn't",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cdidn't\u201d needs an apostrophe.",
+     "replacement": "didn't",
+     "mark": [
+      2,
+      7
+     ]
+    },
+    {
+     "original": "went",
+     "kind": "verb_form",
+     "start": 8,
+     "rule": "neg-base",
+     "mechanical": false,
+     "end": 12,
+     "label": "went → go",
+     "source": "rule",
+     "category": "correctness",
+     "message": "After \u201cdidnt\u201d, use \u201cgo\u201d.",
+     "replacement": "go",
+     "mark": [
+      8,
+      12
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I didnt went there."
+  },
+  {
+   "stats": [
+    4,
+    20,
+    1,
+    2,
+    2,
+    97,
+    92
+   ],
+   "tones": [],
+   "name": "a word the model adds beside a rule's fix gives way",
+   "model": {"thanks for invite me": "thanks for the invite me"},
+   "suggestions": [{
+    "original": "invite",
+    "kind": "verb_form",
+    "start": 11,
+    "rule": "thanks-for-ing",
+    "mechanical": false,
+    "end": 17,
+    "label": "invite → inviting",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cfor\u201d, use the -ing form: \u201cinviting\u201d.",
+    "replacement": "inviting",
+    "mark": [
+     11,
+     17
+    ]
+   }],
+   "modelPending": false,
+   "text": "thanks for invite me"
+  },
+  {
+   "stats": [
+    3,
+    14,
+    1,
+    1,
+    2,
+    63,
+    92
+   ],
+   "tones": [],
+   "name": "a regular past of an irregular verb, before the model's guess",
+   "model": {"we eated pizza": "we created pizza"},
+   "suggestions": [{
+    "original": "eated",
+    "kind": "verb_form",
+    "start": 3,
+    "rule": "irregular-eated",
+    "mechanical": false,
+    "end": 8,
+    "label": "eated → ate",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201ceat\u201d is irregular: its past is \u201cate\u201d.",
+    "replacement": "ate",
+    "mark": [
+     3,
+     8
+    ]
+   }],
+   "modelPending": false,
+   "text": "we eated pizza"
+  },
+  {
+   "stats": [
+    5,
+    24,
+    1,
+    2,
+    2,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a question without its helper verb",
+   "suggestions": [{
+    "original": "",
+    "kind": "missing_word",
+    "start": 4,
+    "rule": "wh-do",
+    "mechanical": false,
+    "end": 4,
+    "label": "Add \u201cdo\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "A verb seems to be missing: add \u201cdo\u201d.",
+    "replacement": " do",
+    "mark": [
+     0,
+     4
+    ]
+   }],
+   "modelPending": false,
+   "text": "what you want for dinner"
+  },
+  {
+   "stats": [
+    5,
+    22,
+    1,
+    2,
+    2,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "a question word that starts a noun clause is left alone",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "What you need is rest."
+  },
+  {
+   "stats": [
+    9,
+    43,
+    1,
+    3,
+    4,
+    76,
+    68
+   ],
+   "tones": [],
+   "name": "a time and a day",
+   "suggestions": [
+    {
+     "original": "to",
+     "kind": "preposition",
+     "start": 11,
+     "rule": "arrive-to",
+     "mechanical": false,
+     "end": 13,
+     "label": "to → at",
+     "source": "rule",
+     "category": "correctness",
+     "message": "You arrive \u201cat\u201d a place.",
+     "replacement": "at",
+     "mark": [
+      11,
+      13
+     ]
+    },
+    {
+     "original": "on",
+     "kind": "preposition",
+     "start": 26,
+     "rule": "at-clock",
+     "mechanical": false,
+     "end": 28,
+     "label": "on → at",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201cat\u201d with a time of day.",
+     "replacement": "at",
+     "mark": [
+      26,
+      28
+     ]
+    },
+    {
+     "original": "in",
+     "kind": "preposition",
+     "start": 33,
+     "rule": "on-day",
+     "mechanical": false,
+     "end": 35,
+     "label": "in → on",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201con\u201d with a day.",
+     "replacement": "on",
+     "mark": [
+      33,
+      35
+     ]
+    },
+    {
+     "original": "monday",
+     "kind": "capitalization",
+     "start": 36,
+     "rule": "cap-monday",
+     "mechanical": true,
+     "end": 42,
+     "label": "monday → Monday",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Days, months, holidays, places, languages and nationalities take a capital: \u201cMonday\u201d.",
+     "replacement": "Monday",
+     "mark": [
+      36,
+      42
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "We arrived to the airport on 3pm in monday."
+  },
+  {
+   "stats": [
+    6,
+    26,
+    1,
+    2,
+    3,
+    88,
+    92
+   ],
+   "tones": [],
+   "name": "a past time said in the present",
+   "suggestions": [{
+    "original": "go",
+    "kind": "verb_form",
+    "start": 12,
+    "rule": "yesterday-past",
+    "mechanical": false,
+    "end": 14,
+    "label": "go → went",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cYesterday\u201d is in the past, so use \u201cwent\u201d.",
+    "replacement": "went",
+    "mark": [
+     12,
+     14
+    ]
+   }],
+   "modelPending": false,
+   "text": "Yesterday I go to the gym."
+  },
+  {
+   "stats": [
+    15,
+    63,
+    1,
+    4,
+    6,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "the present after if for the future",
+   "suggestions": [
+    {
+     "original": " will",
+     "kind": "verb_form",
+     "start": 4,
+     "rule": "if-will",
+     "mechanical": false,
+     "end": 9,
+     "label": "Remove \u201cwill\u201d",
+     "source": "rule",
+     "category": "correctness",
+     "message": "After \u201cIf\u201d, use the present for the future: \u201cIf I see\u201d.",
+     "replacement": "",
+     "mark": [
+      5,
+      9
+     ]
+    },
+    {
+     "original": "will be",
+     "kind": "verb_form",
+     "start": 43,
+     "rule": "if-will-be-third",
+     "mechanical": false,
+     "end": 50,
+     "label": "will be → is",
+     "source": "rule",
+     "category": "correctness",
+     "message": "After \u201cif\u201d, use the present for the future: \u201cif he is\u201d.",
+     "replacement": "is",
+     "mark": [
+      43,
+      50
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "If I will see him I'll tell him, and if he will be there, fine."
+  },
+  {
+   "stats": [
+    6,
+    25,
+    1,
+    2,
+    3,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "I wonder if he will is a reported question",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "I wonder if he will come."
+  },
+  {
+   "stats": [
+    6,
+    29,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a double comparative before than",
+   "suggestions": [{
+    "original": " more",
+    "kind": "comparison",
+    "start": 6,
+    "rule": "more-comparative-than",
+    "mechanical": false,
+    "end": 11,
+    "label": "Remove \u201cmore\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201csmarter than\u201d already compares, so \u201cmore\u201d isn't needed.",
+    "replacement": "",
+    "mark": [
+     7,
+     11
+    ]
+   }],
+   "modelPending": false,
+   "text": "She is more smarter than him."
+  },
+  {
+   "stats": [
+    7,
+    37,
+    1,
+    2,
+    3,
+    91,
+    100
+   ],
+   "tones": [],
+   "name": "more older people is more people",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "There are more older people here now."
+  },
+  {
+   "stats": [
+    7,
+    37,
+    1,
+    2,
+    3,
+    79,
+    84
+   ],
+   "tones": [],
+   "name": "irregular plurals and uncountable nouns",
+   "suggestions": [
+    {
+     "original": "childs",
+     "kind": "noun_number",
+     "start": 11,
+     "rule": "plural-childs",
+     "mechanical": false,
+     "end": 17,
+     "label": "childs → children",
+     "source": "rule",
+     "category": "correctness",
+     "message": "The plural of \u201cchild\u201d is \u201cchildren\u201d.",
+     "replacement": "children",
+     "mark": [
+      11,
+      17
+     ]
+    },
+    {
+     "original": "homeworks",
+     "kind": "noun_number",
+     "start": 27,
+     "rule": "uncountable-homeworks",
+     "mechanical": false,
+     "end": 36,
+     "label": "homeworks → homework",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201chomework\u201d has no plural, so \u201chomeworks\u201d isn't used.",
+     "replacement": "homework",
+     "mark": [
+      27,
+      36
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I have two childs and many homeworks."
+  },
+  {
+   "stats": [
+    6,
+    31,
+    1,
+    2,
+    3,
+    88,
+    92
+   ],
+   "tones": [],
+   "name": "a comma after an opening word",
+   "suggestions": [{
+    "original": "",
+    "kind": "comma",
+    "start": 7,
+    "rule": "comma-introductory",
+    "mechanical": false,
+    "end": 7,
+    "label": "Add \u201c,\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Add a comma after an opening word like \u201cHowever\u201d.",
+    "replacement": ",",
+    "mark": [
+     0,
+     7
+    ]
+   }],
+   "modelPending": false,
+   "text": "However I think we should wait."
+  },
+  {
+   "stats": [
+    10,
+    46,
+    1,
+    3,
+    4,
+    78,
+    84
+   ],
+   "tones": [],
+   "name": "a feeling: interested, not interesting",
+   "suggestions": [
+    {
+     "original": "interesting",
+     "kind": "word_choice",
+     "start": 4,
+     "rule": "feeling-interesting",
+     "mechanical": false,
+     "end": 15,
+     "label": "interesting → interested",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cinteresting\u201d describes what causes the feeling; \u201cinterested\u201d is how you feel.",
+     "replacement": "interested",
+     "mark": [
+      4,
+      15
+     ]
+    },
+    {
+     "original": "boring",
+     "kind": "word_choice",
+     "start": 40,
+     "rule": "feeling-so-boring",
+     "mechanical": false,
+     "end": 46,
+     "label": "boring → bored",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cboring\u201d describes what causes the feeling; \u201cbored\u201d is how you feel.",
+     "replacement": "bored",
+     "mark": [
+      40,
+      46
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I'm interesting in the job and I was so boring"
+  },
+  {
+   "stats": [
+    7,
+    29,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a helper verb before did in a question word",
+   "suggestions": [{
+    "original": "gave",
+    "kind": "verb_form",
+    "start": 12,
+    "rule": "do-question-base",
+    "mechanical": false,
+    "end": 16,
+    "label": "gave → give",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cdid\u201d, use the base form \u201cgive\u201d.",
+    "replacement": "give",
+    "mark": [
+     12,
+     16
+    ]
+   }],
+   "modelPending": false,
+   "text": "Who did you gave the keys to?"
+  },
+  {
+   "stats": [
+    9,
+    41,
+    2,
+    3,
+    4,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "a participle after have is left alone",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Have I seen this before? We have done it."
+  },
+  {
+   "stats": [
+    10,
+    53,
+    1,
+    3,
+    4,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "since with a length of time",
+   "suggestions": [
+    {
+     "original": "since",
+     "kind": "preposition",
+     "start": 17,
+     "rule": "since-duration",
+     "mechanical": false,
+     "end": 22,
+     "label": "since → for",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cFor\u201d goes with a length of time; \u201csince\u201d with a point in time.",
+     "replacement": "for",
+     "mark": [
+      17,
+      22
+     ]
+    },
+    {
+     "original": "since",
+     "kind": "preposition",
+     "start": 39,
+     "rule": "since-number-duration",
+     "mechanical": false,
+     "end": 44,
+     "label": "since → for",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cFor\u201d goes with a length of time; \u201csince\u201d with a point in time.",
+     "replacement": "for",
+     "mark": [
+      39,
+      44
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I have been here since three years and since 2 hours."
+  },
+  {
+   "stats": [
+    10,
+    51,
+    1,
+    3,
+    4,
+    87,
+    76
+   ],
+   "tones": [],
+   "name": "days, months and languages take a capital, not in a hashtag",
+   "suggestions": [
+    {
+     "original": "friday",
+     "kind": "capitalization",
+     "start": 11,
+     "rule": "cap-friday",
+     "mechanical": true,
+     "end": 17,
+     "label": "friday → Friday",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Days, months, holidays, places, languages and nationalities take a capital: \u201cFriday\u201d.",
+     "replacement": "Friday",
+     "mark": [
+      11,
+      17
+     ]
+    },
+    {
+     "original": "june",
+     "kind": "capitalization",
+     "start": 21,
+     "rule": "cap-june",
+     "mechanical": true,
+     "end": 25,
+     "label": "june → June",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Days, months, holidays, places, languages and nationalities take a capital: \u201cJune\u201d.",
+     "replacement": "June",
+     "mark": [
+      21,
+      25
+     ]
+    },
+    {
+     "original": "english",
+     "kind": "capitalization",
+     "start": 36,
+     "rule": "cap-english",
+     "mechanical": true,
+     "end": 43,
+     "label": "english → English",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Days, months, holidays, places, languages and nationalities take a capital: \u201cEnglish\u201d.",
+     "replacement": "English",
+     "mark": [
+      36,
+      43
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "see you on friday in june, we speak english #monday"
+  },
+  {
+   "stats": [
+    10,
+    39,
+    1,
+    3,
+    4,
+    95,
+    84
+   ],
+   "tones": [],
+   "name": "agree is a verb",
+   "suggestions": [
+    {
+     "original": " am",
+     "kind": "extra_word",
+     "start": 1,
+     "rule": "am-agree",
+     "mechanical": false,
+     "end": 4,
+     "label": "Remove \u201cam\u201d",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cAgree\u201d is a verb, so it needs no \u201cam\u201d or \u201care\u201d.",
+     "replacement": "",
+     "mark": [
+      2,
+      4
+     ]
+    },
+    {
+     "original": "is agree",
+     "kind": "extra_word",
+     "start": 27,
+     "rule": "is-agree",
+     "mechanical": false,
+     "end": 35,
+     "label": "is agree → agrees",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cAgree\u201d is a verb, so it needs no \u201cis\u201d.",
+     "replacement": "agrees",
+     "mark": [
+      27,
+      35
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I am agree with you and he is agree too"
+  },
+  {
+   "stats": [
+    10,
+    46,
+    1,
+    3,
+    4,
+    87,
+    84
+   ],
+   "tones": [],
+   "name": "prepositions learners mix up",
+   "suggestions": [
+    {
+     "original": " about",
+     "kind": "preposition",
+     "start": 12,
+     "rule": "discuss-about",
+     "mechanical": false,
+     "end": 18,
+     "label": "Remove \u201cabout\u201d",
+     "source": "rule",
+     "category": "correctness",
+     "message": "You \u201cdiscuss\u201d something; \u201cabout\u201d isn't needed.",
+     "replacement": "",
+     "mark": [
+      13,
+      18
+     ]
+    },
+    {
+     "original": "in",
+     "kind": "preposition",
+     "start": 38,
+     "rule": "good-at",
+     "mechanical": false,
+     "end": 40,
+     "label": "in → at",
+     "source": "rule",
+     "category": "correctness",
+     "message": "You are good \u201cat\u201d something.",
+     "replacement": "at",
+     "mark": [
+      38,
+      40
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "We discussed about it and she is good in math."
+  },
+  {
+   "stats": [
+    6,
+    29,
+    1,
+    2,
+    3,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "the serial comma is off unless asked for",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "We need eggs, milk and bread."
+  },
+  {
+   "stats": [
+    10,
+    47,
+    2,
+    3,
+    4,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "the serial comma when turned on, not after a greeting",
+   "options": {"optIn": ["serial_comma"]},
+   "suggestions": [{
+    "original": "",
+    "kind": "comma",
+    "start": 18,
+    "rule": "serial-comma",
+    "mechanical": false,
+    "end": 18,
+    "label": "Add \u201c,\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Add a comma before \u201cand\u201d to end a list (the serial comma).",
+    "replacement": ",",
+    "mark": [
+     14,
+     18
+    ]
+   }],
+   "modelPending": false,
+   "text": "We need eggs, milk and bread. Hi, Sam and Alex."
+  }
+ ],
  "tokenize": [
   {
-   "text": "He don't know.",
    "tokens": [
     [
      "He",
@@ -28,13 +4523,13 @@
      14,
      false
     ]
-   ]
+   ],
+   "text": "He don't know."
   },
   {
-   "text": "It’s 7:30 — ok?",
    "tokens": [
     [
-     "It’s",
+     "It\u2019s",
      0,
      4,
      true
@@ -58,7 +4553,7 @@
      true
     ],
     [
-     "—",
+     "\u2014",
      10,
      11,
      false
@@ -75,10 +4570,10 @@
      15,
      false
     ]
-   ]
+   ],
+   "text": "It\u2019s 7:30 \u2014 ok?"
   },
   {
-   "text": "café naïve 👍🏽 #1",
    "tokens": [
     [
      "café",
@@ -116,10 +4611,10 @@
      18,
      true
     ]
-   ]
+   ],
+   "text": "café naïve 👍🏽 #1"
   },
   {
-   "text": "rock'n'roll isn't 'quoted'",
    "tokens": [
     [
      "rock'n'roll",
@@ -151,10 +4646,10 @@
      26,
      false
     ]
-   ]
+   ],
+   "text": "rock'n'roll isn't 'quoted'"
   },
   {
-   "text": "  spaced\tout\n",
    "tokens": [
     [
      "spaced",
@@ -168,3820 +4663,109 @@
      12,
      true
     ]
-   ]
-  }
- ],
- "sentences": [
-  {
-   "text": "One. Two! Three?",
-   "sentences": [
-    [
-     0,
-     4,
-     0
-    ],
-    [
-     5,
-     9,
-     0
-    ],
-    [
-     10,
-     16,
-     0
-    ]
-   ]
-  },
-  {
-   "text": "She said \"no.\" They left.",
-   "sentences": [
-    [
-     0,
-     14,
-     0
-    ],
-    [
-     15,
-     25,
-     0
-    ]
-   ]
-  },
-  {
-   "text": "Dear Sam,\nthey was late. Bye",
-   "sentences": [
-    [
-     0,
-     9,
-     0
-    ],
-    [
-     10,
-     24,
-     1
-    ],
-    [
-     25,
-     28,
-     1
-    ]
-   ]
-  },
-  {
-   "text": "Mr. Smith left...",
-   "sentences": [
-    [
-     0,
-     3,
-     0
-    ],
-    [
-     4,
-     17,
-     0
-    ]
-   ]
-  },
-  {
-   "text": "No end",
-   "sentences": [
-    [
-     0,
-     6,
-     0
-    ]
-   ]
-  }
- ],
- "verbs": [
-  {
-   "word": "sings",
-   "participle": false,
-   "lemma": "sing",
-   "forms": [
-    "sings",
-    "sang",
-    "sung",
-    "singing"
-   ]
-  },
-  {
-   "word": "calls",
-   "participle": false,
-   "lemma": "call",
-   "forms": [
-    "calls",
-    "called",
-    "called",
-    "calling"
-   ]
-  },
-  {
-   "word": "went",
-   "participle": false,
-   "lemma": "go",
-   "forms": [
-    "goes",
-    "went",
-    "gone",
-    "going"
-   ]
-  },
-  {
-   "word": "knew",
-   "participle": false,
-   "lemma": "know",
-   "forms": [
-    "knows",
-    "knew",
-    "known",
-    "knowing"
-   ]
-  },
-  {
-   "word": "seeing",
-   "participle": false,
-   "lemma": "see",
-   "forms": [
-    "sees",
-    "saw",
-    "seen",
-    "seeing"
-   ]
-  },
-  {
-   "word": "stopping",
-   "participle": false,
-   "lemma": "stop",
-   "forms": [
-    "stops",
-    "stopped",
-    "stopped",
-    "stopping"
-   ]
-  },
-  {
-   "word": "tried",
-   "participle": true,
-   "lemma": "try",
-   "forms": [
-    "tries",
-    "tried",
-    "tried",
-    "trying"
-   ]
-  },
-  {
-   "word": "goes",
-   "participle": false,
-   "lemma": "go",
-   "forms": [
-    "goes",
-    "went",
-    "gone",
-    "going"
-   ]
-  },
-  {
-   "word": "does",
-   "participle": false,
-   "lemma": "do",
-   "forms": [
-    "does",
-    "did",
-    "done",
-    "doing"
-   ]
-  },
-  {
-   "word": "hoping",
-   "participle": false,
-   "lemma": "hope",
-   "forms": [
-    "hopes",
-    "hoped",
-    "hoped",
-    "hoping"
-   ]
-  },
-  {
-   "word": "eaten",
-   "participle": true,
-   "lemma": "eat",
-   "forms": [
-    "eats",
-    "ate",
-    "eaten",
-    "eating"
-   ]
-  },
-  {
-   "word": "came",
-   "participle": false,
-   "lemma": "come",
-   "forms": [
-    "comes",
-    "came",
-    "come",
-    "coming"
-   ]
-  },
-  {
-   "word": "been",
-   "participle": true,
-   "lemma": "be",
-   "forms": [
-    "is",
-    "was",
-    "been",
-    "being"
-   ]
-  },
-  {
-   "word": "finished",
-   "participle": true,
-   "lemma": "finish",
-   "forms": [
-    "finishes",
-    "finished",
-    "finished",
-    "finishing"
-   ]
-  },
-  {
-   "word": "visited",
-   "participle": true,
-   "lemma": "visit",
-   "forms": [
-    "visits",
-    "visited",
-    "visited",
-    "visiting"
-   ]
-  },
-  {
-   "word": "watch",
-   "participle": false,
-   "lemma": "watch",
-   "forms": [
-    "watches",
-    "watched",
-    "watched",
-    "watching"
-   ]
-  },
-  {
-   "word": "lie",
-   "participle": false,
-   "lemma": "lie",
-   "forms": [
-    "lies",
-    "lay",
-    "lain",
-    "lying"
-   ]
-  },
-  {
-   "word": "make",
-   "participle": false,
-   "lemma": "make",
-   "forms": [
-    "makes",
-    "made",
-    "made",
-    "making"
-   ]
-  },
-  {
-   "word": "run",
-   "participle": true,
-   "lemma": "run",
-   "forms": [
-    "runs",
-    "ran",
-    "run",
-    "running"
-   ]
+   ],
+   "text": "  spaced\tout\n"
   }
  ],
  "syllables": [
   {
-   "word": "make",
-   "count": 1
+   "count": 1,
+   "word": "make"
   },
   {
-   "word": "table",
-   "count": 2
+   "count": 2,
+   "word": "table"
   },
   {
-   "word": "readability",
-   "count": 5
+   "count": 5,
+   "word": "readability"
   },
   {
-   "word": "the",
-   "count": 1
+   "count": 1,
+   "word": "the"
   },
   {
-   "word": "rhythm",
-   "count": 1
+   "count": 1,
+   "word": "rhythm"
   },
   {
-   "word": "queue",
-   "count": 1
+   "count": 1,
+   "word": "queue"
   },
   {
-   "word": "beautiful",
-   "count": 3
+   "count": 3,
+   "word": "beautiful"
   },
   {
-   "word": "see",
-   "count": 1
+   "count": 1,
+   "word": "see"
   },
   {
-   "word": "cooperate",
-   "count": 3
-  }
- ],
- "check": [
-  {
-   "name": "rules 1",
-   "text": "I'd rather walk then drive.",
-   "stats": [
-    5,
-    27,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "then",
-     "kind": "confused_words",
-     "start": 16,
-     "rule": "rather-then",
-     "end": 20,
-     "label": "then → than",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“than” compares two things; “then” is about time or order.",
-     "replacement": "than",
-     "mark": [
-      16,
-      20
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 2",
-   "text": "She is taller then me.",
-   "stats": [
-    5,
-    22,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "then",
-     "kind": "confused_words",
-     "start": 14,
-     "rule": "then-than",
-     "end": 18,
-     "label": "then → than",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“than” compares two things; “then” is about time or order.",
-     "replacement": "than",
-     "mark": [
-      14,
-      18
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 3",
-   "text": "I could of told you that.",
-   "stats": [
-    6,
-    25,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "of",
-     "kind": "confused_words",
-     "start": 8,
-     "rule": "could-of",
-     "end": 10,
-     "label": "of → have",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“have” is the verb in “could have”, “should have” and “would have”; “of” is a preposition.",
-     "replacement": "have",
-     "mark": [
-      8,
-      10
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 4",
-   "text": "Your welcome!",
-   "stats": [
-    2,
-    13,
-    1,
-    1,
-    1,
-    78,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Your",
-     "kind": "confused_words",
-     "start": 0,
-     "rule": "your-welcome",
-     "end": 4,
-     "label": "Your → You're",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“You're” means “you are”; “Your” means belonging to you.",
-     "replacement": "You're",
-     "mark": [
-      0,
-      4
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 5",
-   "text": "I think your going to love it.",
-   "stats": [
-    7,
-    30,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "your",
-     "kind": "confused_words",
-     "start": 8,
-     "rule": "your-youre",
-     "end": 12,
-     "label": "your → you're",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“you're” means “you are”; “your” means belonging to you.",
-     "replacement": "you're",
-     "mark": [
-      8,
-      12
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 6",
-   "text": "Its going to rain later.",
-   "stats": [
-    5,
-    24,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Its",
-     "kind": "confused_words",
-     "start": 0,
-     "rule": "its-it-s",
-     "end": 3,
-     "label": "Its → It's",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“It's” means “it is” or “it has”; “Its” means belonging to it.",
-     "replacement": "It's",
-     "mark": [
-      0,
-      3
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 7",
-   "text": "The dog wagged it's tail.",
-   "stats": [
-    5,
-    25,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "it's",
-     "kind": "confused_words",
-     "start": 15,
-     "rule": "its-possessed",
-     "end": 19,
-     "label": "it's → its",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“its” means belonging to it; “it's” means “it is” or “it has”.",
-     "replacement": "its",
-     "mark": [
-      15,
-      19
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 8",
-   "text": "Their is a problem with the build.",
-   "stats": [
-    7,
-    34,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Their",
-     "kind": "confused_words",
-     "start": 0,
-     "rule": "their-is",
-     "end": 5,
-     "label": "Their → There",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“There” refers to a place or starts a sentence like “there is”; “Their” means belonging to them.",
-     "replacement": "There",
-     "mark": [
-      0,
-      5
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 9",
-   "text": "Their going to be late.",
-   "stats": [
-    5,
-    23,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Their",
-     "kind": "confused_words",
-     "start": 0,
-     "rule": "their-going",
-     "end": 5,
-     "label": "Their → They're",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“They're” means “they are”; “Their” means belonging to them.",
-     "replacement": "They're",
-     "mark": [
-      0,
-      5
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 10",
-   "text": "I left my jacket over their.",
-   "stats": [
-    6,
-    28,
-    1,
-    2,
-    3,
-    88,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "their",
-     "kind": "confused_words",
-     "start": 22,
-     "rule": "over-their",
-     "end": 27,
-     "label": "their → there",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“there” refers to a place or starts a sentence like “there is”; “their” means belonging to them.",
-     "replacement": "there",
-     "mark": [
-      22,
-      27
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 11",
-   "text": "Who's car is this?",
-   "stats": [
-    4,
-    18,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Who's",
-     "kind": "confused_words",
-     "start": 0,
-     "rule": "whos-car",
-     "end": 5,
-     "label": "Who's → Whose",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“Whose” means belonging to whom; “Who's” means “who is” or “who has”.",
-     "replacement": "Whose",
-     "mark": [
-      0,
-      5
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 12",
-   "text": "Whose coming tonight?",
-   "stats": [
-    3,
-    21,
-    1,
-    1,
-    2,
-    63,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Whose",
-     "kind": "confused_words",
-     "start": 0,
-     "rule": "whose-coming",
-     "end": 5,
-     "label": "Whose → Who's",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“Who's” means “who is” or “who has”; “Whose” means belonging to whom.",
-     "replacement": "Who's",
-     "mark": [
-      0,
-      5
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 13",
-   "text": "Were going to the beach.",
-   "stats": [
-    5,
-    24,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Were",
-     "kind": "confused_words",
-     "start": 0,
-     "rule": "were-going",
-     "end": 4,
-     "label": "Were → We're",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“We're” means “we are”; “Were” is the past of “are”.",
-     "replacement": "We're",
-     "mark": [
-      0,
-      4
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 14",
-   "text": "She can sings really well.",
-   "stats": [
-    5,
-    26,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "sings",
-     "kind": "verb_form",
-     "start": 8,
-     "rule": "modal-base",
-     "end": 13,
-     "label": "sings → sing",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “can”, use “sing”.",
-     "replacement": "sing",
-     "mark": [
-      8,
-      13
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 15",
-   "text": "I will calls you later.",
-   "stats": [
-    5,
-    23,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "calls",
-     "kind": "verb_form",
-     "start": 7,
-     "rule": "modal-base",
-     "end": 12,
-     "label": "calls → call",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “will”, use “call”.",
-     "replacement": "call",
-     "mark": [
-      7,
-      12
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 16",
-   "text": "I didn't knew that.",
-   "stats": [
-    4,
-    19,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "knew",
-     "kind": "verb_form",
-     "start": 9,
-     "rule": "neg-base",
-     "end": 13,
-     "label": "knew → know",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “didn't”, use “know”.",
-     "replacement": "know",
-     "mark": [
-      9,
-      13
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 17",
-   "text": "Did you went to the party?",
-   "stats": [
-    6,
-    26,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "went",
-     "kind": "verb_form",
-     "start": 8,
-     "rule": "do-question-base",
-     "end": 12,
-     "label": "went → go",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “Did”, use the base form “go”.",
-     "replacement": "go",
-     "mark": [
-      8,
-      12
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 18",
-   "text": "He doesn't likes it.",
-   "stats": [
-    4,
-    20,
-    1,
-    2,
-    2,
-    97,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "likes",
-     "kind": "verb_form",
-     "start": 11,
-     "rule": "neg-base",
-     "end": 16,
-     "label": "likes → like",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “doesn't”, use “like”.",
-     "replacement": "like",
-     "mark": [
-      11,
-      16
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 19",
-   "text": "I have ate already.",
-   "stats": [
-    4,
-    19,
-    1,
-    2,
-    2,
-    76,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "ate",
-     "kind": "verb_form",
-     "start": 7,
-     "rule": "have-participle",
-     "end": 10,
-     "label": "ate → eaten",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “have”, use “eaten”.",
-     "replacement": "eaten",
-     "mark": [
-      7,
-      10
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 20",
-   "text": "He has came back.",
-   "stats": [
-    4,
-    17,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "came",
-     "kind": "verb_form",
-     "start": 7,
-     "rule": "have-participle",
-     "end": 11,
-     "label": "came → come",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “has”, use “come”.",
-     "replacement": "come",
-     "mark": [
-      7,
-      11
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 21",
-   "text": "I don't have no money.",
-   "stats": [
-    5,
-    22,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "no",
-     "kind": "double_negative",
-     "start": 13,
-     "rule": "double-negative",
-     "end": 15,
-     "label": "no → any",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Two negatives cancel each other out. Use “any”.",
-     "replacement": "any",
-     "mark": [
-      13,
-      15
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 22",
-   "text": "I didn't do nothing.",
-   "stats": [
-    4,
-    20,
-    1,
-    2,
-    2,
-    97,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "nothing",
-     "kind": "double_negative",
-     "start": 12,
-     "rule": "double-negative",
-     "end": 19,
-     "label": "nothing → anything",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Two negatives cancel each other out. Use “anything”.",
-     "replacement": "anything",
-     "mark": [
-      12,
-      19
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 23",
-   "text": "This is the most easiest way.",
-   "stats": [
-    6,
-    29,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": " most",
-     "kind": "comparison",
-     "start": 11,
-     "rule": "most-superlative",
-     "end": 16,
-     "label": "Remove “most”",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“easiest” already compares, so “most” isn't needed.",
-     "replacement": "",
-     "mark": [
-      12,
-      16
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 24",
-   "text": "I have less friends than you.",
-   "stats": [
-    6,
-    29,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "less",
-     "kind": "word_choice",
-     "start": 7,
-     "rule": "less-fewer",
-     "end": 11,
-     "label": "less → fewer",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“Fewer” is for things you can count, like “friends”.",
-     "replacement": "fewer",
-     "mark": [
-      7,
-      11
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 25",
-   "text": "I enjoy to cook.",
-   "stats": [
-    4,
-    16,
-    1,
-    2,
-    2,
-    97,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "to cook",
-     "kind": "verb_form",
-     "start": 8,
-     "rule": "gerund-after",
-     "end": 15,
-     "label": "to cook → cooking",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “enjoy”, use the -ing form: “cooking”.",
-     "replacement": "cooking",
-     "mark": [
-      8,
-      15
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 26",
-   "text": "I look forward to see you.",
-   "stats": [
-    6,
-    26,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "see",
-     "kind": "verb_form",
-     "start": 18,
-     "rule": "look-forward",
-     "end": 21,
-     "label": "see → seeing",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “look forward to”, use the -ing form: “seeing”.",
-     "replacement": "seeing",
-     "mark": [
-      18,
-      21
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 27",
-   "text": "Thanks for invite me.",
-   "stats": [
-    4,
-    21,
-    1,
-    2,
-    2,
-    97,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "invite",
-     "kind": "verb_form",
-     "start": 11,
-     "rule": "thanks-for-ing",
-     "end": 17,
-     "label": "invite → inviting",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “for”, use the -ing form: “inviting”.",
-     "replacement": "inviting",
-     "mark": [
-      11,
-      17
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 28",
-   "text": "I'm used to wake up early.",
-   "stats": [
-    6,
-    26,
-    1,
-    2,
-    3,
-    88,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "wake",
-     "kind": "verb_form",
-     "start": 12,
-     "rule": "used-to-ing",
-     "end": 16,
-     "label": "wake → waking",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“Used to” meaning “accustomed to” takes the -ing form: “waking”.",
-     "replacement": "waking",
-     "mark": [
-      12,
-      16
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 29",
-   "text": "Between you and I, it's fine.",
-   "stats": [
-    6,
-    29,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "I",
-     "kind": "pronoun",
-     "start": 16,
-     "rule": "between-you-and-me",
-     "end": 17,
-     "label": "I → me",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use the object form “me” here.",
-     "replacement": "me",
-     "mark": [
-      16,
-      17
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 30",
-   "text": "Me and him went to the game.",
-   "stats": [
-    7,
-    28,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Me and him",
-     "kind": "pronoun",
-     "start": 0,
-     "rule": "me-and-him",
-     "end": 10,
-     "label": "Me and him → He and I",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use the subject forms when they start the sentence: “He and I”.",
-     "replacement": "He and I",
-     "mark": [
-      0,
-      10
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 31",
-   "text": "Him and me are going.",
-   "stats": [
-    5,
-    21,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Him and me",
-     "kind": "pronoun",
-     "start": 0,
-     "rule": "him-and-me",
-     "end": 10,
-     "label": "Him and me → He and I",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use the subject forms when they start the sentence: “He and I”.",
-     "replacement": "He and I",
-     "mark": [
-      0,
-      10
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 32",
-   "text": "Me and Sarah are coming.",
-   "stats": [
-    5,
-    24,
-    1,
-    2,
-    2,
-    83,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Me and Sarah",
-     "kind": "pronoun",
-     "start": 0,
-     "rule": "me-and-name",
-     "end": 12,
-     "label": "Me and Sarah → Sarah and I",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “I” when it is part of the subject, and put yourself last: “Sarah and I”.",
-     "replacement": "Sarah and I",
-     "mark": [
-      0,
-      12
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 33",
-   "text": "the the cat sat.",
-   "stats": [
-    4,
-    16,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": " the",
-     "kind": "repeated_word",
-     "start": 3,
-     "rule": "repeated-word",
-     "end": 7,
-     "label": "Remove “the”",
-     "source": "rule",
-     "category": "correctness",
-     "message": "You typed “the” twice.",
-     "replacement": "",
-     "mark": [
-      4,
-      7
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 34",
-   "text": "i think i know.",
-   "stats": [
-    4,
-    15,
-    1,
-    2,
-    2,
-    100,
-    84
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "i",
-     "kind": "capitalization",
-     "start": 0,
-     "rule": "cap-i",
-     "end": 1,
-     "label": "i → I",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Always capitalize “I”.",
-     "replacement": "I",
-     "mark": [
-      0,
-      1
-     ]
-    },
-    {
-     "original": "i",
-     "kind": "capitalization",
-     "start": 8,
-     "rule": "cap-i",
-     "end": 9,
-     "label": "i → I",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Always capitalize “I”.",
-     "replacement": "I",
-     "mark": [
-      8,
-      9
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 35",
-   "text": "Please do this in order to finish on time.",
-   "stats": [
-    9,
-    42,
-    1,
-    3,
-    4,
-    94,
-    96
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": " in order",
-     "kind": "wordiness",
-     "start": 14,
-     "rule": "wordy-in-order-to",
-     "end": 23,
-     "label": "Remove “in order”",
-     "source": "rule",
-     "category": "clarity",
-     "message": "“to” says the same thing in fewer words.",
-     "replacement": "",
-     "mark": [
-      15,
-      23
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 36",
-   "text": "Due to the fact that it rained, we stayed in.",
-   "stats": [
-    10,
-    45,
-    1,
-    3,
-    4,
-    100,
-    96
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Due to the fact that",
-     "kind": "wordiness",
-     "start": 0,
-     "rule": "wordy-due-to-the-fact-that",
-     "end": 20,
-     "label": "Due to the fact that → Because",
-     "source": "rule",
-     "category": "clarity",
-     "message": "“Because” says the same thing in fewer words.",
-     "replacement": "Because",
-     "mark": [
-      0,
-      20
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 37",
-   "text": "This is a free gift for you.",
-   "stats": [
-    7,
-    28,
-    1,
-    2,
-    3,
-    100,
-    96
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": " free",
-     "kind": "redundancy",
-     "start": 9,
-     "rule": "redundant-free-gift",
-     "end": 14,
-     "label": "Remove “free”",
-     "source": "rule",
-     "category": "clarity",
-     "message": "“free gift” repeats itself; “gift” is enough.",
-     "replacement": "",
-     "mark": [
-      10,
-      14
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 38",
-   "text": "The cake was eaten by the dog.",
-   "stats": [
-    7,
-    30,
-    1,
-    2,
-    3,
-    100,
-    96
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "was eaten by",
-     "kind": "passive_voice",
-     "start": 9,
-     "rule": "passive-by",
-     "end": 21,
-     "label": "Passive voice",
-     "source": "rule",
-     "category": "clarity",
-     "message": "This is in the passive voice. Saying who does what can make it clearer.",
-     "replacement": null,
-     "mark": [
-      9,
-      21
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 39",
-   "text": "The movie was very good and very interesting.",
-   "stats": [
-    8,
-    45,
-    1,
-    3,
-    4,
-    61,
-    96
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "very good",
-     "kind": "intensifier",
-     "start": 14,
-     "rule": "intensifier-good",
-     "end": 23,
-     "label": "very good → great",
-     "source": "rule",
-     "category": "engagement",
-     "message": "“great” is stronger than “very good”.",
-     "replacement": "great",
-     "mark": [
-      14,
-      23
-     ]
-    },
-    {
-     "original": "very interesting",
-     "kind": "intensifier",
-     "start": 28,
-     "rule": "intensifier-interesting",
-     "end": 44,
-     "label": "very interesting → fascinating",
-     "source": "rule",
-     "category": "engagement",
-     "message": "“fascinating” is stronger than “very interesting”.",
-     "replacement": "fascinating",
-     "mark": [
-      28,
-      44
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 40",
-   "text": "I just wanted to check in about the report.",
-   "stats": [
-    9,
-    43,
-    1,
-    3,
-    4,
-    85,
-    98
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": " just",
-     "kind": "hedging",
-     "start": 1,
-     "rule": "hedge-i-just-wanted-to",
-     "end": 6,
-     "label": "Remove “just”",
-     "source": "rule",
-     "category": "delivery",
-     "message": "“I wanted to” sounds more confident.",
-     "replacement": "",
-     "mark": [
-      2,
-      6
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 41",
-   "text": "Can dogs swim?",
-   "stats": [
-    3,
-    14,
-    1,
-    1,
-    2,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 42",
-   "text": "Can you call me back when you get this?",
-   "stats": [
-    9,
-    39,
-    1,
-    3,
-    4,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 43",
-   "text": "I want to come too.",
-   "stats": [
-    5,
-    19,
-    1,
-    2,
-    2,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 44",
-   "text": "Their house is the blue one on the corner.",
-   "stats": [
-    9,
-    42,
-    1,
-    3,
-    4,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 45",
-   "text": "I'd rather walk than take the bus.",
-   "stats": [
-    7,
-    34,
-    1,
-    2,
-    3,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 46",
-   "text": "Lol okay see you then.",
-   "stats": [
-    5,
-    22,
-    1,
-    2,
-    2,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 47",
-   "text": "The total came to $42.50 with tip.",
-   "stats": [
-    6,
-    34,
-    1,
-    2,
-    3,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 48",
-   "text": "Tell Kevin its at 7:30.",
-   "stats": [
-    4,
-    23,
-    1,
-    2,
-    2,
-    97,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 49",
-   "text": "Check www.dont-panic.com for details.",
-   "stats": [
-    7,
-    37,
-    1,
-    2,
-    3,
-    91,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 50",
-   "text": "You're welcome to join us.",
-   "stats": [
-    5,
-    26,
-    1,
-    2,
-    2,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 51",
-   "text": "Your right hand is bleeding.",
-   "stats": [
-    5,
-    28,
-    1,
-    2,
-    2,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 52",
-   "text": "I'm sorry for the delay. Thanks so much for your patience, I really appreciate it and hope you have a great weekend!",
-   "stats": [
-    22,
-    116,
-    2,
-    6,
-    9,
-    84,
-    100
-   ],
-   "tones": [
-    "friendly",
-    "apologetic",
-    "appreciative"
-   ],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 53",
-   "text": "URGENT: please send the report ASAP, the deadline is today and we still don't have it. This is unacceptable.",
-   "stats": [
-    19,
-    108,
-    2,
-    5,
-    8,
-    73,
-    100
-   ],
-   "tones": [
-    "urgent",
-    "frustrated"
-   ],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 54",
-   "text": "The report, which was written over several weeks by a team of analysts who worked late into the night and through the weekend to meet the deadline set by the board, finally landed on my desk this morning before the meeting started.",
-   "stats": [
-    42,
-    231,
-    1,
-    11,
-    17,
-    43,
-    96
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "The report, which was written over several weeks by a team of analysts who worked late into the night and through the weekend to meet the deadline set by the board, finally landed on my desk this morning before the meeting started.",
-     "kind": "long_sentence",
-     "start": 0,
-     "rule": null,
-     "end": 231,
-     "label": "Long sentence",
-     "source": "text",
-     "category": "clarity",
-     "message": "This sentence has 42 words. Splitting it can make it easier to read.",
-     "replacement": null,
-     "mark": [
-      0,
-      231
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 55",
-   "text": "We need to plan the launch. The launch needs a plan. Our launch plan is the launch.",
-   "stats": [
-    17,
-    83,
-    3,
-    5,
-    7,
-    100,
-    96
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "launch",
-     "kind": "overused_word",
-     "start": 57,
-     "rule": null,
-     "end": 63,
-     "label": "Repetitive word",
-     "source": "text",
-     "category": "engagement",
-     "message": "You've used “launch” 3 times here. A different word could keep it fresh.",
-     "replacement": null,
-     "mark": [
-      57,
-      63
-     ]
-    },
-    {
-     "original": "plan",
-     "kind": "overused_word",
-     "start": 64,
-     "rule": null,
-     "end": 68,
-     "label": "Repetitive word",
-     "source": "text",
-     "category": "engagement",
-     "message": "You've used “plan” 3 times here. A different word could keep it fresh.",
-     "replacement": null,
-     "mark": [
-      64,
-      68
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 56",
-   "text": "It will be finished soon. He said he will come. She would of known.",
-   "stats": [
-    14,
-    67,
-    3,
-    4,
-    6,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "of",
-     "kind": "confused_words",
-     "start": 58,
-     "rule": "could-of",
-     "end": 60,
-     "label": "of → have",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“have” is the verb in “could have”, “should have” and “would have”; “of” is a preposition.",
-     "replacement": "have",
-     "mark": [
-      58,
-      60
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 57",
-   "text": "What kind of car do you drive?",
-   "stats": [
-    7,
-    30,
-    1,
-    2,
-    3,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 58",
-   "text": "He is used to cut the wood.",
-   "stats": [
-    7,
-    27,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "cut",
-     "kind": "verb_form",
-     "start": 14,
-     "rule": "be-used-to-ing",
-     "end": 17,
-     "label": "cut → cutting",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“Used to” meaning “accustomed to” takes the -ing form: “cutting”.",
-     "replacement": "cutting",
-     "mark": [
-      14,
-      17
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 59",
-   "text": "It's used to open the door.",
-   "stats": [
-    6,
-    27,
-    1,
-    2,
-    3,
-    88,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "rules 60",
-   "text": "I definately recieve alot of emails.",
-   "stats": [
-    6,
-    36,
-    1,
-    2,
-    3,
-    17,
-    76
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "definately",
-     "kind": "spelling",
-     "start": 2,
-     "rule": "spell-definately",
-     "end": 12,
-     "label": "definately → definitely",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“definately” looks misspelled. Did you mean “definitely”?",
-     "replacement": "definitely",
-     "mark": [
-      2,
-      12
-     ]
-    },
-    {
-     "original": "recieve",
-     "kind": "spelling",
-     "start": 13,
-     "rule": "spell-recieve",
-     "end": 20,
-     "label": "recieve → receive",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“recieve” looks misspelled. Did you mean “receive”?",
-     "replacement": "receive",
-     "mark": [
-      13,
-      20
-     ]
-    },
-    {
-     "original": "alot",
-     "kind": "spelling",
-     "start": 21,
-     "rule": "spell-alot",
-     "end": 25,
-     "label": "alot → a lot",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“alot” looks misspelled. Did you mean “a lot”?",
-     "replacement": "a lot",
-     "mark": [
-      21,
-      25
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 61",
-   "text": "dont worry im fine thats ok.",
-   "stats": [
-    6,
-    28,
-    1,
-    2,
-    3,
-    100,
-    76
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "dont",
-     "kind": "apostrophe",
-     "start": 0,
-     "rule": "apos-dont",
-     "end": 4,
-     "label": "dont → don't",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“don't” needs an apostrophe.",
-     "replacement": "don't",
-     "mark": [
-      0,
-      4
-     ]
-    },
-    {
-     "original": "im",
-     "kind": "apostrophe",
-     "start": 11,
-     "rule": "apos-im",
-     "end": 13,
-     "label": "im → I'm",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“I'm” needs an apostrophe.",
-     "replacement": "I'm",
-     "mark": [
-      11,
-      13
-     ]
-    },
-    {
-     "original": "thats",
-     "kind": "apostrophe",
-     "start": 19,
-     "rule": "apos-thats",
-     "end": 24,
-     "label": "thats → that's",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“that's” needs an apostrophe.",
-     "replacement": "that's",
-     "mark": [
-      19,
-      24
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 62",
-   "text": "I'm no expert, but this looks right.",
-   "stats": [
-    7,
-    36,
-    1,
-    2,
-    3,
-    100,
-    98
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "I'm no expert, but ",
-     "kind": "hedging",
-     "start": 0,
-     "rule": "hedge-im-no-expert-but",
-     "end": 19,
-     "label": "Remove “I'm no expert, but”",
-     "source": "rule",
-     "category": "delivery",
-     "message": "Dropping “I'm no expert, but” sounds more confident.",
-     "replacement": "",
-     "mark": [
-      0,
-      18
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 63",
-   "text": "The dog wagged it's tail.",
-   "stats": [
-    5,
-    25,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "it's",
-     "kind": "confused_words",
-     "start": 15,
-     "rule": "its-possessed",
-     "end": 19,
-     "label": "it's → its",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“its” means belonging to it; “it's” means “it is” or “it has”.",
-     "replacement": "its",
-     "mark": [
-      15,
-      19
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 64",
-   "text": "I would rather walk then drive.",
-   "stats": [
-    6,
-    31,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "then",
-     "kind": "confused_words",
-     "start": 20,
-     "rule": "rather-then",
-     "end": 24,
-     "label": "then → than",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“than” compares two things; “then” is about time or order.",
-     "replacement": "than",
-     "mark": [
-      20,
-      24
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 65",
-   "text": "She did not knew. She would not went.",
-   "stats": [
-    8,
-    37,
-    2,
-    3,
-    4,
-    100,
-    84
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "knew",
-     "kind": "verb_form",
-     "start": 12,
-     "rule": "do-not-base",
-     "end": 16,
-     "label": "knew → know",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “did not”, use “know”.",
-     "replacement": "know",
-     "mark": [
-      12,
-      16
-     ]
-    },
-    {
-     "original": "went",
-     "kind": "verb_form",
-     "start": 32,
-     "rule": "modal-not-base",
-     "end": 36,
-     "label": "went → go",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “would not”, use “go”.",
-     "replacement": "go",
-     "mark": [
-      32,
-      36
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "rules 66",
-   "text": "In order to win, we must practice.",
-   "stats": [
-    7,
-    34,
-    1,
-    2,
-    3,
-    91,
-    96
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "In order to",
-     "kind": "wordiness",
-     "start": 0,
-     "rule": "wordy-in-order-to",
-     "end": 11,
-     "label": "In order to → To",
-     "source": "rule",
-     "category": "clarity",
-     "message": "“To” says the same thing in fewer words.",
-     "replacement": "To",
-     "mark": [
-      0,
-      11
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a replaced word",
-   "text": "He don't know.",
-   "model": {
-    "He don't know.": "He doesn't know."
-   },
-   "stats": [
-    3,
-    14,
-    1,
-    1,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "don't",
-     "kind": "agreement",
-     "start": 3,
-     "rule": "he-dont",
-     "end": 8,
-     "label": "don't → doesn't",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “doesn't” with “He”.",
-     "replacement": "doesn't",
-     "mark": [
-      3,
-      8
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "agreement after a plural subject",
-   "text": "The dogs barks all night.",
-   "model": {
-    "The dogs barks all night.": "The dogs bark all night."
-   },
-   "stats": [
-    5,
-    25,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "barks",
-     "kind": "agreement",
-     "start": 9,
-     "rule": null,
-     "end": 14,
-     "label": "barks → bark",
-     "source": "model",
-     "category": "correctness",
-     "message": "“bark” agrees with “dogs”.",
-     "replacement": "bark",
-     "mark": [
-      9,
-      14
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "an article before a vowel sound",
-   "text": "I need a umbrella.",
-   "model": {
-    "I need a umbrella.": "I need an umbrella."
-   },
-   "stats": [
-    4,
-    18,
-    1,
-    2,
-    2,
-    76,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "a",
-     "kind": "article",
-     "start": 7,
-     "rule": null,
-     "end": 8,
-     "label": "a → an",
-     "source": "model",
-     "category": "correctness",
-     "message": "Use “an” before a word that starts with a vowel sound, like “umbrella”.",
-     "replacement": "an",
-     "mark": [
-      7,
-      8
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a missing helper verb",
-   "text": "I going to the store.",
-   "model": {
-    "I going to the store.": "I am going to the store."
-   },
-   "stats": [
-    5,
-    21,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "",
-     "kind": "missing_word",
-     "start": 1,
-     "rule": null,
-     "end": 1,
-     "label": "Add “am”",
-     "source": "model",
-     "category": "correctness",
-     "message": "A verb seems to be missing: add “am”.",
-     "replacement": " am",
-     "mark": [
-      0,
-      1
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a missing article",
-   "text": "I'm going to store.",
-   "model": {
-    "I'm going to store.": "I'm going to the store."
-   },
-   "stats": [
-    4,
-    19,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "",
-     "kind": "article",
-     "start": 12,
-     "rule": null,
-     "end": 12,
-     "label": "Add “the”",
-     "source": "model",
-     "category": "correctness",
-     "message": "It looks like “the” is missing before “store”.",
-     "replacement": " the",
-     "mark": [
-      10,
-      12
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "an extra article",
-   "text": "I like the music of the Bach.",
-   "model": {
-    "I like the music of the Bach.": "I like the music of Bach."
-   },
-   "stats": [
-    7,
-    29,
-    1,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": " the",
-     "kind": "article",
-     "start": 19,
-     "rule": null,
-     "end": 23,
-     "label": "Remove “the”",
-     "source": "model",
-     "category": "correctness",
-     "message": "“the” isn't needed before “Bach”.",
-     "replacement": "",
-     "mark": [
-      20,
-      23
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a verb form",
-   "text": "I seen that movie.",
-   "model": {
-    "I seen that movie.": "I saw that movie."
-   },
-   "stats": [
-    4,
-    18,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "seen",
-     "kind": "verb_form",
-     "start": 2,
-     "rule": null,
-     "end": 6,
-     "label": "seen → saw",
-     "source": "model",
-     "category": "correctness",
-     "message": "Use “saw” here; “seen” is the wrong form of the verb.",
-     "replacement": "saw",
-     "mark": [
-      2,
-      6
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a spelling slip",
-   "text": "I recieved teh package.",
-   "model": {
-    "I recieved teh package.": "I received the package."
-   },
-   "stats": [
-    4,
-    23,
-    1,
-    2,
-    2,
-    55,
-    84
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "recieved",
-     "kind": "spelling",
-     "start": 2,
-     "rule": "spell-recieved",
-     "end": 10,
-     "label": "recieved → received",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“recieved” looks misspelled. Did you mean “received”?",
-     "replacement": "received",
-     "mark": [
-      2,
-      10
-     ]
-    },
-    {
-     "original": "teh",
-     "kind": "spelling",
-     "start": 11,
-     "rule": null,
-     "end": 14,
-     "label": "teh → the",
-     "source": "model",
-     "category": "correctness",
-     "message": "“teh” looks misspelled. Did you mean “the”?",
-     "replacement": "the",
-     "mark": [
-      11,
-      14
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a full stop added where the text stops is not offered",
-   "text": "see you tomorrow",
-   "model": {
-    "see you tomorrow": "See you tomorrow."
-   },
-   "stats": [
-    3,
-    16,
-    1,
-    1,
-    2,
-    63,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "a capital on a lower-case start is not offered",
-   "text": "they was late",
-   "model": {
-    "they was late": "They were late"
-   },
-   "stats": [
-    3,
-    13,
-    1,
-    1,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "was",
-     "kind": "agreement",
-     "start": 5,
-     "rule": "they-was",
-     "end": 8,
-     "label": "was → were",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “were” with “they”.",
-     "replacement": "were",
-     "mark": [
-      5,
-      8
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a capital on a sentence start in capitalised text",
-   "text": "We met. then we left.",
-   "model": {
-    "We met.": "We met.",
-    "then we left.": "Then we left."
-   },
-   "stats": [
-    5,
-    21,
-    2,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "then",
-     "kind": "capitalization",
-     "start": 8,
-     "rule": null,
-     "end": 12,
-     "label": "then → Then",
-     "source": "model",
-     "category": "correctness",
-     "message": "Start a sentence with a capital letter.",
-     "replacement": "Then",
-     "mark": [
-      8,
-      12
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "i is capitalised",
-   "text": "Yes i can.",
-   "model": {
-    "Yes i can.": "Yes I can."
-   },
-   "stats": [
-    3,
-    10,
-    1,
-    1,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "i",
-     "kind": "capitalization",
-     "start": 4,
-     "rule": "cap-i",
-     "end": 5,
-     "label": "i → I",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Always capitalize “I”.",
-     "replacement": "I",
-     "mark": [
-      4,
-      5
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a comma added",
-   "text": "Hi Sam how are you?",
-   "model": {
-    "Hi Sam how are you?": "Hi Sam, how are you?"
-   },
-   "stats": [
-    5,
-    19,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "",
-     "kind": "punctuation",
-     "start": 6,
-     "rule": null,
-     "end": 6,
-     "label": "Add “,”",
-     "source": "model",
-     "category": "correctness",
-     "message": "Add a comma here.",
-     "replacement": ",",
-     "mark": [
-      3,
-      6
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a question mark added mid-text",
-   "text": "Where are you going. I'm home.",
-   "model": {
-    "Where are you going.": "Where are you going?",
-    "I'm home.": "I'm home."
-   },
-   "stats": [
-    6,
-    30,
-    2,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": ".",
-     "kind": "punctuation",
-     "start": 19,
-     "rule": null,
-     "end": 20,
-     "label": ". → ?",
-     "source": "model",
-     "category": "correctness",
-     "message": "This reads like a question, so end it with a question mark.",
-     "replacement": "?",
-     "mark": [
-      19,
-      20
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "pronoun case",
-   "text": "Her and I went home.",
-   "model": {
-    "Her and I went home.": "She and I went home."
-   },
-   "stats": [
-    5,
-    20,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Her",
-     "kind": "pronoun",
-     "start": 0,
-     "rule": null,
-     "end": 3,
-     "label": "Her → She",
-     "source": "model",
-     "category": "correctness",
-     "message": "Use the subject form “She” here.",
-     "replacement": "She",
-     "mark": [
-      0,
-      3
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a preposition",
-   "text": "I am good in math.",
-   "model": {
-    "I am good in math.": "I am good at math."
-   },
-   "stats": [
-    5,
-    18,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "in",
-     "kind": "preposition",
-     "start": 10,
-     "rule": null,
-     "end": 12,
-     "label": "in → at",
-     "source": "model",
-     "category": "correctness",
-     "message": "“at” is the usual preposition here.",
-     "replacement": "at",
-     "mark": [
-      10,
-      12
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "noun number",
-   "text": "I have two dog.",
-   "model": {
-    "I have two dog.": "I have two dogs."
-   },
-   "stats": [
-    4,
-    15,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "dog",
-     "kind": "noun_number",
-     "start": 11,
-     "rule": null,
-     "end": 14,
-     "label": "dog → dogs",
-     "source": "model",
-     "category": "correctness",
-     "message": "Use “dogs” to match the rest of the sentence.",
-     "replacement": "dogs",
-     "mark": [
-      11,
-      14
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a rule and the model on the same word: the rule wins",
-   "text": "Your welcome.",
-   "model": {
-    "Your welcome.": "You're welcome."
-   },
-   "stats": [
-    2,
-    13,
-    1,
-    1,
-    1,
-    78,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "Your",
-     "kind": "confused_words",
-     "start": 0,
-     "rule": "your-welcome",
-     "end": 4,
-     "label": "Your → You're",
-     "source": "rule",
-     "category": "correctness",
-     "message": "“You're” means “you are”; “Your” means belonging to you.",
-     "replacement": "You're",
-     "mark": [
-      0,
-      4
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "the model still loading",
-   "text": "He don't know. She go home.",
-   "model": {
-    "He don't know.": null
-   },
-   "stats": [
-    6,
-    27,
-    2,
-    2,
-    3,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "don't",
-     "kind": "agreement",
-     "start": 3,
-     "rule": "he-dont",
-     "end": 8,
-     "label": "don't → doesn't",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “doesn't” with “He”.",
-     "replacement": "doesn't",
-     "mark": [
-      3,
-      8
-     ]
-    }
-   ],
-   "modelPending": true
-  },
-  {
-   "name": "custom vocabulary is never flagged",
-   "text": "I pushed the fix to vocagate alot.",
-   "model": {
-    "I pushed the fix to vocagate alot.": "I pushed the fix to Vocagate a lot."
-   },
-   "options": {
-    "keep": [
-     "vocagate",
-     "alot"
-    ]
-   },
-   "stats": [
-    7,
-    34,
-    1,
-    2,
-    3,
-    67,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "only correctness",
-   "text": "This is a free gift and it is very good.",
-   "model": {},
-   "options": {
-    "categories": [
-     "correctness"
-    ]
-   },
-   "stats": [
-    10,
-    40,
-    1,
-    3,
-    4,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "a style rule that is off leaves its words to a fix that is on",
-   "text": "I was wondering if you could helps.",
-   "model": {},
-   "options": {
-    "categories": [
-     "correctness"
-    ]
-   },
-   "stats": [
-    7,
-    35,
-    1,
-    2,
-    3,
-    91,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "helps",
-     "kind": "verb_form",
-     "start": 29,
-     "rule": "modal-base",
-     "end": 34,
-     "label": "helps → help",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After “could”, use “help”.",
-     "replacement": "help",
-     "mark": [
-      29,
-      34
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "whole text, not typed",
-   "text": "see you tomorrow",
-   "model": {
-    "see you tomorrow": "See you tomorrow."
-   },
-   "options": {
-    "typed": false
-   },
-   "stats": [
-    3,
-    16,
-    1,
-    1,
-    2,
-    63,
-    84
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "see",
-     "kind": "capitalization",
-     "start": 0,
-     "rule": null,
-     "end": 3,
-     "label": "see → See",
-     "source": "model",
-     "category": "correctness",
-     "message": "Start a sentence with a capital letter.",
-     "replacement": "See",
-     "mark": [
-      0,
-      3
-     ]
-    },
-    {
-     "original": "",
-     "kind": "punctuation",
-     "start": 16,
-     "rule": null,
-     "end": 16,
-     "label": "Add “.”",
-     "source": "model",
-     "category": "correctness",
-     "message": "End the sentence with a full stop.",
-     "replacement": ".",
-     "mark": [
-      8,
-      16
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "agreement in a question, without the model",
-   "text": "what is you doing",
-   "suggestions": [
-    {
-     "original": "is",
-     "kind": "agreement",
-     "start": 5,
-     "rule": "wh-is-you",
-     "end": 7,
-     "label": "is → are",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “are” with “you”.",
-     "replacement": "are",
-     "mark": [
-      5,
-      7
-     ]
-    }
-   ],
-   "tones": [],
-   "stats": [
-    4,
-    17,
-    1,
-    2,
-    2,
-    100,
-    92
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "agreement after a plural pronoun, without the model",
-   "text": "I think you was right and he don't care.",
-   "suggestions": [
-    {
-     "original": "was",
-     "kind": "agreement",
-     "start": 12,
-     "rule": "you-was",
-     "end": 15,
-     "label": "was → were",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “were” with “you”.",
-     "replacement": "were",
-     "mark": [
-      12,
-      15
-     ]
-    }
-   ],
-   "tones": [],
-   "stats": [
-    9,
-    40,
-    1,
-    3,
-    4,
-    100,
-    92
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "an end-anchored rule needs the sentence to end there",
-   "text": "I went over their (very detailed) plan.",
-   "stats": [
-    7,
-    39,
-    1,
-    2,
-    3,
-    67,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "a contraction before a hyphenated compound is left alone",
-   "text": "It's name-calling.",
-   "stats": [
-    3,
-    18,
-    1,
-    1,
-    2,
-    91,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "a possessive before a hyphenated compound is left alone",
-   "text": "We are planning your going-away party.",
-   "stats": [
-    7,
-    38,
-    1,
-    2,
-    3,
-    79,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "a modal in a wh-question is followed by its subject",
-   "text": "How can understanding help?",
-   "stats": [
-    4,
-    27,
-    1,
-    2,
-    2,
-    55,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "you as an object is not a subject",
-   "text": "What I told you was true.",
-   "stats": [
-    6,
-    25,
-    1,
-    2,
-    3,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "it as an object is not a subject",
-   "text": "The people behind it are waiting.",
-   "stats": [
-    6,
-    33,
-    1,
-    2,
-    3,
-    74,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "a joined subject with I",
-   "text": "You and I are ready.",
-   "stats": [
-    5,
-    20,
-    1,
-    2,
-    2,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "a joined subject with she",
-   "text": "He and she are coming.",
-   "stats": [
-    5,
-    22,
-    1,
-    2,
-    2,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "you as an object before doesn't",
-   "text": "The thing I gave you doesn't work.",
-   "stats": [
-    7,
-    34,
-    1,
-    2,
-    3,
-    100,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false
-  },
-  {
-   "name": "agreement after they, without the model",
-   "text": "They was here.",
-   "stats": [
-    3,
-    14,
-    1,
-    1,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "was",
-     "kind": "agreement",
-     "start": 5,
-     "rule": "they-was",
-     "end": 8,
-     "label": "was → were",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “were” with “They”.",
-     "replacement": "were",
-     "mark": [
-      5,
-      8
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "agreement after he, without the model",
-   "text": "He don't know.",
-   "stats": [
-    3,
-    14,
-    1,
-    1,
-    2,
-    100,
-    92
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "don't",
-     "kind": "agreement",
-     "start": 3,
-     "rule": "he-dont",
-     "end": 8,
-     "label": "don't → doesn't",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “doesn't” with “He”.",
-     "replacement": "doesn't",
-     "mark": [
-      3,
-      8
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "agreement after a clause start, without the model",
-   "text": "I think you was right, but he don't care. It don't matter.",
-   "stats": [
-    12,
-    58,
-    2,
-    4,
-    5,
-    100,
-    76
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": "was",
-     "kind": "agreement",
-     "start": 12,
-     "rule": "you-was",
-     "end": 15,
-     "label": "was → were",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “were” with “you”.",
-     "replacement": "were",
-     "mark": [
-      12,
-      15
-     ]
-    },
-    {
-     "original": "don't",
-     "kind": "agreement",
-     "start": 30,
-     "rule": "he-dont",
-     "end": 35,
-     "label": "don't → doesn't",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “doesn't” with “he”.",
-     "replacement": "doesn't",
-     "mark": [
-      30,
-      35
-     ]
-    },
-    {
-     "original": "don't",
-     "kind": "agreement",
-     "start": 45,
-     "rule": "it-dont",
-     "end": 50,
-     "label": "don't → doesn't",
-     "source": "rule",
-     "category": "correctness",
-     "message": "Use “doesn't” with “It”.",
-     "replacement": "doesn't",
-     "mark": [
-      45,
-      50
-     ]
-    }
-   ],
-   "modelPending": false
-  },
-  {
-   "name": "a kept word is never overused",
-   "text": "I pushed vocagate, then vocagate, then vocagate again.",
-   "stats": [
-    8,
-    54,
-    1,
-    3,
-    4,
-    30,
-    100
-   ],
-   "tones": [],
-   "suggestions": [],
-   "modelPending": false,
-   "options": {
-    "keep": [
-     "vocagate"
-    ]
-   }
-  },
-  {
-   "name": "a phrase removed between commas takes them along",
-   "text": "It was, needless to say, a great day.",
-   "stats": [
-    8,
-    37,
-    1,
-    3,
-    4,
-    100,
-    96
-   ],
-   "tones": [],
-   "suggestions": [
-    {
-     "original": ", needless to say,",
-     "kind": "wordiness",
-     "start": 6,
-     "rule": "wordy-needless-to-say",
-     "end": 24,
-     "label": "Remove “needless to say”",
-     "source": "rule",
-     "category": "clarity",
-     "message": "You can drop “needless to say” without changing the meaning.",
-     "replacement": "",
-     "mark": [
-      8,
-      23
-     ]
-    }
-   ],
-   "modelPending": false
-  }
- ],
- "rebase": [
-  {
-   "old": "teh cat sat",
-   "new": "teh cat sat down",
-   "spans": [
-    [
-     0,
-     3
-    ]
-   ],
-   "expected": [
-    [
-     0,
-     3
-    ]
-   ]
-  },
-  {
-   "old": "teh cat sat",
-   "new": "the cat sat",
-   "spans": [
-    [
-     0,
-     3
-    ],
-    [
-     8,
-     11
-    ]
-   ],
-   "expected": [
-    [
-     8,
-     11
-    ]
-   ]
-  },
-  {
-   "old": "a teh cat",
-   "new": "a big teh cat",
-   "spans": [
-    [
-     2,
-     5
-    ]
-   ],
-   "expected": [
-    [
-     6,
-     9
-    ]
-   ]
-  },
-  {
-   "old": "teh cat",
-   "new": "tehx cat",
-   "spans": [
-    [
-     0,
-     3
-    ]
-   ],
-   "expected": []
-  },
-  {
-   "old": "I has a",
-   "new": "I has a dog",
-   "spans": [
-    [
-     2,
-     5
-    ]
-   ],
-   "expected": [
-    [
-     2,
-     5
-    ]
-   ]
-  },
-  {
-   "old": "go to store",
-   "new": "go to stores",
-   "spans": [
-    [
-     5,
-     5
-    ]
-   ],
-   "expected": [
-    [
-     5,
-     5
-    ]
-   ]
-  }
- ],
- "apply": [
-  {
-   "text": "He don't know.",
-   "start": 3,
-   "end": 8,
-   "original": "don't",
-   "replacement": "doesn't",
-   "expected": "He doesn't know."
-  },
-  {
-   "text": "I going.",
-   "start": 1,
-   "end": 1,
-   "original": "",
-   "replacement": " am",
-   "expected": "I am going."
-  },
-  {
-   "text": "the the cat",
-   "start": 3,
-   "end": 7,
-   "original": " the",
-   "replacement": "",
-   "expected": "the cat"
-  },
-  {
-   "text": "He don't know.",
-   "start": 3,
-   "end": 8,
-   "original": "won't",
-   "replacement": "doesn't",
-   "expected": null
+   "count": 3,
+   "word": "cooperate"
   }
  ],
  "accept": [
   {
+   "expected": "I go(the store)",
    "name": "a word added after a bracket",
-   "text": "I go(store)",
-   "model": {
-    "I go(store)": "I go(the store)"
-   },
-   "expected": "I go(the store)"
+   "model": {"I go(store)": "I go(the store)"},
+   "text": "I go(store)"
   },
   {
+   "expected": "Hello world",
    "name": "a comma removed between words",
-   "text": "Hello ,world",
-   "model": {
-    "Hello ,world": "Hello world"
-   },
-   "expected": "Hello world"
+   "model": {"Hello ,world": "Hello world"},
+   "text": "Hello ,world"
   },
   {
+   "expected": "I like cats and dogs.",
    "name": "a comma swapped for a word",
-   "text": "I like cats,dogs.",
-   "model": {
-    "I like cats,dogs.": "I like cats and dogs."
-   },
-   "expected": "I like cats and dogs."
+   "model": {"I like cats,dogs.": "I like cats and dogs."},
+   "text": "I like cats,dogs."
   },
   {
+   "expected": "I go home.",
    "name": "a word added before a full stop",
-   "text": "I go.",
-   "model": {
-    "I go.": "I go home."
-   },
-   "expected": "I go home."
+   "model": {"I go.": "I go home."},
+   "text": "I go."
   },
   {
+   "expected": "I am going to the store.",
    "name": "a helper verb added",
-   "text": "I going to the store.",
-   "model": {
-    "I going to the store.": "I am going to the store."
-   },
-   "expected": "I am going to the store."
+   "model": {"I going to the store.": "I am going to the store."},
+   "text": "I going to the store."
   },
   {
+   "expected": "Hi Sam, how are you?",
    "name": "a comma added",
-   "text": "Hi Sam how are you?",
-   "model": {
-    "Hi Sam how are you?": "Hi Sam, how are you?"
-   },
-   "expected": "Hi Sam, how are you?"
+   "model": {"Hi Sam how are you?": "Hi Sam, how are you?"},
+   "text": "Hi Sam how are you?"
   },
   {
+   "expected": "It was a great day.",
    "name": "a phrase removed between commas",
-   "text": "It was, needless to say, a great day.",
-   "expected": "It was a great day."
+   "text": "It was, needless to say, a great day."
   },
   {
+   "expected": "Let us go.",
    "name": "a phrase removed before the full stop",
-   "text": "Let us go, if that makes sense.",
-   "expected": "Let us go."
+   "text": "Let us go, if that makes sense."
   },
   {
+   "expected": "it was great.",
    "name": "a phrase removed at the start",
-   "text": "Needless to say, it was great.",
-   "expected": "it was great."
+   "text": "Needless to say, it was great."
   },
   {
+   "expected": "(the cat)",
    "name": "a repeated word removed inside brackets",
-   "text": "(the the cat)",
-   "expected": "(the cat)"
+   "text": "(the the cat)"
+  },
+  {
+   "expected": "I didn't go there because he doesn't know",
+   "name": "accepting everything leaves one fix per word",
+   "text": "I didnt went there because he dont know"
   }
  ]
 }

@@ -679,7 +679,8 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         if KeyboardPreferences.writingEngagement { categories.insert(.engagement) }
         if KeyboardPreferences.writingDelivery { categories.insert(.delivery) }
         return WritingCheckClient.Options(
-            categories: categories, keep: grammarKeeps(), tone: KeyboardPreferences.writingTone
+            categories: categories, keep: grammarKeeps(), tone: KeyboardPreferences.writingTone,
+            optIn: KeyboardPreferences.writingOptIn
         )
     }
 

@@ -43,6 +43,7 @@ import com.vocahq.vocaphone.writing.WritingCheck
 import com.vocahq.vocaphone.writing.WritingLanguage
 import com.vocahq.vocaphone.writing.WritingSuggestion
 import com.vocahq.vocaphone.writing.writingCategories
+import com.vocahq.vocaphone.writing.writingOptIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -960,6 +961,7 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
             categories = settings.writingCategories(),
             keep = typedGrammarKeeps(),
             tone = settings.writingTone,
+            optIn = settings.writingOptIn(),
         )
     }
 

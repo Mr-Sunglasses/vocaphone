@@ -17,9 +17,13 @@ struct WritingRule: Sendable {
     private let after: Set<String>?
     /// The word right before the match must not be one of these.
     private let notAfter: Set<String>
+    /// No word after the match, to the end of the sentence, may be one of these.
+    private let unlessLater: Set<String>
     let replace: String?
     let kind: String
     let message: String?
+    /// The option that turns this rule on (`WritingCheck.Options.optIn`); nil runs always.
+    let optIn: String?
 
     static func compile(_ o: [String: Any]) throws -> WritingRule {
         guard let match = o["match"] as? String, let id = o["id"] as? String, let kind = o["kind"] as? String else {
@@ -48,9 +52,11 @@ struct WritingRule: Sendable {
             notAtStart: o["notAtStart"] as? Bool ?? false,
             after: (o["after"] as? [String]).map { Set($0.map(WritingToken.normalize)) },
             notAfter: Set((o["notAfter"] as? [String] ?? []).map(WritingToken.normalize)),
+            unlessLater: Set((o["unlessLater"] as? [String] ?? []).map(WritingToken.normalize)),
             replace: o["replace"] as? String,
             kind: kind,
-            message: o["message"] as? String
+            message: o["message"] as? String,
+            optIn: o["optIn"] as? String
         )
     }
 
@@ -84,6 +90,9 @@ struct WritingRule: Sendable {
         }
         if i <= sentence.last, Self.hyphens.contains(tokens[i].text), tokens[i - 1].end == tokens[i].start { return 0 }
         if atEnd, i <= sentence.last, tokens[i...sentence.last].contains(where: \.isWord) { return 0 }
+        if !unlessLater.isEmpty, i <= sentence.last, tokens[i...sentence.last].contains(where: { unlessLater.contains($0.key) }) {
+            return 0
+        }
         return i - index
     }
 
@@ -100,10 +109,17 @@ struct WritingRule: Sendable {
             return token.text.unicodeScalars.count >= 2 && WritingText.isUppercase(token.text)
                 && !Self.pronounI.contains(key)
                 && token.text.unicodeScalars.allSatisfy { WritingText.isLetter($0) || $0 == "'" || $0 == "’" }
+        case "number":
+            return key.unicodeScalars.allSatisfy { $0 >= "0" && $0 <= "9" }
+        case "clock_time":
+            return Self.isClockTime(key)
         case "verb_base":
             return rules.verbs.isBase(key)
         case "verb_inflected":
             guard let lemma = rules.verbs.lemma(key) else { return false }
+            return lemma != key
+        case "verb_ing":
+            guard key.hasSuffix("ing"), let lemma = rules.verbs.lemma(key) else { return false }
             return lemma != key
         case "simple_past":
             return rules.verbs.isSimplePastOnly(key)
@@ -145,8 +161,11 @@ struct WritingRule: Sendable {
         case "base": return verbs.lemma(word) ?? word
         case "ing": return verbs.ing(verbs.lemma(word) ?? word)
         case "participle": return verbs.participle(verbs.lemma(word) ?? word)
+        case "past": return verbs.past(verbs.lemma(word) ?? word)
+        case "third": return verbs.third(verbs.lemma(word) ?? word)
         case "any": return Self.any[word] ?? word
         case "subject": return Self.subject[word] ?? word
+        case "capital": return word.prefix(1).uppercased() + word.dropFirst()
         default: return word
         }
     }
@@ -154,5 +173,18 @@ struct WritingRule: Sendable {
     private static let hyphens: Set<String> = ["-", "‐", "‑"]
     private static let pronounI: Set<String> = ["i", "i'm", "i've", "i'll", "i'd"]
     private static let any = ["nothing": "anything", "nobody": "anybody", "nowhere": "anywhere", "none": "any", "no": "any"]
-    private static let subject = ["me": "I", "him": "he", "her": "she", "us": "we", "them": "they"]
+    private static let subject = [
+        "me": "I", "him": "he", "her": "she", "us": "we", "them": "they",
+        // A contraction's subject: "I'm agree" → "I agree".
+        "i'm": "I", "im": "I", "we're": "we", "they're": "they", "you're": "you", "he's": "he", "she's": "she",
+    ]
+
+    /// "3pm", "11am": a time typed as one word.
+    private static func isClockTime(_ key: String) -> Bool {
+        let scalars = Array(key.unicodeScalars)
+        guard scalars.count == 3 || scalars.count == 4 else { return false }
+        let digits = scalars.dropLast(2)
+        let suffix = String(String.UnicodeScalarView(scalars.suffix(2)))
+        return digits.allSatisfy { $0 >= "0" && $0 <= "9" } && (suffix == "am" || suffix == "pm")
+    }
 }

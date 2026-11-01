@@ -33,6 +33,7 @@ final class WritingCheckClient {
         var categories: Set<WritingCategory> = Set(WritingCategory.allCases)
         var keep: [String] = []
         var tone = true
+        var optIn: Set<String> = []
     }
 
     struct Report: Equatable {
@@ -259,7 +260,9 @@ final class WritingCheckClient {
         let modelInUse = modelReady() && isAppRunning()
         let known: [String: String]? = modelInUse ? answers : nil
         let thorough = thorough
-        let checkOptions = WritingCheck.Options(categories: options.categories, keep: Set(options.keep), typed: true)
+        let checkOptions = WritingCheck.Options(
+            categories: options.categories, keep: Set(options.keep), typed: true, optIn: options.optIn
+        )
         if !isChecking {
             isChecking = true
             onChange?()

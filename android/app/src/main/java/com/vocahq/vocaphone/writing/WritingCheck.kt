@@ -30,6 +30,8 @@ class WritingCheck(val rules: WritingRules) {
          * capital on a sentence typed in lower case on purpose, are not offered.
          */
         val typed: Boolean = true,
+        /** Rules the user turned on that are off by default, by their `optIn` name: "serial_comma". */
+        val optIn: Set<String> = emptySet(),
     )
 
     data class Tone(val id: String, val label: String, val emoji: String, val score: Int)
@@ -66,7 +68,7 @@ class WritingCheck(val rules: WritingRules) {
         val found = ArrayList<WritingSuggestion>()
         var pending = false
 
-        for (sentence in sentences) found += ruleSuggestions(text, tokens, sentence, protected, keep, options.categories)
+        for (sentence in sentences) found += ruleSuggestions(text, tokens, sentence, protected, keep, options)
         if (model != null) {
             for (sentence in sentences) {
                 val words = tokens.subList(sentence.first, sentence.last + 1)
@@ -90,7 +92,7 @@ class WritingCheck(val rules: WritingRules) {
         }
         val kept = found.filter { it.category in options.categories }
             .filter { !options.typed || offeredOnTypedText(it, text, lowercaseStyle, starts) }
-        val merged = merge(kept)
+        val merged = merge(kept, text)
         return Report(text, merged, tones(text, tokens), stats(text, tokens, sentences, merged), pending)
     }
 
@@ -102,32 +104,42 @@ class WritingCheck(val rules: WritingRules) {
         sentence: WritingSentence,
         protected: List<IntRange>,
         keep: Set<String>,
-        categories: Set<WritingCategory>,
+        options: Options,
     ): List<WritingSuggestion> {
         val out = ArrayList<WritingSuggestion>()
-        var i = sentence.first
-        while (i <= sentence.last) {
-            var advanced = false
+        // Tokens a suggestion already changes. A later rule may still match
+        // across them ("didnt went" is both "didnt" → "didn't" and "went" →
+        // "go"), but may not change them a second time.
+        val claimed = HashSet<Int>()
+        for (i in sentence.first..sentence.last) {
             val start = WritingText.isSentenceStart(tokens, sentence, i)
             for (index in candidates(tokens[i])) {
                 val rule = rules.rules[index]
                 // A rule the user turned off must not take its words from one
                 // they kept: "could" is hedging, and "could helps" still needs "help".
-                if (rules.kind(rule.kind).category !in categories) continue
+                if (rules.kind(rule.kind).category !in options.categories) continue
+                if (rule.optIn != null && rule.optIn !in options.optIn) continue
                 val count = rule.match(tokens, sentence, i, rules, start)
                 if (count == 0) continue
                 val matched = tokens.subList(i, i + count)
                 if (matched.any { t -> protected.any { t.start <= it.last && it.first < t.end } }) continue
-                val suggestion = ruleSuggestion(text, tokens, sentence, rule, i, matched, keep) ?: continue
-                out.add(suggestion)
-                i += count
-                advanced = true
-                break
+                val found = ruleSuggestion(text, tokens, sentence, rule, i, matched, keep) ?: continue
+                if (!found.suggestion.isActionable) {
+                    out.add(found.suggestion)
+                    continue
+                }
+                if ((found.from until found.to).any { it in claimed }) continue
+                out.add(found.suggestion)
+                for (k in found.from until found.to) claimed.add(k)
+                // Once this token has changed, no other rule may start here.
+                if (i in found.from until found.to) break
             }
-            if (!advanced) i++
         }
         return out
     }
+
+    /** A rule's suggestion and the tokens `[from, to)` it changes. */
+    private class Found(val suggestion: WritingSuggestion, val from: Int, val to: Int)
 
     /** The rules that could start at [token], in the file's order. */
     private fun candidates(token: WritingToken): IntArray {
@@ -151,7 +163,7 @@ class WritingCheck(val rules: WritingRules) {
         index: Int,
         matched: List<WritingToken>,
         keep: Set<String>,
-    ): WritingSuggestion? {
+    ): Found? {
         val kind = rules.kind(rule.kind)
         val values = HashMap<String, String>()
         matched.forEachIndexed { i, t -> values["${i + 1}"] = t.text }
@@ -160,13 +172,14 @@ class WritingCheck(val rules: WritingRules) {
             val first = matched.first()
             val last = matched.last()
             values["original"] = text.substring(first.start, last.end)
-            return WritingSuggestion(
+            val info = WritingSuggestion(
                 start = first.start, end = last.end, original = text.substring(first.start, last.end),
                 replacement = null, markStart = first.start, markEnd = last.end,
                 kind = kind.id, category = kind.category, title = kind.title,
                 message = WritingEdits.format(template(rule, kind), values),
                 mechanical = kind.mechanical, source = WritingSuggestion.Source.RULE, rule = rule.id,
             )
+            return Found(info, index, index + matched.size)
         }
         // Narrow to the tokens that change: "rather then" → "rather than" is
         // "then" → "than". Case counts only for a capitalization rule.
@@ -206,13 +219,14 @@ class WritingCheck(val rules: WritingRules) {
             template = rules.messages.getValue("confused_words.gloss")
         }
         if (rule.message == null && expanded.isEmpty()) rules.messages["${kind.id}.remove"]?.let { template = it }
-        return WritingSuggestion(
+        val suggestion = WritingSuggestion(
             start = edit.start, end = edit.end, original = original, replacement = edit.replacement,
             markStart = edit.markStart, markEnd = edit.markEnd,
             kind = kind.id, category = kind.category, title = kind.title,
             message = WritingEdits.format(template, values),
             mechanical = kind.mechanical, source = WritingSuggestion.Source.RULE, rule = rule.id,
         )
+        return Found(suggestion, from, to)
     }
 
     private fun template(rule: WritingRule, kind: WritingRules.Kind): String =
@@ -285,15 +299,34 @@ class WritingCheck(val rules: WritingRules) {
         return true
     }
 
-    /** Actionable suggestions never overlap: correctness first, rules before the model. */
-    private fun merge(found: List<WritingSuggestion>): List<WritingSuggestion> {
+    /**
+     * Actionable suggestions never conflict: correctness first, rules before
+     * the model. Correctness is listed before the style groups, so a card
+     * about clarity or tone never comes ahead of a mistake.
+     */
+    private fun merge(found: List<WritingSuggestion>, text: String): List<WritingSuggestion> {
         fun priority(s: WritingSuggestion) = s.category.ordinal * 2 + if (s.source == WritingSuggestion.Source.RULE) 0 else 1
         val accepted = ArrayList<WritingSuggestion>()
         for (s in found.filter { it.isActionable }.sortedWith(compareBy({ priority(it) }, { it.start }))) {
-            if (accepted.none { it.overlaps(s) }) accepted.add(s)
+            if (accepted.none { conflicts(it, s, text) }) accepted.add(s)
         }
         val info = found.filter { !it.isActionable }.distinctBy { Triple(it.kind, it.start, it.end) }
-        return (accepted + info).sortedWith(compareBy({ it.markStart }, { priority(it) }))
+        return (accepted + info).sortedWith(compareBy({ it.category.ordinal }, { it.markStart }, { priority(it) }))
+    }
+
+    /**
+     * Two suggestions that overlap, or one that adds words right beside the
+     * other: "thanks for invite me" can gain "the" or become "thanks for
+     * inviting me", and accepting both reads "for the inviting me".
+     */
+    private fun conflicts(a: WritingSuggestion, b: WritingSuggestion, text: String): Boolean =
+        a.overlaps(b) || addsBeside(a, b, text) || addsBeside(b, a, text)
+
+    private fun addsBeside(add: WritingSuggestion, other: WritingSuggestion, text: String): Boolean {
+        if (add.shownOriginal.isNotEmpty() || add.shownReplacement?.any(Char::isLetter) != true) return false
+        val from = if (add.start <= other.start) add.end else other.end
+        val to = if (add.start <= other.start) other.start else add.start
+        return from <= to && text.substring(from, to).isBlank()
     }
 
     // ── tone and statistics ───────────────────────────────────────────────

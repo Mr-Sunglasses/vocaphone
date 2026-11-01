@@ -427,6 +427,9 @@ class VocaPhoneViewModel @JvmOverloads constructor(
     fun setWritingDelivery(enabled: Boolean) =
         viewModelScope.launch { container.settings.setWritingDelivery(enabled) }
 
+    fun setWritingSerialComma(enabled: Boolean) =
+        viewModelScope.launch { container.settings.setWritingSerialComma(enabled) }
+
     fun setWritingTone(enabled: Boolean) =
         viewModelScope.launch { container.settings.setWritingTone(enabled) }
 

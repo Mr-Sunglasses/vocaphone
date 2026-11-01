@@ -70,6 +70,7 @@ import com.vocahq.vocaphone.writing.WritingCheck
 import com.vocahq.vocaphone.writing.WritingLanguage
 import com.vocahq.vocaphone.writing.WritingSuggestion
 import com.vocahq.vocaphone.writing.writingCategories
+import com.vocahq.vocaphone.writing.writingOptIn
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -301,7 +302,7 @@ private suspend fun check(container: com.vocahq.vocaphone.AppContainer, text: St
     } else {
         null
     }
-    val options = WritingCheck.Options(settings.writingCategories(), keep, typed = true)
+    val options = WritingCheck.Options(settings.writingCategories(), keep, typed = true, optIn = settings.writingOptIn())
     val report = checkUntilCancelled(checker, text, model, options)
     return if (settings.writingTone) report else report.copy(tones = emptyList())
 }

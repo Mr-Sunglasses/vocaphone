@@ -49,6 +49,7 @@ data class WritingSettingsActions(
     val onClarity: (Boolean) -> Unit = {},
     val onEngagement: (Boolean) -> Unit = {},
     val onDelivery: (Boolean) -> Unit = {},
+    val onSerialComma: (Boolean) -> Unit = {},
     val onTone: (Boolean) -> Unit = {},
     val onTypoAutoFix: (Boolean) -> Unit = {},
     /** The system spell checker setting; null where it cannot be opened. */
@@ -126,6 +127,13 @@ internal fun WritingCheckSettingsGroup(
             supporting = "Hedging like “I just wanted to”.",
             checked = settings.writingDelivery,
             onCheckedChange = actions.onDelivery,
+        )
+        SettingsDivider()
+        SettingsSwitchRow(
+            title = "Serial comma",
+            supporting = "Suggest the comma before “and” in a list: “eggs, milk, and bread”.",
+            checked = settings.writingSerialComma,
+            onCheckedChange = actions.onSerialComma,
         )
         SettingsDivider()
         SettingsSwitchRow(
