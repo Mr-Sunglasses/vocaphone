@@ -5,8 +5,10 @@ import Foundation
 /// is added or removed; `markStart..<markEnd` is the word to underline. A nil
 /// `replacement` is information only. Mirrors WritingSuggestion.kt.
 struct WritingSuggestion: Equatable, Codable, Sendable {
-    /// Where a suggestion came from: the grammar model, a rule, the text's shape, or the spelling dictionary.
-    enum Source: String, Codable, Sendable { case model, rule, text, dictionary }
+    /// Where a suggestion came from: the grammar model, a rule, the text's
+    /// shape, the spelling dictionary, or (in the app) the system's grammar
+    /// check or a generated Deep check (`AppleProofreading`).
+    enum Source: String, Codable, Sendable { case model, rule, text, dictionary, system, generated }
 
     var start: Int
     var end: Int

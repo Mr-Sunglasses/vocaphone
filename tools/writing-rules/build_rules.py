@@ -32,6 +32,9 @@ KINDS = {
   "comparison":      ("correctness", "Comparison", False, "“{result}” already compares, so “{1}” isn't needed."),
   "word_choice":     ("correctness", "Word choice", False, "“{replacement}” may be the word you meant."),
   "comma":           ("correctness", "Missing comma", False, "Add a comma after “{1}”."),
+  # The iOS Writing check screen's two Apple checkers (AppleProofreading.swift).
+  "system_grammar":  ("correctness", "Grammar", False, "{reason}"),
+  "deep_check":      ("correctness", "Deep check", False, "{reason}"),
   # clarity
   "wordiness":       ("clarity", "Wordy phrase", False, "“{result}” says the same thing in fewer words."),
   "redundancy":      ("clarity", "Redundant phrase", False, "“{match}” repeats itself; “{result}” is enough."),

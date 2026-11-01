@@ -102,7 +102,18 @@ the **spelling dictionary** (`assets/keyboard/en-spelling.txt`, a SCOWL word
 list) and the **agreement checks** with their part-of-speech tagger
 (`assets/keyboard/en-pos.bin`) ship inside the app and the keyboard and need no
 download, no ONNX Runtime and no network, so they also run in the F-Droid build
-and inside the iOS keyboard extension. The **grammar model** is the Fix grammar model above,
+and inside the iOS keyboard extension.
+
+The iOS **Writing check screen** (in the app, never the keyboard) can also ask
+Apple's own on-device checkers. On iOS 27 it passes the text to the system's
+grammar check (`UITextChecker`), which runs on the iPhone. On iPhones with
+Apple Intelligence, a **Deep check** button asks the on-device Apple
+Intelligence model (`SystemLanguageModel` in the Foundation Models framework,
+not Private Cloud Compute) for a list of edits, only when the user taps it.
+Neither is sent anywhere by VocaPhone, and their suggestions are offered like
+any other: nothing changes until the user accepts one. Deep check's are
+generated, so the screen says so, and each must name words that are in the
+text and change at most four of them. The **grammar model** is the Fix grammar model above,
 used only once it has been downloaded. None of them sends the text anywhere. Suggestions are
 only *offered*: nothing in a field changes unless the user taps one, with one
 exception the user has to turn on, **Fix obvious typos as I type**, which

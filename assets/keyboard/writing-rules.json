@@ -110,6 +110,18 @@
    "mechanical": false,
    "message": "Add a comma after “{1}”."
   },
+  "system_grammar": {
+   "category": "correctness",
+   "title": "Grammar",
+   "mechanical": false,
+   "message": "{reason}"
+  },
+  "deep_check": {
+   "category": "correctness",
+   "title": "Deep check",
+   "mechanical": false,
+   "message": "{reason}"
+  },
   "wordiness": {
    "category": "clarity",
    "title": "Wordy phrase",

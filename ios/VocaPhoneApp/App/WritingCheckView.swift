@@ -10,8 +10,11 @@ struct WritingCheckRequest: Identifiable, Equatable {
 /// Writing check in the app: Grammarly's editor, on this iPhone. Paste or
 /// write, and every suggestion is underlined in its group's colour, with a
 /// card for each, a score, readability and how the text sounds. The rules run
-/// here; the grammar model joins in when it is downloaded. Nothing is sent
-/// anywhere. Mirrors android/.../ui/WritingCheckScreen.kt.
+/// here; the grammar model joins in when it is downloaded, and so do Apple's
+/// own checkers where the iPhone has them (`AppleProofreading`): the system
+/// grammar check on iOS 27, and Deep check with Apple Intelligence when the
+/// user taps for it. Nothing is sent anywhere. Mirrors
+/// android/.../ui/WritingCheckScreen.kt.
 struct WritingCheckView: View {
     @Environment(RecordingCoordinator.self) private var coordinator
     @Environment(\.colorScheme) private var colorScheme
@@ -25,6 +28,21 @@ struct WritingCheckView: View {
     @State private var didCopy = false
     @State private var dismissed = Set<String>()
     @State private var checker: WritingCheck?
+    /// The user's own words, lower case: Apple's checkers may not touch them either.
+    @State private var keepWords = Set<String>()
+    /// What Deep check found, for the text it checked, moved along as suggestions are accepted.
+    @State private var deep: DeepResult?
+    @State private var deepState = DeepState.idle
+
+    private struct DeepResult {
+        let text: String
+        let suggestions: [WritingSuggestion]
+    }
+
+    private enum DeepState: Equatable {
+        case idle, running, failed
+        case done(Int)
+    }
 
     init(initialText: String = "") {
         _text = State(initialValue: initialText)
@@ -37,7 +55,9 @@ struct WritingCheckView: View {
     /// would land on other words and Accept would edit the wrong place; until
     /// the next check finishes there is nothing to show. As on Android.
     private var current: WritingCheck.Report? {
-        report.flatMap { $0.text == text ? $0 : nil }
+        guard let report, report.text == text else { return nil }
+        guard let deep, deep.text == text else { return report }
+        return AppleProofreading.merged(report, deep.suggestions, keep: keepWords)
     }
 
     private var suggestions: [WritingSuggestion] {
@@ -73,6 +93,12 @@ struct WritingCheckView: View {
                 } else if report != nil, !text.isEmpty {
                     if let current {
                         Section { summary(current) }
+                        if AppleProofreading.deepCheckAvailable {
+                            Section { deepCheckButton } footer: {
+                                Text("Uses Apple Intelligence on this iPhone; nothing is sent anywhere. Its "
+                                    + "suggestions are generated, so read each one before you accept it.")
+                            }
+                        }
                         if !current.suggestions.isEmpty {
                             Section { filterBar(current) }
                         }
@@ -178,6 +204,8 @@ struct WritingCheckView: View {
             categories: Self.categories(), keep: keep, typed: true, optIn: KeyboardPreferences.writingOptIn
         )
         let tone = KeyboardPreferences.writingTone
+        let keepSet = Set(keep.map(WritingToken.normalize))
+        keepWords = keepSet
         let work = Task.detached(priority: .userInitiated) { () -> Outcome in
             // The rules are English ones; on another language they would
             // "correct" words that are right. As the keyboard does.
@@ -197,7 +225,7 @@ struct WritingCheckView: View {
             work.cancel()
         }
         guard !Task.isCancelled, snapshot == text else { return }
-        let result: WritingCheck.Report
+        var result: WritingCheck.Report
         switch outcome {
         case .cancelled:
             return
@@ -209,6 +237,15 @@ struct WritingCheckView: View {
             notEnglish = nil
             result = checked
         }
+        #if compiler(>=6.4)
+        // The system's own grammar check, where there is one: on this iPhone,
+        // and only what does not clash with what was already found.
+        if #available(iOS 27, *) {
+            let extra = await AppleProofreading.systemGrammar(snapshot, rules: checker.rules)
+            guard !Task.isCancelled, snapshot == text else { return }
+            result = AppleProofreading.merged(result, extra, keep: keepSet)
+        }
+        #endif
         // Tone off in Settings: how the text sounds is not shown, as in the
         // keyboard and on Android.
         report = tone ? result : WritingCheck.Report(
@@ -231,11 +268,16 @@ struct WritingCheckView: View {
         guard let report = current else { return }
         var edited = text
         var remaining = report.suggestions
+        var deepRemaining = deep?.text == text ? deep?.suggestions ?? [] : []
         for s in chosen.sorted(by: { $0.start > $1.start }) {
             guard let next = WritingCheck.apply(edited, s) else { continue }
             remaining = WritingCheck.rebase(remaining.filter { $0 != s }, old: edited, new: next)
+            deepRemaining = WritingCheck.rebase(deepRemaining.filter { $0 != s }, old: edited, new: next)
             edited = next
         }
+        // Deep check's suggestions stay with the text until the user checks
+        // again: the automatic check of the edited text does not ask the model.
+        deep = deepRemaining.isEmpty ? nil : DeepResult(text: edited, suggestions: deepRemaining)
         self.report = WritingCheck.Report(
             text: edited, suggestions: remaining, tones: report.tones, stats: report.stats,
             modelPending: report.modelPending
@@ -243,7 +285,49 @@ struct WritingCheckView: View {
         text = edited
     }
 
+    /// Asks Apple Intelligence for a list of edits to the text as it is now.
+    private func deepCheck() async {
+        guard let checker, !text.isEmpty, deepState != .running else { return }
+        let snapshot = text
+        deepState = .running
+        do {
+            let found = try await AppleProofreading.deepCheck(snapshot, rules: checker.rules)
+            guard snapshot == text else {
+                deepState = .idle
+                return
+            }
+            deep = DeepResult(text: snapshot, suggestions: found)
+            deepState = .done(found.count)
+        } catch {
+            deepState = .failed
+        }
+    }
+
     // MARK: - Views
+
+    @ViewBuilder
+    private var deepCheckButton: some View {
+        Button {
+            Task { await deepCheck() }
+        } label: {
+            HStack {
+                Label("Deep check", systemImage: "sparkles")
+                Spacer()
+                switch deepState {
+                case .running:
+                    ProgressView()
+                case let .done(count) where deep?.text == text:
+                    Text(count == 0 ? "Nothing more" : "\(count) more")
+                        .foregroundStyle(.secondary)
+                case .failed:
+                    Text("Not available right now").foregroundStyle(.secondary)
+                default:
+                    EmptyView()
+                }
+            }
+        }
+        .disabled(deepState == .running || text.isEmpty)
+    }
 
     private func summary(_ report: WritingCheck.Report) -> some View {
         HStack(alignment: .center, spacing: 16) {
