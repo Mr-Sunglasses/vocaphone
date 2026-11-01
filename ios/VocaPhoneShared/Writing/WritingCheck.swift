@@ -326,14 +326,19 @@ struct WritingCheck: Sendable {
 
     /// A letter three times in a row: "sooo", "yesss".
     private static func stretched(_ word: String) -> Bool {
-        let u = Array(word.utf16)
+        let u: [UInt16] = Array(word.utf16)
         guard u.count >= 3 else { return false }
-        return (2..<u.count).contains { u[$0] == u[$0 - 1] && u[$0] == u[$0 - 2] }
+        for i in 2..<u.count where u[i] == u[i - 1] && u[i] == u[i - 2] {
+            return true
+        }
+        return false
     }
+
+    private static let laughterLetters: Set<Unicode.Scalar> = ["h", "a", "e"]
 
     /// "hahaha", "hehe", "ahahah".
     private static func laughter(_ word: String) -> Bool {
-        word.utf16.count >= 4 && word.unicodeScalars.allSatisfy { $0 == "h" || $0 == "a" || $0 == "e" }
+        word.utf16.count >= 4 && word.unicodeScalars.allSatisfy { laughterLetters.contains($0) }
     }
 
     // MARK: - Information only

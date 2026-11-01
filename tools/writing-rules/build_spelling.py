@@ -8,9 +8,11 @@
 The words come from the English Speller Database (SCOWL), size 60 (the size
 most spell checkers ship as "en_US"), with US, British, Canadian and Australian
 spellings all accepted: someone writing "colour" or "organise" is not wrong.
-They are downloaded from the database's own list builder at app.aspell.net at
-four sizes, so each word also says how common it is. Possessives ("dog's") are
-left out because the checkers strip "'s" themselves.
+They are downloaded over HTTPS from the database's own list builder at
+app.aspell.net at four sizes, so each word also says how common it is, and each
+download must match its SHA-256 in `PINS` (lists saved with `--lists` too): a
+changed list fails the build until someone reviews it and updates the pin.
+Possessives ("dog's") are left out because the checkers strip "'s" themselves.
 
 The file has sections, each a heading line then one word per line:
 
@@ -27,6 +29,8 @@ frequency list, when it is there, and its section otherwise. See
 from __future__ import annotations
 
 import argparse
+import hashlib
+import ssl
 import sys
 import urllib.request
 from pathlib import Path
@@ -34,9 +38,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "assets" / "keyboard" / "en-spelling.txt"
 SIZES = [35, 40, 50, 60]
-URL = ("http://app.aspell.net/create?max_size={size}&spelling=US&spelling=GBs&spelling=GBz&spelling=CA"
-       "&spelling=AU&max_variant=1&diacritic=strip&special=hacker&special=roman-numerals"
-       "&download=wordlist&encoding=utf-8&format=inline")
+HOST = "app.aspell.net"
+QUERY = ("/create?max_size={size}&spelling=US&spelling=GBs&spelling=GBz&spelling=CA"
+         "&spelling=AU&max_variant=1&diacritic=strip&special=hacker&special=roman-numerals"
+         "&download=wordlist&encoding=utf-8&format=inline")
+# SHA-256 of each size's list as the builder returns it (ESDB revision in the
+# file's header). Update only after reviewing what changed.
+PINS = {
+    35: "83a01653778d7d5de36b5c19149e2be1f20aa6d8c72d62e31f8ec2f89ecdc3bb",
+    40: "989b7d5cf389796ceab8736afa751d5116143d1d72812de183b9bbb793813717",
+    50: "d705644404271412f07dc398bfe9497bb929cc59f0accb7a922a0933b057bc15",
+    60: "17332d3e07a9d6c8b89a8ab89482c777865450124d8e8085130eb7c0f5cfcfca",
+}
 
 # Words people type that SCOWL size 60 does not have. Accepted, never suggested.
 ACCEPT = """
@@ -64,11 +77,22 @@ microservice microservices timezone timezones rideshare carpool carpooling skinc
 LOWERED_ACRONYMS_EXCEPT = {"amd"}
 
 
+# HTTPS with certificate and host checks, to the list builder's fixed host only.
+_HTTPS = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+
+
+def download(size: int) -> bytes:
+    """One size's list, over HTTPS from the list builder's fixed host."""
+    with _HTTPS.open(f"https://{HOST}{QUERY.format(size=size)}", timeout=300) as response:
+        return response.read()
+
+
 def fetch(size: int, lists: Path | None) -> str:
-    if lists is not None:
-        return (lists / f"size{size}.txt").read_text(encoding="utf-8")
-    with urllib.request.urlopen(URL.format(size=size), timeout=120) as r:
-        return r.read().decode("utf-8")
+    data = (lists / f"size{size}.txt").read_bytes() if lists is not None else download(size)
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != PINS[size]:
+        sys.exit(f"SCOWL size {size} is not the pinned list (SHA-256 {digest}); review it, then update PINS")
+    return data.decode("utf-8")
 
 
 def split(text: str) -> tuple[str, list[str]]:
