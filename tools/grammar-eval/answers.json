@@ -8,9 +8,10 @@
 "plausible_pairs.json": "201a30cd6fcc129070c0637b4566820c7cb4d77ef3969a7575af591a17e281f4",
 "tokenizer.json": "7430be0917758ae85b0322ed2686b9e14e7cb322e2cafa5f87f526544ccd829b"
 },
-"infer.py": "7419de47c74af442104d1fc5f8f578596273b8fddf40a98a4245a8125c2a7df2",
+"infer.py": "028d63e64904be00a5fd070a8045ae935fe660767d51c982e6d5ade9c5f90d41",
 "bias": {
-"balanced": 3.0
+"balanced": 3.0,
+"thorough": 1.0
 }
 },
 "sentences": [

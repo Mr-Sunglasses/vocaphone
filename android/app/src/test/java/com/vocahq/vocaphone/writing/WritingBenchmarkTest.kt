@@ -204,7 +204,7 @@ class WritingBenchmarkTest {
         val CONFIGURATIONS = linkedMapOf<String, String?>("rules" to null, "balanced" to "balanced", "thorough" to "thorough")
 
         /** Each answers.json tier's KEEP bias, which `answers.py` must have used. */
-        val TIER_BIAS = mapOf("balanced" to GrammarTagger.KEEP_BIAS)
+        val TIER_BIAS = mapOf("balanced" to GrammarTagger.KEEP_BIAS, "thorough" to GrammarTagger.THOROUGH_KEEP_BIAS)
 
         /** Floors are written to a tenth of a percent, rounded: 133 of 163 is 81.595%, written 0.816. */
         const val FLOOR_ROUNDING = 0.0005
