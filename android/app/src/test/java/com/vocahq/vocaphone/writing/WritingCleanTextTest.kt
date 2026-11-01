@@ -19,7 +19,7 @@ class WritingCleanTextTest {
 
     @Test
     fun correctTextGetsAlmostNoCorrectnessSuggestions() {
-        val check = WritingCheck(WritingFixtures.rules)
+        val check = WritingCheck(WritingFixtures.rules, WritingFixtures.spelling)
         val cases = lines("clean_en.jsonl")
         val flagged = cases.mapNotNull { case ->
             val text = case.getString("input")
@@ -33,7 +33,7 @@ class WritingCleanTextTest {
     /** Every rule fix applied to the chat set must move a line toward what was meant, never away. */
     @Test
     fun ruleFixesOnTypedTextNeverMakeALineWorse() {
-        val check = WritingCheck(WritingFixtures.rules)
+        val check = WritingCheck(WritingFixtures.rules, WritingFixtures.spelling)
         val worse = lines("typed_en.jsonl").mapNotNull { case ->
             val input = case.getString("input")
             val expected = case.getString("expected")

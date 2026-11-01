@@ -189,8 +189,9 @@ final class KeyboardViewController: UIInputViewController, UIInputViewAudioFeedb
         configureWritingPanel()
         Task.detached(priority: .utility) {
             let rules = WritingRules.bundled()
+            let spelling = WritingSpelling.bundled()
             await MainActor.run { [weak self] in
-                self?.writingChecker = rules.map { WritingCheck(rules: $0) }
+                self?.writingChecker = rules.map { WritingCheck(rules: $0, spelling: spelling) }
             }
         }
         typing.onWordListLoaded = { [weak self] list in

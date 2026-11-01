@@ -61,11 +61,11 @@ for, the keyboard's Writing check button (and every pause in that field after
 it) and the Writing check screen: each edit is a card the user accepts or
 dismisses, so a few more wrong ones are worth the many more right ones.
 
-| Set | Rules only (iOS keyboard without the app, F-Droid) | Rules and model, balanced | Rules and model, thorough |
+| Set | Rules and spelling only (iOS keyboard without the app, F-Droid) | Rules and model, balanced | Rules and model, thorough |
 |---|---|---|---|
-| everyday (70) | 52.9% | 71.4% | 78.6% |
-| heldout (200) | 42.0% | 68.5% | 75.0% |
-| typed (193) | 52.8% | 75.1% | 78.8% |
+| everyday (70) | 55.7% | 72.9% | 80.0% |
+| heldout (200) | 53.5% | 71.0% | 77.5% |
+| typed (193) | 54.4% | 76.2% | 79.8% |
 | dictation errors (163) | 45.4% | 81.6% | 84.0% |
 | correct lines flagged: heldout_clean (150), clean (300) | 0.0%, 0.0% | 0.7%, 0.3% | 0.7%, 0.7% |
 

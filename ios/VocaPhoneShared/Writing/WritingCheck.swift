@@ -51,8 +51,13 @@ struct WritingCheck: Sendable {
     }
 
     let rules: WritingRules
+    /// The spelling dictionary; nil checks with the rules (and model) alone.
+    let spelling: WritingSpelling?
 
-    init(rules: WritingRules) { self.rules = rules }
+    init(rules: WritingRules, spelling: WritingSpelling? = nil) {
+        self.rules = rules
+        self.spelling = spelling
+    }
 
     func check(_ text: String, model: Model? = nil, options: Options = Options()) -> Report {
         let tokens = WritingText.tokenize(text)
@@ -64,6 +69,15 @@ struct WritingCheck: Sendable {
 
         for sentence in sentences {
             found += ruleSuggestions(text, tokens, sentence, protected, keep, options)
+        }
+        if let spelling {
+            // A word a rule already fixes is not looked up, and a word met
+            // twice is looked up once.
+            let fixed = found.filter(\.isActionable)
+            var guesses: [String: WritingSpelling.Guess?] = [:]
+            for sentence in sentences {
+                found += spellingSuggestions(text, tokens, sentence, protected, keep, spelling, fixed, &guesses)
+            }
         }
         if let model {
             let edits = ModelEdits(rules: rules)
@@ -248,6 +262,80 @@ struct WritingCheck: Sendable {
         return rules.messages[message] ?? message
     }
 
+    // MARK: - Spelling
+
+    /// Words the dictionary does not know, with the word most likely meant.
+    /// What is left alone, and why, is in `WritingCheck.kt`.
+    private func spellingSuggestions(
+        _ text: String, _ tokens: [WritingToken], _ sentence: WritingSentence, _ protected: [NSRange],
+        _ keep: Set<String>, _ dictionary: WritingSpelling, _ fixed: [WritingSuggestion],
+        _ guesses: inout [String: WritingSpelling.Guess?]
+    ) -> [WritingSuggestion] {
+        let kind = rules.kind("spelling")
+        var out: [WritingSuggestion] = []
+        for i in sentence.first...sentence.last {
+            let t = tokens[i]
+            guard t.hasLetter, !keep.contains(t.key), t.text.utf16.count >= WritingSpelling.minLength else { continue }
+            let scalars = Array(t.text.unicodeScalars)
+            guard scalars.allSatisfy({ ("a"..."z").contains($0) || ("A"..."Z").contains($0) || $0 == "'" || $0 == "’" })
+            else { continue }
+            if protected.contains(where: { t.start < $0.location + $0.length && $0.location < t.end }) { continue }
+            if Self.touchesHyphen(tokens, i) { continue }
+            if fixed.contains(where: { $0.start < t.end && t.start < $0.end }) { continue }
+            let capitalised = ("A"..."Z").contains(scalars[0])
+            if scalars.dropFirst().contains(where: { ("A"..."Z").contains($0) }) { continue }
+            let opens = WritingText.isSentenceStart(tokens, sentence, i)
+            if capitalised, !opens { continue }
+            if Self.stretched(t.key) || Self.laughter(t.key) { continue }
+            if dictionary.isKnown(t.text) { continue }
+            if t.key.contains("'") { continue }
+            let looked: WritingSpelling.Guess?
+            if let known = guesses[t.key] {
+                looked = known
+            } else {
+                looked = dictionary.suggest(t.key)
+                guesses[t.key] = .some(looked)
+            }
+            guard let guess = looked else { continue }
+            if capitalised, guess.edits > 1 || guess.score > Self.capitalisedMaxScore { continue }
+            let replacement = capitalised ? guess.word.prefix(1).uppercased() + guess.word.dropFirst() : guess.word
+            let edit = WritingEdits.build(tokens, floor: sentence.first, from: i, to: i + 1, inserted: replacement)
+            let values = ["original": t.text, "replacement": replacement]
+            out.append(WritingSuggestion(
+                start: edit.start, end: edit.end, original: text.utf16Slice(edit.start, edit.end),
+                replacement: edit.replacement, markStart: edit.markStart, markEnd: edit.markEnd,
+                kind: kind.id, category: kind.category, title: kind.title,
+                message: WritingEdits.format(kind.message, values), mechanical: guess.sure, source: .dictionary, rule: nil
+            ))
+        }
+        return out
+    }
+
+    private static func touchesHyphen(_ tokens: [WritingToken], _ i: Int) -> Bool {
+        let before = i > 0 ? tokens[i - 1] : nil
+        let after = i + 1 < tokens.count ? tokens[i + 1] : nil
+        if let before, hyphens.contains(before.text), before.end == tokens[i].start { return true }
+        if let after, hyphens.contains(after.text), after.start == tokens[i].end { return true }
+        return false
+    }
+
+    private static let hyphens: Set<String> = ["-", "‐", "‑"]
+
+    /// The most a capitalised word opening a sentence may score to be offered: one slip from a common word.
+    private static let capitalisedMaxScore = WritingSpelling.edit * WritingSpelling.distanceWeight + 20
+
+    /// A letter three times in a row: "sooo", "yesss".
+    private static func stretched(_ word: String) -> Bool {
+        let u = Array(word.utf16)
+        guard u.count >= 3 else { return false }
+        return (2..<u.count).contains { u[$0] == u[$0 - 1] && u[$0] == u[$0 - 2] }
+    }
+
+    /// "hahaha", "hehe", "ahahah".
+    private static func laughter(_ word: String) -> Bool {
+        word.utf16.count >= 4 && word.unicodeScalars.allSatisfy { $0 == "h" || $0 == "a" || $0 == "e" }
+    }
+
     // MARK: - Information only
 
     private func longSentences(_ text: String, _ tokens: [WritingToken], _ sentences: [WritingSentence]) -> [WritingSuggestion] {
@@ -319,7 +407,11 @@ struct WritingCheck: Sendable {
     /// the model. Correctness is listed before the style groups, so a card
     /// about clarity or tone never comes ahead of a mistake.
     private func merge(_ found: [WritingSuggestion], _ text: String) -> [WritingSuggestion] {
-        func priority(_ s: WritingSuggestion) -> Int { s.category.order * 2 + (s.source == .rule ? 0 : 1) }
+        // Rules before the model, the model before the dictionary, which knows
+        // nothing of the sentence around a word.
+        func priority(_ s: WritingSuggestion) -> Int {
+            s.category.order * 3 + (s.source == .rule ? 0 : s.source == .model ? 1 : 2)
+        }
         var accepted: [WritingSuggestion] = []
         let actionable = Self.stableSorted(found.filter(\.isActionable)) { a, b in
             (priority(a), a.start) < (priority(b), b.start)
