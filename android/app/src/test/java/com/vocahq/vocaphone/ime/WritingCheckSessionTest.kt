@@ -24,6 +24,8 @@ class WritingCheckSessionTest {
     private var cursor = -1
     private var reads = 0
     private val asked = mutableListOf<String>()
+    /** Whether each call in [asked] was the thorough tier. */
+    private val tiers = mutableListOf<Boolean>()
     private var loaded = true
     private var modelOn = true
     private var english = true
@@ -45,8 +47,9 @@ class WritingCheckSessionTest {
             if (!modelOn) {
                 null
             } else {
-                { sentence, _ ->
+                { sentence, _, thorough ->
                     asked.add(sentence)
+                    tiers.add(thorough)
                     duringAsk?.also { duringAsk = null }?.invoke()
                     if (!loaded) null else sentence.replace("She go ", "She goes ").replace(" was ", " were ")
                 }
@@ -73,6 +76,22 @@ class WritingCheckSessionTest {
         pause()
         assertEquals(listOf("go → goes", "of → have"), labels())
         assertEquals(2, session.report.value?.chips?.size)
+    }
+
+    @Test
+    fun `the button asks the model for the thorough tier, and so does every pause after it`() = scope.runTest {
+        type("She go home. ")
+        pause()
+        assertEquals(listOf(false), tiers)
+        session.checkNow(options)
+        runCurrent()
+        // The thorough tier keeps its own answers, so the sentence is asked again.
+        assertEquals(listOf("She go home.", "She go home."), asked)
+        assertEquals(listOf(false, true), tiers)
+        type("She go home. The cars was late. ")
+        pause()
+        assertEquals(listOf("She go home.", "She go home.", "The cars was late."), asked)
+        assertEquals(listOf(false, true, true), tiers)
     }
 
     @Test

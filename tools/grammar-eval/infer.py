@@ -30,6 +30,9 @@ from tokenizers import Tokenizer
 # "Balanced". v2.0 is tuned for 3 (its card's default); 4 is "Only sure fixes".
 KEEP_BIAS = 3.0
 SURE_KEEP_BIAS = 4.0
+# A Writing check the user asked for, where every edit is a card they accept or
+# dismiss: more fixes for a few more wrong ones. Never dictation.
+THOROUGH_KEEP_BIAS = 1.0
 MAX_PASSES = 3
 # The model's position table holds 160; one goes to [BOS].
 MAX_TOKENS = 150

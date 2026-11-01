@@ -106,9 +106,14 @@ final class WritingCheckClient {
     /// The question in flight. It expires with the request, so an app that
     /// ended before answering cannot block the model for good. Only these
     /// sentences count as asked.
-    private var outstanding: (id: UUID, sentences: [String], sentAt: Date)?
-    /// The model's answer per sentence, for this field.
+    private var outstanding: (id: UUID, sentences: [String], sentAt: Date, thorough: Bool)?
+    /// The model's answer per tier and sentence (`answerKey`), for this field.
     private var answers: [String: String] = [:]
+    /// The user asked for a check in this field with the button: every check
+    /// of it from then on is thorough (`GrammarTagger.thoroughKeepBias` in the
+    /// app), so a pause never trades the suggestions the button found for
+    /// fewer. A new field starts over. Mirrors `following` on Android.
+    private var thorough = false
     private var answerOrder: [String] = []
     /// How many times the app answered a sentence with nothing (the model
     /// failed to load, or is turned off there). Such a sentence waits for the
@@ -165,6 +170,7 @@ final class WritingCheckClient {
             pending = nil
             stopChecking()
             abandonOutstanding()
+            thorough = false
             lastField = nil
             publish(nil)
             return
@@ -211,6 +217,7 @@ final class WritingCheckClient {
     ) {
         buttonCheck?.cancel()
         buttonTaps += 1
+        thorough = true
         let tap = buttonTaps
         buttonCheck = Task { [weak self] in
             try? await Task.sleep(for: delay)
@@ -251,6 +258,7 @@ final class WritingCheckClient {
         let current = generation
         let modelInUse = modelReady() && isAppRunning()
         let known: [String: String]? = modelInUse ? answers : nil
+        let thorough = thorough
         let checkOptions = WritingCheck.Options(categories: options.categories, keep: Set(options.keep), typed: true)
         if !isChecking {
             isChecking = true
@@ -261,7 +269,7 @@ final class WritingCheckClient {
                 var missing: [String] = []
                 let model: WritingCheck.Model? = known.map { known in
                     { sentence in
-                        if let answer = known[sentence] { return answer }
+                        if let answer = known[Self.answerKey(sentence, thorough: thorough)] { return answer }
                         missing.append(sentence)
                         return nil
                     }
@@ -276,7 +284,7 @@ final class WritingCheckClient {
             }
             report = makeReport(field, result, tone: options.tone)
             onChange?()
-            if modelInUse { askFor(missing, keep: options.keep, retry: retry) }
+            if modelInUse { askFor(missing, keep: options.keep, thorough: thorough, retry: retry) }
         }
     }
 
@@ -361,7 +369,7 @@ final class WritingCheckClient {
     /// Asks the app about the sentences the model has not answered: not the
     /// ones already in flight, and one the app answered with nothing only on a
     /// `retry`, and only `maximumAsks` times in all.
-    private func askFor(_ missing: [String], keep: [String], retry: Bool) {
+    private func askFor(_ missing: [String], keep: [String], thorough: Bool, retry: Bool) {
         // An expired question is forgotten first, or its sentences would
         // count as asked forever.
         expireOutstanding()
@@ -372,7 +380,7 @@ final class WritingCheckClient {
             let failed = unanswered[sentence] ?? 0
             return retry ? failed < Self.maximumAsks : failed == 0
         }
-        ask(sentences, keep: keep)
+        ask(sentences, keep: keep, thorough: thorough)
     }
 
     private func expireOutstanding() {
@@ -380,14 +388,14 @@ final class WritingCheckClient {
         abandonOutstanding()
     }
 
-    private func ask(_ sentences: [String], keep: [String]) {
+    private func ask(_ sentences: [String], keep: [String], thorough: Bool) {
         guard !sentences.isEmpty, outstanding == nil else { return }
         let joined = sentences.joined(separator: " ")
         // Only the protected words these sentences contain. The list includes
         // every contact name `UILexicon` offers, and those have no business in
         // a file because one of them might have been typed.
         let present = Self.wordsPresent(keep, in: joined)
-        let request = TypedGrammarRequest(sentences: sentences, keep: present, createdAt: now())
+        let request = TypedGrammarRequest(sentences: sentences, keep: present, createdAt: now(), thorough: thorough)
         // Listening before asking: an app that answers before a listener
         // registered afterwards would ping nobody.
         if observation == nil {
@@ -395,7 +403,7 @@ final class WritingCheckClient {
         }
         // No Full Access is no App Group, and so no way to ask.
         guard (try? store.saveTypedGrammarRequest(request)) != nil else { return }
-        outstanding = (request.id, request.sentences, request.createdAt)
+        outstanding = (request.id, request.sentences, request.createdAt, thorough)
     }
 
     /// Reads the app's answer. Called on its ping, and by tests.
@@ -406,7 +414,7 @@ final class WritingCheckClient {
         self.outstanding = nil
         for (sentence, corrected) in zip(outstanding.sentences, answer.corrected) {
             if let corrected {
-                remember(sentence, corrected)
+                remember(Self.answerKey(sentence, thorough: outstanding.thorough), corrected)
                 unanswered[sentence] = nil
             } else {
                 // The app could not check it: the rules' report stands, and
@@ -420,9 +428,14 @@ final class WritingCheckClient {
         if let lastField { check(lastField, options, retry: false) }
     }
 
-    private func remember(_ sentence: String, _ corrected: String) {
-        if answers[sentence] == nil { answerOrder.append(sentence) }
-        answers[sentence] = corrected
+    /// The model answers a sentence differently per tier, so each tier keeps its own.
+    nonisolated private static func answerKey(_ sentence: String, thorough: Bool) -> String {
+        (thorough ? "T\u{0}" : "B\u{0}") + sentence
+    }
+
+    private func remember(_ key: String, _ corrected: String) {
+        if answers[key] == nil { answerOrder.append(key) }
+        answers[key] = corrected
         while answerOrder.count > Self.answerCache {
             answers.removeValue(forKey: answerOrder.removeFirst())
         }
@@ -472,6 +485,7 @@ final class WritingCheckClient {
         answerOrder = []
         unanswered = [:]
         dismissed = []
+        thorough = false
         lastField = nil
         publish(nil)
     }

@@ -39,8 +39,12 @@ internal class WritingCheckSession(
     private val read: () -> Field?,
     /** The checker; null until the rules have loaded. */
     private val checker: () -> WritingCheck?,
-    /** The grammar model for one sentence, or null when it is not in use. */
-    private val model: () -> ((String, Set<String>) -> String?)?,
+    /**
+     * The grammar model for one sentence, or null when it is not in use. Its
+     * third argument is whether the user asked for this check (the thorough
+     * tier, [com.vocahq.vocaphone.grammar.GrammarTagger.THOROUGH_KEEP_BIAS]).
+     */
+    private val model: () -> ((String, Set<String>, Boolean) -> String?)?,
     private val isEnglish: (String) -> Boolean,
     private val pauseMillis: Long = PAUSE_MILLIS,
 ) {
@@ -77,7 +81,7 @@ internal class WritingCheckSession(
     /** Suggestions waved away in this field, by [WritingSuggestion.key]. Main thread only. */
     private val dismissed = HashSet<String>()
 
-    /** The model's answer per sentence, for this field. Main thread only. */
+    /** The model's answer per tier and sentence ([answerKey]), for this field. Main thread only. */
     private val answers = object : LinkedHashMap<String, String>(64, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?) = size > ANSWER_CACHE
     }
@@ -98,7 +102,11 @@ internal class WritingCheckSession(
      */
     private var settled: Settled? = null
 
-    /** The user asked for a check in this field: later pauses check it too. */
+    /**
+     * The user asked for a check in this field: later pauses check it too,
+     * and every check of it is thorough, so a pause never trades the
+     * suggestions the button found for fewer.
+     */
     private var following = false
 
     /**
@@ -168,12 +176,13 @@ internal class WritingCheckSession(
         busy.value = true
         try {
             val model = model()
-            var report = ask(checker, field, options, model)
+            val thorough = following
+            var report = ask(checker, field, options, model, thorough)
             if (report.modelPending) {
                 // The model was loading, and asking started the load. One more
                 // try once it has had time.
                 delay(LOAD_RETRY_MILLIS)
-                report = ask(checker, field, options, model)
+                report = ask(checker, field, options, model, thorough)
             }
             // A sentence the model still has not answered keeps the check
             // open: the next pause asks again, even if nothing changed.
@@ -194,13 +203,14 @@ internal class WritingCheckSession(
         checker: WritingCheck,
         field: Field,
         options: Options,
-        model: ((String, Set<String>) -> String?)?,
+        model: ((String, Set<String>, Boolean) -> String?)?,
+        thorough: Boolean,
     ): Report {
         val known = HashMap(answers)
         val used = ConcurrentHashMap<String, String>()
         val era = this.era
         try {
-            return withContext(worker) { run(checker, field, options, model, known, used) }
+            return withContext(worker) { run(checker, field, options, model, thorough, known, used) }
         } finally {
             if (era == this.era) answers.putAll(used)
         }
@@ -210,13 +220,15 @@ internal class WritingCheckSession(
         checker: WritingCheck,
         field: Field,
         options: Options,
-        model: ((String, Set<String>) -> String?)?,
+        model: ((String, Set<String>, Boolean) -> String?)?,
+        thorough: Boolean,
         known: Map<String, String>,
         used: MutableMap<String, String>,
     ): Report {
         val cached = model?.let { ask ->
             WritingCheck.Model { sentence ->
-                (known[sentence] ?: ask(sentence, options.keep))?.also { used[sentence] = it }
+                val key = answerKey(thorough, sentence)
+                (known[key] ?: ask(sentence, options.keep, thorough))?.also { used[key] = it }
             }
         }
         val result = checker.check(field.text, cached, WritingCheck.Options(options.categories, options.keep, typed = true))
@@ -321,5 +333,8 @@ internal class WritingCheckSession(
         const val MAX_CHIPS = 3
         private const val ANSWER_CACHE = 256
         private const val MATCH_TAIL = 24
+
+        /** The model answers a sentence differently per tier, so each tier keeps its own. */
+        private fun answerKey(thorough: Boolean, sentence: String) = (if (thorough) "T\u0000" else "B\u0000") + sentence
     }
 }

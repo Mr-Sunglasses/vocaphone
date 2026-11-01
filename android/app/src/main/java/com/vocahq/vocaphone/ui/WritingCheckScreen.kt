@@ -296,7 +296,8 @@ private suspend fun check(container: com.vocahq.vocaphone.AppContainer, text: St
         settings.snippets,
     )
     val model = if (GrammarModelCatalog.available && container.grammarModel.isReady()) {
-        WritingCheck.Model { container.grammar.correctTyped(it, keep) }
+        // The user opened Writing check to have this text checked: the thorough tier.
+        WritingCheck.Model { container.grammar.correctTyped(it, keep, thorough = true) }
     } else {
         null
     }

@@ -25,6 +25,8 @@ import org.junit.Test
  *   the F-Droid build.
  * - `balanced`: the model at the KEEP bias that "Check while typing", the
  *   system spell checker and dictation use.
+ * - `thorough`: the model at the KEEP bias of a check the user asked for, the
+ *   keyboard's Writing check button and the Writing check screen.
  *
  * The full report goes to `build/writing-benchmark.md`. [FLOORS] fails the test
  * when a change catches less, and [CEILINGS] when it flags more correct text;
@@ -199,7 +201,7 @@ class WritingBenchmarkTest {
         )
 
         /** Configuration name → the answers.json tier the model reads, or null for none. */
-        val CONFIGURATIONS = linkedMapOf<String, String?>("rules" to null, "balanced" to "balanced")
+        val CONFIGURATIONS = linkedMapOf<String, String?>("rules" to null, "balanced" to "balanced", "thorough" to "thorough")
 
         /** Each answers.json tier's KEEP bias, which `answers.py` must have used. */
         val TIER_BIAS = mapOf("balanced" to GrammarTagger.KEEP_BIAS)
@@ -211,22 +213,29 @@ class WritingBenchmarkTest {
         val FLOORS = mapOf(
             "everyday · rules" to 0.300,
             "everyday · balanced" to 0.528,
+            "everyday · thorough" to 0.614,
             "heldout · rules" to 0.280,
             "heldout · balanced" to 0.575,
+            "heldout · thorough" to 0.650,
             "typed · rules" to 0.331,
             "typed · balanced" to 0.595,
+            "typed · thorough" to 0.637,
             "dictation · rules" to 0.417,
             "dictation · balanced" to 0.797,
+            "dictation · thorough" to 0.816,
         )
 
         /** Share of correct lines that may get a correctness suggestion. */
         val CEILINGS = mapOf(
             "heldout_clean · rules" to 0.02,
             "heldout_clean · balanced" to 0.02,
+            "heldout_clean · thorough" to 0.02,
             "clean · rules" to 0.02,
             "clean · balanced" to 0.02,
+            "clean · thorough" to 0.02,
             "dictation · rules" to 0.02,
             "dictation · balanced" to 0.02,
+            "dictation · thorough" to 0.02,
         )
     }
 }

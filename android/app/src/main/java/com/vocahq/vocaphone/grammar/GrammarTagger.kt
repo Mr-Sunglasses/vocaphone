@@ -37,7 +37,8 @@ class GrammarTagger(
      * `System.nanoTime()` value; a sentence that would start after it is left
      * as it was, so a long dictation keeps every sentence finished in time.
      * [bias] is added to KEEP's score: [KEEP_BIAS] is "Balanced",
-     * [SURE_KEEP_BIAS] "Only sure fixes".
+     * [SURE_KEEP_BIAS] "Only sure fixes", [THOROUGH_KEEP_BIAS] a check the
+     * user asked for.
      */
     fun correct(
         text: String,
@@ -273,6 +274,15 @@ class GrammarTagger(
         const val KEEP_BIAS = 3.0f
         /** "Only sure fixes": fewer, safer edits. */
         const val SURE_KEEP_BIAS = 4.0f
+        /**
+         * A Writing check the user asked for (the keyboard's button, the
+         * Writing check screen). Every edit becomes a card the user accepts or
+         * dismisses, so a few more wrong ones are worth the many more right
+         * ones: on the benchmark sets it fixes about five points more for 0.4
+         * points more false alarms on correct text. Never used where nothing
+         * is shown first (dictation).
+         */
+        const val THOROUGH_KEEP_BIAS = 1.0f
         const val MAX_PASSES = 3
         /** The position table holds 160; one goes to [BOS]. */
         const val MAX_TOKENS = 150

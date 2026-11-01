@@ -476,7 +476,7 @@ final class RecordingCoordinator {
         // either; the setting is the keyboard's to apply, not the app's.
         typedGrammar = TypedGrammarResponder(
             isEnabled: { grammarModel.isReady },
-            correct: { text, keep in grammar.correctTyped(text, keeping: keep) }
+            correct: { text, keep, thorough in grammar.correctTyped(text, keeping: keep, thorough: thorough) }
         )
         // A process exit can leave an otherwise valid-looking availability
         // marker behind. The new app process is not warm until it arms audio.
@@ -541,7 +541,7 @@ final class RecordingCoordinator {
         let grammarModel = GrammarModelStore(pins: nil, root: nil)
         self.grammarModel = grammarModel
         grammar = GrammarCorrector(directory: { nil }, isReady: { false })
-        typedGrammar = TypedGrammarResponder(isEnabled: { false }, correct: { _, _ in nil })
+        typedGrammar = TypedGrammarResponder(isEnabled: { false }, correct: { _, _, _ in nil })
         isPreviewFixture = true
         previewIsRecording = isRecording
         previewTranscripts = transcripts

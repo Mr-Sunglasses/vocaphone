@@ -949,9 +949,9 @@ class VocaPhoneInputMethodService : LifecycleInputMethodService(), TranscriptIns
     }
 
     /** The grammar model, when it is downloaded; the rules work without it. */
-    private fun writingModel(): ((String, Set<String>) -> String?)? {
+    private fun writingModel(): ((String, Set<String>, Boolean) -> String?)? {
         if (!GrammarModelCatalog.available || !container.grammarModel.state.value.ready) return null
-        return { text, keep -> container.grammar.correctTyped(text, keep) }
+        return { text, keep, thorough -> container.grammar.correctTyped(text, keep, thorough) }
     }
 
     private fun writingOptions(): WritingCheckSession.Options {

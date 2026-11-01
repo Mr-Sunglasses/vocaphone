@@ -28,13 +28,20 @@ struct TypedGrammarRequest: Codable, Equatable, Sendable {
     /// words and snippet triggers, lowercased.
     let keep: [String]
     let createdAt: Date
+    /// The user asked for this check (the Writing check button): the model
+    /// offers more, since each edit is shown before it is made. Absent is
+    /// false, so a question from before this field still reads.
+    let thorough: Bool?
 
-    init(id: UUID = UUID(), sentences: [String], keep: [String], createdAt: Date = Date()) {
+    init(
+        id: UUID = UUID(), sentences: [String], keep: [String], createdAt: Date = Date(), thorough: Bool = false
+    ) {
         schemaVersion = Self.schemaVersion
         self.id = id
         self.sentences = Array(sentences.prefix(Self.maximumSentences))
         self.keep = keep
         self.createdAt = createdAt
+        self.thorough = thorough
     }
 
     func isFresh(at date: Date = Date()) -> Bool {

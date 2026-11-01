@@ -92,14 +92,17 @@ class GrammarCorrector internal constructor(
     override fun correct(text: String, keep: Set<String>): String = run(text, keep, budgetMillis) ?: text
 
     /**
-     * For "Check grammar while typing": [text] corrected, or null when the
-     * model is not loaded yet, which starts loading it. Nobody is waiting on
-     * an insertion here, so the budget is longer than dictation's; it still
-     * bounds a paragraph pasted into the field.
+     * For Writing check: [text] corrected, or null when the model is not
+     * loaded yet, which starts loading it. Nobody is waiting on an insertion
+     * here, so the budget is longer than dictation's; it still bounds a
+     * paragraph pasted into the field. [thorough] is a check the user asked
+     * for, where every edit is shown before it is made: the model offers more
+     * (see [GrammarTagger.THOROUGH_KEEP_BIAS]).
      */
-    fun correctTyped(text: String, keep: Set<String>): String? = run(text, keep, TYPED_BUDGET_MILLIS)
+    fun correctTyped(text: String, keep: Set<String>, thorough: Boolean = false): String? =
+        run(text, keep, TYPED_BUDGET_MILLIS, thorough)
 
-    private fun run(text: String, keep: Set<String>, budget: Long): String? {
+    private fun run(text: String, keep: Set<String>, budget: Long, thorough: Boolean = false): String? {
         val current = synchronized(lock) { loaded }
         if (current == null) {
             // Not downloaded, not loaded yet, or failed to load: leave it.
@@ -109,7 +112,7 @@ class GrammarCorrector internal constructor(
         val start = System.nanoTime()
         val deadline = start + budget * 1_000_000
         return try {
-            val bias = if (sureOnly) GrammarTagger.SURE_KEEP_BIAS else GrammarTagger.KEEP_BIAS
+            val bias = bias(sureOnly, thorough)
             val corrected = synchronized(current) { current.tagger.correct(text, keep, deadline, bias = bias) }
             when {
                 System.nanoTime() > deadline + budget * 1_000_000 -> {
@@ -152,6 +155,18 @@ class GrammarCorrector internal constructor(
     private fun fingerprint(): Long = File(store.modelDirectory, "mindtype_tagger.onnx").lastModified()
 
     companion object {
+        /**
+         * The KEEP bias for one check. "Only sure fixes" moves each tier one
+         * step toward fewer edits: a check the user asked for to Balanced, any
+         * other to Only sure fixes.
+         */
+        internal fun bias(sureOnly: Boolean, thorough: Boolean): Float = when {
+            thorough && sureOnly -> GrammarTagger.KEEP_BIAS
+            thorough -> GrammarTagger.THOROUGH_KEEP_BIAS
+            sureOnly -> GrammarTagger.SURE_KEEP_BIAS
+            else -> GrammarTagger.KEEP_BIAS
+        }
+
         internal fun loadFrom(directory: File): Loaded {
             val tokenizer = ByteLevelBpe.parse(File(directory, "tokenizer.json").readText())
             val labels = JSONArray(File(directory, "labels.json").readText()).let { array ->
