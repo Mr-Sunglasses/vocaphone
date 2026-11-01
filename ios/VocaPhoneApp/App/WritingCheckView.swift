@@ -129,7 +129,9 @@ struct WritingCheckView: View {
         .task {
             if checker == nil {
                 checker = await Task.detached(priority: .userInitiated) {
-                    WritingRules.bundled().map { WritingCheck(rules: $0, spelling: WritingSpelling.bundled()) }
+                    WritingRules.bundled().map {
+                        WritingCheck(rules: $0, spelling: WritingSpelling.bundled(), tagger: PosTagger.bundled())
+                    }
                 }.value
             }
         }

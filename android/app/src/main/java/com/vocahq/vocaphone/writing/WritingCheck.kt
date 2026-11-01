@@ -16,7 +16,14 @@ import kotlin.math.roundToInt
  * sentence in, the model's corrected sentence out, or null while it loads.
  * Nothing leaves the device.
  */
-class WritingCheck(val rules: WritingRules, val spelling: WritingSpelling? = null) {
+class WritingCheck(
+    val rules: WritingRules,
+    val spelling: WritingSpelling? = null,
+    /** The part-of-speech tagger the agreement checks need; null leaves them out. */
+    val tagger: PosTagger? = null,
+) {
+    private val agreement = tagger?.let { WritingAgreement(rules, it, spelling) }
+
     /** One sentence in, the model's correction out; null while it is not ready. */
     fun interface Model {
         fun correct(sentence: String): String?
@@ -75,6 +82,11 @@ class WritingCheck(val rules: WritingRules, val spelling: WritingSpelling? = nul
         var pending = false
 
         for (sentence in sentences) found += ruleSuggestions(text, tokens, sentence, protected, keep, options)
+        agreement?.let { checks ->
+            // Subjects and their verbs, where no rule has spoken for the verb.
+            val fixed = found.filter { it.isActionable }
+            for (sentence in sentences) found += checks.suggestions(text, tokens, sentence, protected, keep, fixed)
+        }
         spelling?.let { dictionary ->
             // A word a rule already fixes is not looked up, and a word met
             // twice is looked up once.

@@ -53,10 +53,13 @@ struct WritingCheck: Sendable {
     let rules: WritingRules
     /// The spelling dictionary; nil checks with the rules (and model) alone.
     let spelling: WritingSpelling?
+    /// The agreement checks, when there is a part-of-speech tagger for them.
+    private let agreement: WritingAgreement?
 
-    init(rules: WritingRules, spelling: WritingSpelling? = nil) {
+    init(rules: WritingRules, spelling: WritingSpelling? = nil, tagger: PosTagger? = nil) {
         self.rules = rules
         self.spelling = spelling
+        agreement = tagger.map { WritingAgreement(rules: rules, tagger: $0, spelling: spelling) }
     }
 
     func check(_ text: String, model: Model? = nil, options: Options = Options()) -> Report {
@@ -69,6 +72,13 @@ struct WritingCheck: Sendable {
 
         for sentence in sentences {
             found += ruleSuggestions(text, tokens, sentence, protected, keep, options)
+        }
+        if let agreement {
+            // Subjects and their verbs, where no rule has spoken for the verb.
+            let fixed = found.filter(\.isActionable)
+            for sentence in sentences {
+                found += agreement.suggestions(text, tokens, sentence, protected, keep, fixed)
+            }
         }
         if let spelling {
             // A word a rule already fixes is not looked up, and a word met

@@ -107,6 +107,7 @@ just gateway-sync           # local gateway/ → .gitmodules branch tip; does no
 | Web | `cd web && npm run check` · `npm run dev` (port 4173) | `npm run check` |
 | Brand / emoji | `python3 assets/generate.py --check` · `python3 tools/generate-emoji-catalog.py --check` | same (`just ci` always runs the brand check) |
 | Writing check rules | `python3 tools/writing-rules/build_rules.py` (edit the tables there, never `assets/keyboard/writing-rules.json`) | `--check`; both ports' `WritingCheck` tests read `assets/grammar/writing_fixtures.json` |
+| Writing check tagger | `python3 tools/writing-tagger/fetch.py` then `train.py ~/.cache/vocaphone/ud-english-ewt` (minutes; not a CI step) writes `assets/keyboard/en-pos.bin`; `fixtures.py` writes `assets/grammar/pos_fixtures.json` | `fixtures.py --check`; both ports' `PosTagger` tests read the fixtures |
 | Writing check spelling | `python3 tools/writing-rules/build_spelling.py` downloads SCOWL lists (network, so not a CI step) and writes `assets/keyboard/en-spelling.txt`; never edit the file | `--check`; `WritingBenchmarkTest` (Android) gates what the whole check catches and flags |
 
 `just ci` skips a missing Android SDK, non-macOS iOS, missing `uv`, or an

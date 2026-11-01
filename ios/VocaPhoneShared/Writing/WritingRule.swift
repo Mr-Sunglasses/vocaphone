@@ -132,6 +132,10 @@ struct WritingRule: Sendable {
             return key.unicodeScalars.allSatisfy { $0 >= "0" && $0 <= "9" }
         case "clock_time":
             return Self.isClockTime(key)
+        case "vowel_sound":
+            return Self.startsWithVowelSound(token, rules) == true
+        case "consonant_sound":
+            return Self.startsWithVowelSound(token, rules) == false
         case "verb_base":
             return rules.verbs.isBase(key)
         case "verb_inflected":
@@ -196,6 +200,31 @@ struct WritingRule: Sendable {
         "me": "I", "him": "he", "her": "she", "us": "we", "them": "they",
         // A contraction's subject: "I'm agree" → "I agree".
         "i'm": "I", "im": "I", "we're": "we", "they're": "they", "you're": "you", "he's": "he", "she's": "she",
+    ]
+
+    /// Whether `token` starts with a vowel sound, for "a" or "an"; nil when
+    /// that cannot be told. See `WritingRule.kt`.
+    private static func startsWithVowelSound(_ token: WritingToken, _ rules: WritingRules) -> Bool? {
+        let scalars = Array(token.text.unicodeScalars)
+        let key = token.key
+        let isLetter: (Unicode.Scalar) -> Bool = { ("a"..."z").contains($0) || ("A"..."Z").contains($0) }
+        if rules.stopwords.contains(key) || !scalars.allSatisfy(isLetter) { return nil }
+        guard let first = key.unicodeScalars.first else { return nil }
+        if scalars.count == 1 { return letterNameVowels.contains(first) }
+        if scalars.allSatisfy({ ("A"..."Z").contains($0) }) {
+            return scalars.count <= 3 ? letterNameVowels.contains(first) : nil
+        }
+        if silentH.contains(where: { key.hasPrefix($0) }) { return true }
+        if youSound.contains(where: { key.hasPrefix($0) }) { return false }
+        return "aeiou".unicodeScalars.contains(first)
+    }
+
+    /// Letters whose names start with a vowel sound: "an F", "an MBA".
+    private static let letterNameVowels = Set("aefhilmnorsx".unicodeScalars)
+    private static let silentH = ["hour", "honest", "honor", "honour", "heir"]
+    private static let youSound = [
+        "uni", "use", "usu", "uti", "ure", "uro", "uk", "ufo", "ubiq", "ukulele", "unanim", "uri", "ura",
+        "eu", "ewe", "one", "once",
     ]
 
     /// "3pm", "11am": a time typed as one word.

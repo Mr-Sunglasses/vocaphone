@@ -604,6 +604,9 @@ for a, b, sing in AMBIGUOUS_PLURALS:
     RULES.append(r("{plural_lead} " + a, "$1 " + b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-" + a))
     RULES.append(r("{number} " + a, "$1 " + b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-number-" + a))
     RULES.append(r(a + " are|were|aren't|weren't", b + " $2", "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-verb-" + a))
+# Pasts heard in speech but not written: "he brung it".
+REGULARIZED += [("brung", "bring", "brought", "brought"), ("brang", "bring", "brought", "brought"),
+                ("thunk", "think", "thought", "thought")]
 for f, base, past, participle in REGULARIZED:
     # After "have", the participle; anywhere else, the past.
     if participle != past:
@@ -706,6 +709,9 @@ RULES += [
   r("if i|he|she|it was you|him|her|them", "$1 $2 were $4", "verb_form", "In “if I were you”, use “were”.", rid="if-i-were"),
   # Commas after an opening word.
   r("^ {introductory} {clause_start}", "$1 , $2", "comma", "comma.introductory", rid="comma-introductory"),
+  # "a" or "an", by the sound the next word starts with.
+  r("a {vowel_sound}", "an $2", "article", "article.a_to_an", rid="a-an"),
+  r("an {consonant_sound}", "a $2", "article", "article.an_to_a", rid="an-a"),
   # Capitals.
   # Not "jersey": "I bought a new jersey".
   r("new york|zealand|delhi", "New ${capital:2}", "capitalization", "capitalization.proper", rid="cap-new-x"),
@@ -801,7 +807,7 @@ def dump(d):
 ids=[x["id"] for x in RULES]
 dupes={i for i in ids if ids.count(i)>1}
 assert not dupes, dupes
-known=set(CLASSES)|{"verb_base","verb_inflected","verb_ing","simple_past","participle","name","word","same","number","clock_time"}
+known=set(CLASSES)|{"verb_base","verb_inflected","verb_ing","simple_past","participle","name","word","same","number","clock_time","vowel_sound","consonant_sound"}
 import re as _re
 for x in RULES:
     for c in _re.findall(r"\{(\w+)\}", x["match"]):

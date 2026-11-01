@@ -1,0 +1,13 @@
+en-pos.bin is Writing check's part-of-speech tagger: averaged-perceptron
+weights trained by tools/writing-tagger/train.py on the Universal Dependencies
+English Web Treebank (UD_English-EWT, commit
+4a4d77f599ea53cc405f85d0cec4b2f14f81d42b, https://github.com/UniversalDependencies/UD_English-EWT),
+which is licensed under the Creative Commons Attribution-ShareAlike 4.0
+International licence (https://creativecommons.org/licenses/by-sa/4.0/).
+
+The model is an adaptation of that treebank and is distributed under the same
+licence, CC BY-SA 4.0. Changes: the treebank's words and Penn Treebank tags were
+re-split into Writing check's tokens, copied in lower case, without final
+punctuation and with one verb put in the wrong agreement or form, and learned
+into hashed int16 weights. The app's source code is not affected by this
+licence; only this file is.

@@ -22,7 +22,7 @@ class WritingCheckTest {
     private val fixtureFile = File(GrammarFixtures.root, "writing_fixtures.json")
     private val document = JSONObject(fixtureFile.readText())
     private val rules = WritingFixtures.rules
-    private val check = WritingCheck(rules, WritingFixtures.spelling)
+    private val check = WritingCheck(rules, WritingFixtures.spelling, WritingFixtures.tagger)
     private val recording = File("build/writing-record").exists()
 
     private fun cases(name: String) = document.getJSONArray(name).let { a -> List(a.length()) { a.getJSONObject(it) } }
@@ -170,6 +170,9 @@ class WritingCheckTest {
 /** Shared by the writing tests: the rules file and the fixture's model and options. */
 object WritingFixtures {
     val rules: WritingRules by lazy { WritingRules.parse(File(GrammarFixtures.root, "../keyboard/writing-rules.json").readText()) }
+
+    /** The part-of-speech tagger both apps ship. */
+    val tagger: PosTagger by lazy { PosTagger.parse(File(GrammarFixtures.root, "../keyboard/en-pos.bin").readBytes()) }
 
     /** The spelling dictionary both apps ship. */
     val spelling: WritingSpelling by lazy {
