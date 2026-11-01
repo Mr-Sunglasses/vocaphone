@@ -430,21 +430,30 @@ RULES += [
 # Everyday mistakes Grammarly catches and the model does not: closed lists,
 # so each fires only on words it names.
 
-# Irregular plurals given a regular ending.
+# Irregular plurals given a regular ending: forms that are no word at all.
 IRREGULAR_PLURALS = [
-  ("childs","children","child"),("mans","men","man"),("womans","women","woman"),("foots","feet","foot"),
-  ("tooths","teeth","tooth"),("mouses","mice","mouse"),("gooses","geese","goose"),("sheeps","sheep","sheep"),
-  ("deers","deer","deer"),("fishs","fish","fish"),("knifes","knives","knife"),("wifes","wives","wife"),
-  ("lifes","lives","life"),("wolfs","wolves","wolf"),("halfs","halves","half"),("shelfs","shelves","shelf"),
+  ("childs","children","child"),("womans","women","woman"),
+  ("tooths","teeth","tooth"),("sheeps","sheep","sheep"),
+  ("deers","deer","deer"),("fishs","fish","fish"),("wifes","wives","wife"),
+  ("lifes","lives","life"),("halfs","halves","half"),("shelfs","shelves","shelf"),
   ("thiefs","thieves","thief"),("persones","people","person"),("childrens","children","child"),
 ]
-# Nouns with no plural.
+# The same mistake where the form is also a verb ("he mans the desk", "she
+# foots the bill", "he wolfs it down"): only after a number or a word that
+# starts a noun phrase, or before a plural verb ("kitchen knifes are").
+AMBIGUOUS_PLURALS = [
+  ("mans","men","man"),("foots","feet","foot"),("mouses","mice","mouse"),("gooses","geese","goose"),
+  ("knifes","knives","knife"),("wolfs","wolves","wolf"),
+]
+PLURAL_LEAD = """two three four five six seven eight nine ten twelve twenty several many few both these those
+my your his her our their the""".split()
+# Nouns with no plural. Not "breads" (kinds of bread) or "evidences" (a verb).
 UNCOUNTABLE = [
   ("informations","information"),("furnitures","furniture"),("homeworks","homework"),("advices","advice"),
   ("equipments","equipment"),("luggages","luggage"),("baggages","baggage"),("knowledges","knowledge"),
   ("feedbacks","feedback"),("softwares","software"),("hardwares","hardware"),("sceneries","scenery"),
-  ("jewelries","jewelry"),("jewelleries","jewellery"),("machineries","machinery"),("evidences","evidence"),
-  ("researchs","research"),("trafics","traffic"),("musics","music"),("breads","bread"),
+  ("jewelries","jewelry"),("jewelleries","jewellery"),("machineries","machinery"),
+  ("researchs","research"),("trafics","traffic"),("musics","music"),
 ]
 
 # Irregular verbs given a regular "-ed": "eated", "buyed". Generated from
@@ -504,10 +513,16 @@ texas california florida""".split()
 PROPER = [w for w in PROPER if not w.endswith("?")]
 
 # Feelings: "-ing" is what causes it, "-ed" is how you feel. "I'm interesting
-# in the job" means "interested"; only before a preposition, since "I'm
-# boring" can mean just that.
-EMOTIONS = """bore interest excite tire confuse annoy embarrass frighten surprise disappoint amaze amuse depress
-exhaust frustrate relax satisfy shock terrify worry scare thrill overwhelm""".split()
+# in the job" means "interested". Only "I" or "we", and only before the
+# preposition the feeling takes: "I'm boring" and "She is interesting in
+# person" can mean just that, and "relaxing in", "worrying about", "tiring
+# of" and "annoying with" are verbs doing what they say.
+EMOTIONS = {
+  "bore": "of with in", "interest": "in", "excite": "about for", "confuse": "about by", "embarrass": "about by",
+  "frighten": "of by", "surprise": "by at", "disappoint": "in with by", "amaze": "by at", "amuse": "by",
+  "depress": "about by", "exhaust": "by from", "frustrate": "with by about", "satisfy": "with by",
+  "shock": "by at", "terrify": "of by", "scare": "of by", "thrill": "about by with", "overwhelm": "by with",
+}
 
 
 def _ing(base):
@@ -527,9 +542,18 @@ def _ed(base):
 # Words that open a sentence and take a comma after them. Not "still",
 # "first", "also" or "clearly", which open plain sentences too ("Still
 # waiting", "Clearly state your name").
-INTRODUCTORY = """however unfortunately fortunately luckily sadly thankfully hopefully additionally furthermore
+INTRODUCTORY = """unfortunately fortunately luckily sadly thankfully hopefully additionally furthermore
 moreover meanwhile therefore nevertheless nonetheless consequently similarly likewise ultimately frankly honestly
 actually anyway anyways besides interestingly surprisingly apparently personally""".split()
+# "However hard you try": "however" before a word of degree is no opening word.
+DEGREE = """hard much many long often far well big small good bad strong fast slow little few late early soon
+close high low deep great badly carefully quickly""".split()
+# What opens a sentence before its main clause: a comma after the opening is
+# no list ("After lunch, Sam and Alex left").
+OPENERS = sorted(set("""after before during in on at by for from since until till with without within through over
+under around about across behind beyond near if when whenever while although though because once unless as
+yesterday today tomorrow tonight later then now finally first next lastly meanwhile recently suddenly however
+hi hey hello thanks yes no well so ok okay dear oh sorry please""".split() + INTRODUCTORY))
 
 # A finite "be" later in the sentence makes "What you need" a noun clause, not a question.
 FINITE_BE = "is was are were isn't wasn't".split()
@@ -543,8 +567,10 @@ SUBJECTS_AT = "math maths science english french spanish chess sports football s
 
 CLASSES.update({
   "comparative_er": [w for w in COMPARATIVES if w not in ("more", "less", "rather", "other", "further", "farther")],
-  "emotion_ing": [_ing(b) for b in EMOTIONS],
   "introductory": INTRODUCTORY,
+  "degree": DEGREE,
+  "interesting_in": "person many some a an real every all her his their its own that so such how".split(),
+  "plural_lead": PLURAL_LEAD,
   "duration": DURATIONS,
   "duration_one": DURATION_ONE,
   "count": COUNTS,
@@ -563,6 +589,10 @@ wondering unclear clear whether me him her us them you""".split(),
 
 RULES += [r(a, b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-" + a) for a, b, sing in IRREGULAR_PLURALS]
 RULES += [r(a, b, "noun_number", "noun_number.uncountable", rid="uncountable-" + a) for a, b in UNCOUNTABLE]
+for a, b, sing in AMBIGUOUS_PLURALS:
+    RULES.append(r("{plural_lead} " + a, "$1 " + b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-" + a))
+    RULES.append(r("{number} " + a, "$1 " + b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-number-" + a))
+    RULES.append(r(a + " are|were|aren't|weren't", b + " $2", "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-verb-" + a))
 for f, base, past, participle in REGULARIZED:
     # After "have", the participle; anywhere else, the past.
     if participle != past:
@@ -598,8 +628,10 @@ RULES += [
   r("on|in {clock_time}", "at $2", "preposition", "Use “at” with a time of day.", rid="at-clock"),
   r("on|in {number} am|pm|o'clock", "at $2 $3", "preposition", "Use “at” with a time of day.", rid="at-clock-words"),
   r("in {day}", "on ${capital:2}", "preposition", "Use “on” with a day.", rid="on-day"),
-  r("i|we|they|you am|are|was|were agree|disagree", "$1 $3", "extra_word", "“Agree” is a verb, so it needs no “am” or “are”.", rid="am-agree"),
-  r("he|she|it is|was agree|disagree", "$1 ${third:3}", "extra_word", "“Agree” is a verb, so it needs no “is”.", rid="is-agree"),
+  r("i|we|they|you am|are agree|disagree", "$1 $3", "extra_word", "“Agree” is a verb, so it needs no “am” or “are”.", rid="am-agree"),
+  r("he|she|it is agree|disagree", "$1 ${third:3}", "extra_word", "“Agree” is a verb, so it needs no “is”.", rid="is-agree"),
+  r("i|we|they|you|he|she|it was|were agree|disagree", "$1 ${past:3}", "extra_word",
+    "“Agree” is a verb, so it needs no “{2}”: “{replacement}”.", rid="was-agree"),
   r("{be_plural_person} agree|disagree", "${subject:1} $2", "extra_word", "“Agree” is a verb, so it needs no “am” or “are”.", rid="contraction-agree"),
   r("good|bad|better|best|great|terrible|excellent in {subject_at}", "$1 at $3", "preposition", "You are good “at” something.", rid="good-at"),
   r("depend|depends|depended|depending of", "$1 on", "preposition", "You depend “on” something.", rid="depend-on"),
@@ -615,7 +647,10 @@ RULES += [
   # Not "What you need is rest", where the question word starts a noun clause.
   dict(r("^ what|where|when|why|how|who you|we|they {verb_ing}", "$1 are $2 $3", "missing_word", "missing_word.verb", rid="wh-are-ing"), unlessLater=FINITE_BE),
   dict(r("^ what|where|when|why|how|who he|she|it {verb_ing}", "$1 is $2 $3", "missing_word", "missing_word.verb", rid="wh-is-ing"), unlessLater=FINITE_BE),
-  dict(r("^ what|where|when|why|how you|we|they want|need|think|mean|like|have|know|do|say", "$1 do $2 $3", "missing_word", "missing_word.verb", rid="wh-do"), unlessLater=FINITE_BE),
+  # Only a question: "What you think matters" and "What you need depends on
+  # it" are statements whose verb is no form of "be".
+  dict(r("^ what|where|when|why|how you|we|they want|need|think|mean|like|have|know|do|say", "$1 do $2 $3", "missing_word", "missing_word.verb", rid="wh-do"),
+       unlessLater=FINITE_BE, question=True),
   r("^ why you|we|they didn't|didnt|don't|dont|can't|cant|won't|wont {verb_base}", "$1 $3 $2 $4", "word_choice",
     "In a question, the helper verb comes before the subject: “{replacement}”.", rid="why-you-didnt"),
   dict(r("^ how much|many it|this|that {verb_inflected}", "$1 $2 does $3 ${base:4}", "missing_word", "missing_word.verb", rid="how-much-does"), unlessLater=FINITE_BE),
@@ -625,36 +660,48 @@ RULES += [
   r("^ yesterday , {subject} {verb_base}", "$1 $2 $3 ${past:4}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-comma-past"),
   r("^ last {past_unit} {subject} {verb_base}", "$1 $2 $3 ${past:4}", "verb_form", "“{1} {2}” is in the past, so use “{replacement}”.", rid="last-week-past"),
   r("^ last {past_unit} , {subject} {verb_base}", "$1 $2 $3 $4 ${past:5}", "verb_form", "“{1} {2}” is in the past, so use “{replacement}”.", rid="last-week-comma-past"),
-  # "if"/"when" take the present for the future: "if I will see him" is "if I see him".
+  # "if"/"when" take the present for the future: "if I will see him" is "if I
+  # see him". After "if" and "unless" only with "I" or "we": "If you will
+  # help me" and "if he will apologise" ask for willingness, where "will" is
+  # right. After "when", "once", "until", "before" and "after", any subject.
   dict(r("if|when|once|unless|until|before|after i will be", "$1 I am", "verb_form",
          "After “{1}”, use the present for the future: “{result}”.", rid="if-i-will-be"), notAfter=CLASSES["indirect"]),
-  dict(r("if|when|once|unless|until|before|after you|we|they will be", "$1 $2 are", "verb_form",
-         "After “{1}”, use the present for the future: “{result}”.", rid="if-will-be"), notAfter=CLASSES["indirect"]),
-  dict(r("if|when|once|unless|until|before|after he|she|it will be", "$1 $2 is", "verb_form",
-         "After “{1}”, use the present for the future: “{result}”.", rid="if-will-be-third"), notAfter=CLASSES["indirect"]),
-  dict(r("if|when|once|unless|until|before|after i|you|we|they will {verb_base}", "$1 $2 $4", "verb_form",
+  dict(r("if|when|once|unless|until|before|after we will be", "$1 $2 are", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-we-will-be"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after you|they will be", "$1 $2 are", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-will-be"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after he|she|it will be", "$1 $2 is", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-will-be-third"), notAfter=CLASSES["indirect"]),
+  dict(r("if|when|once|unless|until|before|after i|we will {verb_base}", "$1 $2 $4", "verb_form",
          "After “{1}”, use the present for the future: “{result}”.", rid="if-will"), notAfter=CLASSES["indirect"]),
-  dict(r("if|when|once|unless|until|before|after he|she|it will {verb_base}", "$1 $2 ${third:4}", "verb_form",
-         "After “{1}”, use the present for the future: “{result}”.", rid="if-will-third"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after you|they will {verb_base}", "$1 $2 $4", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-will"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after he|she|it will {verb_base}", "$1 $2 ${third:4}", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-will-third"), notAfter=CLASSES["indirect"]),
   r("if i|he|she|it was you|him|her|them", "$1 $2 were $4", "verb_form", "In “if I were you”, use “were”.", rid="if-i-were"),
   # Commas after an opening word.
   r("^ {introductory} {word}", "$1 , $2", "comma", "comma.introductory", rid="comma-introductory"),
+  r("^ however {!degree}", "$1 , $2", "comma", "comma.introductory", rid="comma-however"),
   # Capitals.
   r("new york|jersey|zealand|delhi", "New ${capital:2}", "capitalization", "capitalization.proper", rid="cap-new-x"),
   # The serial (Oxford) comma, a style choice: off unless the user turns it
-  # on. Only a one-word last-but-one item, and not after a greeting ("Hi,
-  # Sam and Alex").
+  # on. Only a one-word last-but-one item, not after a greeting ("Hi, Sam
+  # and Alex"), and not after an opening phrase ("After lunch, Sam and Alex
+  # left"), where the comma before is no list's.
   dict(r(", {word} and|or {word}", "$1 $2 , $3 $4", "comma", "Add a comma before “{3}” to end a list (the serial comma).",
          rid="serial-comma"), optIn="serial_comma",
-       notAfter="hi hey hello thanks yes no well so ok okay dear oh sorry please".split()),
+       notAfter="hi hey hello thanks yes no well so ok okay dear oh sorry please".split(), notAfterOpening=OPENERS),
 ]
 _FEELING = "“{original}” describes what causes the feeling; “{replacement}” is how you feel."
-for b in EMOTIONS:
-    ing, ed = _ing(b), _ed(b)
-    RULES.append(r(f"{{be_person}} {ing} in|about|with|by|of|for|at", f"$1 {ed} $3", "word_choice", _FEELING, rid=f"feeling-{ing}"))
-    RULES.append(r(f"i|we|they|you|he|she am|are|is|was|were {ing} in|about|with|by|of|for|at", f"$1 $2 {ed} $4", "word_choice", _FEELING, rid=f"feeling-be-{ing}"))
-    RULES.append(r(f"i|we|they|you|he|she am|are|is|was|were so|very|really|too|getting {ing} $", f"$1 $2 $3 {ed}", "word_choice", _FEELING, rid=f"feeling-so-{ing}"))
-    RULES.append(r(f"{{be_person}} so|very|really|too|getting {ing} $", f"$1 $2 {ed}", "word_choice", _FEELING, rid=f"feeling-so-contraction-{ing}"))
+for b, prepositions in EMOTIONS.items():
+    ing, ed, after = _ing(b), _ed(b), prepositions.replace(" ", "|")
+    RULES.append(r(f"i'm|im|we're {ing} {after}", f"$1 {ed} $3", "word_choice", _FEELING, rid=f"feeling-{ing}"))
+    RULES.append(r(f"i|we am|are|was|were {ing} {after}", f"$1 $2 {ed} $4", "word_choice", _FEELING, rid=f"feeling-be-{ing}"))
+    RULES.append(r(f"i|we am|are|was|were so|very|really|too|getting {ing} {after}", f"$1 $2 $3 {ed} $5", "word_choice", _FEELING, rid=f"feeling-so-{ing}"))
+# "He is interesting in music" means "interested": any subject, but not
+# before what describes the person ("interesting in person", "in many ways").
+RULES.append(r("he|she|they|you|he's|she's|they're|you're|is|are|was|were interesting in {!interesting_in}", "$1 interested $3 $4",
+               "word_choice", _FEELING, rid="feeling-interesting-any"))
 RULES += [dict(r(w, w[0].upper() + w[1:], "capitalization", "capitalization.proper", rid="cap-" + w, bare_forms=False), notAfter=["#", "@", "/"]) for w in PROPER]
 RULES += [r(a, b, "spelling", rid="spell-"+a) for a, b in SPELLING]
 RULES += [r(a, b, "apostrophe", rid="apos-"+a) for a, b in APOSTROPHES if a != b]

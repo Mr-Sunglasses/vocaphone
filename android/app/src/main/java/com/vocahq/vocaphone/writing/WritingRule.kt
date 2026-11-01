@@ -12,7 +12,11 @@ import org.json.JSONObject
  * "nothing but punctuation follows, to the end of the sentence". A rule may
  * also say which word must (`after`, or the sentence start) or must not
  * (`notAfter`) come right before the match, and words that must not come
- * anywhere after it in the sentence (`unlessLater`). A rule with `optIn` runs
+ * anywhere after it in the sentence (`unlessLater`); that the sentence is a
+ * question (`question`: a "?" follows the match); and openers it must not
+ * follow (`notAfterOpening`: the sentence starts with one of these words and
+ * no comma comes before the match, as in "After lunch, Sam and Alex"). A
+ * class written `{!name}` is any word not in `name`. A rule with `optIn` runs
  * only when the user turned that option on. A match never takes part of a
  * hyphenated compound ("name" in "name-calling"). A replacement is words and
  * `$n` (the nth matched token as typed) or `${fn:n}` (base, ing, participle,
@@ -29,6 +33,8 @@ class WritingRule private constructor(
     private val after: Set<String>?,
     private val notAfter: Set<String>,
     private val unlessLater: Set<String>,
+    private val question: Boolean,
+    private val notAfterOpening: Set<String>,
     val replace: String?,
     val kind: String,
     val message: String?,
@@ -55,6 +61,11 @@ class WritingRule private constructor(
         if (notAtStart && start) return 0
         val before = if (index > sentence.first) tokens[index - 1] else null
         if (before != null && before.key in notAfter) return 0
+        if (notAfterOpening.isNotEmpty() && index > sentence.first && tokens[sentence.first].key in notAfterOpening &&
+            (sentence.first until index).none { tokens[it].text == "," }
+        ) {
+            return 0
+        }
         if (after != null && !start && (before == null || before.key !in after)) return 0
         if (before != null && isHyphen(before) && before.end == tokens[index].start) return 0
         var i = index
@@ -72,6 +83,7 @@ class WritingRule private constructor(
         if (i <= sentence.last && isHyphen(tokens[i]) && tokens[i - 1].end == tokens[i].start) return 0
         if (atEnd && (i..sentence.last).any { tokens[it].isWord }) return 0
         if (unlessLater.isNotEmpty() && (i..sentence.last).any { tokens[it].key in unlessLater }) return 0
+        if (question && (i..sentence.last).none { tokens[it].text == "?" }) return 0
         return i - index
     }
 
@@ -79,6 +91,7 @@ class WritingRule private constructor(
 
     private fun matchesClass(name: String, token: WritingToken, previous: WritingToken?, rules: WritingRules): Boolean {
         if (!token.isWord) return false
+        if (name.startsWith("!")) return token.hasLetter && !matchesClass(name.substring(1), token, previous, rules)
         val key = token.key
         return when (name) {
             "word" -> token.hasLetter
@@ -148,6 +161,10 @@ class WritingRule private constructor(
                 notAfter = o.optJSONArray("notAfter")?.let { a -> List(a.length()) { WritingToken.normalize(a.getString(it)) }.toSet() }
                     .orEmpty(),
                 unlessLater = o.optJSONArray("unlessLater")?.let { a -> List(a.length()) { WritingToken.normalize(a.getString(it)) }.toSet() }
+                    .orEmpty(),
+                question = o.optBoolean("question", false),
+                notAfterOpening = o.optJSONArray("notAfterOpening")
+                    ?.let { a -> List(a.length()) { WritingToken.normalize(a.getString(it)) }.toSet() }
                     .orEmpty(),
                 replace = if (o.isNull("replace")) null else o.getString("replace"),
                 kind = o.getString("kind"),

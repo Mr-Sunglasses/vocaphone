@@ -3771,27 +3771,11 @@
     2,
     2,
     100,
-    92
+    100
    ],
    "tones": [],
    "name": "a question without its helper verb",
-   "suggestions": [{
-    "original": "",
-    "kind": "missing_word",
-    "start": 4,
-    "rule": "wh-do",
-    "mechanical": false,
-    "end": 4,
-    "label": "Add \u201cdo\u201d",
-    "source": "rule",
-    "category": "correctness",
-    "message": "A verb seems to be missing: add \u201cdo\u201d.",
-    "replacement": " do",
-    "mark": [
-     0,
-     4
-    ]
-   }],
+   "suggestions": [],
    "modelPending": false,
    "text": "what you want for dinner"
   },
@@ -3936,46 +3920,27 @@
     4,
     6,
     100,
-    84
+    92
    ],
    "tones": [],
    "name": "the present after if for the future",
-   "suggestions": [
-    {
-     "original": " will",
-     "kind": "verb_form",
-     "start": 4,
-     "rule": "if-will",
-     "mechanical": false,
-     "end": 9,
-     "label": "Remove \u201cwill\u201d",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After \u201cIf\u201d, use the present for the future: \u201cIf I see\u201d.",
-     "replacement": "",
-     "mark": [
-      5,
-      9
-     ]
-    },
-    {
-     "original": "will be",
-     "kind": "verb_form",
-     "start": 43,
-     "rule": "if-will-be-third",
-     "mechanical": false,
-     "end": 50,
-     "label": "will be → is",
-     "source": "rule",
-     "category": "correctness",
-     "message": "After \u201cif\u201d, use the present for the future: \u201cif he is\u201d.",
-     "replacement": "is",
-     "mark": [
-      43,
-      50
-     ]
-    }
-   ],
+   "suggestions": [{
+    "original": " will",
+    "kind": "verb_form",
+    "start": 4,
+    "rule": "if-will",
+    "mechanical": false,
+    "end": 9,
+    "label": "Remove \u201cwill\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cIf\u201d, use the present for the future: \u201cIf I see\u201d.",
+    "replacement": "",
+    "mark": [
+     5,
+     9
+    ]
+   }],
    "modelPending": false,
    "text": "If I will see him I'll tell him, and if he will be there, fine."
   },
@@ -4110,7 +4075,7 @@
     "original": "",
     "kind": "comma",
     "start": 7,
-    "rule": "comma-introductory",
+    "rule": "comma-however",
     "mechanical": false,
     "end": 7,
     "label": "Add \u201c,\u201d",
@@ -4134,46 +4099,27 @@
     3,
     4,
     78,
-    84
+    92
    ],
    "tones": [],
    "name": "a feeling: interested, not interesting",
-   "suggestions": [
-    {
-     "original": "interesting",
-     "kind": "word_choice",
-     "start": 4,
-     "rule": "feeling-interesting",
-     "mechanical": false,
-     "end": 15,
-     "label": "interesting → interested",
-     "source": "rule",
-     "category": "correctness",
-     "message": "\u201cinteresting\u201d describes what causes the feeling; \u201cinterested\u201d is how you feel.",
-     "replacement": "interested",
-     "mark": [
-      4,
-      15
-     ]
-    },
-    {
-     "original": "boring",
-     "kind": "word_choice",
-     "start": 40,
-     "rule": "feeling-so-boring",
-     "mechanical": false,
-     "end": 46,
-     "label": "boring → bored",
-     "source": "rule",
-     "category": "correctness",
-     "message": "\u201cboring\u201d describes what causes the feeling; \u201cbored\u201d is how you feel.",
-     "replacement": "bored",
-     "mark": [
-      40,
-      46
-     ]
-    }
-   ],
+   "suggestions": [{
+    "original": "interesting",
+    "kind": "word_choice",
+    "start": 4,
+    "rule": "feeling-interesting",
+    "mechanical": false,
+    "end": 15,
+    "label": "interesting → interested",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cinteresting\u201d describes what causes the feeling; \u201cinterested\u201d is how you feel.",
+    "replacement": "interested",
+    "mark": [
+     4,
+     15
+    ]
+   }],
    "modelPending": false,
    "text": "I'm interesting in the job and I was so boring"
   },
@@ -4494,6 +4440,339 @@
    }],
    "modelPending": false,
    "text": "We need eggs, milk and bread. Hi, Sam and Alex."
+  },
+  {
+   "stats": [
+    28,
+    143,
+    4,
+    8,
+    12,
+    100,
+    66
+   ],
+   "tones": [],
+   "name": "plurals that are also verbs are left alone",
+   "suggestions": [
+    {
+     "original": "mans",
+     "kind": "noun_number",
+     "start": 78,
+     "rule": "plural-mans",
+     "mechanical": false,
+     "end": 82,
+     "label": "mans → men",
+     "source": "rule",
+     "category": "correctness",
+     "message": "The plural of \u201cman\u201d is \u201cmen\u201d.",
+     "replacement": "men",
+     "mark": [
+      78,
+      82
+     ]
+    },
+    {
+     "original": "foots",
+     "kind": "noun_number",
+     "start": 89,
+     "rule": "plural-number-foots",
+     "mechanical": false,
+     "end": 94,
+     "label": "foots → feet",
+     "source": "rule",
+     "category": "correctness",
+     "message": "The plural of \u201cfoot\u201d is \u201cfeet\u201d.",
+     "replacement": "feet",
+     "mark": [
+      89,
+      94
+     ]
+    },
+    {
+     "original": "foots",
+     "kind": "noun_number",
+     "start": 99,
+     "rule": "plural-foots",
+     "mechanical": false,
+     "end": 104,
+     "label": "foots → feet",
+     "source": "rule",
+     "category": "correctness",
+     "message": "The plural of \u201cfoot\u201d is \u201cfeet\u201d.",
+     "replacement": "feet",
+     "mark": [
+      99,
+      104
+     ]
+    },
+    {
+     "original": "knifes",
+     "kind": "noun_number",
+     "start": 126,
+     "rule": "plural-verb-knifes",
+     "mechanical": false,
+     "end": 132,
+     "label": "knifes → knives",
+     "source": "rule",
+     "category": "correctness",
+     "message": "The plural of \u201cknife\u201d is \u201cknives\u201d.",
+     "replacement": "knives",
+     "mark": [
+      126,
+      132
+     ]
+    },
+    {
+     "original": "foots",
+     "kind": "overused_word",
+     "start": 99,
+     "rule": null,
+     "mechanical": false,
+     "end": 104,
+     "label": "Repetitive word",
+     "source": "text",
+     "category": "engagement",
+     "message": "You've used \u201cfoots\u201d 3 times here. A different word could keep it fresh.",
+     "replacement": null,
+     "mark": [
+      99,
+      104
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "He mans the desk and she foots the bill. We sell different breads. I have two mans and 3 foots. My foots hurt and the kitchen knifes are blunt."
+  },
+  {
+   "stats": [
+    30,
+    173,
+    5,
+    8,
+    12,
+    63,
+    90
+   ],
+   "tones": [],
+   "name": "feelings that mean what they say are left alone",
+   "suggestions": [
+    {
+     "original": "interesting",
+     "kind": "word_choice",
+     "start": 152,
+     "rule": "feeling-interesting-any",
+     "mechanical": false,
+     "end": 163,
+     "label": "interesting → interested",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cinteresting\u201d describes what causes the feeling; \u201cinterested\u201d is how you feel.",
+     "replacement": "interested",
+     "mark": [
+      152,
+      163
+     ]
+    },
+    {
+     "original": "very boring",
+     "kind": "intensifier",
+     "start": 133,
+     "rule": "intensifier-boring",
+     "mechanical": false,
+     "end": 144,
+     "label": "very boring → tedious",
+     "source": "rule",
+     "category": "engagement",
+     "message": "\u201ctedious\u201d is stronger than \u201cvery boring\u201d.",
+     "replacement": "tedious",
+     "mark": [
+      133,
+      144
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "You're so amazing. I'm relaxing in the garden and worrying about the deadline. She is boring in class and interesting in person. I'm very boring. He is interesting in music."
+  },
+  {
+   "stats": [
+    14,
+    77,
+    3,
+    4,
+    6,
+    99,
+    92
+   ],
+   "tones": [],
+   "name": "a statement that starts with what is no question",
+   "suggestions": [{
+    "original": "",
+    "kind": "missing_word",
+    "start": 66,
+    "rule": "wh-do",
+    "mechanical": false,
+    "end": 66,
+    "label": "Add \u201cdo\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "A verb seems to be missing: add \u201cdo\u201d.",
+    "replacement": " do",
+    "mark": [
+     62,
+     66
+    ]
+   }],
+   "modelPending": false,
+   "text": "What you think matters. What you need depends on your budget. What you think?"
+  },
+  {
+   "stats": [
+    10,
+    43,
+    1,
+    3,
+    4,
+    95,
+    84
+   ],
+   "tones": [],
+   "name": "agree in the past stays in the past",
+   "suggestions": [
+    {
+     "original": "was agree",
+     "kind": "extra_word",
+     "start": 2,
+     "rule": "was-agree",
+     "mechanical": false,
+     "end": 11,
+     "label": "was agree → agreed",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cAgree\u201d is a verb, so it needs no \u201cwas\u201d: \u201cagreed\u201d.",
+     "replacement": "agreed",
+     "mark": [
+      2,
+      11
+     ]
+    },
+    {
+     "original": "was agree",
+     "kind": "extra_word",
+     "start": 29,
+     "rule": "was-agree",
+     "mechanical": false,
+     "end": 38,
+     "label": "was agree → agreed",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cAgree\u201d is a verb, so it needs no \u201cwas\u201d: \u201cagreed\u201d.",
+     "replacement": "agreed",
+     "mark": [
+      29,
+      38
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I was agree with them and he was agree too."
+  },
+  {
+   "stats": [
+    20,
+    99,
+    3,
+    6,
+    8,
+    90,
+    92
+   ],
+   "tones": ["confident"],
+   "name": "if you will asks for willingness",
+   "suggestions": [{
+    "original": "will arrive",
+    "kind": "verb_form",
+    "start": 78,
+    "rule": "when-will-third",
+    "mechanical": false,
+    "end": 89,
+    "label": "will arrive → arrives",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cWhen\u201d, use the present for the future: \u201cWhen he arrives\u201d.",
+    "replacement": "arrives",
+    "mark": [
+     78,
+     89
+    ]
+   }],
+   "modelPending": false,
+   "text": "If you will help me, we can finish today. If he will apologise, fine. When he will arrive, call me."
+  },
+  {
+   "stats": [
+    13,
+    68,
+    2,
+    4,
+    6,
+    90,
+    92
+   ],
+   "tones": [],
+   "name": "however before a word of degree is no opening word",
+   "suggestions": [{
+    "original": "",
+    "kind": "comma",
+    "start": 44,
+    "rule": "comma-however",
+    "mechanical": false,
+    "end": 44,
+    "label": "Add \u201c,\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Add a comma after an opening word like \u201cHowever\u201d.",
+    "replacement": ",",
+    "mark": [
+     37,
+     44
+    ]
+   }],
+   "modelPending": false,
+   "text": "However hard you try, it won't work. However I think we should wait."
+  },
+  {
+   "stats": [
+    15,
+    81,
+    2,
+    4,
+    6,
+    92,
+    92
+   ],
+   "tones": [],
+   "name": "the serial comma not after an opening phrase",
+   "options": {"optIn": ["serial_comma"]},
+   "suggestions": [{
+    "original": "",
+    "kind": "comma",
+    "start": 70,
+    "rule": "serial-comma",
+    "mechanical": false,
+    "end": 70,
+    "label": "Add \u201c,\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Add a comma before \u201cand\u201d to end a list (the serial comma).",
+    "replacement": ",",
+    "mark": [
+     65,
+     70
+    ]
+   }],
+   "modelPending": false,
+   "text": "After lunch, Sam and Alex left. In the morning, I bought apples, pears and plums."
   }
  ],
  "tokenize": [

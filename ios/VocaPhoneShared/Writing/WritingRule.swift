@@ -19,6 +19,10 @@ struct WritingRule: Sendable {
     private let notAfter: Set<String>
     /// No word after the match, to the end of the sentence, may be one of these.
     private let unlessLater: Set<String>
+    /// A "?" must follow the match in its sentence.
+    private let question: Bool
+    /// The sentence must not start with one of these with no comma before the match.
+    private let notAfterOpening: Set<String>
     let replace: String?
     let kind: String
     let message: String?
@@ -53,6 +57,8 @@ struct WritingRule: Sendable {
             after: (o["after"] as? [String]).map { Set($0.map(WritingToken.normalize)) },
             notAfter: Set((o["notAfter"] as? [String] ?? []).map(WritingToken.normalize)),
             unlessLater: Set((o["unlessLater"] as? [String] ?? []).map(WritingToken.normalize)),
+            question: o["question"] as? Bool ?? false,
+            notAfterOpening: Set((o["notAfterOpening"] as? [String] ?? []).map(WritingToken.normalize)),
             replace: o["replace"] as? String,
             kind: kind,
             message: o["message"] as? String,
@@ -74,6 +80,10 @@ struct WritingRule: Sendable {
         if notAtStart, start { return 0 }
         let before = index > sentence.first ? tokens[index - 1] : nil
         if let before, notAfter.contains(before.key) { return 0 }
+        if !notAfterOpening.isEmpty, index > sentence.first, notAfterOpening.contains(tokens[sentence.first].key),
+           !tokens[sentence.first..<index].contains(where: { $0.text == "," }) {
+            return 0
+        }
         if let after, !start, !(before.map { after.contains($0.key) } ?? false) { return 0 }
         if let before, Self.hyphens.contains(before.text), before.end == tokens[index].start { return 0 }
         var i = index
@@ -93,11 +103,13 @@ struct WritingRule: Sendable {
         if !unlessLater.isEmpty, i <= sentence.last, tokens[i...sentence.last].contains(where: { unlessLater.contains($0.key) }) {
             return 0
         }
+        if question, i > sentence.last || !tokens[i...sentence.last].contains(where: { $0.text == "?" }) { return 0 }
         return i - index
     }
 
     private func matchesClass(_ name: String, _ token: WritingToken, _ previous: WritingToken?, _ rules: WritingRules) -> Bool {
         guard token.isWord else { return false }
+        if name.hasPrefix("!") { return token.hasLetter && !matchesClass(String(name.dropFirst()), token, previous, rules) }
         let key = token.key
         switch name {
         case "word":
