@@ -46,8 +46,10 @@ uv run --with-requirements requirements.txt python answers.py ~/.cache/vocaphone
 just android test '*WritingBenchmarkTest'   # report: android/app/build/writing-benchmark.md
 ```
 
-Regenerate `answers.json` whenever a set, `infer.py` or the pinned model
-changes; the test names any sentence it has no answer for. Its floors fail a
+Regenerate `answers.json` whenever a set, `infer.py`, the pinned model or a
+bias changes; the test names any sentence it has no answer for, and fails when
+the model files, `infer.py` or a bias recorded in the file no longer match the
+app. Its floors fail a
 change that fixes less, and its ceilings one that flags more than 2% of correct
 lines. A change that earns more raises the floor.
 

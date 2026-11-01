@@ -1,9 +1,13 @@
 package com.vocahq.vocaphone.writing
 
 import com.vocahq.vocaphone.grammar.GrammarFixtures
+import com.vocahq.vocaphone.grammar.GrammarTagger
+import com.vocahq.vocaphone.local.GrammarModelCatalog
 import java.io.File
+import java.security.MessageDigest
 import java.util.Locale
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -24,7 +28,8 @@ import org.junit.Test
  *
  * The full report goes to `build/writing-benchmark.md`. [FLOORS] fails the test
  * when a change catches less, and [CEILINGS] when it flags more correct text;
- * raise a floor when a change earns it.
+ * raise a floor when a change earns it. [answersAreCurrent] fails when the
+ * answers were made from another model, `infer.py` or bias than the app's.
  */
 class WritingBenchmarkTest {
     private val root = File(GrammarFixtures.root, "../../tools/grammar-eval")
@@ -62,6 +67,25 @@ class WritingBenchmarkTest {
             if (changed.has(sentence)) changed.getString(sentence) else sentence
         }
     }
+
+    @Test
+    fun answersAreCurrent() {
+        val from = answers.getJSONObject("madeFrom")
+        val stale = "tools/grammar-eval/answers.json is stale: rerun answers.py"
+        val model = from.getJSONObject("model").let { m -> m.keys().asSequence().associateWith { m.getString(it) } }
+        assertEquals(
+            "$stale (the pinned grammar model changed)",
+            GrammarModelCatalog.tagger.files.associate { it.path.substringAfterLast('/') to it.sha256 },
+            model,
+        )
+        assertEquals("$stale (infer.py changed)", sha256(File(root, "infer.py")), from.getString("infer.py"))
+        val bias = from.getJSONObject("bias")
+        assertEquals("$stale (a tier's bias changed)", TIER_BIAS.keys, bias.keys().asSequence().toSet())
+        TIER_BIAS.forEach { (tier, value) -> assertEquals("$stale ($tier bias)", value.toDouble(), bias.getDouble(tier), 0.0) }
+    }
+
+    private fun sha256(file: File): String =
+        MessageDigest.getInstance("SHA-256").digest(file.readBytes()).joinToString("") { "%02x".format(it) }
 
     /** [input] with every actionable suggestion in the default groups accepted, last first. */
     private fun accepted(input: String, model: WritingCheck.Model?): Pair<String, List<WritingSuggestion>> {
@@ -137,7 +161,7 @@ class WritingBenchmarkTest {
         val failures = ArrayList<String>()
         FLOORS.forEach { (key, floor) ->
             val s = results.getValue(key)
-            if (s.exactRate() + 1e-9 < floor) failures += "$key fixes ${pct(s.exactRate())} exactly, below its floor of ${pct(floor)}"
+            if (s.exactRate() + FLOOR_ROUNDING < floor) failures += "$key fixes ${pct(s.exactRate())} exactly, below its floor of ${pct(floor)}"
         }
         CEILINGS.forEach { (key, ceiling) ->
             val s = results.getValue(key)
@@ -176,6 +200,12 @@ class WritingBenchmarkTest {
 
         /** Configuration name → the answers.json tier the model reads, or null for none. */
         val CONFIGURATIONS = linkedMapOf<String, String?>("rules" to null, "balanced" to "balanced")
+
+        /** Each answers.json tier's KEEP bias, which `answers.py` must have used. */
+        val TIER_BIAS = mapOf("balanced" to GrammarTagger.KEEP_BIAS)
+
+        /** Floors are written to a tenth of a percent, rounded: 133 of 163 is 81.595%, written 0.816. */
+        const val FLOOR_ROUNDING = 0.0005
 
         /** Share of error lines that must come out exactly as meant: what each configuration reached. */
         val FLOORS = mapOf(
