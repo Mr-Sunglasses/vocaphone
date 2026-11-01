@@ -5,7 +5,9 @@ package com.vocahq.vocaphone.writing
  * plays", "My sister live", "Each of the boys have", "Where is my keys",
  * "I go to the gym yesterday". [PosTagger] finds the finite verbs and the noun
  * phrase before each; closed word lists say whether that subject is singular
- * or plural. Precision first: a subject that is unusual in any way (a
+ * or plural. The same tags place the comma after an opening clause ("If you
+ * need anything, let me know") and the base form after a modal or "to" for
+ * any verb ("can sings", "want to goes"). Precision first: a subject that is unusual in any way (a
  * collective noun, a relative clause, a name ending in "s", a quantifier
  * without "of") leaves its verb alone. Mirrors `WritingAgreement.swift`.
  */
@@ -33,6 +35,8 @@ internal class WritingAgreement(
         protected: List<IntRange>,
         keep: Set<String>,
         fixed: List<WritingSuggestion>,
+        /** Text typed in lower case on purpose: casual, so no commas are pressed on it. */
+        casual: Boolean = false,
     ): List<WritingSuggestion> {
         val s = Tagged(tokens, sentence, tagger.tag((sentence.first..sentence.last).map { tokens[it].text }))
         val out = ArrayList<WritingSuggestion>()
@@ -61,7 +65,112 @@ internal class WritingAgreement(
             )
         }
         pastTime(text, s, ::free)?.let { out += it }
+        out += afterModal(text, s, ::free)
+        if (!casual) clauseComma(text, s, ::free)?.let { out += it }
         return out
+    }
+
+    // ── the base form after a modal or "to" ──────────────────────────────
+
+    /**
+     * "She can sings", "I want to goes", "you should went": a modal or "to",
+     * maybe an adverb, then a verb the tagger reads as inflected. The rules
+     * already do this for the verbs they list; this reaches every verb the
+     * dictionary knows. Not after "to" that is a preposition ("close to
+     * leaves"): the word must be tagged a verb.
+     */
+    private fun afterModal(text: String, s: Tagged, free: (Int) -> Boolean): List<WritingSuggestion> {
+        val out = ArrayList<WritingSuggestion>()
+        for (v in s.sentence.first + 1..s.sentence.last) {
+            val tag = s.tag(v)
+            if (tag != "VBZ" && tag != "VBD") continue
+            // Past "really" or "not": "can really sings", "should not went".
+            var m = v - 1
+            if (s.tag(m) in ADVERB_TAGS && s.key(m) != "not" && s.inside(m - 1)) m--
+            if (s.key(m) == "not" && s.inside(m - 1)) m--
+            if (s.tag(m) != "MD" && !(s.key(m) == "to" && s.tag(m) == "TO")) continue
+            if (!free(v)) continue
+            val key = s.key(v)
+            val base = when (tag) {
+                "VBZ" -> baseOf(key)
+                else -> rules.verbs.lemma(key)?.takeIf { it != key } ?: pastBase(key)
+            } ?: continue
+            if (base == key) continue
+            // "to" is also a preposition ("allergic to peanuts"): after it, only a verb the tables know.
+            if (s.tag(m) == "TO" && !rules.verbs.isBase(base)) continue
+            out += suggestion(
+                text, s, v, base, kind = "verb_form",
+                message = rules.messages["verb_form.after"] ?: rules.kind("verb_form").message,
+                values = mapOf("previous" to s.tokens[v - 1].text),
+                rule = "base-after-modal",
+            )
+        }
+        return out
+    }
+
+    /** The base of a regular past ("walked" → "walk"), when the dictionary knows it and it makes that past. */
+    private fun pastBase(past: String): String? {
+        val dictionary = spelling ?: return null
+        if (!past.endsWith("ed")) return null
+        val candidates = listOf(past.dropLast(2), past.dropLast(1), past.dropLast(3), past.dropLast(3) + "y")
+        return candidates.firstOrNull { it.length >= 2 && dictionary.isKnown(it) && rules.verbs.past(it) == past }
+    }
+
+    // ── a comma after an opening clause ──────────────────────────────────
+
+    /**
+     * "If you need anything let me know", "When I get home I'll call": a
+     * sentence that opens with "if", "when" and the like, has a subject and a
+     * verb, and then starts its main clause with a subject or an order, wants
+     * a comma between the two. Only where nothing else could be meant: no
+     * comma anywhere in the sentence yet, the word before the boundary ends a
+     * phrase (a noun, an object pronoun, an adverb, a particle), and a verb
+     * follows the boundary.
+     */
+    private fun clauseComma(text: String, s: Tagged, free: (Int) -> Boolean): WritingSuggestion? {
+        val first = s.sentence.first
+        if (s.key(first) !in OPENING_CLAUSES) return null
+        if ((first..s.sentence.last).any { s.tokens[it].text in CLAUSE_PUNCTUATION }) return null
+        if (!s.inside(first + 1) || !(s.tag(first + 1) in SUBJECT_TAGS || s.key(first + 1) in SUBJECT_WORDS)) return null
+        var verbSeen = false
+        for (i in first + 2..s.sentence.last) {
+            val tag = s.tag(i)
+            val verbAfter = s.tag(i).startsWith("VB") ||
+                (i + 1..minOf(s.sentence.last, i + 3)).any { s.tag(it).startsWith("VB") || s.tag(it) == "MD" }
+            // "If you can go then go": "then" opens the main clause, whatever comes before it.
+            val then = s.key(i) == "then"
+            if (verbSeen && i - 1 > first + 1 && (then || (startsMainClause(s, i) && endsPhrase(s, i - 1) && verbAfter))) {
+                if (!free(i - 1)) return null
+                val k = rules.kind("comma")
+                val anchor = s.tokens[i - 1]
+                val edit = WritingEdits.build(text, s.tokens, first, i, i, ",")
+                return WritingSuggestion(
+                    start = edit.start, end = edit.end, original = text.substring(edit.start, edit.end),
+                    replacement = edit.replacement, markStart = edit.markStart, markEnd = edit.markEnd,
+                    kind = k.id, category = k.category, title = k.title,
+                    message = WritingEdits.format(
+                        "Add a comma after the opening “{opening} …” part, before “{next}”.",
+                        mapOf("opening" to s.tokens[first].text, "next" to s.tokens[i].text, "previous" to anchor.text),
+                    ),
+                    mechanical = false, source = WritingSuggestion.Source.RULE, rule = "comma-clause",
+                )
+            }
+            if (tag.startsWith("VB") || tag == "MD") verbSeen = true
+        }
+        return null
+    }
+
+    /** A main clause can start at [i]: a subject pronoun, or an order ("let", "call", "please"). */
+    private fun startsMainClause(s: Tagged, i: Int): Boolean {
+        val key = s.key(i)
+        return key in MAIN_CLAUSE_SUBJECTS || (s.tag(i) == "VB" && key in ORDERS) || key == "please" ||
+            key in CONTRACTED_SUBJECTS
+    }
+
+    /** The word at [i] can end the opening clause: not a word that needs something after it. */
+    private fun endsPhrase(s: Tagged, i: Int): Boolean {
+        val tag = s.tag(i)
+        return (tag in PHRASE_END_TAGS || s.key(i) in OBJECT_PRONOUNS) && s.key(i) !in SUBJECT_WORDS && s.key(i) != "then"
     }
 
     // ── the verb ─────────────────────────────────────────────────────────
@@ -421,5 +530,20 @@ internal class WritingAgreement(
         val FINITE_TAGS = setOf("VBD", "VBP", "VBZ", "MD")
         val HYPOTHETICAL_FORMS = setOf("were", "weren't")
         val HYPOTHETICAL_CUES = setOf("if", "wish", "wished", "wishes", "though", "suppose", "supposing", "imagine", "rather", "unless")
+        val OPENING_CLAUSES = setOf(
+            "if", "when", "whenever", "although", "though", "while", "once", "after", "before", "unless", "until", "because",
+        )
+        val SUBJECT_TAGS = setOf("PRP", "DT", "NN", "NNS", "NNP", "NNPS", "PRP$")
+        val SUBJECT_WORDS = setOf("i", "you", "he", "she", "we", "they", "it")
+        val MAIN_CLAUSE_SUBJECTS = setOf("i", "you", "he", "she", "we", "they")
+        val CONTRACTED_SUBJECTS = setOf(
+            "i'll", "i'm", "i've", "i'd", "you'll", "you're", "we'll", "we're", "they'll", "they're",
+            "he'll", "she'll", "it'll", "let's", "lets",
+        )
+        val ORDERS = setOf(
+            "let", "call", "text", "send", "tell", "give", "feel", "make", "check", "come", "bring", "take",
+            "remember", "ask", "try", "keep", "stop", "go", "wait", "email", "ping", "message",
+        )
+        val PHRASE_END_TAGS = setOf("NN", "NNS", "NNP", "NNPS", "RB", "RP", "CD", "JJ", "VBN")
     }
 }

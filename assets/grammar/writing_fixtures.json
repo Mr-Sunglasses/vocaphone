@@ -5392,6 +5392,172 @@
   },
   {
    "stats": [
+    15,
+    66,
+    2,
+    4,
+    6,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "a comma after an opening clause",
+   "suggestions": [
+    {
+     "original": "",
+     "kind": "comma",
+     "start": 20,
+     "rule": "comma-clause",
+     "mechanical": false,
+     "end": 20,
+     "label": "Add \u201c,\u201d",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Add a comma after the opening \u201cIf \u2026\u201d part, before \u201clet\u201d.",
+     "replacement": ",",
+     "mark": [
+      12,
+      20
+     ]
+    },
+    {
+     "original": "",
+     "kind": "comma",
+     "start": 49,
+     "rule": "comma-clause",
+     "mechanical": false,
+     "end": 49,
+     "label": "Add \u201c,\u201d",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Add a comma after the opening \u201cWhen \u2026\u201d part, before \u201cI\u201d.",
+     "replacement": ",",
+     "mark": [
+      45,
+      49
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "If you need anything let me know. When I get home I will call you."
+  },
+  {
+   "stats": [
+    7,
+    32,
+    1,
+    2,
+    3,
+    91,
+    100
+   ],
+   "tones": [],
+   "name": "no clause comma in casual lower-case text",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "if you need anything let me know"
+  },
+  {
+   "stats": [
+    8,
+    30,
+    1,
+    3,
+    4,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a reported clause is not an opening clause",
+   "suggestions": [{
+    "original": "",
+    "kind": "comma",
+    "start": 21,
+    "rule": "comma-clause",
+    "mechanical": false,
+    "end": 21,
+    "label": "Add \u201c,\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Add a comma after the opening \u201cIf \u2026\u201d part, before \u201cthen\u201d.",
+    "replacement": ",",
+    "mark": [
+     19,
+     21
+    ]
+   }],
+   "modelPending": false,
+   "text": "If he says you can go then go."
+  },
+  {
+   "stats": [
+    8,
+    35,
+    1,
+    3,
+    4,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "the base form after a modal or to, for any verb",
+   "suggestions": [
+    {
+     "original": "sings",
+     "kind": "verb_form",
+     "start": 8,
+     "rule": "modal-base",
+     "mechanical": false,
+     "end": 13,
+     "label": "sings → sing",
+     "source": "rule",
+     "category": "correctness",
+     "message": "After \u201ccan\u201d, use \u201csing\u201d.",
+     "replacement": "sing",
+     "mark": [
+      8,
+      13
+     ]
+    },
+    {
+     "original": "goes",
+     "kind": "verb_form",
+     "start": 30,
+     "rule": "base-after-modal",
+     "mechanical": false,
+     "end": 34,
+     "label": "goes → go",
+     "source": "rule",
+     "category": "correctness",
+     "message": "After \u201cto\u201d, use \u201cgo\u201d.",
+     "replacement": "go",
+     "mark": [
+      30,
+      34
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "She can sings and he wants to goes."
+  },
+  {
+   "stats": [
+    4,
+    24,
+    1,
+    2,
+    2,
+    55,
+    100
+   ],
+   "tones": [],
+   "name": "to as a preposition is left alone",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "I'm allergic to peanuts."
+  },
+  {
+   "stats": [
     28,
     143,
     4,

@@ -76,8 +76,10 @@ struct WritingCheck: Sendable {
         if let agreement {
             // Subjects and their verbs, where no rule has spoken for the verb.
             let fixed = found.filter(\.isActionable)
+            let casual = options.typed
+                && text.unicodeScalars.first(where: WritingText.isLetter)?.properties.isLowercase == true
             for sentence in sentences {
-                found += agreement.suggestions(text, tokens, sentence, protected, keep, fixed)
+                found += agreement.suggestions(text, tokens, sentence, protected, keep, fixed, casual: casual)
             }
         }
         if let spelling {

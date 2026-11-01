@@ -85,7 +85,8 @@ class WritingCheck(
         agreement?.let { checks ->
             // Subjects and their verbs, where no rule has spoken for the verb.
             val fixed = found.filter { it.isActionable }
-            for (sentence in sentences) found += checks.suggestions(text, tokens, sentence, protected, keep, fixed)
+            val casual = options.typed && text.firstOrNull { it.isLetter() }?.isLowerCase() == true
+            for (sentence in sentences) found += checks.suggestions(text, tokens, sentence, protected, keep, fixed, casual)
         }
         spelling?.let { dictionary ->
             // A word a rule already fixes is not looked up, and a word met
