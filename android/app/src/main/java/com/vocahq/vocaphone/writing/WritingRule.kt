@@ -129,7 +129,11 @@ class WritingRule private constructor(
         val key = token.key
         if (key in rules.stopwords || !text.all { it in 'a'..'z' || it in 'A'..'Z' }) return null
         if (text.length == 1) return key[0] in LETTER_NAME_VOWELS
-        if (text.all { it in 'A'..'Z' }) return if (text.length <= 3) key[0] in LETTER_NAME_VOWELS else null
+        if (text.all { it in 'A'..'Z' }) {
+            // "SIM", "RAM": a consonant, a vowel and a consonant may be said as a word.
+            if (text.length == 3 && text[1] in "AEIOU" && text[0] !in "AEIOU" && text[2] !in "AEIOU") return null
+            return if (text.length <= 3) key[0] in LETTER_NAME_VOWELS else null
+        }
         if (SILENT_H.any { key.startsWith(it) }) return true
         if (YOU_SOUND_LONG.none { key.startsWith(it) } && UN_PREFIXED.any { key.startsWith(it) }) return true
         if (key in ONE_SOUND) return false

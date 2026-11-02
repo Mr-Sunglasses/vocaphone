@@ -268,7 +268,16 @@ struct WritingAgreement: Sendable {
         }
         let markerStart = last - marker + 1
         // "better than yesterday", "the same as yesterday": a comparison, not when it happened.
-        if s.inside(markerStart - 1), Self.beforeTimeCompared.contains(s.key(markerStart - 1)) { return nil }
+        // Past the amount of "two days ago" to what comes before it.
+        var before = markerStart - 1
+        if s.key(last) == "ago" {
+            var k = 0
+            while k < 2, s.inside(before), Self.agoAmountTags.contains(s.tag(before)) {
+                before -= 1
+                k += 1
+            }
+        }
+        if s.inside(before), Self.beforeTimeCompared.contains(s.key(before)) { return nil }
         if (s.sentence.first..<markerStart).contains(where: { Self.notSimplePast.contains(s.key($0)) }) { return nil }
         let verbs = (s.sentence.first..<markerStart).filter { verbNumber(s, $0) != nil }
         guard verbs.count == 1, let v = verbs.first else { return nil }
@@ -407,8 +416,9 @@ struct WritingAgreement: Sendable {
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
     ]
     private static let beforeTimeCompared: Set<String> = [
-        "than", "as", "like", "unlike", "from", "of", "about", "versus", "vs",
+        "than", "as", "like", "unlike", "from", "of", "about", "versus", "vs", "to", "with", "over",
     ]
+    private static let agoAmountTags: Set<String> = ["CD", "DT", "NN", "NNS"]
     private static let notSimplePast: Set<String> = [
         "since", "will", "won't", "every", "usually", "always", "often", "sometimes", "until", "if",
     ]

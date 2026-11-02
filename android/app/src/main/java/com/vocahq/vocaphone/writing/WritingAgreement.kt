@@ -266,7 +266,16 @@ internal class WritingAgreement(
         }
         val markerStart = last - marker + 1
         // "better than yesterday", "the same as yesterday": a comparison, not when it happened.
-        if (s.inside(markerStart - 1) && s.key(markerStart - 1) in BEFORE_TIME_COMPARED) return null
+        // Past the amount of "two days ago" to what comes before it.
+        var before = markerStart - 1
+        if (s.key(last) == "ago") {
+            var k = 0
+            while (k < 2 && s.inside(before) && (s.tag(before) in AGO_AMOUNT_TAGS)) {
+                before--
+                k++
+            }
+        }
+        if (s.inside(before) && s.key(before) in BEFORE_TIME_COMPARED) return null
         if ((s.sentence.first until markerStart).any { s.key(it) in NOT_SIMPLE_PAST }) return null
         val verbs = (s.sentence.first until markerStart).filter { verbNumber(s, it) != null }
         val v = verbs.singleOrNull() ?: return null
@@ -403,7 +412,10 @@ internal class WritingAgreement(
             "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
         )
         /** Words that make a sentence with a past time something other than a simple past. */
-        val BEFORE_TIME_COMPARED = setOf("than", "as", "like", "unlike", "from", "of", "about", "versus", "vs")
+        val BEFORE_TIME_COMPARED = setOf(
+            "than", "as", "like", "unlike", "from", "of", "about", "versus", "vs", "to", "with", "over",
+        )
+        val AGO_AMOUNT_TAGS = setOf("CD", "DT", "NN", "NNS")
         val NOT_SIMPLE_PAST = setOf("since", "will", "won't", "every", "usually", "always", "often", "sometimes", "until", "if")
         val PERFECT_AUXILIARIES = setOf("have", "has")
         val FINITE_TAGS = setOf("VBD", "VBP", "VBZ", "MD")

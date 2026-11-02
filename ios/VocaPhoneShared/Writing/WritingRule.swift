@@ -212,6 +212,12 @@ struct WritingRule: Sendable {
         guard let first = key.unicodeScalars.first else { return nil }
         if scalars.count == 1 { return letterNameVowels.contains(first) }
         if scalars.allSatisfy({ ("A"..."Z").contains($0) }) {
+            // "SIM", "RAM": a consonant, a vowel and a consonant may be said as a word.
+            let capitalVowels: Set<Unicode.Scalar> = ["A", "E", "I", "O", "U"]
+            if scalars.count == 3, capitalVowels.contains(scalars[1]), !capitalVowels.contains(scalars[0]),
+               !capitalVowels.contains(scalars[2]) {
+                return nil
+            }
             return scalars.count <= 3 ? letterNameVowels.contains(first) : nil
         }
         if silentH.contains(where: { key.hasPrefix($0) }) { return true }

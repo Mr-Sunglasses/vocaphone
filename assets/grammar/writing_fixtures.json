@@ -6426,6 +6426,74 @@
    ],
    "modelPending": false,
    "text": "It was a utopia with a utensil and an umbrella. She has a umbrella and an utensil. An umami taste. It is better than yesterday. I feel the same as yesterday. I go to the gym yesterday."
+  },
+  {
+   "stats": [
+    41,
+    188,
+    5,
+    11,
+    17,
+    85,
+    76
+   ],
+   "tones": ["urgent"],
+   "name": "a SIM card, an MBA, and compared to yesterday",
+   "suggestions": [
+    {
+     "original": "a",
+     "kind": "article",
+     "start": 58,
+     "rule": "a-an",
+     "mechanical": false,
+     "end": 59,
+     "label": "a → an",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201can\u201d before a word that starts with a vowel sound, like \u201cFBI\u201d.",
+     "replacement": "an",
+     "mark": [
+      58,
+      59
+     ]
+    },
+    {
+     "original": "go",
+     "kind": "verb_form",
+     "start": 141,
+     "rule": "tense-past-time",
+     "mechanical": false,
+     "end": 143,
+     "label": "go → went",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cyesterday\u201d is in the past, so use \u201cwent\u201d.",
+     "replacement": "went",
+     "mark": [
+      141,
+      143
+     ]
+    },
+    {
+     "original": "see",
+     "kind": "verb_form",
+     "start": 167,
+     "rule": "tense-past-time",
+     "mechanical": false,
+     "end": 170,
+     "label": "see → saw",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cago\u201d is in the past, so use \u201csaw\u201d.",
+     "replacement": "saw",
+     "mark": [
+      167,
+      170
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I need a SIM card and a RAM module for an MBA student and a FBI agent. Sales are up compared to yesterday. It is better than two days ago. I go to school yesterday. I see him two days ago."
   }
  ],
  "tokenize": [
