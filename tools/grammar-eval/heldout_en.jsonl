@@ -1,0 +1,200 @@
+{"input": "see you tomorow then", "expected": "see you tomorrow then", "type": "spelling"}
+{"input": "that was definately the best pizza ever", "expected": "that was definitely the best pizza ever", "type": "spelling"}
+{"input": "did you recieve my email?", "expected": "did you receive my email?", "type": "spelling"}
+{"input": "running a bit lste, sorry", "expected": "running a bit late, sorry", "type": "spelling"}
+{"input": "thsnks for dinner last night", "expected": "thanks for dinner last night", "type": "spelling"}
+{"input": "teh movie starts at 8", "expected": "the movie starts at 8", "type": "spelling"}
+{"input": "that's so wierd lol", "expected": "that's so weird lol", "type": "spelling"}
+{"input": "we should grab lunvh this week", "expected": "we should grab lunch this week", "type": "spelling"}
+{"input": "can you send me the adress?", "expected": "can you send me the address?", "type": "spelling"}
+{"input": "she's my best freind", "expected": "she's my best friend", "type": "spelling"}
+{"input": "it's jsut a quick question", "expected": "it's just a quick question", "type": "spelling"}
+{"input": "the restaraunt was packed", "expected": "the restaurant was packed", "type": "spelling"}
+{"input": "my phone died becuase it wasn't charged", "expected": "my phone died because it wasn't charged", "type": "spelling"}
+{"input": "happy aniversary to you both!", "expected": "happy anniversary to you both!", "type": "spelling"}
+{"input": "can't wait for the weekenf", "expected": "can't wait for the weekend", "type": "spelling"}
+{"input": "that's a really intresting idea", "expected": "that's a really interesting idea", "type": "spelling"}
+{"input": "don't forget the groceires", "expected": "don't forget the groceries", "type": "spelling"}
+{"input": "we're leaving for the aiport now", "expected": "we're leaving for the airport now", "type": "spelling"}
+{"input": "this is so embarassing lol", "expected": "this is so embarrassing lol", "type": "spelling"}
+{"input": "the wifi is realy slow today", "expected": "the wifi is really slow today", "type": "spelling"}
+{"input": "Defintely! Count me in.", "expected": "Definitely! Count me in.", "type": "spelling"}
+{"input": "Unfortunatly, I can't make it on Friday.", "expected": "Unfortunately, I can't make it on Friday.", "type": "spelling"}
+{"input": "Wjat time works best for you?", "expected": "What time works best for you?", "type": "spelling"}
+{"input": "Congradulations on the new job!", "expected": "Congratulations on the new job!", "type": "spelling"}
+{"input": "Hapoy birthday, Emma! Have a great day.", "expected": "Happy birthday, Emma! Have a great day.", "type": "spelling"}
+{"input": "Tomorow is fine for me.", "expected": "Tomorrow is fine for me.", "type": "spelling"}
+{"input": "I'll bring a seperate bag for the shoes.", "expected": "I'll bring a separate bag for the shoes.", "type": "spelling"}
+{"input": "I'll be in the office untill six.", "expected": "I'll be in the office until six.", "type": "spelling"}
+{"input": "Can we move the meetign to Thursday?", "expected": "Can we move the meeting to Thursday?", "type": "spelling"}
+{"input": "I'm so dissapointed with the ending.", "expected": "I'm so disappointed with the ending.", "type": "spelling"}
+{"input": "My nieghbour's cat keeps coming into our garden.", "expected": "My neighbour's cat keeps coming into our garden.", "type": "spelling"}
+{"input": "The kids were really exited about the trip.", "expected": "The kids were really excited about the trip.", "type": "spelling"}
+{"input": "The begining of the film was a bit slow.", "expected": "The beginning of the film was a bit slow.", "type": "spelling"}
+{"input": "Can you remeber to buy milk on the way home?", "expected": "Can you remember to buy milk on the way home?", "type": "spelling"}
+{"input": "It looks completly different now.", "expected": "It looks completely different now.", "type": "spelling"}
+{"input": "She finaly replied to my message.", "expected": "She finally replied to my message.", "type": "spelling"}
+{"input": "I need to buy a new calender for the kitchen.", "expected": "I need to buy a new calendar for the kitchen.", "type": "spelling"}
+{"input": "Thanks so much for the suprise party!", "expected": "Thanks so much for the surprise party!", "type": "spelling"}
+{"input": "I'll grab some coffeee on the way.", "expected": "I'll grab some coffee on the way.", "type": "spelling"}
+{"input": "He's been really helpfull all week.", "expected": "He's been really helpful all week.", "type": "spelling"}
+{"input": "Please find the signed contract and the reciept attached.", "expected": "Please find the signed contract and the receipt attached.", "type": "spelling"}
+{"input": "We would like to recomend her for the senior role.", "expected": "We would like to recommend her for the senior role.", "type": "spelling"}
+{"input": "The accomodation will be provided by the university.", "expected": "The accommodation will be provided by the university.", "type": "spelling"}
+{"input": "It is neccessary to submit the form before Friday.", "expected": "It is necessary to submit the form before Friday.", "type": "spelling"}
+{"input": "The goverment announced new measures this morning.", "expected": "The government announced new measures this morning.", "type": "spelling"}
+{"input": "Thank you for the opportunty to discuss this proposal.", "expected": "Thank you for the opportunity to discuss this proposal.", "type": "spelling"}
+{"input": "The incident occured shortly after midnight.", "expected": "The incident occurred shortly after midnight.", "type": "spelling"}
+{"input": "Each team member has a clear responsibilty for the launch.", "expected": "Each team member has a clear responsibility for the launch.", "type": "spelling"}
+{"input": "We apologise for any inconvenince this may cause.", "expected": "We apologise for any inconvenience this may cause.", "type": "spelling"}
+{"input": "Our new enviromental policy takes effect in March.", "expected": "Our new environmental policy takes effect in March.", "type": "spelling"}
+{"input": "dont worry about it", "expected": "don't worry about it", "type": "apostrophe"}
+{"input": "we cant make it tonight, sorry", "expected": "we can't make it tonight, sorry", "type": "apostrophe"}
+{"input": "thats such a cool idea", "expected": "that's such a cool idea", "type": "apostrophe"}
+{"input": "lets get pizza tonight", "expected": "let's get pizza tonight", "type": "apostrophe"}
+{"input": "she doesnt eat meat", "expected": "she doesn't eat meat", "type": "apostrophe"}
+{"input": "the app wont open on my phone", "expected": "the app won't open on my phone", "type": "apostrophe"}
+{"input": "were almost at your place", "expected": "we're almost at your place", "type": "apostrophe"}
+{"input": "hes not answering his phone", "expected": "he's not answering his phone", "type": "apostrophe"}
+{"input": "Its going to be a long day.", "expected": "It's going to be a long day.", "type": "apostrophe"}
+{"input": "The dog hurt it's paw at the park.", "expected": "The dog hurt its paw at the park.", "type": "apostrophe"}
+{"input": "Whose coming to the party tonight?", "expected": "Who's coming to the party tonight?", "type": "apostrophe"}
+{"input": "My sisters car broke down, so she took the bus.", "expected": "My sister's car broke down, so she took the bus.", "type": "apostrophe"}
+{"input": "The childrens books are on the top shelf.", "expected": "The children's books are on the top shelf.", "type": "apostrophe"}
+{"input": "The companys annual report will be published next week.", "expected": "The company's annual report will be published next week.", "type": "apostrophe"}
+{"input": "Fresh apple's are on sale this week.", "expected": "Fresh apples are on sale this week.", "type": "apostrophe"}
+{"input": "their going to be late again", "expected": "they're going to be late again", "type": "confused"}
+{"input": "your welcome, happy to help!", "expected": "you're welcome, happy to help!", "type": "confused"}
+{"input": "Is that you're car outside?", "expected": "Is that your car outside?", "type": "confused"}
+{"input": "I left my charger over their.", "expected": "I left my charger over there.", "type": "confused"}
+{"input": "That's way to expensive for me.", "expected": "That's way too expensive for me.", "type": "confused"}
+{"input": "She's taller then her brother now.", "expected": "She's taller than her brother now.", "type": "confused"}
+{"input": "The weather really effected my mood today.", "expected": "The weather really affected my mood today.", "type": "confused"}
+{"input": "did you loose your keys again?", "expected": "did you lose your keys again?", "type": "confused"}
+{"input": "these jeans are too lose", "expected": "these jeans are too loose", "type": "confused"}
+{"input": "I could of done better on that test.", "expected": "I could have done better on that test.", "type": "confused"}
+{"input": "who's turn is it to cook tonight?", "expected": "whose turn is it to cook tonight?", "type": "confused"}
+{"input": "we ate first and than went to the movies", "expected": "we ate first and then went to the movies", "type": "confused"}
+{"input": "The new policy will effect all employees from January.", "expected": "The new policy will affect all employees from January.", "type": "confused"}
+{"input": "I need to except the offer by Friday.", "expected": "I need to accept the offer by Friday.", "type": "confused"}
+{"input": "She lead the project last year.", "expected": "She led the project last year.", "type": "confused"}
+{"input": "I past my driving test!", "expected": "I passed my driving test!", "type": "confused"}
+{"input": "let's take a quick brake", "expected": "let's take a quick break", "type": "confused"}
+{"input": "She gave me a lovely complement on my dress.", "expected": "She gave me a lovely compliment on my dress.", "type": "confused"}
+{"input": "that's not quiet what I meant", "expected": "that's not quite what I meant", "type": "confused"}
+{"input": "The principle of our school is retiring this year.", "expected": "The principal of our school is retiring this year.", "type": "confused"}
+{"input": "The list of names are on my desk.", "expected": "The list of names is on my desk.", "type": "agreement"}
+{"input": "Each of the rooms have a private bathroom.", "expected": "Each of the rooms has a private bathroom.", "type": "agreement"}
+{"input": "Everyone in the group were happy with the plan.", "expected": "Everyone in the group was happy with the plan.", "type": "agreement"}
+{"input": "one of my friends live in Berlin", "expected": "one of my friends lives in Berlin", "type": "agreement"}
+{"input": "There is three missing files in the shared folder.", "expected": "There are three missing files in the shared folder.", "type": "agreement"}
+{"input": "where is my keys?", "expected": "where are my keys?", "type": "agreement"}
+{"input": "My brother and my sister lives in Leeds.", "expected": "My brother and my sister live in Leeds.", "type": "agreement"}
+{"input": "The price of these shoes are ridiculous.", "expected": "The price of these shoes is ridiculous.", "type": "agreement"}
+{"input": "the kids loves the new playground", "expected": "the kids love the new playground", "type": "agreement"}
+{"input": "my phone keep dying on me", "expected": "my phone keeps dying on me", "type": "agreement"}
+{"input": "the results of the test is finally out", "expected": "the results of the test are finally out", "type": "agreement"}
+{"input": "The quality of the photos are amazing.", "expected": "The quality of the photos is amazing.", "type": "agreement"}
+{"input": "There was a lot of people at the concert.", "expected": "There were a lot of people at the concert.", "type": "agreement"}
+{"input": "Each student have to submit the form by Monday.", "expected": "Each student has to submit the form by Monday.", "type": "agreement"}
+{"input": "everybody know about the surprise except Mia", "expected": "everybody knows about the surprise except Mia", "type": "agreement"}
+{"input": "The new rules applies to everyone in the building.", "expected": "The new rules apply to everyone in the building.", "type": "agreement"}
+{"input": "why is the windows open?", "expected": "why are the windows open?", "type": "agreement"}
+{"input": "Here is the documents you asked for.", "expected": "Here are the documents you asked for.", "type": "agreement"}
+{"input": "The man who live next door is a nurse.", "expected": "The man who lives next door is a nurse.", "type": "agreement"}
+{"input": "a lot of people thinks it's a good idea", "expected": "a lot of people think it's a good idea", "type": "agreement"}
+{"input": "The number of complaints have dropped since May.", "expected": "The number of complaints has dropped since May.", "type": "agreement"}
+{"input": "Both of my parents works in healthcare.", "expected": "Both of my parents work in healthcare.", "type": "agreement"}
+{"input": "the cost of the repairs were higher than expected", "expected": "the cost of the repairs was higher than expected", "type": "agreement"}
+{"input": "Is the girls ready to go?", "expected": "Are the girls ready to go?", "type": "agreement"}
+{"input": "she don't know about the party yet", "expected": "she doesn't know about the party yet", "type": "agreement"}
+{"input": "He have a meeting at three.", "expected": "He has a meeting at three.", "type": "agreement"}
+{"input": "They was at the gym all morning.", "expected": "They were at the gym all morning.", "type": "agreement"}
+{"input": "we was just talking about you lol", "expected": "we were just talking about you lol", "type": "agreement"}
+{"input": "it make no sense to me", "expected": "it makes no sense to me", "type": "agreement"}
+{"input": "He were late again this morning.", "expected": "He was late again this morning.", "type": "agreement"}
+{"input": "You should to call her before noon.", "expected": "You should call her before noon.", "type": "verb_form"}
+{"input": "she can sings really well", "expected": "she can sing really well", "type": "verb_form"}
+{"input": "We must leaving now or we'll miss the train.", "expected": "We must leave now or we'll miss the train.", "type": "verb_form"}
+{"input": "I will called you after work.", "expected": "I will call you after work.", "type": "verb_form"}
+{"input": "Did you saw my message?", "expected": "Did you see my message?", "type": "verb_form"}
+{"input": "She doesn't likes coffee.", "expected": "She doesn't like coffee.", "type": "verb_form"}
+{"input": "he didn't went to school today", "expected": "he didn't go to school today", "type": "verb_form"}
+{"input": "yesterday we go to the beach", "expected": "yesterday we went to the beach", "type": "verb_form"}
+{"input": "Last week she buy a new laptop.", "expected": "Last week she bought a new laptop.", "type": "verb_form"}
+{"input": "We meet him two days ago at the station.", "expected": "We met him two days ago at the station.", "type": "verb_form"}
+{"input": "I have knew her since 2015.", "expected": "I have known her since 2015.", "type": "verb_form"}
+{"input": "have you ever ate sushi?", "expected": "have you ever eaten sushi?", "type": "verb_form"}
+{"input": "we've been waited outside for an hour", "expected": "we've been waiting outside for an hour", "type": "verb_form"}
+{"input": "I buyed a new jacket on Saturday.", "expected": "I bought a new jacket on Saturday.", "type": "verb_form"}
+{"input": "my dad teached me how to swim", "expected": "my dad taught me how to swim", "type": "verb_form"}
+{"input": "He catched the last bus home.", "expected": "He caught the last bus home.", "type": "verb_form"}
+{"input": "we drived all the way to the coast", "expected": "we drove all the way to the coast", "type": "verb_form"}
+{"input": "I enjoy to cook on weekends.", "expected": "I enjoy cooking on weekends.", "type": "verb_form"}
+{"input": "we're looking forward to see you next week!", "expected": "we're looking forward to seeing you next week!", "type": "verb_form"}
+{"input": "He decided going home early.", "expected": "He decided to go home early.", "type": "verb_form"}
+{"input": "do you mind to wait a few minutes?", "expected": "do you mind waiting a few minutes?", "type": "verb_form"}
+{"input": "She avoids to drive at night.", "expected": "She avoids driving at night.", "type": "verb_form"}
+{"input": "I finished to read the book last night.", "expected": "I finished reading the book last night.", "type": "verb_form"}
+{"input": "The package was deliver this morning.", "expected": "The package was delivered this morning.", "type": "verb_form"}
+{"input": "The bridge was build in 1920.", "expected": "The bridge was built in 1920.", "type": "verb_form"}
+{"input": "do you have a umbrella I can borrow?", "expected": "do you have an umbrella I can borrow?", "type": "article"}
+{"input": "She is an university student in Madrid.", "expected": "She is a university student in Madrid.", "type": "article"}
+{"input": "It was a honour to work with you.", "expected": "It was an honour to work with you.", "type": "article"}
+{"input": "he's a engineer at a startup", "expected": "he's an engineer at a startup", "type": "article"}
+{"input": "My cousin is teacher in Lisbon.", "expected": "My cousin is a teacher in Lisbon.", "type": "article"}
+{"input": "He plays the football every weekend.", "expected": "He plays football every weekend.", "type": "article"}
+{"input": "the drive takes about a hour", "expected": "the drive takes about an hour", "type": "article"}
+{"input": "Thanks, that's an useful tip.", "expected": "Thanks, that's a useful tip.", "type": "article"}
+{"input": "She's doing a MBA part-time.", "expected": "She's doing an MBA part-time.", "type": "article"}
+{"input": "we bought new car last weekend", "expected": "we bought a new car last weekend", "type": "article"}
+{"input": "it depends of the weather", "expected": "it depends on the weather", "type": "preposition"}
+{"input": "she's really interested on photography", "expected": "she's really interested in photography", "type": "preposition"}
+{"input": "We arrived to the airport at six.", "expected": "We arrived at the airport at six.", "type": "preposition"}
+{"input": "Let's discuss about the budget tomorrow.", "expected": "Let's discuss the budget tomorrow.", "type": "preposition"}
+{"input": "She is married with a doctor.", "expected": "She is married to a doctor.", "type": "preposition"}
+{"input": "He's very good in maths.", "expected": "He's very good at maths.", "type": "preposition"}
+{"input": "my little brother is afraid from dogs", "expected": "my little brother is afraid of dogs", "type": "preposition"}
+{"input": "We need to focus in the main issue.", "expected": "We need to focus on the main issue.", "type": "preposition"}
+{"input": "I'll call you in Monday morning.", "expected": "I'll call you on Monday morning.", "type": "preposition"}
+{"input": "the meeting is on 3pm", "expected": "the meeting is at 3pm", "type": "preposition"}
+{"input": "we've been waiting since three hours", "expected": "we've been waiting for three hours", "type": "preposition"}
+{"input": "According with the latest report, sales fell in June.", "expected": "According to the latest report, sales fell in June.", "type": "preposition"}
+{"input": "Who is responsible of the new project?", "expected": "Who is responsible for the new project?", "type": "preposition"}
+{"input": "your phone is similar than mine", "expected": "your phone is similar to mine", "type": "preposition"}
+{"input": "We reached to the hotel just before midnight.", "expected": "We reached the hotel just before midnight.", "type": "preposition"}
+{"input": "However the shop was already closed when we arrived.", "expected": "However, the shop was already closed when we arrived.", "type": "comma_caps"}
+{"input": "After we finished the presentation to the board we went out for dinner.", "expected": "After we finished the presentation to the board, we went out for dinner.", "type": "comma_caps"}
+{"input": "my flight is on monday", "expected": "my flight is on Monday", "type": "comma_caps"}
+{"input": "we're going to spain in july", "expected": "we're going to Spain in July", "type": "comma_caps"}
+{"input": "she speaks french and german fluently", "expected": "she speaks French and German fluently", "type": "comma_caps"}
+{"input": "can i call you later?", "expected": "can I call you later?", "type": "comma_caps"}
+{"input": "Yes I'll be there by seven.", "expected": "Yes, I'll be there by seven.", "type": "comma_caps"}
+{"input": "Unfortunately we have to cancel our booking.", "expected": "Unfortunately, we have to cancel our booking.", "type": "comma_caps"}
+{"input": "If you need anything else just let me know.", "expected": "If you need anything else, just let me know.", "type": "comma_caps"}
+{"input": "Thanks for your help today John.", "expected": "Thanks for your help today, John.", "type": "comma_caps"}
+{"input": "my birthday is in august", "expected": "my birthday is in August", "type": "comma_caps"}
+{"input": "i think so too", "expected": "I think so too", "type": "comma_caps"}
+{"input": "Do you speak english at home?", "expected": "Do you speak English at home?", "type": "comma_caps"}
+{"input": "In my opinion the second option is better.", "expected": "In my opinion, the second option is better.", "type": "comma_caps"}
+{"input": "By the way the meeting moved to 4pm.", "expected": "By the way, the meeting moved to 4pm.", "type": "comma_caps"}
+{"input": "She didn't say nothing about it.", "expected": "She didn't say anything about it.", "type": "other"}
+{"input": "we didn't do nothing wrong", "expected": "we didn't do anything wrong", "type": "other"}
+{"input": "we can't find the keys nowhere", "expected": "we can't find the keys anywhere", "type": "other"}
+{"input": "This one is more better than the old one.", "expected": "This one is better than the old one.", "type": "other"}
+{"input": "she's more taller than her mum", "expected": "she's taller than her mum", "type": "other"}
+{"input": "That's the most easiest way to do it.", "expected": "That's the easiest way to do it.", "type": "other"}
+{"input": "Him and his brother came over last night.", "expected": "He and his brother came over last night.", "type": "other"}
+{"input": "Her and I are going to the cinema.", "expected": "She and I are going to the cinema.", "type": "other"}
+{"input": "Just between you and I, the plan won't work.", "expected": "Just between you and me, the plan won't work.", "type": "other"}
+{"input": "they have two childs and a dog", "expected": "they have two children and a dog", "type": "other"}
+{"input": "My foots are killing me after that walk.", "expected": "My feet are killing me after that walk.", "type": "other"}
+{"input": "Those kitchen knifes are really sharp.", "expected": "Those kitchen knives are really sharp.", "type": "other"}
+{"input": "Thank you for all the informations.", "expected": "Thank you for all the information.", "type": "other"}
+{"input": "can you give me some advices?", "expected": "can you give me some advice?", "type": "other"}
+{"input": "I have a lot of homeworks tonight.", "expected": "I have a lot of homework tonight.", "type": "other"}
+{"input": "we'll send it to to you tonight", "expected": "we'll send it to you tonight", "type": "other"}
+{"input": "Can you you check the file before lunch?", "expected": "Can you check the file before lunch?", "type": "other"}
+{"input": "I'm so boring today because there's nothing to do.", "expected": "I'm so bored today because there's nothing to do.", "type": "other"}
+{"input": "The movie was so bored that we left early.", "expected": "The movie was so boring that we left early.", "type": "other"}
+{"input": "we're so exciting about the trip!", "expected": "we're so excited about the trip!", "type": "other"}

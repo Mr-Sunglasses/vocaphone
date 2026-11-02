@@ -1,0 +1,150 @@
+{"input": "lol, that's exactly what happened to me", "expected": "lol, that's exactly what happened to me", "type": "clean"}
+{"input": "btw, the wifi password changed this morning", "expected": "btw, the wifi password changed this morning", "type": "clean"}
+{"input": "gonna be about 10 minutes late", "expected": "gonna be about 10 minutes late", "type": "clean"}
+{"input": "wanna grab lunch tomorrow?", "expected": "wanna grab lunch tomorrow?", "type": "clean"}
+{"input": "ok, sounds good to me", "expected": "ok, sounds good to me", "type": "clean"}
+{"input": "yeah, that works for me", "expected": "yeah, that works for me", "type": "clean"}
+{"input": "haha, you're ridiculous", "expected": "haha, you're ridiculous", "type": "clean"}
+{"input": "omg, congrats on the new job!", "expected": "omg, congrats on the new job!", "type": "clean"}
+{"input": "it was way better than expected tbh", "expected": "it was way better than expected tbh", "type": "clean"}
+{"input": "idk what to wear tonight", "expected": "idk what to wear tonight", "type": "clean"}
+{"input": "we're gonna watch the game at Dev's place", "expected": "we're gonna watch the game at Dev's place", "type": "clean"}
+{"input": "haha, that's the best thing I've read all day", "expected": "haha, that's the best thing I've read all day", "type": "clean"}
+{"input": "do you wanna come with us?", "expected": "do you wanna come with us?", "type": "clean"}
+{"input": "brb, someone's at the door", "expected": "brb, someone's at the door", "type": "clean"}
+{"input": "tbh, I'd rather stay in tonight", "expected": "tbh, I'd rather stay in tonight", "type": "clean"}
+{"input": "omw, save me a seat", "expected": "omw, save me a seat", "type": "clean"}
+{"input": "thx, that's really helpful", "expected": "thx, that's really helpful", "type": "clean"}
+{"input": "ok, I'll text you when I'm outside", "expected": "ok, I'll text you when I'm outside", "type": "clean"}
+{"input": "sorry, can't talk right now", "expected": "sorry, can't talk right now", "type": "clean"}
+{"input": "idk, maybe next week?", "expected": "idk, maybe next week?", "type": "clean"}
+{"input": "Priya and Oluwaseun are coming over at 7.", "expected": "Priya and Oluwaseun are coming over at 7.", "type": "clean"}
+{"input": "Can you ask Nguyen if he's free on Thursday?", "expected": "Can you ask Nguyen if he's free on Thursday?", "type": "clean"}
+{"input": "Siobhan just sent the photos from the wedding.", "expected": "Siobhan just sent the photos from the wedding.", "type": "clean"}
+{"input": "Kanishk is presenting the demo this afternoon.", "expected": "Kanishk is presenting the demo this afternoon.", "type": "clean"}
+{"input": "Zhang Wei will join the call from Shanghai.", "expected": "Zhang Wei will join the call from Shanghai.", "type": "clean"}
+{"input": "Björn said the ferry leaves at 9:15.", "expected": "Björn said the ferry leaves at 9:15.", "type": "clean"}
+{"input": "Aoife and Tadhg are flying in from Dublin tomorrow.", "expected": "Aoife and Tadhg are flying in from Dublin tomorrow.", "type": "clean"}
+{"input": "Mohammed's sister just had a baby girl!", "expected": "Mohammed's sister just had a baby girl!", "type": "clean"}
+{"input": "Please forward this to Dr. Okonkwo before Friday.", "expected": "Please forward this to Dr. Okonkwo before Friday.", "type": "clean"}
+{"input": "Ingrid and Søren loved the restaurant you recommended.", "expected": "Ingrid and Søren loved the restaurant you recommended.", "type": "clean"}
+{"input": "Xochitl is the new project lead on our team.", "expected": "Xochitl is the new project lead on our team.", "type": "clean"}
+{"input": "We're having dinner with Yuki and Hiroshi on Saturday.", "expected": "We're having dinner with Yuki and Hiroshi on Saturday.", "type": "clean"}
+{"input": "Thanks, Anaïs! That was really helpful.", "expected": "Thanks, Anaïs! That was really helpful.", "type": "clean"}
+{"input": "Małgorzata and Thandiwe both signed up for the 10K.", "expected": "Małgorzata and Thandiwe both signed up for the 10K.", "type": "clean"}
+{"input": "My iPhone keeps restarting after the update.", "expected": "My iPhone keeps restarting after the update.", "type": "clean"}
+{"input": "Just sent you the link on WhatsApp.", "expected": "Just sent you the link on WhatsApp.", "type": "clean"}
+{"input": "Do you want to play PlayStation later?", "expected": "Do you want to play PlayStation later?", "type": "clean"}
+{"input": "We booked an Airbnb near the beach for four nights.", "expected": "We booked an Airbnb near the beach for four nights.", "type": "clean"}
+{"input": "Can you add that song to the Spotify playlist?", "expected": "Can you add that song to the Spotify playlist?", "type": "clean"}
+{"input": "She posted the video on TikTok, and it went viral.", "expected": "She posted the video on TikTok, and it went viral.", "type": "clean"}
+{"input": "I'll grab an Uber from the station.", "expected": "I'll grab an Uber from the station.", "type": "clean"}
+{"input": "The Wi-Fi on this train is surprisingly good.", "expected": "The Wi-Fi on this train is surprisingly good.", "type": "clean"}
+{"input": "Let's do the call on Zoom instead of Teams.", "expected": "Let's do the call on Zoom instead of Teams.", "type": "clean"}
+{"input": "Is there a YouTube tutorial for this?", "expected": "Is there a YouTube tutorial for this?", "type": "clean"}
+{"input": "We ordered dinner on DoorDash because nobody wanted to cook.", "expected": "We ordered dinner on DoorDash because nobody wanted to cook.", "type": "clean"}
+{"input": "Can you share the Google Doc with the whole team?", "expected": "Can you share the Google Doc with the whole team?", "type": "clean"}
+{"input": "Our Netflix subscription renews on the 3rd.", "expected": "Our Netflix subscription renews on the 3rd.", "type": "clean"}
+{"input": "my Android phone won't connect to the car's Bluetooth", "expected": "my Android phone won't connect to the car's Bluetooth", "type": "clean"}
+{"input": "the wifi in the office is down again", "expected": "the wifi in the office is down again", "type": "clean"}
+{"input": "I can't remember my login for the portal.", "expected": "I can't remember my login for the portal.", "type": "clean"}
+{"input": "Just download the app and sign in with your email.", "expected": "Just download the app and sign in with your email.", "type": "clean"}
+{"input": "Send me a screenshot of the error.", "expected": "Send me a screenshot of the error.", "type": "clean"}
+{"input": "I pushed the fix to the repo this morning.", "expected": "I pushed the fix to the repo this morning.", "type": "clean"}
+{"input": "Run npm install before you start the dev server.", "expected": "Run npm install before you start the dev server.", "type": "clean"}
+{"input": "Can you paste the URL into the chat?", "expected": "Can you paste the URL into the chat?", "type": "clean"}
+{"input": "The API returns a 404 when the user ID is missing.", "expected": "The API returns a 404 when the user ID is missing.", "type": "clean"}
+{"input": "The PDF is too large to attach, so I uploaded it to Dropbox.", "expected": "The PDF is too large to attach, so I uploaded it to Dropbox.", "type": "clean"}
+{"input": "Did the build pass on CI?", "expected": "Did the build pass on CI?", "type": "clean"}
+{"input": "The train from Manchester arrives at 14:32.", "expected": "The train from Manchester arrives at 14:32.", "type": "clean"}
+{"input": "Tickets are £45 each, or £80 for two.", "expected": "Tickets are £45 each, or £80 for two.", "type": "clean"}
+{"input": "My flight to São Paulo leaves at 11:50 pm.", "expected": "My flight to São Paulo leaves at 11:50 pm.", "type": "clean"}
+{"input": "The rent is $1,850 a month, including utilities.", "expected": "The rent is $1,850 a month, including utilities.", "type": "clean"}
+{"input": "We're meeting at the café on 5th Avenue at 10 am.", "expected": "We're meeting at the café on 5th Avenue at 10 am.", "type": "clean"}
+{"input": "Her birthday is on 14 March.", "expected": "Her birthday is on 14 March.", "type": "clean"}
+{"input": "The conference runs from June 3 to June 6 in Toronto.", "expected": "The conference runs from June 3 to June 6 in Toronto.", "type": "clean"}
+{"input": "It's 25°C and sunny in Lisbon right now.", "expected": "It's 25°C and sunny in Lisbon right now.", "type": "clean"}
+{"input": "The deadline is Friday, 21 November.", "expected": "The deadline is Friday, 21 November.", "type": "clean"}
+{"input": "I've lived in Nairobi since 2019.", "expected": "I've lived in Nairobi since 2019.", "type": "clean"}
+{"input": "That's about 2.5 km from here.", "expected": "That's about 2.5 km from here.", "type": "clean"}
+{"input": "The jacket was €120, but it was 30% off.", "expected": "The jacket was €120, but it was 30% off.", "type": "clean"}
+{"input": "The shop in Kuala Lumpur closes at 9 pm on weekdays.", "expected": "The shop in Kuala Lumpur closes at 9 pm on weekdays.", "type": "clean"}
+{"input": "Your order #48213 will arrive between 2 and 4 pm.", "expected": "Your order #48213 will arrive between 2 and 4 pm.", "type": "clean"}
+{"input": "Happy birthday! 🎉🎂", "expected": "Happy birthday! 🎉🎂", "type": "clean"}
+{"input": "see you soon 😊", "expected": "see you soon 😊", "type": "clean"}
+{"input": "That's hilarious 😂", "expected": "That's hilarious 😂", "type": "clean"}
+{"input": "Good luck with the interview today 👍", "expected": "Good luck with the interview today 👍", "type": "clean"}
+{"input": "miss you guys ❤️", "expected": "miss you guys ❤️", "type": "clean"}
+{"input": "Running late, sorry 🙏", "expected": "Running late, sorry 🙏", "type": "clean"}
+{"input": "can you pick up some milk on the way back?", "expected": "can you pick up some milk on the way back?", "type": "clean"}
+{"input": "we're at the table near the window", "expected": "we're at the table near the window", "type": "clean"}
+{"input": "that's totally fine with me", "expected": "that's totally fine with me", "type": "clean"}
+{"input": "let me know when you're free", "expected": "let me know when you're free", "type": "clean"}
+{"input": "did you see the match last night?", "expected": "did you see the match last night?", "type": "clean"}
+{"input": "no rush, whenever works for you", "expected": "no rush, whenever works for you", "type": "clean"}
+{"input": "who's driving tonight?", "expected": "who's driving tonight?", "type": "clean"}
+{"input": "thanks so much for the flowers", "expected": "thanks so much for the flowers", "type": "clean"}
+{"input": "it's raining here, so bring an umbrella", "expected": "it's raining here, so bring an umbrella", "type": "clean"}
+{"input": "I love the colour of your new car.", "expected": "I love the colour of your new car.", "type": "clean"}
+{"input": "Could you organise the files by date?", "expected": "Could you organise the files by date?", "type": "clean"}
+{"input": "We travelled through Scotland last summer.", "expected": "We travelled through Scotland last summer.", "type": "clean"}
+{"input": "The centre is closed for refurbishment.", "expected": "The centre is closed for refurbishment.", "type": "clean"}
+{"input": "I've cancelled the reservation for Saturday.", "expected": "I've cancelled the reservation for Saturday.", "type": "clean"}
+{"input": "She apologised for the delay.", "expected": "She apologised for the delay.", "type": "clean"}
+{"input": "Our favourite theatre is just round the corner.", "expected": "Our favourite theatre is just round the corner.", "type": "clean"}
+{"input": "Have you finalised the catalogue for autumn?", "expected": "Have you finalised the catalogue for autumn?", "type": "clean"}
+{"input": "The patient presented with tachycardia and mild dyspnoea.", "expected": "The patient presented with tachycardia and mild dyspnoea.", "type": "clean"}
+{"input": "Take 500 mg of amoxicillin three times a day for seven days.", "expected": "Take 500 mg of amoxicillin three times a day for seven days.", "type": "clean"}
+{"input": "The MRI showed no evidence of a ligament tear.", "expected": "The MRI showed no evidence of a ligament tear.", "type": "clean"}
+{"input": "The defendant's counsel filed a motion to dismiss.", "expected": "The defendant's counsel filed a motion to dismiss.", "type": "clean"}
+{"input": "The lessee shall indemnify the lessor against any third-party claims.", "expected": "The lessee shall indemnify the lessor against any third-party claims.", "type": "clean"}
+{"input": "The plaintiff is seeking damages for breach of contract.", "expected": "The plaintiff is seeking damages for breach of contract.", "type": "clean"}
+{"input": "The function returns null if the key isn't found.", "expected": "The function returns null if the key isn't found.", "type": "clean"}
+{"input": "Kubernetes restarts the pod automatically if the liveness probe fails.", "expected": "Kubernetes restarts the pod automatically if the liveness probe fails.", "type": "clean"}
+{"input": "Their flight was delayed, so they're staying at the hotel over there.", "expected": "Their flight was delayed, so they're staying at the hotel over there.", "type": "clean"}
+{"input": "It's been a long week, and the team has earned its weekend.", "expected": "It's been a long week, and the team has earned its weekend.", "type": "clean"}
+{"input": "The company changed its logo, and it's much better now.", "expected": "The company changed its logo, and it's much better now.", "type": "clean"}
+{"input": "She's taller than her brother.", "expected": "She's taller than her brother.", "type": "clean"}
+{"input": "We had dinner and then went for a walk.", "expected": "We had dinner and then went for a walk.", "type": "clean"}
+{"input": "Who's bringing the drinks, and whose car are we taking?", "expected": "Who's bringing the drinks, and whose car are we taking?", "type": "clean"}
+{"input": "There are fewer people here than last year.", "expected": "There are fewer people here than last year.", "type": "clean"}
+{"input": "I spend less time on my phone now.", "expected": "I spend less time on my phone now.", "type": "clean"}
+{"input": "You're going to love their new place.", "expected": "You're going to love their new place.", "type": "clean"}
+{"input": "If you lose your ticket, the staff can't let you in.", "expected": "If you lose your ticket, the staff can't let you in.", "type": "clean"}
+{"input": "The new policy will affect everyone in the department.", "expected": "The new policy will affect everyone in the department.", "type": "clean"}
+{"input": "The effect of the change was immediate.", "expected": "The effect of the change was immediate.", "type": "clean"}
+{"input": "I'd rather walk than drive.", "expected": "I'd rather walk than drive.", "type": "clean"}
+{"input": "Whose jacket is this?", "expected": "Whose jacket is this?", "type": "clean"}
+{"input": "Everyone except Tom has replied.", "expected": "Everyone except Tom has replied.", "type": "clean"}
+{"input": "There's a lot of traffic on the bridge.", "expected": "There's a lot of traffic on the bridge.", "type": "clean"}
+{"input": "If I were you, I'd take the job.", "expected": "If I were you, I'd take the job.", "type": "clean"}
+{"input": "However, the second draft was much stronger.", "expected": "However, the second draft was much stronger.", "type": "clean"}
+{"input": "When we got to the station, the train had already left.", "expected": "When we got to the station, the train had already left.", "type": "clean"}
+{"input": "If you have any questions, feel free to call.", "expected": "If you have any questions, feel free to call.", "type": "clean"}
+{"input": "In the meantime, please keep the receipt.", "expected": "In the meantime, please keep the receipt.", "type": "clean"}
+{"input": "Honestly, I don't mind either way.", "expected": "Honestly, I don't mind either way.", "type": "clean"}
+{"input": "Unfortunately, the event has been postponed until spring.", "expected": "Unfortunately, the event has been postponed until spring.", "type": "clean"}
+{"input": "Although it was raining, we still went for a walk.", "expected": "Although it was raining, we still went for a walk.", "type": "clean"}
+{"input": "The news is better than we expected.", "expected": "The news is better than we expected.", "type": "clean"}
+{"input": "Physics is my favourite subject.", "expected": "Physics is my favourite subject.", "type": "clean"}
+{"input": "Neither option works for me.", "expected": "Neither option works for me.", "type": "clean"}
+{"input": "The team is meeting at noon.", "expected": "The team is meeting at noon.", "type": "clean"}
+{"input": "Mathematics was always my weakest subject.", "expected": "Mathematics was always my weakest subject.", "type": "clean"}
+{"input": "A number of people are waiting outside.", "expected": "A number of people are waiting outside.", "type": "clean"}
+{"input": "The data are consistent with our hypothesis.", "expected": "The data are consistent with our hypothesis.", "type": "clean"}
+{"input": "Each of the rooms has a balcony.", "expected": "Each of the rooms has a balcony.", "type": "clean"}
+{"input": "The number of applicants has doubled this year.", "expected": "The number of applicants has doubled this year.", "type": "clean"}
+{"input": "One of my cousins works at the hospital.", "expected": "One of my cousins works at the hospital.", "type": "clean"}
+{"input": "Neither the manager nor the employees were informed.", "expected": "Neither the manager nor the employees were informed.", "type": "clean"}
+{"input": "Ten dollars is too much for a coffee.", "expected": "Ten dollars is too much for a coffee.", "type": "clean"}
+{"input": "Economics is harder than I thought.", "expected": "Economics is harder than I thought.", "type": "clean"}
+{"input": "The box of old photos is in the attic.", "expected": "The box of old photos is in the attic.", "type": "clean"}
+{"input": "Sounds good.", "expected": "Sounds good.", "type": "clean"}
+{"input": "On my way!", "expected": "On my way!", "type": "clean"}
+{"input": "See you at 5", "expected": "See you at 5", "type": "clean"}
+{"input": "Any update on the report?", "expected": "Any update on the report?", "type": "clean"}
+{"input": "Call me when you land.", "expected": "Call me when you land.", "type": "clean"}
+{"input": "Don't forget your passport.", "expected": "Don't forget your passport.", "type": "clean"}
+{"input": "Could you send me the slides after the meeting?", "expected": "Could you send me the slides after the meeting?", "type": "clean"}
+{"input": "Happy Friday, everyone!", "expected": "Happy Friday, everyone!", "type": "clean"}
+{"input": "Are you free for a quick call?", "expected": "Are you free for a quick call?", "type": "clean"}

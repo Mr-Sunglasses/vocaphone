@@ -9,6 +9,7 @@
 - [ ] `just android ci` (or note why not)
 - [ ] Gateway changes: PR against [vocagateway](https://github.com/VocaHQ/vocagateway) and submodule pin updated here if needed
 - [ ] Physical-device test, if keyboard, microphone, background audio, or insertion changed
+- [ ] Writing check rules, spelling or grammar changes: `WritingBenchmarkTest` numbers before and after (see tools/grammar-eval/README.md)
 
 Maintainers can comment `/build` on this PR for installable Android/iOS
 artifacts (see CONTRIBUTING).
