@@ -316,14 +316,20 @@ class WritingCheck(val rules: WritingRules) {
 
     /**
      * Two suggestions that overlap, or one that adds words right beside the
-     * other: "thanks for invite me" can gain "the" or become "thanks for
-     * inviting me", and accepting both reads "for the inviting me".
+     * other's change of a word: "thanks for invite me" can gain "the" or
+     * become "thanks for inviting me", and accepting both reads "for the
+     * inviting me". Not beside a capital or an apostrophe, which leaves the
+     * word as it is: "i going" takes both "I" and "am".
      */
     private fun conflicts(a: WritingSuggestion, b: WritingSuggestion, text: String): Boolean =
-        a.overlaps(b) || addsBeside(a, b, text) || addsBeside(b, a, text)
+        !insertsAfter(a, b) && !insertsAfter(b, a) && (a.overlaps(b) || addsBeside(a, b, text) || addsBeside(b, a, text))
+
+    /** [add] only inserts words right after [other], a capital or an apostrophe: both apply, last first. */
+    private fun insertsAfter(add: WritingSuggestion, other: WritingSuggestion): Boolean =
+        add.start == add.end && other.start < other.end && add.start == other.end && other.mechanical
 
     private fun addsBeside(add: WritingSuggestion, other: WritingSuggestion, text: String): Boolean {
-        if (add.shownOriginal.isNotEmpty() || add.shownReplacement?.any(Char::isLetter) != true) return false
+        if (add.shownOriginal.isNotEmpty() || add.shownReplacement?.any(Char::isLetter) != true || other.mechanical) return false
         val from = if (add.start <= other.start) add.end else other.end
         val to = if (add.start <= other.start) other.start else add.start
         return from <= to && text.substring(from, to).isBlank()

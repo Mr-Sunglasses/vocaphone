@@ -542,12 +542,16 @@ def _ed(base):
 # Words that open a sentence and take a comma after them. Not "still",
 # "first", "also" or "clearly", which open plain sentences too ("Still
 # waiting", "Clearly state your name").
-INTRODUCTORY = """unfortunately fortunately luckily sadly thankfully hopefully additionally furthermore
+# Not "besides", which is as often a preposition ("Besides being expensive,
+# it is slow"). The comma goes in only when a clause starts right after
+# ({clause_start}): "However I think", not "However hard you try",
+# "Similarly sized boxes" or "Surprisingly good food".
+INTRODUCTORY = """however unfortunately fortunately luckily sadly thankfully hopefully additionally furthermore
 moreover meanwhile therefore nevertheless nonetheless consequently similarly likewise ultimately frankly honestly
-actually anyway anyways besides interestingly surprisingly apparently personally""".split()
-# "However hard you try": "however" before a word of degree is no opening word.
-DEGREE = """hard much many long often far well big small good bad strong fast slow little few late early soon
-close high low deep great badly carefully quickly""".split()
+actually anyway anyways interestingly surprisingly apparently personally""".split()
+CLAUSE_START_WORDS = """i you he she we they it there this that these those my your his her our their its the a an
+i'm im i've i'll i'd you're you've you'll we're we've we'll they're they've they'll he's she's it's there's that's
+let's nobody everyone everybody someone somebody nothing everything no some most""".split()
 # What opens a sentence before its main clause: a comma after the opening is
 # no list ("After lunch, Sam and Alex left").
 OPENERS = sorted(set("""after before during in on at by for from since until till with without within through over
@@ -568,7 +572,7 @@ SUBJECTS_AT = "math maths science english french spanish chess sports football s
 CLASSES.update({
   "comparative_er": [w for w in COMPARATIVES if w not in ("more", "less", "rather", "other", "further", "farther")],
   "introductory": INTRODUCTORY,
-  "degree": DEGREE,
+  "clause_start": CLAUSE_START_WORDS,
   "interesting_in": "person many some a an real every all her his their its own that so such how".split(),
   "plural_lead": PLURAL_LEAD,
   "duration": DURATIONS,
@@ -584,6 +588,9 @@ CLASSES.update({
 wondering unclear clear whether me him her us them you""".split(),
   "have_aux": "have has had haven't hasn't hadn't havent hasnt hadnt".split(),
   "past_marker": "yesterday".split(),
+  # Base forms that are also another verb's past: "Yesterday I lay on the couch" is "lie".
+  "past_too": sorted(w for w in set(VERBS) | {t[0] for t in IRREGULAR}
+                     if any(w in (t[1], t[2]) and w != t[0] for t in IRREGULAR)),
   "past_unit": "night week month year weekend summer winter spring time".split(),
 })
 
@@ -655,11 +662,11 @@ RULES += [
     "In a question, the helper verb comes before the subject: “{replacement}”.", rid="why-you-didnt"),
   dict(r("^ how much|many it|this|that {verb_inflected}", "$1 $2 does $3 ${base:4}", "missing_word", "missing_word.verb", rid="how-much-does"), unlessLater=FINITE_BE),
   # A time in the past, said in the present: "Yesterday I go".
-  r("^ yesterday {subject} {verb_base}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past"),
+  r("^ yesterday {subject} {verb_base&!past_too}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past"),
   r("^ yesterday {subject} {verb_inflected}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past-inflected"),
-  r("^ yesterday , {subject} {verb_base}", "$1 $2 $3 ${past:4}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-comma-past"),
-  r("^ last {past_unit} {subject} {verb_base}", "$1 $2 $3 ${past:4}", "verb_form", "“{1} {2}” is in the past, so use “{replacement}”.", rid="last-week-past"),
-  r("^ last {past_unit} , {subject} {verb_base}", "$1 $2 $3 $4 ${past:5}", "verb_form", "“{1} {2}” is in the past, so use “{replacement}”.", rid="last-week-comma-past"),
+  r("^ yesterday , {subject} {verb_base&!past_too}", "$1 $2 $3 ${past:4}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-comma-past"),
+  r("^ last {past_unit} {subject} {verb_base&!past_too}", "$1 $2 $3 ${past:4}", "verb_form", "“{1} {2}” is in the past, so use “{replacement}”.", rid="last-week-past"),
+  r("^ last {past_unit} , {subject} {verb_base&!past_too}", "$1 $2 $3 $4 ${past:5}", "verb_form", "“{1} {2}” is in the past, so use “{replacement}”.", rid="last-week-comma-past"),
   # "if"/"when" take the present for the future: "if I will see him" is "if I
   # see him". After "if" and "unless" only with "I" or "we": "If you will
   # help me" and "if he will apologise" ask for willingness, where "will" is
@@ -680,8 +687,7 @@ RULES += [
          "After “{1}”, use the present for the future: “{result}”.", rid="when-will-third"), notAfter=CLASSES["indirect"]),
   r("if i|he|she|it was you|him|her|them", "$1 $2 were $4", "verb_form", "In “if I were you”, use “were”.", rid="if-i-were"),
   # Commas after an opening word.
-  r("^ {introductory} {word}", "$1 , $2", "comma", "comma.introductory", rid="comma-introductory"),
-  r("^ however {!degree}", "$1 , $2", "comma", "comma.introductory", rid="comma-however"),
+  r("^ {introductory} {clause_start}", "$1 , $2", "comma", "comma.introductory", rid="comma-introductory"),
   # Capitals.
   r("new york|jersey|zealand|delhi", "New ${capital:2}", "capitalization", "capitalization.proper", rid="cap-new-x"),
   # The serial (Oxford) comma, a style choice: off unless the user turns it
@@ -700,8 +706,11 @@ for b, prepositions in EMOTIONS.items():
     RULES.append(r(f"i|we am|are|was|were so|very|really|too|getting {ing} {after}", f"$1 $2 $3 {ed} $5", "word_choice", _FEELING, rid=f"feeling-so-{ing}"))
 # "He is interesting in music" means "interested": any subject, but not
 # before what describes the person ("interesting in person", "in many ways").
-RULES.append(r("he|she|they|you|he's|she's|they're|you're|is|are|was|were interesting in {!interesting_in}", "$1 interested $3 $4",
+# Only after a person: "The book is interesting in places" is right.
+RULES.append(r("he|she|they|you is|are|was|were interesting in {!interesting_in}", "$1 $2 interested $4 $5",
                "word_choice", _FEELING, rid="feeling-interesting-any"))
+RULES.append(r("he's|she's|they're|you're interesting in {!interesting_in}", "$1 interested $3 $4",
+               "word_choice", _FEELING, rid="feeling-interesting-any-contraction"))
 RULES += [dict(r(w, w[0].upper() + w[1:], "capitalization", "capitalization.proper", rid="cap-" + w, bare_forms=False), notAfter=["#", "@", "/"]) for w in PROPER]
 RULES += [r(a, b, "spelling", rid="spell-"+a) for a, b in SPELLING]
 RULES += [r(a, b, "apostrophe", rid="apos-"+a) for a, b in APOSTROPHES if a != b]

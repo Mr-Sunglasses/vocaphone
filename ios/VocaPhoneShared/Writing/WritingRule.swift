@@ -109,6 +109,9 @@ struct WritingRule: Sendable {
 
     private func matchesClass(_ name: String, _ token: WritingToken, _ previous: WritingToken?, _ rules: WritingRules) -> Bool {
         guard token.isWord else { return false }
+        if name.contains("&") {
+            return name.split(separator: "&").allSatisfy { matchesClass(String($0), token, previous, rules) }
+        }
         if name.hasPrefix("!") { return token.hasLetter && !matchesClass(String(name.dropFirst()), token, previous, rules) }
         let key = token.key
         switch name {

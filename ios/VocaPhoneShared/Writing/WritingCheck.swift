@@ -338,11 +338,20 @@ struct WritingCheck: Sendable {
     /// other: "thanks for invite me" can gain "the" or become "thanks for
     /// inviting me", and accepting both reads "for the inviting me".
     private static func conflicts(_ a: WritingSuggestion, _ b: WritingSuggestion, _ text: String) -> Bool {
-        a.overlaps(b) || addsBeside(a, b, text) || addsBeside(b, a, text)
+        if insertsAfter(a, b) || insertsAfter(b, a) { return false }
+        return a.overlaps(b) || addsBeside(a, b, text) || addsBeside(b, a, text)
+    }
+
+    /// `add` only inserts words right after `other`, a capital or an apostrophe: both apply, last first.
+    private static func insertsAfter(_ add: WritingSuggestion, _ other: WritingSuggestion) -> Bool {
+        add.start == add.end && other.start < other.end && add.start == other.end && other.mechanical
     }
 
     private static func addsBeside(_ add: WritingSuggestion, _ other: WritingSuggestion, _ text: String) -> Bool {
-        guard add.shownOriginal.isEmpty, add.shownReplacement?.contains(where: \.isLetter) == true else { return false }
+        // Not beside a capital or an apostrophe, which leaves the word as it is: "i going" takes both "I" and "am".
+        guard add.shownOriginal.isEmpty, add.shownReplacement?.contains(where: \.isLetter) == true, !other.mechanical else {
+            return false
+        }
         let from = add.start <= other.start ? add.end : other.end
         let to = add.start <= other.start ? other.start : add.start
         return from <= to && text.utf16Slice(from, to).allSatisfy(\.isWhitespace)

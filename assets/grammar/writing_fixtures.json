@@ -4075,7 +4075,7 @@
     "original": "",
     "kind": "comma",
     "start": 7,
-    "rule": "comma-however",
+    "rule": "comma-introductory",
     "mechanical": false,
     "end": 7,
     "label": "Add \u201c,\u201d",
@@ -4725,7 +4725,7 @@
     "original": "",
     "kind": "comma",
     "start": 44,
-    "rule": "comma-however",
+    "rule": "comma-introductory",
     "mechanical": false,
     "end": 44,
     "label": "Add \u201c,\u201d",
@@ -4773,6 +4773,173 @@
    }],
    "modelPending": false,
    "text": "After lunch, Sam and Alex left. In the morning, I bought apples, pears and plums."
+  },
+  {
+   "stats": [
+    16,
+    96,
+    3,
+    5,
+    7,
+    59,
+    92
+   ],
+   "tones": ["tentative"],
+   "name": "an opening word before a phrase takes no comma",
+   "suggestions": [{
+    "original": "",
+    "kind": "comma",
+    "start": 78,
+    "rule": "comma-introductory",
+    "mechanical": false,
+    "end": 78,
+    "label": "Add \u201c,\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Add a comma after an opening word like \u201cHonestly\u201d.",
+    "replacement": ",",
+    "mark": [
+     70,
+     78
+    ]
+   }],
+   "modelPending": false,
+   "text": "Besides being expensive, it is slow. Similarly sized boxes cost more. Honestly I think it works."
+  },
+  {
+   "stats": [
+    18,
+    102,
+    2,
+    5,
+    8,
+    61,
+    90
+   ],
+   "tones": [],
+   "name": "interesting in describes a thing",
+   "suggestions": [
+    {
+     "original": "interesting",
+     "kind": "word_choice",
+     "start": 81,
+     "rule": "feeling-interesting-any",
+     "mechanical": false,
+     "end": 92,
+     "label": "interesting → interested",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cinteresting\u201d describes what causes the feeling; \u201cinterested\u201d is how you feel.",
+     "replacement": "interested",
+     "mark": [
+      81,
+      92
+     ]
+    },
+    {
+     "original": "interesting",
+     "kind": "overused_word",
+     "start": 81,
+     "rule": null,
+     "mechanical": false,
+     "end": 92,
+     "label": "Repetitive word",
+     "source": "text",
+     "category": "engagement",
+     "message": "You've used \u201cinteresting\u201d 3 times here. A different word could keep it fresh.",
+     "replacement": null,
+     "mark": [
+      81,
+      92
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "The book is interesting in places and the movie was interesting in parts. She is interesting in music."
+  },
+  {
+   "stats": [
+    10,
+    49,
+    2,
+    3,
+    4,
+    83,
+    92
+   ],
+   "tones": [],
+   "name": "lay is the past of lie",
+   "suggestions": [{
+    "original": "go",
+    "kind": "verb_form",
+    "start": 42,
+    "rule": "yesterday-past",
+    "mechanical": false,
+    "end": 44,
+    "label": "go → went",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cYesterday\u201d is in the past, so use \u201cwent\u201d.",
+    "replacement": "went",
+    "mark": [
+     42,
+     44
+    ]
+   }],
+   "modelPending": false,
+   "text": "Yesterday I lay on the couch. Yesterday I go out."
+  },
+  {
+   "stats": [
+    3,
+    12,
+    1,
+    1,
+    2,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "a word the model adds beside a capital stays",
+   "model": {"i going home": "I am going home"},
+   "suggestions": [
+    {
+     "original": "i",
+     "kind": "capitalization",
+     "start": 0,
+     "rule": "cap-i",
+     "mechanical": true,
+     "end": 1,
+     "label": "i → I",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Always capitalize \u201cI\u201d.",
+     "replacement": "I",
+     "mark": [
+      0,
+      1
+     ]
+    },
+    {
+     "original": "",
+     "kind": "missing_word",
+     "start": 1,
+     "rule": null,
+     "mechanical": false,
+     "end": 1,
+     "label": "Add \u201cam\u201d",
+     "source": "model",
+     "category": "correctness",
+     "message": "A verb seems to be missing: add \u201cam\u201d.",
+     "replacement": " am",
+     "mark": [
+      0,
+      1
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "i going home"
   }
  ],
  "tokenize": [

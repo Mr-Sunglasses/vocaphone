@@ -16,7 +16,8 @@ import org.json.JSONObject
  * question (`question`: a "?" follows the match); and openers it must not
  * follow (`notAfterOpening`: the sentence starts with one of these words and
  * no comma comes before the match, as in "After lunch, Sam and Alex"). A
- * class written `{!name}` is any word not in `name`. A rule with `optIn` runs
+ * class written `{!name}` is any word not in `name`, and `{a&b}` a word in
+ * both. A rule with `optIn` runs
  * only when the user turned that option on. A match never takes part of a
  * hyphenated compound ("name" in "name-calling"). A replacement is words and
  * `$n` (the nth matched token as typed) or `${fn:n}` (base, ing, participle,
@@ -91,6 +92,7 @@ class WritingRule private constructor(
 
     private fun matchesClass(name: String, token: WritingToken, previous: WritingToken?, rules: WritingRules): Boolean {
         if (!token.isWord) return false
+        if ('&' in name) return name.split('&').all { matchesClass(it, token, previous, rules) }
         if (name.startsWith("!")) return token.hasLetter && !matchesClass(name.substring(1), token, previous, rules)
         val key = token.key
         return when (name) {
