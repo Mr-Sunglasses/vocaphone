@@ -63,10 +63,10 @@ dismisses, so a few more wrong ones are worth the many more right ones.
 
 | Set | Rules only (iOS keyboard without the app, F-Droid) | Rules and model, balanced | Rules and model, thorough |
 |---|---|---|---|
-| everyday (70) | 30.0% | 52.9% | 61.4% |
-| heldout (200) | 28.0% | 57.5% | 65.0% |
-| typed (193) | 33.2% | 59.6% | 63.7% |
-| dictation errors (163) | 41.7% | 79.8% | 81.6% |
+| everyday (70) | 52.9% | 71.4% | 78.6% |
+| heldout (200) | 42.0% | 68.5% | 75.0% |
+| typed (193) | 52.8% | 75.1% | 78.8% |
+| dictation errors (163) | 45.4% | 81.6% | 84.0% |
 | correct lines flagged: heldout_clean (150), clean (300) | 0.0%, 0.0% | 0.7%, 0.3% | 0.7%, 0.7% |
 
 ## Typed text (Writing check)

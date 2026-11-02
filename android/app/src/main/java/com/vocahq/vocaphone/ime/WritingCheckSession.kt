@@ -55,6 +55,7 @@ internal class WritingCheckSession(
         val categories: Set<WritingCategory>,
         val keep: Set<String>,
         val tone: Boolean,
+        val optIn: Set<String> = emptySet(),
     )
 
     /** What the strip and the panel show. */
@@ -231,7 +232,7 @@ internal class WritingCheckSession(
                 (known[key] ?: ask(sentence, options.keep, thorough))?.also { used[key] = it }
             }
         }
-        val result = checker.check(field.text, cached, WritingCheck.Options(options.categories, options.keep, typed = true))
+        val result = checker.check(field.text, cached, WritingCheck.Options(options.categories, options.keep, typed = true, optIn = options.optIn))
         val word = wordAt(field.text, field.cursor)
         val suggestions = result.suggestions.filter { s ->
             // Not the word being typed: it is not finished.

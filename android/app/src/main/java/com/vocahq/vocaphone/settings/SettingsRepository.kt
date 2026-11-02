@@ -331,6 +331,8 @@ data class VocaPhoneSettings(
     val writingEngagement: Boolean = false,
     /** Writing check's purple group: hedging. Off by default. */
     val writingDelivery: Boolean = false,
+    /** Writing check suggests the serial (Oxford) comma, "eggs, milk, and bread". A style choice, off by default. */
+    val writingSerialComma: Boolean = false,
     /** Whether the panel says how the text sounds (friendly, formal, urgent...). */
     val writingTone: Boolean = true,
     /**
@@ -673,6 +675,8 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setWritingDelivery(enabled: Boolean) = put(Keys.WRITING_DELIVERY, enabled)
 
+    suspend fun setWritingSerialComma(enabled: Boolean) = put(Keys.WRITING_SERIAL_COMMA, enabled)
+
     suspend fun setWritingTone(enabled: Boolean) = put(Keys.WRITING_TONE, enabled)
 
     suspend fun setTypoAutoFix(enabled: Boolean) = put(Keys.TYPO_AUTO_FIX, enabled)
@@ -900,6 +904,7 @@ class SettingsRepository(private val context: Context) {
         writingClarity = this[Keys.WRITING_CLARITY] ?: true,
         writingEngagement = this[Keys.WRITING_ENGAGEMENT] ?: false,
         writingDelivery = this[Keys.WRITING_DELIVERY] ?: false,
+        writingSerialComma = this[Keys.WRITING_SERIAL_COMMA] ?: false,
         writingTone = this[Keys.WRITING_TONE] ?: true,
         typoAutoFix = this[Keys.TYPO_AUTO_FIX] ?: false,
         numberKeyHintsEnabled = this[Keys.NUMBER_KEY_HINTS] ?: true,
@@ -971,6 +976,7 @@ class SettingsRepository(private val context: Context) {
         val WRITING_CLARITY = booleanPreferencesKey("writing_clarity")
         val WRITING_ENGAGEMENT = booleanPreferencesKey("writing_engagement")
         val WRITING_DELIVERY = booleanPreferencesKey("writing_delivery")
+        val WRITING_SERIAL_COMMA = booleanPreferencesKey("writing_serial_comma")
         val WRITING_TONE = booleanPreferencesKey("writing_tone")
         val TYPO_AUTO_FIX = booleanPreferencesKey("typo_auto_fix")
         val NUMBER_KEY_HINTS = booleanPreferencesKey("keyboard_number_key_hints")

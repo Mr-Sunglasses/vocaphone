@@ -31,6 +31,7 @@ KINDS = {
   "double_negative": ("correctness", "Double negative", False, "Two negatives cancel each other out. Use “{replacement}”."),
   "comparison":      ("correctness", "Comparison", False, "“{result}” already compares, so “{1}” isn't needed."),
   "word_choice":     ("correctness", "Word choice", False, "“{replacement}” may be the word you meant."),
+  "comma":           ("correctness", "Missing comma", False, "Add a comma after “{1}”."),
   # clarity
   "wordiness":       ("clarity", "Wordy phrase", False, "“{result}” says the same thing in fewer words."),
   "redundancy":      ("clarity", "Redundant phrase", False, "“{match}” repeats itself; “{result}” is enough."),
@@ -69,6 +70,9 @@ MESSAGES = {
   "extra_word.remove": "“{original}” isn't needed here.",
   "verb_form.after": "After “{previous}”, use “{replacement}”.",
   "confused_words.gloss": "“{replacement}” {replacement_gloss}; “{original}” {original_gloss}.",
+  "capitalization.proper": "Days, months, holidays, places, languages and nationalities take a capital: “{replacement}”.",
+  "noun_number.uncountable": "“{replacement}” has no plural, so “{original}” isn't used.",
+  "comma.introductory": "Add a comma after an opening word like “{1}”.",
 }
 
 GLOSSES = {
@@ -328,8 +332,29 @@ CLAUSE_START = """and but or so because cause if when whenever while since altho
 know knew guess hope bet said say says believe feel felt mean sure , ; :""".split()
 WH = CLASSES["wh"] + ["whose", "whom"]
 
-def r(match, replace, kind, message=None, rid=None):
-    d = {"match": match, "replace": replace, "kind": kind}
+# A contraction typed without its apostrophe ("dont") is a missing-apostrophe
+# fix of its own, but the rules about the word must still see it: "he dont
+# know" needs "doesn't", not "don't". Only bare forms that are not words.
+BARE = {b.lower(): a for a, b in APOSTROPHES if a != b.lower()}
+for _name in ("neg_aux", "neg_do_modal"):
+    CLASSES[_name] = CLASSES[_name] + [BARE[w] for w in CLASSES[_name] if w in BARE]
+
+
+def bare(match):
+    """`match` with every contraction in it also matching its bare form."""
+    out = []
+    for part in match.split(" "):
+        if part.startswith("{") or part in ("^", "$"):
+            out.append(part)
+            continue
+        alts = part.split("|")
+        alts += [BARE[a] for a in alts if a in BARE and BARE[a] not in alts]
+        out.append("|".join(alts))
+    return " ".join(out)
+
+
+def r(match, replace, kind, message=None, rid=None, bare_forms=True):
+    d = {"match": bare(match) if bare_forms else match, "replace": replace, "kind": kind}
     if message: d["message"] = message
     if rid: d["id"] = rid
     return d
@@ -358,7 +383,8 @@ RULES += [
   dict(r("{modal} not {verb_inflected}", "$1 $2 ${base:3}", "verb_form", "verb_form.modal_not", rid="modal-not-base"), notAtStart=True, notAfter=WH),
   r("{neg_do_modal} {verb_inflected}", "$1 ${base:2}", "verb_form", "verb_form.after", rid="neg-base"),
   r("do|does|did not {verb_inflected}", "$1 $2 ${base:3}", "verb_form", "verb_form.modal_not", rid="do-not-base"),
-  r("^ {do_q} {subject} {verb_inflected}", "$1 $2 ${base:3}", "verb_form", "verb_form.do", rid="do-question-base"),
+  # At the start, or after a question word: "Who did you gave the keys to?"
+  dict(r("{do_q} {subject} {verb_inflected}", "$1 $2 ${base:3}", "verb_form", "verb_form.do", rid="do-question-base"), after=WH),
   r("have|has|had {simple_past}", "$1 ${participle:2}", "verb_form", "verb_form.after", rid="have-participle"),
   r("{neg_aux} {neg_verb} {neg_object}", "$1 $2 ${any:3}", "double_negative", rid="double-negative"),
   # Subject-verb agreement the rules can be sure of without the model.
@@ -376,7 +402,11 @@ RULES += [
   dict(r("i|we|they doesn't", "$1 don't", "agreement", "Use “don't” with “{1}”.", rid="they-doesnt"), notAfter=JOINED),
   dict(r("you doesn't", "$1 don't", "agreement", "Use “don't” with “{1}”.", rid="you-doesnt"), after=CLAUSE_START),
   r("most {superlative}", "$2", "comparison", rid="most-superlative"),
-  r("more better|worse|bigger|smaller|easier|harder|faster|cheaper", "$2", "comparison", rid="more-comparative"),
+  r("more better|worse", "$2", "comparison", rid="more-comparative"),
+  # Not "more older people", which is more people who are older.
+  r("more|most {comparative_er} than", "$2 $3", "comparison", rid="more-comparative-than"),
+  dict(r("more {comparative_er} $", "$2", "comparison", rid="more-comparative-end"),
+       after="is are was were be been being looks look seems seem getting get got feel feels much even way far lot".split()),
   r("less {plural_count}", "fewer $2", "word_choice", "“Fewer” is for things you can count, like “{2}”.", rid="less-fewer"),
   r("{gerund_verb} to {verb_base}", "$1 ${ing:3}", "verb_form", "After “{1}”, use the -ing form: “{replacement}”.", rid="gerund-after"),
   r("look|looking|looked forward to {verb_base}", "$1 $2 $3 ${ing:4}", "verb_form", "After “look forward to”, use the -ing form: “{replacement}”.", rid="look-forward"),
@@ -395,9 +425,298 @@ RULES += [
   r("could care less", "couldn't care less", "word_choice", rid="could-care-less"),
   r("{word} {same}", "$1", "repeated_word", rid="repeated-word"),
 ]
+
+# ── Packs from the 2026-11 gap analysis (grammar-gap-analysis.md, A4–A7) ──
+# Everyday mistakes Grammarly catches and the model does not: closed lists,
+# so each fires only on words it names.
+
+# Irregular plurals given a regular ending: forms that are no word at all.
+IRREGULAR_PLURALS = [
+  ("childs","children","child"),("womans","women","woman"),
+  ("tooths","teeth","tooth"),("sheeps","sheep","sheep"),
+  ("deers","deer","deer"),("fishs","fish","fish"),("wifes","wives","wife"),
+  ("lifes","lives","life"),("halfs","halves","half"),("shelfs","shelves","shelf"),
+  ("thiefs","thieves","thief"),("persones","people","person"),("childrens","children","child"),
+]
+# The same mistake where the form is also a verb ("he mans the desk", "she
+# foots the bill", "he wolfs it down"): only after a number or a word that
+# starts a noun phrase, or before a plural verb ("kitchen knifes are").
+AMBIGUOUS_PLURALS = [
+  ("mans","men","man"),("foots","feet","foot"),("mouses","mice","mouse"),("gooses","geese","goose"),
+  ("knifes","knives","knife"),("wolfs","wolves","wolf"),
+]
+PLURAL_LEAD = """two three four five six seven eight nine ten twelve twenty several many few both these those
+my your his her our their the""".split()
+# Nouns with no plural. Not "breads" (kinds of bread) or "evidences" (a verb).
+UNCOUNTABLE = [
+  ("informations","information"),("furnitures","furniture"),("homeworks","homework"),("advices","advice"),
+  ("equipments","equipment"),("luggages","luggage"),("baggages","baggage"),("knowledges","knowledge"),
+  ("feedbacks","feedback"),("softwares","software"),("hardwares","hardware"),("sceneries","scenery"),
+  ("jewelries","jewelry"),("jewelleries","jewellery"),("machineries","machinery"),
+  ("researchs","research"),("trafics","traffic"),("musics","music"),
+]
+
+# Irregular verbs given a regular "-ed": "eated", "buyed". Generated from
+# IRREGULAR, less the forms that are words in their own right (SCOWL size 60:
+# "lied", "hanged", "lighted", "shined", "seed", "bed", ...).
+REAL_REGULARIZED = set("""bed seed leaved payed sited lied leaded wined singed flied hided ringed putted costed
+hanged lighted teared waked shined""".split())
+
+
+def _groups(b):
+    g, inside = 0, False
+    for c in b:
+        v = c in "aeiou"
+        if v and not inside:
+            g += 1
+        inside = v
+    return g
+
+
+def _doubles(b):
+    if len(b) < 3:
+        return False
+    a, m, c = b[-3], b[-2], b[-1]
+    if c in "wxy" or c in "aeiou" or m not in "aeiou" or a in "aeiou":
+        return False
+    return _groups(b) == 1
+
+
+def _regular_past(b):
+    if b.endswith("e"):
+        return b + "d"
+    if b.endswith("y") and len(b) > 1 and b[-2] not in "aeiou":
+        return b[:-1] + "ied"
+    if _doubles(b):
+        return b + b[-1] + "ed"
+    return b + "ed"
+
+
+REGULARIZED = []
+for _row in IRREGULAR:
+    _base, _past, _participle = _row[0], _row[1], _row[2]
+    _forms = [_regular_past(_base)] + ([_base + "ed"] if _doubles(_base) else [])
+    for _f in _forms:
+        if _f not in (_past, _participle) and _f not in REAL_REGULARIZED and (_f, _base) not in [(x, y) for x, y, _, _ in REGULARIZED]:
+            REGULARIZED.append((_f, _base, _past, _participle))
+
+# Words that take a capital wherever they stand. Not "may", "march", "august",
+# "turkey", "china", "polish" or "jordan", which are words in lower case too.
+PROPER = """monday tuesday wednesday thursday friday saturday sunday january february april june july
+september october november december christmas easter halloween thanksgiving hanukkah ramadan diwali
+english french german spanish italian portuguese russian chinese japanese korean hindi arabic dutch greek
+turkish swedish norwegian danish finnish polish? hebrew urdu bengali punjabi tamil vietnamese thai indonesian
+american british canadian australian indian mexican african european asian brazilian irish scottish
+america canada mexico france germany spain italy japan india england britain australia brazil russia
+egypt ireland scotland europe asia africa london paris tokyo berlin sydney toronto chicago boston seattle
+texas california florida""".split()
+PROPER = [w for w in PROPER if not w.endswith("?")]
+
+# Feelings: "-ing" is what causes it, "-ed" is how you feel. "I'm interesting
+# in the job" means "interested". Only "I" or "we", and only before the
+# preposition the feeling takes: "I'm boring" and "She is interesting in
+# person" can mean just that, and "relaxing in", "worrying about", "tiring
+# of" and "annoying with" are verbs doing what they say.
+EMOTIONS = {
+  "bore": "of with in", "interest": "in", "excite": "about for", "confuse": "about by", "embarrass": "about by",
+  "frighten": "of by", "surprise": "by at", "disappoint": "in with by", "amaze": "by at", "amuse": "by",
+  "depress": "about by", "exhaust": "by from", "frustrate": "with by about", "satisfy": "with by",
+  "shock": "by at", "terrify": "of by", "scare": "of by", "thrill": "about by with", "overwhelm": "by with",
+}
+
+
+def _ing(base):
+    if base.endswith("e") and not base.endswith("ee"):
+        return base[:-1] + "ing"
+    return base + "ing"
+
+
+def _ed(base):
+    if base.endswith("e"):
+        return base + "d"
+    if base.endswith("y") and base[-2] not in "aeiou":
+        return base[:-1] + "ied"
+    return base + "ed"
+
+
+# Words that open a sentence and take a comma after them. Not "still",
+# "first", "also" or "clearly", which open plain sentences too ("Still
+# waiting", "Clearly state your name").
+# Not "besides", which is as often a preposition ("Besides being expensive,
+# it is slow"). The comma goes in only when a clause starts right after
+# ({clause_start}): "However I think", not "However hard you try",
+# "Similarly sized boxes" or "Surprisingly good food".
+INTRODUCTORY = """however unfortunately fortunately luckily sadly thankfully hopefully additionally furthermore
+moreover meanwhile therefore nevertheless nonetheless consequently similarly likewise ultimately frankly honestly
+actually anyway anyways interestingly surprisingly apparently personally""".split()
+CLAUSE_START_WORDS = """i you he she we they it there this that these those my your his her our their its the a an
+i'm im i've i'll i'd you're you've you'll we're we've we'll they're they've they'll he's she's it's there's that's
+let's nobody everyone everybody someone somebody nothing everything no some most""".split()
+# What opens a sentence before its main clause: a comma after the opening is
+# no list ("After lunch, Sam and Alex left").
+OPENERS = sorted(set("""after before during in on at by for from since until till with without within through over
+under around about across behind beyond near if when whenever while although though because once unless as
+yesterday today tomorrow tonight later then now finally first next lastly meanwhile recently suddenly however
+hi hey hello thanks yes no well so ok okay dear oh sorry please besides""".split() + INTRODUCTORY))
+
+# A finite "be" later in the sentence makes "What you need" a noun clause, not a question.
+FINITE_BE = "is was are were isn't wasn't".split()
+
+# Durations "since" cannot count: "since three years" is "for three years".
+DURATIONS = "seconds minutes hours days weeks months years decades ages".split()
+DURATION_ONE = "second minute hour day week month year decade while".split()
+COUNTS = "two three four five six seven eight nine ten eleven twelve fifteen twenty thirty several many few".split()
+
+SUBJECTS_AT = "math maths science english french spanish chess sports football soccer tennis basketball cooking singing dancing drawing painting writing languages physics chemistry biology history art music coding programming".split()
+
+CLASSES.update({
+  "comparative_er": [w for w in COMPARATIVES if w not in ("more", "less", "rather", "other", "further", "farther")],
+  "introductory": INTRODUCTORY,
+  "clause_start": CLAUSE_START_WORDS,
+  "interesting_in": "person many some a an real every all her his their its own that so such how".split(),
+  "plural_lead": PLURAL_LEAD,
+  "duration": DURATIONS,
+  "duration_one": DURATION_ONE,
+  "count": COUNTS,
+  "day": "monday tuesday wednesday thursday friday saturday sunday".split(),
+  "subject_at": SUBJECTS_AT,
+  "be_person": "i'm im you're we're they're he's she's".split(),
+  "be_plural_person": "i'm im you're we're they're".split(),
+  # Words before "if"/"when" that make it a question being reported, where
+  # "will" is right: "I wonder if he will come", "ask him if he will".
+  "indirect": """know knows knew wonder wonders wondered ask asks asked sure idea tell told see decide decided
+wondering unclear clear whether me him her us them you""".split(),
+  "have_aux": "have has had haven't hasn't hadn't havent hasnt hadnt".split(),
+  "past_marker": "yesterday".split(),
+  # Base forms that are also another verb's past: "Yesterday I lay on the couch" is "lie".
+  "past_too": sorted(w for w in set(VERBS) | {t[0] for t in IRREGULAR}
+                     if any(w in (t[1], t[2]) and w != t[0] for t in IRREGULAR)),
+  "past_unit": "night week month year weekend summer winter spring time".split(),
+})
+
+RULES += [r(a, b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-" + a) for a, b, sing in IRREGULAR_PLURALS]
+RULES += [r(a, b, "noun_number", "noun_number.uncountable", rid="uncountable-" + a) for a, b in UNCOUNTABLE]
+for a, b, sing in AMBIGUOUS_PLURALS:
+    RULES.append(r("{plural_lead} " + a, "$1 " + b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-" + a))
+    RULES.append(r("{number} " + a, "$1 " + b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-number-" + a))
+    RULES.append(r(a + " are|were|aren't|weren't", b + " $2", "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-verb-" + a))
+for f, base, past, participle in REGULARIZED:
+    # After "have", the participle; anywhere else, the past.
+    if participle != past:
+        RULES.append(r(f"have|has|had|having|been {f}", f"$1 {participle}", "verb_form",
+                       f"“{base}” is irregular: after “{{1}}”, use “{participle}”.", rid=f"irregular-have-{f}"))
+    RULES.append(r(f, past, "verb_form", f"“{base}” is irregular: its past is “{past}”.", rid=f"irregular-{f}"))
+RULES += [
+  # A participle used as the past, with no "have": "I seen him", "they done it".
+  dict(r("i|you|we|they|he|she seen", "$1 saw", "verb_form", "Use “saw”, or “have seen”.", rid="seen-as-past"), notAfter=JOINED + CLASSES["have_aux"]),
+  dict(r("i|you|we|they|he|she done it|that|this|everything|nothing", "$1 did $3", "verb_form", "Use “did”, or “have done”.", rid="done-as-past"), notAfter=JOINED + CLASSES["have_aux"]),
+] + [
+  dict(r(f"{p} been", f"{c} been", "missing_word", f"It looks like “have” is missing: “{c} been”.", rid=f"{p}-been"), notAfter=JOINED + CLASSES["have_aux"])
+  for p, c in [("i", "I've"), ("we", "we've"), ("they", "they've"), ("you", "you've")]
+] + [
+  # Feelings.
+  # Redundancy with the object in between: "return it back".
+  r("return|returned|returning|returns {object_pronoun} back", "$1 $2", "redundancy", "redundancy.remove", rid="return-it-back"),
+  r("repeat|repeated|repeating|repeats {object_pronoun} again", "$1 $2", "redundancy", "redundancy.remove", rid="repeat-it-again"),
+  # Prepositions and collocations learners of English mix up.
+  r("discuss|discussed|discussing|discusses about", "$1", "preposition", "You “discuss” something; “about” isn't needed.", rid="discuss-about"),
+  r("mention|mentioned|mentioning|mentions about", "$1", "preposition", "You “mention” something; “about” isn't needed.", rid="mention-about"),
+  r("emphasize|emphasized|emphasise|emphasised on", "$1", "preposition", "You “emphasize” something; “on” isn't needed.", rid="emphasize-on"),
+  r("married with me|him|them|you|us", "$1 to $3", "preposition", "You are married “to” someone.", rid="married-with"),
+  r("arrive|arrived|arriving|arrives to the|my|his|their|our|your|this|work|school", "$1 at $3", "preposition", "You arrive “at” a place.", rid="arrive-to"),
+  # Only before a clause or a pronoun: "explained me the problem" reads best as
+  # "explained the problem to me", which a rule cannot reorder.
+  r("explain|explained|explaining|explains me|him|her|us|them how|what|why|where|when|who|that|everything|it|this",
+    "$1 to $2 $3", "preposition", "You explain something “to” someone.", rid="explain-me"),
+  r("said me|him|her|us|them", "told $2", "word_choice", "You “tell” someone something; you “say” something “to” someone.", rid="said-me"),
+  r("since {count} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-duration"),
+  r("since {number} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-number-duration"),
+  r("since a|an {duration_one}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-a-duration"),
+  r("on|in {clock_time}", "at $2", "preposition", "Use “at” with a time of day.", rid="at-clock"),
+  r("on|in {number} am|pm|o'clock", "at $2 $3", "preposition", "Use “at” with a time of day.", rid="at-clock-words"),
+  r("in {day}", "on ${capital:2}", "preposition", "Use “on” with a day.", rid="on-day"),
+  r("i|we|they|you am|are agree|disagree", "$1 $3", "extra_word", "“Agree” is a verb, so it needs no “am” or “are”.", rid="am-agree"),
+  r("he|she|it is agree|disagree", "$1 ${third:3}", "extra_word", "“Agree” is a verb, so it needs no “is”.", rid="is-agree"),
+  r("i|we|they|you|he|she|it was|were agree|disagree", "$1 ${past:3}", "extra_word",
+    "“Agree” is a verb, so it needs no “{2}”: “{replacement}”.", rid="was-agree"),
+  r("{be_plural_person} agree|disagree", "${subject:1} $2", "extra_word", "“Agree” is a verb, so it needs no “am” or “are”.", rid="contraction-agree"),
+  r("good|bad|better|best|great|terrible|excellent in {subject_at}", "$1 at $3", "preposition", "You are good “at” something.", rid="good-at"),
+  r("depend|depends|depended|depending of", "$1 on", "preposition", "You depend “on” something.", rid="depend-on"),
+  r("interested on|for", "$1 in", "preposition", "You are interested “in” something.", rid="interested-in"),
+  r("afraid from", "$1 of", "preposition", "You are afraid “of” something.", rid="afraid-of"),
+  r("proud on", "$1 of", "preposition", "You are proud “of” someone.", rid="proud-of"),
+  r("listen|listened|listening|listens music|me|him|her|us|them", "$1 to $2", "preposition", "You listen “to” something.", rid="listen-to"),
+  r("reply|replied|replying|replies me|him|her|us|them", "$1 to $2", "preposition", "You reply “to” someone.", rid="reply-to"),
+  r("cope|coped|coping|copes up with", "$1 $3", "extra_word", "“Cope with” needs no “up”.", rid="cope-up"),
+  r("recommend|recommended|recommends|suggest|suggested|suggests me|him|her|us|them to {verb_base}", "$1 that ${subject:2} $4",
+    "verb_form", "After “{1}”, use “that” and a clause: “{replacement}”.", rid="recommend-me-to"),
+  # Questions without their helper verb.
+  # Not "What you need is rest", where the question word starts a noun clause.
+  dict(r("^ what|where|when|why|how|who you|we|they {verb_ing}", "$1 are $2 $3", "missing_word", "missing_word.verb", rid="wh-are-ing"), unlessLater=FINITE_BE),
+  dict(r("^ what|where|when|why|how|who he|she|it {verb_ing}", "$1 is $2 $3", "missing_word", "missing_word.verb", rid="wh-is-ing"), unlessLater=FINITE_BE),
+  # Only a question: "What you think matters" and "What you need depends on
+  # it" are statements whose verb is no form of "be".
+  dict(r("^ what|where|when|why|how you|we|they want|need|think|mean|like|have|know|do|say", "$1 do $2 $3", "missing_word", "missing_word.verb", rid="wh-do"),
+       unlessLater=FINITE_BE, question=True),
+  r("^ why you|we|they didn't|didnt|don't|dont|can't|cant|won't|wont {verb_base}", "$1 $3 $2 $4", "word_choice",
+    "In a question, the helper verb comes before the subject: “{replacement}”.", rid="why-you-didnt"),
+  dict(r("^ how much|many it|this|that {verb_inflected}", "$1 $2 does $3 ${base:4}", "missing_word", "missing_word.verb", rid="how-much-does"), unlessLater=FINITE_BE),
+  # A time in the past, said in the present: "Yesterday I go".
+  r("^ yesterday {subject} {verb_base&!past_too}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past"),
+  r("^ yesterday {subject} {verb_inflected}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past-inflected"),
+  r("^ yesterday , {subject} {verb_base&!past_too}", "$1 $2 $3 ${past:4}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-comma-past"),
+  r("^ last {past_unit} {subject} {verb_base&!past_too}", "$1 $2 $3 ${past:4}", "verb_form", "“{1} {2}” is in the past, so use “{replacement}”.", rid="last-week-past"),
+  r("^ last {past_unit} , {subject} {verb_base&!past_too}", "$1 $2 $3 $4 ${past:5}", "verb_form", "“{1} {2}” is in the past, so use “{replacement}”.", rid="last-week-comma-past"),
+  # "if"/"when" take the present for the future: "if I will see him" is "if I
+  # see him". After "if" and "unless" only with "I" or "we": "If you will
+  # help me" and "if he will apologise" ask for willingness, where "will" is
+  # right. After "when", "once", "until", "before" and "after", any subject.
+  dict(r("if|when|once|unless|until|before|after i will be", "$1 I am", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-i-will-be"), notAfter=CLASSES["indirect"]),
+  dict(r("if|when|once|unless|until|before|after we will be", "$1 $2 are", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-we-will-be"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after you|they will be", "$1 $2 are", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-will-be"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after he|she|it will be", "$1 $2 is", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-will-be-third"), notAfter=CLASSES["indirect"]),
+  dict(r("if|when|once|unless|until|before|after i|we will {verb_base}", "$1 $2 $4", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-will"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after you|they will {verb_base}", "$1 $2 $4", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-will"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after he|she|it will {verb_base}", "$1 $2 ${third:4}", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-will-third"), notAfter=CLASSES["indirect"]),
+  r("if i|he|she|it was you|him|her|them", "$1 $2 were $4", "verb_form", "In “if I were you”, use “were”.", rid="if-i-were"),
+  # Commas after an opening word.
+  r("^ {introductory} {clause_start}", "$1 , $2", "comma", "comma.introductory", rid="comma-introductory"),
+  # Capitals.
+  r("new york|jersey|zealand|delhi", "New ${capital:2}", "capitalization", "capitalization.proper", rid="cap-new-x"),
+  # The serial (Oxford) comma, a style choice: off unless the user turns it
+  # on. Only a one-word last-but-one item, not after a greeting ("Hi, Sam
+  # and Alex"), not after an opening phrase ("After lunch, Sam and Alex
+  # left"), where the comma before is no list's, and not between commas
+  # ("My friends, Sam and Alex, are here"), which name what came before.
+  dict(r(", {word} and|or {word}", "$1 $2 , $3 $4", "comma", "Add a comma before “{3}” to end a list (the serial comma).",
+         rid="serial-comma"), optIn="serial_comma",
+       notAfter="hi hey hello thanks yes no well so ok okay dear oh sorry please".split(), notAfterOpening=OPENERS,
+       notBefore=[","]),
+]
+_FEELING = "“{original}” describes what causes the feeling; “{replacement}” is how you feel."
+for b, prepositions in EMOTIONS.items():
+    ing, ed, after = _ing(b), _ed(b), prepositions.replace(" ", "|")
+    RULES.append(r(f"i'm|im|we're {ing} {after}", f"$1 {ed} $3", "word_choice", _FEELING, rid=f"feeling-{ing}"))
+    RULES.append(r(f"i|we am|are|was|were {ing} {after}", f"$1 $2 {ed} $4", "word_choice", _FEELING, rid=f"feeling-be-{ing}"))
+    RULES.append(r(f"i|we am|are|was|were so|very|really|too|getting {ing} {after}", f"$1 $2 $3 {ed} $5", "word_choice", _FEELING, rid=f"feeling-so-{ing}"))
+# "He is interesting in music" means "interested": any subject, but not
+# before what describes the person ("interesting in person", "in many ways").
+# Only after a person: "The book is interesting in places" is right.
+RULES.append(r("he|she|they|you is|are|was|were interesting in {!interesting_in}", "$1 $2 interested $4 $5",
+               "word_choice", _FEELING, rid="feeling-interesting-any"))
+RULES.append(r("he's|she's|they're|you're interesting in {!interesting_in}", "$1 interested $3 $4",
+               "word_choice", _FEELING, rid="feeling-interesting-any-contraction"))
+RULES += [dict(r(w, w[0].upper() + w[1:], "capitalization", "capitalization.proper", rid="cap-" + w, bare_forms=False), notAfter=["#", "@", "/"]) for w in PROPER]
 RULES += [r(a, b, "spelling", rid="spell-"+a) for a, b in SPELLING]
 RULES += [r(a, b, "apostrophe", rid="apos-"+a) for a, b in APOSTROPHES if a != b]
-RULES += [r(w, w[0].upper() + w[1:], "capitalization", "capitalization.i", rid="cap-" + w.replace("'", "")) for w in ["i", "i'm", "i've", "i'll", "i'd"]]
+RULES += [r(w, w[0].upper() + w[1:], "capitalization", "capitalization.i", rid="cap-" + w.replace("'", ""), bare_forms=False) for w in ["i", "i'm", "i've", "i'll", "i'd"]]
 # Clarity
 RULES += [r(a, b, "wordiness", "wordiness.remove" if b == "" else None, rid="wordy-"+a.replace(" ","-")) for a, b in WORDY]
 RULES += [r(a, b, "redundancy", rid="redundant-"+a.replace(" ","-").lower()) for a, b in REDUNDANT]
@@ -454,7 +773,7 @@ def dump(d):
 ids=[x["id"] for x in RULES]
 dupes={i for i in ids if ids.count(i)>1}
 assert not dupes, dupes
-known=set(CLASSES)|{"verb_base","verb_inflected","simple_past","participle","name","word","same"}
+known=set(CLASSES)|{"verb_base","verb_inflected","verb_ing","simple_past","participle","name","word","same","number","clock_time"}
 import re as _re
 for x in RULES:
     for c in _re.findall(r"\{(\w+)\}", x["match"]):

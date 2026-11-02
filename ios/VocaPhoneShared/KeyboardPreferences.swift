@@ -70,6 +70,8 @@ enum KeyboardDefaults {
     static let writingEngagement = false
     /// Off: a style opinion, not a mistake.
     static let writingDelivery = false
+    /// Suggest the serial (Oxford) comma: a style choice, off by default.
+    static let writingSerialComma = false
     static let writingTone = true
     /// Off: it changes text without a tap.
     static let typoAutoFix = false
@@ -598,6 +600,7 @@ enum KeyboardPreferences {
     static let writingClarityKey = "writingClarity"
     static let writingEngagementKey = "writingEngagement"
     static let writingDeliveryKey = "writingDelivery"
+    static let writingSerialCommaKey = "writingSerialComma"
     static let writingToneKey = "writingTone"
     static let typoAutoFixKey = "typoAutoFix"
     static let liveWordsKey = "liveWordsEnabled"
@@ -1016,6 +1019,16 @@ enum KeyboardPreferences {
     static var writingDelivery: Bool {
         get { boolean(writingDeliveryKey, default: KeyboardDefaults.writingDelivery) }
         set { defaults?.set(newValue, forKey: writingDeliveryKey) }
+    }
+
+    static var writingSerialComma: Bool {
+        get { boolean(writingSerialCommaKey, default: KeyboardDefaults.writingSerialComma) }
+        set { defaults?.set(newValue, forKey: writingSerialCommaKey) }
+    }
+
+    /// The rules the user turned on that are off by default (`WritingCheck.Options.optIn`).
+    static var writingOptIn: Set<String> {
+        writingSerialComma ? ["serial_comma"] : []
     }
 
     /// Whether Writing check says how the text sounds.

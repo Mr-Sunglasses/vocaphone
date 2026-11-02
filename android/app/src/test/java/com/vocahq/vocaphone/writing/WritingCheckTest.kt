@@ -160,10 +160,12 @@ object WritingFixtures {
         val o = case.optJSONObject("options") ?: return WritingCheck.Options()
         val categories = o.optJSONArray("categories")?.let { a -> List(a.length()) { WritingCategory.of(a.getString(it)) }.toSet() }
         val keep = o.optJSONArray("keep")?.let { a -> List(a.length()) { a.getString(it) }.toSet() }
+        val optIn = o.optJSONArray("optIn")?.let { a -> List(a.length()) { a.getString(it) }.toSet() }
         return WritingCheck.Options(
             categories = categories ?: WritingCategory.entries.toSet(),
             keep = keep ?: emptySet(),
             typed = o.optBoolean("typed", true),
+            optIn = optIn ?: emptySet(),
         )
     }
 
@@ -179,6 +181,7 @@ object WritingFixtures {
         put("message", s.message)
         put("source", s.source.name.lowercase())
         put("rule", s.rule ?: JSONObject.NULL)
+        put("mechanical", s.mechanical)
     }
 
     fun bare(text: String, start: Int, end: Int) = WritingSuggestion(

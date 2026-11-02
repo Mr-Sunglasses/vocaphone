@@ -44,6 +44,7 @@ struct WritingCheckTests {
         }
         if let keep = o["keep"] as? [String] { options.keep = Set(keep) }
         if let typed = o["typed"] as? Bool { options.typed = typed }
+        if let optIn = o["optIn"] as? [String] { options.optIn = Set(optIn) }
         return options
     }
 
@@ -54,6 +55,7 @@ struct WritingCheckTests {
             "mark": [s.markStart, s.markEnd], "kind": s.kind, "category": s.category.rawValue,
             "label": s.label, "message": s.message, "source": s.source.rawValue,
             "rule": s.rule.map { $0 as Any } ?? NSNull(),
+            "mechanical": s.mechanical,
         ]
     }
 

@@ -467,6 +467,7 @@ fun VocaPhoneApp(
                     onClarity = { viewModel.setWritingClarity(it) },
                     onEngagement = { viewModel.setWritingEngagement(it) },
                     onDelivery = { viewModel.setWritingDelivery(it) },
+                    onSerialComma = { viewModel.setWritingSerialComma(it) },
                     onTone = { viewModel.setWritingTone(it) },
                     onTypoAutoFix = { viewModel.setTypoAutoFix(it) },
                     onOpenSpellChecker = { SpellCheckerSettings.open(appContext) },
