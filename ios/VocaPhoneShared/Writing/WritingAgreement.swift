@@ -2,8 +2,9 @@ import Foundation
 
 /// The checks that need to know which word is a verb's subject: "The kids
 /// plays", "My sister live", "Each of the boys have", "Where is my keys",
-/// "I go to the gym yesterday". A port of `WritingAgreement.kt`, which says
-/// how; both are tested against `assets/grammar/writing_fixtures.json`.
+/// "I go to the gym yesterday"; also the comma after an opening clause and the
+/// base form after a modal or "to". A port of `WritingAgreement.kt`, which
+/// says how; both are tested against `assets/grammar/writing_fixtures.json`.
 struct WritingAgreement: Sendable {
     let rules: WritingRules
     let tagger: PosTagger
@@ -31,7 +32,7 @@ struct WritingAgreement: Sendable {
 
     func suggestions(
         _ text: String, _ tokens: [WritingToken], _ sentence: WritingSentence, _ protected: [NSRange],
-        _ keep: Set<String>, _ fixed: [WritingSuggestion]
+        _ keep: Set<String>, _ fixed: [WritingSuggestion], casual: Bool = false
     ) -> [WritingSuggestion] {
         let s = Tagged(
             tokens: tokens, sentence: sentence,
@@ -67,7 +68,106 @@ struct WritingAgreement: Sendable {
             ))
         }
         if let past = pastTime(text, s, free) { out.append(past) }
+        out += afterModal(text, s, free)
+        if !casual, let comma = clauseComma(text, s, free) { out.append(comma) }
         return out
+    }
+
+    // MARK: - The base form after a modal or "to"
+
+    private func afterModal(_ text: String, _ s: Tagged, _ free: (Int) -> Bool) -> [WritingSuggestion] {
+        var out: [WritingSuggestion] = []
+        guard s.sentence.first + 1 <= s.sentence.last else { return out }
+        for v in (s.sentence.first + 1)...s.sentence.last {
+            let tag = s.tag(v)
+            guard tag == "VBZ" || tag == "VBD" else { continue }
+            // Past "really" or "not": "can really sings", "should not went".
+            var m = v - 1
+            if Self.adverbTags.contains(s.tag(m)), s.key(m) != "not", s.inside(m - 1) { m -= 1 }
+            if s.key(m) == "not", s.inside(m - 1) { m -= 1 }
+            guard s.tag(m) == "MD" || (s.key(m) == "to" && s.tag(m) == "TO"), free(v) else { continue }
+            let key = s.key(v)
+            let base: String?
+            if tag == "VBZ" {
+                base = baseOf(key)
+            } else if let lemma = rules.verbs.lemma(key), lemma != key {
+                base = lemma
+            } else {
+                base = pastBase(key)
+            }
+            guard let base, base != key else { continue }
+            // "to" is also a preposition ("allergic to peanuts"): after it, only a verb the tables know.
+            if s.tag(m) == "TO", !rules.verbs.isBase(base) { continue }
+            out.append(suggestion(
+                text, s, v, base, kind: "verb_form",
+                message: rules.messages["verb_form.after"] ?? rules.kind("verb_form").message,
+                values: ["previous": s.tokens[v - 1].text],
+                rule: "base-after-modal"
+            ))
+        }
+        return out
+    }
+
+    private func pastBase(_ past: String) -> String? {
+        guard let spelling, past.hasSuffix("ed") else { return nil }
+        let candidates = [
+            String(past.dropLast(2)), String(past.dropLast(1)), String(past.dropLast(3)), String(past.dropLast(3)) + "y",
+        ]
+        return candidates.first { $0.utf16.count >= 2 && spelling.isKnown($0) && rules.verbs.past($0) == past }
+    }
+
+    // MARK: - A comma after an opening clause
+
+    private func clauseComma(_ text: String, _ s: Tagged, _ free: (Int) -> Bool) -> WritingSuggestion? {
+        let first = s.sentence.first
+        guard Self.openingClauses.contains(s.key(first)) else { return nil }
+        if (first...s.sentence.last).contains(where: { Self.clausePunctuation.contains(s.tokens[$0].text) }) { return nil }
+        guard s.inside(first + 1), Self.subjectTags.contains(s.tag(first + 1)) || Self.subjectWords.contains(s.key(first + 1))
+        else { return nil }
+        guard first + 2 <= s.sentence.last else { return nil }
+        var verbSeen = false
+        for i in (first + 2)...s.sentence.last {
+            let tag = s.tag(i)
+            let ahead = (i + 1)...max(i + 1, min(s.sentence.last, i + 3))
+            let verbAfter = tag.hasPrefix("VB")
+                || (i + 1 <= s.sentence.last && ahead.contains { s.tag($0).hasPrefix("VB") || s.tag($0) == "MD" })
+            // "If you can go then go": "then" opens the main clause, whatever comes before it,
+            // unless it ends a phrase of its own ("by then", "until then").
+            let then = s.key(i) == "then" && !thenEndsPhrase(s, i)
+            if verbSeen, i - 1 > first + 1, then || (startsMainClause(s, i) && endsPhrase(s, i - 1) && verbAfter) {
+                guard free(i - 1) else { return nil }
+                let k = rules.kind("comma")
+                let edit = WritingEdits.build(s.tokens, floor: first, from: i, to: i, inserted: ",")
+                return WritingSuggestion(
+                    start: edit.start, end: edit.end, original: text.utf16Slice(edit.start, edit.end),
+                    replacement: edit.replacement, markStart: edit.markStart, markEnd: edit.markEnd,
+                    kind: k.id, category: k.category, title: k.title,
+                    message: WritingEdits.format(
+                        "Add a comma after the opening “{opening} …” part, before “{next}”.",
+                        ["opening": s.tokens[first].text, "next": s.tokens[i].text, "previous": s.tokens[i - 1].text]
+                    ),
+                    mechanical: false, source: .rule, rule: "comma-clause"
+                )
+            }
+            if tag.hasPrefix("VB") || tag == "MD" { verbSeen = true }
+        }
+        return nil
+    }
+
+    private func startsMainClause(_ s: Tagged, _ i: Int) -> Bool {
+        let key = s.key(i)
+        return Self.mainClauseSubjects.contains(key) || (s.tag(i) == "VB" && Self.orders.contains(key))
+            || key == "please" || Self.contractedSubjects.contains(key)
+    }
+
+    private func endsPhrase(_ s: Tagged, _ i: Int) -> Bool {
+        (Self.phraseEndTags.contains(s.tag(i)) || Self.objectPronouns.contains(s.key(i)))
+            && !Self.subjectWords.contains(s.key(i)) && (s.key(i) != "then" || thenEndsPhrase(s, i))
+    }
+
+    /// "by then", "until then": "then" after a preposition is a time, not the start of the main clause.
+    private func thenEndsPhrase(_ s: Tagged, _ i: Int) -> Bool {
+        s.inside(i - 1) && Self.beforeThen.contains(s.key(i - 1))
     }
 
     // MARK: - The verb
@@ -428,4 +528,20 @@ struct WritingAgreement: Sendable {
     private static let hypotheticalCues: Set<String> = [
         "if", "wish", "wished", "wishes", "though", "suppose", "supposing", "imagine", "rather", "unless",
     ]
+    private static let openingClauses: Set<String> = [
+        "if", "when", "whenever", "although", "though", "while", "once", "after", "before", "unless", "until", "because",
+    ]
+    private static let subjectTags: Set<String> = ["PRP", "DT", "NN", "NNS", "NNP", "NNPS", "PRP$"]
+    private static let subjectWords: Set<String> = ["i", "you", "he", "she", "we", "they", "it"]
+    private static let mainClauseSubjects: Set<String> = ["i", "you", "he", "she", "we", "they"]
+    private static let contractedSubjects: Set<String> = [
+        "i'll", "i'm", "i've", "i'd", "you'll", "you're", "we'll", "we're", "they'll", "they're",
+        "he'll", "she'll", "it'll", "let's", "lets",
+    ]
+    private static let orders: Set<String> = [
+        "let", "call", "text", "send", "tell", "give", "feel", "make", "check", "come", "bring", "take",
+        "remember", "ask", "try", "keep", "stop", "go", "wait", "email", "ping", "message",
+    ]
+    private static let phraseEndTags: Set<String> = ["NN", "NNS", "NNP", "NNPS", "RB", "RP", "CD", "JJ", "VBN"]
+    private static let beforeThen: Set<String> = ["by", "until", "till", "since", "from", "before", "after", "around"]
 }

@@ -63,8 +63,8 @@ dismisses, so a few more wrong ones are worth the many more right ones.
 
 | Set | Without the model (iOS keyboard without the app, F-Droid) | Rules and model, balanced | Rules and model, thorough |
 |---|---|---|---|
-| everyday (70) | 72.9% | 82.9% | 84.3% |
-| heldout (200) | 68.0% | 76.0% | 80.0% |
+| everyday (70) | 74.3% | 84.3% | 85.7% |
+| heldout (200) | 68.5% | 76.5% | 80.5% |
 | typed (193) | 67.4% | 79.8% | 82.4% |
 | dictation errors (163) | 65.0% | 85.3% | 86.5% |
 | correct lines flagged: heldout_clean (150), clean (300) | 0.0%, 0.0% | 0.7%, 0.3% | 0.7%, 0.7% |

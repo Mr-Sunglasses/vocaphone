@@ -362,7 +362,10 @@ text ─▶ WritingText (words, sentences, UTF-16 offsets)
   the noun after "there is" or "where is"; a subject whose number is unsure
   (collective nouns, names ending in "s", amounts, relative clauses) is left
   alone. It also puts a lone present verb in the past when the sentence ends
-  on "yesterday", "last week" or "ago".
+  on "yesterday", "last week" or "ago", gives any verb its base form after a
+  modal or "to" ("can sings", "want to goes"), and adds the comma after an
+  opening "if"/"when" clause ("If you need anything, let me know"), except in
+  text typed in lower case.
 - **The model** is the Fix grammar tagger, asked a sentence at a time and
   cached per field and per tier; its edits are diffed word by word and
   classified. A check the user asked for (the Writing check button, the

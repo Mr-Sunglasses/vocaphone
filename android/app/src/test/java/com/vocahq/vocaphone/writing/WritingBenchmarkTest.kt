@@ -211,12 +211,12 @@ class WritingBenchmarkTest {
 
         /** Share of error lines that must come out exactly as meant: what each configuration reached. */
         val FLOORS = mapOf(
-            "everyday · rules" to 0.728,
-            "everyday · balanced" to 0.828,
-            "everyday · thorough" to 0.842,
-            "heldout · rules" to 0.680,
-            "heldout · balanced" to 0.760,
-            "heldout · thorough" to 0.800,
+            "everyday · rules" to 0.742,
+            "everyday · balanced" to 0.842,
+            "everyday · thorough" to 0.857,
+            "heldout · rules" to 0.685,
+            "heldout · balanced" to 0.765,
+            "heldout · thorough" to 0.805,
             "typed · rules" to 0.673,
             "typed · balanced" to 0.797,
             "typed · thorough" to 0.823,
