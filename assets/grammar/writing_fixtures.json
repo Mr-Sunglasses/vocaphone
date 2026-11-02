@@ -5538,6 +5538,74 @@
    ],
    "modelPending": false,
    "text": "The question is when we will arrive. When we will arrive, call me. How much that costs varies by model. Why you didn't call matters. Why you didn't call?"
+  },
+  {
+   "stats": [
+    31,
+    152,
+    4,
+    8,
+    13,
+    100,
+    82
+   ],
+   "tones": [],
+   "name": "said her name, and since a time ago",
+   "suggestions": [
+    {
+     "original": "said",
+     "kind": "word_choice",
+     "start": 21,
+     "rule": "said-me",
+     "mechanical": false,
+     "end": 25,
+     "label": "said → told",
+     "source": "rule",
+     "category": "correctness",
+     "message": "You \u201ctell\u201d someone something; you \u201csay\u201d something \u201cto\u201d someone.",
+     "replacement": "told",
+     "mark": [
+      21,
+      25
+     ]
+    },
+    {
+     "original": "since",
+     "kind": "preposition",
+     "start": 134,
+     "rule": "since-duration",
+     "mechanical": false,
+     "end": 139,
+     "label": "since → for",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cFor\u201d goes with a length of time; \u201csince\u201d with a point in time.",
+     "replacement": "for",
+     "mark": [
+      134,
+      139
+     ]
+    },
+    {
+     "original": "since",
+     "kind": "overused_word",
+     "start": 99,
+     "rule": null,
+     "mechanical": false,
+     "end": 104,
+     "label": "Repetitive word",
+     "source": "text",
+     "category": "engagement",
+     "message": "You've used \u201csince\u201d 3 times here. A different word could keep it fresh.",
+     "replacement": null,
+     "mark": [
+      99,
+      104
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "He said her name. He said me hello. I have lived here since three years ago, since 2 weeks ago and since a year ago. I have been here since three years."
   }
  ],
  "tokenize": [

@@ -632,10 +632,12 @@ RULES += [
   # "explained the problem to me", which a rule cannot reorder.
   r("explain|explained|explaining|explains me|him|her|us|them how|what|why|where|when|who|that|everything|it|this",
     "$1 to $2 $3", "preposition", "You explain something “to” someone.", rid="explain-me"),
-  r("said me|him|her|us|them", "told $2", "word_choice", "You “tell” someone something; you “say” something “to” someone.", rid="said-me"),
-  r("since {count} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-duration"),
-  r("since {number} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-number-duration"),
-  r("since a|an {duration_one}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-a-duration"),
+  # Not "her", which also owns: "He said her name".
+  r("said me|him|us|them", "told $2", "word_choice", "You “tell” someone something; you “say” something “to” someone.", rid="said-me"),
+  # Not before "ago": "since three years ago" names a point in time.
+  dict(r("since {count} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-duration"), notBefore=["ago"]),
+  dict(r("since {number} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-number-duration"), notBefore=["ago"]),
+  dict(r("since a|an {duration_one}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-a-duration"), notBefore=["ago"]),
   r("on|in {clock_time}", "at $2", "preposition", "Use “at” with a time of day.", rid="at-clock"),
   r("on|in {number} am|pm|o'clock", "at $2 $3", "preposition", "Use “at” with a time of day.", rid="at-clock-words"),
   r("in {day}", "on ${capital:2}", "preposition", "Use “on” with a day.", rid="on-day"),
