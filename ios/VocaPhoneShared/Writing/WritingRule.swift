@@ -212,11 +212,23 @@ struct WritingRule: Sendable {
         guard let first = key.unicodeScalars.first else { return nil }
         if scalars.count == 1 { return letterNameVowels.contains(first) }
         if scalars.allSatisfy({ ("A"..."Z").contains($0) }) {
+            // "SIM", "RAM": a consonant, a vowel and a consonant may be said as a word.
+            let capitalVowels: Set<Unicode.Scalar> = ["A", "E", "I", "O", "U"]
+            if scalars.count == 3, capitalVowels.contains(scalars[1]), !capitalVowels.contains(scalars[0]),
+               !capitalVowels.contains(scalars[2]) {
+                return nil
+            }
             return scalars.count <= 3 ? letterNameVowels.contains(first) : nil
         }
         if silentH.contains(where: { key.hasPrefix($0) }) { return true }
         if !youSoundLong.contains(where: { key.hasPrefix($0) }), unPrefixed.contains(where: { key.hasPrefix($0) }) { return true }
+        if oneSound.contains(key) { return false }
         if youSound.contains(where: { key.hasPrefix($0) }) { return false }
+        // "u", a consonant, then a vowel is often "you" ("utopia", "utensil")
+        // and sometimes not ("umami"): unsure, unless the "un-" of "unable".
+        let u = Array(key.utf8)
+        let vowelsY: Set<UInt8> = [97, 101, 105, 111, 117, 121]  // a e i o u y
+        if u.count >= 3, u[0] == 117, !vowelsY.contains(u[1]), vowelsY.contains(u[2]), !key.hasPrefix("un") { return nil }
         return "aeiou".unicodeScalars.contains(first)
     }
 
@@ -229,8 +241,10 @@ struct WritingRule: Sendable {
     private static let youSoundLong = ["unidirection", "unilateral", "unilingual", "unimodal"]
     private static let youSound = [
         "uni", "use", "usu", "uti", "ure", "uro", "uk", "ufo", "ubiq", "ukulele", "unanim", "uri", "ura",
-        "eu", "ewe", "one", "once",
+        "eu", "ewe", "ute", "uto", "uvu",
     ]
+    /// Words said with a "w": "a one-off", "a once-great team". Whole words, not "onerous".
+    private static let oneSound: Set<String> = ["one", "ones", "oneself", "once", "onesie"]
 
     /// "3pm", "11am": a time typed as one word.
     private static func isClockTime(_ key: String) -> Bool {

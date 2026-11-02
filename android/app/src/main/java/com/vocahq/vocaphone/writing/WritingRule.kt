@@ -129,10 +129,18 @@ class WritingRule private constructor(
         val key = token.key
         if (key in rules.stopwords || !text.all { it in 'a'..'z' || it in 'A'..'Z' }) return null
         if (text.length == 1) return key[0] in LETTER_NAME_VOWELS
-        if (text.all { it in 'A'..'Z' }) return if (text.length <= 3) key[0] in LETTER_NAME_VOWELS else null
+        if (text.all { it in 'A'..'Z' }) {
+            // "SIM", "RAM": a consonant, a vowel and a consonant may be said as a word.
+            if (text.length == 3 && text[1] in "AEIOU" && text[0] !in "AEIOU" && text[2] !in "AEIOU") return null
+            return if (text.length <= 3) key[0] in LETTER_NAME_VOWELS else null
+        }
         if (SILENT_H.any { key.startsWith(it) }) return true
         if (YOU_SOUND_LONG.none { key.startsWith(it) } && UN_PREFIXED.any { key.startsWith(it) }) return true
+        if (key in ONE_SOUND) return false
         if (YOU_SOUND.any { key.startsWith(it) }) return false
+        // "u", a consonant, then a vowel is often "you" ("utopia", "utensil")
+        // and sometimes not ("umami"): unsure, unless the "un-" of "unable".
+        if (key.length >= 3 && key[0] == 'u' && key[1] !in "aeiouy" && key[2] in "aeiouy" && !key.startsWith("un")) return null
         return key[0] in "aeiou"
     }
 
@@ -219,8 +227,10 @@ class WritingRule private constructor(
         private val YOU_SOUND_LONG = listOf("unidirection", "unilateral", "unilingual", "unimodal")
         private val YOU_SOUND = listOf(
             "uni", "use", "usu", "uti", "ure", "uro", "uk", "ufo", "ubiq", "ukulele", "unanim", "uri", "ura",
-            "eu", "ewe", "one", "once",
+            "eu", "ewe", "ute", "uto", "uvu",
         )
+        /** Words said with a "w": "a one-off", "a once-great team". Whole words, not "onerous". */
+        private val ONE_SOUND = setOf("one", "ones", "oneself", "once", "onesie")
 
         /** "3pm", "11am": a time typed as one word. */
         private val CLOCK = Regex("[0-9]{1,2}(am|pm)")

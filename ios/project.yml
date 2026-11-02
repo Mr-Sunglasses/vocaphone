@@ -215,6 +215,8 @@ targets:
       # the App Group, and the keyboard asking.
       - path: VocaPhoneApp/Models/TypedGrammarResponder.swift
       - path: VocaPhoneKeyboard/WritingCheckClient.swift
+      # Apple's checkers for the Writing check screen: where their edits land.
+      - path: VocaPhoneApp/App/AppleProofreading.swift
       - path: VocaPhoneApp/Models/RetiredModelFileCleanup.swift
       - path: VocaPhoneApp/Models/LocalModelFileRemoval.swift
       # Key geometry is worth regression tests; the controller itself needs a

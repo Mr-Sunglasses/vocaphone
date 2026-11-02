@@ -1,0 +1,346 @@
+import Foundation
+import UIKit
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
+
+/// Two more checkers for the Writing check screen, both Apple's and both on
+/// this iPhone, which add to what the rules, the dictionary and the grammar
+/// model found. Neither runs in the keyboard: the extension cannot reach them.
+///
+/// - **System grammar** (iOS 27): `UITextChecker`'s grammar check, run with
+///   every check of the screen.
+/// - **Deep check** (Apple Intelligence, iOS 26): the on-device language model
+///   asked for a list of edits, when the user taps for it. Its edits are
+///   generated, so each must name words that are in the text, change at most
+///   a few of them, and is only ever offered, never applied.
+///
+/// Both come back as `WritingSuggestion`s; `merged` adds them to a report
+/// where they do not clash with anything already found.
+enum AppleProofreading {
+    /// A suggestion that `text` should read `replacement` instead of its
+    /// characters `start..<end`, as a card of `kind`, or nil when the span does
+    /// not start and end on word boundaries, the change is not small, or it
+    /// touches an address, link or other span Writing check leaves alone
+    /// (`protected`, found in `text` when not given).
+    static func suggestion(
+        in text: String, start: Int, end: Int, replacement: String, kind: WritingRules.Kind,
+        reason: String, source: WritingSuggestion.Source, protected: [NSRange]? = nil
+    ) -> WritingSuggestion? {
+        let length = text.utf16Length
+        guard start >= 0, start < end, end <= length else { return nil }
+        let spans = protected ?? ProtectedSpans.ranges(text)
+        if spans.contains(where: { start < $0.location + $0.length && $0.location < end }) { return nil }
+        let original = text.utf16Slice(start, end)
+        let trimmed = replacement.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != original, !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        // Small: a typo, a word form, a missing or extra word. Not a rewrite.
+        let before = WritingText.tokenize(original).filter(\.isWord).count
+        let after = WritingText.tokenize(trimmed).filter(\.isWord).count
+        guard before <= maximumWords, after <= maximumWords + 1, trimmed.utf16Length <= 80 else { return nil }
+        let tokens = WritingText.tokenize(text)
+        guard let from = tokens.firstIndex(where: { $0.start == start }),
+              let last = tokens.lastIndex(where: { $0.end == end }), last >= from
+        else { return nil }
+        let sentences = WritingText.sentences(text, tokens)
+        let floor = sentences.first(where: { $0.first <= from && from <= $0.last })?.first ?? 0
+        let edit = WritingEdits.build(tokens, floor: floor, from: from, to: last + 1, inserted: trimmed)
+        let values = ["original": original, "replacement": trimmed, "reason": reason]
+        return WritingSuggestion(
+            start: edit.start, end: edit.end, original: text.utf16Slice(edit.start, edit.end),
+            replacement: edit.replacement, markStart: edit.markStart, markEnd: edit.markEnd,
+            kind: kind.id, category: kind.category, title: kind.title,
+            message: WritingEdits.format(kind.message, values), mechanical: false, source: source, rule: nil
+        )
+    }
+
+    /// The most words a generated or system edit may replace.
+    static let maximumWords = 4
+
+    /// `extra` added to `report` where each clashes with nothing already
+    /// there, nor with the user's own words; listed as `WritingCheck` lists,
+    /// and scored again with them.
+    static func merged(
+        _ report: WritingCheck.Report, _ extra: [WritingSuggestion], keep: Set<String>, rules: WritingRules
+    ) -> WritingCheck.Report {
+        var suggestions = report.suggestions
+        for s in extra where s.isActionable {
+            let words = Set(WritingText.tokenize(s.shownOriginal).filter(\.isWord).map(\.key))
+            guard words.isDisjoint(with: keep) else { continue }
+            // Not over something already found, nor beside it adding the same
+            // word twice: "I want go home" with "to" inserted and "go → to go".
+            if suggestions.contains(where: { $0.isActionable && WritingCheck.conflicts($0, s, report.text) }) { continue }
+            suggestions.append(s)
+        }
+        let ordered = suggestions.enumerated().sorted { x, y in
+            let a = (x.element.category.order, x.element.markStart, x.offset)
+            let b = (y.element.category.order, y.element.markStart, y.offset)
+            return a < b
+        }.map(\.element)
+        return WritingCheck.rescored(report, ordered, rules: rules)
+    }
+
+    /// Every place `words` is in `text` within `range`, starting and ending on
+    /// a token's edges (`starts`, `ends`): never inside a longer word.
+    static func occurrences(
+        of words: String, in text: String, within range: Range<Int>, starts: Set<Int>, ends: Set<Int>
+    ) -> [Range<Int>] {
+        guard !words.isEmpty else { return [] }
+        let ns = text as NSString
+        var out: [Range<Int>] = []
+        var from = range.lowerBound
+        while from < range.upperBound {
+            let found = ns.range(of: words, options: [], range: NSRange(location: from, length: range.upperBound - from))
+            if found.location == NSNotFound { break }
+            if starts.contains(found.location), ends.contains(found.location + found.length) {
+                out.append(found.location..<(found.location + found.length))
+            }
+            from = found.location + 1
+        }
+        return out
+    }
+
+    // MARK: - System grammar (iOS 27)
+
+    #if compiler(>=6.4)
+    /// One grammar issue the system found: where, the fix, and why.
+    private struct SystemIssue: Sendable {
+        let start: Int
+        let length: Int
+        let correction: String
+        let reason: String
+    }
+
+    /// `UITextChecker`'s grammar results for `text`, as suggestions.
+    @available(iOS 27, *)
+    @MainActor
+    static func systemGrammar(_ text: String, rules: WritingRules) async -> [WritingSuggestion] {
+        let checker = UITextChecker()
+        let range = NSRange(location: 0, length: text.utf16Length)
+        let issues: [SystemIssue] = await withCheckedContinuation { done in
+            checker.requestGrammarChecking(of: text, range: range, waitForAllResults: true) { results in
+                // Read here, so only plain values leave the callback.
+                var issues: [SystemIssue] = []
+                for result in results where result.resultType == .grammar {
+                    for detail in result.grammarDetails ?? [] {
+                        guard let local = (detail["NSGrammarRange"] as? NSValue)?.rangeValue,
+                              let correction = (detail["NSGrammarCorrections"] as? [String])?.first
+                        else { continue }
+                        issues.append(SystemIssue(
+                            start: result.range.location + local.location, length: local.length,
+                            correction: correction, reason: detail["NSGrammarUserDescription"] as? String ?? ""
+                        ))
+                    }
+                }
+                done.resume(returning: issues)
+            }
+        }
+        let kind = rules.kind("system_grammar")
+        return issues.compactMap { issue in
+            let reason = issue.reason.isEmpty ? "The system's grammar check suggests “\(issue.correction)”." : issue.reason
+            return suggestion(
+                in: text, start: issue.start, end: issue.start + issue.length, replacement: issue.correction,
+                kind: kind, reason: reason, source: .system
+            )
+        }
+    }
+    #endif
+
+    // MARK: - Deep check (Apple Intelligence)
+
+    /// Whether Deep check can run here: iOS 26 and an Apple Intelligence
+    /// iPhone with the model ready.
+    static var deepCheckAvailable: Bool {
+        #if canImport(FoundationModels)
+        if #available(iOS 26, *), case .available = SystemLanguageModel.default.availability {
+            return true
+        }
+        #endif
+        return false
+    }
+
+    /// One edit, as the model gives it: the sentence it is in, so it lands on
+    /// the right one of words that come more than once.
+    struct Edit: Equatable, Sendable {
+        let original: String
+        let replacement: String
+        let reason: String
+        let sentence: String
+
+        init(original: String, replacement: String, reason: String, sentence: String = "") {
+            self.original = original
+            self.replacement = replacement
+            self.reason = reason
+            self.sentence = sentence
+        }
+    }
+
+    /// The on-device model's edits for `text`, a paragraph at a time, as
+    /// suggestions. Throws when the model refuses or fails.
+    static func deepCheck(_ text: String, rules: WritingRules) async throws -> [WritingSuggestion] {
+        #if canImport(FoundationModels)
+        if #available(iOS 26, *) {
+            var edits: [(Edit, Range<Int>)] = []
+            for (chunk, offset) in chunks(text) {
+                try Task.checkCancellation()
+                let piece = offset..<(offset + chunk.utf16Length)
+                for edit in try await DeepCheckModel.edits(chunk) { edits.append((edit, piece)) }
+            }
+            return suggestions(text, edits, rules: rules)
+        }
+        #endif
+        return []
+    }
+
+    /// Generated edits placed in `text`, each inside the piece it was made
+    /// for (UTF-16 offsets): in the sentence it names, at its words after the
+    /// previous edit (in the first copy of that sentence that still has
+    /// them); without that sentence, only where its words are once in the
+    /// piece. Anything else could land on the wrong words.
+    static func suggestions(_ text: String, _ edits: [(Edit, Range<Int>)], rules: WritingRules) -> [WritingSuggestion] {
+        let kind = rules.kind("deep_check")
+        let length = text.utf16Length
+        let tokens = WritingText.tokenize(text)
+        let starts = Set(tokens.map(\.start))
+        let ends = Set(tokens.map(\.end))
+        let protected = ProtectedSpans.ranges(text)
+        var out: [WritingSuggestion] = []
+        var cursor = 0
+        for (edit, chunk) in edits {
+            let piece = max(0, chunk.lowerBound)..<max(0, min(length, chunk.upperBound))
+            guard !piece.isEmpty,
+                  let at = place(edit, in: text, piece: piece, after: cursor, starts: starts, ends: ends),
+                  let s = suggestion(
+                      in: text, start: at.lowerBound, end: at.upperBound, replacement: edit.replacement, kind: kind,
+                      reason: edit.reason, source: .generated, protected: protected
+                  )
+            else { continue }
+            out.append(s)
+            cursor = at.upperBound
+        }
+        return out
+    }
+
+    private static func place(
+        _ edit: Edit, in text: String, piece: Range<Int>, after cursor: Int, starts: Set<Int>, ends: Set<Int>
+    ) -> Range<Int>? {
+        let sentence = edit.sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !sentence.isEmpty {
+            // Every copy of the sentence in the piece, found without the
+            // cursor: "She go and he walk. She go and he walk." takes both of
+            // the first copy's edits there, and only a repeated edit moves on.
+            var copies: [Range<Int>] = []
+            let ns = text as NSString
+            var from = piece.lowerBound
+            while from < piece.upperBound {
+                let found = ns.range(of: sentence, options: [], range: NSRange(location: from, length: piece.upperBound - from))
+                if found.location == NSNotFound { break }
+                copies.append(found.location..<(found.location + found.length))
+                from = found.location + max(found.length, 1)
+            }
+            if !copies.isEmpty {
+                var fallback: Range<Int>?
+                for copy in copies {
+                    let places = occurrences(of: edit.original, in: text, within: copy, starts: starts, ends: ends)
+                    for place in places where place.lowerBound >= cursor {
+                        return place
+                    }
+                    if fallback == nil { fallback = places.first }
+                }
+                return fallback
+            }
+        }
+        let all = occurrences(of: edit.original, in: text, within: piece, starts: starts, ends: ends)
+        return all.count == 1 ? all[0] : nil
+    }
+
+    /// `text` in pieces the model's context holds, each with its UTF-16 offset:
+    /// whole sentences, and a sentence longer than `limit` cut between words.
+    static func chunks(_ text: String, limit: Int = 1_200) -> [(String, Int)] {
+        let tokens = WritingText.tokenize(text)
+        var pieces: [Range<Int>] = []
+        for sentence in WritingText.sentences(text, tokens) {
+            guard sentence.end - sentence.start > limit else {
+                pieces.append(sentence.start..<sentence.end)
+                continue
+            }
+            var start = sentence.start
+            var end = start
+            for token in tokens[sentence.first...sentence.last] {
+                if token.end - start > limit, end > start {
+                    pieces.append(start..<end)
+                    start = token.start
+                }
+                end = token.end
+            }
+            pieces.append(start..<end)
+        }
+        var out: [(String, Int)] = []
+        var start: Int?
+        var end = 0
+        for piece in pieces {
+            if let s = start, piece.upperBound - s > limit {
+                out.append((text.utf16Slice(s, end), s))
+                start = nil
+            }
+            if start == nil { start = piece.lowerBound }
+            end = piece.upperBound
+        }
+        if let s = start { out.append((text.utf16Slice(s, end), s)) }
+        return out
+    }
+}
+
+#if canImport(FoundationModels)
+@available(iOS 26, *)
+@Generable
+private struct DeepCheckEdits {
+    @Guide(description: "Every spelling, grammar or punctuation mistake in the text, in the order they appear. Empty if there are none.")
+    var edits: [DeepCheckEdit]
+}
+
+@available(iOS 26, *)
+@Generable
+private struct DeepCheckEdit {
+    @Guide(description: "The whole sentence the mistake is in, copied from the text character for character.")
+    var sentence: String
+    @Guide(description: "The wrong words exactly as they appear in that sentence, copied character for character: one to four words.")
+    var original: String
+    @Guide(description: "What those words should be, changing as little as possible.")
+    var replacement: String
+    @Guide(description: "One short sentence saying why, for the writer.")
+    var reason: String
+}
+
+@available(iOS 26, *)
+private enum DeepCheckModel {
+    /// The same answer for the same text: always the likeliest word.
+    static var options: GenerationOptions {
+        #if compiler(>=6.4)
+        GenerationOptions(samplingMode: .greedy)
+        #else
+        GenerationOptions(sampling: .greedy)
+        #endif
+    }
+
+    static let instructions = """
+        You are a careful English proofreader. You list the mistakes in the text you are given: \
+        spelling, grammar, word choice and punctuation. You never rewrite for style, never change \
+        names, numbers, links or anything that is already correct, and you change as few words as possible.
+        """
+
+    static func edits(_ text: String) async throws -> [AppleProofreading.Edit] {
+        let session = LanguageModelSession(instructions: instructions)
+        let response = try await session.respond(
+            to: "Proofread this text:\n\n\(text)",
+            generating: DeepCheckEdits.self,
+            options: options
+        )
+        return response.content.edits.map {
+            AppleProofreading.Edit(
+                original: $0.original, replacement: $0.replacement, reason: $0.reason, sentence: $0.sentence
+            )
+        }
+    }
+}
+#endif

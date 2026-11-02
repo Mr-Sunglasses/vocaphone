@@ -4425,7 +4425,7 @@
     "original": "",
     "kind": "comma",
     "start": 7,
-    "rule": "comma-introductory",
+    "rule": "comma-however",
     "mechanical": false,
     "end": 7,
     "label": "Add \u201c,\u201d",
@@ -5674,7 +5674,7 @@
     "original": "",
     "kind": "comma",
     "start": 44,
-    "rule": "comma-introductory",
+    "rule": "comma-however",
     "mechanical": false,
     "end": 44,
     "label": "Add \u201c,\u201d",
@@ -6085,6 +6085,22 @@
   },
   {
    "stats": [
+    20,
+    91,
+    2,
+    6,
+    8,
+    91,
+    100
+   ],
+   "tones": [],
+   "name": "an onerous task, a one-off",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "It was an onerous task, but a one-off. He is a once-great player and an onerously slow one."
+  },
+  {
+   "stats": [
     29,
     153,
     5,
@@ -6188,6 +6204,78 @@
   },
   {
    "stats": [
+    33,
+    179,
+    5,
+    9,
+    14,
+    72,
+    82
+   ],
+   "tones": [
+    "excited",
+    "tentative",
+    "formal"
+   ],
+   "name": "however as no matter how, and good at something",
+   "suggestions": [
+    {
+     "original": "",
+     "kind": "comma",
+     "start": 50,
+     "rule": "comma-however",
+     "mechanical": false,
+     "end": 50,
+     "label": "Add \u201c,\u201d",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Add a comma after an opening word like \u201cHowever\u201d.",
+     "replacement": ",",
+     "mark": [
+      43,
+      50
+     ]
+    },
+    {
+     "original": "amazing",
+     "kind": "word_choice",
+     "start": 159,
+     "rule": "feeling-be-amazing",
+     "mechanical": false,
+     "end": 166,
+     "label": "amazing → amazed",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201camazing\u201d describes what causes the feeling; \u201camazed\u201d is how you feel.",
+     "replacement": "amazed",
+     "mark": [
+      159,
+      166
+     ]
+    },
+    {
+     "original": "amazing",
+     "kind": "overused_word",
+     "start": 159,
+     "rule": null,
+     "mechanical": false,
+     "end": 166,
+     "label": "Repetitive word",
+     "source": "text",
+     "category": "engagement",
+     "message": "You've used \u201camazing\u201d 3 times here. A different word could keep it fresh.",
+     "replacement": null,
+     "mark": [
+      159,
+      166
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "However you look at it, this is expensive. However I think we should wait. I'm amazing at chess and we're exciting for investors. I'm amazing by nature. I was amazing by the view."
+  },
+  {
+   "stats": [
     31,
     152,
     4,
@@ -6253,6 +6341,159 @@
    ],
    "modelPending": false,
    "text": "He said her name. He said me hello. I have lived here since three years ago, since 2 weeks ago and since a year ago. I have been here since three years."
+  },
+  {
+   "stats": [
+    37,
+    184,
+    6,
+    10,
+    15,
+    73,
+    74
+   ],
+   "tones": [],
+   "name": "a utopia, an umbrella, and better than yesterday",
+   "suggestions": [
+    {
+     "original": "a",
+     "kind": "article",
+     "start": 56,
+     "rule": "a-an",
+     "mechanical": false,
+     "end": 57,
+     "label": "a → an",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201can\u201d before a word that starts with a vowel sound, like \u201cumbrella\u201d.",
+     "replacement": "an",
+     "mark": [
+      56,
+      57
+     ]
+    },
+    {
+     "original": "an",
+     "kind": "article",
+     "start": 71,
+     "rule": "an-a",
+     "mechanical": false,
+     "end": 73,
+     "label": "an → a",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201ca\u201d before a word that starts with a consonant sound, like \u201cutensil\u201d.",
+     "replacement": "a",
+     "mark": [
+      71,
+      73
+     ]
+    },
+    {
+     "original": "go",
+     "kind": "verb_form",
+     "start": 160,
+     "rule": "tense-past-time",
+     "mechanical": false,
+     "end": 162,
+     "label": "go → went",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cyesterday\u201d is in the past, so use \u201cwent\u201d.",
+     "replacement": "went",
+     "mark": [
+      160,
+      162
+     ]
+    },
+    {
+     "original": "yesterday",
+     "kind": "overused_word",
+     "start": 174,
+     "rule": null,
+     "mechanical": false,
+     "end": 183,
+     "label": "Repetitive word",
+     "source": "text",
+     "category": "engagement",
+     "message": "You've used \u201cyesterday\u201d 3 times here. A different word could keep it fresh.",
+     "replacement": null,
+     "mark": [
+      174,
+      183
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "It was a utopia with a utensil and an umbrella. She has a umbrella and an utensil. An umami taste. It is better than yesterday. I feel the same as yesterday. I go to the gym yesterday."
+  },
+  {
+   "stats": [
+    41,
+    188,
+    5,
+    11,
+    17,
+    85,
+    76
+   ],
+   "tones": ["urgent"],
+   "name": "a SIM card, an MBA, and compared to yesterday",
+   "suggestions": [
+    {
+     "original": "a",
+     "kind": "article",
+     "start": 58,
+     "rule": "a-an",
+     "mechanical": false,
+     "end": 59,
+     "label": "a → an",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201can\u201d before a word that starts with a vowel sound, like \u201cFBI\u201d.",
+     "replacement": "an",
+     "mark": [
+      58,
+      59
+     ]
+    },
+    {
+     "original": "go",
+     "kind": "verb_form",
+     "start": 141,
+     "rule": "tense-past-time",
+     "mechanical": false,
+     "end": 143,
+     "label": "go → went",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cyesterday\u201d is in the past, so use \u201cwent\u201d.",
+     "replacement": "went",
+     "mark": [
+      141,
+      143
+     ]
+    },
+    {
+     "original": "see",
+     "kind": "verb_form",
+     "start": 167,
+     "rule": "tense-past-time",
+     "mechanical": false,
+     "end": 170,
+     "label": "see → saw",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cago\u201d is in the past, so use \u201csaw\u201d.",
+     "replacement": "saw",
+     "mark": [
+      167,
+      170
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I need a SIM card and a RAM module for an MBA student and a FBI agent. Sales are up compared to yesterday. It is better than two days ago. I go to school yesterday. I see him two days ago."
   }
  ],
  "tokenize": [

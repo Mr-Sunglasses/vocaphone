@@ -391,7 +391,13 @@ Where it runs:
   only, as the framework's typo and grammar spans; see `SpellCheckSpans`.
 - **Writing check screen** (`ui/WritingCheckScreen.kt`,
   `App/WritingCheckView.swift`): underlines, cards, score, readability, tone;
-  on Android also the target of `ACTION_PROCESS_TEXT` and `ACTION_SEND`.
+  on Android also the target of `ACTION_PROCESS_TEXT` and `ACTION_SEND`. On
+  iOS it also adds Apple's checkers (`App/AppleProofreading.swift`): the
+  system grammar check on iOS 27 (`UITextChecker.requestGrammarChecking`,
+  compiled only with an iOS 27 SDK), and Deep check, an `@Generable` edit
+  list from the on-device Apple Intelligence model when the user taps for it.
+  Their suggestions join where they clash with nothing already found, never
+  on the user's own words, and only small edits on words that are in the text.
 
 ## Typing intelligence (iOS keyboard)
 
