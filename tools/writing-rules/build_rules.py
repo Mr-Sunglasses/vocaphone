@@ -562,6 +562,9 @@ hi hey hello thanks yes no well so ok okay dear oh sorry please besides""".split
 # A finite "be" later in the sentence makes "What you need" a noun clause, not a question.
 FINITE_BE = "is was are were isn't wasn't".split()
 
+# Where an "if" clause can start besides the sentence's start.
+IF_OPENS = [",", "and", "but", "so", "then", "or"]
+
 # Durations "since" cannot count: "since three years" is "for three years".
 DURATIONS = "seconds minutes hours days weeks months years decades ages".split()
 DURATION_ONE = "second minute hour day week month year decade while".split()
@@ -585,7 +588,8 @@ CLASSES.update({
   # Words before "if"/"when" that make it a question being reported, where
   # "will" is right: "I wonder if he will come", "ask him if he will".
   "indirect": """know knows knew wonder wonders wondered ask asks asked sure idea tell told see decide decided
-wondering unclear clear whether me him her us them you""".split(),
+wondering unclear clear whether me him her us them you unsure uncertain certain doubt doubtful curious check
+checking confirm remember forget asking clue matter depends find learn""".split(),
   "have_aux": "have has had haven't hasn't hadn't havent hasnt hadnt".split(),
   "past_marker": "yesterday".split(),
   # Base forms that are also another verb's past: "Yesterday I lay on the couch" is "lie".
@@ -628,10 +632,12 @@ RULES += [
   # "explained the problem to me", which a rule cannot reorder.
   r("explain|explained|explaining|explains me|him|her|us|them how|what|why|where|when|who|that|everything|it|this",
     "$1 to $2 $3", "preposition", "You explain something “to” someone.", rid="explain-me"),
-  r("said me|him|her|us|them", "told $2", "word_choice", "You “tell” someone something; you “say” something “to” someone.", rid="said-me"),
-  r("since {count} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-duration"),
-  r("since {number} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-number-duration"),
-  r("since a|an {duration_one}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-a-duration"),
+  # Not "her", which also owns: "He said her name".
+  r("said me|him|us|them", "told $2", "word_choice", "You “tell” someone something; you “say” something “to” someone.", rid="said-me"),
+  # Not before "ago": "since three years ago" names a point in time.
+  dict(r("since {count} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-duration"), notBefore=["ago"]),
+  dict(r("since {number} {duration}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-number-duration"), notBefore=["ago"]),
+  dict(r("since a|an {duration_one}", "for $2 $3", "preposition", "“For” goes with a length of time; “since” with a point in time.", rid="since-a-duration"), notBefore=["ago"]),
   r("on|in {clock_time}", "at $2", "preposition", "Use “at” with a time of day.", rid="at-clock"),
   r("on|in {number} am|pm|o'clock", "at $2 $3", "preposition", "Use “at” with a time of day.", rid="at-clock-words"),
   r("in {day}", "on ${capital:2}", "preposition", "Use “on” with a day.", rid="on-day"),
@@ -658,9 +664,12 @@ RULES += [
   # it" are statements whose verb is no form of "be".
   dict(r("^ what|where|when|why|how you|we|they want|need|think|mean|like|have|know|do|say", "$1 do $2 $3", "missing_word", "missing_word.verb", rid="wh-do"),
        unlessLater=FINITE_BE, question=True),
-  r("^ why you|we|they didn't|didnt|don't|dont|can't|cant|won't|wont {verb_base}", "$1 $3 $2 $4", "word_choice",
-    "In a question, the helper verb comes before the subject: “{replacement}”.", rid="why-you-didnt"),
-  dict(r("^ how much|many it|this|that {verb_inflected}", "$1 $2 does $3 ${base:4}", "missing_word", "missing_word.verb", rid="how-much-does"), unlessLater=FINITE_BE),
+  dict(r("^ why you|we|they didn't|didnt|don't|dont|can't|cant|won't|wont {verb_base}", "$1 $3 $2 $4", "word_choice",
+    "In a question, the helper verb comes before the subject: “{replacement}”.", rid="why-you-didnt"), question=True),
+  # Only questions: "How much that costs varies", "Why you didn't call
+  # matters" are statements.
+  dict(r("^ how much|many it|this|that {verb_inflected}", "$1 $2 does $3 ${base:4}", "missing_word", "missing_word.verb", rid="how-much-does"),
+       unlessLater=FINITE_BE, question=True),
   # A time in the past, said in the present: "Yesterday I go".
   r("^ yesterday {subject} {verb_base&!past_too}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past"),
   r("^ yesterday {subject} {verb_inflected}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past-inflected"),
@@ -671,16 +680,25 @@ RULES += [
   # see him". After "if" and "unless" only with "I" or "we": "If you will
   # help me" and "if he will apologise" ask for willingness, where "will" is
   # right. After "when", "once", "until", "before" and "after", any subject.
-  dict(r("if|when|once|unless|until|before|after i will be", "$1 I am", "verb_form",
-         "After “{1}”, use the present for the future: “{result}”.", rid="if-i-will-be"), notAfter=CLASSES["indirect"]),
-  dict(r("if|when|once|unless|until|before|after we will be", "$1 $2 are", "verb_form",
-         "After “{1}”, use the present for the future: “{result}”.", rid="if-we-will-be"), notAfter=CLASSES["indirect"]),
+  # "if" also asks a question ("I'm unsure if I will be there"), so an
+  # "if" clause only where one starts: the sentence, or after a comma or
+  # "and"/"but"/"so". The time words take any place but a reported question.
+  dict(r("if|unless i will be", "$1 I am", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-i-will-be"), after=IF_OPENS),
+  dict(r("if|unless we will be", "$1 $2 are", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-we-will-be"), after=IF_OPENS),
+  dict(r("when|once|until|before|after i will be", "$1 I am", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-i-will-be"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after we will be", "$1 $2 are", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-we-will-be"), notAfter=CLASSES["indirect"]),
   dict(r("when|once|until|before|after you|they will be", "$1 $2 are", "verb_form",
          "After “{1}”, use the present for the future: “{result}”.", rid="when-will-be"), notAfter=CLASSES["indirect"]),
   dict(r("when|once|until|before|after he|she|it will be", "$1 $2 is", "verb_form",
          "After “{1}”, use the present for the future: “{result}”.", rid="when-will-be-third"), notAfter=CLASSES["indirect"]),
-  dict(r("if|when|once|unless|until|before|after i|we will {verb_base}", "$1 $2 $4", "verb_form",
-         "After “{1}”, use the present for the future: “{result}”.", rid="if-will"), notAfter=CLASSES["indirect"]),
+  dict(r("if|unless i|we will {verb_base}", "$1 $2 $4", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-will"), after=IF_OPENS),
+  dict(r("when|once|until|before|after i|we will {verb_base}", "$1 $2 $4", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-i-will"), notAfter=CLASSES["indirect"]),
   dict(r("when|once|until|before|after you|they will {verb_base}", "$1 $2 $4", "verb_form",
          "After “{1}”, use the present for the future: “{result}”.", rid="when-will"), notAfter=CLASSES["indirect"]),
   dict(r("when|once|until|before|after he|she|it will {verb_base}", "$1 $2 ${third:4}", "verb_form",
@@ -689,7 +707,8 @@ RULES += [
   # Commas after an opening word.
   r("^ {introductory} {clause_start}", "$1 , $2", "comma", "comma.introductory", rid="comma-introductory"),
   # Capitals.
-  r("new york|jersey|zealand|delhi", "New ${capital:2}", "capitalization", "capitalization.proper", rid="cap-new-x"),
+  # Not "jersey": "I bought a new jersey".
+  r("new york|zealand|delhi", "New ${capital:2}", "capitalization", "capitalization.proper", rid="cap-new-x"),
   # The serial (Oxford) comma, a style choice: off unless the user turns it
   # on. Only a one-word last-but-one item, not after a greeting ("Hi, Sam
   # and Alex"), not after an opening phrase ("After lunch, Sam and Alex
@@ -700,6 +719,15 @@ RULES += [
        notAfter="hi hey hello thanks yes no well so ok okay dear oh sorry please".split(), notAfterOpening=OPENERS,
        notBefore=[","]),
 ]
+# "when" also reports a question ("I'm unsure when we will arrive", "The
+# question is when we will"), so, like "if", it loses "will" only where its
+# clause starts; "once", "until", "before" and "after" keep their rules.
+for _rule in list(RULES):
+    if _rule["match"].startswith("when|once|until|before|after "):
+        _rule["match"] = _rule["match"].replace("when|once|until|before|after ", "once|until|before|after ", 1)
+        _twin = dict(_rule, match="when " + _rule["match"][len("once|until|before|after "):], id=_rule["id"] + "-when", after=IF_OPENS)
+        _twin.pop("notAfter", None)
+        RULES.insert(RULES.index(_rule) + 1, _twin)
 _FEELING = "“{original}” describes what causes the feeling; “{replacement}” is how you feel."
 for b, prepositions in EMOTIONS.items():
     ing, ed, after = _ing(b), _ed(b), prepositions.replace(" ", "|")

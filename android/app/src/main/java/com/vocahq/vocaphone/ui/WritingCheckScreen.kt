@@ -341,11 +341,11 @@ internal suspend fun checkUntilCancelled(
             m.correct(sentence)
         }
     }
-    var report = checker.check(text, asked, options)
+    var report = checker.check(text, asked, options) { !job.isActive }
     if (report.modelPending) {
         // The model was loading; asking started it. Once more, a moment later.
         delay(retryMillis)
-        report = checker.check(text, asked, options)
+        report = checker.check(text, asked, options) { !job.isActive }
     }
     currentCoroutineContext().ensureActive()
     return report

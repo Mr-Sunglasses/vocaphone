@@ -7,7 +7,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class SpellCheckSpansTest {
-    private val check = WritingCheck(WritingFixtures.rules)
+    private val check = WritingCheck(WritingFixtures.rules, WritingFixtures.spelling)
 
     private fun spans(text: String, model: Map<String, String> = emptyMap()): List<String> {
         val report = check.check(

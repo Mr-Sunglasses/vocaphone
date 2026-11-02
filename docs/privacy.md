@@ -97,11 +97,12 @@ text. It has four ways in, and every one of them checks on the phone:
 - **Android's system spell checker**, only if the user picks VocaPhone under
   the system's spell checker setting.
 
-There are two checkers. The **rules** (`assets/keyboard/writing-rules.json`)
-ship inside the app and the keyboard and need no download, no ONNX Runtime and
-no network, so they also run in the F-Droid build and inside the iOS keyboard
-extension. The **grammar model** is the Fix grammar model above, used only
-once it has been downloaded. Neither sends the text anywhere. Suggestions are
+There are three checkers. The **rules** (`assets/keyboard/writing-rules.json`)
+and the **spelling dictionary** (`assets/keyboard/en-spelling.txt`, a SCOWL
+word list) ship inside the app and the keyboard and need no download, no ONNX
+Runtime and no network, so they also run in the F-Droid build and inside the
+iOS keyboard extension. The **grammar model** is the Fix grammar model above,
+used only once it has been downloaded. None of them sends the text anywhere. Suggestions are
 only *offered*: nothing in a field changes unless the user taps one, with one
 exception the user has to turn on, **Fix obvious typos as I type**, which
 corrects known misspellings and missing apostrophes after a pause and offers

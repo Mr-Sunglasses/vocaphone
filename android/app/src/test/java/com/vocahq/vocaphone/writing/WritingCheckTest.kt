@@ -5,6 +5,8 @@ import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -20,7 +22,7 @@ class WritingCheckTest {
     private val fixtureFile = File(GrammarFixtures.root, "writing_fixtures.json")
     private val document = JSONObject(fixtureFile.readText())
     private val rules = WritingFixtures.rules
-    private val check = WritingCheck(rules)
+    private val check = WritingCheck(rules, WritingFixtures.spelling)
     private val recording = File("build/writing-record").exists()
 
     private fun cases(name: String) = document.getJSONArray(name).let { a -> List(a.length()) { a.getJSONObject(it) } }
@@ -38,6 +40,7 @@ class WritingCheckTest {
         sentences(recorded)
         verbs(recorded)
         syllables(recorded)
+        spelling(recorded)
         checks(recorded)
         rebase(recorded)
         apply(recorded)
@@ -93,6 +96,14 @@ class WritingCheckTest {
         expect(case, out, "count", WritingCheck.syllables(case.getString("word")))
     }
 
+    private fun spelling(recorded: JSONObject) = section(recorded, "spelling") { case, out ->
+        val word = case.getString("word")
+        val dictionary = WritingFixtures.spelling
+        expect(case, out, "known", dictionary.isKnown(word))
+        val guess = dictionary.suggest(word.lowercase())
+        expect(case, out, "guess", guess?.let { JSONArray(listOf(it.word, it.edits, it.score, it.sure)) })
+    }
+
     private fun checks(recorded: JSONObject) = section(recorded, "check") { case, out ->
         val report = check.check(case.getString("text"), WritingFixtures.model(case), WritingFixtures.options(case))
         expect(case, out, "suggestions", JSONArray(report.suggestions.map(WritingFixtures::json)))
@@ -130,6 +141,16 @@ class WritingCheckTest {
     }
 
     @Test
+    fun aCancelledCheckStopsLookingWordsUp() {
+        val spelling = WritingFixtures.spelling
+        assertNotNull(spelling.suggest("recieve"))
+        assertNull(spelling.suggest("recieve") { true })
+        var asked = 0
+        WritingCheck(rules, spelling).check("I recieved teh adress", shouldAbort = { asked++; true })
+        assertTrue(asked > 0)
+    }
+
+    @Test
     fun diffSetsTheSharedEndsAsideAndBoundsTheMiddle() {
         val words = List(3000) { "w$it" }
         val one = words.toMutableList().also { it[1500] = "x" }
@@ -149,6 +170,14 @@ class WritingCheckTest {
 /** Shared by the writing tests: the rules file and the fixture's model and options. */
 object WritingFixtures {
     val rules: WritingRules by lazy { WritingRules.parse(File(GrammarFixtures.root, "../keyboard/writing-rules.json").readText()) }
+
+    /** The spelling dictionary both apps ship. */
+    val spelling: WritingSpelling by lazy {
+        WritingSpelling.parse(
+            File(GrammarFixtures.root, "../keyboard/en-spelling.txt").readText(),
+            File(GrammarFixtures.root, "../keyboard/en.txt").readText(),
+        )
+    }
 
     fun model(case: JSONObject): WritingCheck.Model? {
         if (!case.has("model")) return null

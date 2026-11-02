@@ -26,7 +26,8 @@ data class WritingSuggestion(
     /** The rule's id for [Source.RULE]. */
     val rule: String? = null,
 ) {
-    enum class Source { MODEL, RULE, TEXT }
+    /** Where a suggestion came from: the grammar model, a rule, the text's shape, or the spelling dictionary. */
+    enum class Source { MODEL, RULE, TEXT, DICTIONARY }
 
     /** The words as typed; for a removal, only the words removed, not a comma or space taken along. */
     val shownOriginal: String

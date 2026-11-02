@@ -73,7 +73,7 @@ not load `gateway/.env` into the shell (that is the Compose bearer token).
 | `android/` | Kotlin IME, foreground mic service, on-device engines, unit tests. Read [android/AGENTS.md](android/AGENTS.md) before changing the keyboard |
 | `ios/` | Swift app, keyboard extension, Live Activity, shared App Group state, tests |
 | `gateway/` | Pinned vocagateway checkout (not developed as a first-class tree here) |
-| `assets/keyboard/` | Shared word list, bigrams, emoji catalog (both keyboards), Writing check rules (both keyboards and apps), Traditional Chinese tables (both apps' transcript funnel) |
+| `assets/keyboard/` | Shared word list, bigrams, emoji catalog (both keyboards), Writing check rules and spelling dictionary (both keyboards and apps), Traditional Chinese tables (both apps' transcript funnel) |
 | `web/` | Static marketing site (vocaphone.vocahq.com) |
 | `docs/` | Architecture, privacy, device setup, releasing — not marketing |
 | `fdroid/` | F-Droid metadata |
@@ -107,6 +107,7 @@ just gateway-sync           # local gateway/ → .gitmodules branch tip; does no
 | Web | `cd web && npm run check` · `npm run dev` (port 4173) | `npm run check` |
 | Brand / emoji | `python3 assets/generate.py --check` · `python3 tools/generate-emoji-catalog.py --check` | same (`just ci` always runs the brand check) |
 | Writing check rules | `python3 tools/writing-rules/build_rules.py` (edit the tables there, never `assets/keyboard/writing-rules.json`) | `--check`; both ports' `WritingCheck` tests read `assets/grammar/writing_fixtures.json` |
+| Writing check spelling | `python3 tools/writing-rules/build_spelling.py` downloads SCOWL lists (network, so not a CI step) and writes `assets/keyboard/en-spelling.txt`; never edit the file | `--check`; `WritingBenchmarkTest` (Android) gates what the whole check catches and flags |
 
 `just ci` skips a missing Android SDK, non-macOS iOS, missing `uv`, or an
 uninitialized gateway; it still fails if a **present** leg fails.
