@@ -11,8 +11,9 @@ import org.json.JSONObject
  * or a built-in one, `^` first for "starts the sentence" and `$` last for
  * "nothing but punctuation follows, to the end of the sentence". A rule may
  * also say which word must (`after`, or the sentence start) or must not
- * (`notAfter`) come right before the match, and words that must not come
- * anywhere after it in the sentence (`unlessLater`); that the sentence is a
+ * (`notAfter`) come right before the match, words or marks that must not
+ * come right after it (`notBefore`), and words that must not come anywhere
+ * after it in the sentence (`unlessLater`); that the sentence is a
  * question (`question`: a "?" follows the match); and openers it must not
  * follow (`notAfterOpening`: the sentence starts with one of these words and
  * no comma comes before the match, as in "After lunch, Sam and Alex"). A
@@ -34,6 +35,7 @@ class WritingRule private constructor(
     private val after: Set<String>?,
     private val notAfter: Set<String>,
     private val unlessLater: Set<String>,
+    private val notBefore: Set<String>,
     private val question: Boolean,
     private val notAfterOpening: Set<String>,
     val replace: String?,
@@ -85,6 +87,7 @@ class WritingRule private constructor(
         if (atEnd && (i..sentence.last).any { tokens[it].isWord }) return 0
         if (unlessLater.isNotEmpty() && (i..sentence.last).any { tokens[it].key in unlessLater }) return 0
         if (question && (i..sentence.last).none { tokens[it].text == "?" }) return 0
+        if (notBefore.isNotEmpty() && i <= sentence.last && tokens[i].key in notBefore) return 0
         return i - index
     }
 
@@ -163,6 +166,8 @@ class WritingRule private constructor(
                 notAfter = o.optJSONArray("notAfter")?.let { a -> List(a.length()) { WritingToken.normalize(a.getString(it)) }.toSet() }
                     .orEmpty(),
                 unlessLater = o.optJSONArray("unlessLater")?.let { a -> List(a.length()) { WritingToken.normalize(a.getString(it)) }.toSet() }
+                    .orEmpty(),
+                notBefore = o.optJSONArray("notBefore")?.let { a -> List(a.length()) { WritingToken.normalize(a.getString(it)) }.toSet() }
                     .orEmpty(),
                 question = o.optBoolean("question", false),
                 notAfterOpening = o.optJSONArray("notAfterOpening")

@@ -4940,6 +4940,39 @@
    ],
    "modelPending": false,
    "text": "i going home"
+  },
+  {
+   "stats": [
+    21,
+    126,
+    3,
+    6,
+    9,
+    79,
+    92
+   ],
+   "tones": [],
+   "name": "the serial comma not in a phrase between commas or after besides",
+   "options": {"optIn": ["serial_comma"]},
+   "suggestions": [{
+    "original": "",
+    "kind": "comma",
+    "start": 115,
+    "rule": "serial-comma",
+    "mechanical": false,
+    "end": 115,
+    "label": "Add \u201c,\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Add a comma before \u201cand\u201d to end a list (the serial comma).",
+    "replacement": ",",
+    "mark": [
+     111,
+     115
+    ]
+   }],
+   "modelPending": false,
+   "text": "My friends, Sam and Alex, are here. Besides being expensive, repairs and replacements take time. We need eggs, milk and bread."
   }
  ],
  "tokenize": [

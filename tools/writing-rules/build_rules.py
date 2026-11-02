@@ -557,7 +557,7 @@ let's nobody everyone everybody someone somebody nothing everything no some most
 OPENERS = sorted(set("""after before during in on at by for from since until till with without within through over
 under around about across behind beyond near if when whenever while although though because once unless as
 yesterday today tomorrow tonight later then now finally first next lastly meanwhile recently suddenly however
-hi hey hello thanks yes no well so ok okay dear oh sorry please""".split() + INTRODUCTORY))
+hi hey hello thanks yes no well so ok okay dear oh sorry please besides""".split() + INTRODUCTORY))
 
 # A finite "be" later in the sentence makes "What you need" a noun clause, not a question.
 FINITE_BE = "is was are were isn't wasn't".split()
@@ -692,11 +692,13 @@ RULES += [
   r("new york|jersey|zealand|delhi", "New ${capital:2}", "capitalization", "capitalization.proper", rid="cap-new-x"),
   # The serial (Oxford) comma, a style choice: off unless the user turns it
   # on. Only a one-word last-but-one item, not after a greeting ("Hi, Sam
-  # and Alex"), and not after an opening phrase ("After lunch, Sam and Alex
-  # left"), where the comma before is no list's.
+  # and Alex"), not after an opening phrase ("After lunch, Sam and Alex
+  # left"), where the comma before is no list's, and not between commas
+  # ("My friends, Sam and Alex, are here"), which name what came before.
   dict(r(", {word} and|or {word}", "$1 $2 , $3 $4", "comma", "Add a comma before “{3}” to end a list (the serial comma).",
          rid="serial-comma"), optIn="serial_comma",
-       notAfter="hi hey hello thanks yes no well so ok okay dear oh sorry please".split(), notAfterOpening=OPENERS),
+       notAfter="hi hey hello thanks yes no well so ok okay dear oh sorry please".split(), notAfterOpening=OPENERS,
+       notBefore=[","]),
 ]
 _FEELING = "“{original}” describes what causes the feeling; “{replacement}” is how you feel."
 for b, prepositions in EMOTIONS.items():

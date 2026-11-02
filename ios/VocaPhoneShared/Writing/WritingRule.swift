@@ -19,6 +19,8 @@ struct WritingRule: Sendable {
     private let notAfter: Set<String>
     /// No word after the match, to the end of the sentence, may be one of these.
     private let unlessLater: Set<String>
+    /// The word or mark right after the match must not be one of these.
+    private let notBefore: Set<String>
     /// A "?" must follow the match in its sentence.
     private let question: Bool
     /// The sentence must not start with one of these with no comma before the match.
@@ -57,6 +59,7 @@ struct WritingRule: Sendable {
             after: (o["after"] as? [String]).map { Set($0.map(WritingToken.normalize)) },
             notAfter: Set((o["notAfter"] as? [String] ?? []).map(WritingToken.normalize)),
             unlessLater: Set((o["unlessLater"] as? [String] ?? []).map(WritingToken.normalize)),
+            notBefore: Set((o["notBefore"] as? [String] ?? []).map(WritingToken.normalize)),
             question: o["question"] as? Bool ?? false,
             notAfterOpening: Set((o["notAfterOpening"] as? [String] ?? []).map(WritingToken.normalize)),
             replace: o["replace"] as? String,
@@ -104,6 +107,7 @@ struct WritingRule: Sendable {
             return 0
         }
         if question, i > sentence.last || !tokens[i...sentence.last].contains(where: { $0.text == "?" }) { return 0 }
+        if !notBefore.isEmpty, i <= sentence.last, notBefore.contains(tokens[i].key) { return 0 }
         return i - index
     }
 
