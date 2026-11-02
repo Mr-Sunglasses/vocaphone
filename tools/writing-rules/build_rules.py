@@ -562,6 +562,9 @@ hi hey hello thanks yes no well so ok okay dear oh sorry please besides""".split
 # A finite "be" later in the sentence makes "What you need" a noun clause, not a question.
 FINITE_BE = "is was are were isn't wasn't".split()
 
+# Where an "if" clause can start besides the sentence's start.
+IF_OPENS = [",", "and", "but", "so", "then", "or"]
+
 # Durations "since" cannot count: "since three years" is "for three years".
 DURATIONS = "seconds minutes hours days weeks months years decades ages".split()
 DURATION_ONE = "second minute hour day week month year decade while".split()
@@ -585,7 +588,8 @@ CLASSES.update({
   # Words before "if"/"when" that make it a question being reported, where
   # "will" is right: "I wonder if he will come", "ask him if he will".
   "indirect": """know knows knew wonder wonders wondered ask asks asked sure idea tell told see decide decided
-wondering unclear clear whether me him her us them you""".split(),
+wondering unclear clear whether me him her us them you unsure uncertain certain doubt doubtful curious check
+checking confirm remember forget asking clue matter depends find learn""".split(),
   "have_aux": "have has had haven't hasn't hadn't havent hasnt hadnt".split(),
   "past_marker": "yesterday".split(),
   # Base forms that are also another verb's past: "Yesterday I lay on the couch" is "lie".
@@ -671,16 +675,25 @@ RULES += [
   # see him". After "if" and "unless" only with "I" or "we": "If you will
   # help me" and "if he will apologise" ask for willingness, where "will" is
   # right. After "when", "once", "until", "before" and "after", any subject.
-  dict(r("if|when|once|unless|until|before|after i will be", "$1 I am", "verb_form",
-         "After “{1}”, use the present for the future: “{result}”.", rid="if-i-will-be"), notAfter=CLASSES["indirect"]),
-  dict(r("if|when|once|unless|until|before|after we will be", "$1 $2 are", "verb_form",
-         "After “{1}”, use the present for the future: “{result}”.", rid="if-we-will-be"), notAfter=CLASSES["indirect"]),
+  # "if" also asks a question ("I'm unsure if I will be there"), so an
+  # "if" clause only where one starts: the sentence, or after a comma or
+  # "and"/"but"/"so". The time words take any place but a reported question.
+  dict(r("if|unless i will be", "$1 I am", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-i-will-be"), after=IF_OPENS),
+  dict(r("if|unless we will be", "$1 $2 are", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-we-will-be"), after=IF_OPENS),
+  dict(r("when|once|until|before|after i will be", "$1 I am", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-i-will-be"), notAfter=CLASSES["indirect"]),
+  dict(r("when|once|until|before|after we will be", "$1 $2 are", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-we-will-be"), notAfter=CLASSES["indirect"]),
   dict(r("when|once|until|before|after you|they will be", "$1 $2 are", "verb_form",
          "After “{1}”, use the present for the future: “{result}”.", rid="when-will-be"), notAfter=CLASSES["indirect"]),
   dict(r("when|once|until|before|after he|she|it will be", "$1 $2 is", "verb_form",
          "After “{1}”, use the present for the future: “{result}”.", rid="when-will-be-third"), notAfter=CLASSES["indirect"]),
-  dict(r("if|when|once|unless|until|before|after i|we will {verb_base}", "$1 $2 $4", "verb_form",
-         "After “{1}”, use the present for the future: “{result}”.", rid="if-will"), notAfter=CLASSES["indirect"]),
+  dict(r("if|unless i|we will {verb_base}", "$1 $2 $4", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="if-will"), after=IF_OPENS),
+  dict(r("when|once|until|before|after i|we will {verb_base}", "$1 $2 $4", "verb_form",
+         "After “{1}”, use the present for the future: “{result}”.", rid="when-i-will"), notAfter=CLASSES["indirect"]),
   dict(r("when|once|until|before|after you|they will {verb_base}", "$1 $2 $4", "verb_form",
          "After “{1}”, use the present for the future: “{result}”.", rid="when-will"), notAfter=CLASSES["indirect"]),
   dict(r("when|once|until|before|after he|she|it will {verb_base}", "$1 $2 ${third:4}", "verb_form",
@@ -689,7 +702,8 @@ RULES += [
   # Commas after an opening word.
   r("^ {introductory} {clause_start}", "$1 , $2", "comma", "comma.introductory", rid="comma-introductory"),
   # Capitals.
-  r("new york|jersey|zealand|delhi", "New ${capital:2}", "capitalization", "capitalization.proper", rid="cap-new-x"),
+  # Not "jersey": "I bought a new jersey".
+  r("new york|zealand|delhi", "New ${capital:2}", "capitalization", "capitalization.proper", rid="cap-new-x"),
   # The serial (Oxford) comma, a style choice: off unless the user turns it
   # on. Only a one-word last-but-one item, not after a greeting ("Hi, Sam
   # and Alex"), not after an opening phrase ("After lunch, Sam and Alex

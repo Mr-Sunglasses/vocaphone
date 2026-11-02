@@ -5435,6 +5435,38 @@
    }],
    "modelPending": false,
    "text": "My friends, Sam and Alex, are here. Besides being expensive, repairs and replacements take time. We need eggs, milk and bread."
+  },
+  {
+   "stats": [
+    27,
+    125,
+    4,
+    7,
+    11,
+    100,
+    92
+   ],
+   "tones": ["confident"],
+   "name": "if asking a question keeps will, and a new jersey is clothing",
+   "suggestions": [{
+    "original": " will",
+    "kind": "verb_form",
+    "start": 67,
+    "rule": "if-will",
+    "mechanical": false,
+    "end": 72,
+    "label": "Remove \u201cwill\u201d",
+    "source": "rule",
+    "category": "correctness",
+    "message": "After \u201cIf\u201d, use the present for the future: \u201cIf I see\u201d.",
+    "replacement": "",
+    "mark": [
+     68,
+     72
+    ]
+   }],
+   "modelPending": false,
+   "text": "I'm unsure if I will be there tomorrow. I bought a new jersey. If I will see him, I'll tell him. Call me when we will arrive."
   }
  ],
  "tokenize": [
