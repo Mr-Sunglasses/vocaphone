@@ -6085,6 +6085,22 @@
   },
   {
    "stats": [
+    20,
+    91,
+    2,
+    6,
+    8,
+    91,
+    100
+   ],
+   "tones": [],
+   "name": "an onerous task, a one-off",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "It was an onerous task, but a one-off. He is a once-great player and an onerously slow one."
+  },
+  {
+   "stats": [
     29,
     153,
     5,

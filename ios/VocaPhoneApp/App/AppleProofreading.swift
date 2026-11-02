@@ -67,7 +67,9 @@ enum AppleProofreading {
         for s in extra where s.isActionable {
             let words = Set(WritingText.tokenize(s.shownOriginal).filter(\.isWord).map(\.key))
             guard words.isDisjoint(with: keep) else { continue }
-            if suggestions.contains(where: { $0.isActionable && $0.overlaps(s) }) { continue }
+            // Not over something already found, nor beside it adding the same
+            // word twice: "I want go home" with "to" inserted and "go → to go".
+            if suggestions.contains(where: { $0.isActionable && WritingCheck.conflicts($0, s, report.text) }) { continue }
             suggestions.append(s)
         }
         let ordered = suggestions.enumerated().sorted { x, y in

@@ -216,6 +216,7 @@ struct WritingRule: Sendable {
         }
         if silentH.contains(where: { key.hasPrefix($0) }) { return true }
         if !youSoundLong.contains(where: { key.hasPrefix($0) }), unPrefixed.contains(where: { key.hasPrefix($0) }) { return true }
+        if oneSound.contains(key) { return false }
         if youSound.contains(where: { key.hasPrefix($0) }) { return false }
         return "aeiou".unicodeScalars.contains(first)
     }
@@ -229,8 +230,10 @@ struct WritingRule: Sendable {
     private static let youSoundLong = ["unidirection", "unilateral", "unilingual", "unimodal"]
     private static let youSound = [
         "uni", "use", "usu", "uti", "ure", "uro", "uk", "ufo", "ubiq", "ukulele", "unanim", "uri", "ura",
-        "eu", "ewe", "one", "once",
+        "eu", "ewe",
     ]
+    /// Words said with a "w": "a one-off", "a once-great team". Whole words, not "onerous".
+    private static let oneSound: Set<String> = ["one", "ones", "oneself", "once", "onesie"]
 
     /// "3pm", "11am": a time typed as one word.
     private static func isClockTime(_ key: String) -> Bool {

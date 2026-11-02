@@ -446,7 +446,10 @@ struct WritingCheck: Sendable {
     /// Two suggestions that overlap, or one that adds words right beside the
     /// other: "thanks for invite me" can gain "the" or become "thanks for
     /// inviting me", and accepting both reads "for the inviting me".
-    private static func conflicts(_ a: WritingSuggestion, _ b: WritingSuggestion, _ text: String) -> Bool {
+    /// Whether `a` and `b` cannot both be accepted in `text`: they overlap, or
+    /// one adds words right beside the other's change. Also used where other
+    /// checkers' suggestions join a report.
+    static func conflicts(_ a: WritingSuggestion, _ b: WritingSuggestion, _ text: String) -> Bool {
         if insertsAfter(a, b) || insertsAfter(b, a) { return false }
         return a.overlaps(b) || addsBeside(a, b, text) || addsBeside(b, a, text)
     }

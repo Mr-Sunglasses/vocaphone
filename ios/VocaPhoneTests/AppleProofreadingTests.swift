@@ -90,6 +90,16 @@ struct AppleProofreadingTests {
         #expect(merged.stats.words == report.stats.words)
     }
 
+    @Test func mergedSkipsAnEditBesideAnInsertion() {
+        let text = "I want go home."
+        let report = WritingCheck(rules: Self.rules).check(text, model: { _ in "I want to go home." })
+        #expect(report.suggestions.contains { $0.shownReplacement == "to" })
+        let extra = AppleProofreading.suggestions(text, [edit("go", "to go", sentence: text)], rules: Self.rules)
+        #expect(extra.count == 1)
+        let merged = AppleProofreading.merged(report, extra, keep: [], rules: Self.rules)
+        #expect(!merged.suggestions.contains { $0.source == .generated })
+    }
+
     @Test func longTextGoesToTheModelInPieces() {
         let sentence = "This sentence is about forty characters. "
         let text = String(repeating: sentence, count: 80)

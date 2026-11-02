@@ -132,6 +132,7 @@ class WritingRule private constructor(
         if (text.all { it in 'A'..'Z' }) return if (text.length <= 3) key[0] in LETTER_NAME_VOWELS else null
         if (SILENT_H.any { key.startsWith(it) }) return true
         if (YOU_SOUND_LONG.none { key.startsWith(it) } && UN_PREFIXED.any { key.startsWith(it) }) return true
+        if (key in ONE_SOUND) return false
         if (YOU_SOUND.any { key.startsWith(it) }) return false
         return key[0] in "aeiou"
     }
@@ -219,8 +220,10 @@ class WritingRule private constructor(
         private val YOU_SOUND_LONG = listOf("unidirection", "unilateral", "unilingual", "unimodal")
         private val YOU_SOUND = listOf(
             "uni", "use", "usu", "uti", "ure", "uro", "uk", "ufo", "ubiq", "ukulele", "unanim", "uri", "ura",
-            "eu", "ewe", "one", "once",
+            "eu", "ewe",
         )
+        /** Words said with a "w": "a one-off", "a once-great team". Whole words, not "onerous". */
+        private val ONE_SOUND = setOf("one", "ones", "oneself", "once", "onesie")
 
         /** "3pm", "11am": a time typed as one word. */
         private val CLOCK = Regex("[0-9]{1,2}(am|pm)")
