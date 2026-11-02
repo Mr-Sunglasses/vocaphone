@@ -218,6 +218,11 @@ struct WritingRule: Sendable {
         if !youSoundLong.contains(where: { key.hasPrefix($0) }), unPrefixed.contains(where: { key.hasPrefix($0) }) { return true }
         if oneSound.contains(key) { return false }
         if youSound.contains(where: { key.hasPrefix($0) }) { return false }
+        // "u", a consonant, then a vowel is often "you" ("utopia", "utensil")
+        // and sometimes not ("umami"): unsure, unless the "un-" of "unable".
+        let u = Array(key.utf8)
+        let vowelsY: Set<UInt8> = [97, 101, 105, 111, 117, 121]  // a e i o u y
+        if u.count >= 3, u[0] == 117, !vowelsY.contains(u[1]), vowelsY.contains(u[2]), !key.hasPrefix("un") { return nil }
         return "aeiou".unicodeScalars.contains(first)
     }
 
@@ -230,7 +235,7 @@ struct WritingRule: Sendable {
     private static let youSoundLong = ["unidirection", "unilateral", "unilingual", "unimodal"]
     private static let youSound = [
         "uni", "use", "usu", "uti", "ure", "uro", "uk", "ufo", "ubiq", "ukulele", "unanim", "uri", "ura",
-        "eu", "ewe",
+        "eu", "ewe", "ute", "uto", "uvu",
     ]
     /// Words said with a "w": "a one-off", "a once-great team". Whole words, not "onerous".
     private static let oneSound: Set<String> = ["one", "ones", "oneself", "once", "onesie"]

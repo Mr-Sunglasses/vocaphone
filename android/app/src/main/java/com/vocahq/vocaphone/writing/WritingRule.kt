@@ -134,6 +134,9 @@ class WritingRule private constructor(
         if (YOU_SOUND_LONG.none { key.startsWith(it) } && UN_PREFIXED.any { key.startsWith(it) }) return true
         if (key in ONE_SOUND) return false
         if (YOU_SOUND.any { key.startsWith(it) }) return false
+        // "u", a consonant, then a vowel is often "you" ("utopia", "utensil")
+        // and sometimes not ("umami"): unsure, unless the "un-" of "unable".
+        if (key.length >= 3 && key[0] == 'u' && key[1] !in "aeiouy" && key[2] in "aeiouy" && !key.startsWith("un")) return null
         return key[0] in "aeiou"
     }
 
@@ -220,7 +223,7 @@ class WritingRule private constructor(
         private val YOU_SOUND_LONG = listOf("unidirection", "unilateral", "unilingual", "unimodal")
         private val YOU_SOUND = listOf(
             "uni", "use", "usu", "uti", "ure", "uro", "uk", "ufo", "ubiq", "ukulele", "unanim", "uri", "ura",
-            "eu", "ewe",
+            "eu", "ewe", "ute", "uto", "uvu",
         )
         /** Words said with a "w": "a one-off", "a once-great team". Whole words, not "onerous". */
         private val ONE_SOUND = setOf("one", "ones", "oneself", "once", "onesie")

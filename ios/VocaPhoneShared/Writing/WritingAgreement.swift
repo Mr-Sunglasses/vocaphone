@@ -267,6 +267,8 @@ struct WritingAgreement: Sendable {
             return nil
         }
         let markerStart = last - marker + 1
+        // "better than yesterday", "the same as yesterday": a comparison, not when it happened.
+        if s.inside(markerStart - 1), Self.beforeTimeCompared.contains(s.key(markerStart - 1)) { return nil }
         if (s.sentence.first..<markerStart).contains(where: { Self.notSimplePast.contains(s.key($0)) }) { return nil }
         let verbs = (s.sentence.first..<markerStart).filter { verbNumber(s, $0) != nil }
         guard verbs.count == 1, let v = verbs.first else { return nil }
@@ -403,6 +405,9 @@ struct WritingAgreement: Sendable {
     private static let pastUnits: Set<String> = [
         "night", "week", "month", "year", "weekend", "summer", "winter", "spring", "fall", "autumn", "time",
         "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+    ]
+    private static let beforeTimeCompared: Set<String> = [
+        "than", "as", "like", "unlike", "from", "of", "about", "versus", "vs",
     ]
     private static let notSimplePast: Set<String> = [
         "since", "will", "won't", "every", "usually", "always", "often", "sometimes", "until", "if",

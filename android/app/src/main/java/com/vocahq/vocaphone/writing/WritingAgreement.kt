@@ -265,6 +265,8 @@ internal class WritingAgreement(
             else -> return null
         }
         val markerStart = last - marker + 1
+        // "better than yesterday", "the same as yesterday": a comparison, not when it happened.
+        if (s.inside(markerStart - 1) && s.key(markerStart - 1) in BEFORE_TIME_COMPARED) return null
         if ((s.sentence.first until markerStart).any { s.key(it) in NOT_SIMPLE_PAST }) return null
         val verbs = (s.sentence.first until markerStart).filter { verbNumber(s, it) != null }
         val v = verbs.singleOrNull() ?: return null
@@ -401,6 +403,7 @@ internal class WritingAgreement(
             "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
         )
         /** Words that make a sentence with a past time something other than a simple past. */
+        val BEFORE_TIME_COMPARED = setOf("than", "as", "like", "unlike", "from", "of", "about", "versus", "vs")
         val NOT_SIMPLE_PAST = setOf("since", "will", "won't", "every", "usually", "always", "often", "sometimes", "until", "if")
         val PERFECT_AUXILIARIES = setOf("have", "has")
         val FINITE_TAGS = setOf("VBD", "VBP", "VBZ", "MD")
