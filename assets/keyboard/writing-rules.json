@@ -3152,7 +3152,6 @@
   {"match": "forbided", "replace": "forbade", "kind": "verb_form", "message": "“forbid” is irregular: its past is “forbade”.", "id": "irregular-forbided"},
   {"match": "brung", "replace": "brought", "kind": "verb_form", "message": "“bring” is irregular: its past is “brought”.", "id": "irregular-brung"},
   {"match": "brang", "replace": "brought", "kind": "verb_form", "message": "“bring” is irregular: its past is “brought”.", "id": "irregular-brang"},
-  {"match": "thunk", "replace": "thought", "kind": "verb_form", "message": "“think” is irregular: its past is “thought”.", "id": "irregular-thunk"},
   {"match": "i|you|we|they|he|she seen", "replace": "$1 saw", "kind": "verb_form", "message": "Use “saw”, or “have seen”.", "id": "seen-as-past", "notAfter": ["and", "or", "nor", "have", "has", "had", "haven't", "hasn't", "hadn't", "havent", "hasnt", "hadnt"]},
   {"match": "i|you|we|they|he|she done it|that|this|everything|nothing", "replace": "$1 did $3", "kind": "verb_form", "message": "Use “did”, or “have done”.", "id": "done-as-past", "notAfter": ["and", "or", "nor", "have", "has", "had", "haven't", "hasn't", "hadn't", "havent", "hasnt", "hadnt"]},
   {"match": "i been", "replace": "I've been", "kind": "missing_word", "message": "It looks like “have” is missing: “I've been”.", "id": "i-been", "notAfter": ["and", "or", "nor", "have", "has", "had", "haven't", "hasn't", "hadn't", "havent", "hasnt", "hadnt"]},

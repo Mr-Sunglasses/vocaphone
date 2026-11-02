@@ -5988,6 +5988,38 @@
   },
   {
    "stats": [
+    14,
+    69,
+    3,
+    4,
+    6,
+    99,
+    92
+   ],
+   "tones": [],
+   "name": "a word of its own is not a past heard in speech",
+   "suggestions": [{
+    "original": "brung",
+    "kind": "verb_form",
+    "start": 60,
+    "rule": "irregular-brung",
+    "mechanical": false,
+    "end": 65,
+    "label": "brung → brought",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cbring\u201d is irregular: its past is \u201cbrought\u201d.",
+    "replacement": "brought",
+    "mark": [
+     60,
+     65
+    ]
+   }],
+   "modelPending": false,
+   "text": "The thunk returns a value. I lay on the couch yesterday. He brung it."
+  },
+  {
+   "stats": [
     21,
     126,
     3,

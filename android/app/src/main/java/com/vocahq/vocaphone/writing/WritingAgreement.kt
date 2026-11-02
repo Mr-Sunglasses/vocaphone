@@ -265,6 +265,8 @@ internal class WritingAgreement(
         if ((s.sentence.first until markerStart).any { it != v && s.tag(it) in FINITE_TAGS }) return null
         if (!free(v)) return null
         val key = s.key(v)
+        // "I lay on the couch yesterday": "lay" is also the past of "lie".
+        if (key in rules.classes["past_too"].orEmpty()) return null
         if (key in PERFECT_AUXILIARIES && s.inside(v + 1) && (s.tag(v + 1) == "VBN" || s.key(v + 1) == "been")) return null
         if (subject(s, v) == null) return null
         val past = PAST_OF[key] ?: when (s.tag(v)) {

@@ -604,9 +604,9 @@ for a, b, sing in AMBIGUOUS_PLURALS:
     RULES.append(r("{plural_lead} " + a, "$1 " + b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-" + a))
     RULES.append(r("{number} " + a, "$1 " + b, "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-number-" + a))
     RULES.append(r(a + " are|were|aren't|weren't", b + " $2", "noun_number", f"The plural of “{sing}” is “{b}”.", rid="plural-verb-" + a))
-# Pasts heard in speech but not written: "he brung it".
-REGULARIZED += [("brung", "bring", "brought", "brought"), ("brang", "bring", "brought", "brought"),
-                ("thunk", "think", "thought", "thought")]
+# Pasts heard in speech but not written: "he brung it". Not "thunk", a
+# word of its own in code ("the thunk returns a value").
+REGULARIZED += [("brung", "bring", "brought", "brought"), ("brang", "bring", "brought", "brought")]
 for f, base, past, participle in REGULARIZED:
     # After "have", the participle; anywhere else, the past.
     if participle != past:

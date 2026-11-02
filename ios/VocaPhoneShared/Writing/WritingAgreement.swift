@@ -262,6 +262,8 @@ struct WritingAgreement: Sendable {
         if (s.sentence.first..<markerStart).contains(where: { $0 != v && Self.finiteTags.contains(s.tag($0)) }) { return nil }
         guard free(v) else { return nil }
         let key = s.key(v)
+        // "I lay on the couch yesterday": "lay" is also the past of "lie".
+        if rules.classes["past_too"]?.contains(key) == true { return nil }
         if Self.perfectAuxiliaries.contains(key), s.inside(v + 1), s.tag(v + 1) == "VBN" || s.key(v + 1) == "been" {
             return nil
         }
