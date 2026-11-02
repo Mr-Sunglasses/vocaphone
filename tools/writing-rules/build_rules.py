@@ -519,12 +519,15 @@ PROPER = [w for w in PROPER if not w.endswith("?")]
 # in the job" means "interested". Only "I" or "we", and only before the
 # preposition the feeling takes: "I'm boring" and "She is interesting in
 # person" can mean just that, and "relaxing in", "worrying about", "tiring
-# of" and "annoying with" are verbs doing what they say.
+# of" and "annoying with" are verbs doing what they say. Nor "amazing at",
+# "surprising at", "shocking at" or "exciting for" ("I'm amazing at chess").
+# "by nature", "by far": a phrase of its own, not what caused the feeling.
+BY_IDIOMS = "nature far now then design default comparison contrast birth trade choice".split()
 EMOTIONS = {
-  "bore": "of with in", "interest": "in", "excite": "about for", "confuse": "about by", "embarrass": "about by",
-  "frighten": "of by", "surprise": "by at", "disappoint": "in with by", "amaze": "by at", "amuse": "by",
+  "bore": "of with in", "interest": "in", "excite": "about", "confuse": "about by", "embarrass": "about by",
+  "frighten": "of by", "surprise": "by", "disappoint": "in with by", "amaze": "by", "amuse": "by",
   "depress": "about by", "exhaust": "by from", "frustrate": "with by about", "satisfy": "with by",
-  "shock": "by at", "terrify": "of by", "scare": "of by", "thrill": "about by with", "overwhelm": "by with",
+  "shock": "by", "terrify": "of by", "scare": "of by", "thrill": "about by with", "overwhelm": "by with",
 }
 
 
@@ -577,7 +580,7 @@ SUBJECTS_AT = "math maths science english french spanish chess sports football s
 
 CLASSES.update({
   "comparative_er": [w for w in COMPARATIVES if w not in ("more", "less", "rather", "other", "further", "farther")],
-  "introductory": INTRODUCTORY,
+  "introductory": [w for w in INTRODUCTORY if w != "however"],
   "clause_start": CLAUSE_START_WORDS,
   "interesting_in": "person many some a an real every all her his their its own that so such how".split(),
   "plural_lead": PLURAL_LEAD,
@@ -712,6 +715,9 @@ RULES += [
   r("if i|he|she|it was you|him|her|them", "$1 $2 were $4", "verb_form", "In “if I were you”, use “were”.", rid="if-i-were"),
   # Commas after an opening word.
   r("^ {introductory} {clause_start}", "$1 , $2", "comma", "comma.introductory", rid="comma-introductory"),
+  # "However you look at it, …" means "no matter how": its clause ends in a
+  # comma before the main one. Only "However I think …" with no comma after.
+  dict(r("^ however {clause_start}", "$1 , $2", "comma", "comma.introductory", rid="comma-however"), unlessLater=[","]),
   # "a" or "an", by the sound the next word starts with.
   r("a {vowel_sound}", "an $2", "article", "article.a_to_an", rid="a-an"),
   r("an {consonant_sound}", "a $2", "article", "article.an_to_a", rid="an-a"),
@@ -740,9 +746,9 @@ for _rule in list(RULES):
 _FEELING = "“{original}” describes what causes the feeling; “{replacement}” is how you feel."
 for b, prepositions in EMOTIONS.items():
     ing, ed, after = _ing(b), _ed(b), prepositions.replace(" ", "|")
-    RULES.append(r(f"i'm|im|we're {ing} {after}", f"$1 {ed} $3", "word_choice", _FEELING, rid=f"feeling-{ing}"))
-    RULES.append(r(f"i|we am|are|was|were {ing} {after}", f"$1 $2 {ed} $4", "word_choice", _FEELING, rid=f"feeling-be-{ing}"))
-    RULES.append(r(f"i|we am|are|was|were so|very|really|too|getting {ing} {after}", f"$1 $2 $3 {ed} $5", "word_choice", _FEELING, rid=f"feeling-so-{ing}"))
+    RULES.append(dict(r(f"i'm|im|we're {ing} {after}", f"$1 {ed} $3", "word_choice", _FEELING, rid=f"feeling-{ing}"), notBefore=BY_IDIOMS))
+    RULES.append(dict(r(f"i|we am|are|was|were {ing} {after}", f"$1 $2 {ed} $4", "word_choice", _FEELING, rid=f"feeling-be-{ing}"), notBefore=BY_IDIOMS))
+    RULES.append(dict(r(f"i|we am|are|was|were so|very|really|too|getting {ing} {after}", f"$1 $2 $3 {ed} $5", "word_choice", _FEELING, rid=f"feeling-so-{ing}"), notBefore=BY_IDIOMS))
 # "He is interesting in music" means "interested": any subject, but not
 # before what describes the person ("interesting in person", "in many ways").
 # Only after a person: "The book is interesting in places" is right.
