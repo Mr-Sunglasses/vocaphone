@@ -21,6 +21,7 @@ import com.vocahq.vocaphone.local.DeviceProfile
 import com.vocahq.vocaphone.local.GrammarModelCatalog
 import com.vocahq.vocaphone.local.GrammarModelConsent
 import com.vocahq.vocaphone.local.GrammarModelStore
+import com.vocahq.vocaphone.writing.PosTagger
 import com.vocahq.vocaphone.writing.WritingCheck
 import com.vocahq.vocaphone.writing.WritingRules
 import com.vocahq.vocaphone.writing.WritingSpelling
@@ -131,7 +132,8 @@ class AppContainer(context: Context) {
         runCatching {
             val rules = WritingRules.parse(asset("writing-rules.json"))
             val spelling = runCatching { WritingSpelling.parse(asset("en-spelling.txt"), asset("en.txt")) }.getOrNull()
-            WritingCheck(rules, spelling)
+            val tagger = runCatching { PosTagger.parse(appContext.assets.open("en-pos.bin").use { it.readBytes() }) }.getOrNull()
+            WritingCheck(rules, spelling, tagger)
         }.getOrNull()
     }
 

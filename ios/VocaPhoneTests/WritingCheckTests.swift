@@ -10,6 +10,8 @@ struct WritingCheckTests {
     static let rules: WritingRules = try! WritingRules(
         data: Data(contentsOf: root.appendingPathComponent("keyboard/writing-rules.json"))
     )
+    /// The part-of-speech tagger both apps ship.
+    static let tagger: PosTagger = try! PosTagger(data: Data(contentsOf: root.appendingPathComponent("keyboard/en-pos.bin")))
     /// The spelling dictionary both apps ship.
     static let spelling: WritingSpelling = WritingSpelling.parse(
         spelling: try! Data(contentsOf: root.appendingPathComponent("keyboard/en-spelling.txt")),
@@ -129,7 +131,7 @@ struct WritingCheckTests {
     }
 
     @Test func checks() {
-        let check = WritingCheck(rules: Self.rules, spelling: Self.spelling)
+        let check = WritingCheck(rules: Self.rules, spelling: Self.spelling, tagger: Self.tagger)
         for c in Self.cases("check") {
             let report = check.check(c["text"] as! String, model: Self.model(c), options: Self.options(c))
             #expect(Self.canonical(report.suggestions.map(Self.json)) == Self.canonical(c["suggestions"]), Self.label(c, "suggestions"))
@@ -165,7 +167,7 @@ struct WritingCheckTests {
 
     /// Every suggestion accepted, last first: the spacing `WritingEdits.build` leaves behind.
     @Test func accept() {
-        let check = WritingCheck(rules: Self.rules, spelling: Self.spelling)
+        let check = WritingCheck(rules: Self.rules, spelling: Self.spelling, tagger: Self.tagger)
         for c in Self.cases("accept") {
             var text = c["text"] as! String
             let report = check.check(text, model: Self.model(c), options: Self.options(c))
@@ -203,7 +205,7 @@ struct WritingCleanTextTests {
     }
 
     @Test func correctTextGetsAlmostNoCorrectnessSuggestions() {
-        let check = WritingCheck(rules: WritingCheckTests.rules, spelling: WritingCheckTests.spelling)
+        let check = WritingCheck(rules: WritingCheckTests.rules, spelling: WritingCheckTests.spelling, tagger: WritingCheckTests.tagger)
         let cases = Self.lines("clean_en.jsonl")
         let flagged = cases.filter { c in
             check.check(c["input"]!).suggestions.contains { $0.category == .correctness }
@@ -213,7 +215,7 @@ struct WritingCleanTextTests {
 
     /// Every rule fix applied to the chat set must move a line toward what was meant, never away.
     @Test func ruleFixesOnTypedTextNeverMakeALineWorse() {
-        let check = WritingCheck(rules: WritingCheckTests.rules, spelling: WritingCheckTests.spelling)
+        let check = WritingCheck(rules: WritingCheckTests.rules, spelling: WritingCheckTests.spelling, tagger: WritingCheckTests.tagger)
         let cases = Self.lines("typed_en.jsonl")
         #expect(!cases.isEmpty)
         var options = WritingCheck.Options()

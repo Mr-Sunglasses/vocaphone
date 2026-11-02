@@ -2825,11 +2825,11 @@
     "original": "barks",
     "kind": "agreement",
     "start": 9,
-    "rule": null,
+    "rule": "agreement-subject",
     "mechanical": false,
     "end": 14,
     "label": "barks → bark",
-    "source": "model",
+    "source": "rule",
     "category": "correctness",
     "message": "\u201cbark\u201d agrees with \u201cdogs\u201d.",
     "replacement": "bark",
@@ -2858,11 +2858,11 @@
     "original": "a",
     "kind": "article",
     "start": 7,
-    "rule": null,
+    "rule": "a-an",
     "mechanical": false,
     "end": 8,
     "label": "a → an",
-    "source": "model",
+    "source": "rule",
     "category": "correctness",
     "message": "Use \u201can\u201d before a word that starts with a vowel sound, like \u201cumbrella\u201d.",
     "replacement": "an",
@@ -3386,28 +3386,47 @@
     2,
     3,
     100,
-    92
+    84
    ],
    "tones": [],
    "name": "the model still loading",
    "model": {"He don't know.": null},
-   "suggestions": [{
-    "original": "don't",
-    "kind": "agreement",
-    "start": 3,
-    "rule": "he-dont",
-    "mechanical": false,
-    "end": 8,
-    "label": "don't → doesn't",
-    "source": "rule",
-    "category": "correctness",
-    "message": "Use \u201cdoesn't\u201d with \u201cHe\u201d.",
-    "replacement": "doesn't",
-    "mark": [
-     3,
-     8
-    ]
-   }],
+   "suggestions": [
+    {
+     "original": "don't",
+     "kind": "agreement",
+     "start": 3,
+     "rule": "he-dont",
+     "mechanical": false,
+     "end": 8,
+     "label": "don't → doesn't",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201cdoesn't\u201d with \u201cHe\u201d.",
+     "replacement": "doesn't",
+     "mark": [
+      3,
+      8
+     ]
+    },
+    {
+     "original": "go",
+     "kind": "agreement",
+     "start": 19,
+     "rule": "agreement-subject",
+     "mechanical": false,
+     "end": 21,
+     "label": "go → goes",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cgoes\u201d agrees with \u201cShe\u201d.",
+     "replacement": "goes",
+     "mark": [
+      19,
+      21
+     ]
+    }
+   ],
    "modelPending": true,
    "text": "He don't know. She go home."
   },
@@ -3577,27 +3596,46 @@
     3,
     4,
     100,
-    92
+    84
    ],
    "tones": [],
    "name": "agreement after a plural pronoun, without the model",
-   "suggestions": [{
-    "original": "was",
-    "kind": "agreement",
-    "start": 12,
-    "rule": "you-was",
-    "mechanical": false,
-    "end": 15,
-    "label": "was → were",
-    "source": "rule",
-    "category": "correctness",
-    "message": "Use \u201cwere\u201d with \u201cyou\u201d.",
-    "replacement": "were",
-    "mark": [
-     12,
-     15
-    ]
-   }],
+   "suggestions": [
+    {
+     "original": "was",
+     "kind": "agreement",
+     "start": 12,
+     "rule": "you-was",
+     "mechanical": false,
+     "end": 15,
+     "label": "was → were",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201cwere\u201d with \u201cyou\u201d.",
+     "replacement": "were",
+     "mark": [
+      12,
+      15
+     ]
+    },
+    {
+     "original": "don't",
+     "kind": "agreement",
+     "start": 29,
+     "rule": "agreement-subject",
+     "mechanical": false,
+     "end": 34,
+     "label": "don't → doesn't",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cdoesn't\u201d agrees with \u201che\u201d.",
+     "replacement": "doesn't",
+     "mark": [
+      29,
+      34
+     ]
+    }
+   ],
    "modelPending": false,
    "text": "I think you was right and he don't care."
   },
@@ -4905,6 +4943,455 @@
   },
   {
    "stats": [
+    10,
+    52,
+    1,
+    3,
+    4,
+    87,
+    84
+   ],
+   "tones": [],
+   "name": "a plural subject with a singular verb",
+   "suggestions": [
+    {
+     "original": "plays",
+     "kind": "agreement",
+     "start": 9,
+     "rule": "agreement-subject",
+     "mechanical": false,
+     "end": 14,
+     "label": "plays → play",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cplay\u201d agrees with \u201ckids\u201d.",
+     "replacement": "play",
+     "mark": [
+      9,
+      14
+     ]
+    },
+    {
+     "original": "live",
+     "kind": "agreement",
+     "start": 37,
+     "rule": "agreement-subject",
+     "mechanical": false,
+     "end": 41,
+     "label": "live → lives",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201clives\u201d agrees with \u201csister\u201d.",
+     "replacement": "lives",
+     "mark": [
+      37,
+      41
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "The kids plays outside and my sister live in London."
+  },
+  {
+   "stats": [
+    16,
+    72,
+    1,
+    5,
+    7,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "the subject is the head before of",
+   "suggestions": [
+    {
+     "original": "have",
+     "kind": "agreement",
+     "start": 17,
+     "rule": "agreement-subject",
+     "mechanical": false,
+     "end": 21,
+     "label": "have → has",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201chas\u201d agrees with \u201cEach\u201d.",
+     "replacement": "has",
+     "mark": [
+      17,
+      21
+     ]
+    },
+    {
+     "original": "have",
+     "kind": "agreement",
+     "start": 59,
+     "rule": "agreement-subject",
+     "mechanical": false,
+     "end": 63,
+     "label": "have → has",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201chas\u201d agrees with \u201cprice\u201d.",
+     "replacement": "has",
+     "mark": [
+      59,
+      63
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "Each of the boys have a bike, and the price of the tickets have gone up."
+  },
+  {
+   "stats": [
+    13,
+    54,
+    1,
+    4,
+    6,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "quantifiers take their object's number",
+   "suggestions": [
+    {
+     "original": "are",
+     "kind": "agreement",
+     "start": 17,
+     "rule": "agreement-subject",
+     "mechanical": false,
+     "end": 20,
+     "label": "are → is",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201cis\u201d agrees with \u201ccake\u201d.",
+     "replacement": "is",
+     "mark": [
+      17,
+      20
+     ]
+    },
+    {
+     "original": "is",
+     "kind": "agreement",
+     "start": 46,
+     "rule": "agreement-subject",
+     "mechanical": false,
+     "end": 48,
+     "label": "is → are",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201care\u201d agrees with \u201cpeople\u201d.",
+     "replacement": "are",
+     "mark": [
+      46,
+      48
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "Most of the cake are gone but a lot of people is here."
+  },
+  {
+   "stats": [
+    9,
+    44,
+    2,
+    3,
+    4,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "there, here and where with a plural after",
+   "suggestions": [
+    {
+     "original": "is",
+     "kind": "agreement",
+     "start": 6,
+     "rule": "agreement-there",
+     "mechanical": false,
+     "end": 8,
+     "label": "is → are",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201care\u201d agrees with \u201ckeys\u201d.",
+     "replacement": "are",
+     "mark": [
+      6,
+      8
+     ]
+    },
+    {
+     "original": "is",
+     "kind": "agreement",
+     "start": 24,
+     "rule": "agreement-there",
+     "mechanical": false,
+     "end": 26,
+     "label": "is → are",
+     "source": "rule",
+     "category": "correctness",
+     "message": "\u201care\u201d agrees with \u201ccars\u201d.",
+     "replacement": "are",
+     "mark": [
+      24,
+      26
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "Where is my keys? There is two cars outside."
+  },
+  {
+   "stats": [
+    6,
+    24,
+    1,
+    2,
+    3,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a compound subject is plural",
+   "suggestions": [{
+    "original": "is",
+    "kind": "agreement",
+    "start": 15,
+    "rule": "agreement-subject",
+    "mechanical": false,
+    "end": 17,
+    "label": "is → are",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201care\u201d agrees with \u201cmom and dad\u201d.",
+    "replacement": "are",
+    "mark": [
+     15,
+     17
+    ]
+   }],
+   "modelPending": false,
+   "text": "my mom and dad is coming"
+  },
+  {
+   "stats": [
+    7,
+    28,
+    1,
+    2,
+    3,
+    91,
+    92
+   ],
+   "tones": [],
+   "name": "I with a third-person verb",
+   "suggestions": [{
+    "original": "goes",
+    "kind": "agreement",
+    "start": 2,
+    "rule": "agreement-subject",
+    "mechanical": false,
+    "end": 6,
+    "label": "goes → go",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cgo\u201d agrees with \u201cI\u201d.",
+    "replacement": "go",
+    "mark": [
+     2,
+     6
+    ]
+   }],
+   "modelPending": false,
+   "text": "I goes to the gym every day."
+  },
+  {
+   "stats": [
+    19,
+    97,
+    5,
+    5,
+    8,
+    96,
+    100
+   ],
+   "tones": [],
+   "name": "amounts, collectives, singular -s nouns and names are left alone",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Ten dollars is too much. The team are winning. The news is good. James likes it. Physics is hard."
+  },
+  {
+   "stats": [
+    11,
+    48,
+    2,
+    3,
+    5,
+    100,
+    100
+   ],
+   "tones": [],
+   "name": "a relative clause and a question are left alone",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "The man who live next door. Do the kids like it?"
+  },
+  {
+   "stats": [
+    6,
+    26,
+    1,
+    2,
+    3,
+    88,
+    92
+   ],
+   "tones": [],
+   "name": "a past time at the end",
+   "suggestions": [{
+    "original": "go",
+    "kind": "verb_form",
+    "start": 2,
+    "rule": "tense-past-time",
+    "mechanical": false,
+    "end": 4,
+    "label": "go → went",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cyesterday\u201d is in the past, so use \u201cwent\u201d.",
+    "replacement": "went",
+    "mark": [
+     2,
+     4
+    ]
+   }],
+   "modelPending": false,
+   "text": "I go to the gym yesterday."
+  },
+  {
+   "stats": [
+    6,
+    33,
+    1,
+    2,
+    3,
+    88,
+    100
+   ],
+   "tones": [],
+   "name": "the present perfect with a past time is left alone",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "I have been here since yesterday."
+  },
+  {
+   "stats": [
+    16,
+    77,
+    1,
+    5,
+    7,
+    64,
+    68
+   ],
+   "tones": [],
+   "name": "a or an, by sound",
+   "suggestions": [
+    {
+     "original": "a",
+     "kind": "article",
+     "start": 7,
+     "rule": "a-an",
+     "mechanical": false,
+     "end": 8,
+     "label": "a → an",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201can\u201d before a word that starts with a vowel sound, like \u201cumbrella\u201d.",
+     "replacement": "an",
+     "mark": [
+      7,
+      8
+     ]
+    },
+    {
+     "original": "an",
+     "kind": "article",
+     "start": 19,
+     "rule": "an-a",
+     "mechanical": false,
+     "end": 21,
+     "label": "an → a",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201ca\u201d before a word that starts with a consonant sound, like \u201cuniversity\u201d.",
+     "replacement": "a",
+     "mark": [
+      19,
+      21
+     ]
+    },
+    {
+     "original": "a",
+     "kind": "article",
+     "start": 41,
+     "rule": "a-an",
+     "mechanical": false,
+     "end": 42,
+     "label": "a → an",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201can\u201d before a word that starts with a vowel sound, like \u201chour\u201d.",
+     "replacement": "an",
+     "mark": [
+      41,
+      42
+     ]
+    },
+    {
+     "original": "an",
+     "kind": "article",
+     "start": 70,
+     "rule": "an-a",
+     "mechanical": false,
+     "end": 72,
+     "label": "an → a",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Use \u201ca\u201d before a word that starts with a consonant sound, like \u201cURL\u201d.",
+     "replacement": "a",
+     "mark": [
+      70,
+      72
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "I need a umbrella, an university degree, a hour and an FBI agent, not an URL."
+  },
+  {
+   "stats": [
+    9,
+    41,
+    1,
+    3,
+    4,
+    76,
+    100
+   ],
+   "tones": [],
+   "name": "a or an before a stopword or a long acronym is left alone",
+   "suggestions": [],
+   "modelPending": false,
+   "text": "Vitamin A is good and a NASA rocket flew."
+  },
+  {
+   "stats": [
     28,
     143,
     4,
@@ -5239,6 +5726,102 @@
   {
    "stats": [
     16,
+    76,
+    3,
+    5,
+    7,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "a hypothetical were is left alone",
+   "suggestions": [{
+    "original": "were",
+    "kind": "agreement",
+    "start": 60,
+    "rule": "agreement-subject",
+    "mechanical": false,
+    "end": 64,
+    "label": "were → was",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cwas\u201d agrees with \u201cHe\u201d.",
+    "replacement": "was",
+    "mark": [
+     60,
+     64
+    ]
+   }],
+   "modelPending": false,
+   "text": "If she were here, we could leave. I wish he were taller. He were late again."
+  },
+  {
+   "stats": [
+    11,
+    54,
+    2,
+    3,
+    5,
+    86,
+    92
+   ],
+   "tones": [],
+   "name": "a past time belongs to the nearest verb",
+   "suggestions": [{
+    "original": "go",
+    "kind": "verb_form",
+    "start": 30,
+    "rule": "tense-past-time",
+    "mechanical": false,
+    "end": 32,
+    "label": "go → went",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cyesterday\u201d is in the past, so use \u201cwent\u201d.",
+    "replacement": "went",
+    "mark": [
+     30,
+     32
+    ]
+   }],
+   "modelPending": false,
+   "text": "I think she went yesterday. I go to the gym yesterday."
+  },
+  {
+   "stats": [
+    19,
+    108,
+    2,
+    5,
+    8,
+    41,
+    92
+   ],
+   "tones": [],
+   "name": "un- before an i takes an",
+   "suggestions": [{
+    "original": "a",
+    "kind": "article",
+    "start": 52,
+    "rule": "a-an",
+    "mechanical": false,
+    "end": 53,
+    "label": "a → an",
+    "source": "rule",
+    "category": "correctness",
+    "message": "Use \u201can\u201d before a word that starts with a vowel sound, like \u201cuninstalled\u201d.",
+    "replacement": "an",
+    "mark": [
+     52,
+     53
+    ]
+   }],
+   "modelPending": false,
+   "text": "An unidentified caller left an unimportant note and a uninstalled app. It is a unique and a unilateral plan."
+  },
+  {
+   "stats": [
+    16,
     96,
     3,
     5,
@@ -5405,6 +5988,38 @@
   },
   {
    "stats": [
+    14,
+    69,
+    3,
+    4,
+    6,
+    99,
+    92
+   ],
+   "tones": [],
+   "name": "a word of its own is not a past heard in speech",
+   "suggestions": [{
+    "original": "brung",
+    "kind": "verb_form",
+    "start": 60,
+    "rule": "irregular-brung",
+    "mechanical": false,
+    "end": 65,
+    "label": "brung → brought",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201cbring\u201d is irregular: its past is \u201cbrought\u201d.",
+    "replacement": "brought",
+    "mark": [
+     60,
+     65
+    ]
+   }],
+   "modelPending": false,
+   "text": "The thunk returns a value. I lay on the couch yesterday. He brung it."
+  },
+  {
+   "stats": [
     21,
     126,
     3,
@@ -5538,6 +6153,38 @@
    ],
    "modelPending": false,
    "text": "The question is when we will arrive. When we will arrive, call me. How much that costs varies by model. Why you didn't call matters. Why you didn't call?"
+  },
+  {
+   "stats": [
+    13,
+    59,
+    2,
+    4,
+    6,
+    100,
+    92
+   ],
+   "tones": [],
+   "name": "joined owners before one thing",
+   "suggestions": [{
+    "original": "is",
+    "kind": "agreement",
+    "start": 48,
+    "rule": "agreement-subject",
+    "mechanical": false,
+    "end": 50,
+    "label": "is → are",
+    "source": "rule",
+    "category": "correctness",
+    "message": "\u201care\u201d agrees with \u201cmom and dad\u201d.",
+    "replacement": "are",
+    "mark": [
+     48,
+     50
+    ]
+   }],
+   "modelPending": false,
+   "text": "My mom and dad's car is outside. My mom and dad is outside."
   },
   {
    "stats": [

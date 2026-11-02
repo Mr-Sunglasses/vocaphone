@@ -21,7 +21,7 @@ import org.junit.Test
  * comes from `tools/grammar-eval/answers.json` (`answers.py` writes it). The
  * configurations are what each surface runs:
  *
- * - `rules`: the rules and the spelling dictionary, no model. The iOS
+ * - `rules`: the rules, the spelling dictionary and the agreement checks, no model. The iOS
  *   keyboard whenever the app is not running, and the F-Droid build.
  * - `balanced`: the model at the KEEP bias that "Check while typing", the
  *   system spell checker and dictation use.
@@ -35,7 +35,7 @@ import org.junit.Test
  */
 class WritingBenchmarkTest {
     private val root = File(GrammarFixtures.root, "../../tools/grammar-eval")
-    private val check = WritingCheck(WritingFixtures.rules, WritingFixtures.spelling)
+    private val check = WritingCheck(WritingFixtures.rules, WritingFixtures.spelling, WritingFixtures.tagger)
     private val answers = JSONObject(File(root, "answers.json").readText())
     private val asked = answers.getJSONArray("sentences").let { a -> List(a.length()) { a.getString(it) } }.toHashSet()
 
@@ -211,18 +211,18 @@ class WritingBenchmarkTest {
 
         /** Share of error lines that must come out exactly as meant: what each configuration reached. */
         val FLOORS = mapOf(
-            "everyday · rules" to 0.557,
-            "everyday · balanced" to 0.728,
-            "everyday · thorough" to 0.800,
-            "heldout · rules" to 0.535,
-            "heldout · balanced" to 0.710,
-            "heldout · thorough" to 0.775,
-            "typed · rules" to 0.544,
-            "typed · balanced" to 0.761,
-            "typed · thorough" to 0.797,
-            "dictation · rules" to 0.453,
-            "dictation · balanced" to 0.815,
-            "dictation · thorough" to 0.840,
+            "everyday · rules" to 0.728,
+            "everyday · balanced" to 0.828,
+            "everyday · thorough" to 0.842,
+            "heldout · rules" to 0.680,
+            "heldout · balanced" to 0.760,
+            "heldout · thorough" to 0.800,
+            "typed · rules" to 0.673,
+            "typed · balanced" to 0.797,
+            "typed · thorough" to 0.823,
+            "dictation · rules" to 0.650,
+            "dictation · balanced" to 0.852,
+            "dictation · thorough" to 0.865,
         )
 
         /** Share of correct lines that may get a correctness suggestion. */

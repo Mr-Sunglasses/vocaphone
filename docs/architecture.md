@@ -323,6 +323,7 @@ One pure engine, ported line for line and tested against one set of cases
 ```
 text ─▶ WritingText (words, sentences, UTF-16 offsets)
           ├─ rules (writing-rules.json) ─────────────┐
+          ├─ agreement (en-pos.bin tagger) ──────────┤
           ├─ spelling dictionary (en-spelling.txt) ──┤
           └─ per sentence: grammar model ─▶ ModelEdits (diff + ERRANT-style kind)
                                                       ▼
@@ -352,6 +353,16 @@ text ─▶ WritingText (words, sentences, UTF-16 offsets)
   per word length: about 0.4 MB in memory, so it runs in the iOS extension.
   Names, acronyms, words with capitals inside, the user's own words and
   hyphenated parts are left alone.
+- **Agreement** (`WritingAgreement`) tags each sentence with a small
+  part-of-speech tagger (`PosTagger`, `assets/keyboard/en-pos.bin`: an
+  averaged perceptron trained on the Universal Dependencies English Web
+  Treebank by `tools/writing-tagger/`, a 2 MB file and 0.7 MB in memory, so it runs in the
+  iOS extension). It finds each present-tense verb's subject, through "of"
+  phrases ("the price of the tickets have") and "and" ("mom and dad is"), and
+  the noun after "there is" or "where is"; a subject whose number is unsure
+  (collective nouns, names ending in "s", amounts, relative clauses) is left
+  alone. It also puts a lone present verb in the past when the sentence ends
+  on "yesterday", "last week" or "ago".
 - **The model** is the Fix grammar tagger, asked a sentence at a time and
   cached per field and per tier; its edits are diffed word by word and
   classified. A check the user asked for (the Writing check button, the
