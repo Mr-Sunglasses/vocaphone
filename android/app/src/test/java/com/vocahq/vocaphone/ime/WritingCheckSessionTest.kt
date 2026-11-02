@@ -324,6 +324,19 @@ class WritingCheckSessionTest {
     }
 
     @Test
+    fun `a selection keeps the tier the button asked for`() = scope.runTest {
+        type("She go home. ", auto = false)
+        session.checkNow(options)
+        runCurrent()
+        type("She go home. ", enabled = false, auto = false)
+        assertNull(session.report.value)
+        type("She go home. The cars was late. ", auto = false)
+        pause()
+        assertEquals(listOf("go → goes", "was → were"), labels())
+        assertEquals(listOf(true, true), tiers)
+    }
+
+    @Test
     fun `a new field stops following`() = scope.runTest {
         type("She go home. ", auto = false)
         session.checkNow(options)

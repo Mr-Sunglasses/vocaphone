@@ -83,6 +83,37 @@ struct WritingCheckExchangeTests {
         #expect(labels(client).contains("was → were"))
     }
 
+    @Test func afterTheButtonThePausesCheckTooAndASelectionKeepsTheTier() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client()
+        let tiers = Box<[Bool]>([])
+        let answering = responder(correct: { text, _, thorough in
+            tiers.value.append(thorough)
+            return text
+        })
+        let text = "She go home. "
+        client.textChanged(before: text, after: "", enabled: true, autoCheck: false) { WritingCheckClient.Options() }
+        client.checkAfterPause(
+            .milliseconds(1),
+            read: { WritingCheckClient.Field(text: text, cursor: text.utf16.count) },
+            options: { .init() }
+        )
+        await client.settle()
+        answering.answerPendingRequest()
+        await collect(client)
+        // A selection clears the report but not the tier the button asked for,
+        // and with "Check while typing" off the pause still checks new text.
+        client.textChanged(before: text, after: "", enabled: false, autoCheck: false) { WritingCheckClient.Options() }
+        #expect(client.report == nil)
+        let more = "She go home. They was here. "
+        client.textChanged(before: more, after: "", enabled: true, autoCheck: false) { WritingCheckClient.Options() }
+        await client.settle()
+        answering.answerPendingRequest()
+        await collect(client)
+        #expect(labels(client).contains("was → were"))
+        #expect(tiers.value == [true, true])
+    }
+
     @Test func theButtonChecksTheFieldAsItReadsAfterItsPause() async throws {
         defer { try? FileManager.default.removeItem(at: root) }
         let client = client(appRunning: false)

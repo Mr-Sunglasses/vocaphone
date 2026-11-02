@@ -146,10 +146,11 @@ final class WritingCheckClient {
 
     /// The document changed. Suggestions that still fit it are moved to where
     /// their words now are; a new check waits for the pause when `autoCheck`
-    /// ("Check while typing") is on. Off, a report the user asked for with the
-    /// Writing check button keeps following the text, and nothing new is
-    /// checked until the next tap. `enabled` false (a field Writing check does
-    /// not read) clears everything.
+    /// ("Check while typing") is on, or once the user has asked for a check
+    /// with the Writing check button, which follows the field from then on,
+    /// as on Android. `enabled` false (a selection, or a field Writing check
+    /// does not read) clears the report and checks nothing; the button's tier
+    /// is kept until ``reset()``.
     func textChanged(
         before: String?, after: String?, enabled: Bool, autoCheck: Bool = true,
         options: @escaping () -> Options
@@ -170,7 +171,6 @@ final class WritingCheckClient {
             pending = nil
             stopChecking()
             abandonOutstanding()
-            thorough = false
             lastField = nil
             publish(nil)
             return
@@ -184,7 +184,7 @@ final class WritingCheckClient {
                 publish(nil)
             }
         }
-        guard autoCheck else {
+        guard autoCheck || thorough else {
             pending = nil
             return
         }

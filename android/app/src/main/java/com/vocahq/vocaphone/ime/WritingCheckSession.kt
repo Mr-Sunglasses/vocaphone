@@ -112,8 +112,9 @@ internal class WritingCheckSession(
     /**
      * The keyboard re-read its short [window] of text before the cursor.
      *
-     * [enabled] false (a field Writing check does not belong in) clears
-     * everything. Otherwise a report the window no longer matches keeps its
+     * [enabled] false (a selection, or a field Writing check does not belong
+     * in) clears the report and checks nothing; a check the user asked for
+     * keeps following the field, at its tier, until [reset]. Otherwise a report the window no longer matches keeps its
      * count for the button but loses its chips, which might point at words
      * that have moved; applying from it reads the field again first anyway.
      * A new check starts after the pause when [auto] ("Check while typing")
@@ -123,7 +124,6 @@ internal class WritingCheckSession(
     fun textChanged(window: String, enabled: Boolean, auto: Boolean = true, options: () -> Options) {
         job?.cancel()
         if (!enabled) {
-            following = false
             current.value = null
             settled = null
             busy.value = false
