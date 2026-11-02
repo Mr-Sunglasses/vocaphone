@@ -131,8 +131,9 @@ struct WritingAgreement: Sendable {
             let ahead = (i + 1)...max(i + 1, min(s.sentence.last, i + 3))
             let verbAfter = tag.hasPrefix("VB")
                 || (i + 1 <= s.sentence.last && ahead.contains { s.tag($0).hasPrefix("VB") || s.tag($0) == "MD" })
-            // "If you can go then go": "then" opens the main clause, whatever comes before it.
-            let then = s.key(i) == "then"
+            // "If you can go then go": "then" opens the main clause, whatever comes before it,
+            // unless it ends a phrase of its own ("by then", "until then").
+            let then = s.key(i) == "then" && !thenEndsPhrase(s, i)
             if verbSeen, i - 1 > first + 1, then || (startsMainClause(s, i) && endsPhrase(s, i - 1) && verbAfter) {
                 guard free(i - 1) else { return nil }
                 let k = rules.kind("comma")
@@ -161,7 +162,12 @@ struct WritingAgreement: Sendable {
 
     private func endsPhrase(_ s: Tagged, _ i: Int) -> Bool {
         (Self.phraseEndTags.contains(s.tag(i)) || Self.objectPronouns.contains(s.key(i)))
-            && !Self.subjectWords.contains(s.key(i)) && s.key(i) != "then"
+            && !Self.subjectWords.contains(s.key(i)) && (s.key(i) != "then" || thenEndsPhrase(s, i))
+    }
+
+    /// "by then", "until then": "then" after a preposition is a time, not the start of the main clause.
+    private func thenEndsPhrase(_ s: Tagged, _ i: Int) -> Bool {
+        s.inside(i - 1) && Self.beforeThen.contains(s.key(i - 1))
     }
 
     // MARK: - The verb
@@ -537,4 +543,5 @@ struct WritingAgreement: Sendable {
         "remember", "ask", "try", "keep", "stop", "go", "wait", "email", "ping", "message",
     ]
     private static let phraseEndTags: Set<String> = ["NN", "NNS", "NNP", "NNPS", "RB", "RP", "CD", "JJ", "VBN"]
+    private static let beforeThen: Set<String> = ["by", "until", "till", "since", "from", "before", "after", "around"]
 }

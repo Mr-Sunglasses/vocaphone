@@ -5987,6 +5987,57 @@
   },
   {
    "stats": [
+    15,
+    58,
+    2,
+    4,
+    6,
+    100,
+    84
+   ],
+   "tones": [],
+   "name": "by then ends the opening, it does not start the main clause",
+   "suggestions": [
+    {
+     "original": "",
+     "kind": "comma",
+     "start": 22,
+     "rule": "comma-clause",
+     "mechanical": false,
+     "end": 22,
+     "label": "Add \u201c,\u201d",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Add a comma after the opening \u201cIf \u2026\u201d part, before \u201clet\u201d.",
+     "replacement": ",",
+     "mark": [
+      18,
+      22
+     ]
+    },
+    {
+     "original": "",
+     "kind": "comma",
+     "start": 49,
+     "rule": "comma-clause",
+     "mechanical": false,
+     "end": 49,
+     "label": "Add \u201c,\u201d",
+     "source": "rule",
+     "category": "correctness",
+     "message": "Add a comma after the opening \u201cIf \u2026\u201d part, before \u201cthen\u201d.",
+     "replacement": ",",
+     "mark": [
+      47,
+      49
+     ]
+    }
+   ],
+   "modelPending": false,
+   "text": "If you need it by then let me know. If you can go then go."
+  },
+  {
+   "stats": [
     16,
     96,
     3,

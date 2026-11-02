@@ -137,8 +137,9 @@ internal class WritingAgreement(
             val tag = s.tag(i)
             val verbAfter = s.tag(i).startsWith("VB") ||
                 (i + 1..minOf(s.sentence.last, i + 3)).any { s.tag(it).startsWith("VB") || s.tag(it) == "MD" }
-            // "If you can go then go": "then" opens the main clause, whatever comes before it.
-            val then = s.key(i) == "then"
+            // "If you can go then go": "then" opens the main clause, whatever comes before it,
+            // unless it ends a phrase of its own ("by then", "until then").
+            val then = s.key(i) == "then" && !thenEndsPhrase(s, i)
             if (verbSeen && i - 1 > first + 1 && (then || (startsMainClause(s, i) && endsPhrase(s, i - 1) && verbAfter))) {
                 if (!free(i - 1)) return null
                 val k = rules.kind("comma")
@@ -170,8 +171,12 @@ internal class WritingAgreement(
     /** The word at [i] can end the opening clause: not a word that needs something after it. */
     private fun endsPhrase(s: Tagged, i: Int): Boolean {
         val tag = s.tag(i)
-        return (tag in PHRASE_END_TAGS || s.key(i) in OBJECT_PRONOUNS) && s.key(i) !in SUBJECT_WORDS && s.key(i) != "then"
+        return (tag in PHRASE_END_TAGS || s.key(i) in OBJECT_PRONOUNS) && s.key(i) !in SUBJECT_WORDS &&
+            (s.key(i) != "then" || thenEndsPhrase(s, i))
     }
+
+    /** "by then", "until then": "then" after a preposition is a time, not the start of the main clause. */
+    private fun thenEndsPhrase(s: Tagged, i: Int): Boolean = s.inside(i - 1) && s.key(i - 1) in BEFORE_THEN
 
     // ── the verb ─────────────────────────────────────────────────────────
 
@@ -545,5 +550,6 @@ internal class WritingAgreement(
             "remember", "ask", "try", "keep", "stop", "go", "wait", "email", "ping", "message",
         )
         val PHRASE_END_TAGS = setOf("NN", "NNS", "NNP", "NNPS", "RB", "RP", "CD", "JJ", "VBN")
+        val BEFORE_THEN = setOf("by", "until", "till", "since", "from", "before", "after", "around")
     }
 }
