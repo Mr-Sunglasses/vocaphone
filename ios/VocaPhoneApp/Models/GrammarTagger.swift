@@ -15,6 +15,11 @@ final class GrammarTagger: @unchecked Sendable {
     static let keepBias: Float = 3.0
     /// "Only sure fixes": fewer, safer edits.
     static let sureKeepBias: Float = 4.0
+    /// A Writing check the user asked for (the keyboard's button, the Writing
+    /// check screen). Every edit becomes a card the user accepts or dismisses,
+    /// so a few more wrong ones are worth the many more right ones. Never used
+    /// where nothing is shown first (dictation). Mirrors `THOROUGH_KEEP_BIAS`.
+    static let thoroughKeepBias: Float = 1.0
     static let maxPasses = 3
     /// The position table holds 160; one goes to `[BOS]`.
     static let maxTokens = 150
@@ -64,7 +69,8 @@ final class GrammarTagger: @unchecked Sendable {
     /// that would start after `deadline` (an uptime in nanoseconds) is left
     /// as it was, so a long dictation keeps every sentence finished in time.
     /// `bias` is added to KEEP's score: `keepBias` is "Balanced",
-    /// `sureKeepBias` "Only sure fixes"; nil uses the one this tagger was made with.
+    /// `sureKeepBias` "Only sure fixes", `thoroughKeepBias` a check the user
+    /// asked for; nil uses the one this tagger was made with.
     func correct(
         _ text: String,
         vocabulary: Set<String> = [],

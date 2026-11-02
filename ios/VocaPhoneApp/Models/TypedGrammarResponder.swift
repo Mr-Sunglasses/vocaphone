@@ -14,7 +14,8 @@ import Foundation
 /// no longer take it, `answerLifetime` later. Nothing is logged but the grammar stage's own
 /// content-free events, and nothing reaches usage statistics.
 final class TypedGrammarResponder: @unchecked Sendable {
-    typealias Correct = @Sendable (String, Set<String>) -> String?
+    /// A sentence, the words to keep, and whether the user asked for the check.
+    typealias Correct = @Sendable (String, Set<String>, Bool) -> String?
 
     private let store: SharedStore
     private let isEnabled: @Sendable () -> Bool
@@ -70,7 +71,8 @@ final class TypedGrammarResponder: @unchecked Sendable {
             return
         }
         let keep = Set(request.keep)
-        var opening = correct(first, keep)
+        let thorough = request.thorough ?? false
+        var opening = correct(first, keep, thorough)
         // Nil means the model was not loaded and asking started the load,
         // which takes a few hundred milliseconds. Worth waiting for: the
         // user has paused, and the next pause may be a long way off.
@@ -78,13 +80,13 @@ final class TypedGrammarResponder: @unchecked Sendable {
         while opening == nil, waited < loadWait {
             Thread.sleep(forTimeInterval: Self.seconds(pollInterval))
             waited += pollInterval
-            opening = correct(first, keep)
+            opening = correct(first, keep, thorough)
         }
         var corrected: [String?] = [opening]
         for sentence in request.sentences.dropFirst() {
             // The keyboard gives up on a question this old and asks again.
             guard request.isFresh(at: now()) else { return }
-            corrected.append(opening == nil ? nil : correct(sentence, keep))
+            corrected.append(opening == nil ? nil : correct(sentence, keep, thorough))
         }
         // An answer now would only leave the sentences on disk.
         guard request.isFresh(at: now()) else { return }

@@ -20,7 +20,7 @@ struct WritingCheckExchangeTests {
 
     private func responder(
         enabled: Bool = true,
-        correct: @escaping TypedGrammarResponder.Correct = { text, _ in
+        correct: @escaping TypedGrammarResponder.Correct = { text, _, _ in
             text.replacingOccurrences(of: "She go ", with: "She goes ")
         }
     ) -> TypedGrammarResponder {
@@ -81,6 +81,37 @@ struct WritingCheckExchangeTests {
         client.checkNow(options: .init())
         await client.settle()
         #expect(labels(client).contains("was → were"))
+    }
+
+    @Test func afterTheButtonThePausesCheckTooAndASelectionKeepsTheTier() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client()
+        let tiers = Box<[Bool]>([])
+        let answering = responder(correct: { text, _, thorough in
+            tiers.value.append(thorough)
+            return text
+        })
+        let text = "She go home. "
+        client.textChanged(before: text, after: "", enabled: true, autoCheck: false) { WritingCheckClient.Options() }
+        client.checkAfterPause(
+            .milliseconds(1),
+            read: { WritingCheckClient.Field(text: text, cursor: text.utf16.count) },
+            options: { .init() }
+        )
+        await client.settle()
+        answering.answerPendingRequest()
+        await collect(client)
+        // A selection clears the report but not the tier the button asked for,
+        // and with "Check while typing" off the pause still checks new text.
+        client.textChanged(before: text, after: "", enabled: false, autoCheck: false) { WritingCheckClient.Options() }
+        #expect(client.report == nil)
+        let more = "She go home. They was here. "
+        client.textChanged(before: more, after: "", enabled: true, autoCheck: false) { WritingCheckClient.Options() }
+        await client.settle()
+        answering.answerPendingRequest()
+        await collect(client)
+        #expect(labels(client).contains("was → were"))
+        #expect(tiers.value == [true, true])
     }
 
     @Test func theButtonChecksTheFieldAsItReadsAfterItsPause() async throws {
@@ -213,7 +244,7 @@ struct WritingCheckExchangeTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let seen = Box<Set<String>>([])
         try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["Ask Kubo."], keep: ["kubo"]))
-        responder(correct: { text, keep in
+        responder(correct: { text, keep, _ in
             seen.value = keep
             return text
         }).answerPendingRequest()
@@ -241,7 +272,7 @@ struct WritingCheckExchangeTests {
         let calls = Box(0)
         let request = TypedGrammarRequest(sentences: ["She go home."], keep: [])
         try store.saveTypedGrammarRequest(request)
-        responder(correct: { text, _ in
+        responder(correct: { text, _, _ in
             calls.value += 1
             return calls.value < 3 ? nil : text.replacingOccurrences(of: "She go ", with: "She goes ")
         }).answerPendingRequest()
@@ -266,6 +297,50 @@ struct WritingCheckExchangeTests {
         await collect(client)
         #expect(labels(client) == ["go → goes", "of → have"])
         #expect(files().isEmpty)
+    }
+
+    @Test func theAppPassesTheTierToTheModel() throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tiers = Box<[Bool]>([])
+        try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["She go home."], keep: [], thorough: true))
+        responder(correct: { text, _, thorough in
+            tiers.value.append(thorough)
+            return text
+        }).answerPendingRequest()
+        try store.saveTypedGrammarRequest(TypedGrammarRequest(sentences: ["She go home."], keep: []))
+        responder(correct: { text, _, thorough in
+            tiers.value.append(thorough)
+            return text
+        }).answerPendingRequest()
+        #expect(tiers.value == [true, false])
+    }
+
+    @Test func theButtonAsksForTheThoroughTierAndAPauseAfterItToo() async throws {
+        defer { try? FileManager.default.removeItem(at: root) }
+        let client = client()
+        let tiers = Box<[Bool]>([])
+        let answering = responder(correct: { text, _, thorough in
+            tiers.value.append(thorough)
+            return text
+        })
+        try await type(client, "She go home. ")
+        answering.answerPendingRequest()
+        await collect(client)
+        let text = "She go home. "
+        client.checkAfterPause(
+            .milliseconds(1),
+            read: { WritingCheckClient.Field(text: text, cursor: text.utf16.count) },
+            options: { .init() }
+        )
+        await client.settle()
+        answering.answerPendingRequest()
+        await collect(client)
+        // The thorough tier keeps its own answers: the button asked again,
+        // and the pause after it asks only the new sentence, thoroughly.
+        try await type(client, "She go home. They are fine. ")
+        answering.answerPendingRequest()
+        await collect(client)
+        #expect(tiers.value == [false, true, true])
     }
 
     @Test func answeredSentencesAreNotAskedAgain() async throws {

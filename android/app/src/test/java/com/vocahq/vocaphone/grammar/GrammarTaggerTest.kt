@@ -199,7 +199,7 @@ class GrammarTaggerTest {
      * Balanced (3) makes the fix, Only sure fixes (4) keeps the word. The
      * fixtures replay labels at a score of 10, which pass under either bias.
      */
-    private fun contested(keepBias: Float = GrammarTagger.KEEP_BIAS): GrammarTagger {
+    private fun contested(keepBias: Float = GrammarTagger.KEEP_BIAS, score: Float = CONTESTED_SCORE): GrammarTagger {
         lateinit var tagger: GrammarTagger
         val logits = GrammarTagger.Logits { ids, rows ->
             val typo = tagger.encodeWord("tomorow").map(Int::toLong)
@@ -207,7 +207,7 @@ class GrammarTaggerTest {
                 val end = if (r + 1 < rows.size) rows[r + 1] else ids.size
                 FloatArray(labels.size).also { row ->
                     if (ids.copyOfRange(rows[r], end).toList() == typo) {
-                        row[index.getValue("REPLACE_tomorrow")] = CONTESTED_SCORE
+                        row[index.getValue("REPLACE_tomorrow")] = score
                     } else {
                         row[index.getValue("KEEP")] = 10f
                     }
@@ -240,6 +240,25 @@ class GrammarTaggerTest {
         assertEquals(typo, tagger.correct(typo))
         assertEquals(fixed, tagger.correct(typo, bias = GrammarTagger.KEEP_BIAS))
         assertEquals(typo, tagger.correct(typo))
+    }
+
+    /** A fix the model is less sure of than Balanced wants is made when the user asked for the check. */
+    @Test
+    fun theThoroughBiasMakesFixesBalancedLeavesAlone() {
+        val typo = "See you tomorow."
+        val fixed = "See you tomorrow."
+        val tagger = contested(score = 2f)
+
+        assertEquals(typo, tagger.correct(typo))
+        assertEquals(fixed, tagger.correct(typo, bias = GrammarTagger.THOROUGH_KEEP_BIAS))
+    }
+
+    @Test
+    fun onlySureFixesMovesEachTierOneStepTowardFewerEdits() {
+        assertEquals(GrammarTagger.KEEP_BIAS, GrammarCorrector.bias(sureOnly = false, thorough = false))
+        assertEquals(GrammarTagger.SURE_KEEP_BIAS, GrammarCorrector.bias(sureOnly = true, thorough = false))
+        assertEquals(GrammarTagger.THOROUGH_KEEP_BIAS, GrammarCorrector.bias(sureOnly = false, thorough = true))
+        assertEquals(GrammarTagger.KEEP_BIAS, GrammarCorrector.bias(sureOnly = true, thorough = true))
     }
 
     private companion object {

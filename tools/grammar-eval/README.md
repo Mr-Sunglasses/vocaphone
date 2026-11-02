@@ -53,13 +53,21 @@ app. Its floors fail a
 change that fixes less, and its ceilings one that flags more than 2% of correct
 lines. A change that earns more raises the floor.
 
-| Set | Rules only (iOS keyboard without the app, F-Droid) | Rules and model |
-|---|---|---|
-| everyday (70) | 30.0% | 52.9% |
-| heldout (200) | 28.0% | 57.5% |
-| typed (193) | 33.2% | 59.6% |
-| dictation errors (163) | 41.7% | 79.8% |
-| correct lines flagged: heldout_clean (150), clean (300) | 0.0%, 0.0% | 0.7%, 0.3% |
+The model runs at one of two KEEP biases. **Balanced** (3, or 4 with "Only
+sure fixes") is for checks nobody asked for: "Check while typing", the system
+spell checker, and dictation, where nothing is shown before it is applied.
+**Thorough** (1, or 3 with "Only sure fixes") is for a check the user asked
+for, the keyboard's Writing check button (and every pause in that field after
+it) and the Writing check screen: each edit is a card the user accepts or
+dismisses, so a few more wrong ones are worth the many more right ones.
+
+| Set | Rules only (iOS keyboard without the app, F-Droid) | Rules and model, balanced | Rules and model, thorough |
+|---|---|---|---|
+| everyday (70) | 30.0% | 52.9% | 61.4% |
+| heldout (200) | 28.0% | 57.5% | 65.0% |
+| typed (193) | 33.2% | 59.6% | 63.7% |
+| dictation errors (163) | 41.7% | 79.8% | 81.6% |
+| correct lines flagged: heldout_clean (150), clean (300) | 0.0%, 0.0% | 0.7%, 0.3% | 0.7%, 0.7% |
 
 ## Typed text (Writing check)
 

@@ -178,7 +178,8 @@ struct WritingCheckView: View {
             // The rules are English ones; on another language they would
             // "correct" words that are right. As the keyboard does.
             guard WritingCheck.applies(to: snapshot) else { return .notEnglish }
-            let model: WritingCheck.Model? = modelReady ? { grammar.correctTyped($0, keeping: keep) } : nil
+            // The user opened Writing check to have this text checked: the thorough tier.
+            let model: WritingCheck.Model? = modelReady ? { grammar.correctTyped($0, keeping: keep, thorough: true) } : nil
             guard let report = await checker.checkUntilCancelled(snapshot, model: model, options: options) else {
                 return .cancelled
             }

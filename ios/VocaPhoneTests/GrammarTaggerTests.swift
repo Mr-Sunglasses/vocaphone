@@ -168,14 +168,14 @@ struct GrammarTaggerTests {
     /// A model that scores "tomorow" → "tomorrow" between the two KEEP biases:
     /// Balanced (3) makes the fix, Only sure fixes (4) keeps the word. The
     /// fixtures replay labels at a score of 10, which pass under either bias.
-    private func contested(keepBias: Float = GrammarTagger.keepBias) -> GrammarTagger {
+    private func contested(keepBias: Float = GrammarTagger.keepBias, score: Float = Self.contestedScore) -> GrammarTagger {
         let typo = GrammarFixtures.tokenizer.encode(" tomorow").map(Int64.init)
         return GrammarFixtures.tagger(keepBias: keepBias) { ids, rows in
             rows.indices.map { r in
                 let start = Int(rows[r])
                 let end = r + 1 < rows.count ? Int(rows[r + 1]) : ids.count
                 return Array(ids[start..<end]) == typo
-                    ? GrammarFixtures.row("REPLACE_tomorrow", score: Self.contestedScore)
+                    ? GrammarFixtures.row("REPLACE_tomorrow", score: score)
                     : GrammarFixtures.row("KEEP")
             }
         }
@@ -191,6 +191,23 @@ struct GrammarTaggerTests {
         #expect(try tagger.correct(typo, bias: GrammarTagger.sureKeepBias) == typo)
         #expect(try tagger.correct(typo) == fixed)
         #expect(try tagger.correct(typo, bias: GrammarTagger.keepBias) == fixed)
+    }
+
+    /// A fix the model is less sure of than Balanced wants is made when the user asked for the check.
+    @Test func theThoroughBiasMakesFixesBalancedLeavesAlone() throws {
+        let typo = "See you tomorow."
+        let fixed = "See you tomorrow."
+        let tagger = contested(score: 2)
+
+        #expect(try tagger.correct(typo) == typo)
+        #expect(try tagger.correct(typo, bias: GrammarTagger.thoroughKeepBias) == fixed)
+    }
+
+    @Test func onlySureFixesMovesEachTierOneStepTowardFewerEdits() {
+        #expect(GrammarCorrector.bias(sureOnly: false, thorough: false) == GrammarTagger.keepBias)
+        #expect(GrammarCorrector.bias(sureOnly: true, thorough: false) == GrammarTagger.sureKeepBias)
+        #expect(GrammarCorrector.bias(sureOnly: false, thorough: true) == GrammarTagger.thoroughKeepBias)
+        #expect(GrammarCorrector.bias(sureOnly: true, thorough: true) == GrammarTagger.keepBias)
     }
 
     @Test func aTaggerBuiltForSureFixesCanStillBeAskedForBalanced() throws {

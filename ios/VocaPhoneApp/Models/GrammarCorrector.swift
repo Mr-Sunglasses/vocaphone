@@ -102,18 +102,35 @@ final class GrammarCorrector: GrammarStage, @unchecked Sendable {
         run(text, keeping: keeping, budget: budgetNanoseconds) ?? text
     }
 
-    /// For "Check grammar while typing": `text` corrected, or `nil` when the
-    /// model is not loaded yet, which starts loading it.
-    func correctTyped(_ text: String, keeping: Set<String>) -> String? {
+    /// For Writing check: `text` corrected, or `nil` when the model is not
+    /// loaded yet, which starts loading it. `thorough` is a check the user
+    /// asked for, where every edit is shown before it is made: the model
+    /// offers more (see `GrammarTagger.thoroughKeepBias`).
+    func correctTyped(_ text: String, keeping: Set<String>, thorough: Bool = false) -> String? {
         let (seconds, attoseconds) = Self.typedBudget.components
         return run(
             text,
             keeping: keeping,
-            budget: UInt64(seconds) * 1_000_000_000 + UInt64(attoseconds / 1_000_000_000)
+            budget: UInt64(seconds) * 1_000_000_000 + UInt64(attoseconds / 1_000_000_000),
+            thorough: thorough
         )
     }
 
-    private func run(_ text: String, keeping: Set<String>, budget budgetNanoseconds: UInt64) -> String? {
+    /// The KEEP bias for one check. "Only sure fixes" moves each tier one step
+    /// toward fewer edits: a check the user asked for to Balanced, any other
+    /// to Only sure fixes. Mirrors `GrammarCorrector.bias` on Android.
+    static func bias(sureOnly: Bool, thorough: Bool) -> Float {
+        switch (thorough, sureOnly) {
+        case (true, true): GrammarTagger.keepBias
+        case (true, false): GrammarTagger.thoroughKeepBias
+        case (false, true): GrammarTagger.sureKeepBias
+        case (false, false): GrammarTagger.keepBias
+        }
+    }
+
+    private func run(
+        _ text: String, keeping: Set<String>, budget budgetNanoseconds: UInt64, thorough: Bool = false
+    ) -> String? {
         guard let current = lock.withLock({ loaded }) else {
             // Not downloaded, not loaded yet, or failed to load: leave it.
             warm()
@@ -122,7 +139,7 @@ final class GrammarCorrector: GrammarStage, @unchecked Sendable {
         let start = DispatchTime.now().uptimeNanoseconds
         let deadline = start + budgetNanoseconds
         do {
-            let bias = sureOnly() ? GrammarTagger.sureKeepBias : GrammarTagger.keepBias
+            let bias = Self.bias(sureOnly: sureOnly(), thorough: thorough)
             let corrected = try current.tagger.correct(text, vocabulary: keeping, deadline: deadline, bias: bias)
             if DispatchTime.now().uptimeNanoseconds > deadline + budgetNanoseconds {
                 // One sentence ran far past the budget (the tagger only checks
