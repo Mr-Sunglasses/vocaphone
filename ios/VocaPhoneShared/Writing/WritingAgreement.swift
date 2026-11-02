@@ -54,7 +54,7 @@ struct WritingAgreement: Sendable {
             } else if subject.number == .first {
                 replacement = toFirst(s, v)
             } else if subject.number == .singular {
-                replacement = verb == .plural ? toSingular(s, v) : nil
+                replacement = verb == .plural && !hypothetical(s, v) ? toSingular(s, v) : nil
             } else {
                 replacement = verb == .singular ? toPlural(s, v) : nil
             }
@@ -71,6 +71,12 @@ struct WritingAgreement: Sendable {
     }
 
     // MARK: - The verb
+
+    /// "If she were here", "I wish he were": "were" with a singular subject, after a word that makes it hypothetical.
+    private func hypothetical(_ s: Tagged, _ v: Int) -> Bool {
+        Self.hypotheticalForms.contains(s.key(v))
+            && (s.sentence.first..<v).contains(where: { Self.hypotheticalCues.contains(s.key($0)) })
+    }
 
     private func verbNumber(_ s: Tagged, _ v: Int) -> Number? {
         let key = s.key(v)
@@ -251,7 +257,10 @@ struct WritingAgreement: Sendable {
         let markerStart = last - marker + 1
         if (s.sentence.first..<markerStart).contains(where: { Self.notSimplePast.contains(s.key($0)) }) { return nil }
         let verbs = (s.sentence.first..<markerStart).filter { verbNumber(s, $0) != nil }
-        guard verbs.count == 1, let v = verbs.first, free(v) else { return nil }
+        guard verbs.count == 1, let v = verbs.first else { return nil }
+        // Another verb may be the one the time is about: "I think she went yesterday".
+        if (s.sentence.first..<markerStart).contains(where: { $0 != v && Self.finiteTags.contains(s.tag($0)) }) { return nil }
+        guard free(v) else { return nil }
         let key = s.key(v)
         if Self.perfectAuxiliaries.contains(key), s.inside(v + 1), s.tag(v + 1) == "VBN" || s.key(v + 1) == "been" {
             return nil
@@ -385,4 +394,9 @@ struct WritingAgreement: Sendable {
         "since", "will", "won't", "every", "usually", "always", "often", "sometimes", "until", "if",
     ]
     private static let perfectAuxiliaries: Set<String> = ["have", "has"]
+    private static let finiteTags: Set<String> = ["VBD", "VBP", "VBZ", "MD"]
+    private static let hypotheticalForms: Set<String> = ["were", "weren't"]
+    private static let hypotheticalCues: Set<String> = [
+        "if", "wish", "wished", "wishes", "though", "suppose", "supposing", "imagine", "rather", "unless",
+    ]
 }

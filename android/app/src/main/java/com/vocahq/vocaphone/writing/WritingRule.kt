@@ -131,6 +131,7 @@ class WritingRule private constructor(
         if (text.length == 1) return key[0] in LETTER_NAME_VOWELS
         if (text.all { it in 'A'..'Z' }) return if (text.length <= 3) key[0] in LETTER_NAME_VOWELS else null
         if (SILENT_H.any { key.startsWith(it) }) return true
+        if (YOU_SOUND_LONG.none { key.startsWith(it) } && UN_PREFIXED.any { key.startsWith(it) }) return true
         if (YOU_SOUND.any { key.startsWith(it) }) return false
         return key[0] in "aeiou"
     }
@@ -212,6 +213,10 @@ class WritingRule private constructor(
         /** Letters whose names start with a vowel sound: "an F", "an MBA". */
         private const val LETTER_NAME_VOWELS = "aefhilmnorsx"
         private val SILENT_H = listOf("hour", "honest", "honor", "honour", "heir")
+        /** "un-" before a word that starts "i…": "an unidentified caller", "an unimportant detail". */
+        private val UN_PREFIXED = listOf("unid", "unim", "unin", "unil", "unir")
+        /** "uni-" words that still sound like "you": "a unidirectional road", "a unilateral decision". */
+        private val YOU_SOUND_LONG = listOf("unidirection", "unilateral", "unilingual", "unimodal")
         private val YOU_SOUND = listOf(
             "uni", "use", "usu", "uti", "ure", "uro", "uk", "ufo", "ubiq", "ukulele", "unanim", "uri", "ura",
             "eu", "ewe", "one", "once",

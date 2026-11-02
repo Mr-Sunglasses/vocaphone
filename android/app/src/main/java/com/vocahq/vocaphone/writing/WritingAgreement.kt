@@ -50,7 +50,7 @@ internal class WritingAgreement(
             val replacement = when {
                 subject.number == verb -> null
                 subject.number == Number.FIRST -> toFirst(s, v)
-                subject.number == Number.SINGULAR -> if (verb == Number.PLURAL) toSingular(s, v) else null
+                subject.number == Number.SINGULAR -> if (verb == Number.PLURAL && !hypothetical(s, v)) toSingular(s, v) else null
                 else -> if (verb == Number.SINGULAR) toPlural(s, v) else null
             } ?: continue
             out += suggestion(
@@ -65,6 +65,10 @@ internal class WritingAgreement(
     }
 
     // ── the verb ─────────────────────────────────────────────────────────
+
+    /** "If she were here", "I wish he were": "were" with a singular subject, after a word that makes it hypothetical. */
+    private fun hypothetical(s: Tagged, v: Int): Boolean =
+        s.key(v) in HYPOTHETICAL_FORMS && (s.sentence.first until v).any { s.key(it) in HYPOTHETICAL_CUES }
 
     /** Whether token [v] is a present (or "was"/"were") verb that agrees, and how. */
     private fun verbNumber(s: Tagged, v: Int): Number? {
@@ -257,6 +261,8 @@ internal class WritingAgreement(
         if ((s.sentence.first until markerStart).any { s.key(it) in NOT_SIMPLE_PAST }) return null
         val verbs = (s.sentence.first until markerStart).filter { verbNumber(s, it) != null }
         val v = verbs.singleOrNull() ?: return null
+        // Another verb may be the one the time is about: "I think she went yesterday".
+        if ((s.sentence.first until markerStart).any { it != v && s.tag(it) in FINITE_TAGS }) return null
         if (!free(v)) return null
         val key = s.key(v)
         if (key in PERFECT_AUXILIARIES && s.inside(v + 1) && (s.tag(v + 1) == "VBN" || s.key(v + 1) == "been")) return null
@@ -388,5 +394,8 @@ internal class WritingAgreement(
         /** Words that make a sentence with a past time something other than a simple past. */
         val NOT_SIMPLE_PAST = setOf("since", "will", "won't", "every", "usually", "always", "often", "sometimes", "until", "if")
         val PERFECT_AUXILIARIES = setOf("have", "has")
+        val FINITE_TAGS = setOf("VBD", "VBP", "VBZ", "MD")
+        val HYPOTHETICAL_FORMS = setOf("were", "weren't")
+        val HYPOTHETICAL_CUES = setOf("if", "wish", "wished", "wishes", "though", "suppose", "supposing", "imagine", "rather", "unless")
     }
 }

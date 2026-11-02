@@ -215,6 +215,7 @@ struct WritingRule: Sendable {
             return scalars.count <= 3 ? letterNameVowels.contains(first) : nil
         }
         if silentH.contains(where: { key.hasPrefix($0) }) { return true }
+        if !youSoundLong.contains(where: { key.hasPrefix($0) }), unPrefixed.contains(where: { key.hasPrefix($0) }) { return true }
         if youSound.contains(where: { key.hasPrefix($0) }) { return false }
         return "aeiou".unicodeScalars.contains(first)
     }
@@ -222,6 +223,10 @@ struct WritingRule: Sendable {
     /// Letters whose names start with a vowel sound: "an F", "an MBA".
     private static let letterNameVowels = Set("aefhilmnorsx".unicodeScalars)
     private static let silentH = ["hour", "honest", "honor", "honour", "heir"]
+    /// "un-" before a word that starts "i…": "an unidentified caller", "an unimportant detail".
+    private static let unPrefixed = ["unid", "unim", "unin", "unil", "unir"]
+    /// "uni-" words that still sound like "you": "a unidirectional road", "a unilateral decision".
+    private static let youSoundLong = ["unidirection", "unilateral", "unilingual", "unimodal"]
     private static let youSound = [
         "uni", "use", "usu", "uti", "ure", "uro", "uk", "ufo", "ubiq", "ukulele", "unanim", "uri", "ura",
         "eu", "ewe", "one", "once",
