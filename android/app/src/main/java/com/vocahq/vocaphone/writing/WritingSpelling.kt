@@ -48,9 +48,10 @@ class WritingSpelling private constructor(
 
     /**
      * The dictionary word [word] most likely meant, or null when none is
-     * close enough. [word] is lower case ASCII letters.
+     * close enough or [shouldAbort] says the check was cancelled (asked
+     * every 128 words). [word] is lower case ASCII letters.
      */
-    fun suggest(word: String): Guess? {
+    fun suggest(word: String, shouldAbort: () -> Boolean = { false }): Guess? {
         val typed = ascii(word) ?: return null
         val n = typed.size
         if (n < MIN_LENGTH || n > MAX_LENGTH) return null
@@ -64,6 +65,7 @@ class WritingSpelling private constructor(
         val row1 = IntArray(MAX_LENGTH + 3)
         val row2 = IntArray(MAX_LENGTH + 3)
         val starts = firstLetters(typed)
+        var scanned = 0
         for (length in maxOf(1, n - maxEdits)..minOf(MAX_LENGTH, n + maxEdits)) {
             val bucket = words[length]
             val count = bucket.size / length
@@ -72,6 +74,8 @@ class WritingSpelling private constructor(
                 val from = lowerBound(bucket, length, count, first)
                 val to = lowerBound(bucket, length, count, (first + 1).toByte())
                 for (k in from until to) {
+                    // A cancelled check stops here (android/AGENTS.md: every 128 words).
+                    if ((++scanned and 127) == 0 && shouldAbort()) return null
                     val at = k * length
                     val cost = distance(typed, bucket, at, length, limit, row0, row1, row2)
                     if (cost > limit) continue

@@ -76,6 +76,8 @@ struct WritingCheck: Sendable {
             let fixed = found.filter(\.isActionable)
             var guesses: [String: WritingSpelling.Guess?] = [:]
             for sentence in sentences {
+                // A cancelled check stops looking words up; its report is dropped.
+                if Task.isCancelled { break }
                 found += spellingSuggestions(text, tokens, sentence, protected, keep, spelling, fixed, &guesses)
             }
         }

@@ -61,7 +61,12 @@ class WritingCheck(val rules: WritingRules, val spelling: WritingSpelling? = nul
 
     private val modelEdits = ModelEdits(rules)
 
-    fun check(text: String, model: Model? = null, options: Options = Options()): Report {
+    /**
+     * Checks [text]. [shouldAbort] says the caller no longer wants the report
+     * (its job was cancelled): the dictionary scan stops, and what comes back
+     * is incomplete and should be dropped.
+     */
+    fun check(text: String, model: Model? = null, options: Options = Options(), shouldAbort: () -> Boolean = { false }): Report {
         val tokens = WritingText.tokenize(text)
         val sentences = WritingText.sentences(text, tokens)
         val protected = ProtectedSpans.ranges(text)
@@ -76,7 +81,8 @@ class WritingCheck(val rules: WritingRules, val spelling: WritingSpelling? = nul
             val fixed = found.filter { it.isActionable }
             val guesses = HashMap<String, WritingSpelling.Guess?>()
             for (sentence in sentences) {
-                found += spellingSuggestions(text, tokens, sentence, protected, keep, dictionary, fixed, guesses)
+                if (shouldAbort()) break
+                found += spellingSuggestions(text, tokens, sentence, protected, keep, dictionary, fixed, guesses, shouldAbort)
             }
         }
         if (model != null) {
@@ -261,6 +267,7 @@ class WritingCheck(val rules: WritingRules, val spelling: WritingSpelling? = nul
         dictionary: WritingSpelling,
         fixed: List<WritingSuggestion>,
         guesses: MutableMap<String, WritingSpelling.Guess?>,
+        shouldAbort: () -> Boolean,
     ): List<WritingSuggestion> {
         val kind = rules.kind("spelling")
         val out = ArrayList<WritingSuggestion>()
@@ -278,7 +285,8 @@ class WritingCheck(val rules: WritingRules, val spelling: WritingSpelling? = nul
             if (stretched(t.key) || laughter(t.key)) continue
             if (dictionary.isKnown(t.text)) continue
             if ('\'' in t.key) continue
-            val guess = (if (t.key in guesses) guesses[t.key] else dictionary.suggest(t.key).also { guesses[t.key] = it }) ?: continue
+            if (t.key !in guesses && shouldAbort()) break
+            val guess = (if (t.key in guesses) guesses[t.key] else dictionary.suggest(t.key, shouldAbort).also { guesses[t.key] = it }) ?: continue
             if (capitalised && (guess.edits > 1 || guess.score > CAPITALISED_MAX_SCORE)) continue
             val replacement = if (capitalised) guess.word.replaceFirstChar(Char::uppercaseChar) else guess.word
             val edit = WritingEdits.build(text, tokens, sentence.first, i, i + 1, replacement)

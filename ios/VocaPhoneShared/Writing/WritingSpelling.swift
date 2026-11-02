@@ -63,7 +63,8 @@ final class WritingSpelling: Sendable {
     }
 
     /// The dictionary word `word` most likely meant, or nil when none is close
-    /// enough. `word` is lower case ASCII letters.
+    /// enough or the task running the check was cancelled (asked every 128
+    /// words). `word` is lower case ASCII letters.
     func suggest(_ word: String) -> Guess? {
         guard let typed = Self.ascii(word) else { return nil }
         let n = typed.count
@@ -78,6 +79,7 @@ final class WritingSpelling: Sendable {
         var r1 = r0
         var r2 = r0
         let starts = Self.firstLetters(typed)
+        var scanned = 0
         for length in max(1, n - maxEdits)...min(Self.maxLength, n + maxEdits) {
             let bucket = words[length]
             let count = bucket.count / length
@@ -87,6 +89,8 @@ final class WritingSpelling: Sendable {
                 let from = Self.lowerBound(bucket, length, count, Int(first))
                 let to = Self.lowerBound(bucket, length, count, Int(first) + 1)
                 for k in from..<to {
+                    scanned += 1
+                    if scanned & 127 == 0, Task.isCancelled { return nil }
                     let at = k * length
                     let cost = Self.distance(typed, bucket, at, length, limit, &r0, &r1, &r2)
                     if cost > limit { continue }

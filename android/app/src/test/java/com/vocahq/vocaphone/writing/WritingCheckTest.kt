@@ -5,6 +5,8 @@ import java.io.File
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -136,6 +138,16 @@ class WritingCheckTest {
             text = WritingCheck.apply(text, s) ?: text
         }
         expect(case, out, "expected", text)
+    }
+
+    @Test
+    fun aCancelledCheckStopsLookingWordsUp() {
+        val spelling = WritingFixtures.spelling
+        assertNotNull(spelling.suggest("recieve"))
+        assertNull(spelling.suggest("recieve") { true })
+        var asked = 0
+        WritingCheck(rules, spelling).check("I recieved teh adress", shouldAbort = { asked++; true })
+        assertTrue(asked > 0)
     }
 
     @Test

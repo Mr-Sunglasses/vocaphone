@@ -119,6 +119,15 @@ struct WritingCheckTests {
         }
     }
 
+    @Test func aCancelledCheckStopsLookingWordsUp() async {
+        #expect(Self.spelling.suggest("recieve") != nil)
+        let guess = await Task { () -> WritingSpelling.Guess? in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return Self.spelling.suggest("recieve")
+        }.value
+        #expect(guess == nil)
+    }
+
     @Test func checks() {
         let check = WritingCheck(rules: Self.rules, spelling: Self.spelling)
         for c in Self.cases("check") {

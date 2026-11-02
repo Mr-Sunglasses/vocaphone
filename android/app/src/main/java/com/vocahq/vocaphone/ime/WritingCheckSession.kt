@@ -9,6 +9,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
@@ -211,7 +212,10 @@ internal class WritingCheckSession(
         val used = ConcurrentHashMap<String, String>()
         val era = this.era
         try {
-            return withContext(worker) { run(checker, field, options, model, thorough, known, used) }
+            return withContext(worker) {
+                val job = coroutineContext.job
+                run(checker, field, options, model, thorough, known, used) { !job.isActive }
+            }
         } finally {
             if (era == this.era) answers.putAll(used)
         }
@@ -225,6 +229,7 @@ internal class WritingCheckSession(
         thorough: Boolean,
         known: Map<String, String>,
         used: MutableMap<String, String>,
+        shouldAbort: () -> Boolean,
     ): Report {
         val cached = model?.let { ask ->
             WritingCheck.Model { sentence ->
@@ -232,7 +237,9 @@ internal class WritingCheckSession(
                 (known[key] ?: ask(sentence, options.keep, thorough))?.also { used[key] = it }
             }
         }
-        val result = checker.check(field.text, cached, WritingCheck.Options(options.categories, options.keep, typed = true, optIn = options.optIn))
+        val result = checker.check(
+            field.text, cached, WritingCheck.Options(options.categories, options.keep, typed = true, optIn = options.optIn), shouldAbort,
+        )
         val word = wordAt(field.text, field.cursor)
         val suggestions = result.suggestions.filter { s ->
             // Not the word being typed: it is not finished.
