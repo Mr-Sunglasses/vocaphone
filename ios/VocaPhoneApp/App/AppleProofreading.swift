@@ -192,8 +192,9 @@ enum AppleProofreading {
 
     /// Generated edits placed in `text`, each inside the piece it was made
     /// for (UTF-16 offsets): in the sentence it names, at its words after the
-    /// previous edit; without that sentence, only where its words are once in
-    /// the piece. Anything else could land on the wrong words.
+    /// previous edit (in the first copy of that sentence that still has
+    /// them); without that sentence, only where its words are once in the
+    /// piece. Anything else could land on the wrong words.
     static func suggestions(_ text: String, _ edits: [(Edit, Range<Int>)], rules: WritingRules) -> [WritingSuggestion] {
         let kind = rules.kind("deep_check")
         let length = text.utf16Length
@@ -223,19 +224,28 @@ enum AppleProofreading {
     ) -> Range<Int>? {
         let sentence = edit.sentence.trimmingCharacters(in: .whitespacesAndNewlines)
         if !sentence.isEmpty {
+            // Every copy of the sentence in the piece, found without the
+            // cursor: "She go and he walk. She go and he walk." takes both of
+            // the first copy's edits there, and only a repeated edit moves on.
+            var copies: [Range<Int>] = []
             let ns = text as NSString
-            func find(from: Int) -> NSRange {
-                guard from < piece.upperBound else { return NSRange(location: NSNotFound, length: 0) }
-                return ns.range(of: sentence, options: [], range: NSRange(location: from, length: piece.upperBound - from))
+            var from = piece.lowerBound
+            while from < piece.upperBound {
+                let found = ns.range(of: sentence, options: [], range: NSRange(location: from, length: piece.upperBound - from))
+                if found.location == NSNotFound { break }
+                copies.append(found.location..<(found.location + found.length))
+                from = found.location + max(found.length, 1)
             }
-            var found = find(from: max(cursor, piece.lowerBound))
-            if found.location == NSNotFound { found = find(from: piece.lowerBound) }
-            if found.location != NSNotFound {
-                let inSentence = occurrences(
-                    of: edit.original, in: text, within: found.location..<(found.location + found.length),
-                    starts: starts, ends: ends
-                )
-                return inSentence.first(where: { $0.lowerBound >= cursor }) ?? inSentence.first
+            if !copies.isEmpty {
+                var fallback: Range<Int>?
+                for copy in copies {
+                    let places = occurrences(of: edit.original, in: text, within: copy, starts: starts, ends: ends)
+                    for place in places where place.lowerBound >= cursor {
+                        return place
+                    }
+                    if fallback == nil { fallback = places.first }
+                }
+                return fallback
             }
         }
         let all = occurrences(of: edit.original, in: text, within: piece, starts: starts, ends: ends)

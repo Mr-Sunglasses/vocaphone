@@ -46,6 +46,20 @@ struct AppleProofreadingTests {
         #expect(AppleProofreading.suggestions(text, [edit("She", "He")], rules: Self.rules).map(\.start) == [14])
     }
 
+    @Test func editsStayInTheFirstCopyOfTheirSentence() {
+        let text = "She go and he walk. She go and he walk."
+        let sentence = "She go and he walk."
+        let first = AppleProofreading.suggestions(text, [
+            edit("go", "goes", sentence: sentence), edit("walk", "walks", sentence: sentence),
+        ], rules: Self.rules)
+        #expect(first.map(\.start) == [4, 14])
+        // The same edit named twice moves on to the second copy.
+        let both = AppleProofreading.suggestions(text, [
+            edit("go", "goes", sentence: sentence), edit("go", "goes", sentence: sentence),
+        ], rules: Self.rules)
+        #expect(both.map(\.start) == [4, 24])
+    }
+
     @Test func anEditStaysInItsPiece() {
         let text = "I has one. You has two."
         let found = AppleProofreading.suggestions(text, [edit("has", "have", in: 11..<23)], rules: Self.rules)
