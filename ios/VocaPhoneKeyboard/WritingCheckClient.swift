@@ -102,6 +102,9 @@ final class WritingCheckClient {
     /// The check under way. A newer check, an edit, or a reset makes its
     /// result stale; `generation` says which one is current.
     private var running: Task<Void, Never>?
+    /// The check itself, off the main thread: cancelled once its report is no
+    /// longer wanted, so its dictionary scan stops instead of running on.
+    private var work: Task<(WritingCheck.Report, [String]), Never>?
     private var generation = 0
     private var observation: VocaPhoneDarwinObservation?
     /// The question in flight. It expires with the request, so an app that
@@ -267,18 +270,21 @@ final class WritingCheckClient {
             isChecking = true
             onChange?()
         }
-        running = Task { [weak self] in
-            let (result, missing) = await Task.detached(priority: .userInitiated) {
-                var missing: [String] = []
-                let model: WritingCheck.Model? = known.map { known in
-                    { sentence in
-                        if let answer = known[Self.answerKey(sentence, thorough: thorough)] { return answer }
-                        missing.append(sentence)
-                        return nil
-                    }
+        work?.cancel()
+        let job = Task.detached(priority: .userInitiated) { () -> (WritingCheck.Report, [String]) in
+            var missing: [String] = []
+            let model: WritingCheck.Model? = known.map { known in
+                { sentence in
+                    if let answer = known[Self.answerKey(sentence, thorough: thorough)] { return answer }
+                    missing.append(sentence)
+                    return nil
                 }
-                return (checker.check(field.text, model: model, options: checkOptions), missing)
-            }.value
+            }
+            return (checker.check(field.text, model: model, options: checkOptions), missing)
+        }
+        work = job
+        running = Task { [weak self] in
+            let (result, missing) = await job.value
             guard let self, current == generation else { return }
             isChecking = false
             guard lastField == field, self.options == options else {
@@ -294,6 +300,8 @@ final class WritingCheckClient {
     /// Makes any check under way stale and says nothing is being checked.
     private func stopChecking() {
         generation += 1
+        work?.cancel()
+        work = nil
         running = nil
         if isChecking {
             isChecking = false
