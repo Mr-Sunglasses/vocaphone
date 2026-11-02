@@ -40,8 +40,7 @@ struct WritingCheckView: View {
     }
 
     private enum DeepState: Equatable {
-        case idle, running, failed
-        case done(Int)
+        case idle, running, failed, done
     }
 
     init(initialText: String = "") {
@@ -57,7 +56,8 @@ struct WritingCheckView: View {
     private var current: WritingCheck.Report? {
         guard let report, report.text == text else { return nil }
         guard let deep, deep.text == text else { return report }
-        return AppleProofreading.merged(report, deep.suggestions, keep: keepWords)
+        guard let rules = checker?.rules else { return report }
+        return AppleProofreading.merged(report, deep.suggestions, keep: keepWords, rules: rules)
     }
 
     private var suggestions: [WritingSuggestion] {
@@ -243,7 +243,7 @@ struct WritingCheckView: View {
         if #available(iOS 27, *) {
             let extra = await AppleProofreading.systemGrammar(snapshot, rules: checker.rules)
             guard !Task.isCancelled, snapshot == text else { return }
-            result = AppleProofreading.merged(result, extra, keep: keepSet)
+            result = AppleProofreading.merged(result, extra, keep: keepSet, rules: checker.rules)
         }
         #endif
         // Tone off in Settings: how the text sounds is not shown, as in the
@@ -297,7 +297,7 @@ struct WritingCheckView: View {
                 return
             }
             deep = DeepResult(text: snapshot, suggestions: found)
-            deepState = .done(found.count)
+            deepState = .done
         } catch {
             deepState = .failed
         }
@@ -316,8 +316,11 @@ struct WritingCheckView: View {
                 switch deepState {
                 case .running:
                     ProgressView()
-                case let .done(count) where deep?.text == text:
-                    Text(count == 0 ? "Nothing more" : "\(count) more")
+                case .done where deep?.text == text:
+                    // What Deep check adds on screen: its cards that clash with
+                    // nothing already found, less those dismissed or accepted.
+                    let added = (current?.suggestions ?? []).filter { $0.source == .generated && !dismissed.contains($0.key) }.count
+                    Text(added == 0 ? "Nothing more" : "\(added) more")
                         .foregroundStyle(.secondary)
                 case .failed:
                     Text("Not available right now").foregroundStyle(.secondary)

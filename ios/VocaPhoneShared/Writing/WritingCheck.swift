@@ -530,12 +530,7 @@ struct WritingCheck: Sendable {
                 - 84.6 * (Double(syllables) / Double(words.count))
             readability = min(max(Int(value.rounded()), 0), 100)
         }
-        var score: Int?
-        if !words.isEmpty {
-            let weight = found.reduce(0.0) { $0 + (rules.scoreWeights[$1.category] ?? 1) }
-            let value = 100.0 - weight * 100.0 / Double(max(words.count, rules.scoreMinimumWords))
-            score = min(max(Int(value.rounded()), 0), 100)
-        }
+        let score = Self.score(words: words.count, found, rules: rules)
         return Stats(
             words: words.count,
             characters: text.unicodeScalars.count,
@@ -545,6 +540,28 @@ struct WritingCheck: Sendable {
             readability: readability,
             readabilityLabel: readability.map(Self.readabilityLabel),
             score: score
+        )
+    }
+
+    /// 100 less a weighted count of `found` per 100 words; nil for no words.
+    static func score(words: Int, _ found: [WritingSuggestion], rules: WritingRules) -> Int? {
+        guard words > 0 else { return nil }
+        let weight = found.reduce(0.0) { $0 + (rules.scoreWeights[$1.category] ?? 1) }
+        let value = 100.0 - weight * 100.0 / Double(max(words, rules.scoreMinimumWords))
+        return min(max(Int(value.rounded()), 0), 100)
+    }
+
+    /// `report` with `suggestions` in place of its own and its score counted
+    /// again from them: for a report other checkers added to.
+    static func rescored(_ report: Report, _ suggestions: [WritingSuggestion], rules: WritingRules) -> Report {
+        let s = report.stats
+        let stats = Stats(
+            words: s.words, characters: s.characters, sentences: s.sentences, readingSeconds: s.readingSeconds,
+            speakingSeconds: s.speakingSeconds, readability: s.readability, readabilityLabel: s.readabilityLabel,
+            score: score(words: s.words, suggestions, rules: rules)
+        )
+        return Report(
+            text: report.text, suggestions: suggestions, tones: report.tones, stats: stats, modelPending: report.modelPending
         )
     }
 
