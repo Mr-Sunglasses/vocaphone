@@ -662,9 +662,12 @@ RULES += [
   # it" are statements whose verb is no form of "be".
   dict(r("^ what|where|when|why|how you|we|they want|need|think|mean|like|have|know|do|say", "$1 do $2 $3", "missing_word", "missing_word.verb", rid="wh-do"),
        unlessLater=FINITE_BE, question=True),
-  r("^ why you|we|they didn't|didnt|don't|dont|can't|cant|won't|wont {verb_base}", "$1 $3 $2 $4", "word_choice",
-    "In a question, the helper verb comes before the subject: “{replacement}”.", rid="why-you-didnt"),
-  dict(r("^ how much|many it|this|that {verb_inflected}", "$1 $2 does $3 ${base:4}", "missing_word", "missing_word.verb", rid="how-much-does"), unlessLater=FINITE_BE),
+  dict(r("^ why you|we|they didn't|didnt|don't|dont|can't|cant|won't|wont {verb_base}", "$1 $3 $2 $4", "word_choice",
+    "In a question, the helper verb comes before the subject: “{replacement}”.", rid="why-you-didnt"), question=True),
+  # Only questions: "How much that costs varies", "Why you didn't call
+  # matters" are statements.
+  dict(r("^ how much|many it|this|that {verb_inflected}", "$1 $2 does $3 ${base:4}", "missing_word", "missing_word.verb", rid="how-much-does"),
+       unlessLater=FINITE_BE, question=True),
   # A time in the past, said in the present: "Yesterday I go".
   r("^ yesterday {subject} {verb_base&!past_too}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past"),
   r("^ yesterday {subject} {verb_inflected}", "$1 $2 ${past:3}", "verb_form", "“{1}” is in the past, so use “{replacement}”.", rid="yesterday-past-inflected"),
@@ -714,6 +717,15 @@ RULES += [
        notAfter="hi hey hello thanks yes no well so ok okay dear oh sorry please".split(), notAfterOpening=OPENERS,
        notBefore=[","]),
 ]
+# "when" also reports a question ("I'm unsure when we will arrive", "The
+# question is when we will"), so, like "if", it loses "will" only where its
+# clause starts; "once", "until", "before" and "after" keep their rules.
+for _rule in list(RULES):
+    if _rule["match"].startswith("when|once|until|before|after "):
+        _rule["match"] = _rule["match"].replace("when|once|until|before|after ", "once|until|before|after ", 1)
+        _twin = dict(_rule, match="when " + _rule["match"][len("once|until|before|after "):], id=_rule["id"] + "-when", after=IF_OPENS)
+        _twin.pop("notAfter", None)
+        RULES.insert(RULES.index(_rule) + 1, _twin)
 _FEELING = "“{original}” describes what causes the feeling; “{replacement}” is how you feel."
 for b, prepositions in EMOTIONS.items():
     ing, ed, after = _ing(b), _ed(b), prepositions.replace(" ", "|")
