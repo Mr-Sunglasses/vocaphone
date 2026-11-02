@@ -149,7 +149,10 @@ struct WritingAgreement: Sendable {
         var start = phraseStart(s, j)
         var hops = 0
         while true {
-            if s.inside(start - 2), s.key(start - 1) == "and", s.tag(start - 1) == "CC", nounish(s, start - 2) {
+            // "my mom and dad", "Sam and I". Not owners joined before the head:
+            // in "my mom and dad's car is", the subject is the one car.
+            if s.inside(start - 2), s.key(start - 1) == "and", s.tag(start - 1) == "CC", nounish(s, start - 2),
+               !possessed(s, start, head) {
                 let left = phraseStart(s, start - 2)
                 if Self.eachEvery.contains(s.key(left)) { return nil }
                 number = .plural
@@ -219,6 +222,15 @@ struct WritingAgreement: Sendable {
             return key.hasSuffix("s") ? nil : .singular
         default:
             return nil
+        }
+    }
+
+    /// Whether a possessive ("dad's") comes in `start..<head`: the phrase from `start` owns the head.
+    private func possessed(_ s: Tagged, _ start: Int, _ head: Int) -> Bool {
+        guard start < head else { return false }
+        return (start..<head).contains { i in
+            let key = s.key(i)
+            return s.tag(i).hasSuffix("+POS") || key.hasSuffix("'s") || key.hasSuffix("s'")
         }
     }
 

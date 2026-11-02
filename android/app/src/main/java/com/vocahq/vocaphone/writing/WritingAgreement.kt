@@ -145,8 +145,11 @@ internal class WritingAgreement(
         var start = phraseStart(s, j)
         var hops = 0
         while (true) {
-            // "my mom and dad", "Sam and I"
-            if (s.inside(start - 2) && s.key(start - 1) == "and" && s.tag(start - 1) == "CC" && nounish(s, start - 2)) {
+            // "my mom and dad", "Sam and I". Not owners joined before the head:
+            // in "my mom and dad's car is", the subject is the one car.
+            if (s.inside(start - 2) && s.key(start - 1) == "and" && s.tag(start - 1) == "CC" && nounish(s, start - 2) &&
+                !possessed(s, start, head)
+            ) {
                 val left = phraseStart(s, start - 2)
                 if (s.key(left) in EACH_EVERY) return null
                 number = Number.PLURAL
@@ -217,6 +220,10 @@ internal class WritingAgreement(
             else -> null
         }
     }
+
+    /** Whether a possessive ("dad's") comes in `[start, head)`: the phrase from [start] owns the head. */
+    private fun possessed(s: Tagged, start: Int, head: Int): Boolean =
+        (start until head).any { s.tag(it).endsWith("+POS") || s.key(it).endsWith("'s") || s.key(it).endsWith("s'") }
 
     /** The first word of the noun phrase whose head is [head]: back over determiners, adjectives and nouns. */
     private fun phraseStart(s: Tagged, head: Int): Int {
